@@ -1,0 +1,37 @@
+# Unity generated / cache — never meaningful to version, regenerated from Assets+ProjectSettings
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+
+# Visual Studio / Rider / VS Code generated project files (regenerated from the Unity project)
+.vs/
+.vsconfig
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS/editor cruft
+.DS_Store
+*.swp
+
+# Ad-hoc scratch backups superseded by real git history from here on
+.claude_backup/
+
+# Crash/log dumps
+sysinfo.txt
+*.stackdump

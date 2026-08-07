@@ -1,0 +1,386 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b8ee3a273e056e4ea1f2a042382c3fa, type: 3}
+  m_Name: CardCatalog_IronConcord
+  m_EditorClassIdentifier: 
+  faction: 0
+  displayName: Iron Concord
+  logo: {fileID: 21300000, guid: 779241b27d7148c4681ea5824b534703, type: 3}
+  cards:
+  - displayName: Concord Citadel
+    art: {fileID: 21300000, guid: 94b37d3739334d04bada49625bef7711, type: 3}
+    faction: 0
+    cardType: 3
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 4
+      materials: 4
+      tech: 4
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    fate: 2
+    attack: 0
+    defenseRating: 3
+    resistanceRating: 1
+    range: 0
+    hitPoints: 8
+    initiative: 0
+    passiveSkillIds: []
+    structurePointsMax: 8
+    defense: 3
+    resistance: 1
+    resourceYield:
+      human: 2
+      energy: 2
+      materials: 2
+      tech: 2
+    grantedAbilities:
+    - Barracks
+    - CollectHuman
+    - CollectEnergy
+    - CollectMaterials
+    - CollectTech
+  - displayName: Research Facility
+    art: {fileID: 21300000, guid: 6713785a799ca164a9d351bd35cf0cdf, type: 3}
+    faction: 0
+    cardType: 2
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 2
+    resistanceRating: 1
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities:
+    - Lab
+  - displayName: Dorian Kesh
+    art: {fileID: 21300000, guid: 19eb0cd3fcc40874fae6b40cfab00fed, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 5
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Aldric Voss
+    art: {fileID: 21300000, guid: 9b17cc1cfd20a4a4e9ca7b761be64242, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 8
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 5
+    initiative: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Nadia Thorne
+    art: {fileID: 21300000, guid: fc8e3545ed6f7d34f9bc29db2ecb5941, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 5
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 4
+    initiative: 2
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Kessa Vrail
+    art: {fileID: 21300000, guid: 50f8e86117285f2449ad03c9e7bfabc8, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 6
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 5
+    initiative: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Lira Sable
+    art: {fileID: 21300000, guid: 8a2d6f9bd58681441888f9cf3f314f51, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 5
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Light Infantry
+    art: {fileID: 21300000, guid: 285cc04667d9f774386502bff6b0e58a, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 2
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    resistanceRating: 0
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Medium Infantry
+    art: {fileID: 21300000, guid: 4919e34e63713c948bdf4e92caf2848f, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 2
+      energy: 0
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Light Tank
+    art: {fileID: 21300000, guid: a3e7e1a4b762d0440902002ccd787fd7, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 2
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 2
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  - displayName: Medium Tank
+    art: {fileID: 21300000, guid: aaf3742707e72c84c9f0e09a12bae7a5, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 2
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities: []
+  armyNamePool:
+  - Iron Vanguard
+  - Rust Company
+  - Dust Reapers
+  - Ember Battalion
+  - Concord Talon
+  - Scrapline Legion
+  - Sandstorm Cohort
+  - Ashfall Brigade
+  - Wraithguard Company
+  - Ironclad Vanguard
+  - Cinder Legion
+  - Blackstrike Company
+  - Bastion Cohort
+  - Dune Wolves
+  - Hollow Vanguard
+  - Wasteland Sentinels
+  - Iron Reavers
+  - Grit Battalion
+  - Steel Locusts
+  - Nomad's Edge

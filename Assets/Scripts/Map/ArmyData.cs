@@ -1,0 +1,95 @@
+using System.Collections.Generic;
+using System.Linq;
+using Game.HexGrid;
+using Game.Players;
+using Game.Units;
+
+namespace Game.Map
+{
+    // A container of units on one hex — same data/visual split as BuildingData (see Controller
+    // below for the visual half). One player can have several armies on the same hex; only one
+    // marker is ever visible per (hex, owner) at a time — see HexSelectionController.
+    // RestackArmiesOn — even though every non-empty army still has its own ArmyController
+    // underneath. IsGarrison marks the automatically created default one every citadel starts
+    // with (see CitadelSetupController) — deployed Unit/Hero cards land in the garrison first
+    // (see CardHandUI.TryPlayCard), same as the original game's manual describes it, rather than
+    // needing a separate "unassigned pile" data structure of its own.
+    public class ArmyData
+    {
+        public string Name;
+        public HexCoord Hex;
+        public PlayerSetupData Owner;
+        public bool IsGarrison;
+        public readonly List<UnitData> Members = new List<UnitData>();
+
+        // The player's own last battle-grid layout for this specific army (see
+        // BattleScreenUI's Arrangement phase) — keyed by unit reference so it survives members
+        // being added/removed; a member missing from this map on the next battle just falls back
+        // to auto-fill (same rule BattleGrid.FromArmies already uses), same as a brand new army
+        // with no saved layout at all.
+        public readonly Dictionary<UnitData, (int row, int col)> SavedArrangement = new Dictionary<UnitData, (int row, int col)>();
+
+        // The map-level marker for this army (see ArmyController/HexSelectionController.
+        // CreateArmyMarker) — created once, alongside the ArmyData itself, and kept for its
+        // whole lifetime. A unit has no marker of its own any more; this is the only one.
+        public ArmyController Controller;
+
+        // A unit never moves on its own any more — only its army does (see
+        // HexSelectionController.TryIssueMoveOrder), and the garrison specifically can never
+        // move at all (IsGarrison). Activation is tracked here instead of per-unit for the
+        // same reason: "has this army already spent its first-move AP this turn" is a
+        // per-army question now, not a per-unit one. Reset alongside every member's own
+        // MoveCurrent at the start of a turn (see GameTurnController.ReplenishMoveForOwner).
+        public bool HasActivatedThisTurn;
+
+        // How much AP it costs to activate this army for its first move order of the turn —
+        // the sum of every member's own ActivationApCost (a bigger army costs more to get
+        // moving as a whole, not just as much as its single heaviest member).
+        public int ActivationApCost => Members.Count > 0 ? Members.Sum(m => m.ActivationApCost) : 0;
+
+        // Shared movement — every member advances in lockstep, capped by whichever one has the
+        // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
+        // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
+        // empty army rather than throwing on Members[0].
+        public int CurrentMovement => Members.Count > 0 ? Members.Min(m => m.MoveCurrent) : 0;
+        public int MaxMovement => Members.Count > 0 ? Members.Min(m => m.MoveMax) : 0;
+
+        // Canon capacity rule, computed fresh (never cached) so it's always correct as members
+        // come and go: no hero -> 2; garrison without a hero -> a higher default since it's
+        // meant to catch everything fresh off a card before it's sorted; a hero present ->
+        // that hero's own CommandRating overrides both. Hard cap — no overflow-with-penalty
+        // like the original (see project_armageddon_army_mechanic memory: user explicitly
+        // dropped the soft-cap penalty).
+        private const int BaseCapacity = 2;
+        private const int GarrisonBaseCapacity = 4;
+
+        public int Capacity => ComputeCapacity(Members, IsGarrison);
+
+        // The Capacity rule as a pure function of a (candidate) member list, rather than always
+        // reading this instance's own Members — lets a caller ask "what would capacity become
+        // if the roster looked like THIS" before actually committing to an order, e.g.
+        // ArmyViewerModalUI validating a drag-reorder that would move a lower-CommandRating
+        // hero into the front slot ahead of members it can no longer all hold (see
+        // ArmyViewerModalUI.PreviewReorder's orphan check).
+        public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison)
+        {
+            foreach (UnitData member in members)
+                if (member.IsHero)
+                    return member.CommandRating;
+            return isGarrison ? GarrisonBaseCapacity : BaseCapacity;
+        }
+
+        public bool HasRoom => Members.Count < Capacity;
+
+        // Heroes always sit at the front of the roster (ArmyViewerModalUI's grid keeps them
+        // there even as the player freely drags cards to reorder — see its hero-first reorder
+        // clamp). A new hero goes in right after whichever heroes are already there; a regular
+        // unit always goes to the very end, which trivially keeps heroes a contiguous prefix
+        // without needing to re-sort the whole list.
+        public void AddMemberSorted(UnitData unit)
+        {
+            int index = unit.IsHero ? Members.Count(m => m.IsHero) : Members.Count;
+            Members.Insert(index, unit);
+        }
+    }
+}

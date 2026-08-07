@@ -1,0 +1,353 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c5b1afee3e364ca4943bf350e7f4b360, type: 3}
+  m_Name: GameConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Game.Core.GameConfig
+  groundLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  buildingMarkerPrefab: {fileID: 100002, guid: b68af2d021920d243a72bb50ac508be7, type: 3}
+  armyMarkerPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
+  buildingIconOffset: {x: -0.25, y: -0.15}
+  armyIconOffset: {x: 0.4, y: -0.3}
+  twoArmySideOffset: {x: 0.25, y: 0}
+  mapSortingOrder: 0
+  buildingCircleSortingOrder: 3
+  buildingIconSortingOrder: 4
+  armyCircleSortingOrder: 9
+  armyIconSortingOrder: 10
+  armyIconSprite: {fileID: 21300000, guid: 779241b27d7148c4681ea5824b534703, type: 3}
+  armyButtonPrefab: {fileID: 1990000000000010006, guid: 653d9030c73145938c14734d2e6d04ec, type: 3}
+  armyUnitCardPrefab: {fileID: 1980000000000010005, guid: 78f3cecc3db145188cabd4b3abea979a, type: 3}
+  citadelIconSprite: {fileID: 21300000, guid: e12126fa30d64b548ab632f83454d6e7, type: 3}
+  citadelResourceBonus:
+    human: 1
+    energy: 1
+    materials: 1
+    tech: 1
+  baseSlotCardPrefab: {fileID: 1970000000000010005, guid: 9039e1101744b669442eb105b3e5f5c3, type: 3}
+  startingStructurePoints: 6
+  startingDefense: 2
+  startingResistance: 1
+  baseUpgradeTiers:
+  - apCost: 2
+    cost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    defenseGain: 1
+    resistanceGain: 1
+  - apCost: 4
+    cost:
+      human: 2
+      energy: 2
+      materials: 2
+      tech: 2
+    defenseGain: 1
+    resistanceGain: 1
+  - apCost: 6
+    cost:
+      human: 4
+      energy: 4
+      materials: 4
+      tech: 4
+    defenseGain: 1
+    resistanceGain: 1
+  extractionFacilityCards:
+  - displayName: Human Extractor
+    art: {fileID: 21300000, guid: 5ab14e76d3b386738f273dcc7c919c5c, type: 3}
+    faction: 2
+    cardType: 2
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    attack: 0
+    range: 1
+    hitPoints: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities:
+    - CollectHuman
+  - displayName: Energy Extractor
+    art: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
+    faction: 2
+    cardType: 2
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    attack: 0
+    range: 1
+    hitPoints: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities:
+    - CollectEnergy
+  - displayName: Materials Extractor
+    art: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
+    faction: 2
+    cardType: 2
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    attack: 0
+    range: 1
+    hitPoints: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities:
+    - CollectMaterials
+  - displayName: Tech Extractor
+    art: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
+    faction: 2
+    cardType: 2
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: 
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    attack: 0
+    range: 1
+    hitPoints: 1
+    passiveSkillIds: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    grantedAbilities:
+    - CollectTech
+  facilityUpgradeTiers:
+  - apCost: 2
+    cost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    defenseGain: 1
+    resistanceGain: 1
+  - apCost: 4
+    cost:
+      human: 2
+      energy: 2
+      materials: 2
+      tech: 2
+    defenseGain: 1
+    resistanceGain: 1
+  resourceActionButtonPrefab: {fileID: 1960000000000010006, guid: d9be805d2651fbd9d4f84b4d48ee002c, type: 3}
+  facilityMarkerPrefab: {fileID: 100002, guid: 94145d62198a4254392b0bc4953c1006, type: 3}
+  abilityAbbreviations:
+  - ability: Barracks
+    abbreviation: Barracks
+  - ability: Base
+    abbreviation: Base
+  - ability: Lab
+    abbreviation: Lab
+  - ability: CollectHuman
+    abbreviation: cH
+  - ability: CollectEnergy
+    abbreviation: cE
+  - ability: CollectMaterials
+    abbreviation: cM
+  - ability: CollectTech
+    abbreviation: cT
+  maxEdgeDistance: 1
+  regionHighlightStyle:
+    radiusScale: 0.87
+    margin: 0.6
+    lineThickness: 0.03
+    noiseReach: 0.1
+    noiseScale: 3
+    noiseSpeed: 1.2
+    glowIntensity: 0.25
+    glowWidth: 0.25
+    sortingOrder: 1
+  citadelSelectionStyle:
+    radiusScale: 0.87
+    margin: 0.6
+    lineThickness: 0.05
+    noiseReach: 0.1
+    noiseScale: 3
+    noiseSpeed: 1.2
+    glowIntensity: 0.25
+    glowWidth: 0.15
+    sortingOrder: 2
+  hexSelectionStyle:
+    radiusScale: 0.87
+    margin: 0.6
+    lineThickness: 0.03
+    noiseReach: 0.1
+    noiseScale: 3
+    noiseSpeed: 1.2
+    glowIntensity: 0.25
+    glowWidth: 0.15
+    sortingOrder: 1
+  battleActingUnitHighlightStyle:
+    radiusScale: 1
+    margin: 6
+    lineThickness: 2
+    noiseReach: 4
+    noiseScale: 0.15
+    noiseSpeed: 1.2
+    glowIntensity: 0.8
+    glowWidth: 6
+    sortingOrder: 1
+  resourceIconPrefab: {fileID: 200002, guid: 93f949af926942fabf01ccfa62c900e1, type: 3}
+  resourceIconSpacing: 0.4
+  resourceRowOffset: 0.6
+  mapGeneration:
+    width: 12
+    height: 9
+    outerRadius: 1
+    blend: 0.25
+    alpha: 0.95
+    groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
+    terrainTypes:
+    - terrainName: City ruins
+      texture: {fileID: 2800000, guid: cd8f0f0510042474cb66ca51248da12b, type: 3}
+      alternativeTextures: []
+      baselineWeight: 5
+      resourceYields:
+        human: 2
+        energy: 0
+        materials: 0
+        tech: 0
+      moveCost: 1
+    - terrainName: Desert
+      texture: {fileID: 2800000, guid: bb148a601ad978343a2d2a01f1420c34, type: 3}
+      alternativeTextures: []
+      baselineWeight: 90
+      resourceYields:
+        human: 0
+        energy: 0
+        materials: 0
+        tech: 0
+      moveCost: 1
+    - terrainName: Mountains
+      texture: {fileID: 2800000, guid: 4cb544e5db8be3d41b85e640a59ce27d, type: 3}
+      alternativeTextures: []
+      baselineWeight: 10
+      resourceYields:
+        human: 0
+        energy: 0
+        materials: 1
+        tech: 0
+      moveCost: 3
+    - terrainName: Rock desert
+      texture: {fileID: 2800000, guid: f80a460672b412a4586045832a446d55, type: 3}
+      alternativeTextures: []
+      baselineWeight: 5
+      resourceYields:
+        human: 0
+        energy: 0
+        materials: 0
+        tech: 1
+      moveCost: 1
+    - terrainName: Sand dunes
+      texture: {fileID: 2800000, guid: fc1459211b024a14d863404944238127, type: 3}
+      alternativeTextures: []
+      baselineWeight: 5
+      resourceYields:
+        human: 0
+        energy: 1
+        materials: 0
+        tech: 0
+      moveCost: 2
+    mountainsTerrainName: Mountains
+    mountainRangeCount: 3
+    mountainRangeLength: 2
+  minPlayers: 2
+  maxPlayers: 6
+  playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}
+  initiativeDicePrice: 1
+  moveArrowStyle:
+    segmentsPerLeg: 20
+    curveBend: 0
+    tailWidth: 0.75
+    headProfile:
+    - distanceFromTip: 0
+      halfWidth: 0
+    - distanceFromTip: 0.4
+      halfWidth: 0.3
+    - distanceFromTip: 0.31
+      halfWidth: 0.05
+    - distanceFromTip: 0.401
+      halfWidth: 0.05
+    outlineThickness: 0.03
+    outlineColor: {r: 0.05, g: 0.04, b: 0.06, a: 1}
+    tailAlpha: 0.01
+    gradientStart: 0.15
+    badgeRadius: 0.18
+    badgeSpacing: 0.4
+    badgeMinDistanceFromStart: 0.9
+    badgeColor: {r: 0.08, g: 0.08, b: 0.08, a: 0.92}
+    apBadgeColor: {r: 0.5, g: 0.08, b: 0.08, a: 0.92156863}
+    badgeTextColor: {r: 1, g: 1, b: 1, a: 1}
+    badgeBorderThickness: 0.015
+    badgeBorderColor: {r: 1, g: 1, b: 1, a: 1}
+    outlineSortingOrder: 11
+    fillSortingOrder: 12
+    badgeBorderSortingOrder: 13
+    badgeSortingOrder: 14
+    badgeTextSortingOrder: 15
+  moveArrowMoveColor: {r: 0.3025988, g: 0.754717, b: 0.37942943, a: 1}
+  moveArrowAttackColor: {r: 0.8207547, g: 0.31359026, b: 0.31359026, a: 1}

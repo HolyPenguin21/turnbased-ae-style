@@ -1,0 +1,39 @@
+# Unity's own YAML-based assets — treat as text but never let git rewrite line endings on
+# these; several of them (scenes/prefabs in particular) get hand-edited directly this session,
+# and Unity's own serializer can be picky about mixed endings.
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.meta text eol=lf
+*.mat text eol=lf
+*.physicMaterial text eol=lf
+*.physicsMaterial2D text eol=lf
+*.anim text eol=lf
+*.controller text eol=lf
+
+*.cs text eol=lf diff=csharp
+*.shader text eol=lf
+*.cginc text eol=lf
+*.hlsl text eol=lf
+
+# Binary — never diff/merge as text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.psd binary
+*.tga binary
+*.tif binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.fbx binary
+*.obj binary -text
+*.3ds binary
+*.blend binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.ttf binary
+*.otf binary
