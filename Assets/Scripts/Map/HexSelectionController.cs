@@ -165,7 +165,7 @@ namespace Game.Map
                 return;
             }
 
-            HexCoord? hoverCoord = RaycastHex();
+            HexCoord? hoverCoord = RaycastHexCached();
 
             UpdateMovePreview(hoverCoord);
 
@@ -194,11 +194,39 @@ namespace Game.Map
                 && turnController.TurnConfirmed && !turnController.InputBlocked;
         }
 
-        private HexCoord? RaycastHex()
+        // Turn-based game, mostly-idle camera: re-running the Physics.Raycast every single
+        // frame regardless of whether anything that could change its result actually moved was
+        // pure waste (see RaycastHex's own per-call cost — a real physics query against the
+        // ground mesh, not a cheap property read). Cached against the 3 inputs that can change
+        // which hex is under the cursor: the mouse's screen position, and the camera's own
+        // position/zoom (RtsCameraController's WASD pan and scroll-zoom can move what's under a
+        // STATIONARY cursor) — camera rotation is deliberately not checked, this project's
+        // camera is fixed-angle for its whole lifetime (see RtsCameraController's own comment).
+        private HexCoord? _cachedHoverCoord;
+        private Vector2 _lastHoverMousePos;
+        private Vector3 _lastHoverCameraPos;
+        private float _lastHoverOrthoSize;
+        private bool _hasCachedHover;
+
+        private HexCoord? RaycastHexCached()
         {
-            if (Mouse.current == null)
+            if (Mouse.current == null || targetCamera == null)
                 return null;
-            return RaycastHex(Mouse.current.position.ReadValue());
+
+            Vector2 mousePos = Mouse.current.position.ReadValue();
+            Vector3 camPos = targetCamera.transform.position;
+            float orthoSize = targetCamera.orthographicSize;
+
+            if (_hasCachedHover && mousePos == _lastHoverMousePos
+                && camPos == _lastHoverCameraPos && orthoSize == _lastHoverOrthoSize)
+                return _cachedHoverCoord;
+
+            _lastHoverMousePos = mousePos;
+            _lastHoverCameraPos = camPos;
+            _lastHoverOrthoSize = orthoSize;
+            _hasCachedHover = true;
+            _cachedHoverCoord = RaycastHex(mousePos);
+            return _cachedHoverCoord;
         }
 
         // Screen-position overload — used by this controller's own mouse hover above, and also
