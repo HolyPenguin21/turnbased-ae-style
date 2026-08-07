@@ -22,6 +22,13 @@ namespace Game.UI
         [SerializeField] private TMP_Text techText;
         [SerializeField] private TMP_Text turnText;
 
+        // Resolved once (see OnEnable) rather than re-looked-up via GameSession.FindHumanRoot()
+        // every single Update() — that lookup is a List.Find with a lambda, and the human's own
+        // PlayerRoot never changes once PlayerRootRegistry has it (see PlayerRootRegistry.
+        // Register, only ever called once per player at setup). Falls back to re-resolving in
+        // Update() on the rare chance OnEnable ran before setup registered it.
+        private PlayerRoot _humanRoot;
+
         // Hidden until a citadel exists to report on — GameTurnController calls this once,
         // right after citadel setup finishes, and it never hides again after that.
         public void Show()
@@ -31,6 +38,7 @@ namespace Game.UI
 
         private void OnEnable()
         {
+            _humanRoot = GameSession.FindHumanRoot();
             if (turnController == null)
                 return;
             turnController.TurnStarted += OnTurnStarted;
@@ -51,7 +59,9 @@ namespace Game.UI
 
         private void Update()
         {
-            PlayerRoot root = GameSession.FindHumanRoot();
+            if (_humanRoot == null)
+                _humanRoot = GameSession.FindHumanRoot();
+            PlayerRoot root = _humanRoot;
             if (root == null)
                 return;
 
