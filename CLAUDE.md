@@ -14,6 +14,12 @@ actual Unity assemblies — use this after every C# edit made without a live Edi
   files**). If neither exists yet, ask the user to trigger it once — External Script Editor in
   Preferences must point at an editor that's actually installed, or generation silently fails with
   a `CodeEditorProjectSync` console error.
+- **New `.cs` files need a `.meta` file too**, and Unity generates them asynchronously (only
+  once the Editor actually reimports, which doesn't happen instantly while it's unfocused/idle) —
+  don't assume a freshly-created script has one yet. If it doesn't by the time you're ready to
+  commit, hand-write one (`fileFormatVersion: 2\nguid: <32-hex>\n`, verify the guid doesn't already
+  exist anywhere under `Assets` via grep first) rather than leaving the file meta-less or waiting
+  indefinitely — Unity accepts a hand-authored meta's guid on its next import same as any other.
 - **The `.csproj`'s file list is static, not a wildcard** — it's `<Compile Include="...">` entries
   frozen at generation time. A brand-new `.cs` file (e.g. splitting a class into
   `Foo.Bar.cs`) won't compile until either the user regenerates project files in Unity, or you add
