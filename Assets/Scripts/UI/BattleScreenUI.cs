@@ -294,7 +294,7 @@ namespace Game.UI
             bool canRetreat = _localArmy != null && !_localArmy.IsGarrison && _retreatingArmy == null;
             if (roundStartPopup != null)
                 roundStartPopup.Show(_round, _grid, _attacker, _defender, catalog != null ? catalog.logo : null,
-                    canRetreat, OnStartRoundClicked, OnRetreatClicked);
+                    canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name);
             else
                 OnStartRoundClicked();
         }

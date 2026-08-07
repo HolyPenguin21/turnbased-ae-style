@@ -50,9 +50,13 @@ namespace Game.UI
 
         // canRetreat is false whenever there's no local human side to retreat, or that side's
         // army is a garrison (garrisons can never retreat, per the manual) — combined with the
-        // round > 1 gate below regardless.
+        // round > 1 gate below regardless. retreatingArmyName (optional): folded straight into
+        // the title instead of relying on AiЕhoughts_Text alone — that panel is easy to miss
+        // (buried behind this very popup, or timed out before the player gets back to it, per
+        // the user's own report), whereas this popup is something the player has to look at and
+        // dismiss before the grace round plays out, guaranteeing they see it in time to matter.
         public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender, Sprite factionLogo,
-            bool canRetreat, Action onStartRound, Action onRetreat)
+            bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null)
         {
             _onStartRound = onStartRound;
             _onRetreat = onRetreat;
@@ -62,7 +66,11 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             if (roundTitleText != null)
-                roundTitleText.text = $"Round {round}";
+            {
+                roundTitleText.text = string.IsNullOrEmpty(retreatingArmyName)
+                    ? $"Round {round}"
+                    : $"Round {round} — {retreatingArmyName} is retreating this round!";
+            }
             if (retreatButton != null)
                 retreatButton.interactable = canRetreat && round > 1;
 
