@@ -1,6 +1,5 @@
 using System;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -29,7 +28,7 @@ namespace Game.UI
         // instead (unlike RtsCameraController's WASD, which does need that guard).
         private void Update()
         {
-            if (IsShowing && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (IsShowing && UIFocusUtility.WasSpacePressed())
                 OnOkClicked();
         }
 

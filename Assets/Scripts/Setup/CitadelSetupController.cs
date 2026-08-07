@@ -8,6 +8,7 @@ using Game.Map;
 using Game.Players;
 using Game.Styles;
 using Game.Turns;
+using Game.UI;
 using Game.Units;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -383,8 +384,7 @@ namespace Game.Setup
 
             // Space confirms the popup exactly when the Confirm button itself would accept a
             // click — i.e. only after a valid hex has actually been picked.
-            if (confirmButton != null && confirmButton.interactable
-                && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (confirmButton != null && confirmButton.interactable && UIFocusUtility.WasSpacePressed())
             {
                 OnConfirmClicked();
                 return;

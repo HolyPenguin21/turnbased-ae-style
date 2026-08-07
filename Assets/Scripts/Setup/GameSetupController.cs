@@ -3,7 +3,6 @@ using Game.Core;
 using Game.Players;
 using Game.UI;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -28,7 +27,7 @@ namespace Game.Setup
         // space into a player's name would also launch the game.
         private void Update()
         {
-            if (Keyboard.current == null || !Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (!UIFocusUtility.WasSpacePressed())
                 return;
             if (UIFocusUtility.IsTextFieldFocused())
                 return;

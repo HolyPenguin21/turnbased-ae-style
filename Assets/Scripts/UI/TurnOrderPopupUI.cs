@@ -5,7 +5,6 @@ using Game.Map;
 using Game.Players;
 using Game.Turns;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -35,7 +34,7 @@ namespace Game.UI
         {
             if (panelRoot != null && !panelRoot.activeSelf)
                 return;
-            if (Keyboard.current == null || !Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (!UIFocusUtility.WasSpacePressed())
                 return;
 
             if (rollButton != null && rollButton.gameObject.activeSelf)

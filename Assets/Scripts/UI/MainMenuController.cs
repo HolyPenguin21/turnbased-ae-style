@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.Serialization;
 
 namespace Game.UI
@@ -19,7 +18,7 @@ namespace Game.UI
             if (mainMenuCanvas != null && !mainMenuCanvas.activeSelf)
                 return;
 
-            if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (UIFocusUtility.WasSpacePressed())
                 OnNewGameClicked();
         }
 

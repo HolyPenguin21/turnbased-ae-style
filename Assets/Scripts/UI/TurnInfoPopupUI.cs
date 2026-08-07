@@ -2,7 +2,6 @@ using System;
 using Game.Players;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -23,9 +22,7 @@ namespace Game.UI
         {
             if (confirmButton == null || !confirmButton.gameObject.activeInHierarchy || !confirmButton.interactable)
                 return;
-            if (Keyboard.current == null)
-                return;
-            if (Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (UIFocusUtility.WasSpacePressed())
                 confirmButton.onClick.Invoke();
         }
 

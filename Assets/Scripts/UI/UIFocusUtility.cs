@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 namespace Game.UI
 {
@@ -16,5 +17,12 @@ namespace Game.UI
             GameObject selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             return selected != null && selected.GetComponent<TMP_InputField>() != null;
         }
+
+        // The "Space bar as a shortcut for whatever this popup's own primary button does" check,
+        // duplicated identically across half a dozen popups (SpawnHintPopupUI, TurnInfoPopupUI,
+        // BattleArrangePopupUI, TurnOrderPopupUI, MainMenuController) before being pulled out
+        // here — each caller still owns its OWN guard conditions (is the popup showing, is the
+        // button interactable, etc.), only the actual key-poll was ever truly identical.
+        public static bool WasSpacePressed() => Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
     }
 }
