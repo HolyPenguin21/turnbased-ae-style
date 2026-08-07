@@ -14,6 +14,13 @@ actual Unity assemblies — use this after every C# edit made without a live Edi
   files**). If neither exists yet, ask the user to trigger it once — External Script Editor in
   Preferences must point at an editor that's actually installed, or generation silently fails with
   a `CodeEditorProjectSync` console error.
+- **The `.csproj`'s file list is static, not a wildcard** — it's `<Compile Include="...">` entries
+  frozen at generation time. A brand-new `.cs` file (e.g. splitting a class into
+  `Foo.Bar.cs`) won't compile until either the user regenerates project files in Unity, or you add
+  the matching `<Compile Include>` line yourself (safe to hand-edit for a same-session check — the
+  file's gitignored, Unity overwrites it correctly next regeneration). Confirmed by hitting exactly
+  this the first time this pipeline was used — silent `CS0103`/`CS1061` errors that looked like a
+  real code bug until the missing `<Compile>` entry was spotted.
 - This only builds script code — it does NOT validate scenes/prefabs, does NOT run Play Mode, and
   can't catch a wrong-but-existing `fileID` reference in hand-edited YAML. Treat a clean build as
   "the C# compiles," not "the feature works."
