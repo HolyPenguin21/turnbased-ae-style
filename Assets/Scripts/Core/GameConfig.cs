@@ -225,5 +225,11 @@ namespace Game.Core
         // this and reserved out of PlayerColorPalette (see there).
         public Color moveArrowMoveColor = new Color(0.15f, 0.75f, 0.25f);
         public Color moveArrowAttackColor = new Color(0.80f, 0.15f, 0.15f);
+
+        [Header("Clouds")]
+        // Drifting cloud-shadow overlay for the strategic map (see Game.Map.MapCloudOverlay /
+        // Custom/CloudDrift.shader) — one shared style, same pattern as every other style block
+        // above, so the look is tuned here rather than as loose fields on the overlay component.
+        public CloudStyle cloudStyle = new CloudStyle();
     }
 }
