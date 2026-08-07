@@ -10,9 +10,13 @@ namespace Game.Styles
     public class CloudStyle
     {
         [Header("Look")]
-        // Alpha here is the cloud's own maximum opacity at full coverage, not a separate knob —
-        // 0 alpha would just render nothing regardless of the other settings below.
-        public Color color = new Color(1f, 1f, 1f, 0.35f);
+        // The GROUND's shadow tint where a cloud sits overhead, not the cloud's own visible
+        // colour — the shader darkens the terrain toward this colour (multiplicative blend, see
+        // Custom/CloudDrift.shader's own comment on why), so you only ever see its effect on
+        // what's underneath, never the cloud shape itself as a solid object. Alpha is the
+        // maximum darkening strength at full coverage — 0 alpha renders no visible effect at
+        // all regardless of the other settings below.
+        public Color color = new Color(0.15f, 0.18f, 0.25f, 0.45f);
         // Smaller = larger, chunkier cloud shapes; larger = finer, more scattered ones.
         public float scale = 0.08f;
         [Range(0f, 1f)] public float coverage = 0.55f;

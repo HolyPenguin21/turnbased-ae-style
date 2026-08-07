@@ -1,13 +1,21 @@
-// Drifting cloud-shadow overlay for the strategic map — a single large flat quad (see
+// Drifting cloud-SHADOW overlay for the strategic map — a single large flat quad (see
 // Game.Map.MapCloudOverlay) rendered above the terrain, with soft blob shapes formed from
 // layered value noise (fractal/fbm, same hash/valueNoise building blocks as
 // HexSelectionGlow.shader's own ragged-edge noise) that scroll across world space over time.
 // Not a texture — fully procedural, so it never tiles/repeats visibly regardless of map size.
+//
+// Multiplicative blend (Blend DstColor Zero), not the usual alpha-over-transparent — an alpha
+// blend with a light colour ADDS a translucent haze on top of the terrain, which reads as fog,
+// not shadow. Multiplying the terrain by a value <=1 wherever a cloud shape is present actually
+// DARKENS it there and leaves every other pixel untouched (multiplying by white/1.0), which is
+// what a shadow drifting over the ground actually looks like. _Color's RGB is the shadow tint
+// (dark, not the cloud's own visible colour — you're seeing the ground darkened, never the
+// cloud itself), its alpha is the maximum darkening strength at full coverage.
 Shader "Custom/CloudDrift"
 {
     Properties
     {
-        _Color ("Cloud Color", Color) = (1, 1, 1, 0.35)
+        _Color ("Shadow Tint", Color) = (0.15, 0.18, 0.25, 0.45)
         _Scale ("Noise Scale", Range(0.005, 0.5)) = 0.08
         _Coverage ("Coverage", Range(0, 1)) = 0.55
         _Softness ("Edge Softness", Range(0.01, 1)) = 0.25
@@ -17,7 +25,7 @@ Shader "Custom/CloudDrift"
     SubShader
     {
         Tags { "RenderType" = "Transparent" "Queue" = "Transparent" "RenderPipeline" = "UniversalPipeline" }
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend DstColor Zero
         ZWrite Off
         Cull Off
 
@@ -107,8 +115,13 @@ Shader "Custom/CloudDrift"
                 // knob — keeps the two independently tunable instead of fighting each other.
                 float shape = smoothstep(_Coverage - _Softness, _Coverage + _Softness, n);
 
-                float alpha = shape * _Color.a;
-                return half4(_Color.rgb, alpha);
+                // Multiplicative output: white (1,1,1) where there's no cloud — multiplying the
+                // terrain by that leaves it completely unchanged — fading down toward
+                // _Color.rgb (the shadow tint) as cloud coverage/darkening strength increases.
+                // Alpha is unused by a DstColor/Zero blend, but every path needs SOME alpha
+                // written (URP's default target expects RGBA).
+                float3 tint = lerp(float3(1, 1, 1), _Color.rgb, shape * _Color.a);
+                return half4(tint, 1.0);
             }
             ENDHLSL
         }
