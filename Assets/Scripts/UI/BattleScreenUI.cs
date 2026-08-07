@@ -867,9 +867,8 @@ namespace Game.UI
             destination = default;
             int bestDist = int.MaxValue;
             bool found = false;
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+            foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
             {
-                HexCoord candidate = new HexCoord(battleHex.Q + dq, battleHex.R + dr);
                 if (!IsFreeRetreatHex(army, candidate))
                     continue;
                 int dist = HexGridMath.Distance(candidate, target);
@@ -887,9 +886,8 @@ namespace Game.UI
         {
             destination = default;
             var options = new List<HexCoord>();
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+            foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
             {
-                HexCoord candidate = new HexCoord(battleHex.Q + dq, battleHex.R + dr);
                 if (IsFreeRetreatHex(army, candidate))
                     options.Add(candidate);
             }

@@ -36,9 +36,8 @@ namespace Game.HexGrid
                 if (current.Equals(destination))
                     break;
 
-                foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+                foreach (HexCoord next in HexGridMath.Neighbors(current))
                 {
-                    var next = new HexCoord(current.Q + dq, current.R + dr);
                     if (!map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
                         continue;
 

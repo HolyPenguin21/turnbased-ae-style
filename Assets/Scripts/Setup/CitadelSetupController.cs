@@ -343,12 +343,9 @@ namespace Game.Setup
             // HexClusterGlow.shader traces the true outer boundary of whichever of these end
             // up in the set itself, so there's no boundary geometry to build here anymore.
             var cluster = new List<HexCoord> { coord };
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
-            {
-                var neighbor = new HexCoord(coord.Q + dq, coord.R + dr);
+            foreach (HexCoord neighbor in HexGridMath.Neighbors(coord))
                 if (IsSelectable(neighbor))
                     cluster.Add(neighbor);
-            }
 
             var highlightObject = new GameObject("RegionHighlight");
             highlightObject.transform.SetParent(transform, false);
@@ -369,12 +366,9 @@ namespace Game.Setup
             _validHexes.Clear();
             if (IsSelectable(candidate))
                 _validHexes.Add(candidate);
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
-            {
-                var neighbor = new HexCoord(candidate.Q + dq, candidate.R + dr);
+            foreach (HexCoord neighbor in HexGridMath.Neighbors(candidate))
                 if (IsSelectable(neighbor))
                     _validHexes.Add(neighbor);
-            }
         }
 
         private void Update()

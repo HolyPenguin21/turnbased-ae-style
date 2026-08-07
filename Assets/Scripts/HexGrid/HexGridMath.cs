@@ -49,6 +49,15 @@ namespace Game.HexGrid
             return new HexCoord(Mathf.RoundToInt(rq), Mathf.RoundToInt(rr));
         }
 
+        // The 6 actual neighbor coordinates of `cell` — several callers were re-deriving this by
+        // hand from NeighborDirectionsByEdge every time they needed it; existence on the map
+        // isn't checked here (callers already have their own map/registry to validate against).
+        public static IEnumerable<HexCoord> Neighbors(HexCoord cell)
+        {
+            foreach ((int dq, int dr) in NeighborDirectionsByEdge)
+                yield return new HexCoord(cell.Q + dq, cell.R + dr);
+        }
+
         // Standard axial-coordinate hex distance (number of hex steps between two cells).
         public static int Distance(HexCoord a, HexCoord b)
         {
