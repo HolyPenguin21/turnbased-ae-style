@@ -109,10 +109,12 @@ namespace Game.Cameras
             // through the UI event system — a focused text field (e.g. RenameArmyPopupUI's
             // name field) doesn't stop them on its own, so the camera would otherwise pan out
             // from under the player while they're just trying to type an army's new name.
-            bool typingInTextField = UIFocusUtility.IsTextFieldFocused();
-
+            // UIFocusUtility.IsTextFieldFocused()'s EventSystem/GetComponent lookup isn't free
+            // (same reasoning as GameTurnController's own Enter-key check), so it's only run
+            // below once there's an actual pan to potentially cancel — not on every one of the
+            // many frames nothing is pressing a pan key or hovering an edge at all.
             Keyboard kb = Keyboard.current;
-            if (kb != null && !typingInTextField && _panningEnabled)
+            if (kb != null && _panningEnabled)
             {
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed) panDelta += forwardFlat;
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed) panDelta -= forwardFlat;
@@ -121,7 +123,7 @@ namespace Game.Cameras
             }
 
             Mouse mouse = Mouse.current;
-            if (enableEdgeScroll && mouse != null && !typingInTextField && _panningEnabled)
+            if (enableEdgeScroll && mouse != null && _panningEnabled)
             {
                 Vector2 mousePos = mouse.position.ReadValue();
                 if (mousePos.x <= edgeScrollBorder) panDelta -= rightFlat;
@@ -129,6 +131,9 @@ namespace Game.Cameras
                 if (mousePos.y <= edgeScrollBorder) panDelta -= forwardFlat;
                 else if (mousePos.y >= Screen.height - edgeScrollBorder) panDelta += forwardFlat;
             }
+
+            if (panDelta.sqrMagnitude > 0f && UIFocusUtility.IsTextFieldFocused())
+                panDelta = Vector3.zero;
 
             if (panDelta.sqrMagnitude > 0f)
                 _groundTarget += panDelta.normalized * panSpeed * Time.deltaTime;
