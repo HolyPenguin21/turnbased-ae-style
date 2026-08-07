@@ -233,16 +233,11 @@ namespace Game.UI
                 && root.CanSpendActionPoints(drawApCost);
         }
 
-        private static PlayerSetupData FindHumanPlayer()
-        {
-            return GameSession.Players?.Find(p => p != null && p.IsHuman);
-        }
+        // Thin local aliases for GameSession's own versions — kept so this file's many call
+        // sites don't all need touching, now that the lookup itself lives in one shared place.
+        private static PlayerSetupData FindHumanPlayer() => GameSession.FindHumanPlayer();
 
-        private static PlayerRoot FindHumanRoot()
-        {
-            PlayerSetupData human = FindHumanPlayer();
-            return human != null ? PlayerRootRegistry.FindFor(human) : null;
-        }
+        private static PlayerRoot FindHumanRoot() => GameSession.FindHumanRoot();
 
         public void AddCard(CardData data)
         {

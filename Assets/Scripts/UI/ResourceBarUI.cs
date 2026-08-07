@@ -1,7 +1,6 @@
 using Game.Core;
 using Game.Economy;
 using Game.Map;
-using Game.Players;
 using Game.Turns;
 using TMPro;
 using UnityEngine;
@@ -52,8 +51,7 @@ namespace Game.UI
 
         private void Update()
         {
-            PlayerSetupData human = GameSession.Players?.Find(p => p != null && p.IsHuman);
-            PlayerRoot root = human != null ? PlayerRootRegistry.FindFor(human) : null;
+            PlayerRoot root = GameSession.FindHumanRoot();
             if (root == null)
                 return;
 
