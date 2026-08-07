@@ -140,6 +140,10 @@ namespace Game.UI
         private readonly List<BattleTurnOrderIconUI> _queueIcons = new List<BattleTurnOrderIconUI>();
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+
+        // Lets GameTurnController react to a battle opening/closing instead of polling
+        // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
+        public event Action VisibilityChanged;
         // Read by BattleGridCellUI for the acting-unit ring (UIRaggedGlowUI) — settings live in
         // GameConfig rather than baked into the prefab, per the user's own spec.
         public HexHighlightStyle ActingHighlightStyle => gameConfig != null ? gameConfig.battleActingUnitHighlightStyle : null;
@@ -179,6 +183,7 @@ namespace Game.UI
             _onClosed = onClosed;
             if (panelRoot != null)
                 panelRoot.SetActive(true);
+            VisibilityChanged?.Invoke();
 
             // The map underneath is about to be covered by this whole screen — whatever hex/
             // army was selected there is stale the moment combat starts (see
@@ -971,6 +976,7 @@ namespace Game.UI
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            VisibilityChanged?.Invoke();
             if (_aiAutoPassRoutine != null)
             {
                 StopCoroutine(_aiAutoPassRoutine);

@@ -60,6 +60,20 @@ namespace Game.UI
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
+        // Lets GameTurnController react to this popup opening/closing instead of polling
+        // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked). Only
+        // fires on an actual flip — see SetPanelActive, the one place panelRoot's active state
+        // is ever touched from here on.
+        public event Action VisibilityChanged;
+
+        private void SetPanelActive(bool active)
+        {
+            if (panelRoot == null || panelRoot.activeSelf == active)
+                return;
+            panelRoot.SetActive(active);
+            VisibilityChanged?.Invoke();
+        }
+
         private void Awake()
         {
             if (armyViewerModal != null)
@@ -79,8 +93,7 @@ namespace Game.UI
             if (!_hiddenForSideListModal)
                 return;
             _hiddenForSideListModal = false;
-            if (panelRoot != null)
-                panelRoot.SetActive(true);
+            SetPanelActive(true);
             SetActionButtonsInteractable(true);
         }
 
@@ -135,8 +148,7 @@ namespace Game.UI
 
         private void Populate(HexCoord hex, List<ArmyData> participants)
         {
-            if (panelRoot != null)
-                panelRoot.SetActive(true);
+            SetPanelActive(true);
             // Fresh state every time this popup opens — a prior session could conceivably have
             // left these disabled if the army modal was still open when something else force-
             // closed this popup (shouldn't normally happen, but this costs nothing to guard).
@@ -192,8 +204,7 @@ namespace Game.UI
                 // this closes off along with the visual overlap (see OnArmyModalClosed for the
                 // matching re-show once the modal closes again — gated on _hiddenForSideListModal
                 // so only THIS specific open/close pair triggers it).
-                if (panelRoot != null)
-                    panelRoot.SetActive(false);
+                SetPanelActive(false);
                 _hiddenForSideListModal = true;
                 armyViewerModal?.ShowLocked(army);
                 SetActionButtonsInteractable(false);
@@ -202,8 +213,7 @@ namespace Game.UI
 
         public void Hide()
         {
-            if (panelRoot != null)
-                panelRoot.SetActive(false);
+            SetPanelActive(false);
             leftArmyList?.Hide();
             rightArmyList?.Hide();
             // Whatever this popup's own interaction was doing is over now (Fight/Delay clicked,

@@ -53,6 +53,10 @@ namespace Game.UI
         // Resistance) shows up on the hex-side info panel immediately.
         public event Action Closed;
 
+        // Lets GameTurnController react to this modal opening/closing instead of polling
+        // IsShowing every frame (see GameTurnController.InputBlocked).
+        public event Action VisibilityChanged;
+
         // Read by CardHandUI to know which building a dropped Facility card should join (see
         // TryDeployIntoBaseModal) — mirrors ArmyViewerModalUI.CurrentArmy.
         public BuildingData CurrentBuilding => _currentBuilding;
@@ -84,6 +88,7 @@ namespace Game.UI
             RefreshTitle();
             RefreshGrid();
             ShowBaseSummary();
+            VisibilityChanged?.Invoke();
         }
 
         public void Hide()
@@ -94,7 +99,10 @@ namespace Game.UI
             ClearGrid();
             _currentBuilding = null;
             if (wasShowing)
+            {
                 Closed?.Invoke();
+                VisibilityChanged?.Invoke();
+            }
         }
 
         private void Update()

@@ -74,21 +74,56 @@ namespace Game.Turns
         [SerializeField] private BattleContactPopupUI battleContactPopup;
         [SerializeField] private BattleScreenUI battleScreen;
 
-        public bool InputBlocked => (spawnHintPopup != null && spawnHintPopup.IsShowing)
-            || (armyViewerModal != null && armyViewerModal.IsShowing)
-            || (baseViewerModal != null && baseViewerModal.IsShowing)
-            || (battleContactPopup != null && battleContactPopup.IsShowing)
-            || (battleScreen != null && battleScreen.IsShowing);
+        // Both cached and recomputed only when one of the underlying popups' own
+        // VisibilityChanged fires (see OnEnable/RecomputeBlockedState) — this game is
+        // turn-based, these flip on discrete open/close actions a handful of times per turn at
+        // most, so there was never a reason for every reader (this controller's own Update,
+        // HexSelectionController, CardHandUI) to re-derive them from 4-5 live property reads
+        // every single frame. The public surface is unchanged — still plain bool properties —
+        // so nothing reading InputBlocked/CardDraggingBlocked needed to change.
+        private bool _inputBlocked;
+        private bool _cardDraggingBlocked;
+        public bool InputBlocked => _inputBlocked;
 
         // Renaming an army additionally blocks card dragging (see ArmyViewerModalUI.
         // IsRenamePopupShowing) — dragging a card over the modal while the player is mid-text-
         // entry doesn't make sense, unlike the rest of the modal which deliberately leaves
         // dragging on. The battle popups block dragging outright — neither one is a place cards
         // can ever be dropped.
-        public bool CardDraggingBlocked => (spawnHintPopup != null && spawnHintPopup.IsShowing)
-            || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
-            || (battleContactPopup != null && battleContactPopup.IsShowing)
-            || (battleScreen != null && battleScreen.IsShowing);
+        public bool CardDraggingBlocked => _cardDraggingBlocked;
+
+        // Fired whenever InputBlocked/CardDraggingBlocked's cached value actually flips — lets
+        // CardHandUI (and anything else) subscribe instead of polling either every frame.
+        public event Action<bool> InputBlockedChanged;
+        public event Action<bool> CardDraggingBlockedChanged;
+
+        // Re-derives both cached bools from the underlying popups' current IsShowing/
+        // IsRenamePopupShowing state — called once up front (OnEnable) and again every time one
+        // of them raises VisibilityChanged, never on a timer/every frame.
+        private void RecomputeBlockedState()
+        {
+            bool newInputBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
+                || (armyViewerModal != null && armyViewerModal.IsShowing)
+                || (baseViewerModal != null && baseViewerModal.IsShowing)
+                || (battleContactPopup != null && battleContactPopup.IsShowing)
+                || (battleScreen != null && battleScreen.IsShowing);
+            bool newCardDraggingBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
+                || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
+                || (battleContactPopup != null && battleContactPopup.IsShowing)
+                || (battleScreen != null && battleScreen.IsShowing);
+
+            if (newInputBlocked != _inputBlocked)
+            {
+                _inputBlocked = newInputBlocked;
+                InputBlockedChanged?.Invoke(_inputBlocked);
+            }
+            if (newCardDraggingBlocked != _cardDraggingBlocked)
+            {
+                _cardDraggingBlocked = newCardDraggingBlocked;
+                CardDraggingBlockedChanged?.Invoke(_cardDraggingBlocked);
+            }
+            RefreshEndTurnInteractable();
+        }
 
         public void ShowSpawnHint(string message)
         {
@@ -117,6 +152,11 @@ namespace Game.Turns
         // turn counter) that only needs to refresh on a new turn instead of polling every frame.
         public event Action<int> TurnStarted;
 
+        // Fired whenever CurrentPlayer or TurnConfirmed changes — lets CardHandUI's
+        // CanDragCards-dependent UI (the draw button) react instead of re-checking both every
+        // frame just to notice a turn handoff or the human confirming their turn.
+        public event Action TurnStateChanged;
+
         private int _currentPlayerIndex;
 
         // Set once a starting citadel is destroyed (see OnBuildingDestroyed) — blocks any
@@ -128,11 +168,22 @@ namespace Game.Turns
         private void OnEnable()
         {
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
+            if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
+            if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
+            if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
+            if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
+            if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
+            RecomputeBlockedState();
         }
 
         private void OnDisable()
         {
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
+            if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged -= RecomputeBlockedState;
+            if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
+            if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
+            if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
+            if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
         }
 
         // The win condition: destroying a player's starting citadel (see
@@ -164,20 +215,23 @@ namespace Game.Turns
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");
         }
 
-        // Enter ends the human's turn whenever the button itself would currently accept a
-        // click — active AND interactable, so this can't fire during an AI/Neutral pass or
-        // before the button's own listener is wired up for the new current player.
-        private void Update()
+        // Kept in sync via TurnStateChanged/InputBlockedChanged instead of every frame — the
+        // player must not be able to end the turn while either is up: a battle needs actually
+        // deciding (fight/delay) or acknowledging before the turn can move on.
+        private void RefreshEndTurnInteractable()
         {
-            // Kept in sync every frame rather than only at the moments TurnConfirmed/
-            // InputBlocked themselves change — InputBlocked can flip on/off mid-turn (the
-            // pre-battle contact popup, the battle screen), and nothing else re-evaluates this
-            // once that happens. The player must not be able to end the turn — by click or by
-            // the Enter shortcut below — while either is up: a battle needs actually deciding
-            // (fight/delay) or acknowledging before the turn can move on.
             if (endTurnButton != null && endTurnButton.gameObject.activeInHierarchy)
                 endTurnButton.interactable = TurnConfirmed && !InputBlocked;
+        }
 
+        // Enter ends the human's turn whenever the button itself would currently accept a
+        // click — active AND interactable, so this can't fire during an AI/Neutral pass or
+        // before the button's own listener is wired up for the new current player. Only the
+        // keyboard poll itself has to stay per-frame (Unity's Input System has no "was this key
+        // pressed" event to subscribe to) — the button's own interactable state above no longer
+        // does.
+        private void Update()
+        {
             if (endTurnButton == null || !endTurnButton.gameObject.activeInHierarchy || !endTurnButton.interactable)
                 return;
             if (Keyboard.current == null)
@@ -288,6 +342,7 @@ namespace Game.Turns
             TurnNumber++;
             TurnStarted?.Invoke(TurnNumber);
             CurrentPlayer = null; // no one's turn during the dice-off itself
+            TurnStateChanged?.Invoke();
 
             if (endTurnButton != null)
                 endTurnButton.interactable = false;
@@ -401,6 +456,7 @@ namespace Game.Turns
                 ReplenishMoveForOwner(null);
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(null);
+                TurnStateChanged?.Invoke();
                 StartCoroutine(PassAfterDelay(BeginNewTurn));
                 return;
             }
@@ -408,6 +464,7 @@ namespace Game.Turns
             PlayerSetupData player = CurrentTurnOrder[index];
             CurrentPlayer = player;
             ReplenishMoveForOwner(player);
+            TurnStateChanged?.Invoke();
 
             if (player.IsHuman)
             {
@@ -432,6 +489,7 @@ namespace Game.Turns
                 endTurnButton.interactable = true;
             if (turnInfoPopup != null)
                 turnInfoPopup.Hide();
+            TurnStateChanged?.Invoke();
         }
 
         // Restores move points for every unit belonging to whoever's turn is starting —

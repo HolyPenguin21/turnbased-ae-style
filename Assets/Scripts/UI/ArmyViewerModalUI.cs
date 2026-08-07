@@ -97,6 +97,13 @@ namespace Game.UI
         // is open — see HexSelectionController.IsInputAllowed).
         public event Action Closed;
 
+        // Lets GameTurnController react to this modal (or its nested rename popup) opening/
+        // closing instead of polling IsShowing/IsRenamePopupShowing every frame (see
+        // GameTurnController.InputBlocked/CardDraggingBlocked). Fired from ActivatePanel/Hide
+        // for this modal's own visibility, and relayed from renamePopup.VisibilityChanged (see
+        // Awake) since CardDraggingBlocked cares about that too.
+        public event Action VisibilityChanged;
+
         // Read by GameTurnController.CardDraggingBlocked — renaming needs card dragging (and,
         // via RtsCameraController/UIFocusUtility, WASD camera panning) switched off for its
         // duration, unlike the rest of this modal which deliberately leaves card dragging on
@@ -145,6 +152,8 @@ namespace Game.UI
                 closeButton.onClick.AddListener(Hide);
             if (contextButton != null)
                 contextButton.onClick.AddListener(OnContextButtonClicked);
+            if (renamePopup != null)
+                renamePopup.VisibilityChanged += () => VisibilityChanged?.Invoke();
         }
 
         public void Show(ArmyData army)
@@ -191,6 +200,7 @@ namespace Game.UI
                 return;
             panelRoot.SetActive(true);
             panelRoot.transform.SetAsLastSibling();
+            VisibilityChanged?.Invoke();
         }
 
         public void Hide()
@@ -217,7 +227,10 @@ namespace Game.UI
             _readOnly = false;
             _hideArmySwitcher = false;
             if (wasShowing)
+            {
                 Closed?.Invoke();
+                VisibilityChanged?.Invoke();
+            }
         }
 
         // ESC closes the rename popup first if it's open (matching a Cancel button, which it

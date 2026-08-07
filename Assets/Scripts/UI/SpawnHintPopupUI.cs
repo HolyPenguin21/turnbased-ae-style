@@ -1,3 +1,4 @@
+using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -16,6 +17,10 @@ namespace Game.UI
         [SerializeField] private Button confirmButton;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+
+        // Lets GameTurnController react to this popup opening/closing instead of polling
+        // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
+        public event Action VisibilityChanged;
 
         // Relies solely on the scene's own initial inactive state (m_IsActive: 0) for "hidden
         // until shown" — panelRoot IS this component's own GameObject, so calling
@@ -51,12 +56,14 @@ namespace Game.UI
             }
             if (infoText != null)
                 infoText.text = message;
+            VisibilityChanged?.Invoke();
         }
 
         public void Hide()
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            VisibilityChanged?.Invoke();
         }
     }
 }

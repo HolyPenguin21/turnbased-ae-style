@@ -223,28 +223,56 @@ namespace Game.UI
                 && !turnController.CardDraggingBlocked;
         }
 
-        // Keeps the draw button's interactable state in sync with whose turn it is and how
-        // much AP the human has — both can change from several different places (turn
-        // transitions, buying initiative dice, spending AP elsewhere), so this just polls
-        // every frame rather than trying to hook an event into all of them (same reasoning as
-        // ResourceBarUI's resource polling).
-        private void Update()
+        // Turn-based game, event-driven UI: the draw button's interactable state depends on
+        // whose turn it is (turnController.TurnStateChanged), whether dragging is blocked
+        // (turnController.CardDraggingBlockedChanged), and the human's AP
+        // (_humanRoot.ResourcesChanged) — all three now fire their own change notification, so
+        // there's nothing left that only a per-frame poll could catch.
+        private void OnEnable()
         {
-            if (deckCountText != null && _remainingDeck.Count != _lastDisplayedDeckCount)
+            _humanRoot = FindHumanRoot();
+            if (_humanRoot != null)
+                _humanRoot.ResourcesChanged += RefreshDrawButtonInteractable;
+            if (turnController != null)
             {
-                _lastDisplayedDeckCount = _remainingDeck.Count;
-                deckCountText.text = $"Cards\n{_remainingDeck.Count}";
+                turnController.CardDraggingBlockedChanged += OnCardDraggingBlockedChanged;
+                turnController.TurnStateChanged += RefreshDrawButtonInteractable;
             }
+            RefreshDeckCountText();
+            RefreshDrawButtonInteractable();
+        }
 
+        private void OnDisable()
+        {
+            if (_humanRoot != null)
+                _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
+            if (turnController != null)
+            {
+                turnController.CardDraggingBlockedChanged -= OnCardDraggingBlockedChanged;
+                turnController.TurnStateChanged -= RefreshDrawButtonInteractable;
+            }
+        }
+
+        private void OnCardDraggingBlockedChanged(bool _) => RefreshDrawButtonInteractable();
+
+        private void RefreshDeckCountText()
+        {
+            if (deckCountText == null || _remainingDeck.Count == _lastDisplayedDeckCount)
+                return;
+            _lastDisplayedDeckCount = _remainingDeck.Count;
+            deckCountText.text = $"Cards\n{_remainingDeck.Count}";
+        }
+
+        private void RefreshDrawButtonInteractable()
+        {
             if (drawButton == null)
                 return;
             if (_humanRoot == null)
                 _humanRoot = FindHumanRoot();
-            PlayerRoot root = _humanRoot;
             drawButton.interactable = _remainingDeck.Count > 0
                 && CanDragCards()
-                && root != null
-                && root.CanSpendActionPoints(drawApCost);
+                && _humanRoot != null
+                && _humanRoot.CanSpendActionPoints(drawApCost);
         }
 
         // Thin local aliases for GameSession's own versions — kept so this file's many call
@@ -857,6 +885,7 @@ namespace Game.UI
             if (index < 0 || index >= catalog.cards.Count)
                 return;
 
+            RefreshDeckCountText();
             root.SpendActionPoints(drawApCost);
             AddCard(new CardData(catalog.cards[index]));
         }

@@ -23,6 +23,10 @@ namespace Game.UI
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
+        // Lets ArmyViewerModalUI relay this into its own VisibilityChanged (see there) — read by
+        // GameTurnController.CardDraggingBlocked via ArmyViewerModalUI.IsRenamePopupShowing.
+        public event Action VisibilityChanged;
+
         private void Awake()
         {
             if (confirmButton != null)
@@ -42,12 +46,14 @@ namespace Game.UI
                 nameField.onValueChanged.RemoveAllListeners();
                 nameField.onValueChanged.AddListener(OnValueChanged);
             }
+            VisibilityChanged?.Invoke();
         }
 
         public void Hide()
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            VisibilityChanged?.Invoke();
         }
 
         private void OnValueChanged(string value)
