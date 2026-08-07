@@ -8,10 +8,10 @@ using UnityEngine;
 namespace Game.UI
 {
     // Always-on top-of-screen HUD: the human player's AP + stockpiled resources, plus the
-    // turn counter. Resources are polled every frame instead of hooking into every place that
-    // can change them (citadel income, dice purchases, AP spend later) — cheap for a handful
-    // of ints. The turn counter only changes once per full turn cycle, so it updates off
-    // GameTurnController.TurnStarted instead of being re-set 60 times a second for nothing.
+    // turn counter. Both are event-driven, not polled: resources refresh off
+    // PlayerRoot.ResourcesChanged (see RefreshResourceText), the turn counter off
+    // GameTurnController.TurnStarted (see OnTurnStarted) — neither changes more than a handful
+    // of times per turn, so there was nothing to gain from checking every frame.
     public class ResourceBarUI : MonoBehaviour
     {
         [SerializeField] private GameTurnController turnController;
@@ -22,11 +22,10 @@ namespace Game.UI
         [SerializeField] private TMP_Text techText;
         [SerializeField] private TMP_Text turnText;
 
-        // Resolved once (see OnEnable) rather than re-looked-up via GameSession.FindHumanRoot()
-        // every single Update() — that lookup is a List.Find with a lambda, and the human's own
-        // PlayerRoot never changes once PlayerRootRegistry has it (see PlayerRootRegistry.
-        // Register, only ever called once per player at setup). Falls back to re-resolving in
-        // Update() on the rare chance OnEnable ran before setup registered it.
+        // Resolved once in OnEnable, by which point setup has already registered it — Show()
+        // (this object's only activation trigger) is only ever called "right after citadel
+        // setup finishes" per its own comment above, so the human's PlayerRoot is guaranteed to
+        // exist by the time OnEnable runs.
         private PlayerRoot _humanRoot;
 
         // Hidden until a citadel exists to report on — GameTurnController calls this once,
@@ -39,6 +38,11 @@ namespace Game.UI
         private void OnEnable()
         {
             _humanRoot = GameSession.FindHumanRoot();
+            if (_humanRoot != null)
+            {
+                _humanRoot.ResourcesChanged += RefreshResourceText;
+                RefreshResourceText();
+            }
             if (turnController == null)
                 return;
             turnController.TurnStarted += OnTurnStarted;
@@ -47,6 +51,8 @@ namespace Game.UI
 
         private void OnDisable()
         {
+            if (_humanRoot != null)
+                _humanRoot.ResourcesChanged -= RefreshResourceText;
             if (turnController != null)
                 turnController.TurnStarted -= OnTurnStarted;
         }
@@ -57,24 +63,25 @@ namespace Game.UI
                 turnText.text = turnNumber.ToString();
         }
 
-        private void Update()
+        // Driven by PlayerRoot.ResourcesChanged now instead of polling every frame — AP and the
+        // four stockpiled resources only actually change on a handful of discrete actions
+        // (spend, citadel income, dice purchase/refund), not continuously, so there was never a
+        // reason to re-format and re-assign five TMP strings 60 times a second.
+        private void RefreshResourceText()
         {
             if (_humanRoot == null)
-                _humanRoot = GameSession.FindHumanRoot();
-            PlayerRoot root = _humanRoot;
-            if (root == null)
                 return;
 
             if (apText != null)
-                apText.text = root.ActionPoints.ToString();
+                apText.text = _humanRoot.ActionPoints.ToString();
             if (humanText != null)
-                humanText.text = root.GetResource(ResourceType.Human).ToString();
+                humanText.text = _humanRoot.GetResource(ResourceType.Human).ToString();
             if (energyText != null)
-                energyText.text = root.GetResource(ResourceType.Energy).ToString();
+                energyText.text = _humanRoot.GetResource(ResourceType.Energy).ToString();
             if (materialsText != null)
-                materialsText.text = root.GetResource(ResourceType.Materials).ToString();
+                materialsText.text = _humanRoot.GetResource(ResourceType.Materials).ToString();
             if (techText != null)
-                techText.text = root.GetResource(ResourceType.Tech).ToString();
+                techText.text = _humanRoot.GetResource(ResourceType.Tech).ToString();
         }
     }
 }

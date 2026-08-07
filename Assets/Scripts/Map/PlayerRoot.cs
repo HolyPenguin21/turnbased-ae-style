@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Game.Economy;
 using Game.Players;
@@ -15,12 +16,33 @@ namespace Game.Map
         public Color Color { get; private set; } = Color.grey;
         public MapObjectVisual Citadel { get; private set; }
 
+        // Fired whenever ActionPoints or any stockpiled resource actually changes value — lets
+        // ResourceBarUI (and anything else that only cares about "did the number I'm showing
+        // change") subscribe once instead of polling every frame just to notice. Deliberately
+        // one combined event rather than one per resource type: every current subscriber
+        // displays all of them together anyway, so there's nothing to gain from finer-grained
+        // events, only more subscription bookkeeping.
+        public event Action ResourcesChanged;
+
         // Action Points — separate from the four stockpiled ResourceType resources below: AP
         // is spent during the player's own turn and replenished at the start of it, not part
         // of the citadel-yield/dice-buying economy. Allocated fresh every turn by
         // GameTurnController.AllocateActionPoints (based on initiative rank, not cumulative);
-        // spend rules land separately later.
-        public int ActionPoints { get; set; }
+        // spend rules land separately later. Backing field + explicit setter (rather than an
+        // auto-property) so ResourcesChanged fires from every mutation, direct assignment
+        // included, without every call site needing to remember to raise it itself.
+        private int _actionPoints;
+        public int ActionPoints
+        {
+            get => _actionPoints;
+            set
+            {
+                if (_actionPoints == value)
+                    return;
+                _actionPoints = value;
+                ResourcesChanged?.Invoke();
+            }
+        }
 
         public bool CanSpendActionPoints(int amount) => ActionPoints >= amount;
 
@@ -118,7 +140,10 @@ namespace Game.Map
 
         public void AddResource(ResourceType type, int amount)
         {
+            if (amount == 0)
+                return;
             _resources[type] += amount;
+            ResourcesChanged?.Invoke();
         }
     }
 }

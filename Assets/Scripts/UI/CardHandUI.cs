@@ -111,6 +111,15 @@ namespace Game.UI
         // runs once per hex actually changed under the cursor, not every frame.
         private HexCoord? _lastDragHex;
         private bool _dragHexKnown;
+        // Resolved once and cached rather than re-looked-up via GameSession.FindHumanRoot()
+        // every Update() — same fix as ResourceBarUI's own _humanRoot (see its comment); the
+        // human's PlayerRoot never changes once registered. Falls back to re-resolving if still
+        // null (Update can run before setup registers it).
+        private PlayerRoot _humanRoot;
+        // Guards deckCountText's per-frame text set — the deck count only actually changes on a
+        // draw, not every frame, so re-formatting and re-assigning the string when nothing
+        // changed was pure waste.
+        private int _lastDisplayedDeckCount = -1;
 
         private void Awake()
         {
@@ -221,12 +230,17 @@ namespace Game.UI
         // ResourceBarUI's resource polling).
         private void Update()
         {
-            if (deckCountText != null)
+            if (deckCountText != null && _remainingDeck.Count != _lastDisplayedDeckCount)
+            {
+                _lastDisplayedDeckCount = _remainingDeck.Count;
                 deckCountText.text = $"Cards\n{_remainingDeck.Count}";
+            }
 
             if (drawButton == null)
                 return;
-            PlayerRoot root = FindHumanRoot();
+            if (_humanRoot == null)
+                _humanRoot = FindHumanRoot();
+            PlayerRoot root = _humanRoot;
             drawButton.interactable = _remainingDeck.Count > 0
                 && CanDragCards()
                 && root != null
