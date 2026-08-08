@@ -86,7 +86,6 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -118,7 +117,6 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -150,7 +148,6 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -182,7 +179,6 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -227,6 +223,16 @@ MonoBehaviour:
     abbreviation: cM
   - ability: CollectTech
     abbreviation: cT
+  - ability: CriticalDamage
+    abbreviation: Crit x2
+  - ability: CeramicArmor
+    abbreviation: Armor -1
+  - ability: Berserk
+    abbreviation: Berserk
+  - ability: RapidReaction
+    abbreviation: Rapid
+  - ability: ShockAttack
+    abbreviation: Shock
   maxEdgeDistance: 1
   regionHighlightStyle:
     radiusScale: 0.87

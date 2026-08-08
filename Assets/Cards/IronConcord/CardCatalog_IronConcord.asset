@@ -37,7 +37,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 8
     initiative: 0
-    passiveSkillIds: []
     structurePointsMax: 8
     defense: 3
     resistance: 1
@@ -73,7 +72,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 0
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -105,7 +103,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -136,7 +133,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 5
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -167,7 +163,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 4
     initiative: 2
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -198,7 +193,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 5
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -229,7 +223,6 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -260,7 +253,6 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -291,7 +283,6 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -322,7 +313,6 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 2
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -353,7 +343,6 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
-    passiveSkillIds: []
     structurePointsMax: 6
     defense: 2
     resistance: 1

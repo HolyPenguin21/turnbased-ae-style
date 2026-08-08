@@ -25780,6 +25780,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BattleAttackPopupUI
   panelRoot: {fileID: 8880000000000000180}
+  abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   rollStateRoot: {fileID: 8880000000000000193}
   attackerRow: {fileID: 8880000000000000200}
   defenderRow: {fileID: 8880000000000000247}

@@ -1,4 +1,5 @@
 using System;
+using Game.Cards;
 using Game.Combat;
 using Game.Map;
 using Game.Units;
@@ -23,6 +24,10 @@ namespace Game.UI
     public class BattleAttackPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
+        // Tunable magnitudes for CriticalDamage/CeramicArmor/Berserk (see ResolveDamage) — same
+        // direct-reference pattern as BattleScreenUI's own FactionCardCatalog field. Every
+        // lookup below falls back to the manual's own default numbers if this isn't assigned.
+        [SerializeField] private UnitAbilityCatalog abilityCatalog;
 
         [Header("Roll State")]
         [SerializeField] private GameObject rollStateRoot;
@@ -430,13 +435,43 @@ namespace Game.UI
 
             var result = new ChallengeResult(_attackerDice, _defenderDice);
             int damage = result.Damage;
+
+            // UnitAbilities.CriticalDamage/CeramicArmor — the manual's fixed-value damage
+            // modifiers (pg. 40/43): a x2 multiplier applied first (the attacker's own doing),
+            // then a flat reduction (the defender's), same order any other "multiply then
+            // subtract flat armor" stat stack would apply in. Both gated on damage > 0 — a miss
+            // has nothing for either to modify.
+            if (damage > 0 && _attacker.HasAbility(UnitAbilities.CriticalDamage))
+                damage = Mathf.RoundToInt(damage * CriticalDamageMultiplier);
+            if (damage > 0 && _defender.HasAbility(UnitAbilities.CeramicArmor))
+                damage = Mathf.Max(0, damage - CeramicArmorReduction);
+
             _defender.HitPointsCurrent = Mathf.Max(0, _defender.HitPointsCurrent - damage);
             bool died = _defender.HitPointsCurrent <= 0;
+
+            // UnitAbilities.Berserk (pg. 40): "+1 Attack and -1 Def each time it is hit... for
+            // the duration of the battle" — applied directly to the live stats (BattleGrid/
+            // BattleTurnOrder/every other Challenge already just reads UnitData.Attack/Defense,
+            // so there's no separate "effective stat" layer to thread through instead).
+            // BerserkStacks records how much was added so BattleScreenUI.Combat.cs's
+            // FinishBattleEnd can revert it once the battle's over — a permanent buff was never
+            // the intent, just a same-battle snowball.
+            if (damage > 0 && _defender.HasAbility(UnitAbilities.Berserk))
+            {
+                _defender.Attack += BerserkAttackGain;
+                _defender.Defense -= BerserkDefenseLoss;
+                _defender.BerserkStacks++;
+            }
 
             _resultDamage = damage;
             _resultDied = died;
             ShowResult(damage, died);
         }
+
+        private float CriticalDamageMultiplier => abilityCatalog != null ? abilityCatalog.criticalDamageMultiplier : 2f;
+        private int CeramicArmorReduction => abilityCatalog != null ? abilityCatalog.ceramicArmorReduction : 1;
+        private int BerserkAttackGain => abilityCatalog != null ? abilityCatalog.berserkAttackGain : 1;
+        private int BerserkDefenseLoss => abilityCatalog != null ? abilityCatalog.berserkDefenseLoss : 1;
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the

@@ -87,9 +87,30 @@ namespace Game.UI
 
             if (defenderDied)
                 RemoveUnit(defender);
+            // UnitAbilities.ShockAttack (pg. 40): "results in the target unit being committed
+            // for the remainder of the turn if not already committed" — this project has no
+            // separate per-round "committed" flag (see MECHANICS_CHECKLIST.md), so the
+            // simplified equivalent is dropping the survivor from the rest of THIS round's turn
+            // order outright, same as manually Passing it early.
+            else if (damage > 0 && attacker.HasAbility(UnitAbilities.ShockAttack))
+                SkipRemainingTurnThisRound(defender);
             RefreshGrid();
             if (!CheckBattleEnd())
                 EndTurn();
+        }
+
+        // Only removes a still-pending (hasn't acted yet this round) entry — a unit whose turn
+        // already came and went (index < _turnIndex) is a no-op, matching the manual's own "if
+        // not already committed" qualifier. index == _turnIndex never happens here: that slot is
+        // always the ATTACKER (the one currently taking the Ground Combat action), never its own
+        // target.
+        private void SkipRemainingTurnThisRound(UnitData unit)
+        {
+            if (_turnOrder == null)
+                return;
+            int index = _turnOrder.IndexOf(unit);
+            if (index > _turnIndex)
+                _turnOrder.RemoveAt(index);
         }
 
         private void RemoveUnit(UnitData unit)
@@ -359,8 +380,28 @@ namespace Game.UI
             BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner);
         }
 
+        private static void RevertBerserkStacks(ArmyData army)
+        {
+            if (army == null)
+                return;
+            foreach (UnitData unit in army.Members)
+            {
+                if (unit.BerserkStacks <= 0)
+                    continue;
+                unit.Attack -= unit.BerserkStacks;
+                unit.Defense += unit.BerserkStacks;
+                unit.BerserkStacks = 0;
+            }
+        }
+
         private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)
         {
+            // UnitAbilities.Berserk only lasts "for the duration of the battle" (pg. 40) — revert
+            // whatever ResolveDamage stacked onto survivors now that it's over, so it never
+            // snowballs into a permanent buff across battles.
+            RevertBerserkStacks(_attacker);
+            RevertBerserkStacks(_defender);
+
             FireBattleEndThought(_attacker, attackerAlive);
             FireBattleEndThought(_defender, defenderAlive);
 

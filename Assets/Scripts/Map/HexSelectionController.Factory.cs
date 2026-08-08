@@ -49,6 +49,11 @@ namespace Game.Map
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)
                     data.Abilities.Add(ability);
+            // UnitAbilities.RapidReaction: "costs no AP to move when in an army" — overrides
+            // whatever activationApCost the card itself declared (see ArmyData.
+            // ActivationApCost, which sums each member's own cost).
+            if (data.Abilities.Contains(UnitAbilities.RapidReaction))
+                data.ActivationApCost = 0;
             return data;
         }
 

@@ -765,7 +765,13 @@ namespace Game.UI
             if (hexSelection == null || root == null)
                 return false;
 
-            if (!root.CanSpendActionPoints(definition.apCost))
+            // UnitAbilities.RapidReaction: "The AP cost to deploy the unit is 0" — overrides the
+            // card's own apCost outright rather than needing a spawned UnitData to check against
+            // (there isn't one yet at this point).
+            int apCost = definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.RapidReaction)
+                ? 0 : definition.apCost;
+
+            if (!root.CanSpendActionPoints(apCost))
             {
                 turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
                 return false;
@@ -776,7 +782,7 @@ namespace Game.UI
                 return false;
             }
 
-            root.SpendActionPoints(definition.apCost);
+            root.SpendActionPoints(apCost);
             definition.resourceCost.PayFrom(root);
             bool isHero = definition.cardType == CardType.Hero;
             UnitData spawned = hexSelection.SpawnUnit(definition.displayName, owner, definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate, definition.defenseRating, definition.resistanceRating);

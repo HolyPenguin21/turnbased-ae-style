@@ -12,12 +12,19 @@ namespace Game.Units
         public string Name;
         public PlayerSetupData Owner;
 
-        // Carried over from CardDefinition.grantedAbilities at spawn time — currently only ever
-        // populated for Base cards (see CardDefinition), so this is empty for every Unit/Hero
-        // today, but ArmyUnitCardUI/ArmyViewerModalUI already display whatever's here so a
-        // future passive-skill system just has to populate this, not add new display code.
+        // Carried over from CardDefinition.grantedAbilities at spawn time (see
+        // HexSelectionController.Factory.SpawnUnit) — the single source of a unit's special
+        // abilities (see Game.Cards.UnitAbilities). ArmyUnitCardUI/ArmyViewerModalUI/CardUI
+        // already display whatever's here via GameConfig.FormatAbilities.
         public readonly HashSet<string> Abilities = new HashSet<string>();
         public bool HasAbility(string ability) => Abilities.Contains(ability);
+
+        // How many times UnitAbilities.Berserk has triggered so far THIS battle — Attack/
+        // Defense above already carry the +1/-1 per stack (see BattleAttackPopupUI.
+        // ResolveDamage), this is only kept so BattleScreenUI.Combat.cs's FinishBattleEnd can
+        // revert it once the battle's over (the manual's own "for the duration of the battle",
+        // not a permanent buff — see UnitAbilities.Berserk).
+        public int BerserkStacks;
 
         // Restored at the start of every turn. A move never spends more than what's left — an
         // army stops short of any hex it can't fully afford (see ArmyController.MoveRoutine) —

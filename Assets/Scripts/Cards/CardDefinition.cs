@@ -67,22 +67,22 @@ namespace Game.Cards
         // every other stat above.
         public int initiative = 1;
 
-        // Free-form skill IDs — a placeholder pool until a real passive-skill data/effect
-        // system exists to look them up and check them during the game. Empty for every card
-        // right now; not read anywhere yet.
-        [Header("Passive Skills (placeholder IDs — no skill system yet)")]
-        public List<string> passiveSkillIds = new List<string>();
+        // Free-form ability tags — the only skill/ability list a card has (see Game.Cards.
+        // UnitAbilities for the fixed-value ones this project actually gives combat effects to,
+        // and Game.Map.BuildingAbilities for the Base-card ones like Barracks/Lab/CollectX).
+        // Carried into UnitData.Abilities for Hero/Unit cards (see HexSelectionController.
+        // Factory.SpawnUnit) or BuildingData.Abilities for Base cards (see
+        // HexSelectionController.Factory.SpawnBuilding) at spawn time either way — same field,
+        // no separate "passive skill" list any more.
+        [Header("Abilities")]
+        public List<string> grantedAbilities = new List<string>();
 
         // Only meaningful for CardType.Base — starting stats for the BuildingData a Base card
-        // spawns (see HexSelectionController.SpawnBuilding). grantedAbilities generalizes what
-        // CitadelSetupController used to hardcode (BuildingAbilities.Barracks) into per-card
-        // data, same idea as requiredBuildingAbility above but for what a building GIVES rather
-        // than what it needs.
+        // spawns (see HexSelectionController.SpawnBuilding).
         [Header("Base Stats (CardType.Base only)")]
         public int structurePointsMax = 6;
         public int defense = 2;
         public int resistance = 1;
         public ResourceYields resourceYield = new ResourceYields();
-        public List<string> grantedAbilities = new List<string>();
     }
 }

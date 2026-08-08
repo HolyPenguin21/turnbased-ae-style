@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d254ff29ab4961a55748f6ce8ff09c14, type: 3}
+  m_Name: UnitAbilityCatalog
+  m_EditorClassIdentifier:
+  knownAbilities:
+  - tag: Barracks
+    description: Hex can receive Hero/Unit cards deployed from hand
+  - tag: Base
+    description: Building is a defended Base — Defense folds into the hex's Ground
+      Combat roll, captured (not destroyed) on defeat
+  - tag: Lab
+    description: Carried by a placed Facility (e.g. Research Facility) — no behavior
+      wired yet
+  - tag: CollectHuman
+    description: Collects Human resource each turn
+  - tag: CollectEnergy
+    description: Collects Energy resource each turn
+  - tag: CollectMaterials
+    description: Collects Materials resource each turn
+  - tag: CollectTech
+    description: Collects Tech resource each turn
+  - tag: CriticalDamage
+    description: Damage dealt in a successful attack is x2 (see criticalDamageMultiplier
+      below)
+  - tag: CeramicArmor
+    description: Damage received is reduced by a flat amount (see ceramicArmorReduction
+      below)
+  - tag: Berserk
+    description: +Attack/-Defense each time this unit is hit, for the rest of the
+      battle (see berserkAttackGain/berserkDefenseLoss below)
+  - tag: RapidReaction
+    description: Deploys for 0 AP; costs 0 AP to move as part of an army
+  - tag: ShockAttack
+    description: A successful hit drops the target from the rest of this round's
+      turn order, if it hasn't acted yet
+  criticalDamageMultiplier: 2
+  ceramicArmorReduction: 1
+  berserkAttackGain: 1
+  berserkDefenseLoss: 1
