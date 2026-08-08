@@ -45,28 +45,39 @@ namespace Game.UI
                 return;
             }
 
-            HexCoord battleHex = army.Hex;
-            bool relocated = TryFindRetreatDestination(army, battleHex, out HexCoord destination);
-
-            string message;
-            if (relocated)
-            {
-                ArmyRegistry.MoveArmy(army, destination);
-                hexSelectionController?.RestackArmiesOn(battleHex, null);
-                hexSelectionController?.RestackArmiesOn(destination, null);
-                message = _localArmy == army ? "Your army retreats." : "The enemy retreats.";
-            }
-            else
-            {
-                army.Members.Clear();
-                hexSelectionController?.DeleteArmyIfEmptied(army);
-                message = _localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!";
-            }
+            PerformRetreat(army, out bool destroyed);
+            string message = destroyed
+                ? (_localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
+                : (_localArmy == army ? "Your army retreats." : "The enemy retreats.");
 
             if (outcomePopup != null)
                 outcomePopup.Show(message, OnBattleOutcomeAcknowledged);
             else
                 OnBattleOutcomeAcknowledged();
+        }
+
+        // The relocate-or-destroy half of a retreat, shared by a player's voluntary Retreat
+        // Army/Retreat All Armies choice (above) and a hero-only army automatically fleeing
+        // after its hero evades a Capture Kill Challenge (see BattleScreenUI.Combat.cs's
+        // HandleCaptureKillOutcome — same algorithm, per the user's own spec: "по тем же
+        // правилам что и отступление из боя"). `destroyed` (out) tells the caller which of the
+        // two happened, since each has its own message/next-step to show.
+        private void PerformRetreat(ArmyData army, out bool destroyed)
+        {
+            HexCoord battleHex = army.Hex;
+            bool relocated = TryFindRetreatDestination(army, battleHex, out HexCoord destination);
+            destroyed = !relocated;
+            if (relocated)
+            {
+                ArmyRegistry.MoveArmy(army, destination);
+                hexSelectionController?.RestackArmiesOn(battleHex, null);
+                hexSelectionController?.RestackArmiesOn(destination, null);
+            }
+            else
+            {
+                army.Members.Clear();
+                hexSelectionController?.DeleteArmyIfEmptied(army);
+            }
         }
 
         private bool TryFindRetreatDestination(ArmyData army, HexCoord battleHex, out HexCoord destination)

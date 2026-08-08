@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Combat;
 using Game.Core;
 using Game.Economy;
@@ -159,10 +160,13 @@ namespace Game.Turns
 
         private int _currentPlayerIndex;
 
-        // Set once a starting citadel is destroyed (see OnBuildingDestroyed) — blocks any
-        // further turn advancement. No combat system exists yet to ever actually trigger this,
-        // same "wired for correctness, currently unreachable" status as BaseViewerModalUI's own
-        // Repair button.
+        // Set once at most one player still holds their own starting citadel — two paths lead
+        // here now: OnBuildingDestroyed (a building's StructurePoints actually reaching 0 — still
+        // unreachable, per the user's own "building damage deferred" call) and, newly reachable,
+        // EliminatePlayer via BeginPlayerTurn's own citadel-recapture buffer check below (a
+        // starting citadel CAPTURED — ownership changed by BattleScreenUI.Combat.cs's
+        // HandleBuildingOnArmyDefeat — rather than destroyed; see the user's own Siege spec).
+        // Blocks any further turn advancement once true.
         private bool _gameOver;
 
         private void OnEnable()
@@ -188,31 +192,98 @@ namespace Game.Turns
 
         // The win condition: destroying a player's starting citadel (see
         // BuildingData.IsStartingCitadel — a later-built "Concord Citadel" card doesn't carry
-        // this flag, so losing one of those doesn't end anything). Once at most one player still
-        // has theirs standing, the game stops advancing.
+        // this flag, so losing one of those doesn't end anything). Still unreachable today —
+        // see BuildingRegistry.Unregister's own comment, nothing destroys a building's
+        // StructurePoints yet, per the user's own "building damage deferred" call.
+        // EliminatePlayer is the actually-reachable path now, via BeginPlayerTurn's own
+        // citadel-recapture buffer check below.
         private void OnBuildingDestroyed(BuildingData building)
         {
             if (_gameOver || building == null || !building.IsStartingCitadel || building.Owner == null)
                 return;
+            EliminatePlayer(building.Owner);
+        }
 
-            ShowSpawnHint($"{building.Owner.Nickname}'s citadel has fallen — {building.Owner.Nickname} is defeated.");
+        // Shared elimination consequences: releases the player's own Prison contents right now
+        // (see ReleasePrisoners — their empire is gone, nowhere left to hold captives), announces
+        // it, and re-checks whether the game itself is over. Called from OnBuildingDestroyed
+        // above (still unreachable) and from BeginPlayerTurn's own citadel-recapture buffer
+        // check (the actually-reachable path today, per the user's own Siege spec: a captured
+        // starting citadel doesn't eliminate its owner outright, only if it's STILL not theirs
+        // again by the start of their own next turn).
+        private void EliminatePlayer(PlayerSetupData player)
+        {
+            if (player == null || player.IsEliminated)
+                return;
+            player.IsEliminated = true;
+
+            if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
+                ReleasePrisoners(player, new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
+
+            ShowSpawnHint($"{player.Nickname}'s citadel has fallen — {player.Nickname} is defeated.");
 
             if (GameSession.Players == null)
                 return;
-            var survivors = new List<PlayerSetupData>();
-            foreach (PlayerSetupData player in GameSession.Players)
-            {
-                bool hasCitadel = false;
-                foreach (BuildingData candidate in BuildingRegistry.AllBuildings())
-                    if (candidate.IsStartingCitadel && candidate.Owner == player) { hasCitadel = true; break; }
-                if (hasCitadel)
-                    survivors.Add(player);
-            }
+            List<PlayerSetupData> survivors = GameSession.Players.FindAll(p => !p.IsEliminated);
             if (survivors.Count > 1)
                 return;
 
             _gameOver = true;
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");
+        }
+
+        // True once `player` no longer owns the building at their own fixed starting-citadel hex
+        // — covers both a captured citadel (ownership flipped, see BattleScreenUI.Combat.cs's
+        // HandleBuildingOnArmyDefeat) and the degenerate "no building there at all" case. Checked
+        // fresh every time this player's own turn is about to start (see BeginPlayerTurn) rather
+        // than cached — that's what gives the user's own "buffer" its actual length: a capture
+        // during ANY other turn still leaves the full stretch until this player's own next turn
+        // to retake it.
+        private static bool StartingCitadelLost(PlayerSetupData player)
+        {
+            if (!player.CitadelHexQ.HasValue || !player.CitadelHexR.HasValue)
+                return false;
+            var hex = new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value);
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            return building == null || building.Owner != player;
+        }
+
+        // The answer to "what happens to prisoners when the empire holding them is destroyed" —
+        // there's no "citadel changes hands without being destroyed" mechanic in this project
+        // (destroying a starting citadel eliminates its owner outright, see OnBuildingDestroyed's
+        // own comment), so this is the one place a captured hero (see BattleScreenUI.Combat.cs's
+        // TryImprison) can ever leave a Prison again: back to whoever it was
+        // UnitData.CapturedFrom, landing in THEIR garrison — same "deployed cards land in the
+        // garrison first" convention CardHandUI.TryPlayCard already uses. A prisoner whose
+        // original owner has ALSO since been eliminated (no citadel hex on record any more, or no
+        // garrison found there) just stays discarded — nowhere left to send it.
+        //
+        // Same "wired for correctness, currently unreachable" status as the rest of this event
+        // chain — BuildingRegistry.Unregister (which raises BuildingDestroyed at all) has no
+        // caller yet, since nothing can destroy a building's StructurePoints today.
+        private static void ReleasePrisoners(PlayerSetupData defeatedOwner, HexCoord citadelHex)
+        {
+            ArmyData prison = ArmyRegistry.AllAt(citadelHex).Find(a => a.IsPrison && a.Owner == defeatedOwner);
+            if (prison == null || prison.Members.Count == 0)
+                return;
+
+            foreach (UnitData hero in new List<UnitData>(prison.Members))
+            {
+                PlayerSetupData originalOwner = hero.CapturedFrom;
+                prison.Members.Remove(hero);
+                if (originalOwner == null || !originalOwner.CitadelHexQ.HasValue || !originalOwner.CitadelHexR.HasValue)
+                    continue;
+
+                var originalCitadelHex = new HexCoord(originalOwner.CitadelHexQ.Value, originalOwner.CitadelHexR.Value);
+                ArmyData garrison = ArmyRegistry.FindGarrisonAt(originalCitadelHex, originalOwner);
+                if (garrison == null)
+                    continue;
+
+                hero.Owner = originalOwner;
+                hero.IsPrisoner = false;
+                hero.CapturedFrom = null;
+                garrison.AddMemberSorted(hero);
+            }
         }
 
         // Kept in sync via TurnStateChanged/InputBlockedChanged instead of every frame — the
@@ -287,8 +358,24 @@ namespace Game.Turns
 
         private IEnumerator ResolveDelayedBattlesThen(Action onDone)
         {
-            while (DelayedBattleRegistry.HasAny)
+            while (true)
             {
+                // Once every EXPLICITLY delayed battle has drained, sweep the whole map for
+                // anything still left contested — per the user's own call, "no stealth yet"
+                // means two different-owner armies can only ever coexist on a hex TEMPORARILY,
+                // never past this method. Most such leftovers are a SECOND attacker that walked
+                // onto a hex whose target was already reserved for one of the battles just
+                // resolved above (see DelayedBattleRegistry.IsHexPending's own callers) — now
+                // that the reservation's cleared, this is what actually forces their fight too,
+                // still within this same turn-boundary pass. Looped (not just checked once) since
+                // resolving ANY battle here can just as easily reveal another.
+                if (!DelayedBattleRegistry.HasAny)
+                {
+                    if (!TryFindNextContestedBattle(out HexCoord contestedHex, out List<ArmyData> contestedParticipants))
+                        break;
+                    DelayedBattleRegistry.Add(new PendingBattle { Hex = contestedHex, Participants = contestedParticipants });
+                }
+
                 PendingBattle battle = DelayedBattleRegistry.TakeNext();
 
                 // Participants were captured back when Delay was chosen — anything can have
@@ -308,7 +395,15 @@ namespace Game.Turns
                 yield return new WaitUntil(() => acknowledged);
 
                 bool closed = false;
-                if (battleScreen != null)
+                // Same hero-only branch as HexSelectionController.Movement.cs's own contact
+                // handling — nothing for a Ground Combat round to do against a target with no
+                // units, so this goes straight to a Capture Kill Challenge sequence instead (see
+                // BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
+                // original mover/hunter — see IsStillAGenuineBattle's own comment.
+                bool targetHeroOnly = battle.Participants.Count > 1 && !BattleInitiator.IsCombatCapable(battle.Participants[1]);
+                if (battleScreen != null && targetHeroOnly)
+                    battleScreen.BeginCaptureKillEncounter(battle.Participants[0], battle.Participants[1], () => closed = true);
+                else if (battleScreen != null)
                     battleScreen.Show(battle.Hex, battle.Participants, () => closed = true);
                 else
                     closed = true;
@@ -317,15 +412,56 @@ namespace Game.Turns
             onDone();
         }
 
-        // Both original participants must still be sitting on the delayed hex, still combat-
-        // capable, and still opposing owners — anything less means this exact confrontation
-        // isn't real any more (see ResolveDelayedBattlesThen's own comment).
+        // The end-of-drain sweep ResolveDelayedBattlesThen falls back on once
+        // DelayedBattleRegistry is empty — scans every occupied hex for a still-unresolved
+        // conflict (armies of different owners, per the user's own "this applies to every
+        // battle, not just building ones" call) and hands back a fresh PendingBattle-shaped
+        // pairing for it, same as if the player had chosen Delay on it directly. `mover` (always
+        // Participants[0]) must be combat-capable to match IsStillAGenuineBattle's own
+        // requirement — a hex where every engageable army present is hero-only (nobody able to
+        // hunt, see BattleInitiator.IsEngageable's own note) is left alone rather than returned
+        // here, same as it already is everywhere else in this project; otherwise this would loop
+        // forever trying to "resolve" a pairing nothing can ever actually fight.
+        private static bool TryFindNextContestedBattle(out HexCoord hex, out List<ArmyData> participants)
+        {
+            foreach (HexCoord candidateHex in ArmyRegistry.AllOccupiedHexes())
+            {
+                List<ArmyData> armies = ArmyRegistry.AllAt(candidateHex);
+                ArmyData mover = null;
+                foreach (ArmyData candidate in armies)
+                    if (BattleInitiator.IsCombatCapable(candidate)) { mover = candidate; break; }
+                if (mover == null)
+                    continue;
+                foreach (ArmyData other in armies)
+                {
+                    if (other == mover || other.Owner == mover.Owner || !BattleInitiator.IsEngageable(other))
+                        continue;
+                    hex = candidateHex;
+                    participants = new List<ArmyData> { mover, other };
+                    return true;
+                }
+            }
+            hex = default;
+            participants = null;
+            return false;
+        }
+
+        // Both original participants must still be sitting on the delayed hex and still opposing
+        // owners — anything less means this exact confrontation isn't real any more (see
+        // ResolveDelayedBattlesThen's own comment). Participants[0] (the original mover/hunter,
+        // see HexSelectionController.Movement.cs's own convention) additionally still needs real
+        // units of its own — a hero-only army can't fight OR hunt (see BattleInitiator.
+        // IsEngageable's own note) — but the OTHER side only needs IsEngageable: a target that's
+        // since been ground down to hero-only is still a genuine Capture Kill Challenge target
+        // (see ResolveDelayedBattlesThen's own branch), just not a Ground Combat one any more.
         private static bool IsStillAGenuineBattle(PendingBattle battle)
         {
             if (battle?.Participants == null || battle.Participants.Count < 2)
                 return false;
+            if (!BattleInitiator.IsCombatCapable(battle.Participants[0]) || !battle.Participants[0].Hex.Equals(battle.Hex))
+                return false;
             foreach (ArmyData army in battle.Participants)
-                if (army == null || !army.Hex.Equals(battle.Hex) || !BattleInitiator.IsCombatCapable(army))
+                if (army == null || !army.Hex.Equals(battle.Hex) || !BattleInitiator.IsEngageable(army))
                     return false;
             ArmyData first = battle.Participants[0];
             for (int i = 1; i < battle.Participants.Count; i++)
@@ -410,6 +546,7 @@ namespace Game.Turns
             CurrentTurnOrder = order;
 
             AllocateActionPoints(order);
+            GrantPrisonBonusActionPoints(order);
             BeginPlayerTurn(0);
         }
 
@@ -422,6 +559,26 @@ namespace Game.Turns
                 PlayerRoot root = PlayerRootRegistry.FindFor(order[i]);
                 if (root != null)
                     root.ActionPoints = ActionPointsForRank(i, order.Count);
+            }
+        }
+
+        // Manual's own "Bonuses For Captured Heroes" (pg. 11): recurring every turn, for as long
+        // as a hero sits in that player's Prison (see ArmyData.IsPrison / BattleScreenUI.
+        // Combat.cs's TryImprison) — added ON TOP of AllocateActionPoints's own by-rank replace
+        // above, not folded into ActionPointsForRank, which has nothing to do with prisoners.
+        // 2 AP per hero rather than the manual's own 3, per the user's own explicit call.
+        private const int PrisonBonusActionPointsPerHero = 2;
+
+        private static void GrantPrisonBonusActionPoints(List<PlayerSetupData> order)
+        {
+            foreach (PlayerSetupData player in order)
+            {
+                PlayerRoot root = PlayerRootRegistry.FindFor(player);
+                if (root == null)
+                    continue;
+                int prisonerCount = ArmyRegistry.AllForOwner(player).Where(a => a.IsPrison).Sum(a => a.Members.Count);
+                if (prisonerCount > 0)
+                    root.ActionPoints += PrisonBonusActionPointsPerHero * prisonerCount;
             }
         }
 
@@ -462,6 +619,21 @@ namespace Game.Turns
             }
 
             PlayerSetupData player = CurrentTurnOrder[index];
+
+            // The buffer window from the user's own Siege spec: a captured starting citadel
+            // doesn't eliminate its owner the instant it changes hands, only if they still
+            // haven't retaken that exact hex by the moment their OWN next turn would otherwise
+            // begin (see StartingCitadelLost/EliminatePlayer above). Checked before CurrentPlayer
+            // is even assigned, so an eliminated player is never treated as "acting" even
+            // momentarily.
+            if (!player.IsEliminated && StartingCitadelLost(player))
+                EliminatePlayer(player);
+            if (player.IsEliminated)
+            {
+                AdvanceToNextPlayer();
+                return;
+            }
+
             CurrentPlayer = player;
             ReplenishMoveForOwner(player);
             TurnStateChanged?.Invoke();

@@ -9,16 +9,17 @@ namespace Game.UI
     // One player's row in the turn-order popup: name + dice slots + resulting rank. Dice
     // slots are spawned fresh per SetPlayer call (not a fixed count any more — a player who
     // bought bonus dice this turn rolls more than the 3 base ones, see
-    // TurnOrderResolver.DiceCountFor). No dice art yet — each slot is just text ("1" for a
-    // hit, "X" for a miss) until this gets animated later.
+    // TurnOrderResolver.DiceCountFor). Each slot is a DiceSlotUI (see its own comment) —
+    // DiceFace_Hit.png/DiceFace_Miss.png swapped via a coin-flip spin instead of the old
+    // "1"/"X" text placeholder.
     public class DiceRowUI : MonoBehaviour
     {
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private Transform diceContainer;
-        [SerializeField] private TMP_Text diceSlotPrefab;
+        [SerializeField] private DiceSlotUI diceSlotPrefab;
         [SerializeField] private TMP_Text rankText;
 
-        private readonly List<TMP_Text> _diceSlots = new List<TMP_Text>();
+        private readonly List<DiceSlotUI> _diceSlots = new List<DiceSlotUI>();
 
         public void SetPlayer(PlayerSetupData player, int diceCount)
         {
@@ -35,7 +36,7 @@ namespace Game.UI
                 return;
 
             for (int i = 0; i < _diceSlots.Count && i < roll.Dice.Length; i++)
-                _diceSlots[i].text = roll.Dice[i] ? "1" : "X";
+                _diceSlots[i].PlayRoll(roll.Dice[i]);
         }
 
         public void ShowRank(int rank)
@@ -52,11 +53,7 @@ namespace Game.UI
                 return;
 
             for (int i = 0; i < count; i++)
-            {
-                TMP_Text slot = Instantiate(diceSlotPrefab, diceContainer);
-                slot.text = "X";
-                _diceSlots.Add(slot);
-            }
+                _diceSlots.Add(Instantiate(diceSlotPrefab, diceContainer));
         }
     }
 }

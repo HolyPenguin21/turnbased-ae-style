@@ -640,6 +640,12 @@ namespace Game.UI
             if (targetArmy == null || human == null || targetArmy.Owner != human)
                 return false;
 
+            // Captured heroes "just lie there" (see ArmyData.IsPrison) — a Prison is reachable
+            // from the modal's own in-modal button row same as any other army, but it's not
+            // somewhere a fresh Unit/Hero card can ever land, per the user's own call.
+            if (targetArmy.IsPrison)
+                return false;
+
             if (!IsValidDropTarget(definition, human, targetArmy.Hex))
             {
                 turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here — {targetArmy.Name} needs to be on a building with {definition.requiredBuildingAbility}.");

@@ -40,10 +40,11 @@ namespace Game.Map
         public int StructurePointsMax;
         public int Defense;
         public int Resistance;
-        // Same idea as UnitData.Fate — comes into play defending a Siege Challenge when no
-        // hero is present in a defending army on the hex (see the manual) — a hero's own Fate
-        // is used instead when there is one. Not yet consumed anywhere, same as every other
-        // not-yet-resolved combat stat. Carried over from CardDefinition.fate at spawn time.
+        // Same idea as UnitData.Fate. The manual's own Siege Challenge (a separate dice roll
+        // against the building itself, using this stat) is explicitly NOT implemented, per the
+        // user's own call — see BattleScreenUI.Combat.cs's BeginAttack, which instead folds
+        // terrain + Defense straight into the same Ground Combat roll. Still not consumed
+        // anywhere; kept for whenever a real use for a building's own Fate turns up.
         public int Fate;
         public ResourceYields ResourceYield;
 

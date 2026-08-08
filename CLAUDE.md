@@ -89,6 +89,16 @@ anything a compiler can't catch (event subscription lifetimes, Unity lifecycle o
   hero-less (impersonal status reports) — see `GetRandomPhrase`'s `hasHero` parameter. Named
   variants (a specific unit's name via `{0}`) are pooled in *alongside* the plain ones, weighted by
   count, only when a caller has a name to give.
+- **Supply and the manual's own Siege Challenge are explicitly NOT implemented**, per the project
+  owner's own design-doc call — don't build either from scratch if a future request seems to want
+  one, ask first. "Attacking a hex with a building" (what the manual calls Siege) IS implemented,
+  just not as a separate Challenge/dice roll: terrain's `defenseModifier`
+  (`TerrainTypeEntry`) and a `BuildingAbilities.Base`-tagged building's own `Defense` fold straight
+  into the SAME Ground Combat roll, defender side only (see `BattleScreenUI.Combat.cs`'s
+  `BeginAttack`). A defending army reduced to zero members hands its hex's building to the winner
+  (`HandleBuildingOnArmyDefeat`) — captured intact if Base-tagged, destroyed outright if it's a
+  bare hero-built extraction facility. Building *damage* (`StructurePoints`) stays unimplemented,
+  deferred alongside `Attack_Card`-type cards.
 
 ## Working style the project owner has asked for repeatedly
 

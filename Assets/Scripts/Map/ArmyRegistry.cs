@@ -43,6 +43,11 @@ namespace Game.Map
             return ByHex.TryGetValue(hex, out List<ArmyData> list) ? list : Empty;
         }
 
+        // Every hex currently holding at least one army — for a scan that needs to consider the
+        // whole map at once (see GameTurnController's own end-of-turn contested-hex sweep)
+        // rather than one hex at a time.
+        public static IEnumerable<HexCoord> AllOccupiedHexes() => ByHex.Keys;
+
         // The one army every citadel hex starts with (see CitadelSetupController) — this is
         // where deployed Unit/Hero cards land (see CardHandUI.TryPlayCard) before the player
         // manually sorts them into other armies.

@@ -48,7 +48,7 @@ namespace Game.Map
 
             _lastPreviewedHover = hoverCoord;
 
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, hoverCoord.Value);
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, hoverCoord.Value, AvoidEnemyHex(army));
             if (path == null)
             {
                 HidePathPreview();
@@ -127,6 +127,19 @@ namespace Game.Map
             return path;
         }
 
+        // HexPathfinder's own soft-avoidance hook (see its own comment) — routes `mover` around
+        // a hex holding an enemy army when a reasonable detour exists, instead of always taking
+        // the geometrically shortest route straight at/through it and only finding out at
+        // TruncateAtEnemyContact time that it has to stop short (see the user's own request:
+        // the shortest route often isn't the one that actually lets the army get furthest this
+        // turn, once contact truncation is accounted for). Not gated on IsCombatCapable like
+        // TruncateAtEnemyContact — a hero-only mover benefits from steering clear too, even
+        // though it never triggers a stop there itself.
+        private static System.Func<HexCoord, bool> AvoidEnemyHex(ArmyData mover)
+        {
+            return hex => BattleInitiator.FindEnemyAt(hex, mover.Owner) != null;
+        }
+
         private void HidePathPreview()
         {
             if (_pathArrow != null)
@@ -170,7 +183,7 @@ namespace Game.Map
             if (destination.Equals(army.Hex))
                 return;
 
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination);
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army));
             if (path == null)
                 return;
 
@@ -242,31 +255,82 @@ namespace Game.Map
                     // registered there and couldn't reflect this.
                     RestackArmiesOn(originHex, null);
 
+                    // The user's own Siege spec, undefended case: a building with no engageable
+                    // army of its own owner present at all just changes hands/gets destroyed the
+                    // moment an enemy army finishes moving onto its hex — no fight to trigger,
+                    // nothing to delay, there was never anyone there to put one up (see
+                    // BattleScreenUI.Combat.cs's HandleBuildingOnArmyDefeat for the "army got
+                    // wiped mid-fight" case this doesn't cover). Runs regardless of whether an
+                    // actual army contact ALSO fires below — a third player's building could sit
+                    // on the same hex as someone else's army.
+                    BuildingData contactedBuilding = BuildingRegistry.FindAt(actualHex);
+                    if (contactedBuilding != null && contactedBuilding.Owner != null && contactedBuilding.Owner != army.Owner)
+                    {
+                        bool ownerDefended = false;
+                        foreach (ArmyData resident in ArmyRegistry.AllAt(actualHex))
+                            if (resident.Owner == contactedBuilding.Owner && BattleInitiator.IsEngageable(resident))
+                            {
+                                ownerDefended = true;
+                                break;
+                            }
+                        if (!ownerDefended)
+                            BuildingRegistry.CaptureOrDestroy(contactedBuilding, army.Owner);
+                    }
+
                     // Re-checked fresh against `actualHex`, NOT the `enemyArmy` truncation found
                     // before the move even started — the army can run out of shared move points
                     // and stop well short of the hex TruncateAtEnemyContact had in mind (e.g. it
                     // takes 2 but only 1 remains), in which case there was never any real contact
-                    // and this must stay silent. Battle Setup/Tactical Battle Module don't exist
-                    // yet (see Game.Combat.BattleInitiator) — for now this just proves the
-                    // trigger fires at the right place and stops the mover there instead of
-                    // resolving anything.
-                    ArmyData actualEnemyContact = BattleInitiator.FindEnemyAt(actualHex, army.Owner);
-                    if (actualEnemyContact != null && battleContactPopup != null)
+                    // and this must stay silent.
+                    //
+                    // BattleInitiator.IsCombatCapable(army) (the MOVER, not the target) is
+                    // required in addition to FindEnemyAt finding something — a hero-only mover
+                    // can't fight a Ground Combat round OR hunt a Capture Kill Challenge without
+                    // a skill this project doesn't have yet (see BattleAttackPopupUI.
+                    // BeginCaptureKill's own note), so contact simply doesn't trigger anything
+                    // for one; it just finishes its move as if the hex were empty.
+                    //
+                    // DelayedBattleRegistry.IsHexPending additionally guards against re-offering
+                    // a Fight/Delay choice for a target already reserved for a different pending
+                    // battle at this hex (e.g. a different attacking army delayed against it
+                    // earlier this same turn) — per the user's own call, a reserved army can't be
+                    // signed up for a second one. Left unresolved here on purpose; the mover just
+                    // finishes onto the hex and coexists with it for now — GameTurnController's
+                    // own end-of-turn sweep is what eventually forces this pairing too, once the
+                    // earlier one's been drained.
+                    ArmyData actualEnemyContact = DelayedBattleRegistry.IsHexPending(actualHex)
+                        ? null
+                        : BattleInitiator.FindEnemyAt(actualHex, army.Owner);
+                    if (actualEnemyContact != null && battleContactPopup != null && BattleInitiator.IsCombatCapable(army))
                     {
                         // Not a full Deselect() (that would also clear _selectedArmy, still
                         // needed below in the general case) — but the ORIGIN hex's own selection
                         // must still go: the army has already left it, and the general
                         // re-select-at-actualHex logic below is skipped entirely on contact (see
                         // the else branch's own comment), so nothing else would ever clear it.
-                        // Left alone, its highlight/info panels kept pointing at a hex the army
-                        // no longer occupies.
+                        // Left alone, its highlight/info panels — and the multi-army button row,
+                        // if the origin hex still has 2+ of the player's own armies left on it —
+                        // kept pointing at a hex/roster the army no longer occupies/belongs to.
                         _selectedHex = null;
                         if (highlight != null) highlight.Hide();
                         if (infoPanel != null) infoPanel.Hide();
                         if (armyInfoPanel != null) armyInfoPanel.Hide();
+                        if (armyButtonRow != null) armyButtonRow.Hide();
                         var participants = new List<ArmyData> { army, actualEnemyContact };
+                        // A hero-only contact (see BattleInitiator.IsEngageable vs
+                        // IsCombatCapable) has nothing for a normal Tactical Battle Module round
+                        // to do — no acting units on that side, nothing to click/attack — so it
+                        // skips the grid entirely and goes straight to a Capture Kill Challenge
+                        // sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
+                        bool targetHeroOnly = !BattleInitiator.IsCombatCapable(actualEnemyContact);
                         battleContactPopup.Show(actualHex, participants,
-                            onFight: () => battleScreen?.Show(actualHex, participants, null),
+                            onFight: () =>
+                            {
+                                if (targetHeroOnly)
+                                    battleScreen?.BeginCaptureKillEncounter(army, actualEnemyContact, null);
+                                else
+                                    battleScreen?.Show(actualHex, participants, null);
+                            },
                             onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = actualHex, Participants = participants }));
                     }
                     // Re-arm the hover/pulse animation once the move finishes, if it's still the

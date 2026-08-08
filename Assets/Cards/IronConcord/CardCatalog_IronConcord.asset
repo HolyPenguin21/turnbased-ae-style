@@ -364,23 +364,23 @@ MonoBehaviour:
       tech: 0
     grantedAbilities: []
   armyNamePool:
-  - Iron Vanguard
-  - Rust Company
-  - Dust Reapers
-  - Ember Battalion
-  - Concord Talon
-  - Scrapline Legion
-  - Sandstorm Cohort
-  - Ashfall Brigade
-  - Wraithguard Company
-  - Ironclad Vanguard
-  - Cinder Legion
-  - Blackstrike Company
-  - Bastion Cohort
+  - Ironfang
+  - Rustborn
+  - Dustrunners
+  - Cinderwolves
+  - Talon Corps
+  - Scraplords
+  - Sandreavers
+  - Ashguard
+  - Wraithkin
+  - Ironclad
+  - Cinderfall
+  - Blackfang
+  - Bastion Guard
   - Dune Wolves
-  - Hollow Vanguard
-  - Wasteland Sentinels
+  - Hollowmen
+  - Sentinels
   - Iron Reavers
-  - Grit Battalion
+  - Grit Wolves
   - Steel Locusts
-  - Nomad's Edge
+  - Nomads

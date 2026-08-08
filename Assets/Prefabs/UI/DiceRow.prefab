@@ -500,5 +500,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.DiceRowUI
   nameText: {fileID: 2468942449379567265}
   diceContainer: {fileID: 5551000000000102}
-  diceSlotPrefab: {fileID: 5551000000000004, guid: acf6f254140a8947c9ae5efccfe1b2d1, type: 3}
+  diceSlotPrefab: {fileID: 5551000000000006, guid: acf6f254140a8947c9ae5efccfe1b2d1, type: 3}
   rankText: {fileID: 3027616807652521737}

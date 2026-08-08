@@ -37,6 +37,13 @@ namespace Game.Terrain
         [Min(1)]
         public int moveCost = 1;
 
+        // Added to the DEFENDING side's dice pool only, in any Ground Combat fought on a hex of
+        // this type (see BattleScreenUI.Combat.cs's BeginAttack) — the manual's own terrain
+        // modifier, simplified: it never touches the attacker's pool, per the user's own call.
+        // Per-entry, tuned in the Inspector same as moveCost/resourceYields; defaults to 0
+        // (no effect) until set.
+        public int defenseModifier;
+
         // texture + alternativeTextures, nulls skipped — every hex-visual-variant a generator
         // needs to pick between.
         public List<Texture2D> GetAllTextures()

@@ -10,6 +10,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Styles;
+using Game.Terrain;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -27,21 +28,47 @@ namespace Game.UI
         {
             if (attackPopup == null)
                 return;
-            bool attackerIsAttackerSide = _grid.TryFindPosition(attacker, out int aRow, out _) && BattleGrid.IsAttackerSideRow(aRow);
-            UnitData attackerHero = BattleTurnOrder.FindHero(_grid, attackerIsAttackerSide);
-            UnitData defenderHero = BattleTurnOrder.FindHero(_grid, !attackerIsAttackerSide);
+
+            // Identity (whose hero, whose Fate, whose movement gets zeroed) must come from actual
+            // army membership, NOT from which grid row the attacker currently stands in — a unit
+            // can advance into the opposing side's own rows to reach melee range, at which point
+            // "row group" and "owning army" disagree. See OwningArmy's own comment and
+            // project_battle_ai_bugs_open memory.
+            ArmyData attackerArmy = OwningArmy(attacker);
+            ArmyData defenderArmy = OwningArmy(defender);
+            UnitData attackerHero = OwningHero(attackerArmy);
+            UnitData defenderHero = OwningHero(defenderArmy);
+            bool defenderIsRetreating = _retreatingArmy != null && defenderArmy == _retreatingArmy;
+
+            // The user's own Siege spec: no separate manual-style Siege Challenge (a whole
+            // second dice roll against the building itself) — instead, terrain and a Base-tagged
+            // building's own Defense fold straight into THIS SAME Ground Combat roll, defender
+            // side only. Terrain always applies (every hex has one); the building only counts
+            // when it's Base-tagged (a citadel or player-built Base, see BuildingAbilities.Base's
+            // own comment) — a bare hero-built extraction facility has nothing built up worth a
+            // defense bonus (see HandleBuildingOnArmyDefeat's own note on why those get destroyed
+            // outright instead of captured).
+            int defenderBonusDice = 0;
+            if (defenderArmy != null)
+            {
+                if (map != null && map.TryGetTerrainAt(defenderArmy.Hex, out TerrainTypeEntry terrain))
+                    defenderBonusDice += terrain.defenseModifier;
+                BuildingData defendingBuilding = BuildingRegistry.FindAt(defenderArmy.Hex);
+                if (defendingBuilding != null && defendingBuilding.HasAbility(BuildingAbilities.Base))
+                    defenderBonusDice += defendingBuilding.Defense;
+            }
 
             // New rule, per the user: an army with a unit that attacks in the Tactical Battle
             // Module loses its remaining strategic-map movement for the current player turn —
             // applied the moment the attack is declared (popup opened), regardless of the roll's
             // outcome.
-            ArmyData attackerArmy = attackerIsAttackerSide ? _attacker : _defender;
             if (attackerArmy != null)
                 foreach (UnitData member in attackerArmy.Members)
                     member.MoveCurrent = 0;
 
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero, catalog != null ? catalog.logo : null,
-                (damage, died) => OnAttackResolved(attacker, defender, damage, died), ShowAiThought);
+                (damage, died) => OnAttackResolved(attacker, defender, damage, died), ShowAiThought, defenderIsRetreating,
+                defenderBonusDice);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender, int damage, bool defenderDied)
@@ -53,7 +80,7 @@ namespace Game.UI
             if (!defenderDied && damage > 0 && defender.Owner != null && !defender.Owner.IsHuman)
             {
                 bool major = defender.HitPointsMax > 0 && defender.HitPointsCurrent <= defender.HitPointsMax / 3f;
-                UnitData sideHero = BattleTurnOrder.FindHero(_grid, IsAttackerSide(defender));
+                UnitData sideHero = OwningHero(OwningArmy(defender));
                 aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(
                     major ? AiThoughtCategory.DamageTakenMajor : AiThoughtCategory.DamageTakenMinor, attacker?.Name, sideHero != null));
             }
@@ -65,13 +92,11 @@ namespace Game.UI
                 EndTurn();
         }
 
-        private bool IsAttackerSide(UnitData unit) => _grid.TryFindPosition(unit, out int row, out _) && BattleGrid.IsAttackerSideRow(row);
-
         private void RemoveUnit(UnitData unit)
         {
-            // Captured before the grid cell is cleared below — needed both for the hero-side
-            // lookup and because TryFindPosition can no longer find it afterward.
-            bool wasAttackerSide = IsAttackerSide(unit);
+            // Captured before army membership is cleared below — needed for the hero-side lookup.
+            ArmyData deadSideArmy = OwningArmy(unit);
+            ArmyData killerSideArmy = deadSideArmy == _attacker ? _defender : _attacker;
 
             if (_grid.TryFindPosition(unit, out int row, out int col))
                 _grid.Set(row, col, null);
@@ -79,12 +104,11 @@ namespace Game.UI
             _defender?.Members.Remove(unit);
 
             // Whichever side `unit` belonged to reacts with UnitDied; the OTHER side (if
-            // AI-controlled) gets a small EnemyKilled reaction instead — heroes never die this
-            // way (never a valid attack target), so no special-casing needed there.
-            UnitData deadSideHero = BattleTurnOrder.FindHero(_grid, wasAttackerSide);
-            UnitData killerSideHero = BattleTurnOrder.FindHero(_grid, !wasAttackerSide);
-            ArmyData deadSideArmy = wasAttackerSide ? _attacker : _defender;
-            ArmyData killerSideArmy = wasAttackerSide ? _defender : _attacker;
+            // AI-controlled) gets a small EnemyKilled reaction instead. Works the same whether
+            // `unit` is a regular card or a hero — a dead hero just means OwningHero returns null
+            // for that side from now on, which the no-hero phrase fallback already handles.
+            UnitData deadSideHero = OwningHero(deadSideArmy);
+            UnitData killerSideHero = OwningHero(killerSideArmy);
             if (deadSideArmy?.Owner != null && !deadSideArmy.Owner.IsHuman)
                 aiThoughts?.Show(deadSideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.UnitDied, unit.Name, deadSideHero != null));
             if (killerSideArmy?.Owner != null && !killerSideArmy.Owner.IsHuman)
@@ -117,8 +141,241 @@ namespace Game.UI
             if (attackerAlive && defenderAlive)
                 return false;
 
+            // Manual's "Capture Kill Challenges" (pg. 24) / Battle Results: a side that just lost
+            // its last non-hero unit doesn't quietly lose whatever hero(es) it still has — each
+            // one left behind is hunted, one Challenge at a time, by the OTHER side, PROVIDED that
+            // side actually has units of its own to hunt with. A hero-only army hunting alone
+            // needs a skill this project doesn't have yet (the manual's own "Hunter"-style ability
+            // — see BattleAttackPopupUI.BeginCaptureKill's own note); until then, a hero-only
+            // winner just can't press the advantage and the loser's hero(es) simply stay put.
+            var pending = new Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)>();
+            if (!attackerAlive && BattleInitiator.IsCombatCapable(_defender))
+                foreach (UnitData hero in HeroesOnly(_attacker))
+                    pending.Enqueue((hero, _attacker, _defender));
+            if (!defenderAlive && BattleInitiator.IsCombatCapable(_attacker))
+                foreach (UnitData hero in HeroesOnly(_defender))
+                    pending.Enqueue((hero, _defender, _attacker));
+
+            if (pending.Count > 0 && attackPopup != null)
+                RunNextCaptureKillChallenge(pending, () => FinishBattleEnd(attackerAlive, defenderAlive));
+            else
+                FinishBattleEnd(attackerAlive, defenderAlive);
+            return true;
+        }
+
+        // A hero-only army (see BattleInitiator.IsEngageable vs IsCombatCapable) is a poor fit
+        // for the full Tactical Battle Module — heroes never act in a Ground Combat round (see
+        // BattleTurnOrder's own "heroes never act" rule) and can't be attacked as a regular grid
+        // target either, so there's nothing for a normal battle to actually DO against one.
+        // Contact with one (see HexSelectionController.Movement.cs / GameTurnController's own
+        // delayed-battle branch) comes straight here instead — no grid, no Arrangement/Round-
+        // start, this popup (attackPopup) IS the entire encounter. `hunterArmy` needing its own
+        // non-hero units is the caller's responsibility to have already checked (same rule
+        // CheckBattleEnd's own trigger enforces) — this doesn't re-check it.
+        public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed)
+        {
+            if (attackPopup == null || hunterArmy == null || targetArmy == null)
+            {
+                onClosed?.Invoke();
+                return;
+            }
+
+            // Deliberately does NOT activate panelRoot — no grid/Arrangement/turn-order chrome
+            // makes sense for a hero-only encounter, and per the user's own spec this needs to
+            // stay a light popup-only interaction, reusable for every future Challenge type
+            // (Retreat/Assassination/Sabotage/Sniper/...), not each one opening the whole battle
+            // screen. attackPopup itself is the only UI this ever shows. IsShowing already covers
+            // attackPopup on its own (see its own comment) so GameTurnController.InputBlocked
+            // still works without panelRoot's involvement — just needs telling that it changed.
+            //
+            // cardHand deliberately stays VISIBLE (unlike Show's own cardHand?.Hide() — the map
+            // isn't covered by a full battle screen here, just this one popup), per the user's
+            // own report — only dragging needs to be blocked, and CardDraggingBlocked already
+            // does that on its own once VisibilityChanged fires below (see GameTurnController.
+            // RecomputeBlockedState's own battleScreen.IsShowing term).
+            _onClosed = onClosed;
+            hexSelectionController?.Deselect();
+            rtsCamera?.SetPanningEnabled(false);
+
+            _localArmy = null;
+            if (hunterArmy.Owner != null && hunterArmy.Owner.IsHuman)
+                _localArmy = hunterArmy;
+            else if (targetArmy.Owner != null && targetArmy.Owner.IsHuman)
+                _localArmy = targetArmy;
+
+            var pending = new Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)>();
+            foreach (UnitData hero in HeroesOnly(targetArmy))
+                pending.Enqueue((hero, targetArmy, hunterArmy));
+
+            // Reuses this exact same class's own Hide() for cleanup (restores cardHand/camera
+            // panning, resets _localArmy, invokes _onClosed, and fires VisibilityChanged itself
+            // unconditionally — covering the closing edge) — nothing else here needs a bespoke
+            // teardown since _grid/_attacker/_defender were never touched in the first place.
+            // targetArmy itself might, though: if every hero in it just got Killed/Captured, it's
+            // now empty and — unlike a normal battle's _attacker/_defender (torn down by
+            // OnBattleOutcomeAcknowledged) — nothing else would ever clean it up, since this
+            // encounter never goes through that method at all.
+            //
+            // suppressAiThoughts: true — aiThoughts lives under panelRoot, which this encounter
+            // deliberately never activates (see this method's own comment above), so its
+            // AiЕhoughts_Text is still inactive here; routing a thought through it threw
+            // "Coroutine couldn't be started because the game object ... is inactive" (see the
+            // user's own report). CheckBattleEnd's own RunNextCaptureKillChallenge call runs
+            // while a real battle's panelRoot IS already showing, so that one still narrates.
+            RunNextCaptureKillChallenge(pending, () =>
+            {
+                HandleBuildingOnArmyDefeat(hunterArmy, targetArmy);
+                hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
+                hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
+                Hide();
+            }, suppressAiThoughts: true);
+            VisibilityChanged?.Invoke(); // opening edge — attackPopup is showing as of this call
+        }
+
+        private static List<UnitData> HeroesOnly(ArmyData army) =>
+            army?.Members.FindAll(m => m.IsHero) ?? new List<UnitData>();
+
+        private void RunNextCaptureKillChallenge(Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)> pending,
+            Action onAllResolved, bool suppressAiThoughts = false)
+        {
+            if (pending.Count == 0)
+            {
+                onAllResolved();
+                return;
+            }
+            (UnitData hero, ArmyData heroArmy, ArmyData hunterArmy) next = pending.Dequeue();
+            attackPopup.BeginCaptureKill(next.hunterArmy, next.hero, catalog != null ? catalog.logo : null,
+                outcome => HandleCaptureKillOutcome(outcome, next.hero, next.heroArmy, next.hunterArmy, pending, onAllResolved, suppressAiThoughts),
+                suppressAiThoughts ? null : ShowAiThought);
+        }
+
+        // Killed: discarded outright. Captured: handed to the hunter's own Prison (see
+        // TryImprison) — or, if that's not possible (no citadel to hold them, per the user's
+        // own call), discarded exactly like Killed. Escaped: the hero just survives — whether
+        // its whole army needs to retreat is decided separately below, ONCE, only after every
+        // hero belonging to that SAME army has been through its own Challenge.
+        private void HandleCaptureKillOutcome(CaptureKillOutcome outcome, UnitData hero, ArmyData heroArmy,
+            ArmyData hunterArmy, Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)> pending, Action onAllResolved,
+            bool suppressAiThoughts = false)
+        {
+            switch (outcome)
+            {
+                case CaptureKillOutcome.Captured:
+                    if (!TryImprison(hero, heroArmy, hunterArmy))
+                        RemoveHero(heroArmy, hero);
+                    RefreshGrid();
+                    break;
+                case CaptureKillOutcome.Killed:
+                    RemoveHero(heroArmy, hero);
+                    RefreshGrid();
+                    break;
+                // Escaped: nothing removed, hero stays a member of heroArmy.
+            }
+
+            // Checking retreat-need right after EACH hero (the original version of this) was a
+            // real bug with 2+ heroes in the same army: if the FIRST one resolved Escaped, its
+            // army would retreat/get destroyed immediately — potentially relocating or, on a
+            // failed retreat, wiping Members entirely — out from under a SECOND hero still
+            // waiting its own turn in `pending` (see the user's own report). So this only
+            // fires once nothing else in the queue still belongs to heroArmy — and only if at
+            // least one hero actually survived to retreat with (heroArmy could be completely
+            // empty here if every hero was Killed/Captured, in which case there's nothing left
+            // to retreat and no announcement to show — the caller's own DeleteArmyIfEmptied
+            // handles that empty-army case instead).
+            bool moreForThisArmy = pending.Any(e => e.heroArmy == heroArmy);
+            if (!moreForThisArmy && heroArmy != null && heroArmy.Members.Count > 0
+                && !BattleInitiator.IsCombatCapable(heroArmy) && attackPopup != null)
+            {
+                PerformRetreat(heroArmy, out bool destroyed);
+                string message = destroyed
+                    ? (_localArmy == heroArmy ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
+                    : (_localArmy == heroArmy ? "Your army retreats." : "The enemy retreats.");
+                attackPopup.ShowAnnouncement(message, () => RunNextCaptureKillChallenge(pending, onAllResolved, suppressAiThoughts));
+                return;
+            }
+
+            RunNextCaptureKillChallenge(pending, onAllResolved, suppressAiThoughts);
+        }
+
+        private void RemoveHero(ArmyData army, UnitData hero)
+        {
+            if (hero == null)
+                return;
+            if (_grid != null && _grid.TryFindPosition(hero, out int row, out int col))
+                _grid.Set(row, col, null);
+            army?.Members.Remove(hero);
+        }
+
+        // Manual's "transported to the nearest base of the empire that captured the hero" —
+        // simplified to that empire's own STARTING citadel specifically (the one placed during
+        // setup, per the user's own spec — there's no "nearest base" search or siege/ownership-
+        // capture mechanic in this project to route through instead). False (caller falls back
+        // to a plain Killed-style discard) if the capturing player has no citadel hex on record
+        // at all — per the user's own call, that's already impossible today (only reachable if
+        // that player's own starting citadel was somehow destroyed first).
+        private bool TryImprison(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)
+        {
+            PlayerSetupData capturer = hunterArmy?.Owner;
+            if (hero == null || heroArmy == null || capturer == null
+                || !capturer.CitadelHexQ.HasValue || !capturer.CitadelHexR.HasValue)
+                return false;
+
+            var citadelHex = new HexCoord(capturer.CitadelHexQ.Value, capturer.CitadelHexR.Value);
+            ArmyData prison = ArmyRegistry.AllAt(citadelHex).Find(a => a.IsPrison && a.Owner == capturer);
+            if (prison == null)
+                return false;
+
+            if (_grid != null && _grid.TryFindPosition(hero, out int row, out int col))
+                _grid.Set(row, col, null);
+            heroArmy.Members.Remove(hero);
+
+            // Owner changes to the captor (see UnitData.CapturedFrom's own comment) so every
+            // existing owner-driven display/lookup — ArmyRegistry.AllForOwner, player-colour name
+            // text — reads correctly for a card now sitting in the captor's own Prison;
+            // IsPrisoner + CapturedFrom are what a future "return captured
+            // heroes when this citadel changes hands" mechanic would need to undo this (not
+            // implemented yet — no such ownership-change event exists in this project today).
+            hero.CapturedFrom = hero.Owner;
+            hero.Owner = capturer;
+            hero.IsPrisoner = true;
+            prison.Members.Add(hero);
+            return true;
+        }
+
+        // The user's own Siege spec: a building on a hex whose defending army has just been
+        // wiped out completely changes hands along with the fight — no separate manual-style
+        // Siege Challenge, this is a straight consequence of Ground Combat/Capture Kill itself.
+        // Its own garrison/Prison/facilities are separate ArmyData/data entries at the same hex
+        // and aren't touched here (see GameTurnController's own citadel-recapture buffer check
+        // for what a captured STARTING citadel eventually means for its former owner). See
+        // BuildingRegistry.CaptureOrDestroy for the actual capture-vs-destroy split.
+        private void HandleBuildingOnArmyDefeat(ArmyData winnerArmy, ArmyData loserArmy)
+        {
+            if (loserArmy == null || loserArmy.Members.Count > 0)
+                return;
+            BuildingData building = BuildingRegistry.FindAt(loserArmy.Hex);
+            if (building == null || building.Owner != loserArmy.Owner)
+                return;
+            BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner);
+        }
+
+        private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)
+        {
             FireBattleEndThought(_attacker, attackerAlive);
             FireBattleEndThought(_defender, defenderAlive);
+
+            // Whichever side's army is now completely gone (Members.Count == 0, not just
+            // BattleInitiator.IsCombatCapable — a hero-only remnant would still pass that, but
+            // by the time FinishBattleEnd runs any such remnant has already been through the full
+            // Capture Kill Challenge chain, see CheckBattleEnd) loses whatever building sits on
+            // the shared battle hex too (see HandleBuildingOnArmyDefeat). Skipped entirely on a
+            // genuine mutual wipeout (both empty) — there's no real winner to hand a building to,
+            // and calling this for both directions in that case would just flip ownership back
+            // and forth depending on call order.
+            bool attackerEmpty = _attacker != null && _attacker.Members.Count == 0;
+            bool defenderEmpty = _defender != null && _defender.Members.Count == 0;
+            if (attackerEmpty != defenderEmpty)
+                HandleBuildingOnArmyDefeat(attackerEmpty ? _defender : _attacker, attackerEmpty ? _attacker : _defender);
 
             string message;
             if (_localArmy == null)
@@ -133,7 +390,6 @@ namespace Game.UI
                 outcomePopup.Show(message, OnBattleOutcomeAcknowledged);
             else
                 OnBattleOutcomeAcknowledged();
-            return true;
         }
 
         private void FireBattleEndThought(ArmyData army, bool survived)
@@ -157,37 +413,46 @@ namespace Game.UI
             // a battle closes.
             HexCoord hex = _attacker != null ? _attacker.Hex : (_defender != null ? _defender.Hex : default);
 
-            // A normal fight-to-conclusion (not a retreat relocating one side away) leaves both
-            // _attacker/_defender still on the SAME hex — if exactly one of them is still combat
-            // capable and a DIFFERENT enemy army is still sitting on that hex, the manual's own
-            // "two armies, one hex" case means this fight isn't actually over: the winner
-            // continues straight into the next one instead of being left stuck on a hex it can
-            // no longer leave (BattleInitiator.FindEnemyAt would still see the untouched army)
-            // with no way to ever actually fight it (see the user's own report). Checked BEFORE
-            // DeleteArmyIfEmptied below so a still-shared hex is the actual signal, not an
-            // artifact of cleanup order.
-            bool stillSameHex = _attacker != null && _defender != null && _attacker.Hex.Equals(_defender.Hex);
-            ArmyData survivor = null;
-            if (stillSameHex)
-            {
-                bool attackerCapable = BattleInitiator.IsCombatCapable(_attacker);
-                bool defenderCapable = BattleInitiator.IsCombatCapable(_defender);
-                if (attackerCapable != defenderCapable)
-                    survivor = attackerCapable ? _attacker : _defender;
-            }
+            // The manual's own "two armies, one hex" case: if a THIRD army was already waiting
+            // here, whichever side is still standing on `hex` and still combat-capable isn't
+            // actually done — it continues into a second Battle Setup instead of being left stuck
+            // on a hex it can no longer leave (BattleInitiator.FindEnemyAt would still see the
+            // untouched army) with no way to ever actually fight it (see the user's own report).
+            // Checked per-side against the captured `hex`, NOT `_attacker.Hex.Equals(_defender.
+            // Hex)` — a retreat outcome (see ResolveRetreat) already relocated the retreating side
+            // to a DIFFERENT hex by the time this runs, which used to make that old comparison
+            // false and silently drop the second fight even though the winner is still right here.
+            bool attackerHere = _attacker != null && _attacker.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_attacker);
+            bool defenderHere = _defender != null && _defender.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_defender);
+            ArmyData survivor = attackerHere != defenderHere ? (attackerHere ? _attacker : _defender) : null;
 
             hexSelectionController?.DeleteArmyIfEmptied(_attacker);
             hexSelectionController?.DeleteArmyIfEmptied(_defender);
             hexSelectionController?.RestackArmiesOn(hex, null);
 
-            ArmyData nextEnemy = survivor?.Owner != null ? BattleInitiator.FindEnemyAt(hex, survivor.Owner) : null;
-            if (nextEnemy != null)
+            // DelayedBattleRegistry.IsHexPending guards against re-offering a Fight/Delay choice
+            // for an army that's already reserved for a different pending battle at this same
+            // hex (e.g. queued earlier this turn by a different attacker's own Delay choice) —
+            // per the user's own call, a reserved army can't be signed up for a second one.
+            // Left unresolved here on purpose; GameTurnController's own end-of-turn sweep is
+            // what eventually forces this pairing too, once the earlier one's been drained.
+            ArmyData nextEnemy = survivor?.Owner != null && !DelayedBattleRegistry.IsHexPending(hex)
+                ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
+                : null;
+            if (nextEnemy != null && battleContactPopup != null)
             {
-                // Straight into the next fight, no separate Fight/Delay choice this time (the
-                // survivor is already fully committed to this hex, there's nowhere else for it
-                // to go) — same completion callback as the original Show, only actually invoked
-                // once the whole chain finally ends in the Hide() below, not per-link.
-                Show(hex, new List<ArmyData> { survivor, nextEnemy }, _onClosed);
+                // Same Fight/Delay choice as the very first contact on the strategic map (see
+                // HexSelectionController.TryIssueMoveOrder) — per the user's own spec, the
+                // survivor isn't auto-committed to the next fight just because it's already
+                // standing here.
+                var participants = new List<ArmyData> { survivor, nextEnemy };
+                battleContactPopup.Show(hex, participants,
+                    onFight: () => Show(hex, participants, _onClosed),
+                    onDelay: () =>
+                    {
+                        DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
+                        Hide();
+                    });
                 return;
             }
 

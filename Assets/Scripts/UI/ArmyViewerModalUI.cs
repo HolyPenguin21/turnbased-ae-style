@@ -115,8 +115,11 @@ namespace Game.UI
         public ArmyData CurrentArmy => _currentArmy;
 
         // True while showing someone else's army (see ShowReadOnly) — read by ArmyUnitCardUI to
-        // block dragging entirely.
-        public bool IsReadOnly => _readOnly;
+        // block dragging entirely. Also true, regardless of how this modal was opened, whenever
+        // the army currently on screen is a Prison (see ArmyData.IsPrison) — its captured heroes
+        // "just lie there" per the user's own spec, not draggable/interactable even from the
+        // owner's own otherwise-editable modal session.
+        public bool IsReadOnly => _readOnly || (_currentArmy != null && _currentArmy.IsPrison);
 
         // Hit-test used by CardHandUI while a card is being dragged, to tell "dropped on the
         // modal" apart from "dropped on the map behind it" — screenPosition is raw mouse/pointer
@@ -430,7 +433,7 @@ namespace Game.UI
             if (targetButton != null)
             {
                 ArmyData target = targetButton.Army;
-                if (target == null || target == _currentArmy)
+                if (target == null || target == _currentArmy || target.IsPrison)
                     return false;
 
                 if (!target.HasRoom)
@@ -450,8 +453,29 @@ namespace Game.UI
                     return false;
                 }
 
+                // An army that's already spent its own ActivationApCost this turn (see
+                // ArmyData.HasActivatedThisTurn) moves for free the rest of the turn — without
+                // this, reinforcing it mid-turn by dragging units in from elsewhere would let
+                // those members ride along for free too, bypassing the AP they'd otherwise have
+                // owed as part of that same activation (see the user's own report: move a cheap
+                // 1-unit army first, then bulk it up from the garrison at zero extra AP cost).
+                // Only the INCOMING unit's own share is charged — target's other, already-paid-for
+                // members aren't re-billed, and a target that hasn't activated yet this turn pays
+                // for everyone, this unit included, on its own first move order as normal.
+                PlayerRoot targetRoot = null;
+                if (target.HasActivatedThisTurn)
+                {
+                    targetRoot = PlayerRootRegistry.FindFor(target.Owner);
+                    if (targetRoot == null || !targetRoot.CanSpendActionPoints(card.Unit.ActivationApCost))
+                    {
+                        turnController?.ShowSpawnHint($"Not enough action points to add {card.Unit.Name} to {target.Name} ({card.Unit.ActivationApCost} AP needed — it already moved this turn).");
+                        return false;
+                    }
+                }
+
                 _currentArmy.Members.Remove(card.Unit);
                 target.AddMemberSorted(card.Unit);
+                targetRoot?.SpendActionPoints(card.Unit.ActivationApCost);
                 // Neither army has a marker of its own that follows individual units around
                 // (see Game.Map.ArmyController) — only whichever is each owner's visible
                 // representative on the shared hex does, and this move can flip either army
@@ -531,9 +555,9 @@ namespace Game.UI
             if (contextButtonLabel != null)
                 contextButtonLabel.text = _currentArmy != null && _currentArmy.IsGarrison ? $"Create Army ({CreateArmyApCost} AP)" : "Rename";
             // No administrative actions on someone else's army — Create Army/Rename both
-            // mutate it (see OnContextButtonClicked).
+            // mutate it (see OnContextButtonClicked) — nor on a Prison, even the owner's own.
             if (contextButton != null)
-                contextButton.gameObject.SetActive(!_readOnly);
+                contextButton.gameObject.SetActive(!IsReadOnly);
         }
 
         // Only the CURRENT army's own owner's other armies on the same hex — not everyone else
@@ -549,7 +573,18 @@ namespace Game.UI
                 armyButtonRow.Hide();
                 return;
             }
-            List<ArmyData> siblings = ArmyRegistry.AllAt(_currentArmy.Hex).FindAll(a => a.Owner == _currentArmy.Owner);
+            // Prison goes first, per the user's own spec, and only appears at all once it holds
+            // at least one captured hero — everyone else keeps ArmyRegistry's own natural
+            // (registration) order, same as before this existed, rather than a full sort that
+            // could otherwise reshuffle them unpredictably (List.Sort isn't stable).
+            List<ArmyData> atHex = ArmyRegistry.AllAt(_currentArmy.Hex).FindAll(a => a.Owner == _currentArmy.Owner);
+            var siblings = new List<ArmyData>();
+            ArmyData prison = atHex.Find(a => a.IsPrison && a.Members.Count > 0);
+            if (prison != null)
+                siblings.Add(prison);
+            foreach (ArmyData army in atHex)
+                if (!army.IsPrison)
+                    siblings.Add(army);
             armyButtonRow.Show(siblings, SwitchTo);
         }
 

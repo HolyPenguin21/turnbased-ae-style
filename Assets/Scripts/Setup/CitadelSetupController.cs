@@ -33,7 +33,7 @@ namespace Game.Setup
     // (plus the popup canvas) in one shot — no separate per-highlight cleanup calls needed.
     // Citadel markers are spawned unparented instead, specifically so they're unaffected by
     // that cleanup.
-    public class CitadelSetupController : MonoBehaviour
+    public partial class CitadelSetupController : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private Camera targetCamera;
@@ -163,6 +163,7 @@ namespace Game.Setup
             HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding: true, new List<PlayerSetupData>());
             SpawnCitadelMarker(player, hex, layout.BuildingOffset);
             CreateGarrison(player, hex);
+            CreatePrison(player, hex);
 
             // The hex's resource display (already showing its plain terrain yield since map
             // generation) needs to be redrawn now with the citadel's bonus folded in.
@@ -232,6 +233,16 @@ namespace Game.Setup
             var garrison = new ArmyData { Name = "Garrison", Hex = hex, Owner = player, IsGarrison = true };
             ArmyRegistry.Register(garrison);
             hexSelectionController?.CreateArmyMarker(garrison);
+        }
+
+        // Holds this player's Captured enemy heroes (see BattleScreenUI.Combat.cs's
+        // TryImprison) — starts empty and stays that way for most games. Deliberately no
+        // CreateArmyMarker call: unlike the garrison, this one never gets a map icon at all,
+        // empty or not (see ArmyData.IsPrison's own comment).
+        private void CreatePrison(PlayerSetupData player, HexCoord hex)
+        {
+            var prison = new ArmyData { Name = "Prison", Hex = hex, Owner = player, IsPrison = true };
+            ArmyRegistry.Register(prison);
         }
 
         private void AdvanceToNextPlayer()
@@ -432,6 +443,15 @@ namespace Game.Setup
             CreatePlayerRoots();
             SpawnTestEnemyArmies();
 
+            // Post-generation content passes (see CitadelSetupController.MapContent.cs) — run
+            // only now, once every citadel hex is finalized, so they can steer clear of them.
+            // Order matches the user's own spec: resources, then neutral armies, then the two
+            // not-yet-implemented hooks for random events/special hexes.
+            GenerateResources();
+            GenerateNeutralArmies();
+            GenerateRandomEvents();
+            GenerateSpecialHexes();
+
             if (turnController != null)
                 turnController.BeginGame();
 
@@ -467,7 +487,22 @@ namespace Game.Setup
                         army.Controller.transform.SetParent(root.transform, worldPositionStays: true);
             }
 
-            PlayerRoot.Create(null, "Neutral");
+            // A real PlayerSetupData (never added to _allPlayers/GameSession.Players, so it
+            // never gets a turn slot or a dice-off roll) rather than a bare null Owner — plain
+            // null is explicitly rejected by CreateArmyMarker (no marker, no visible presence at
+            // all), and most of the codebase already assumes Owner resolves to a real profile
+            // (colour, nickname, ...) rather than guarding for null everywhere. See
+            // GenerateNeutralArmies (CitadelSetupController.MapContent.cs) for what actually
+            // spawns under this owner.
+            _neutralPlayer = new PlayerSetupData
+            {
+                Nickname = "Neutral",
+                ColorIndex = 6, // Brown — distinct from GameSetupModel's own default player picks (1, 0, 4)
+                Faction = Faction.None,
+                IsHuman = false,
+            };
+            PlayerRoot neutralRoot = PlayerRoot.Create(null, "Neutral");
+            PlayerRootRegistry.Register(_neutralPlayer, neutralRoot);
         }
 
         // --- Temporary test scaffolding for the new "Initiating Battle" trigger -----------
@@ -511,6 +546,28 @@ namespace Game.Setup
             // battle popup's own side army list — see BattleContactPopupUI).
             SpawnTestArmy(testHexes[1], enemyOwner, "Outpost Guard",
                 "Light Infantry", "Light Infantry");
+
+            // A lone hero, no units at all — exercises the Capture Kill Challenge / Escaped-
+            // retreat path (see BattleScreenUI.Combat.cs's HandleCaptureKillOutcome) directly,
+            // without first grinding a whole army down to just its hero in a real fight. Not
+            // Dorian Kesh — he's already leading Vanguard above.
+            HexCoord? loneHeroHex = FindTestHex(citadelHex, distance: 3, avoid: testHexes);
+            if (loneHeroHex.HasValue)
+                SpawnTestArmy(loneHeroHex.Value, enemyOwner, "Lone Rider", "Aldric Voss");
+        }
+
+        // Same search as the two-hex loop above (testHexes), just at an arbitrary distance and
+        // skipping anything already claimed — factored out once a second, independent test hex
+        // was needed.
+        private HexCoord? FindTestHex(HexCoord citadelHex, int distance, List<HexCoord> avoid)
+        {
+            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+            {
+                var candidate = new HexCoord(citadelHex.Q + dq * distance, citadelHex.R + dr * distance);
+                if (map.TryGetTerrainAt(candidate, out _) && (avoid == null || !avoid.Contains(candidate)))
+                    return candidate;
+            }
+            return null;
         }
 
         private void SpawnTestArmy(HexCoord hex, PlayerSetupData owner, string name, params string[] cardNames)

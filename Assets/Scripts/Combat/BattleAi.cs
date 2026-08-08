@@ -256,7 +256,7 @@ namespace Game.Combat
 
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (candidate.IsHero || candidate.Owner == actor.Owner)
+                if (candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;
@@ -379,7 +379,26 @@ namespace Game.Combat
         // false for the ATTACKER's (wants damage to actually land) — see the user's own spec:
         // spend as many times as it takes as long as each one still matters, never spend once the
         // exchange is already settled in this side's favor.
-        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender)
+        //
+        // isRetreating/defendingUnitHp (defender only): a retreating army can have several of its
+        // own units attacked in sequence within the same grace round (see BattleScreenUI.
+        // _retreatingArmy) before it actually leaves — spending freely on whichever hit lands
+        // first can drain Fate (it never replenishes, see UnitData.Fate) before a LATER hit that
+        // turns out to actually be lethal to a different unit ever gets a chance at it. While
+        // retreating, only spend on a hit that would genuinely kill the defender right now;
+        // outside a retreat, keep trying on any damage as before (there's no such queue of
+        // still-to-come attacks against the same Fate pool to protect against).
+        // isCaptureKill: the target hero's own Fate spend during a Capture Kill Challenge (see
+        // BattleAttackPopupUI.ResolveCaptureKill) — a TIED roll resolves as Killed there, not the
+        // safe non-event a 0-damage tie is in Ground Combat (see ChallengeResult.Damage's own
+        // floor-at-0, which can't tell "tied" apart from "defender strictly ahead" once damage is
+        // clamped to 0 either way) — so the defending hero must keep rerolling on a tie too, not
+        // just when outright behind. Per the user's own report: the AI sat on 3 unused Fate at
+        // 1:1, about to lose its hero to what damage-based math read as "no damage, nothing to
+        // fix". The hunter side needs no separate branch — it already rerolls on a tie (damage<=0
+        // there too), which was already correct: more successes only ever helps it, tie or not.
+        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
+            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false)
         {
             if (fateAvailable <= 0)
                 return false;
@@ -387,8 +406,16 @@ namespace Game.Combat
             if (ownDice == null || !HasMiss(ownDice))
                 return false;
 
-            int damage = new ChallengeResult(attackerDice, defenderDice).Damage;
-            return isDefender ? damage > 0 : damage <= 0;
+            var result = new ChallengeResult(attackerDice, defenderDice);
+            if (!isDefender)
+                return result.Damage <= 0;
+
+            if (isCaptureKill)
+                return result.AttackerSuccesses >= result.DefenderSuccesses;
+
+            if (result.Damage <= 0)
+                return false;
+            return !isRetreating || result.Damage >= defendingUnitHp;
         }
 
         private static bool HasMiss(bool[] dice)

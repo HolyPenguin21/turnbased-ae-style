@@ -20,6 +20,13 @@ namespace Game.Map
         public HexCoord Hex;
         public PlayerSetupData Owner;
         public bool IsGarrison;
+        // Marks the one Prison army every citadel starts with (see CitadelSetupController) —
+        // holds Captured heroes (see BattleScreenUI.Combat.cs's TryImprison), immobile like the
+        // garrison but additionally: never gets a map marker (see HexSelectionController.
+        // NonEmptyArmiesAt), never appears on the hex-side "pick an army to move" row (see
+        // HexSelectionController.RefreshArmyButtonRow), and its contents can't be dragged/moved
+        // at all once shown (see ArmyViewerModalUI.IsReadOnly folding this in).
+        public bool IsPrison;
         public readonly List<UnitData> Members = new List<UnitData>();
 
         // The player's own last battle-grid layout for this specific army (see

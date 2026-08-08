@@ -81,6 +81,16 @@ namespace Game.Units
         // formula, simplified to a flat per-unit stat instead of an army-level sum).
         public int Initiative = 1;
 
+        // Set when a Capture Kill Challenge captures this hero (see BattleScreenUI.Combat.cs's
+        // TryImprison) — Owner has already been reassigned to the captor at that point (so
+        // ArmyRegistry.AllForOwner/UI ownership tags all read correctly for a card sitting in
+        // the captor's Prison army, see ArmyData.IsPrison), CapturedFrom remembers who it
+        // belonged to before that, for whenever a "return prisoners" mechanic exists to read it
+        // (not implemented yet — see the user's own note; no such mechanic exists in this
+        // project today, only the data needed to support one later).
+        public bool IsPrisoner;
+        public PlayerSetupData CapturedFrom;
+
         public void ReplenishMoveForNewTurn()
         {
             MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);

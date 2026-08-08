@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Game.Combat;
 using Game.Map;
+using Game.Styles;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -37,6 +38,9 @@ namespace Game.UI
 
         private Action _onStartRound;
         private Action _onRetreat;
+        // Captured on first use so the retreat-warning colour (see Show) can be reverted back to
+        // whatever the title's normal colour actually is, without hardcoding a second guess at it.
+        private Color? _defaultTitleColor;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -67,9 +71,16 @@ namespace Game.UI
             }
             if (roundTitleText != null)
             {
-                roundTitleText.text = string.IsNullOrEmpty(retreatingArmyName)
-                    ? $"Round {round}"
-                    : $"Round {round} — {retreatingArmyName} is retreating this round!";
+                if (_defaultTitleColor == null)
+                    _defaultTitleColor = roundTitleText.color;
+
+                bool retreating = !string.IsNullOrEmpty(retreatingArmyName);
+                roundTitleText.text = retreating
+                    ? $"Round {round} — {retreatingArmyName} is retreating this round!"
+                    : $"Round {round}";
+                // A plain colour change alone was still easy to miss folded into the title (see
+                // the user's own report) — worth calling out visually, not just via wording.
+                roundTitleText.color = retreating ? TechnicalColors.RetreatWarning : _defaultTitleColor.Value;
             }
             if (retreatButton != null)
                 retreatButton.interactable = canRetreat && round > 1;

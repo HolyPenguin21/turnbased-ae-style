@@ -12,7 +12,24 @@ namespace Game.HexGrid
     // bookkeeping isn't worth it, and the frontier is just a linear-scanned list.
     public static class HexPathfinder
     {
-        public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination)
+        // Added to a hex's routing cost when `avoidHex` flags it (see FindPath) — steers the
+        // search toward a detour when a reasonable one exists, without making the hex
+        // impassable: a route with no other way through (including the hex actually BEING the
+        // destination, e.g. a deliberate attack order) still gets found, just costed higher.
+        // A flat constant well above this project's terrain moveCost range (small integers)
+        // rather than derived from it, since even a several-hex detour should usually still
+        // come out cheaper than eating this penalty once.
+        private const int AvoidPenalty = 20;
+
+        // avoidHex: optional soft-avoidance predicate (see the user's own request — route
+        // around a hex holding an enemy army when a reasonable detour exists, e.g.
+        // `hex => BattleInitiator.FindEnemyAt(hex, mover.Owner) != null`, left to the caller so
+        // this stays free of a Game.Combat dependency). Only steers which route gets chosen —
+        // the returned HexPath.TotalCost is real terrain cost only, recomputed separately below,
+        // matching what ArmyController.MoveRoutine will actually charge during the move itself
+        // (it recomputes cost from terrain independently, never reads this search's own routing
+        // cost) — so a preview/order never shows or spends an inflated AP/MP figure.
+        public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination, System.Func<HexCoord, bool> avoidHex = null)
         {
             if (map == null)
                 return null;
@@ -41,7 +58,10 @@ namespace Game.HexGrid
                     if (!map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
                         continue;
 
-                    int newCost = costSoFar[current] + Mathf.Max(1, entry.moveCost);
+                    int stepCost = Mathf.Max(1, entry.moveCost);
+                    if (avoidHex != null && avoidHex(next))
+                        stepCost += AvoidPenalty;
+                    int newCost = costSoFar[current] + stepCost;
                     if (costSoFar.TryGetValue(next, out int existing) && existing <= newCost)
                         continue;
 
@@ -63,7 +83,14 @@ namespace Game.HexGrid
             }
             hexes.Reverse();
 
-            return new HexPath(hexes, costSoFar[destination]);
+            int realCost = 0;
+            for (int i = 1; i < hexes.Count; i++)
+            {
+                map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
+                realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
+            }
+
+            return new HexPath(hexes, realCost);
         }
     }
 }

@@ -78,6 +78,11 @@ namespace Game.UI
         [Header("Move / Attack")]
         [SerializeField] private BattleAttackPopupUI attackPopup;
         [SerializeField] private BattleOutcomePopupUI outcomePopup;
+        // Re-shown (Fight/Delay) for a second enemy army still sharing the hex once the current
+        // fight resolves — see OnBattleOutcomeAcknowledged. Same instance HexSelectionController
+        // shows for the very first contact on the strategic map; this class just re-uses it for a
+        // chained continuation instead of instantiating its own.
+        [SerializeField] private BattleContactPopupUI battleContactPopup;
 
         [Header("AI")]
         [SerializeField] private BattleAiThoughtsUI aiThoughts;
@@ -122,6 +127,31 @@ namespace Game.UI
         // final "grace round" that lets the OTHER side get a last hit in before the army actually
         // leaves, per the user's own spec.
         private ArmyData _retreatingArmy;
+
+        // A unit's actual owning army, independent of which grid ROWS it currently occupies — a
+        // non-hero unit can advance across the neutral row into the opposing side's own rows
+        // during the Round's movement step to reach melee range (see BattleGrid's row-layout
+        // comment), so "which row group a unit sits in" stops matching "which army it belongs
+        // to" the moment that happens. Grid-row lookups (BattleGrid.IsAttackerSideRow,
+        // BattleTurnOrder.FindHero) are still correct for HEROES, which never leave their own
+        // side's rows, and for genuinely row-relative concerns like initiative bonus/movement
+        // legality — but any code deciding whose hero/Fate/ownership applies to a specific unit
+        // must use this instead. Root cause of the Spend-button bug in project_battle_ai_bugs_open
+        // memory: BeginAttack used to derive attackerHero/defenderHero from the attacking unit's
+        // grid row, which flipped to the wrong side once that unit had moved into enemy rows.
+        private ArmyData OwningArmy(UnitData unit)
+        {
+            if (unit == null)
+                return null;
+            if (_attacker != null && _attacker.Members.Contains(unit))
+                return _attacker;
+            if (_defender != null && _defender.Members.Contains(unit))
+                return _defender;
+            return null;
+        }
+
+        private static UnitData OwningHero(ArmyData army) => army?.Members.FirstOrDefault(m => m.IsHero);
+
         private bool _arranging;
         // True only once the "Arrange your units" intro popup has been dismissed — the grid
         // itself is already visible the instant Arrangement starts (see Show), but dragging
@@ -147,7 +177,11 @@ namespace Game.UI
         private readonly List<BattleGridCellUI> _cells = new List<BattleGridCellUI>();
         private readonly List<BattleTurnOrderIconUI> _queueIcons = new List<BattleTurnOrderIconUI>();
 
-        public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+        // Also true while a standalone Capture Kill Challenge is up (see
+        // BeginCaptureKillEncounter) — that one deliberately never activates panelRoot at all
+        // (no grid/Arrangement chrome for a hero-only encounter, per the user's own spec), but
+        // GameTurnController.InputBlocked still needs to know something modal is showing.
+        public bool IsShowing => (panelRoot != null && panelRoot.activeSelf) || (attackPopup != null && attackPopup.IsShowing);
 
         // Lets GameTurnController react to a battle opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
@@ -482,9 +516,12 @@ namespace Game.UI
         // implied by whose "voice" is speaking.
         private void ShowAiThought(UnitData actor, AiThoughtCategory category, string targetName = null)
         {
-            if (aiThoughts == null || _grid == null || !_grid.TryFindPosition(actor, out int row, out _))
+            if (aiThoughts == null)
                 return;
-            UnitData sideHero = BattleTurnOrder.FindHero(_grid, BattleGrid.IsAttackerSideRow(row));
+            // Owning army, not grid row — see OwningArmy's own comment. `actor` may have already
+            // moved into the opposing side's rows (e.g. mid-melee), so its row is not a reliable
+            // stand-in for which army's hero should be "speaking" here.
+            UnitData sideHero = OwningHero(OwningArmy(actor));
             aiThoughts.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(category, targetName, sideHero != null));
         }
 

@@ -68,7 +68,7 @@ namespace Game.UI
                     bool isActingUnit = unit != null && unit == _currentActingUnit;
 
                     bool isLegalMoveTarget = canAct && unit == null && IsAdjacentOwnSide(_currentActingUnit, row, col);
-                    bool isLegalAttackTarget = canAct && unit != null && !unit.IsHero && unit.Owner != _currentActingUnit.Owner
+                    bool isLegalAttackTarget = canAct && unit != null && unit.Owner != _currentActingUnit.Owner
                         && BattleGrid.IsInRange(actorRow, actorCol, row, col, _currentActingUnit.Range);
 
                     BattleGridCellUI cell = Instantiate(gridCellPrefab, gridContainer);
@@ -97,7 +97,7 @@ namespace Game.UI
                 return;
             }
 
-            if (cell.Unit.IsHero || cell.Unit.Owner == _currentActingUnit.Owner)
+            if (cell.Unit.Owner == _currentActingUnit.Owner)
                 return;
             if (BattleGrid.IsInRange(actorRow, actorCol, cell.Row, cell.Col, _currentActingUnit.Range))
                 BeginAttack(_currentActingUnit, cell.Unit);

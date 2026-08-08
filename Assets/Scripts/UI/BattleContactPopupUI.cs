@@ -4,6 +4,7 @@ using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -43,6 +44,8 @@ namespace Game.UI
         [SerializeField] private ArmyButtonRowUI leftArmyList;
         [SerializeField] private ArmyButtonRowUI rightArmyList;
         [SerializeField] private ArmyViewerModalUI armyViewerModal;
+        // For the terrain/building defense preview on the defending column(s) — see Populate.
+        [SerializeField] private HexMap map;
 
         private readonly List<BattleParticipantColumnUI> _columns = new List<BattleParticipantColumnUI>();
 
@@ -153,15 +156,37 @@ namespace Game.UI
             // left these disabled if the army modal was still open when something else force-
             // closed this popup (shouldn't normally happen, but this costs nothing to guard).
             SetActionButtonsInteractable(true);
+            // participants[0] is always the attacker/mover (see GameTurnController's own
+            // delayed-battle resolution, which relies on the same ordering) — everyone else
+            // here is defending this hex against it.
+            string attackerName = participants != null && participants.Count > 0 ? participants[0].Name : "?";
+            string defenderName = participants != null && participants.Count > 1 ? participants[1].Name : "?";
             if (titleText != null)
-                titleText.text = $"Battle at ({hex.Q}, {hex.R})";
+                titleText.text = $"({hex.Q}, {hex.R}) - {attackerName} attacks {defenderName}";
 
             UIListUtility.DestroyAndClear(_columns);
             if (columnContainer != null && columnPrefab != null && participants != null)
-                foreach (ArmyData army in participants)
+                for (int i = 0; i < participants.Count; i++)
                 {
+                    ArmyData army = participants[i];
+                    bool isDefender = i != 0;
+                    // Same terrain/Base-building defense bonus Ground Combat itself will apply
+                    // (see BattleScreenUI.Combat.cs's BeginAttack) — previewed here on the
+                    // defending side(s) so it's visible before Fight/Delay is even decided, not
+                    // just once the roll happens.
+                    int terrainDefMod = 0;
+                    int buildingDefMod = 0;
+                    if (isDefender)
+                    {
+                        if (map != null && map.TryGetTerrainAt(army.Hex, out TerrainTypeEntry terrain))
+                            terrainDefMod = terrain.defenseModifier;
+                        BuildingData building = BuildingRegistry.FindAt(army.Hex);
+                        if (building != null && building.HasAbility(BuildingAbilities.Base))
+                            buildingDefMod = building.Defense;
+                    }
+
                     BattleParticipantColumnUI column = Instantiate(columnPrefab, columnContainer);
-                    column.Setup(army, catalog);
+                    column.Setup(army, catalog, isDefender, terrainDefMod, buildingDefMod);
                     _columns.Add(column);
                 }
 

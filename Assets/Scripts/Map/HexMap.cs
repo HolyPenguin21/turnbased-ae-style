@@ -22,6 +22,11 @@ namespace Game.Map
         public int Height => height;
         public float OuterRadius => outerRadius;
 
+        // Every hex actually on the map — used by post-generation passes (resources, neutral
+        // armies, ...) that need to enumerate the whole map rather than look up one hex at a
+        // time. Live view over _hexData's own keys, not a snapshot.
+        public IEnumerable<HexCoord> AllCoords => _hexData.Keys;
+
         public bool TryGetTerrainAt(HexCoord coord, out TerrainTypeEntry entry) => _hexData.TryGetValue(coord, out entry);
 
         public HexCoord WorldToHex(Vector3 worldPos) => HexGridMath.WorldToAxial(transform.InverseTransformPoint(worldPos), outerRadius);

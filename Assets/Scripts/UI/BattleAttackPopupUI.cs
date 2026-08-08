@@ -1,5 +1,6 @@
 using System;
 using Game.Combat;
+using Game.Map;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -43,15 +44,47 @@ namespace Game.UI
         private enum Phase { NotRolled, DefenderDeciding, AttackerDeciding, Resolved }
         private Phase _phase;
 
+        // Which win condition Resolve() applies once both sides have accepted — every Challenge
+        // in the manual (Ground Combat, Capture Kill, and eventually Retreat/Assassination/
+        // Sabotage/Sniper/...) shares this same Roll/Defender's-Prerogative/Accept shell, they
+        // just differ in how dice-pool sizes are computed and what the result means. See
+        // BeginCaptureKill for the second one; add further Begin*/Resolve* pairs here rather than
+        // a whole new popup component per challenge type.
+        private enum ChallengeKind { GroundCombat, CaptureKill, Announcement }
+        private ChallengeKind _kind;
+
         private UnitData _attacker;
         private UnitData _defender;
         private UnitData _attackerHero;
         private UnitData _defenderHero;
+        // Whether the DEFENDER's own army is the one currently retreating (see BattleScreenUI.
+        // _retreatingArmy) — the attacker is never the retreating side, since a retreating army's
+        // units are excluded from the turn order and can't act (see BattleScreenUI.
+        // OnStartRoundClicked), only get attacked. Feeds BattleAi.ShouldSpendFate's own Fate-
+        // conservation rule for that case (see RunAiFateSpend).
+        private bool _defenderIsRetreating;
+        // GroundCombat only — terrain modifier + (Base-tagged building's own Defense), folded
+        // straight into the SAME roll as any other Ground Combat attack rather than a separate
+        // manual-style Siege Challenge (see BattleScreenUI.Combat.cs's BeginAttack, the only
+        // caller that ever sets this to non-zero). Never applied to the attacker's own pool.
+        private int _defenderBonusDice;
+        // CaptureKill mode only — the hunter's computed dice-pool size (see BeginCaptureKill;
+        // there's no per-unit Attack stat to roll against, unlike Ground Combat) and how many
+        // dice the target hero rolls (their Fate stat, per the manual: "the target hero receives
+        // a dice pool equal to his fate"), captured once at OnRollClicked time so a later reroll
+        // spending that same Fate down doesn't change how many dice were actually in this roll.
+        // Outcome itself (see ResolveCaptureKill) compares actual successes only, not this pool
+        // size — per the user's own call, dropping the manual's separate "capture threshold".
+        private int _hunterDicePool;
+        private int _targetDicePoolSize;
+        private CaptureKillOutcome _captureKillOutcome;
         private bool[] _attackerDice;
         private bool[] _defenderDice;
         private int _resultDamage;
         private bool _resultDied;
         private Action<int, bool> _onResolved;
+        private Action<CaptureKillOutcome> _onCaptureKillResolved;
+        private Action _onAnnouncementAcknowledged;
         private Action<UnitData, AiThoughtCategory, string> _onAiThought;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
@@ -70,17 +103,32 @@ namespace Game.UI
                 defenderRow.SpendClicked += OnDefenderSpend;
         }
 
+        // Space as a shortcut for Ok, per the user's own request — gated on resultStateRoot
+        // specifically (not just IsShowing), so Space during the Roll state doesn't accidentally
+        // fire Ok before Accept/Roll even have anything to do with it; Ok is the only button
+        // live once the Result state is showing, same as BattleArrangePopupUI's own version of
+        // this.
+        private void Update()
+        {
+            if (IsShowing && resultStateRoot != null && resultStateRoot.activeSelf && UIFocusUtility.WasSpacePressed())
+                OnOkClicked();
+        }
+
         // attackerHero/defenderHero are that SIDE's hero if present (may be null) — Fate is a
         // per-side resource the hero contributes, not something the attacking/defending unit card
         // itself needs to be a hero to use (see BattleCombatantRowUI's own comment); the caller
         // (BattleScreenUI) already has the grid to look these up from.
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
-            Sprite factionLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null)
+            Sprite factionLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
+            bool defenderIsRetreating = false, int defenderBonusDice = 0)
         {
+            _kind = ChallengeKind.GroundCombat;
             _attacker = attacker;
             _defender = defender;
             _attackerHero = attackerHero;
             _defenderHero = defenderHero;
+            _defenderIsRetreating = defenderIsRetreating;
+            _defenderBonusDice = defenderBonusDice;
             _onResolved = onResolved;
             _onAiThought = onAiThought;
             _attackerDice = null;
@@ -107,12 +155,89 @@ namespace Game.UI
                 acceptButton.interactable = false;
         }
 
+        // The manual's "Capture Kill Challenge" (pg. 24) — same Roll/Defender's-Prerogative/
+        // Accept shell as Ground Combat (see Begin, reused verbatim here), but the dice pools and
+        // the win condition are entirely different, so this sets them up itself instead of going
+        // through Begin's Attack/Defense-stat plumbing:
+        //   - Hunter's pool = 1 + (hunterArmy's own non-hero unit count / 2). The manual also adds
+        //     "highest observation strength in hex" — Observation/Recce doesn't exist in this
+        //     project yet (see BattleInitiator's own Stealth note), so that term is 0 for now.
+        //   - Target's pool = the hunted hero's own Fate stat (see the manual: "The target hero
+        //     receives a dice pool equal to his fate").
+        //   - The hunter side gets a Fate row exactly when the hunting army itself has a hero
+        //     along for the ride — that hero's own Fate, same as any Ground Combat attacker (per
+        //     the user's own call: no separate "Bounty Hunter" skill gate, unlike the manual's
+        //     own rule — this project doesn't have that skill and isn't waiting on it). A
+        //     hunting army with no hero at all still has nothing to spend (attackerHero stays
+        //     null, same as before), so its Attacker phase still just auto-resolves.
+        //   - The CALLER (BattleScreenUI.Combat.cs) is responsible for checking that the hunting
+        //     army actually has at least one non-hero unit before calling this at all — a hero
+        //     hunting alone requires a skill (e.g. the manual's own "Hunter") this project doesn't
+        //     have yet either; see the user's own note to add that as a future task once such
+        //     hero skills exist.
+        public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite factionLogo,
+            Action<CaptureKillOutcome> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null)
+        {
+            UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
+            UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
+            int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
+            _hunterDicePool = 1 + hunterUnits / 2;
+            _onCaptureKillResolved = onResolved;
+
+            Begin(hunterFace, hunterHero, targetHero, targetHero, factionLogo, null, onAiThought);
+            _kind = ChallengeKind.CaptureKill;
+        }
+
+        // A plain single-screen announcement — no roll, no dice, no attacker/defender rows —
+        // reusing just this popup's Result state (rollStateRoot skipped entirely) for a message
+        // that isn't really a Challenge at all, e.g. "Your army retreats." after a hero-only
+        // army's Capture Kill Challenge ends in Escaped (see BattleScreenUI.Combat.cs's
+        // HandleCaptureKillOutcome) — same panel the user asked for (BattleAttackPopupUI's own
+        // ResultStateRoot) rather than a brand new popup for what's a one-line acknowledgement.
+        public void ShowAnnouncement(string message, Action onAcknowledged)
+        {
+            _kind = ChallengeKind.Announcement;
+            _onAnnouncementAcknowledged = onAcknowledged;
+
+            if (panelRoot != null)
+            {
+                panelRoot.SetActive(true);
+                panelRoot.transform.SetAsLastSibling();
+            }
+            if (rollStateRoot != null)
+                rollStateRoot.SetActive(false);
+            if (resultStateRoot != null)
+                resultStateRoot.SetActive(true);
+
+            if (resultArtImage != null)
+                resultArtImage.gameObject.SetActive(false);
+            if (resultTargetArtImage != null)
+                resultTargetArtImage.gameObject.SetActive(false);
+            if (resultTargetNameText != null)
+                resultTargetNameText.text = string.Empty;
+            if (resultTargetHpText != null)
+                resultTargetHpText.text = string.Empty;
+            if (destroyedStamp != null)
+                destroyedStamp.SetActive(false);
+            if (resultSummaryText != null)
+                resultSummaryText.text = message;
+        }
+
         private void OnRollClicked()
         {
             if (_phase != Phase.NotRolled)
                 return;
 
-            ChallengeResult result = ChallengeResolver.Resolve(_attacker.Attack, _defender.Defense);
+            ChallengeResult result;
+            if (_kind == ChallengeKind.CaptureKill)
+            {
+                _targetDicePoolSize = _defenderHero?.Fate ?? 0;
+                result = ChallengeResolver.Resolve(_hunterDicePool, _targetDicePoolSize);
+            }
+            else
+            {
+                result = ChallengeResolver.Resolve(_attacker.Attack, _defender.Defense + _defenderBonusDice);
+            }
             _attackerDice = result.AttackerDice;
             _defenderDice = result.DefenderDice;
             attackerRow?.SetDice(_attackerDice);
@@ -138,24 +263,34 @@ namespace Game.UI
 
         private static bool IsAiSide(UnitData unit) => unit != null && unit.Owner != null && !unit.Owner.IsHuman;
 
-        // A side can only actually DECIDE anything (spend Fate or consciously accept) if it has a
-        // hero to spend Fate from AND is the local human — an AI side or a hero-less side has
-        // nothing to weigh, so its phase resolves itself immediately (see the two Begin*Phase
-        // methods below).
-        private static bool CanDecide(UnitData hero) => hero != null && hero.Owner != null && hero.Owner.IsHuman;
+        // Whether a Spend button should ever be interactable for `hero` — needs both a hero AND
+        // Fate to spend from a human's own hand (an AI side spends automatically instead, see
+        // RunAiFateSpend). NOT the same question as "should this phase pause for Accept" any
+        // more (see the two Begin*Phase methods below) — a human side with no hero (e.g. a
+        // CaptureKill hunter army with no hero of its own — see BeginCaptureKill's own note)
+        // still has nothing to SPEND, but still clicked Roll Die and still needs to see the
+        // result and click Accept themselves.
+        private static bool CanSpend(UnitData hero) => hero != null && hero.Owner != null && hero.Owner.IsHuman;
 
         private void BeginDefenderPhase()
         {
             _phase = Phase.DefenderDeciding;
             attackerRow?.SetSpendInteractable(false);
 
-            if (!CanDecide(_defenderHero))
+            // Paused for Accept whenever the DEFENDING UNIT itself (not its hero, which may not
+            // exist — see CanSpend's own note) belongs to the local human — an AI-owned unit has
+            // nobody to click Accept, so it auto-resolves via RunAiFateSpend instead. Checking
+            // the unit's own Owner rather than CanDecide(_defenderHero) is what fixes a human
+            // hunter's Capture Kill Challenge (or a human's own hero-less defender in Ground
+            // Combat) instantly resolving without ever showing the roll — see the user's own
+            // report.
+            if (IsAiSide(_defender))
             {
                 RunAiFateSpend(_defenderHero, isDefender: true);
                 BeginAttackerPhase();
                 return;
             }
-            defenderRow?.SetSpendInteractable(_defenderHero.Fate > 0 && HasMiss(_defenderDice));
+            defenderRow?.SetSpendInteractable(CanSpend(_defenderHero) && _defenderHero.Fate > 0 && HasMiss(_defenderDice));
             if (acceptButton != null)
                 acceptButton.interactable = true;
         }
@@ -165,13 +300,16 @@ namespace Game.UI
             _phase = Phase.AttackerDeciding;
             defenderRow?.SetSpendInteractable(false);
 
-            if (!CanDecide(_attackerHero))
+            // Same reasoning as BeginDefenderPhase's own comment — paused for Accept whenever
+            // the ATTACKING UNIT's owner is human, regardless of whether _attackerHero even
+            // exists (always null for a CaptureKill hunter — see BeginCaptureKill).
+            if (IsAiSide(_attacker))
             {
                 RunAiFateSpend(_attackerHero, isDefender: false);
-                ResolveDamage();
+                Resolve();
                 return;
             }
-            attackerRow?.SetSpendInteractable(_attackerHero.Fate > 0 && HasMiss(_attackerDice));
+            attackerRow?.SetSpendInteractable(CanSpend(_attackerHero) && _attackerHero.Fate > 0 && HasMiss(_attackerDice));
             if (acceptButton != null)
                 acceptButton.interactable = true;
         }
@@ -186,7 +324,9 @@ namespace Game.UI
                 return;
             bool hadMiss = HasMiss(isDefender ? _defenderDice : _attackerDice);
             bool spent = false;
-            while (hero.Fate > 0 && BattleAi.ShouldSpendFate(_attackerDice, _defenderDice, hero.Fate, isDefender))
+            bool isRetreating = isDefender && _defenderIsRetreating;
+            int defendingUnitHp = _defender != null ? _defender.HitPointsCurrent : int.MaxValue;
+            while (hero.Fate > 0 && BattleAi.ShouldSpendFate(_attackerDice, _defenderDice, hero.Fate, isDefender, isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill))
             {
                 bool rerolled = isDefender ? RerollOneMiss(ref _defenderDice) : RerollOneMiss(ref _attackerDice);
                 if (!rerolled)
@@ -217,6 +357,14 @@ namespace Game.UI
             if (_phase == Phase.DefenderDeciding)
                 BeginAttackerPhase();
             else if (_phase == Phase.AttackerDeciding)
+                Resolve();
+        }
+
+        private void Resolve()
+        {
+            if (_kind == ChallengeKind.CaptureKill)
+                ResolveCaptureKill();
+            else
                 ResolveDamage();
         }
 
@@ -290,6 +438,74 @@ namespace Game.UI
             ShowResult(damage, died);
         }
 
+        // Purely the rolled successes decide this — per the user's own call, dropping the
+        // manual's separate "capture threshold" (comparing the hunter's successes against the
+        // target's full original dice-pool size) since that let a clean win still resolve as a
+        // kill for reasons the player can't see on the dice themselves:
+        //   Escaped  — attacker successes < defender successes.
+        //   Killed   — attacker successes == defender successes (a bare, even win).
+        //   Captured — attacker successes > defender successes (a clean win).
+        // No HP/damage involved, unlike ResolveDamage.
+        private void ResolveCaptureKill()
+        {
+            _phase = Phase.Resolved;
+            attackerRow?.SetSpendInteractable(false);
+            defenderRow?.SetSpendInteractable(false);
+            if (acceptButton != null)
+                acceptButton.interactable = false;
+
+            var result = new ChallengeResult(_attackerDice, _defenderDice);
+            CaptureKillOutcome outcome;
+            if (result.AttackerSuccesses < result.DefenderSuccesses)
+                outcome = CaptureKillOutcome.Escaped;
+            else if (result.AttackerSuccesses > result.DefenderSuccesses)
+                outcome = CaptureKillOutcome.Captured;
+            else
+                outcome = CaptureKillOutcome.Killed;
+
+            _captureKillOutcome = outcome;
+            ShowCaptureKillResult(outcome);
+        }
+
+        private void ShowCaptureKillResult(CaptureKillOutcome outcome)
+        {
+            if (rollStateRoot != null)
+                rollStateRoot.SetActive(false);
+            if (resultStateRoot != null)
+                resultStateRoot.SetActive(true);
+
+            if (resultArtImage != null)
+            {
+                resultArtImage.sprite = _attacker?.Art;
+                resultArtImage.gameObject.SetActive(_attacker?.Art != null);
+            }
+            if (resultSummaryText != null)
+            {
+                string outcomeLine = outcome switch
+                {
+                    CaptureKillOutcome.Escaped => "The hero evades the hunters and remains free.",
+                    CaptureKillOutcome.Captured => "The hero is captured!",
+                    _ => "The hero is killed while attempting to escape!",
+                };
+                resultSummaryText.text = $"Capture Kill Challenge\nTarget: {_defender?.Name}\n{outcomeLine}";
+            }
+            if (resultTargetArtImage != null)
+            {
+                resultTargetArtImage.sprite = _defender?.Art;
+                resultTargetArtImage.gameObject.SetActive(_defender?.Art != null);
+            }
+            if (resultTargetNameText != null)
+                resultTargetNameText.text = _defender?.Name;
+            if (resultTargetHpText != null)
+                resultTargetHpText.text = outcome == CaptureKillOutcome.Escaped && _defender != null
+                    ? $"HP: {_defender.HitPointsCurrent}/{_defender.HitPointsMax}"
+                    : string.Empty;
+            // Captured is not a death — only Killed earns the Destroyed stamp (see the user's
+            // own report: a 3:2 win that resolved as Captured still showed Destroyed here).
+            if (destroyedStamp != null)
+                destroyedStamp.SetActive(outcome == CaptureKillOutcome.Killed);
+        }
+
         private void ShowResult(int damage, bool died)
         {
             if (rollStateRoot != null)
@@ -324,9 +540,24 @@ namespace Game.UI
         private void OnOkClicked()
         {
             Hide();
-            Action<int, bool> callback = _onResolved;
-            _onResolved = null;
-            callback?.Invoke(_resultDamage, _resultDied);
+            if (_kind == ChallengeKind.CaptureKill)
+            {
+                Action<CaptureKillOutcome> callback = _onCaptureKillResolved;
+                _onCaptureKillResolved = null;
+                callback?.Invoke(_captureKillOutcome);
+            }
+            else if (_kind == ChallengeKind.Announcement)
+            {
+                Action callback = _onAnnouncementAcknowledged;
+                _onAnnouncementAcknowledged = null;
+                callback?.Invoke();
+            }
+            else
+            {
+                Action<int, bool> callback = _onResolved;
+                _onResolved = null;
+                callback?.Invoke(_resultDamage, _resultDied);
+            }
         }
 
         public void Hide()

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Game.HexGrid;
+using Game.Players;
+using Game.Styles;
+using UnityEngine;
 
 namespace Game.Map
 {
@@ -46,6 +49,32 @@ namespace Game.Map
                 return;
             ByHex.Remove(hex);
             BuildingDestroyed?.Invoke(building);
+        }
+
+        // Shared by every place a building changes hands through combat, per the user's own
+        // Siege spec — a defending army wiped out completely (see BattleScreenUI.Combat.cs's
+        // HandleBuildingOnArmyDefeat) or an enemy simply walking onto a hex nobody defended at
+        // all (see HexSelectionController.Movement.cs's own undefended-building check). A
+        // Base-tagged building (a citadel or player-built Base) is CAPTURED intact — ownership
+        // only, recoloured to match. Anything else — a bare hero-built extraction facility,
+        // which never had a garrison of its own to begin with — has no structure worth
+        // capturing, so it's destroyed outright instead, icon and all.
+        public static void CaptureOrDestroy(BuildingData building, PlayerSetupData newOwner)
+        {
+            if (building == null)
+                return;
+            if (building.HasAbility(BuildingAbilities.Base))
+            {
+                building.Owner = newOwner;
+                if (building.Visual != null)
+                    building.Visual.SetColor(newOwner != null ? PlayerColorPalette.Colors[newOwner.ColorIndex] : Color.white);
+            }
+            else
+            {
+                Unregister(building.Hex);
+                if (building.Visual != null)
+                    UnityEngine.Object.Destroy(building.Visual.gameObject);
+            }
         }
     }
 }

@@ -16,5 +16,10 @@ namespace Game.Styles
         // see BattleScreenUI/BattleGridCellUI) — a bright "technical" yellow per the user's own
         // spec, distinct from any player colour (see PlayerColorPalette's own exclusion).
         public static readonly Color BattleActingUnit = new Color(0.95f, 0.85f, 0.1f);
+
+        // The round-start title's "X is retreating this round!" callout (BattleRoundStartPopupUI)
+        // — a warning orange so it reads as an alert rather than blending into the plain "Round N"
+        // text next to it (see the user's own "easy to miss" report on this line).
+        public static readonly Color RetreatWarning = new Color(0.95f, 0.5f, 0.1f);
     }
 }

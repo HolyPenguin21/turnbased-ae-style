@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.HexGrid;
 
 namespace Game.Combat
 {
@@ -25,6 +26,21 @@ namespace Game.Combat
         }
 
         public static bool HasAny => Pending.Count > 0;
+
+        // Whether `hex` already has a battle queued — checked before offering a Fight/Delay
+        // choice for a SECOND contact at the same hex (see HexSelectionController.Movement.cs's
+        // TryIssueMoveOrder and BattleScreenUI.Combat.cs's OnBattleOutcomeAcknowledged), per the
+        // user's own call: an army already reserved for a pending battle can't also be signed up
+        // for a new one. The second contact is simply left unresolved for now (both armies just
+        // end up coexisting on the hex) — GameTurnController's own end-of-turn sweep is what
+        // eventually forces a new battle for it, once this one's been drained.
+        public static bool IsHexPending(HexCoord hex)
+        {
+            foreach (PendingBattle existing in Pending)
+                if (existing.Hex.Equals(hex))
+                    return true;
+            return false;
+        }
 
         public static PendingBattle TakeNext()
         {

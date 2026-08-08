@@ -15,5 +15,11 @@ namespace Game.Players
         // actually run.
         public int? CitadelHexQ;
         public int? CitadelHexR;
+
+        // Set once, permanently, by GameTurnController.EliminatePlayer — a starting citadel
+        // capture doesn't set this immediately (see StartingCitadelLost's own comment on the
+        // recapture buffer), only losing it AND still not owning it again by the start of this
+        // player's own next turn does.
+        public bool IsEliminated;
     }
 }

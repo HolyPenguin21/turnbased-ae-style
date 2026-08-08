@@ -443,6 +443,10 @@ namespace Game.Map
         {
             if (armyButtonRow == null)
                 return;
+            // Prison is only ever reachable from inside ArmyViewerModalUI's own in-modal switcher
+            // (see its RefreshButtonRow) — never selectable for a move order from here, and never
+            // worth a button of its own on the hex-side row at all.
+            armies = armies.FindAll(a => !a.IsPrison);
             if (armies.Count >= 2)
                 armyButtonRow.Show(armies, OnArmyButtonClicked, GetSelectedArmy(), showStats: true);
             else
@@ -626,7 +630,11 @@ namespace Game.Map
         // drag-between-armies flow is invisible until/unless it has at least one unit again.
         private static List<ArmyData> NonEmptyArmiesAt(HexCoord hex)
         {
-            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0);
+            // IsPrison excluded outright, non-empty or not — it never gets a marker of its own
+            // (see ArmyData.IsPrison's own comment), so it must never become an owner's
+            // "representative" army here either, or a real army (e.g. that owner's garrison)
+            // would lose its marker to a Prison that was never meant to have one at all.
+            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0 && !a.IsPrison);
         }
 
         // Every HexObjectLayout offset is in hex-radius units (x = left/right, y = world Z) —
