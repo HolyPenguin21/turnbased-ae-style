@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Players;
+using Game.Styles;
 using Game.Turns;
 using TMPro;
 using UnityEngine;
@@ -24,7 +25,10 @@ namespace Game.UI
         public void SetPlayer(PlayerSetupData player, int diceCount)
         {
             if (nameText != null)
+            {
                 nameText.text = player.Nickname;
+                nameText.color = PlayerColorPalette.Colors[player.ColorIndex];
+            }
             if (rankText != null)
                 rankText.text = string.Empty;
             SpawnSlots(diceCount);

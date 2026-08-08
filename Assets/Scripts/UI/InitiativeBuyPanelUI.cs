@@ -9,13 +9,13 @@ namespace Game.UI
 {
     // "Buy Initiative Die" block: shown only for the human player (AI already bought its dice
     // via InitiativeDiceAI before the popup opens, so there's nothing for it to show here) —
-    // player name/colour, the flat price of one bonus die, and one BuyDiceRowUI per resource
-    // type to spend on it. Locked once TurnOrderPopupUI.RollAll fires, so nothing can change
-    // after the dice are already rolling.
+    // the flat price of one bonus die, and one BuyDiceRowUI per resource type to spend on it
+    // (the player's own name/colour is shown by their DiceRowUI below this panel instead).
+    // Locked once TurnOrderPopupUI.RollAll fires, so nothing can change after the dice are
+    // already rolling.
     public class InitiativeBuyPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
-        [SerializeField] private TMP_Text playerNameText;
         [SerializeField] private TMP_Text priceText;
         // Exactly 4, wired in the Editor in this fixed order: Human, Energy, Materials, Tech.
         [SerializeField] private BuyDiceRowUI[] resourceRows;
@@ -45,11 +45,6 @@ namespace Game.UI
             if (!active)
                 return;
 
-            if (playerNameText != null)
-            {
-                playerNameText.text = player.Nickname;
-                playerNameText.color = root.Color;
-            }
             if (priceText != null)
                 priceText.text = price.ToString();
 
