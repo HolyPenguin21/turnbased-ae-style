@@ -67,6 +67,8 @@ namespace Game.UI
             var optionLabels = new List<string>();
             for (int i = 0; i < PlayerColorPalette.Colors.Length; i++)
             {
+                if (i == PlayerColorPalette.NeutralColorIndex)
+                    continue;
                 if (excludedIndices.Contains(i) && i != Data.ColorIndex)
                     continue;
                 _colorOptionIndices.Add(i);

@@ -19,8 +19,9 @@ namespace Game.Setup
         // Default colour for the first three players, in join order — just what a new player
         // starts with, not a reservation; anyone can still repick via their row's own colour
         // dropdown (PlayerRowUI). Players beyond this bag fall back to a random unused colour,
-        // same as before. Indices are into PlayerColorPalette.Colors (0=Red, 1=Blue, 4=Cyan).
-        private static readonly int[] DefaultColorIndicesByOrder = { 1, 0, 4 };
+        // same as before. Indices are into PlayerColorPalette.Colors (1=Blue, 4=Cyan, 0=Steel).
+        // Second player defaults to Cyan per the project owner's own call.
+        private static readonly int[] DefaultColorIndicesByOrder = { 1, 4, 0 };
 
         public List<PlayerSetupData> Players { get; } = new List<PlayerSetupData>();
         public int MinPlayers { get; }
@@ -97,11 +98,13 @@ namespace Game.Setup
 
             var available = new List<int>();
             for (int i = 0; i < PlayerColorPalette.Colors.Length; i++)
-                if (!used.Contains(i))
+                if (!used.Contains(i) && i != PlayerColorPalette.NeutralColorIndex)
                     available.Add(i);
 
             if (available.Count == 0)
-                return Random.Range(0, PlayerColorPalette.Colors.Length); // pool exhausted, allow repeats
+                // Pool exhausted, allow repeats — still never Neutral's reserved slot, which
+                // NeutralColorIndex guarantees sits last in the array.
+                return Random.Range(0, PlayerColorPalette.NeutralColorIndex);
 
             return available[Random.Range(0, available.Count)];
         }

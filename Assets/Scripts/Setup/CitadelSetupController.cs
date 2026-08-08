@@ -497,7 +497,7 @@ namespace Game.Setup
             _neutralPlayer = new PlayerSetupData
             {
                 Nickname = "Neutral",
-                ColorIndex = 6, // Brown — distinct from GameSetupModel's own default player picks (1, 0, 4)
+                ColorIndex = PlayerColorPalette.NeutralColorIndex, // dark indigo, reserved — never offered to real players
                 Faction = Faction.None,
                 IsHuman = false,
             };
