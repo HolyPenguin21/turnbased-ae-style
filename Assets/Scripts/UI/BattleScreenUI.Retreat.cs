@@ -38,6 +38,7 @@ namespace Game.UI
         {
             ArmyData army = _retreatingArmy;
             _retreatingArmy = null;
+            Debug.Log($"[Battle] ResolveRetreat: army={army?.Name ?? "none"}, round={_round}");
             if (army == null)
             {
                 _round++;
@@ -65,8 +66,24 @@ namespace Game.UI
         private void PerformRetreat(ArmyData army, out bool destroyed)
         {
             HexCoord battleHex = army.Hex;
+
+            // The tactical _grid (see BattleGrid) holds its own UnitData references per cell,
+            // entirely separate from ArmyData.Members — relocating or clearing Members below
+            // never touched them before this, so a "retreated" army's units stayed sitting in
+            // the grid exactly as if they were still fighting. BattleTurnOrder.BuildOrder(_grid)
+            // (next OnStartRoundClicked) and BattleInitiator.IsCombatCapable(army) (which reads
+            // Members, still non-empty after a relocate) would both still see them: the SAME
+            // already-fled army could get re-evaluated by ConsiderAiRetreat and "retreat" a
+            // second time next round (see the user's own report — retreat announced again before
+            // round 3 for what should already be a resolved retreat).
+            if (_grid != null)
+                foreach (UnitData member in army.Members)
+                    if (_grid.TryFindPosition(member, out int row, out int col))
+                        _grid.Set(row, col, null);
+
             bool relocated = TryFindRetreatDestination(army, battleHex, out HexCoord destination);
             destroyed = !relocated;
+            Debug.Log($"[Battle] PerformRetreat: {army.Name} (owner={army.Owner?.Nickname}) from {battleHex} -> {(relocated ? destination.ToString() : "DESTROYED")}");
             if (relocated)
             {
                 ArmyRegistry.MoveArmy(army, destination);

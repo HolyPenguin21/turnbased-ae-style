@@ -452,7 +452,13 @@ namespace Game.UI
             // player happened to reselect the hex — the same restack ArmyViewerModalUI's own
             // Hide() relies on, just done explicitly here since nothing re-selects the hex after
             // a battle closes.
-            HexCoord hex = _attacker != null ? _attacker.Hex : (_defender != null ? _defender.Hex : default);
+            // _battleHex (captured once in Show from its own `hex` parameter, previously never
+            // stored at all) rather than re-derived from _attacker.Hex/_defender.Hex — a retreat
+            // (see PerformRetreat) changes the RETREATING side's own ArmyData.Hex mid-battle, so
+            // reading it back off _attacker/_defender here used to silently return the WRONG hex
+            // whenever the ATTACKER was the one who retreated (see the user's own report: retreat
+            // announced repeatedly, the next enemy on the same hex never actually engaged).
+            HexCoord hex = _battleHex;
 
             // The manual's own "two armies, one hex" case: if a THIRD army was already waiting
             // here, whichever side is still standing on `hex` and still combat-capable isn't
@@ -466,6 +472,7 @@ namespace Game.UI
             bool attackerHere = _attacker != null && _attacker.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_attacker);
             bool defenderHere = _defender != null && _defender.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_defender);
             ArmyData survivor = attackerHere != defenderHere ? (attackerHere ? _attacker : _defender) : null;
+            Debug.Log($"[Battle] OnBattleOutcomeAcknowledged: hex={hex}, attacker={_attacker?.Name}@{_attacker?.Hex} (here={attackerHere}), defender={_defender?.Name}@{_defender?.Hex} (here={defenderHere}), survivor={survivor?.Name ?? "none"}");
 
             hexSelectionController?.DeleteArmyIfEmptied(_attacker);
             hexSelectionController?.DeleteArmyIfEmptied(_defender);
@@ -480,6 +487,7 @@ namespace Game.UI
             ArmyData nextEnemy = survivor?.Owner != null && !DelayedBattleRegistry.IsHexPending(hex)
                 ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
                 : null;
+            Debug.Log($"[Battle] OnBattleOutcomeAcknowledged: nextEnemy={nextEnemy?.Name ?? "none"}, hexPending={DelayedBattleRegistry.IsHexPending(hex)}, battleContactPopup={(battleContactPopup != null)}");
             if (nextEnemy != null && battleContactPopup != null)
             {
                 // Same Fight/Delay choice as the very first contact on the strategic map (see
@@ -488,15 +496,21 @@ namespace Game.UI
                 // standing here.
                 var participants = new List<ArmyData> { survivor, nextEnemy };
                 battleContactPopup.Show(hex, participants,
-                    onFight: () => Show(hex, participants, _onClosed),
+                    onFight: () =>
+                    {
+                        Debug.Log($"[Battle] Chained fight chosen for hex={hex}: {participants[0]?.Name} vs {participants[1]?.Name}");
+                        Show(hex, participants, _onClosed);
+                    },
                     onDelay: () =>
                     {
+                        Debug.Log($"[Battle] Chained fight delayed for hex={hex}");
                         DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
                         Hide();
                     });
                 return;
             }
 
+            Debug.Log("[Battle] OnBattleOutcomeAcknowledged: no chained fight, hiding battle screen.");
             Hide();
         }
     }
