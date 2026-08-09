@@ -556,12 +556,21 @@ namespace Game.UI
         // Called by OnBattleOutcomeAcknowledged once the outcome popup is dismissed — there's
         // still no separate Quit/Close (see the class comment), this is only ever reached via a
         // battle actually finishing.
-        public void Hide()
+        // Everything a battle screen needs torn down to be safe to either close outright (Hide)
+        // or immediately reopen fresh (OnBattleOutcomeAcknowledged's own chained-fight case) —
+        // factored out because that chained case used to skip all of this: it went straight from
+        // the first fight's outcome into a second Show() without ever going through Hide(), so
+        // the FIRST battle's grid cells/turn-queue icons/round-start & attack popups stayed
+        // exactly as they were, still fully active underneath the second fight (see the user's
+        // own report — the debug log confirmed a new battle DID initialize, but visually the old
+        // panel's elements were all still on screen). Deliberately does NOT touch _onClosed,
+        // cardHand, or rtsCamera — those are either invoked/restored by Hide() itself once, or
+        // (for the chained path) must stay in their current "a battle is happening" state since
+        // Show() is about to run again immediately after.
+        private void ResetBattlePanel()
         {
-            Debug.Log("[Battle] Hide");
             if (panelRoot != null)
                 panelRoot.SetActive(false);
-            VisibilityChanged?.Invoke();
             if (_aiAutoPassRoutine != null)
             {
                 StopCoroutine(_aiAutoPassRoutine);
@@ -584,6 +593,13 @@ namespace Game.UI
             _idleTimer = -1f;
             _idleNudgeShown = false;
             aiThoughts?.Clear();
+        }
+
+        public void Hide()
+        {
+            Debug.Log("[Battle] Hide");
+            ResetBattlePanel();
+            VisibilityChanged?.Invoke();
             cardHand?.Show();
             rtsCamera?.SetPanningEnabled(true);
 

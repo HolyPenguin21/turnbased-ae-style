@@ -335,7 +335,7 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 2
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000002000000
     grantedAbilities: []
     structurePointsMax: 6
     defense: 2

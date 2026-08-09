@@ -27,6 +27,12 @@ namespace Game.UI
         [SerializeField] private Transform diceContainer;
         [SerializeField] private DiceSlotUI diceSlotPrefab;
         [SerializeField] private TMP_Text successText;
+        // How many dice this side's pool is about to roll (or just rolled) — set by
+        // BattleAttackPopupUI.SetDicePoolSize before/at Roll time, alongside successText's own
+        // after-the-roll hit count, so the player can see the pool size up front instead of only
+        // inferring it by counting dice slots once they've already appeared (see the user's own
+        // request).
+        [SerializeField] private TMP_Text diceCountText;
 
         private readonly List<DiceSlotUI> _diceSlots = new List<DiceSlotUI>();
         // Last dice array SetDice was actually given — a Fate-spend reroll calls SetDice again
@@ -78,6 +84,17 @@ namespace Game.UI
             _lastDice = null;
             if (successText != null)
                 successText.text = string.Empty;
+            if (diceCountText != null)
+                diceCountText.text = string.Empty;
+        }
+
+        // Pool size is known as soon as this side's Attack/Defense (+ any bonus dice) or
+        // Capture Kill pool is computed — BattleAttackPopupUI calls this at the same point it
+        // sets up the rest of the row, so it's visible before Roll Die is even clicked.
+        public void SetDicePoolSize(int count)
+        {
+            if (diceCountText != null)
+                diceCountText.text = $"Dice: {count}";
         }
 
         private void RefreshFate()
@@ -104,7 +121,13 @@ namespace Game.UI
         // with the SAME-length array where only the rerolled die actually changed — those
         // existing slots are reused and only the changed one plays its roll animation, so
         // spending Fate doesn't re-spin dice that already settled.
-        public void SetDice(bool[] dice)
+        //
+        // rerolledIndex (optional): the slot Fate was JUST spent on, if any — a plain by-value
+        // diff (below) misses a reroll that lands on the SAME hit/miss result as before (still a
+        // miss, just a different miss), which used to skip the flip animation entirely even
+        // though a real reroll happened (see the user's own report). Forces that one slot to
+        // replay regardless of whether its value actually changed.
+        public void SetDice(bool[] dice, int rerolledIndex = -1)
         {
             if (dice == null)
                 return;
@@ -130,7 +153,7 @@ namespace Game.UI
             else
             {
                 for (int i = 0; i < dice.Length && i < _diceSlots.Count; i++)
-                    if (_lastDice == null || i >= _lastDice.Length || _lastDice[i] != dice[i])
+                    if (i == rerolledIndex || _lastDice == null || i >= _lastDice.Length || _lastDice[i] != dice[i])
                         _diceSlots[i].PlayRoll(dice[i]);
             }
             _lastDice = (bool[])dice.Clone();

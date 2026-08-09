@@ -444,6 +444,18 @@ namespace Game.UI
 
         private void OnBattleOutcomeAcknowledged()
         {
+            // Tears down the just-finished battle's own grid cells/turn-queue icons/sub-popups
+            // (see ResetBattlePanel's own comment) right as its outcome is acknowledged — BEFORE
+            // deciding whether a second enemy on the same hex chains straight into a fresh Show().
+            // Previously nothing here did this at all: the chained case went straight into a new
+            // Show() with the FIRST battle's whole panel still exactly as it was, so debug
+            // logging confirmed the new battle DID initialize while every one of the old battle's
+            // UI elements stayed visually active on screen underneath it (see the user's own
+            // report). Safe to call even when nothing chains afterward — Hide() (below, or via
+            // onDelay) runs the exact same reset again, which is an idempotent no-op the second
+            // time.
+            ResetBattlePanel();
+
             // DeleteArmyIfEmptied only unregisters/destroys the ONE army's own marker — it
             // doesn't re-pick which army's marker should now represent this hex for a given
             // owner (see RestackArmiesOn's own comment). Without this, a second, untouched enemy

@@ -123,9 +123,15 @@ namespace Game.UI
         // per-side resource the hero contributes, not something the attacking/defending unit card
         // itself needs to be a hero to use (see BattleCombatantRowUI's own comment); the caller
         // (BattleScreenUI) already has the grid to look these up from.
+        // attackerPoolSize/defenderPoolSize (optional): only BeginCaptureKill needs to override
+        // these — its pools are _hunterDicePool/the target hero's own Fate, nothing to do with
+        // Attack/Defense (see BeginCaptureKill's own comment). Ground Combat's default (attacker.
+        // Attack / defender.Defense + defenderBonusDice) matches exactly what OnRollClicked
+        // itself rolls against, just surfaced before Roll Die is even clicked (see the user's own
+        // request to see each side's pool size up front, not just its post-roll success count).
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
             Sprite factionLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
-            bool defenderIsRetreating = false, int defenderBonusDice = 0)
+            bool defenderIsRetreating = false, int defenderBonusDice = 0, int? attackerPoolSize = null, int? defenderPoolSize = null)
         {
             _kind = ChallengeKind.GroundCombat;
             _attacker = attacker;
@@ -152,6 +158,8 @@ namespace Game.UI
 
             attackerRow?.Setup(attacker, attackerHero, factionLogo);
             defenderRow?.Setup(defender, defenderHero, factionLogo);
+            attackerRow?.SetDicePoolSize(attackerPoolSize ?? (attacker?.Attack ?? 0));
+            defenderRow?.SetDicePoolSize(defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice));
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
             if (rollButton != null)
@@ -189,7 +197,8 @@ namespace Game.UI
             _hunterDicePool = 1 + hunterUnits / 2;
             _onCaptureKillResolved = onResolved;
 
-            Begin(hunterFace, hunterHero, targetHero, targetHero, factionLogo, null, onAiThought);
+            Begin(hunterFace, hunterHero, targetHero, targetHero, factionLogo, null, onAiThought,
+                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.Fate ?? 0);
             _kind = ChallengeKind.CaptureKill;
         }
 
@@ -333,18 +342,20 @@ namespace Game.UI
             int defendingUnitHp = _defender != null ? _defender.HitPointsCurrent : int.MaxValue;
             while (hero.Fate > 0 && BattleAi.ShouldSpendFate(_attackerDice, _defenderDice, hero.Fate, isDefender, isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill))
             {
-                bool rerolled = isDefender ? RerollOneMiss(ref _defenderDice) : RerollOneMiss(ref _attackerDice);
+                bool rerolled = isDefender
+                    ? RerollOneMiss(ref _defenderDice, out int rerolledIndex)
+                    : RerollOneMiss(ref _attackerDice, out rerolledIndex);
                 if (!rerolled)
                     break;
                 hero.Fate--;
                 if (isDefender)
                 {
-                    defenderRow?.SetDice(_defenderDice);
+                    defenderRow?.SetDice(_defenderDice, rerolledIndex);
                     defenderRow?.OnFateSpent();
                 }
                 else
                 {
-                    attackerRow?.SetDice(_attackerDice);
+                    attackerRow?.SetDice(_attackerDice, rerolledIndex);
                     attackerRow?.OnFateSpent();
                 }
                 spent = true;
@@ -377,10 +388,10 @@ namespace Game.UI
         {
             if (_phase != Phase.DefenderDeciding || _defenderHero == null || _defenderHero.Fate <= 0)
                 return;
-            if (!RerollOneMiss(ref _defenderDice))
+            if (!RerollOneMiss(ref _defenderDice, out int rerolledIndex))
                 return;
             _defenderHero.Fate--;
-            defenderRow?.SetDice(_defenderDice);
+            defenderRow?.SetDice(_defenderDice, rerolledIndex);
             defenderRow?.OnFateSpent();
             defenderRow?.SetSpendInteractable(_defenderHero.Fate > 0 && HasMiss(_defenderDice));
         }
@@ -389,10 +400,10 @@ namespace Game.UI
         {
             if (_phase != Phase.AttackerDeciding || _attackerHero == null || _attackerHero.Fate <= 0)
                 return;
-            if (!RerollOneMiss(ref _attackerDice))
+            if (!RerollOneMiss(ref _attackerDice, out int rerolledIndex))
                 return;
             _attackerHero.Fate--;
-            attackerRow?.SetDice(_attackerDice);
+            attackerRow?.SetDice(_attackerDice, rerolledIndex);
             attackerRow?.OnFateSpent();
             attackerRow?.SetSpendInteractable(_attackerHero.Fate > 0 && HasMiss(_attackerDice));
         }
@@ -409,14 +420,20 @@ namespace Game.UI
 
         // Rerolls the first still-missed die found (no per-die selection UI — matches the
         // reference's single Spend button, not a click-a-die-to-target interaction).
-        private static bool RerollOneMiss(ref bool[] dice)
+        // rerolledIndex (out): which slot actually got rerolled, so the caller can force THAT
+        // slot's flip animation regardless of whether the new value happens to match the old one
+        // (see BattleCombatantRowUI.SetDice's own comment — a plain before/after value diff
+        // can't tell "unchanged" apart from "rerolled back to the same result").
+        private static bool RerollOneMiss(ref bool[] dice, out int rerolledIndex)
         {
+            rerolledIndex = -1;
             if (dice == null)
                 return false;
             for (int i = 0; i < dice.Length; i++)
                 if (!dice[i])
                 {
                     dice[i] = ChallengeResolver.RollDice(1)[0];
+                    rerolledIndex = i;
                     return true;
                 }
             return false;
