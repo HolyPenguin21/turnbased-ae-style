@@ -1,78 +1,55 @@
-# Composite Card Art — как запускать самому
+# CompositeCardArt.ps1
 
-Скрипт `CompositeCardArt.ps1` в этой же папке берёт сырую иллюстрацию (то, что вышло из
-ComfyUI, шаг 1 в `CARD_ART_PIPELINE.md`) и накладывает её на рамку карты (`Card_Base.png`) с
-плавным затуханием (фейдом) по краям. Это шаг 2 пайплайна.
+Скрипт:
+1. накладывает альфу (прозрачность по краям) на сырую иллюстрацию — по параметрам ниже;
+2. накладывает получившееся изображение на базу карты (`Card_Base.png`).
 
-## Запуск
+## Рабочие папки
 
-Открой PowerShell в этой папке (или укажи полный путь к скрипту) и выполни:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "CompositeCardArt.ps1" -ArtPath "путь\к\сырой_картинке.png" -OutName "IC_Card_Unit_Название_01"
-```
-
-`-ExecutionPolicy Bypass` нужен разово на каждый запуск, потому что Windows по умолчанию не
-даёт запускать неподписанные `.ps1`-скрипты. Чтобы не писать этот флаг каждый раз, один раз
-выполни в PowerShell:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-после этого можно запускать просто `.\CompositeCardArt.ps1 -ArtPath ... -OutName ...`.
-
-## Обязательные параметры
-
-| Параметр   | Что это |
+| Папка | Что там |
 |---|---|
-| `-ArtPath` | Путь к сырой иллюстрации (PNG), ещё без рамки — результат генерации в ComfyUI. |
-| `-OutName` | Имя итогового файла без расширения. По умолчанию сохраняется в `IronConcord\GameCards\<OutName>.png`. |
+| `Assets\Textures\General\Card_Base.png` | База карты (рамка) — уже готовый файл, лежит здесь всегда, трогать/генерировать заново не нужно. Скрипт берёт его отсюда автоматически. |
+| `Assets\Textures\Units\IronConcord\` | Сюда класть сырые (ещё без рамки) иллюстрации юнитов/героев после генерации в ComfyUI. |
+| `Assets\Textures\Units\General\` | Сюда класть сырые иллюстрации facility (зданий), которые не привязаны к конкретной фракции. |
+| `Assets\Textures\Units\IronConcord\GameCards\` | Сюда скрипт сохраняет готовые карты юнитов/героев (папка по умолчанию для `-OutDir`). |
+| `Assets\Textures\Units\General\GameCards\` | Готовые карты facility — для них при запуске указывай `-OutDir` на эту папку. |
 
-## Необязательные параметры
+## Параметры
 
-| Параметр | По умолчанию | Что делает |
-|---|---|---|
-| `-OutDir` | `IronConcord\GameCards` (рядом со скриптом) | Куда сохранить результат — поменяй, если делаешь карту для другой фракции/папки. |
-| `-SideFeatherPercent` | `15` | Ширина зоны затухания слева и справа, в % от ширины картинки. Чем больше — тем сильнее арт "проваливается" по бокам к прозрачности; чем меньше — тем ближе к жёсткому обрезу по краю. |
-| `-TopFeatherPercent` | `15` | Высота зоны затухания сверху, в % от высоты картинки. Тот же принцип, что и для боков. |
-| `-BottomFadeStartPercent` | `50` | На какой высоте (% от верха) начинается затухание низа картинки. |
-| `-BottomFadeEndPercent` | `72` | На какой высоте (% от верха) затухание низа доходит до полной прозрачности. От этой точки и до низа картинки — всегда пусто. |
+| Параметр | Обязательный | По умолчанию | Что делает |
+|---|---|---|---|
+| `-ArtPath` | да | — | Путь к сырой иллюстрации (PNG). |
+| `-OutName` | да | — | Имя итогового файла без расширения. |
+| `-OutDir` | нет | `IronConcord\GameCards` | Куда сохранить результат. |
+| `-SideFeatherPercent` | нет | `15` | Ширина затухания слева/справа, % от ширины. |
+| `-TopFeatherPercent` | нет | `15` | Высота затухания сверху, % от высоты. |
+| `-BottomFadeStartPercent` | нет | `50` | С какой высоты (%) начинается затухание низа. |
+| `-BottomFadeEndPercent` | нет | `72` | На какой высоте (%) низ становится полностью прозрачным (место под текст описания). |
 
-**Про низ картинки отдельно**: затухание там специально резкое и начинается не с самого низа,
-а с середины (`50%` → `72%`), а не растянуто на всю высоту до 100%. Это сделано, чтобы под
-текстом описания карты (в нижней части рамки) не просвечивали остатки арта — там должно быть
-чистое пустое место. Если увеличить `-BottomFadeEndPercent` ближе к 100, арт будет "протекать"
-ниже, к тексту описания; если уменьшить `-BottomFadeStartPercent`, затухание начнётся раньше
-и захватит больше картинки.
+## Пример запроса
 
-## Примеры
-
-Стандартные настройки (как во всех текущих картах):
 ```powershell
-.\CompositeCardArt.ps1 -ArtPath "C:\ComfyUI\output\my_unit_00001.png" -OutName "IC_Card_Unit_Scout_01"
+powershell -ExecutionPolicy Bypass -File "CompositeCardArt.ps1" -ArtPath "d:\Unity\Project\My_project\Assets\Textures\Units\IronConcord\IC_ATInfantry_01.png" -OutName "IC_Card_ATInfantry_01" -SideFeatherPercent 15 -TopFeatherPercent 15 -BottomFadeStartPercent 50 -BottomFadeEndPercent 72
 ```
 
-Более узкие поля по бокам/сверху (арт ближе к краю рамки) и низ гаснет позже, оставляя больше
-арта видимым перед текстом:
-```powershell
-.\CompositeCardArt.ps1 -ArtPath "C:\ComfyUI\output\my_unit_00001.png" -OutName "IC_Card_Unit_Scout_01" -SideFeatherPercent 8 -TopFeatherPercent 8 -BottomFadeStartPercent 60 -BottomFadeEndPercent 80
-```
+## Инструкция запуска (Windows 11)
 
-## После запуска
-
-Скрипт делает только компоновку (шаг 2). Дальше вручную, в Unity:
-
-1. **Импорт** (шаг 3 из `CARD_ART_PIPELINE.md`) — открой новый PNG в инспекторе Unity и
-   выставь `Texture Type → Sprite (2D and UI)`, `Alpha Is Transparency → включено`,
-   `Non-Power of 2 → None`.
-2. **Подключение карты** (шаг 4) — перетащи спрайт в поле `art:` нужной карты в
-   `Assets\Cards\IronConcord\CardCatalog_IronConcord.asset` (или в `GameConfig.asset` для
-   facility-карт добычи ресурсов).
-
-## Если после правки скрипта появляется ошибка парсинга при запуске
-
-На этой машине PowerShell 5.1 без BOM в файле читает `.ps1` в кодировке cp1251, а не UTF-8 —
-если в скрипте есть не-ASCII символы (например русские буквы или длинное тире «—»), они могут
-сломать парсинг файла с непонятной ошибкой вида `TerminatorExpectedAtEndOfString`. Держи текст
-самого скрипта (комментарии в том числе) в ASCII — обычные `-`, без «—» и без кириллицы.
+1. Нажми `Win`, введи `PowerShell`, открой обычный **Windows PowerShell** (не нужно от
+   администратора).
+2. Перейди в папку со скриптом:
+   ```powershell
+   cd "D:\Unity\Project\My_project\Assets\Textures\Units"
+   ```
+3. Положи сырую иллюстрацию из ComfyUI в `IronConcord\` (для юнита/героя) или `General\`
+   (для facility) — см. таблицу "Рабочие папки" выше.
+4. Запусти скрипт, подставив свои `-ArtPath` и `-OutName` (пример команды — выше):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File "CompositeCardArt.ps1" -ArtPath "IronConcord\my_unit_00001.png" -OutName "IC_Card_Unit_Scout_01"
+   ```
+5. Скрипт сразу печатает `Output folder: ...` (полный путь, куда сохранит результат) и дальше
+   показывает прогресс по шагам (`Feathering: 40% (row 481/1216, ...)` и т.п.) — если строчки не
+   бегут, значит реально завис, а не "молчит, но работает". Дождись строки `Saved: ...` (тоже с
+   полным путём) — готовая карта появится в `GameCards\` (или там, куда указал `-OutDir`).
+6. Если Unity открыт, переключись на него — он сам увидит новый файл и заимпортирует. Останется
+   вручную выставить `Texture Type → Sprite (2D and UI)` и `Alpha Is Transparency` в инспекторе
+   и подключить карту в каталог (`CardCatalog_IronConcord.asset`).

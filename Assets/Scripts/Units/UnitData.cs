@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Cards;
 using Game.Players;
 using UnityEngine;
 
@@ -18,6 +19,12 @@ namespace Game.Units
         // already display whatever's here via GameConfig.FormatAbilities.
         public readonly HashSet<string> Abilities = new HashSet<string>();
         public bool HasAbility(string ability) => Abilities.Contains(ability);
+
+        // Carried over from CardDefinition.unitTypeTags at spawn time, same as Abilities —
+        // classification (Bio/Mechanical/Armored/...), shown only in ArmyViewerModalUI's
+        // detail panel (ShowUnitDetail), right after the unit's name. Only some tags affect
+        // combat so far (see UnitAbilities.Hyperkinetic).
+        public readonly HashSet<UnitTypeTag> TypeTags = new HashSet<UnitTypeTag>();
 
         // How many times UnitAbilities.Berserk has triggered so far THIS battle — Attack/
         // Defense above already carry the +1/-1 per stack (see BattleAttackPopupUI.

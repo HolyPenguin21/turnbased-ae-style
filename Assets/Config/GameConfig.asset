@@ -233,6 +233,8 @@ MonoBehaviour:
     abbreviation: Rapid
   - ability: ShockAttack
     abbreviation: Shock
+  - ability: Hyperkinetic
+    abbreviation: Hyper +2
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   regionHighlightStyle:

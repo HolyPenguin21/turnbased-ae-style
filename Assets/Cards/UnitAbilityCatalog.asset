@@ -11,16 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d254ff29ab4961a55748f6ce8ff09c14, type: 3}
   m_Name: UnitAbilityCatalog
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   knownAbilities:
   - tag: Barracks
     description: Hex can receive Hero/Unit cards deployed from hand
   - tag: Base
-    description: Building is a defended Base — Defense folds into the hex's Ground
-      Combat roll, captured (not destroyed) on defeat
+    description: "Building is a defended Base \u2014 Defense folds into the hex's
+      Ground Combat roll, captured (not destroyed) on defeat"
   - tag: Lab
-    description: Carried by a placed Facility (e.g. Research Facility) — no behavior
-      wired yet
+    description: "Carried by a placed Facility (e.g. Research Facility) \u2014 no
+      behavior wired yet"
   - tag: CollectHuman
     description: Collects Human resource each turn
   - tag: CollectEnergy
@@ -30,20 +30,22 @@ MonoBehaviour:
   - tag: CollectTech
     description: Collects Tech resource each turn
   - tag: CriticalDamage
-    description: Damage dealt in a successful attack is x2 (see criticalDamageMultiplier
-      below)
+    description: Damage dealt in a successful attack is x2
   - tag: CeramicArmor
-    description: Damage received is reduced by a flat amount (see ceramicArmorReduction
-      below)
+    description: Damage received is reduced by a flat amount
   - tag: Berserk
     description: +Attack/-Defense each time this unit is hit, for the rest of the
-      battle (see berserkAttackGain/berserkDefenseLoss below)
+      battle
   - tag: RapidReaction
     description: Deploys for 0 AP; costs 0 AP to move as part of an army
   - tag: ShockAttack
     description: A successful hit drops the target from the rest of this round's
-      turn order, if it hasn't acted yet
+      turn order
+  - tag: Hyperkinetic
+    description: +2 damage against Armored-tagged targets, once the attack has already
+      dealt at least 1 damage
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
   berserkDefenseLoss: 1
+  hyperkineticBonusDamage: 2

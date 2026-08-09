@@ -785,7 +785,7 @@ namespace Game.UI
             root.SpendActionPoints(apCost);
             definition.resourceCost.PayFrom(root);
             bool isHero = definition.cardType == CardType.Hero;
-            UnitData spawned = hexSelection.SpawnUnit(definition.displayName, owner, definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate, definition.defenseRating, definition.resistanceRating);
+            UnitData spawned = hexSelection.SpawnUnit(definition.displayName, owner, definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate, definition.defenseRating, definition.resistanceRating, definition.unitTypeTags);
             if (spawned != null)
             {
                 targetArmy.AddMemberSorted(spawned);

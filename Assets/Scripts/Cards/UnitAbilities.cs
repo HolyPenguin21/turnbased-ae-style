@@ -33,5 +33,11 @@ namespace Game.Cards
         // it hasn't acted yet. See BattleScreenUI.Combat.cs's OnAttackResolved/
         // SkipRemainingTurnThisRound.
         public const string ShockAttack = "ShockAttack";
+
+        // "+2 damage against Armored-tagged targets, if the attack already dealt at least 1
+        // damage" — an attacker-side flat bonus keyed off the DEFENDER's UnitTypeTags.Armored,
+        // not any stat of the attacker's own. See UnitAbilityCatalog.hyperkineticBonusDamage,
+        // BattleAttackPopupUI.ResolveDamage.
+        public const string Hyperkinetic = "Hyperkinetic";
     }
 }

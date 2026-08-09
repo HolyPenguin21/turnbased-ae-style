@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Combat;
 using Game.Core;
 using Game.Economy;
@@ -647,8 +648,22 @@ namespace Game.Turns
             {
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(player);
+                LogAiGoal(player);
                 StartCoroutine(PassAfterDelay(AdvanceToNextPlayer));
             }
+        }
+
+        // Stage 1 of the AI architecture doc (goal scoring) wired in for visibility only —
+        // nothing below actually acts on the picked goal yet (no task chain, no execution), so
+        // the turn still just passes after PassAfterDelay same as before. Debug.Log only, per
+        // the user's own call — no in-game UI for this until execution actually exists.
+        private static void LogAiGoal(PlayerSetupData player)
+        {
+            AiGoal goal = AiGoalScorer.PickBest(player);
+            if (goal == null)
+                Debug.Log($"[AI] {player.Nickname}: нет целей выше нуля этот ход.");
+            else
+                Debug.Log($"[AI] {player.Nickname}: {goal.Kind} (score {goal.Score:0.0}) — {goal.Description}");
         }
 
         // Fired by TurnInfoPopupUI's Confirm button — the only thing that actually lets the

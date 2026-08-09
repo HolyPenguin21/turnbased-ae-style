@@ -31,7 +31,7 @@ namespace Game.Map
         // returned UnitData to whichever ArmyData it belongs to (ArmyData.AddMemberSorted) and,
         // if that changes the army's own visibility (e.g. its first member ever), refreshing the
         // hex with RestackArmiesOn.
-        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1)
+        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null)
         {
             if (owner == null)
                 return null;
@@ -49,6 +49,9 @@ namespace Game.Map
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)
                     data.Abilities.Add(ability);
+            if (typeTags != null)
+                foreach (UnitTypeTag tag in typeTags)
+                    data.TypeTags.Add(tag);
             // UnitAbilities.RapidReaction: "costs no AP to move when in an army" — overrides
             // whatever activationApCost the card itself declared (see ArmyData.
             // ActivationApCost, which sums each member's own cost).

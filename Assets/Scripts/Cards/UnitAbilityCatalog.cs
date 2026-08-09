@@ -52,5 +52,8 @@ namespace Game.Cards
         [Header("Berserk — UnitAbilities.Berserk")]
         public int berserkAttackGain = 1;
         public int berserkDefenseLoss = 1;
+
+        [Header("Hyperkinetic +2 vs Armored — UnitAbilities.Hyperkinetic")]
+        public int hyperkineticBonusDamage = 2;
     }
 }

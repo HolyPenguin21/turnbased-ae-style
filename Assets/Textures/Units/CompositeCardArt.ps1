@@ -33,7 +33,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutName,
 
-    [string]$OutDir = "$PSScriptRoot\IronConcord\GameCards",
+    [string]$OutDir = "",
 
     [ValidateRange(0, 50)]
     [double]$SideFeatherPercent = 15,
@@ -54,7 +54,24 @@ if ($BottomFadeEndPercent -le $BottomFadeStartPercent) {
 
 Add-Type -AssemblyName System.Drawing
 
-$FramePath = "$PSScriptRoot\..\General\Card_Base.png"
+# $PSScriptRoot (and $PSCommandPath) have been observed to come back empty at param-block-default
+# evaluation time when this script is launched as a nested `powershell -File` child process (e.g.
+# from another shell/tool) - that silently turned the old "$PSScriptRoot\IronConcord\GameCards"
+# default into "\IronConcord\GameCards", which resolves to the current drive's ROOT, not this
+# folder, and wrote output there without any error. By the time the script BODY runs (here),
+# $PSScriptRoot is reliably populated, so all path defaults are resolved down here instead of in
+# the param block.
+$ScriptRoot = $PSScriptRoot
+if ([string]::IsNullOrEmpty($ScriptRoot)) {
+    if ($MyInvocation.MyCommand.Path) { $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
+    else { throw "Could not determine the script's own directory - run the .ps1 file directly rather than piping/dot-sourcing it." }
+}
+
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $OutDir = "$ScriptRoot\IronConcord\GameCards"
+}
+
+$FramePath = "$ScriptRoot\..\General\Card_Base.png"
 $CanvasSize = 832, 1216
 $CornerRadius = 46
 $ArtWindowLeft = 70
@@ -64,6 +81,8 @@ $ArtWindowTop = 80
 if (-not (Test-Path $ArtPath)) { throw "Art file not found: $ArtPath" }
 if (-not (Test-Path $FramePath)) { throw "Card_Base.png not found at: $FramePath" }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
+$OutDir = [System.IO.Path]::GetFullPath($OutDir)
+Write-Host "Output folder: $OutDir"
 
 function New-RoundedFrame {
     param([System.Drawing.Bitmap]$Source, [int]$Radius)
@@ -118,15 +137,27 @@ function New-FeatheredArt {
         [double]$BottomEndPercent
     )
 
-    $bmp = New-Object System.Drawing.Bitmap $Source.Width, $Source.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $w = $Source.Width; $h = $Source.Height
     $edgeH = [Math]::Max(1, [int]($w * ($SidePercent / 100.0)))
     $edgeTop = [Math]::Max(1, [int]($h * ($TopPercent / 100.0)))
     $bottomStart = [int]($h * ($BottomStartPercent / 100.0))
     $bottomEnd = [int]($h * ($BottomEndPercent / 100.0))
 
+    # Per-pixel work is done on raw BGRA byte buffers (LockBits + Marshal.Copy) instead of
+    # GetPixel/SetPixel - the latter are GDI+ calls with heavy per-call overhead and turn a
+    # ~1-megapixel image into a multi-minute operation with zero visible progress in between.
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+    $srcData = $Source.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $stride = $srcData.Stride
+    $byteCount = $stride * $h
+    $buffer = New-Object byte[] $byteCount
+    [System.Runtime.InteropServices.Marshal]::Copy($srcData.Scan0, $buffer, 0, $byteCount)
+    $Source.UnlockBits($srcData)
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastReportedPercent = -1
+
     for ($y = 0; $y -lt $h; $y++) {
-        # Vertical factor: top fade, or bottom fade, or 1 in the middle band.
         if ($y -lt $edgeTop) {
             $vFactor = $y / [double]$edgeTop
         } elseif ($y -ge $bottomStart) {
@@ -139,6 +170,7 @@ function New-FeatheredArt {
             $vFactor = 1.0
         }
 
+        $rowOffset = $y * $stride
         for ($x = 0; $x -lt $w; $x++) {
             if ($x -lt $edgeH) {
                 $hFactor = $x / [double]$edgeH
@@ -149,21 +181,35 @@ function New-FeatheredArt {
             }
 
             $factor = [Math]::Min($hFactor, $vFactor)
-            if ($factor -ge 0.999) {
-                $bmp.SetPixel($x, $y, $Source.GetPixel($x, $y))
-            } else {
-                $src = $Source.GetPixel($x, $y)
-                $newAlpha = [int]([Math]::Round($src.A * [Math]::Max(0.0, [Math]::Min(1.0, $factor))))
-                $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($newAlpha, $src.R, $src.G, $src.B))
+            if ($factor -lt 0.999) {
+                # Format32bppArgb byte order in memory is B, G, R, A - only alpha changes.
+                $alphaIdx = $rowOffset + ($x * 4) + 3
+                $clamped = [Math]::Max(0.0, [Math]::Min(1.0, $factor))
+                $buffer[$alphaIdx] = [byte]([Math]::Round($buffer[$alphaIdx] * $clamped))
             }
         }
+
+        $percent = [int](100 * ($y + 1) / $h)
+        if ($percent -ne $lastReportedPercent -and ($percent % 10 -eq 0)) {
+            Write-Host "  Feathering: $percent% (row $($y + 1)/$h, $([int]$sw.Elapsed.TotalSeconds)s elapsed)"
+            $lastReportedPercent = $percent
+        }
     }
+
+    $bmp = New-Object System.Drawing.Bitmap $w, $h, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $dstData = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::WriteOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    [System.Runtime.InteropServices.Marshal]::Copy($buffer, 0, $dstData.Scan0, $byteCount)
+    $bmp.UnlockBits($dstData)
+
     return $bmp
 }
+
+$totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
 Write-Host "Loading frame and art..."
 $frameSrc = [System.Drawing.Bitmap]::FromFile($FramePath)
 $artSrc = [System.Drawing.Bitmap]::FromFile($ArtPath)
+Write-Host "  Frame: $($frameSrc.Width)x$($frameSrc.Height)   Art: $($artSrc.Width)x$($artSrc.Height)"
 
 Write-Host "Rounding frame corners..."
 $roundedFrame = New-RoundedFrame -Source $frameSrc -Radius $CornerRadius
@@ -171,7 +217,7 @@ $roundedFrame = New-RoundedFrame -Source $frameSrc -Radius $CornerRadius
 Write-Host "Feathering art edges (sides=$SideFeatherPercent% top=$TopFeatherPercent% bottom=$BottomFadeStartPercent%-$BottomFadeEndPercent%)..."
 $featheredArt = New-FeatheredArt -Source $artSrc -SidePercent $SideFeatherPercent -TopPercent $TopFeatherPercent -BottomStartPercent $BottomFadeStartPercent -BottomEndPercent $BottomFadeEndPercent
 
-Write-Host "Compositing..."
+Write-Host "Compositing... ($([int]$totalSw.Elapsed.TotalSeconds)s elapsed so far)"
 $canvas = New-Object System.Drawing.Bitmap $CanvasSize[0], $CanvasSize[1], ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $g = [System.Drawing.Graphics]::FromImage($canvas)
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -191,5 +237,5 @@ $canvas.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 
 $frameSrc.Dispose(); $artSrc.Dispose(); $roundedFrame.Dispose(); $featheredArt.Dispose(); $canvas.Dispose()
 
-Write-Host "Saved: $outPath"
+Write-Host "Saved: $outPath  (total $([int]$totalSw.Elapsed.TotalSeconds)s)"
 Write-Host "Next: fix Unity import settings (Step 3) and wire the guid into the card catalog (Step 4) - see CARD_ART_PIPELINE.md."

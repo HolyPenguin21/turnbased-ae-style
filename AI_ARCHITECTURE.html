@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Architect — Iron Concord Strategic AI</title>
+<style>
+  :root {
+    --bg: #eef1ef;
+    --surface: #ffffff;
+    --surface-2: #e3e9e5;
+    --ink: #1a211d;
+    --ink-dim: #566259;
+    --line: rgba(26, 33, 29, 0.16);
+    --line-soft: rgba(26, 33, 29, 0.09);
+    --accent: #a94e19;
+    --accent-ink: #fff8f1;
+    --steel: #3d5a68;
+    --steel-dim: #6f8b96;
+    --status-planned: #7c8a83;
+    --status-progress: #b3801f;
+    --status-blocked: #a8412f;
+    --status-done: #3f7d52;
+    --font-mono: "Cascadia Mono", "Cascadia Code", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171a;
+      --surface: #1a2124;
+      --surface-2: #202a2d;
+      --ink: #e6ede8;
+      --ink-dim: #93a29a;
+      --line: rgba(230, 237, 232, 0.16);
+      --line-soft: rgba(230, 237, 232, 0.08);
+      --accent: #e08a3e;
+      --accent-ink: #16110b;
+      --steel: #7fa0ac;
+      --steel-dim: #4c6873;
+      --status-planned: #7c8a83;
+      --status-progress: #d99a3f;
+      --status-blocked: #d0604a;
+      --status-done: #5fb377;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #12171a;
+    --surface: #1a2124;
+    --surface-2: #202a2d;
+    --ink: #e6ede8;
+    --ink-dim: #93a29a;
+    --line: rgba(230, 237, 232, 0.16);
+    --line-soft: rgba(230, 237, 232, 0.08);
+    --accent: #e08a3e;
+    --accent-ink: #16110b;
+    --steel: #7fa0ac;
+    --steel-dim: #4c6873;
+    --status-planned: #7c8a83;
+    --status-progress: #d99a3f;
+    --status-blocked: #d0604a;
+    --status-done: #5fb377;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.5;
+    background-image:
+      linear-gradient(30deg, var(--line-soft) 1px, transparent 1px),
+      linear-gradient(150deg, var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 64px 111px, 64px 111px, 64px 111px;
+    background-position: 0 0, 0 0, 0 0;
+  }
+
+  a { color: var(--steel); }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 32px 120px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 48px;
+  }
+
+  @media (max-width: 900px) {
+    .page { grid-template-columns: 1fr; }
+    .rail { position: static !important; order: 2; }
+  }
+
+  /* ---- Masthead ---- */
+  .masthead {
+    grid-column: 1 / -1;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: clamp(26px, 3.4vw, 38px);
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+    text-wrap: balance;
+  }
+  .masthead p {
+    max-width: 62ch;
+    color: var(--ink-dim);
+    margin: 0;
+  }
+  .meta-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--ink-dim);
+  }
+  .meta-row b { color: var(--ink); font-weight: 600; }
+
+  /* ---- Rail ---- */
+  .rail {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .rail-title {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 11px;
+    color: var(--ink-dim);
+    margin-bottom: 12px;
+  }
+  .rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--line);
+  }
+  .rail a {
+    display: block;
+    padding: 7px 0 7px 16px;
+    color: var(--ink-dim);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    margin-left: -1px;
+  }
+  .rail a:hover { color: var(--ink); border-left-color: var(--steel-dim); }
+  .rail .num { color: var(--steel); margin-right: 8px; }
+
+  /* ---- Content ---- */
+  main { min-width: 0; }
+  section { margin-bottom: 64px; scroll-margin-top: 24px; }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .sec-num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 2px 7px;
+    background: var(--surface);
+  }
+  h2 {
+    font-family: var(--font-mono);
+    font-size: 21px;
+    font-weight: 600;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  section > p, .panel > p { max-width: 70ch; color: var(--ink); }
+  .lede { color: var(--ink-dim); max-width: 68ch; margin-top: 0; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 22px 24px;
+  }
+  .panel + .panel { margin-top: 14px; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 0.05em 0.4em;
+  }
+
+  /* ---- Status grid (section 00) ---- */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .status-card {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 16px 18px;
+    background: var(--surface);
+  }
+  .status-card h4 {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-card p { margin: 0; font-size: 14px; color: var(--ink-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.done { background: var(--status-done); }
+  .dot.blocked { background: var(--status-blocked); }
+  .dot.planned { background: var(--status-planned); }
+
+  /* ---- Tables ---- */
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; }
+  td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ---- Turn stages ---- */
+  .stage-flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0;
+  }
+  .stage {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 14px 16px;
+    width: 175px;
+    flex: none;
+  }
+  .stage .n {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 12px;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .stage .t { font-size: 13.5px; font-weight: 600; display: block; margin-bottom: 4px; }
+  .stage .d { font-size: 12.5px; color: var(--ink-dim); }
+  .stage-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    color: var(--ink-dim);
+    font-family: var(--font-mono);
+    flex: none;
+  }
+  .loop-note {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--ink-dim);
+    font-family: var(--font-mono);
+    border-left: 2px solid var(--status-blocked);
+    padding-left: 12px;
+  }
+
+  /* ---- Formula block ---- */
+  .formula {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.7;
+  }
+  .formula .op { color: var(--ink-dim); }
+  .formula .term { color: var(--steel); }
+  .formula .term-accent { color: var(--accent); }
+
+  /* ---- Roadmap / tracker ---- */
+  .phase {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .phase-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--surface-2);
+    flex-wrap: wrap;
+  }
+  .phase-head h3 { margin: 0; display: flex; align-items: center; gap: 10px; }
+  .phase-head .tag { font-family: var(--font-mono); color: var(--ink-dim); font-size: 12px; }
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .chip.planned { color: var(--status-planned); border-color: var(--status-planned); }
+  .chip.progress { color: var(--status-progress); border-color: var(--status-progress); }
+  .chip.blocked { color: var(--status-blocked); border-color: var(--status-blocked); }
+  .chip.done { color: var(--status-done); border-color: var(--status-done); }
+  .phase-body { padding: 16px 20px 18px; }
+  .phase-body p { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; max-width: 68ch; }
+  .checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .checklist li {
+    font-size: 13.5px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .checklist li::before {
+    content: "";
+    width: 13px;
+    height: 13px;
+    border: 1.4px solid var(--ink-dim);
+    border-radius: 3px;
+    flex: none;
+    margin-top: 2px;
+  }
+  .checklist code { font-size: 0.86em; }
+
+  /* ---- Open questions ---- */
+  .qa { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 16px 20px; margin-bottom: 10px; }
+  .qa .q { font-weight: 600; font-size: 14.5px; margin: 0 0 6px; }
+  .qa .q::before { content: "? "; color: var(--accent); font-family: var(--font-mono); }
+  .qa .a { margin: 0; font-size: 14px; color: var(--ink-dim); }
+
+  footer {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">Design Doc · Iron Concord Empires — Strategic AI</p>
+    <h1>Архитектура стратегического ИИ для карты</h1>
+    <p>Как ИИ-игрок (и нейтральные армии) должен ставить цели, раскладывать их в цепочки задач и распределять эти задачи между армиями/героями — от оценки ситуации в начале хода до конца хода. Документ для трекинга объёма работ, не спецификация кода.</p>
+    <div class="meta-row">
+      <span><b>Статус</b> — черновик архитектуры, реализация не начата</span>
+      <span><b>Опирается на</b> — <code>BattleAi</code>, <code>InitiativeDiceAI</code>, <code>ChallengeResolver</code></span>
+      <span><b>Следующий шаг</b> — Фаза 1, Combat Worth-It Score</span>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <div class="rail-title">Содержание</div>
+    <ol>
+      <li><a href="#status"><span class="num">00</span>Текущее состояние</a></li>
+      <li><a href="#architecture"><span class="num">01</span>Модель: цель → задачи → армии</a></li>
+      <li><a href="#goals"><span class="num">02</span>Глобальные задачи (пункт 0)</a></li>
+      <li><a href="#groups"><span class="num">03</span>Группы действий</a></li>
+      <li><a href="#stages"><span class="num">04</span>Стадии хода</a></li>
+      <li><a href="#worth-it"><span class="num">05</span>Combat Worth-It Score</a></li>
+      <li><a href="#roadmap"><span class="num">06</span>Дорожная карта</a></li>
+      <li><a href="#questions"><span class="num">07</span>Открытые вопросы</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="status">
+      <div class="sec-head"><span class="sec-num">00</span><h2>Текущее состояние</h2></div>
+      <p class="lede">Реактивные куски ИИ уже есть и хорошо изолированы — их можно переиспользовать как есть. Стратегического слоя, который решает <em>что вообще делать в свой ход</em>, нет вообще: сейчас ИИ и нейтралы просто пропускают ход после паузы.</p>
+      <div class="status-grid">
+        <div class="status-card">
+          <h4><span class="dot done"></span>InitiativeDiceAI</h4>
+          <p>Покупка кубов инициативы перед раскладом хода. Готово, работает для всех ИИ-игроков.</p>
+        </div>
+        <div class="status-card">
+          <h4><span class="dot done"></span>BattleAi</h4>
+          <p>Расстановка armии на сетке, выбор цели атаки, трата Fate, 3-раундовая оценка «отступать/стоять» — <code>AssessRetreat</code>. Всё это работает только <em>внутри уже начавшегося боя</em>.</p>
+        </div>
+        <div class="status-card">
+          <h4><span class="dot blocked"></span>Стратегический слой</h4>
+          <p><code>GameTurnController</code>: «AI turn just passes after a short pause… nothing for it to actually decide yet». Нет ни одной точки входа для хода ИИ.</p>
+        </div>
+        <div class="status-card">
+          <h4><span class="dot blocked"></span>Player-agnostic API действий</h4>
+          <p>Розыгрыш карт, Improve/Repair базы, создание армии, приказ на движение — приватные методы, завязанные на UI одного человека (<code>CardHandUI._humanRoot</code>, <code>_selectedArmy</code>). Нужно вынести до начала работы над мозгом ИИ.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="sec-head"><span class="sec-num">01</span><h2>Модель: цель → цепочка задач → армии</h2></div>
+      <p class="lede">Каждый ход ИИ заново оценивает пул глобальных целей и выбирает (может — несколько, по бюджету AP) с максимальным score. Выбранная цель раскладывается в упорядоченную цепочку задач; каждая задача торгуется между подходящими армиями/героями по фитнес-очкам — одна цель может распределяться сразу на нескольких актёров, а не выполняться одной армией от начала до конца.</p>
+
+      <div class="panel">
+        <h3>Пример</h3>
+        <p>«Оборона границы» набирает наибольший score среди пула целей (обходит «Цитадель врага», «Расширение экономики», «Захват героя») и раскладывается в цепочку из трёх задач: «Стянуть армии к хексу-развилке» → «Атаковать вторжение» (задача под Worth-It-гейтом, раздел 05) → «Удержать позицию». Первую задачу забирает гарнизон (ближе всего, есть move), вторую и третью — полевая армия «Ironfang» (сильнейшая в радиусе); герой-разведчик остаётся не занят и свободен для других целей. Если Worth-It-гейт у «Атаковать» не проходит — движение не выдаётся, приоритет цели «Оборона границы» падает, и на следующем реплане пула целей наверх может выйти «Цитадель врага» или «Экспансия» вместо силового решения.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Почему не плоский GOAP по примитивным действиям</h3>
+        <p>Классический GOAP ищет путь к цели через precondition/effect-поиск по атомарным действиям — так был устроен ИИ в оригинальной Armageddon Empires (fuzzy logic + GOAP). При бюджете хода в ~10 AP и десятке армий/карт это лишняя мощность: цепочка задач здесь короткая и почти всегда линейная, а вот <em>кому какую задачу отдать</em> — это тот момент, где ИИ должен реально «подумать». Поэтому planning-уровень плоский (цель → готовый шаблон цепочки задач под тип цели), а весь intellect сосредоточен в двух местах: скоринг целей (какая цель вообще стоит внимания сейчас) и биддинг задач между актёрами (кто её выполнит лучше всех).</p>
+      </div>
+    </section>
+
+    <section id="goals">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Глобальные задачи (пункт 0)</h2></div>
+      <p class="lede">Задачи, которые растягиваются на несколько ходов. У всех типов — общий набор принципов; ниже сначала они, потом правила по каждому типу, потом то, как ИИ распределяет силы между несколькими такими задачами одновременно.</p>
+
+      <div class="panel">
+        <h3>Общие принципы</h3>
+        <p><strong>Видимость с памятью.</strong> «Видит» не значит «видит прямо сейчас» — ИИ знает, что было на хексе на момент последнего наблюдения (юниты, владение, ресурс), и действует по этой информации, даже если хекс уже несколько ходов вне обзора. Память не обновляется сама — устаревшую информацию исправляет только новое наблюдение или разведка.</p>
+        <p><strong>Разведка вместо угадывания.</strong> Если нужных данных на карте не видно (ресурсы, состав вражеской армии) — ИИ идёт разведывать, а не действует вслепую и не хватается за первый попавшийся вариант.</p>
+        <p><strong>Армия — не жёсткий контейнер.</strong> Юниты перебрасываются между армиями под конкретную задачу; композиция «под задачу» — это норма, а не редкий манёвр.</p>
+        <p><strong>Опасность = цель + окружение.</strong> Оценка риска всегда учитывает не только хекс самой задачи, но и близость вражеских армий к маршруту и к цели.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Роли армий — внутренняя классификация ИИ (не игровое понятие)</h3>
+        <p>Роль не хранится как флаг — она считывается из текущего состава армии и меняется сама при любой переброске юнитов.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Роль</th><th>Состав</th><th>Назначение</th></tr></thead>
+            <tbody>
+              <tr><td>Разведчик</td><td>одиночный юнит/герой, минимальная боевая ценность</td><td>снятие тумана, обновление памяти о хексах</td></tr>
+              <tr><td>Контроль территории</td><td>слабые/стартовые юниты</td><td>держит гарнизон/хекс, не расходуется на серьёзный бой</td></tr>
+              <tr><td>Ударная армия</td><td>собирается под конкретную задачу, состав плавает</td><td>ресурсные операции, оборона, атака</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>0.1 · Ресурсы</h3>
+        <ul class="checklist">
+          <li>Читерский срез только здесь: сравнивает свой income с остальными игроками (без учёта видимости) и старается не отставать.</li>
+          <li>Если видимых ресурсов нет — разведывает карту и сравнивает несколько найденных хексов, не берёт первый попавшийся.</li>
+          <li>Приоритет типа ресурса — по стоимости карт в собственной колоде.</li>
+          <li>Состав экспедиции — от героя-одиночки до небольшой ударной армии, в зависимости от охраны нейтралами, близости вражеских армий и дальности от своих сил.</li>
+          <li>Вылазки на слабо защищённые ресурсные хексы врага, если рядом своих свободных ресурсов нет.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>0.2 · Оборона границ</h3>
+        <ul class="checklist">
+          <li>Удерживает ресурсный хекс, если враг близко и оборона имеет смысл относительно сил противника — не держится за заведомо проигрышную позицию.</li>
+          <li>Реагирует на движение вражеских армий: оценивает угрозу и решает — стоит ли вообще противостоять сильной армии или лучше защищать конкретный укреплённый хекс (цитадель/база/хекс с высоким defense-бонусом).</li>
+          <li>Стягивает армии в радиус атаки, если это оправданно.</li>
+          <li>Формирует состав под конкретную угрозу из того, что есть в игре и на руке (грубая сила vs специфические способности).</li>
+          <li>Атакует при уверенности в победе; при примерно равных силах — выжидает (пропуск хода / держится на дистанции).</li>
+          <li>Подтягивает подкрепление по уровню угрозы, с оглядкой на позиции армий остальных игроков, а не только атакующего.</li>
+        </ul>
+        <p style="margin-top:14px;">Оценка «стоит ли стоять/атаковать» — та же WorthIt-логика из раздела 05, с двумя добавками из обсуждения: учитывать потенциальное подкрепление врага, если бой отложен до конца хода, и держать однораундовый горизонт для решения «отступить, пока сильная армия ещё не подошла». Кто выигрывает инициативу в начале раунда получает больше AP (двигает больше/крупнее армий) — сама механика инициативы вне скоупа этого документа, см. раздел 07.</p>
+      </div>
+
+      <div class="panel">
+        <h3>0.3 · Переход в атаку / инициатива</h3>
+        <p>ИИ не только реагирует на угрозы — у него есть собственная наступательная повестка.</p>
+        <ul class="checklist">
+          <li>Оценка: суммарная сила своих армий против последних <em>виденных</em> армий противника (с поправкой на устаревание памяти).</li>
+          <li>Минимальный гарнизон перед выводом войск в атаку — 1-2 слабых/средних юнита; меньше, если рядом есть армия прикрытия, но никогда не ноль (незащищённая база захватывается немедленно).</li>
+          <li>Формирует армию под конкретную операцию так же, как в 0.2.</li>
+        </ul>
+        <p style="margin-top:14px; font-weight:600;">Варианты боевых операций</p>
+        <ul class="checklist">
+          <li>захват/устранение сильного героя врага — юниты и герои не восполняются: карта не возвращается в колоду при потере</li>
+          <li>разгром слабой армии, чтобы сократить ресурсы противника</li>
+          <li>захват ресурсного хекса врага</li>
+          <li>снижение income противника</li>
+          <li>удар сильнейшими юнитами по цитадели/базе</li>
+          <li>охота на изолированного/ослабленного вражеского героя</li>
+          <li>засада/перехват на пути отступления или подкрепления врага</li>
+          <li>контр-разведка — охота на вражеских скаутов, чтобы ослепить противника</li>
+          <li>осада укреплённых зданий (в этом ремейке — обычный Ground Combat по зданию, не отдельный Siege Challenge)</li>
+          <li>приманка слабым отрядом, чтобы выманить армию врага с позиции для удара по освободившейся цели</li>
+        </ul>
+        <p style="margin-top:14px;">Выбор цели среди нескольких доступных операций — тот же скоринг, что выбирает саму глобальную цель (см. «Арбитр» ниже), а не отдельная система приоритетов.</p>
+        <p style="margin-top:14px; font-weight:600;">Триггеры перехода к инициативе</p>
+        <ul class="checklist">
+          <li>только что разбита сильная армия противника</li>
+          <li>в собственных армиях уже сосредоточены сильнейшие юниты — есть чем ударить</li>
+          <li>у противника надолго очень слабый income — экономическое превосходство реализуется через призыв большего числа армий под больше задач и переформирование сил под финальный удар</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Арбитр — распределение ресурсов, а не выбор одной цели</h3>
+        <ul class="checklist">
+          <li>0.1/0.2/0.3 — это не приоритет и не порядок, а просто перечисление типов; несколько глобальных задач могут быть назначены параллельно (например, захват ресурса и боевая операция одновременно).</li>
+          <li>Лимит параллельности — чисто ресурсный: сколько армий/юнитов/ресурсов есть у ИИ, столько задач он и тянет одновременно. По мере роста экономики параллельность растёт сама, отдельного искусственного потолка нет.</li>
+          <li>Актуальность распределения пересчитывается каждый ход (не только по событию) — чтобы, например, армия не ушла добывать ресурс, пока собственная цитадель под угрозой захвата слабой армией.</li>
+          <li>Это тот же utility-скоринг, что выбирает цель в разделе 01 и операцию внутри 0.3 — единый механизм на разных уровнях, не три разные системы.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="groups">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Группы действий</h2></div>
+      <p class="lede">Из этих примитивов собираются задачи в цепочках выше. Таблица — не про порядок хода (это раздел 04), а про то, какого вида вообще бывают действия и во что они обходятся.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Группа</th><th>Действия</th><th>Стоимость</th><th>Существующий API</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Экономика</td>
+              <td>Improve / Repair базы, постройка facility на ресурсном хексе (нужен герой на месте)</td>
+              <td class="num">AP + ресурсы</td>
+              <td><code>BaseViewerModalUI</code> — UI-only, нужен рефактор</td>
+            </tr>
+            <tr>
+              <td>Карты</td>
+              <td>тянуть карту, разыграть Unit/Hero в гарнизон, разыграть Base/Facility</td>
+              <td class="num">AP (+ресурсы)</td>
+              <td><code>CardHandUI</code> — привязан к человеку, нужен рефактор</td>
+            </tr>
+            <tr>
+              <td>Армия</td>
+              <td>создать/разделить армию, переместить, движение в контакт = авто-бой</td>
+              <td class="num">Move points</td>
+              <td><code>HexSelectionController</code> — привязан к выделению кликом, нужен рефактор</td>
+            </tr>
+            <tr>
+              <td>Бой (реактивно)</td>
+              <td>расстановка на сетке, выбор цели, трата Fate, отступление</td>
+              <td class="num">Fate</td>
+              <td><code>BattleAi</code> — готово, переиспользуется как есть</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="stages">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Стадии хода ИИ</h2></div>
+      <p class="lede">Внутри одного хода стадии выполняются по порядку; цикл «Worth-It не прошёл» возвращает не на предыдущую стадию, а на стадию 1 при следующем ходе — реплан пула целей, а не откат хода (раздел 01).</p>
+      <div class="stage-flow">
+        <div class="stage"><span class="n">1</span><span class="t">Реплан целей</span><span class="d">пересчёт score пула целей от свежего состояния карты</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">2</span><span class="t">Раскладка в задачи</span><span class="d">выбранная цель → шаблон цепочки задач под её тип</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">3</span><span class="t">Биддинг задач</span><span class="d">каждая задача уходит актёру с лучшим fitness-score</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">4</span><span class="t">Экономика + карты</span><span class="d">не блокируются контактом — выполняются первыми</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">5</span><span class="t">Движение</span><span class="d">может привести армию в контакт с врагом/нейтралом</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">6</span><span class="t">Бой</span><span class="d"><code>BattleAi</code> уже умеет — только его и запускаем</span></div>
+        <div class="stage-arrow">→</div>
+        <div class="stage"><span class="n">7</span><span class="t">Конец хода</span><span class="d">незавершённая цепочка задач переносится на следующий ход</span></div>
+      </div>
+      <p class="loop-note">Стадия 5 — единственная, что может провалить Worth-It-гейт задачи «Атаковать» ДО фактического движения в контакт (см. раздел 05): если не проходит, движение просто не выдаётся, задача возвращается в пул на следующий реплан.</p>
+    </section>
+
+    <section id="worth-it">
+      <div class="sec-head"><span class="sec-num">05</span><h2>Combat Worth-It Score</h2></div>
+      <p class="lede">Это конкретная следующая задача: <code>BattleAi</code> уже умеет вести бой и решать «отступать или стоять» — <code>AssessRetreat</code> — но только <em>реактивно</em>, когда бой уже открыт в <code>BattleScreenUI</code>. Нужна проактивная версия той же оценки: спросить «стоит ли вообще идти в этот контакт», ДО того как армия получила приказ на движение.</p>
+
+      <div class="panel">
+        <h3>Что уже есть и переиспользуется без изменений</h3>
+        <p><code>BattleAi.AssessRetreat(aiArmy, enemyArmy, defendingOwnCitadel)</code> — 3-раундовая проекция потерь HP с обеих сторон через <code>ExpectedDamagePerRound</code> (<code>Attack × 0.5 − avgDefense × 0.5</code> на юнита). Это и есть ядро оценки «кто вероятнее выигрывает» — его не нужно изобретать заново, только вызывать заранее и достраивать вокруг него.</p>
+      </div>
+
+      <div class="formula">
+<span class="op">WorthIt(attacker, target, goal) =</span>
+  <span class="term">winProjection</span>   <span class="op">← AssessRetreat-подобная проекция потерь за 3 раунда (уже есть)</span>
+  <span class="op">+</span> <span class="term">abilityDelta</span> <span class="op">← сейчас в ExpectedDamagePerRound НЕ учтено:</span>
+                 <span class="op">Hyperkinetic vs TypeTag.Armored, CriticalDamage ×2, CeramicArmor −N</span>
+  <span class="op">+</span> <span class="term">fateEdge</span>     <span class="op">← своя сумма Fate героев минус вражеская — запас на реролл</span>
+  <span class="op">+</span> <span class="term">stakes</span>       <span class="op">← ценность цели (юниты/хекс/герой/цитадель) минус ценность своей армии под риском</span>
+  <span class="op">×</span> <span class="term-accent">urgency(goal)</span> <span class="op">← множитель от цели-владельца: «Оборона цитадели» терпит худшие шансы, чем «Экспансия»</span>
+      </div>
+
+      <p>Используется в двух местах — не как две разные формулы, а один и тот же вызов с разным порогом:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Точка входа</th><th>Когда</th><th>Порог</th></tr></thead>
+          <tbody>
+            <tr><td>Гейт задачи «Атаковать» (раздел 01/04)</td><td>до выдачи приказа на движение в контакт</td><td>зависит от <code>urgency(goal)</code></td></tr>
+            <tr><td><code>BattleAi.ShouldSpendFate</code></td><td>уже во время боя, решение тратить ли Fate</td><td>переиспользовать ту же <code>winProjection</code>, а не отдельный дайс-хак</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <div class="sec-head"><span class="sec-num">06</span><h2>Дорожная карта</h2></div>
+      <p class="lede">Объём реализации решён: весь стек сразу (экономика + карты + армии), не вертикальный срез по одной группе.</p>
+
+      <div class="phase">
+        <div class="phase-head">
+          <h3>Фаза 0 — Player-agnostic API действий</h3>
+          <span class="tag">фундамент, без него ничего дальше не работает</span>
+          <span class="chip planned">Planned</span>
+        </div>
+        <div class="phase-body">
+          <p>Вынести действия из UI-привязанных методов в чистые методы <code>(PlayerSetupData actor, ...) → bool</code>, которые дёргают и человек через UI, и мозг ИИ напрямую.</p>
+          <ul class="checklist">
+            <li>Рука/колода как данные на игрока, не поле единственного <code>CardHandUI</code></li>
+            <li><code>BaseViewerModalUI.ImproveFacility</code>/<code>RepairBase</code> → чистые методы от <code>BuildingData</code>, без <code>_currentBuilding</code></li>
+            <li><code>ArmyViewerModalUI.CreateArmy</code> → метод с явным владельцем/хексом</li>
+            <li><code>HexSelectionController.TryIssueMoveOrder</code> → явные <code>(ArmyData, HexCoord)</code> вместо <code>_selectedArmy</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <h3>Фаза 1 — Combat Worth-It Score</h3>
+          <span class="tag">явно следующий шаг</span>
+          <span class="chip planned">Planned</span>
+        </div>
+        <div class="phase-body">
+          <p>Проактивная версия <code>AssessRetreat</code> + учёт способностей, которых там сейчас нет.</p>
+          <ul class="checklist">
+            <li>Вынести <code>ExpectedDamagePerRound</code> в переиспользуемую форму (сейчас приватный метод <code>BattleAi</code>)</li>
+            <li>Добавить в проекцию урона Hyperkinetic/Armored, CriticalDamage, CeramicArmor</li>
+            <li>Гейт задачи «Атаковать» в цепочке (раздел 01) — вызывает Worth-It до выдачи приказа</li>
+            <li><code>BattleAi.ShouldSpendFate</code> переведён на ту же <code>winProjection</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <h3>Фаза 2 — Полный пул целей + биддинг задач</h3>
+          <span class="tag">весь стек: экономика + карты + армии</span>
+          <span class="chip planned">Planned</span>
+        </div>
+        <div class="phase-body">
+          <p>Скоринг всех глобальных целей каждый ход, шаблоны цепочек задач под каждый тип цели, биддинг задач между армиями/героями по fitness.</p>
+          <ul class="checklist">
+            <li>Скоринг целей: Оборона, Экспансия, Цитадель врага, Захват героя — правила и приоритеты по типу цели уже расписаны, раздел 02</li>
+            <li>Шаблоны цепочек задач под каждый тип цели</li>
+            <li>Биддинг: fitness-функция «актёр ↔ задача» (дистанция, сила, доступный move/AP)</li>
+            <li>Интеграция с Фазой 0 API по всем 4 группам действий из раздела 03</li>
+            <li>Нейтральные армии — решить, получают ли вообще цели, или остаются статичными (см. раздел 07)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <h3>Фаза 3 — Настройка и полировка</h3>
+          <span class="tag">после того как цикл работает end-to-end</span>
+          <span class="chip planned">Planned</span>
+        </div>
+        <div class="phase-body">
+          <p>Тюнинг весов скоринга по playtest-фидбеку, борьба с вырожденными случаями (зависание между двумя целями, отказ атаковать вечно и т.п.).</p>
+          <ul class="checklist">
+            <li>Анти-осцилляция: цель не должна дёргаться туда-обратно каждый ход при близких score</li>
+            <li>Разная агрессивность по сложности (Easy/Normal/Hard — если такая настройка вообще нужна)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="questions">
+      <div class="sec-head"><span class="sec-num">07</span><h2>Открытые вопросы</h2></div>
+      <div class="qa">
+        <p class="q">Реплан каждый ход или только по событию?</p>
+        <p class="a">Документ выше предполагает реплан каждый ход (раздел 03, стадия 1) — самый простой вариант. Реплан «по значимому изменению состояния» дешевле по вычислениям, но добавляет отдельный слой «что считать значимым изменением». Стоит решить до Фазы 2.</p>
+      </div>
+      <div class="qa">
+        <p class="q">Нейтральные армии — тоже получают цели, или остаются как сейчас (статичные, реагируют только на контакт)?</p>
+        <p class="a">Сейчас нейтралы вообще без ИИ-хода — их <code>SpawnNeutralArmy</code> просто ставит их на карту один раз при сетапе. Дать им хотя бы «Оборона своего хекса» было бы дёшево и заметно оживило бы карту, но это отдельное решение, не обязательное для Фазы 2.</p>
+      </div>
+      <div class="qa">
+        <p class="q">Сколько целей ИИ может вести параллельно за один ход?</p>
+        <p class="a"><strong>Решено</strong> (раздел 02, «Арбитр») — ограничение чисто ресурсное, не фиксированное число. ИИ тянет столько целей параллельно, сколько может обеспечить армиями/юнитами/ресурсами (например, захват ресурса + боевая операция одновременно), и по мере роста экономики параллельность растёт сама. Пример в разделе 01 показывает частный случай — выбор одной доминирующей цели, но модель это не ограничивает; биддинг задач должен видеть все активные цепочки сразу, чтобы не отдать одну и ту же армию двум целям.</p>
+      </div>
+      <div class="qa">
+        <p class="q">Нужно ли ИИ телеграфировать намерение игроку (например, показывать, что армия «идёт защищать» хекс)?</p>
+        <p class="a">Не обязательно для работы системы — но если да, это почти бесплатно: у задачи уже есть читаемое имя (см. цепочку задач в разделе 01), можно просто выводить его как AI-thought, тем же механизмом что и <code>AiThoughtCategory</code> в бою.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>Iron Concord Empires — internal design doc · не код, не финальная спецификация</footer>
+</div>
+</body>
+</html>

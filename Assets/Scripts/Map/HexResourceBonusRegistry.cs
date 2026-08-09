@@ -28,5 +28,9 @@ namespace Game.Map
         {
             return ByHex.TryGetValue(hex, out ResourceYields bonus) ? bonus : null;
         }
+
+        // Every hex carrying a bonus at all — used by AiGoalScorer to scan for unclaimed
+        // resource hexes worth expanding onto (see ScoreExpandEconomy).
+        public static IEnumerable<HexCoord> AllBonusHexes() => ByHex.Keys;
     }
 }

@@ -443,6 +443,12 @@ namespace Game.UI
             // has nothing for either to modify.
             if (damage > 0 && _attacker.HasAbility(UnitAbilities.CriticalDamage))
                 damage = Mathf.RoundToInt(damage * CriticalDamageMultiplier);
+            // UnitAbilities.Hyperkinetic — flat bonus specifically against Armored-tagged
+            // targets, gated on the same "already a hit" check as every other modifier here.
+            // An attacker-side bonus, so it's grouped with CriticalDamage above rather than
+            // CeramicArmor's defender-side reduction right below.
+            if (damage > 0 && _attacker.HasAbility(UnitAbilities.Hyperkinetic) && _defender.TypeTags.Contains(UnitTypeTag.Armored))
+                damage += HyperkineticBonusDamage;
             if (damage > 0 && _defender.HasAbility(UnitAbilities.CeramicArmor))
                 damage = Mathf.Max(0, damage - CeramicArmorReduction);
 
@@ -472,6 +478,7 @@ namespace Game.UI
         private int CeramicArmorReduction => abilityCatalog != null ? abilityCatalog.ceramicArmorReduction : 1;
         private int BerserkAttackGain => abilityCatalog != null ? abilityCatalog.berserkAttackGain : 1;
         private int BerserkDefenseLoss => abilityCatalog != null ? abilityCatalog.berserkDefenseLoss : 1;
+        private int HyperkineticBonusDamage => abilityCatalog != null ? abilityCatalog.hyperkineticBonusDamage : 2;
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the

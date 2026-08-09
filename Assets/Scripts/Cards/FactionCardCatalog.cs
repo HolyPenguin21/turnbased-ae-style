@@ -28,6 +28,17 @@ namespace Game.Cards
 
         public List<CardDefinition> cards = new List<CardDefinition>();
 
+        // Keeps every CardDefinition.id in sync with its actual list position, so the inspector
+        // always shows the correct deckIndices value even after cards are added/removed/reordered.
+        private void OnValidate()
+        {
+            for (int i = 0; i < cards.Count; i++)
+            {
+                if (cards[i] != null)
+                    cards[i].id = i;
+            }
+        }
+
         // Random display name for a newly created army (see Game.Map.ArmyData) — drawn once
         // per creation, not reused/tracked, so duplicates across a game are possible and fine
         // (matches "random name" as asked for, not "unique name").

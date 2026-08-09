@@ -281,7 +281,10 @@ namespace Game.UI
                 // "this unit's own stat"); Command Rating only means anything for a hero (see
                 // ArmyData.Capacity), so it's skipped entirely for a plain unit rather than
                 // showing a meaningless number.
-                string text = $"{unit.Name}\n" +
+                string text = $"{unit.Name}\n";
+                if (unit.TypeTags.Count > 0)
+                    text += $"{string.Join(", ", unit.TypeTags)}\n";
+                text +=
                     $"Attack {unit.Attack}\n" +
                     $"Defense {unit.Defense}\n" +
                     $"Resistance {unit.Resistance}\n" +

@@ -16,6 +16,11 @@ namespace Game.Cards
     [System.Serializable]
     public class CardDefinition
     {
+        // This card's index within the owning FactionCardCatalog's cards list — the same number
+        // to put into CardHandUI's deckIndices to reference this card in a deck. Auto-synced by
+        // FactionCardCatalog.OnValidate on every inspector change; not hand-edited.
+        [ReadOnly] public int id;
+
         public string displayName;
         public Sprite art;
         // Faction.None for cards that aren't any faction's own — e.g. GameConfig.
@@ -67,14 +72,29 @@ namespace Game.Cards
         // every other stat above.
         public int initiative = 1;
 
-        // Free-form ability tags — the only skill/ability list a card has (see Game.Cards.
-        // UnitAbilities for the fixed-value ones this project actually gives combat effects to,
-        // and Game.Map.BuildingAbilities for the Base-card ones like Barracks/Lab/CollectX).
-        // Carried into UnitData.Abilities for Hero/Unit cards (see HexSelectionController.
-        // Factory.SpawnUnit) or BuildingData.Abilities for Base cards (see
-        // HexSelectionController.Factory.SpawnBuilding) at spawn time either way — same field,
-        // no separate "passive skill" list any more.
+        // Classification tags (Bio/Mechanical/Armored/...) — only meaningful for Hero/Unit
+        // cards, and only ever shown in a unit's detail panel (ArmyViewerModalUI.
+        // ShowUnitDetail), never on the compact card itself (unlike grantedAbilities, which
+        // CardUI/ArmyUnitCardUI also show abbreviated). A List<UnitTypeTag> rather than
+        // List<string> — see UnitTypeTag's own comment for why — so this shows as a per-entry
+        // dropdown in the inspector instead of a free-text field. Carried into UnitData.
+        // TypeTags at spawn time (see HexSelectionController.Factory.SpawnUnit). Only some tags
+        // affect combat so far (see UnitAbilities.Hyperkinetic).
+        [Header("Type Tags")]
+        public List<UnitTypeTag> unitTypeTags = new List<UnitTypeTag>();
+
+        // Ability tags — the only skill/ability list a card has (see Game.Cards.UnitAbilities
+        // for the fixed-value ones this project actually gives combat effects to, and
+        // Game.Map.BuildingAbilities for the Base-card ones like Barracks/Lab/CollectX). Still
+        // a List<string>, not an enum like unitTypeTags — the choices are UnitAbilityCatalog.
+        // knownAbilities (tunable data, not compiled code) — but [AbilityTag] (see
+        // Assets/Editor/AbilityTagDrawer.cs) gives it the same per-entry dropdown in the
+        // inspector. Carried into UnitData.Abilities for Hero/Unit cards (see
+        // HexSelectionController.Factory.SpawnUnit) or BuildingData.Abilities for Base cards
+        // (see HexSelectionController.Factory.SpawnBuilding) at spawn time either way — same
+        // field, no separate "passive skill" list any more.
         [Header("Abilities")]
+        [AbilityTag]
         public List<string> grantedAbilities = new List<string>();
 
         // Only meaningful for CardType.Base — starting stats for the BuildingData a Base card

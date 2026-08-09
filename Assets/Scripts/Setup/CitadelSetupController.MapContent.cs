@@ -181,7 +181,7 @@ namespace Game.Setup
             return hexSelectionController.SpawnUnit(definition.displayName, _neutralPlayer, definition.moveMax,
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                definition.defenseRating, definition.resistanceRating);
+                definition.defenseRating, definition.resistanceRating, definition.unitTypeTags);
         }
 
         // Placeholder pass — no random events exist in this project yet. Kept as its own no-op
