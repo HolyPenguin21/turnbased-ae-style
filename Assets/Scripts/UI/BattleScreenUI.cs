@@ -119,10 +119,7 @@ namespace Game.UI
         // (see PerformRetreat) changes the RETREATING side's own ArmyData.Hex mid-battle, so
         // reading it back off _attacker/_defender afterward silently returns the wrong hex
         // whenever the ATTACKER is the one who retreated — see OnBattleOutcomeAcknowledged's own
-        // former "HexCoord hex = _attacker != null ? _attacker.Hex : ..." line (found on
-        // inspection; the [Battle]-tagged Debug.Log calls scattered through this file/its
-        // partials are there to confirm it against the user's own repro, per their own request
-        // to add debug logging if a fix can't be verified without running the game).
+        // former "HexCoord hex = _attacker != null ? _attacker.Hex : ..." line.
         private HexCoord _battleHex;
         private BattleGrid _grid;
         private ArmyData _attacker;
@@ -233,7 +230,6 @@ namespace Game.UI
 
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed)
         {
-            Debug.Log($"[Battle] Show: hex={hex}, participants=[{string.Join(", ", (participants ?? new List<ArmyData>()).Select(a => $"{a?.Name}(owner={a?.Owner?.Nickname})"))}]");
             _onClosed = onClosed;
             _battleHex = hex;
             if (panelRoot != null)
@@ -390,7 +386,6 @@ namespace Game.UI
 
             BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(aiArmy, enemyArmy, defendingOwnCitadel);
             UnitData sideHero = BattleTurnOrder.FindHero(_grid, aiArmy == _attacker);
-            Debug.Log($"[Battle] ConsiderAiRetreat round={_round}: aiArmy={aiArmy.Name} members={aiArmy.Members.Count}, citadelDefense={assessment.IsCitadelDefense}, shouldRetreat={assessment.ShouldRetreat}");
 
             if (assessment.IsCitadelDefense)
             {
@@ -416,7 +411,6 @@ namespace Game.UI
             if (_retreatingArmy != null)
                 _turnOrder = _turnOrder.Where(u => u.Owner != _retreatingArmy.Owner).ToList();
             _turnIndex = 0;
-            Debug.Log($"[Battle] OnStartRoundClicked: round={_round}, retreatingArmy={_retreatingArmy?.Name ?? "none"}, turnOrder=[{string.Join(", ", _turnOrder.Select(u => u.Name))}]");
             RefreshTurnOrder();
         }
 
@@ -445,7 +439,6 @@ namespace Game.UI
             if (_turnOrder == null || _turnOrder.Count == 0)
                 return;
             _turnIndex++;
-            Debug.Log($"[Battle] EndTurn: round={_round}, turnIndex={_turnIndex}/{_turnOrder.Count}, retreatingArmy={_retreatingArmy?.Name ?? "none"}");
             if (_turnIndex >= _turnOrder.Count)
             {
                 // The grace round just finished — resolve the retreat now instead of starting
@@ -597,7 +590,6 @@ namespace Game.UI
 
         public void Hide()
         {
-            Debug.Log("[Battle] Hide");
             ResetBattlePanel();
             VisibilityChanged?.Invoke();
             cardHand?.Show();

@@ -484,7 +484,6 @@ namespace Game.UI
             bool attackerHere = _attacker != null && _attacker.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_attacker);
             bool defenderHere = _defender != null && _defender.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_defender);
             ArmyData survivor = attackerHere != defenderHere ? (attackerHere ? _attacker : _defender) : null;
-            Debug.Log($"[Battle] OnBattleOutcomeAcknowledged: hex={hex}, attacker={_attacker?.Name}@{_attacker?.Hex} (here={attackerHere}), defender={_defender?.Name}@{_defender?.Hex} (here={defenderHere}), survivor={survivor?.Name ?? "none"}");
 
             hexSelectionController?.DeleteArmyIfEmptied(_attacker);
             hexSelectionController?.DeleteArmyIfEmptied(_defender);
@@ -499,7 +498,6 @@ namespace Game.UI
             ArmyData nextEnemy = survivor?.Owner != null && !DelayedBattleRegistry.IsHexPending(hex)
                 ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
                 : null;
-            Debug.Log($"[Battle] OnBattleOutcomeAcknowledged: nextEnemy={nextEnemy?.Name ?? "none"}, hexPending={DelayedBattleRegistry.IsHexPending(hex)}, battleContactPopup={(battleContactPopup != null)}");
             if (nextEnemy != null && battleContactPopup != null)
             {
                 // Same Fight/Delay choice as the very first contact on the strategic map (see
@@ -508,21 +506,15 @@ namespace Game.UI
                 // standing here.
                 var participants = new List<ArmyData> { survivor, nextEnemy };
                 battleContactPopup.Show(hex, participants,
-                    onFight: () =>
-                    {
-                        Debug.Log($"[Battle] Chained fight chosen for hex={hex}: {participants[0]?.Name} vs {participants[1]?.Name}");
-                        Show(hex, participants, _onClosed);
-                    },
+                    onFight: () => Show(hex, participants, _onClosed),
                     onDelay: () =>
                     {
-                        Debug.Log($"[Battle] Chained fight delayed for hex={hex}");
                         DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
                         Hide();
                     });
                 return;
             }
 
-            Debug.Log("[Battle] OnBattleOutcomeAcknowledged: no chained fight, hiding battle screen.");
             Hide();
         }
     }

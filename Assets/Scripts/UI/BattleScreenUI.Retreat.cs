@@ -38,7 +38,6 @@ namespace Game.UI
         {
             ArmyData army = _retreatingArmy;
             _retreatingArmy = null;
-            Debug.Log($"[Battle] ResolveRetreat: army={army?.Name ?? "none"}, round={_round}");
             if (army == null)
             {
                 _round++;
@@ -83,7 +82,6 @@ namespace Game.UI
 
             bool relocated = TryFindRetreatDestination(army, battleHex, out HexCoord destination);
             destroyed = !relocated;
-            Debug.Log($"[Battle] PerformRetreat: {army.Name} (owner={army.Owner?.Nickname}) from {battleHex} -> {(relocated ? destination.ToString() : "DESTROYED")}");
             if (relocated)
             {
                 ArmyRegistry.MoveArmy(army, destination);
