@@ -58,10 +58,13 @@ namespace Game.Units
 
         // Meaningful only for a hero (same as CommandRating) — spent during a battle challenge
         // to re-roll an unsuccessful die in the attacker's or defender's own pool (see the
-        // manual's Ground-to-Ground Combat). Not yet consumed anywhere — battle resolution
-        // doesn't exist yet — just the stat, carried over from CardDefinition.fate at spawn
-        // time same as everything else here.
+        // manual's Ground-to-Ground Combat and BattleAttackPopupUI's SpendFate). Restored to
+        // FateMax at the start of every one of this unit's owner's own turns (see
+        // GameTurnController.ReplenishMoveForOwner/ReplenishFateForNewTurn) — same "current vs.
+        // max" split as HitPointsCurrent/HitPointsMax, just named Fate (not FateCurrent) since
+        // that's what every existing caller already reads/writes.
         public int Fate;
+        public int FateMax;
 
         // The card art this unit was spawned from (see CardDefinition.art), carried over at
         // spawn time same as MoveMax/CommandRating — the map marker itself only ever shows the
@@ -108,6 +111,13 @@ namespace Game.Units
         public void ReplenishMoveForNewTurn()
         {
             MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);
+        }
+
+        // Fate isn't a "gained per turn" resource like Move — it just fully refills, same as a
+        // building's StructurePoints don't heal but a hero's spent Fate does (per the manual).
+        public void ReplenishFateForNewTurn()
+        {
+            Fate = FateMax;
         }
     }
 }

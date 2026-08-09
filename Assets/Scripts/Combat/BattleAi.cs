@@ -383,8 +383,10 @@ namespace Game.Combat
         // isRetreating/defendingUnitHp (defender only): a retreating army can have several of its
         // own units attacked in sequence within the same grace round (see BattleScreenUI.
         // _retreatingArmy) before it actually leaves — spending freely on whichever hit lands
-        // first can drain Fate (it never replenishes, see UnitData.Fate) before a LATER hit that
-        // turns out to actually be lethal to a different unit ever gets a chance at it. While
+        // first can drain Fate (it doesn't replenish again until this unit's owner's own next
+        // strategic turn, see UnitData.ReplenishFateForNewTurn — nothing restores it mid-battle)
+        // before a LATER hit that turns out to actually be lethal to a different unit ever gets
+        // a chance at it. While
         // retreating, only spend on a hit that would genuinely kill the defender right now;
         // outside a retreat, keep trying on any damage as before (there's no such queue of
         // still-to-come attacks against the same Fate pool to protect against).

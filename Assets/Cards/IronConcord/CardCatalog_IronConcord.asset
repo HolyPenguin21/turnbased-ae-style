@@ -358,7 +358,7 @@ MonoBehaviour:
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
-    activationApCost: 2
+    activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 5
@@ -379,7 +379,7 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 11
-    displayName: AT_Infantry
+    displayName: AT Infantry
     art: {fileID: 21300000, guid: 93c45910ae780c14aad66880a4f5f6d8, type: 3}
     faction: 0
     cardType: 1
@@ -413,7 +413,7 @@ MonoBehaviour:
       tech: 0
   - id: 12
     displayName: Battle Suit
-    art: {fileID: 21300000, guid: 93c45910ae780c14aad66880a4f5f6d8, type: 3}
+    art: {fileID: 21300000, guid: bb76a75792c2a094da77e5b38a5be80e, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
@@ -424,7 +424,7 @@ MonoBehaviour:
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
-    activationApCost: 2
+    activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 4

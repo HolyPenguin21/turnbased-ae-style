@@ -44,7 +44,7 @@ namespace Game.Map
                 IsHero = isHero, CommandRating = commandRating,
                 Art = art,
                 Attack = attack, Defense = defense, Resistance = resistance, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
-                Initiative = initiative, Fate = fate,
+                Initiative = initiative, Fate = fate, FateMax = fate,
             };
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)

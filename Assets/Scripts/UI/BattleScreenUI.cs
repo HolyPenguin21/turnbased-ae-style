@@ -238,6 +238,18 @@ namespace Game.UI
             _defender = participants != null && participants.Count > 1 ? participants[1] : null;
             _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
+            // A hex with a SECOND still-standing enemy army chains straight into a fresh Show()
+            // for that fight (see OnBattleOutcomeAcknowledged) without ever going through Hide()
+            // in between — Hide() is the only other place this gets cleared, so without this a
+            // retreat already resolved (or still pending) against the FIRST army leaked into the
+            // second battle: it suppressed ConsiderAiRetreat's own fresh decision every round
+            // (its guard is just "_retreatingArmy != null") and, worse, made EndTurn fire
+            // ResolveRetreat on that stale/already-gone army the moment the new battle's first
+            // round ended — a bogus "the enemy retreats" for an army that wasn't even part of
+            // this fight, while the actual current opponent's own retreat never got a chance to
+            // engage the mechanic at all (see the user's own report: retreat announced again and
+            // again, never actually taking effect).
+            _retreatingArmy = null;
             _aiWaitStreak.Clear();
 
             // AI never gets a UI Arrangement phase — replace whatever FromArmies's generic

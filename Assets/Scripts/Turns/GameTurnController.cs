@@ -679,16 +679,19 @@ namespace Game.Turns
             TurnStateChanged?.Invoke();
         }
 
-        // Restores move points for every unit belonging to whoever's turn is starting —
-        // player is null for Neutral's slot, matching ArmyData.Owner for any Neutral armies.
-        // Units have no registry of their own any more (see Game.Map.ArmyController) — reached
-        // only through the armies that contain them.
+        // Restores move points and hero Fate for every unit belonging to whoever's turn is
+        // starting — player is null for Neutral's slot, matching ArmyData.Owner for any Neutral
+        // armies. Units have no registry of their own any more (see Game.Map.ArmyController) —
+        // reached only through the armies that contain them.
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 foreach (UnitData unit in army.Members)
+                {
                     unit.ReplenishMoveForNewTurn();
+                    unit.ReplenishFateForNewTurn();
+                }
                 // Activation is tracked per-ARMY, not per-unit (see ArmyData.
                 // HasActivatedThisTurn) — a unit never moves on its own.
                 army.HasActivatedThisTurn = false;

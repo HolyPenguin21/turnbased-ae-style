@@ -115,6 +115,14 @@ namespace Game.UI
                 foreach (bool hit in dice)
                 {
                     DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    // diceSlotPrefab is wired (in the scene) to an inactive template object
+                    // rather than DiceRow.prefab's always-active DiceSlot prefab asset — Unity's
+                    // Instantiate carries an inactive source's activeSelf over to the clone, so
+                    // without this the clone starts inactive and PlayRoll's own
+                    // !gameObject.activeInHierarchy check silently skips straight to
+                    // SetImmediate, no flip animation at all (see the user's own report: no
+                    // animated dice in the attack popup, unlike DiceRowUI's turn-order roll).
+                    slot.gameObject.SetActive(true);
                     slot.PlayRoll(hit);
                     _diceSlots.Add(slot);
                 }
