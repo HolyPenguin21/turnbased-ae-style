@@ -201,7 +201,7 @@ namespace Game.UI
                 $"Initiative {unit.Initiative}";
             if (unit.IsHero)
                 text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
-            string abilities = gameConfig != null ? gameConfig.FormatAbilities(unit.Abilities) : null;
+            string abilities = gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null;
             if (!string.IsNullOrEmpty(abilities))
                 text += $"\n{abilities}";
             detailText.text = text;

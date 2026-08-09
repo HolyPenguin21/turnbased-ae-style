@@ -86,6 +86,8 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    grantedAbilities:
+    - CollectHuman
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -94,8 +96,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities:
-    - CollectHuman
   - displayName: Energy Extractor
     art: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
     faction: 2
@@ -117,6 +117,8 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    grantedAbilities:
+    - CollectEnergy
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -125,8 +127,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities:
-    - CollectEnergy
   - displayName: Materials Extractor
     art: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
     faction: 2
@@ -148,6 +148,8 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    grantedAbilities:
+    - CollectMaterials
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -156,8 +158,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities:
-    - CollectMaterials
   - displayName: Tech Extractor
     art: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
     faction: 2
@@ -179,6 +179,8 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    grantedAbilities:
+    - CollectTech
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -187,8 +189,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities:
-    - CollectTech
   facilityUpgradeTiers:
   - apCost: 2
     cost:
@@ -228,7 +228,7 @@ MonoBehaviour:
   - ability: CeramicArmor
     abbreviation: Armor -1
   - ability: Berserk
-    abbreviation: Berserk
+    abbreviation: Bers
   - ability: RapidReaction
     abbreviation: Rapid
   - ability: ShockAttack
@@ -290,12 +290,12 @@ MonoBehaviour:
       alternativeTextures: []
       baselineWeight: 5
       resourceYields:
-        human: 2
+        human: 0
         energy: 0
         materials: 0
         tech: 0
       moveCost: 1
-      defenseModifier: 0
+      defenseModifier: 1
     - terrainName: Desert
       texture: {fileID: 2800000, guid: bb148a601ad978343a2d2a01f1420c34, type: 3}
       alternativeTextures: []
@@ -314,10 +314,10 @@ MonoBehaviour:
       resourceYields:
         human: 0
         energy: 0
-        materials: 1
+        materials: 0
         tech: 0
       moveCost: 3
-      defenseModifier: 0
+      defenseModifier: 2
     - terrainName: Rock desert
       texture: {fileID: 2800000, guid: f80a460672b412a4586045832a446d55, type: 3}
       alternativeTextures: []
@@ -326,20 +326,20 @@ MonoBehaviour:
         human: 0
         energy: 0
         materials: 0
-        tech: 1
+        tech: 0
       moveCost: 1
-      defenseModifier: 0
+      defenseModifier: 1
     - terrainName: Sand dunes
       texture: {fileID: 2800000, guid: fc1459211b024a14d863404944238127, type: 3}
       alternativeTextures: []
       baselineWeight: 5
       resourceYields:
         human: 0
-        energy: 1
+        energy: 0
         materials: 0
         tech: 0
       moveCost: 2
-      defenseModifier: 0
+      defenseModifier: 1
     mountainsTerrainName: Mountains
     mountainRangeCount: 3
     mountainRangeLength: 2

@@ -65,9 +65,9 @@
 - [ ] Максимум 8 армий на гекс — не проверено/не найдено.
 - [ ] AP-стоимость движения = 1 за каждого героя/юнита в армии — сейчас `ActivationApCost` суммирует стоимость по каждому члену (похоже, но не 1:1 с мануалом — надо сверить формулу отдельно).
 - [x] ~~Air Assault (прыжок армии в гекс игнорируя террейн/control/supply)~~ — не реализовано, нигде в коде.
-- [x] ~~Experience (Green/Hardened/Veteran/Shock/Elite, бонус Fate, штрафы за добавление/потерю юнита)~~ — **отклонено** владельцем проекта. `ArmyViewerModalUI` жёстко пишет "Experience: Green" как заглушку — так и останется.
+- [x] ~~Experience (Green/Hardened/Veteran/Shock/Elite, бонус Fate, штрафы за добавление/потерю юнита)~~ — **отклонено** владельцем проекта. Заглушка "Experience: Green" в `ArmyViewerModalUI.ShowArmySummary` убрана 2026-08-09 — механика отклонена и текста про неё в UI больше нет.
 - [x] ~~Prestige Points / Legendary army~~ — **отклонено** владельцем проекта (комментарий в коде: "Prestige is omitted entirely rather than stubbed").
-- [x] ~~Battle Honors~~ — **отклонено** владельцем проекта. Заглушка "Battle Honors: —" так и останется, ничего не считается.
+- [x] ~~Battle Honors~~ — **отклонено** владельцем проекта. Заглушка "Battle Honors: —" в `ArmyViewerModalUI.ShowArmySummary` убрана 2026-08-09, как и Experience.
 - [x] Retreat (отход к ближайшему Barracks-гексу, garrison никогда не отступает) — сделано, соответствует мануалу. `BattleScreenUI.Retreat.cs`.
 
 ## 11. Bases (pg. 17-18)

@@ -48,6 +48,16 @@ the hex terrain it belongs to>`. Ground-level view, not aerial/top-down — the 
 prompt asked for a broader shot it came back as a city map instead of one building (see negative
 prompt's `aerial view, top down view, multiple separate buildings, city skyline`).
 
+For a unit/hero (not a building), lead with `a single <unit description: troop type/vehicle>,
+sci-fi military-industrial faction, <pose/action — combat stance, at the controls, etc.>, <2-4
+concrete gear/armor/weapon details>, <background matching the hex terrain or faction it belongs
+to>`. No "ground level view" here (that clause is specifically an anti-aerial-shot fix for
+buildings) — instead the pose/action clause matters, since SDXL defaults to a static portrait
+without it. The negative prompt above is reused as-is; no unit-specific additions needed so far.
+Existing generated unit cards (`IC_Card_LightInfantry_01.png`, `MediumInfantry`, `LightTank`,
+`MediumTank`, `Hero_Male/Female_01-03`) predate this written-down template — their exact prompts
+weren't saved, so re-derive from this pattern if regenerating them.
+
 ### Pending: 4 resource-extraction facility cards
 
 Not generated yet — prompts ready, `filename_prefix` values below, one per resource type,

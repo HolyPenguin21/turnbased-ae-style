@@ -194,11 +194,12 @@ namespace Game.UI
                 detailText.text = $"{facility.Name}\nUpgrade Level: {facility.UpgradeLevel}\n{FormatAbilities(facility.Abilities)}";
         }
 
-        // Abbreviated per GameConfig.abilityAbbreviations (see GameConfig.FormatAbilities) —
-        // falls back to the raw tag names if gameConfig isn't wired.
+        // Full name + description per ability (this modal only ever shows the detail panel, no
+        // compact card form) — see GameConfig.FormatAbilitiesDetailed. Falls back to the raw tag
+        // names if gameConfig isn't wired.
         private string FormatAbilities(IEnumerable<string> abilities)
         {
-            return gameConfig != null ? gameConfig.FormatAbilities(abilities) : string.Join(" ", abilities);
+            return gameConfig != null ? gameConfig.FormatAbilitiesDetailed(abilities) : string.Join(" ", abilities);
         }
 
         // Only the non-zero amounts, e.g. "1 Human, 1 Materials" — same convention as

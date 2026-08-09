@@ -106,13 +106,12 @@ namespace Game.UI
                 nameText.text = definition != null ? definition.displayName : string.Empty;
             if (typeText != null)
             {
-                // Abilities listed inline after the type (same line), abbreviated per
-                // GameConfig.abilityAbbreviations (see GameConfig.FormatAbilities) — falls back
-                // to the raw tag name for anything not listed there.
-                string typeLine = definition != null ? definition.cardType.ToString() : string.Empty;
+                // Abilities only — no card type prefix (matches ArmyUnitCardUI's own SkillsText
+                // slot). Abbreviated per GameConfig.abilityAbbreviations (see
+                // GameConfig.FormatAbilities) — falls back to the raw tag name for anything not
+                // listed there.
                 string formatted = definition != null ? _hand?.GameConfig?.FormatAbilities(definition.grantedAbilities) : null;
-                string abilitiesSuffix = !string.IsNullOrEmpty(formatted) ? " " + formatted : string.Empty;
-                typeText.text = typeLine + abilitiesSuffix;
+                typeText.text = formatted ?? string.Empty;
             }
 
             RefreshStatsRow(definition);

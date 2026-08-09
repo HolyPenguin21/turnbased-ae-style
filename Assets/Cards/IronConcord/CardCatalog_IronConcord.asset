@@ -37,6 +37,12 @@ MonoBehaviour:
     range: 0
     hitPoints: 8
     initiative: 0
+    grantedAbilities:
+    - Barracks
+    - CollectHuman
+    - CollectEnergy
+    - CollectMaterials
+    - CollectTech
     structurePointsMax: 8
     defense: 3
     resistance: 1
@@ -45,12 +51,6 @@ MonoBehaviour:
       energy: 2
       materials: 2
       tech: 2
-    grantedAbilities:
-    - Barracks
-    - CollectHuman
-    - CollectEnergy
-    - CollectMaterials
-    - CollectTech
   - displayName: Research Facility
     art: {fileID: 21300000, guid: 6713785a799ca164a9d351bd35cf0cdf, type: 3}
     faction: 0
@@ -72,6 +72,8 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 0
+    grantedAbilities:
+    - Lab
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -80,8 +82,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities:
-    - Lab
   - displayName: Dorian Kesh
     art: {fileID: 21300000, guid: 19eb0cd3fcc40874fae6b40cfab00fed, type: 3}
     faction: 0
@@ -103,6 +103,7 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
+    grantedAbilities: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -111,7 +112,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Aldric Voss
     art: {fileID: 21300000, guid: 9b17cc1cfd20a4a4e9ca7b761be64242, type: 3}
     faction: 0
@@ -133,6 +133,7 @@ MonoBehaviour:
     range: 0
     hitPoints: 5
     initiative: 1
+    grantedAbilities: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -141,7 +142,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Nadia Thorne
     art: {fileID: 21300000, guid: fc8e3545ed6f7d34f9bc29db2ecb5941, type: 3}
     faction: 0
@@ -163,6 +163,8 @@ MonoBehaviour:
     range: 0
     hitPoints: 4
     initiative: 2
+    grantedAbilities:
+    - RapidReaction
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -171,7 +173,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Kessa Vrail
     art: {fileID: 21300000, guid: 50f8e86117285f2449ad03c9e7bfabc8, type: 3}
     faction: 0
@@ -193,6 +194,7 @@ MonoBehaviour:
     range: 0
     hitPoints: 5
     initiative: 1
+    grantedAbilities: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -201,7 +203,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Lira Sable
     art: {fileID: 21300000, guid: 8a2d6f9bd58681441888f9cf3f314f51, type: 3}
     faction: 0
@@ -223,6 +224,7 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
+    grantedAbilities: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -231,7 +233,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Light Infantry
     art: {fileID: 21300000, guid: 285cc04667d9f774386502bff6b0e58a, type: 3}
     faction: 0
@@ -253,6 +254,8 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    grantedAbilities:
+    - CriticalDamage
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -261,7 +264,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Medium Infantry
     art: {fileID: 21300000, guid: 4919e34e63713c948bdf4e92caf2848f, type: 3}
     faction: 0
@@ -283,6 +285,8 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    grantedAbilities:
+    - Berserk
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -291,7 +295,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Light Tank
     art: {fileID: 21300000, guid: a3e7e1a4b762d0440902002ccd787fd7, type: 3}
     faction: 0
@@ -313,6 +316,8 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 2
+    grantedAbilities:
+    - ShockAttack
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -321,7 +326,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   - displayName: Medium Tank
     art: {fileID: 21300000, guid: aaf3742707e72c84c9f0e09a12bae7a5, type: 3}
     faction: 0
@@ -343,6 +347,8 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    grantedAbilities:
+    - CeramicArmor
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -351,7 +357,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    grantedAbilities: []
   armyNamePool:
   - Ironfang
   - Rustborn

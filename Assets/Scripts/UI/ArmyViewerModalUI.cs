@@ -291,10 +291,10 @@ namespace Game.UI
                     $"Initiative {unit.Initiative}";
                 if (unit.IsHero)
                     text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
-                // Skills don't exist as their own system yet — Abilities is the closest
-                // equivalent today (see GameConfig.FormatAbilities); once real skill data
-                // exists, list it here too, same as this.
-                string abilities = gameConfig != null ? gameConfig.FormatAbilities(unit.Abilities) : null;
+                // Full name + description per ability here (detail panel), as opposed to the
+                // abbreviated one-line form shown on the card itself (see
+                // GameConfig.FormatAbilitiesDetailed vs FormatAbilities).
+                string abilities = gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null;
                 if (!string.IsNullOrEmpty(abilities))
                     text += $"\n{abilities}";
                 detailText.text = text;
@@ -610,10 +610,11 @@ namespace Game.UI
         private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
 
         // Default detail-panel state — the army's own aggregate stats, shown whenever nothing
-        // is selected (on open, on switching army, after a drag-and-drop move). Fate Points,
-        // Stealth, Experience and Battle Honors are stub text (no mechanic behind them yet);
-        // Prestige is omitted entirely rather than stubbed. Leader/capacity and Movement Range
-        // are real, computed from Members.
+        // is selected (on open, on switching army, after a drag-and-drop move). Fate Points and
+        // Stealth are stub text (no mechanic behind them yet); Experience/Battle Honors/Prestige
+        // are declined mechanics (see MECHANICS_CHECKLIST.md pt. 10) and are omitted entirely
+        // rather than stubbed. Leader/capacity and Movement Range are real, computed from
+        // Members.
         private void ShowArmySummary()
         {
             if (detailArt != null)
@@ -634,8 +635,7 @@ namespace Game.UI
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
                 "0 Fate Points\nNot Stealth Capable\n" +
-                $"Movement Range: {_currentArmy.MaxMovement}\n" +
-                "Experience: Green\nBattle Honors: —";
+                $"Movement Range: {_currentArmy.MaxMovement}";
         }
 
         private void OnContextButtonClicked()

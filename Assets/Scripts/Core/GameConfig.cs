@@ -159,6 +159,48 @@ namespace Game.Core
             return string.Join(" ", parts);
         }
 
+        // Falls back to the raw tag if it has no entry above (same fallback rule as
+        // GetAbilityAbbreviation).
+        public string GetAbilityFullName(string ability)
+        {
+            if (abilityAbbreviations != null)
+                foreach (AbilityAbbreviation entry in abilityAbbreviations)
+                    if (entry != null && entry.ability == ability && !string.IsNullOrEmpty(entry.fullName))
+                        return entry.fullName;
+            return ability;
+        }
+
+        // Null if there's no entry (or the entry has no description) — callers skip the
+        // "- description" line entirely rather than showing a blank one (see
+        // FormatAbilitiesDetailed).
+        public string GetAbilityDescription(string ability)
+        {
+            if (abilityAbbreviations != null)
+                foreach (AbilityAbbreviation entry in abilityAbbreviations)
+                    if (entry != null && entry.ability == ability && !string.IsNullOrEmpty(entry.description))
+                        return entry.description;
+            return null;
+        }
+
+        // The detail-panel counterpart to FormatAbilities: full name, then "- description" on
+        // its own line — used only where a card/unit/building is shown in a dedicated detail
+        // view (ArmyViewerModalUI.ShowUnitDetail, BaseViewerModalUI, BattleScreenUI.Grid's
+        // detail panel), never on the compact card itself (that stays abbreviation-only, see
+        // FormatAbilities).
+        public string FormatAbilitiesDetailed(IEnumerable<string> abilities)
+        {
+            if (abilities == null)
+                return string.Empty;
+            var parts = new List<string>();
+            foreach (string ability in abilities)
+            {
+                string fullName = GetAbilityFullName(ability);
+                string description = GetAbilityDescription(ability);
+                parts.Add(description == null ? fullName : $"{fullName}\n- {description}");
+            }
+            return string.Join("\n", parts);
+        }
+
         [Header("Citadel Setup Step")]
         // How far from the map edge a player's random starting hex can land.
         public int maxEdgeDistance = 1;
