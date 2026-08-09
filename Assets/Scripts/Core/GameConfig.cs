@@ -136,6 +136,11 @@ namespace Game.Core
         // An ability not listed here just falls back to showing its raw tag name.
         public AbilityAbbreviation[] abilityAbbreviations = new AbilityAbbreviation[0];
 
+        // Descriptions for FormatAbilitiesDetailed come from here rather than being duplicated
+        // onto AbilityAbbreviation — this asset is already the populated reference for every
+        // ability tag (see UnitAbilityCatalog.knownAbilities).
+        public UnitAbilityCatalog abilityCatalog;
+
         // Falls back to the raw tag if it has no entry above.
         public string GetAbilityAbbreviation(string ability)
         {
@@ -170,16 +175,12 @@ namespace Game.Core
             return ability;
         }
 
-        // Null if there's no entry (or the entry has no description) — callers skip the
-        // "- description" line entirely rather than showing a blank one (see
-        // FormatAbilitiesDetailed).
+        // Null if abilityCatalog isn't assigned, or the tag has no entry (or an empty
+        // description) there — callers skip the "- description" line entirely rather than
+        // showing a blank one (see FormatAbilitiesDetailed).
         public string GetAbilityDescription(string ability)
         {
-            if (abilityAbbreviations != null)
-                foreach (AbilityAbbreviation entry in abilityAbbreviations)
-                    if (entry != null && entry.ability == ability && !string.IsNullOrEmpty(entry.description))
-                        return entry.description;
-            return null;
+            return abilityCatalog != null ? abilityCatalog.GetDescription(ability) : null;
         }
 
         // The detail-panel counterpart to FormatAbilities: full name, then "- description" on

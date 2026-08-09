@@ -31,6 +31,18 @@ namespace Game.Cards
         [Header("Every ability tag in the game (reference only — see the tag's own const-string source for the real value)")]
         public List<AbilityEntry> knownAbilities = new List<AbilityEntry>();
 
+        // Looked up by GameConfig.FormatAbilitiesDetailed for a unit/building's detail-panel
+        // ability list — null if this tag has no entry (or the entry's description is empty),
+        // so callers can skip the "- description" line instead of showing a blank one.
+        public string GetDescription(string tag)
+        {
+            if (knownAbilities != null)
+                foreach (AbilityEntry entry in knownAbilities)
+                    if (entry != null && entry.tag == tag && !string.IsNullOrEmpty(entry.description))
+                        return entry.description;
+            return null;
+        }
+
         [Header("Critical Damage (x2) — UnitAbilities.CriticalDamage")]
         public float criticalDamageMultiplier = 2f;
 
