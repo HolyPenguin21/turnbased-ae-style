@@ -399,7 +399,15 @@ namespace Game.Combat
         // 1:1, about to lose its hero to what damage-based math read as "no damage, nothing to
         // fix". The hunter side needs no separate branch — it already rerolls on a tie (damage<=0
         // there too), which was already correct: more successes only ever helps it, tie or not.
+        // attacker/defender + the three ability magnitudes: needed to weigh the SAME effective
+        // damage ResolveDamage will actually deal (see ChallengeResult.ApplyAbilityModifiers),
+        // not the raw dice differential — otherwise a defender's own CeramicArmor (which might
+        // already reduce a hit to 0 for free) or the attacker's Hyperkinetic (which can push a
+        // hit's true size past what the raw dice alone show) never factor into whether spending
+        // Fate here is actually worth it. isCaptureKill skips all of this — that challenge deals
+        // no HP damage, so none of these abilities apply to it.
         public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
+            UnitData attacker, UnitData defender, float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
             bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false)
         {
             if (fateAvailable <= 0)
@@ -409,15 +417,21 @@ namespace Game.Combat
                 return false;
 
             var result = new ChallengeResult(attackerDice, defenderDice);
-            if (!isDefender)
-                return result.Damage <= 0;
 
             if (isCaptureKill)
-                return result.AttackerSuccesses >= result.DefenderSuccesses;
+                return isDefender
+                    ? result.AttackerSuccesses >= result.DefenderSuccesses
+                    : result.Damage <= 0;
 
-            if (result.Damage <= 0)
+            int damage = ChallengeResult.ApplyAbilityModifiers(result.Damage, attacker, defender,
+                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
+
+            if (!isDefender)
+                return damage <= 0;
+
+            if (damage <= 0)
                 return false;
-            return !isRetreating || result.Damage >= defendingUnitHp;
+            return !isRetreating || damage >= defendingUnitHp;
         }
 
         private static bool HasMiss(bool[] dice)

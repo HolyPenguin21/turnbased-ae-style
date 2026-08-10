@@ -340,7 +340,9 @@ namespace Game.UI
             bool spent = false;
             bool isRetreating = isDefender && _defenderIsRetreating;
             int defendingUnitHp = _defender != null ? _defender.HitPointsCurrent : int.MaxValue;
-            while (hero.Fate > 0 && BattleAi.ShouldSpendFate(_attackerDice, _defenderDice, hero.Fate, isDefender, isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill))
+            while (hero.Fate > 0 && BattleAi.ShouldSpendFate(_attackerDice, _defenderDice, hero.Fate, isDefender,
+                _attacker, _defender, CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction,
+                isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill))
             {
                 bool rerolled = isDefender
                     ? RerollOneMiss(ref _defenderDice, out int rerolledIndex)
@@ -451,23 +453,13 @@ namespace Game.UI
                 acceptButton.interactable = false;
 
             var result = new ChallengeResult(_attackerDice, _defenderDice);
-            int damage = result.Damage;
-
-            // UnitAbilities.CriticalDamage/CeramicArmor — the manual's fixed-value damage
-            // modifiers (pg. 40/43): a x2 multiplier applied first (the attacker's own doing),
-            // then a flat reduction (the defender's), same order any other "multiply then
-            // subtract flat armor" stat stack would apply in. Both gated on damage > 0 — a miss
-            // has nothing for either to modify.
-            if (damage > 0 && _attacker.HasAbility(UnitAbilities.CriticalDamage))
-                damage = Mathf.RoundToInt(damage * CriticalDamageMultiplier);
-            // UnitAbilities.Hyperkinetic — flat bonus specifically against Armored-tagged
-            // targets, gated on the same "already a hit" check as every other modifier here.
-            // An attacker-side bonus, so it's grouped with CriticalDamage above rather than
-            // CeramicArmor's defender-side reduction right below.
-            if (damage > 0 && _attacker.HasAbility(UnitAbilities.Hyperkinetic) && _defender.TypeTags.Contains(UnitTypeTag.Armored))
-                damage += HyperkineticBonusDamage;
-            if (damage > 0 && _defender.HasAbility(UnitAbilities.CeramicArmor))
-                damage = Mathf.Max(0, damage - CeramicArmorReduction);
+            // UnitAbilities.CriticalDamage/Hyperkinetic/CeramicArmor — see ChallengeResult.
+            // ApplyAbilityModifiers for the fixed order (x2 multiplier, then the Hyperkinetic
+            // bonus, then CeramicArmor's flat reduction last so it always comes off the
+            // already-boosted total) — shared with BattleAi.ShouldSpendFate so the AI's
+            // Fate-spend prediction always matches the damage actually dealt here.
+            int damage = ChallengeResult.ApplyAbilityModifiers(result.Damage, _attacker, _defender,
+                CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction);
 
             _defender.HitPointsCurrent = Mathf.Max(0, _defender.HitPointsCurrent - damage);
             bool died = _defender.HitPointsCurrent <= 0;
