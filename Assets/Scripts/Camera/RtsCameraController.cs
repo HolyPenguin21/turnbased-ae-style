@@ -20,6 +20,7 @@ namespace Game.Cameras
         [SerializeField] private float panSpeed = 20f;
         [SerializeField] private bool enableEdgeScroll = true;
         [SerializeField] private float edgeScrollBorder = 12f;
+        [SerializeField] private bool enableMiddleMouseDrag = true;
 
         [Header("Zoom (orthographic size)")]
         [SerializeField] private float zoomSpeed = 20f;
@@ -40,6 +41,12 @@ namespace Game.Cameras
         private Vector3 _forward;
         private Coroutine _panRoutine;
         private bool _panningEnabled = true;
+        private bool _isDragging;
+        // The ground-plane point that was under the cursor when the middle-mouse drag started —
+        // held fixed for the whole drag (not refreshed every frame) so the same point tracks the
+        // cursor 1:1 the entire time, instead of drifting the way a per-frame mouse-delta approach
+        // would once the camera itself has moved.
+        private Vector3 _dragAnchorGround;
 
         // Turned off for the duration of the Tactical Battle Module (see BattleScreenUI.Show/
         // Hide) — the battle grid has its own fixed camera, dragging the strategic map's view
@@ -132,6 +139,34 @@ namespace Game.Cameras
                 else if (mousePos.y >= Screen.height - edgeScrollBorder) panDelta += forwardFlat;
             }
 
+            // Middle-mouse drag: grab-and-pull, same convention as most DCC/RTS tools — whatever
+            // ground point was under the cursor when the button went down stays glued under the
+            // cursor for the rest of the drag. Applied straight to _groundTarget (not through
+            // panDelta/panSpeed like WASD/edge-scroll) since it's a direct 1:1 mapping, not a
+            // speed-based nudge.
+            if (enableMiddleMouseDrag && mouse != null && _panningEnabled)
+            {
+                if (mouse.middleButton.wasPressedThisFrame && TryGetGroundPoint(mouse.position.ReadValue(), out Vector3 pressGround))
+                {
+                    _isDragging = true;
+                    _dragAnchorGround = pressGround;
+                }
+                else if (mouse.middleButton.wasReleasedThisFrame)
+                {
+                    _isDragging = false;
+                }
+
+                if (_isDragging && mouse.middleButton.isPressed
+                    && TryGetGroundPoint(mouse.position.ReadValue(), out Vector3 currentGround))
+                {
+                    _groundTarget += _dragAnchorGround - currentGround;
+                }
+            }
+            else
+            {
+                _isDragging = false;
+            }
+
             if (panDelta.sqrMagnitude > 0f && UIFocusUtility.IsTextFieldFocused())
                 panDelta = Vector3.zero;
 
@@ -161,6 +196,24 @@ namespace Game.Cameras
         private void ApplyPosition()
         {
             transform.position = _groundTarget - _forward * distance;
+        }
+
+        // Where a screen point lands on the world's ground plane (y = 0 — same plane PanTo's
+        // own worldPosition.y drop already assumes), from wherever the camera currently sits.
+        // False on a screen point whose ray is parallel to that plane (e.g. genuinely edge-on),
+        // which can't happen at this camera's fixed downward angle but is checked anyway since
+        // Plane.Raycast itself can fail.
+        private bool TryGetGroundPoint(Vector2 screenPos, out Vector3 groundPoint)
+        {
+            groundPoint = Vector3.zero;
+            if (_camera == null)
+                return false;
+            Ray ray = _camera.ScreenPointToRay(screenPos);
+            var groundPlane = new Plane(Vector3.up, Vector3.zero);
+            if (!groundPlane.Raycast(ray, out float enter))
+                return false;
+            groundPoint = ray.GetPoint(enter);
+            return true;
         }
     }
 }
