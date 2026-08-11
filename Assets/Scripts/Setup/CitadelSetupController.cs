@@ -584,7 +584,7 @@ namespace Game.Setup
                 UnitData spawned = hexSelectionController.SpawnUnit(definition.displayName, owner,
                     definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art,
                     definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                    definition.defenseRating, definition.resistanceRating, definition.unitTypeTags);
+                    definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt);
                 if (spawned != null)
                     army.AddMemberSorted(spawned);
             }

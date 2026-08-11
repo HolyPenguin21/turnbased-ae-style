@@ -1,25 +1,33 @@
 <#
-Composites a raw generated illustration onto the reusable card frame (Card_Base.png).
+Composites raw generated illustrations onto the reusable card frame (Card_Base.png).
 See CARD_ART_PIPELINE.md (Step 2) in this same folder for the full pipeline this belongs to.
 
 See README.md in this same folder for full usage instructions and examples.
 
-Quick reference - all alpha-feather parameters (see README.md for what each one visually does):
-    -SideFeatherPercent    left/right fade width, as % of image width      (default 15)
-    -TopFeatherPercent     top fade height, as % of image height           (default 15)
-    -BottomFadeStartPercent  where the bottom fade begins, % of height     (default 50)
-    -BottomFadeEndPercent    where the bottom fade reaches 0, % of height  (default 72)
+Batch mode: processes every *.png found directly inside -InputFolder (not recursive into
+subfolders) and writes TWO composited outputs per source image:
+    Output 1 (-OutDir1) - bottom faded out for description text. Same file name as the source.
+    Output 2 (-OutDir2) - full art, no bottom wipe (plain symmetric top/bottom fade instead).
+                          File name = source name + "_Full".
 
-What this does, in order:
+Quick reference - all alpha-feather parameters (see README.md for what each one visually does):
+    -SideFeatherPercent        left/right fade width, % of image width        (default 15) - shared by both outputs
+    -TopFeatherPercent         top fade height, % of image height             (default 15) - output 1 only
+    -BottomFadeStartPercent    where output 1's bottom fade begins, % of height (default 50)
+    -BottomFadeEndPercent      where output 1's bottom fade reaches 0, % of height (default 72)
+    -TopBottomFeatherPercent   top AND bottom fade height, % of height        (default 15) - output 2 only
+
+What this does, per source image, in order:
     1. Takes Card_Base.png (832x1216 frame template) and rounds its 4 corners (46px radius
-       alpha-cutout) on a fresh in-memory copy - the template file itself is never modified.
-    2. Feathers the raw illustration's edges to alpha 0 near the borders, so it blends into the
-       frame instead of showing a hard rectangle (widths/heights controlled by the 4 params
-       above).
+       alpha-cutout) on a fresh in-memory copy - the template file itself is never modified. This
+       is done once and reused across the whole batch, not per image.
+    2. Feathers the raw illustration's edges to alpha 0 near the borders, twice per image - once
+       with the text-wipe bottom (output 1) and once with a plain symmetric top/bottom edge fade
+       (output 2) - so it blends into the frame instead of showing a hard rectangle.
     3. Composites the rounded frame + feathered art onto a new 832x1216 canvas: art is scaled
        (HighQualityBicubic) to fit width into the window left=70 right=760 (690px wide), anchored
        at top=80, height scaled proportionally to preserve aspect ratio.
-    4. Saves the result as a PNG.
+    4. Saves both results as PNGs into -OutDir1 / -OutDir2.
 
 After running this, still need Step 3 from CARD_ART_PIPELINE.md (fix the Unity .meta import
 settings - spriteMode/textureType/alphaIsTransparency/nPOTScale) and Step 4 (wire the guid into
@@ -28,12 +36,10 @@ the card catalog). Those aren't done by this script.
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ArtPath,
+    [string]$InputFolder,
 
-    [Parameter(Mandatory = $true)]
-    [string]$OutName,
-
-    [string]$OutDir = "",
+    [string]$OutDir1 = "",
+    [string]$OutDir2 = "",
 
     [ValidateRange(0, 50)]
     [double]$SideFeatherPercent = 15,
@@ -45,7 +51,10 @@ param(
     [double]$BottomFadeStartPercent = 50,
 
     [ValidateRange(0, 100)]
-    [double]$BottomFadeEndPercent = 72
+    [double]$BottomFadeEndPercent = 72,
+
+    [ValidateRange(0, 50)]
+    [double]$TopBottomFeatherPercent = 15
 )
 
 if ($BottomFadeEndPercent -le $BottomFadeStartPercent) {
@@ -67,9 +76,11 @@ if ([string]::IsNullOrEmpty($ScriptRoot)) {
     else { throw "Could not determine the script's own directory - run the .ps1 file directly rather than piping/dot-sourcing it." }
 }
 
-if ([string]::IsNullOrWhiteSpace($OutDir)) {
-    $OutDir = "$ScriptRoot\IronConcord\GameCards"
-}
+if (-not (Test-Path $InputFolder)) { throw "Input folder not found: $InputFolder" }
+$InputFolder = [System.IO.Path]::GetFullPath($InputFolder)
+
+if ([string]::IsNullOrWhiteSpace($OutDir1)) { $OutDir1 = Join-Path $InputFolder "GameCards" }
+if ([string]::IsNullOrWhiteSpace($OutDir2)) { $OutDir2 = Join-Path $InputFolder "GameCards_Full" }
 
 $FramePath = "$ScriptRoot\..\General\Card_Base.png"
 $CanvasSize = 832, 1216
@@ -77,12 +88,22 @@ $CornerRadius = 46
 $ArtWindowLeft = 70
 $ArtWindowRight = 760
 $ArtWindowTop = 80
+$Output2Suffix = "_Full"
 
-if (-not (Test-Path $ArtPath)) { throw "Art file not found: $ArtPath" }
 if (-not (Test-Path $FramePath)) { throw "Card_Base.png not found at: $FramePath" }
-if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
-$OutDir = [System.IO.Path]::GetFullPath($OutDir)
-Write-Host "Output folder: $OutDir"
+if (-not (Test-Path $OutDir1)) { New-Item -ItemType Directory -Path $OutDir1 -Force | Out-Null }
+if (-not (Test-Path $OutDir2)) { New-Item -ItemType Directory -Path $OutDir2 -Force | Out-Null }
+$OutDir1 = [System.IO.Path]::GetFullPath($OutDir1)
+$OutDir2 = [System.IO.Path]::GetFullPath($OutDir2)
+Write-Host "Input folder: $InputFolder"
+Write-Host "Output folder 1 (text-wipe bottom): $OutDir1"
+Write-Host "Output folder 2 (full art, no wipe): $OutDir2"
+
+# Non-recursive on purpose: OutDir1/OutDir2 default to subfolders of InputFolder, so a plain
+# top-level listing here never picks up files this same run just wrote.
+$artFiles = Get-ChildItem -Path $InputFolder -File -Filter *.png | Sort-Object Name
+if ($artFiles.Count -eq 0) { throw "No .png files found directly in: $InputFolder" }
+Write-Host "Found $($artFiles.Count) source image(s)."
 
 function New-RoundedFrame {
     param([System.Drawing.Bitmap]$Source, [int]$Radius)
@@ -133,15 +154,26 @@ function New-FeatheredArt {
         [System.Drawing.Bitmap]$Source,
         [double]$SidePercent,
         [double]$TopPercent,
-        [double]$BottomStartPercent,
-        [double]$BottomEndPercent
+        # 'Wipe'  - bottom ramps from full alpha at BottomStartPercent down to 0 at BottomEndPercent
+        #           (leaves a large blank area for card text - output 1).
+        # 'Edge'  - bottom mirrors the top's own formula: the outer BottomEdgePercent of the image
+        #           fades from 0 at the border to full alpha inward (output 2, no text wipe).
+        [ValidateSet('Wipe', 'Edge')]
+        [string]$BottomMode,
+        [double]$BottomStartPercent = 0,
+        [double]$BottomEndPercent = 0,
+        [double]$BottomEdgePercent = 0
     )
 
     $w = $Source.Width; $h = $Source.Height
     $edgeH = [Math]::Max(1, [int]($w * ($SidePercent / 100.0)))
     $edgeTop = [Math]::Max(1, [int]($h * ($TopPercent / 100.0)))
-    $bottomStart = [int]($h * ($BottomStartPercent / 100.0))
-    $bottomEnd = [int]($h * ($BottomEndPercent / 100.0))
+    if ($BottomMode -eq 'Wipe') {
+        $bottomStart = [int]($h * ($BottomStartPercent / 100.0))
+        $bottomEnd = [int]($h * ($BottomEndPercent / 100.0))
+    } else {
+        $edgeBottom = [Math]::Max(1, [int]($h * ($BottomEdgePercent / 100.0)))
+    }
 
     # Per-pixel work is done on raw BGRA byte buffers (LockBits + Marshal.Copy) instead of
     # GetPixel/SetPixel - the latter are GDI+ calls with heavy per-call overhead and turn a
@@ -160,12 +192,14 @@ function New-FeatheredArt {
     for ($y = 0; $y -lt $h; $y++) {
         if ($y -lt $edgeTop) {
             $vFactor = $y / [double]$edgeTop
-        } elseif ($y -ge $bottomStart) {
+        } elseif ($BottomMode -eq 'Wipe' -and $y -ge $bottomStart) {
             if ($y -ge $bottomEnd) {
                 $vFactor = 0.0
             } else {
                 $vFactor = 1.0 - (($y - $bottomStart) / [double]($bottomEnd - $bottomStart))
             }
+        } elseif ($BottomMode -eq 'Edge' -and $y -ge ($h - $edgeBottom)) {
+            $vFactor = ($h - 1 - $y) / [double]$edgeBottom
         } else {
             $vFactor = 1.0
         }
@@ -190,8 +224,8 @@ function New-FeatheredArt {
         }
 
         $percent = [int](100 * ($y + 1) / $h)
-        if ($percent -ne $lastReportedPercent -and ($percent % 10 -eq 0)) {
-            Write-Host "  Feathering: $percent% (row $($y + 1)/$h, $([int]$sw.Elapsed.TotalSeconds)s elapsed)"
+        if ($percent -ne $lastReportedPercent -and ($percent % 20 -eq 0)) {
+            Write-Host "    Feathering: $percent% (row $($y + 1)/$h, $([int]$sw.Elapsed.TotalSeconds)s elapsed)"
             $lastReportedPercent = $percent
         }
     }
@@ -204,38 +238,68 @@ function New-FeatheredArt {
     return $bmp
 }
 
+function New-CompositeCard {
+    param(
+        [System.Drawing.Bitmap]$RoundedFrame,
+        [System.Drawing.Bitmap]$FeatheredArt,
+        [string]$OutPath
+    )
+
+    $canvas = New-Object System.Drawing.Bitmap $CanvasSize[0], $CanvasSize[1], ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($canvas)
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+    $g.DrawImage($RoundedFrame, 0, 0, $CanvasSize[0], $CanvasSize[1])
+
+    $artWindowWidth = $ArtWindowRight - $ArtWindowLeft
+    $artScaledHeight = [int]($FeatheredArt.Height * ($artWindowWidth / [double]$FeatheredArt.Width))
+    $g.DrawImage($FeatheredArt, $ArtWindowLeft, $ArtWindowTop, $artWindowWidth, $artScaledHeight)
+
+    $g.Dispose()
+    $canvas.Save($OutPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $canvas.Dispose()
+}
+
 $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
-Write-Host "Loading frame and art..."
+Write-Host "Loading frame..."
 $frameSrc = [System.Drawing.Bitmap]::FromFile($FramePath)
-$artSrc = [System.Drawing.Bitmap]::FromFile($ArtPath)
-Write-Host "  Frame: $($frameSrc.Width)x$($frameSrc.Height)   Art: $($artSrc.Width)x$($artSrc.Height)"
+Write-Host "  Frame: $($frameSrc.Width)x$($frameSrc.Height)"
 
-Write-Host "Rounding frame corners..."
+Write-Host "Rounding frame corners (once, reused for the whole batch)..."
 $roundedFrame = New-RoundedFrame -Source $frameSrc -Radius $CornerRadius
+$frameSrc.Dispose()
 
-Write-Host "Feathering art edges (sides=$SideFeatherPercent% top=$TopFeatherPercent% bottom=$BottomFadeStartPercent%-$BottomFadeEndPercent%)..."
-$featheredArt = New-FeatheredArt -Source $artSrc -SidePercent $SideFeatherPercent -TopPercent $TopFeatherPercent -BottomStartPercent $BottomFadeStartPercent -BottomEndPercent $BottomFadeEndPercent
+$fileIndex = 0
+foreach ($file in $artFiles) {
+    $fileIndex++
+    Write-Host ""
+    Write-Host "[$fileIndex/$($artFiles.Count)] $($file.Name)  ($([int]$totalSw.Elapsed.TotalSeconds)s elapsed so far)"
 
-Write-Host "Compositing... ($([int]$totalSw.Elapsed.TotalSeconds)s elapsed so far)"
-$canvas = New-Object System.Drawing.Bitmap $CanvasSize[0], $CanvasSize[1], ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-$g = [System.Drawing.Graphics]::FromImage($canvas)
-$g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-$g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
-$g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $artSrc = [System.Drawing.Bitmap]::FromFile($file.FullName)
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
 
-$g.DrawImage($roundedFrame, 0, 0, $CanvasSize[0], $CanvasSize[1])
+    Write-Host "  Output 1 - feathering (sides=$SideFeatherPercent% top=$TopFeatherPercent% bottom=$BottomFadeStartPercent%-$BottomFadeEndPercent%)..."
+    $feathered1 = New-FeatheredArt -Source $artSrc -SidePercent $SideFeatherPercent -TopPercent $TopFeatherPercent -BottomMode Wipe -BottomStartPercent $BottomFadeStartPercent -BottomEndPercent $BottomFadeEndPercent
+    $outPath1 = Join-Path $OutDir1 "$baseName.png"
+    New-CompositeCard -RoundedFrame $roundedFrame -FeatheredArt $feathered1 -OutPath $outPath1
+    $feathered1.Dispose()
+    Write-Host "  Output 1 saved: $outPath1"
 
-$artWindowWidth = $ArtWindowRight - $ArtWindowLeft
-$artScaledHeight = [int]($featheredArt.Height * ($artWindowWidth / [double]$featheredArt.Width))
-$g.DrawImage($featheredArt, $ArtWindowLeft, $ArtWindowTop, $artWindowWidth, $artScaledHeight)
+    Write-Host "  Output 2 - feathering (sides=$SideFeatherPercent% top/bottom=$TopBottomFeatherPercent%)..."
+    $feathered2 = New-FeatheredArt -Source $artSrc -SidePercent $SideFeatherPercent -TopPercent $TopBottomFeatherPercent -BottomMode Edge -BottomEdgePercent $TopBottomFeatherPercent
+    $outPath2 = Join-Path $OutDir2 "$baseName$Output2Suffix.png"
+    New-CompositeCard -RoundedFrame $roundedFrame -FeatheredArt $feathered2 -OutPath $outPath2
+    $feathered2.Dispose()
+    Write-Host "  Output 2 saved: $outPath2"
 
-$g.Dispose()
+    $artSrc.Dispose()
+}
 
-$outPath = Join-Path $OutDir "$OutName.png"
-$canvas.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$roundedFrame.Dispose()
 
-$frameSrc.Dispose(); $artSrc.Dispose(); $roundedFrame.Dispose(); $featheredArt.Dispose(); $canvas.Dispose()
-
-Write-Host "Saved: $outPath  (total $([int]$totalSw.Elapsed.TotalSeconds)s)"
+Write-Host ""
+Write-Host "Done: $($artFiles.Count) source image(s), $($artFiles.Count * 2) file(s) written (total $([int]$totalSw.Elapsed.TotalSeconds)s)"
 Write-Host "Next: fix Unity import settings (Step 3) and wire the guid into the card catalog (Step 4) - see CARD_ART_PIPELINE.md."

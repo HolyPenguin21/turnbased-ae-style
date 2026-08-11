@@ -23,6 +23,12 @@ namespace Game.Cards
 
         public string displayName;
         public Sprite art;
+        // Shown in a unit's detail panel (ArmyViewerModalUI/BattleScreenUI.ShowUnitDetail) —
+        // deliberately separate from `art` above (the compact card's own thumbnail, see CardUI/
+        // ArmyUnitCardUI) per the user's own request: the detail view wants its own dedicated
+        // portrait, not a stretched-up copy of the small card art. Left unassigned, HexSelection
+        // Controller.SpawnUnit falls back to `art` so existing cards don't just show blank.
+        public Sprite detailArt;
         // Faction.None for cards that aren't any faction's own — e.g. GameConfig.
         // extractionFacilityCards, which every player can build regardless of faction.
         public Faction faction;

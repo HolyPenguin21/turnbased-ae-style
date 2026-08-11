@@ -271,7 +271,7 @@ namespace Game.UI
 
             if (detailArt != null)
             {
-                detailArt.sprite = unit.Art;
+                detailArt.sprite = unit.DetailArt;
                 detailArt.gameObject.SetActive(true);
             }
             if (detailText != null)
@@ -280,14 +280,14 @@ namespace Game.UI
                 // deliberately left out (it's an army-level cost paid once per turn, not really
                 // "this unit's own stat"); Command Rating only means anything for a hero (see
                 // ArmyData.Capacity), so it's skipped entirely for a plain unit rather than
-                // showing a meaningless number.
+                // showing a meaningless number. Resistance is deliberately left out too, per the
+                // user's own request.
                 string text = $"{unit.Name}\n";
                 if (unit.TypeTags.Count > 0)
                     text += $"{string.Join(", ", unit.TypeTags)}\n";
                 text +=
                     $"Attack {unit.Attack}\n" +
                     $"Defense {unit.Defense}\n" +
-                    $"Resistance {unit.Resistance}\n" +
                     $"Range {unit.Range}\n" +
                     $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                     $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +

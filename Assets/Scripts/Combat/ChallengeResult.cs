@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Cards;
 using Game.Units;
 using UnityEngine;
@@ -39,14 +40,33 @@ namespace Game.Combat
         // the raw dice alone showed) never factored into whether spending Fate was actually worth it.
         public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender,
             float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction)
+            => ApplyAbilityModifiers(rawDamage, attacker, defender, criticalDamageMultiplier,
+                hyperkineticBonusDamage, ceramicArmorReduction, out _);
+
+        // Same modifier chain, plus which of the three actually fired — so a result screen can
+        // tell "hit for less than expected because of an ability" apart from "hit for the plain
+        // rolled amount" (see BattleAttackPopupUI.ShowResult's "Affected by Skill" line).
+        public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender,
+            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
+            out List<string> appliedAbilities)
         {
+            appliedAbilities = new List<string>();
             int damage = rawDamage;
             if (damage > 0 && attacker.HasAbility(UnitAbilities.CriticalDamage))
+            {
                 damage = Mathf.RoundToInt(damage * criticalDamageMultiplier);
+                appliedAbilities.Add(UnitAbilities.CriticalDamage);
+            }
             if (damage > 0 && attacker.HasAbility(UnitAbilities.Hyperkinetic) && defender.TypeTags.Contains(UnitTypeTag.Armored))
+            {
                 damage += hyperkineticBonusDamage;
+                appliedAbilities.Add(UnitAbilities.Hyperkinetic);
+            }
             if (damage > 0 && defender.HasAbility(UnitAbilities.CeramicArmor))
+            {
                 damage = Mathf.Max(0, damage - ceramicArmorReduction);
+                appliedAbilities.Add(UnitAbilities.CeramicArmor);
+            }
             return damage;
         }
 

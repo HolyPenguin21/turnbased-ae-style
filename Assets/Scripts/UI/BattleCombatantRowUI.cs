@@ -127,15 +127,24 @@ namespace Game.UI
         // miss, just a different miss), which used to skip the flip animation entirely even
         // though a real reroll happened (see the user's own report). Forces that one slot to
         // replay regardless of whether its value actually changed.
-        public void SetDice(bool[] dice, int rerolledIndex = -1)
+        // onComplete (optional): fired once every slot THIS call touched has finished flipping
+        // (immediately, if none needed to animate) — BattleAttackPopupUI's roll/duel coroutine
+        // awaits this before letting Accept/Spend become clickable again or handing the turn to
+        // the other side (see the user's own report: the Accept button, and the AI's own counter-
+        // spend, used to happen mid-flip or even before the flip was ever seen at all).
+        public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
         {
             if (dice == null)
+            {
+                onComplete?.Invoke();
                 return;
+            }
 
+            var toAnimate = new List<int>();
             if (diceContainer != null && diceSlotPrefab != null && _diceSlots.Count != dice.Length)
             {
                 UIListUtility.DestroyAndClear(_diceSlots);
-                foreach (bool hit in dice)
+                for (int i = 0; i < dice.Length; i++)
                 {
                     DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
                     // diceSlotPrefab is wired (in the scene) to an inactive template object
@@ -146,15 +155,15 @@ namespace Game.UI
                     // SetImmediate, no flip animation at all (see the user's own report: no
                     // animated dice in the attack popup, unlike DiceRowUI's turn-order roll).
                     slot.gameObject.SetActive(true);
-                    slot.PlayRoll(hit);
                     _diceSlots.Add(slot);
+                    toAnimate.Add(i);
                 }
             }
             else
             {
                 for (int i = 0; i < dice.Length && i < _diceSlots.Count; i++)
                     if (i == rerolledIndex || _lastDice == null || i >= _lastDice.Length || _lastDice[i] != dice[i])
-                        _diceSlots[i].PlayRoll(dice[i]);
+                        toAnimate.Add(i);
             }
             _lastDice = (bool[])dice.Clone();
 
@@ -165,6 +174,21 @@ namespace Game.UI
                     if (hit) successes++;
                 successText.text = successes.ToString();
             }
+
+            if (toAnimate.Count == 0)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+            int pending = toAnimate.Count;
+            void SlotDone()
+            {
+                pending--;
+                if (pending == 0)
+                    onComplete?.Invoke();
+            }
+            foreach (int i in toAnimate)
+                _diceSlots[i].PlayRoll(dice[i], SlotDone);
         }
     }
 }

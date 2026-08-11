@@ -48,23 +48,30 @@ namespace Game.UI
                 image.rectTransform.localScale = Vector3.one;
         }
 
-        public void PlayRoll(bool hit)
+        // onComplete (optional): fired once the flip settles on its final face — lets a caller
+        // (BattleCombatantRowUI/BattleAttackPopupUI) actually wait for the animation instead of
+        // firing-and-forgetting it, so e.g. the Accept button can stay locked out until every die
+        // this call touched has visibly landed (see the user's own report: Accept was clickable,
+        // and the AI's own reactive reroll could resolve, mid-flip).
+        public void PlayRoll(bool hit, System.Action onComplete = null)
         {
             if (!gameObject.activeInHierarchy)
             {
                 SetImmediate(hit);
+                onComplete?.Invoke();
                 return;
             }
             if (_rollRoutine != null)
                 StopCoroutine(_rollRoutine);
-            _rollRoutine = StartCoroutine(RollRoutine(hit));
+            _rollRoutine = StartCoroutine(RollRoutine(hit, onComplete));
         }
 
-        private IEnumerator RollRoutine(bool finalHit)
+        private IEnumerator RollRoutine(bool finalHit, System.Action onComplete)
         {
             if (image == null)
             {
                 _rollRoutine = null;
+                onComplete?.Invoke();
                 yield break;
             }
             RectTransform rt = image.rectTransform;
@@ -77,6 +84,7 @@ namespace Game.UI
                 yield return ScaleX(rt, 0f, 1f, FlipHalfDuration);
             }
             _rollRoutine = null;
+            onComplete?.Invoke();
         }
 
         private static IEnumerator ScaleX(RectTransform rt, float from, float to, float duration)

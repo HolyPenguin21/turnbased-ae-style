@@ -65,7 +65,8 @@ MonoBehaviour:
     defenseGain: 1
     resistanceGain: 1
   extractionFacilityCards:
-  - displayName: Human Extractor
+  - id: 0
+    displayName: Human Extractor
     art: {fileID: 21300000, guid: 5ab14e76d3b386738f273dcc7c919c5c, type: 3}
     faction: 2
     cardType: 2
@@ -86,6 +87,7 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    unitTypeTags: 
     grantedAbilities:
     - CollectHuman
     structurePointsMax: 6
@@ -96,7 +98,8 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - displayName: Energy Extractor
+  - id: 0
+    displayName: Energy Extractor
     art: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
     faction: 2
     cardType: 2
@@ -117,6 +120,7 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    unitTypeTags: 
     grantedAbilities:
     - CollectEnergy
     structurePointsMax: 6
@@ -127,7 +131,8 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - displayName: Materials Extractor
+  - id: 0
+    displayName: Materials Extractor
     art: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
     faction: 2
     cardType: 2
@@ -148,6 +153,7 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    unitTypeTags: 
     grantedAbilities:
     - CollectMaterials
     structurePointsMax: 6
@@ -158,7 +164,8 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - displayName: Tech Extractor
+  - id: 0
+    displayName: Tech Extractor
     art: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
     faction: 2
     cardType: 2
@@ -179,6 +186,7 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    unitTypeTags: 
     grantedAbilities:
     - CollectTech
     structurePointsMax: 6
@@ -211,30 +219,43 @@ MonoBehaviour:
   abilityAbbreviations:
   - ability: Barracks
     abbreviation: Barracks
+    fullName: 
   - ability: Base
     abbreviation: Base
+    fullName: 
   - ability: Lab
     abbreviation: Lab
+    fullName: 
   - ability: CollectHuman
     abbreviation: cH
+    fullName: 
   - ability: CollectEnergy
     abbreviation: cE
+    fullName: 
   - ability: CollectMaterials
     abbreviation: cM
+    fullName: 
   - ability: CollectTech
     abbreviation: cT
+    fullName: 
   - ability: CriticalDamage
     abbreviation: Crit x2
+    fullName: 
   - ability: CeramicArmor
     abbreviation: Armor -1
+    fullName: 
   - ability: Berserk
     abbreviation: Bers
+    fullName: 
   - ability: RapidReaction
     abbreviation: Rapid
+    fullName: 
   - ability: ShockAttack
     abbreviation: Shock
+    fullName: 
   - ability: Hyperkinetic
     abbreviation: Hyper +2
+    fullName: 
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   regionHighlightStyle:

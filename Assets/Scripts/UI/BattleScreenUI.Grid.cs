@@ -77,6 +77,22 @@ namespace Game.UI
                 }
         }
 
+        // Any modal on top of the battle grid that OnCellClicked must not act underneath — chiefly
+        // outcomePopup: EndTurn calls ResolveRetreat() directly once the grace round's last unit
+        // finishes, without ever clearing _currentActingUnit first (that only happens later, via
+        // ResetBattlePanel), so "The enemy retreats." can be showing while _currentActingUnit
+        // still points at the unit that just acted and the grid still highlights its legal
+        // targets — see the user's own report: still able to attack with that unit while the
+        // outcome popup sits on top. attackPopup covers the equivalent case for its own duel (a
+        // click during Fate spending shouldn't start ANOTHER attack with the same still-current
+        // unit); roundStartPopup/battleContactPopup are the other two sub-popups that can show
+        // while _currentActingUnit is left stale from before them.
+        private bool AnyBattlePopupShowing =>
+            (attackPopup != null && attackPopup.IsShowing)
+            || (outcomePopup != null && outcomePopup.IsShowing)
+            || (roundStartPopup != null && roundStartPopup.IsShowing)
+            || (battleContactPopup != null && battleContactPopup.IsShowing);
+
         // Click-to-act for the local human's current unit — no-op for anything else (Arranging
         // uses its own drag-and-drop, an AI turn has no player input, and a click on a cell that
         // isn't a legal move/attack target for the current unit is just an inspect, already
@@ -84,6 +100,8 @@ namespace Game.UI
         public void OnCellClicked(BattleGridCellUI cell)
         {
             if (_arranging || _isAnimatingMove || cell == null || _currentActingUnit == null)
+                return;
+            if (AnyBattlePopupShowing)
                 return;
             if (_currentActingUnit.Owner == null || !_currentActingUnit.Owner.IsHuman)
                 return;
@@ -180,7 +198,7 @@ namespace Game.UI
         {
             if (detailArt != null)
             {
-                detailArt.sprite = unit != null ? unit.Art : null;
+                detailArt.sprite = unit != null ? unit.DetailArt : null;
                 detailArt.gameObject.SetActive(unit != null);
             }
             if (detailText == null)
@@ -191,10 +209,14 @@ namespace Game.UI
                 return;
             }
 
-            string text = $"{unit.Name}\n" +
+            // Type tags right after the name, and no Resistance line — same convention as
+            // ArmyViewerModalUI.ShowUnitDetail, per the user's own request.
+            string text = $"{unit.Name}\n";
+            if (unit.TypeTags.Count > 0)
+                text += $"{string.Join(", ", unit.TypeTags)}\n";
+            text +=
                 $"Attack {unit.Attack}\n" +
                 $"Defense {unit.Defense}\n" +
-                $"Resistance {unit.Resistance}\n" +
                 $"Range {unit.Range}\n" +
                 $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                 $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +

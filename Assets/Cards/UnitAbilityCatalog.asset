@@ -16,8 +16,7 @@ MonoBehaviour:
   - tag: Barracks
     description: Hex can receive Hero/Unit cards deployed from hand
   - tag: Base
-    description: "Building is a defended Base \u2014 Defense folds into the hex's
-      Ground Combat roll, captured (not destroyed) on defeat"
+    description: Building is a defended Base
   - tag: Lab
     description: "Carried by a placed Facility (e.g. Research Facility) \u2014 no
       behavior wired yet"
@@ -34,15 +33,14 @@ MonoBehaviour:
   - tag: CeramicArmor
     description: Damage received is reduced by a flat amount
   - tag: Berserk
-    description: +Attack/-Defense each time this unit is hit, for the rest of the
-      battle
+    description: +Attack/-Defense each time this unit is hit
   - tag: RapidReaction
     description: Deploys for 0 AP; costs 0 AP to move as part of an army
   - tag: ShockAttack
     description: A successful hit drops the target from the rest of this round's
       turn order
   - tag: Hyperkinetic
-    description: +2 damage against Armored-tagged targets, once the attack has already
+    description: Adds 2 damage against "Armored" targets, once the attack has already
       dealt at least 1 damage
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1

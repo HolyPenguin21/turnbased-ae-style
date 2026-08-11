@@ -18,15 +18,15 @@ MonoBehaviour:
   cards:
   - id: 0
     displayName: Concord Citadel
-    art: {fileID: 21300000, guid: 94b37d3739334d04bada49625bef7711, type: 3}
+    art: {fileID: 21300000, guid: ee9bba1b59a0cbe42b0299ac88d4b713, type: 3}
     faction: 0
     cardType: 3
     apCost: 5
     resourceCost:
-      human: 0
-      energy: 4
-      materials: 4
-      tech: 4
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
     requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
@@ -55,10 +55,10 @@ MonoBehaviour:
       tech: 2
   - id: 1
     displayName: Research Facility
-    art: {fileID: 21300000, guid: 6713785a799ca164a9d351bd35cf0cdf, type: 3}
+    art: {fileID: 21300000, guid: 65b9fb50505008e4f9cfb20a6070a954, type: 3}
     faction: 0
     cardType: 2
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 0
       energy: 1
@@ -88,7 +88,7 @@ MonoBehaviour:
       tech: 0
   - id: 2
     displayName: Dorian Kesh
-    art: {fileID: 21300000, guid: 19eb0cd3fcc40874fae6b40cfab00fed, type: 3}
+    art: {fileID: 21300000, guid: 434d1775eb5d94f4a959e18171113dbb, type: 3}
     faction: 0
     cardType: 0
     apCost: 2
@@ -120,7 +120,7 @@ MonoBehaviour:
       tech: 0
   - id: 3
     displayName: Aldric Voss
-    art: {fileID: 21300000, guid: 9b17cc1cfd20a4a4e9ca7b761be64242, type: 3}
+    art: {fileID: 21300000, guid: 39e4070105eac0246996468c83a0c35c, type: 3}
     faction: 0
     cardType: 0
     apCost: 2
@@ -152,7 +152,7 @@ MonoBehaviour:
       tech: 0
   - id: 4
     displayName: Nadia Thorne
-    art: {fileID: 21300000, guid: fc8e3545ed6f7d34f9bc29db2ecb5941, type: 3}
+    art: {fileID: 21300000, guid: 2967dcb261c55aa47a54a825db1a3354, type: 3}
     faction: 0
     cardType: 0
     apCost: 2
@@ -185,7 +185,7 @@ MonoBehaviour:
       tech: 0
   - id: 5
     displayName: Kessa Vrail
-    art: {fileID: 21300000, guid: 50f8e86117285f2449ad03c9e7bfabc8, type: 3}
+    art: {fileID: 21300000, guid: 4edbaae672c49f242a9bbc756b2fdcb5, type: 3}
     faction: 0
     cardType: 0
     apCost: 2
@@ -217,7 +217,7 @@ MonoBehaviour:
       tech: 0
   - id: 6
     displayName: Lira Sable
-    art: {fileID: 21300000, guid: 8a2d6f9bd58681441888f9cf3f314f51, type: 3}
+    art: {fileID: 21300000, guid: 367c24d794ecc30449545f4bb1609a65, type: 3}
     faction: 0
     cardType: 0
     apCost: 2
@@ -249,12 +249,12 @@ MonoBehaviour:
       tech: 0
   - id: 7
     displayName: Light Infantry
-    art: {fileID: 21300000, guid: 285cc04667d9f774386502bff6b0e58a, type: 3}
+    art: {fileID: 21300000, guid: 31193e8e1a6072b47b1970e84241463f, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
     resourceCost:
-      human: 2
+      human: 1
       energy: 0
       materials: 0
       tech: 0
@@ -270,8 +270,7 @@ MonoBehaviour:
     hitPoints: 4
     initiative: 1
     unitTypeTags: 00000000
-    grantedAbilities:
-    - CriticalDamage
+    grantedAbilities: []
     structurePointsMax: 6
     defense: 2
     resistance: 1
@@ -282,21 +281,21 @@ MonoBehaviour:
       tech: 0
   - id: 8
     displayName: Medium Infantry
-    art: {fileID: 21300000, guid: 4919e34e63713c948bdf4e92caf2848f, type: 3}
+    art: {fileID: 21300000, guid: 5f75c27cc458fe44cbe96bf26ae69741, type: 3}
     faction: 0
     cardType: 1
-    apCost: 1
+    apCost: 2
     resourceCost:
-      human: 2
+      human: 1
       energy: 0
       materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 3
     defenseRating: 2
     resistanceRating: 1
     range: 2
@@ -315,14 +314,14 @@ MonoBehaviour:
       tech: 0
   - id: 9
     displayName: Light Tank
-    art: {fileID: 21300000, guid: a3e7e1a4b762d0440902002ccd787fd7, type: 3}
+    art: {fileID: 21300000, guid: 4ad88a83fb2be2f479bab36a43d07e2f, type: 3}
     faction: 0
     cardType: 1
     apCost: 3
     resourceCost:
       human: 0
       energy: 1
-      materials: 2
+      materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 3
@@ -335,7 +334,7 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 2
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 01000000
     grantedAbilities: []
     structurePointsMax: 6
     defense: 2
@@ -347,14 +346,14 @@ MonoBehaviour:
       tech: 0
   - id: 10
     displayName: Medium Tank
-    art: {fileID: 21300000, guid: aaf3742707e72c84c9f0e09a12bae7a5, type: 3}
+    art: {fileID: 21300000, guid: 724c990830d2de349811dd18b22fe79d, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
     resourceCost:
       human: 0
       energy: 1
-      materials: 3
+      materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 2
@@ -367,7 +366,7 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000002000000
     grantedAbilities:
     - CeramicArmor
     structurePointsMax: 6
@@ -380,17 +379,17 @@ MonoBehaviour:
       tech: 0
   - id: 11
     displayName: AT Infantry
-    art: {fileID: 21300000, guid: 93c45910ae780c14aad66880a4f5f6d8, type: 3}
+    art: {fileID: 21300000, guid: 75cfa2c31919f5a4ebab48be54549467, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
     resourceCost:
-      human: 2
+      human: 1
       energy: 0
       materials: 1
       tech: 1
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -413,15 +412,15 @@ MonoBehaviour:
       tech: 0
   - id: 12
     displayName: Battle Suit
-    art: {fileID: 21300000, guid: bb76a75792c2a094da77e5b38a5be80e, type: 3}
+    art: {fileID: 21300000, guid: 44c8ff2359d9ff64fbc9480968036589, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
     resourceCost:
       human: 1
-      energy: 2
-      materials: 2
-      tech: 2
+      energy: 1
+      materials: 1
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -436,6 +435,170 @@ MonoBehaviour:
     unitTypeTags: 0100000002000000
     grantedAbilities:
     - ShockAttack
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 13
+    displayName: Heavy Infantry
+    art: {fileID: 21300000, guid: ac351896ea192574880cf7a37b109246, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities:
+    - Berserk
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 14
+    displayName: Artillery Cannon
+    art: {fileID: 21300000, guid: 8405a142c2690cf4f829caa14e4a6a03, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    resistanceRating: 2
+    range: 3
+    hitPoints: 2
+    initiative: 2
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - ShockAttack
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 15
+    displayName: Artillery Tank
+    art: {fileID: 21300000, guid: 4810b69d90fbc5d4c83b205220cebfd4, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 2
+    resistanceRating: 3
+    range: 4
+    hitPoints: 3
+    initiative: 2
+    unitTypeTags: 01000000
+    grantedAbilities: []
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 16
+    displayName: Pulse Cannon
+    art: {fileID: 21300000, guid: e6e5088baf044414f8218f7ec96c6180, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 6
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 3
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - Hyperkinetic
+    structurePointsMax: 6
+    defense: 2
+    resistance: 1
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 17
+    displayName: Scrapper
+    art: {fileID: 21300000, guid: 00cf9c008377bdb4b8663093246c1c1d, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 2
+    unitTypeTags: 00000000
+    grantedAbilities:
+    - CollectMaterials
     structurePointsMax: 6
     defense: 2
     resistance: 1

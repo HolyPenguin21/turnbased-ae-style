@@ -90,21 +90,34 @@ border baked in, square corners — corner rounding is applied by the script bel
 frame file itself). Never generate the border/frame as part of Step 1 — always this same
 reusable template.
 
-PowerShell (`Add-Type -AssemblyName System.Drawing`), per image:
+`CompositeCardArt.ps1` (`Add-Type -AssemblyName System.Drawing`) runs as a batch: point it at a
+folder (`-InputFolder`) and it processes every PNG/JPG/JPEG directly inside (not recursive),
+writing TWO outputs per source image. See README.md in this same folder for the full parameter
+list; summary:
 
 1. **Round the frame's corners** — 46px radius alpha-cutout on all 4 corners of `Card_Base.png`,
-   fresh copy each run (don't mutate the template file itself).
-2. **Feather the raw illustration's edges** — alpha ramp on the source PNG:
-   - Left/right: outer 15% of width fades from 0 to full alpha
-   - Top: outer 15% of height fades from 0 to full alpha
-   - Bottom: from 50% height, alpha ramps from full to 0, reaching 0 by **72%** height (not the
-     bottom edge) — stays fully transparent for the remaining ~28%. A ramp that only hits 0 at the
-     very last pixel row leaves faint art visible almost to the border, crowding out room for the
-     card's description text; cutting it off by 72% leaves a clean blank lower section instead.
+   fresh copy once per run, reused for every image in the batch (don't mutate the template file
+   itself).
+2. **Feather each raw illustration's edges** — alpha ramp on the source PNG, twice per image:
+   - **Output 1** (goes in the deck/hand — this is the one wired into the catalog in Step 4):
+     - Left/right: outer `SideFeatherPercent` (default 15%) of width fades from 0 to full alpha.
+     - Top: outer `TopFeatherPercent` (default 15%) of height fades from 0 to full alpha.
+     - Bottom: from `BottomFadeStartPercent` (default 50%) height, alpha ramps from full to 0,
+       reaching 0 by `BottomFadeEndPercent` (default 72%) height (not the bottom edge) — stays
+       fully transparent for the remaining ~28%. A ramp that only hits 0 at the very last pixel
+       row leaves faint art visible almost to the border, crowding out room for the card's
+       description text; cutting it off by 72% leaves a clean blank lower section instead.
+   - **Output 2** (full art, no text-wipe — reference/preview use, not the deck card): same
+     left/right feather as output 1, but top AND bottom both use a plain symmetric edge fade of
+     `TopBottomFeatherPercent` (default 15%) — mirrors the top formula at the bottom edge instead
+     of the output-1 text-wipe ramp.
 3. **Composite** — new 832×1216 ARGB canvas, draw the rounded frame full-size at (0,0), then
    draw the feathered art scaled to fit width into the window `left=70, right=760, top=80`
-   (690px wide, height scaled proportionally, `HighQualityBicubic` interpolation).
-4. Save as PNG into `Assets/Textures/Units/IronConcord/GameCards/`, named `IC_Card_<Type>_<Name>_01.png`.
+   (690px wide, height scaled proportionally, `HighQualityBicubic` interpolation). Done once per
+   output per source image.
+4. Save as PNG: output 1 into `Assets/Textures/Units/IronConcord/GameCards/` with the same file
+   name as the source image; output 2 into `.../GameCards_Full/` with `_Full` appended to the
+   name.
 
 ## Step 3 — fix Unity import settings
 

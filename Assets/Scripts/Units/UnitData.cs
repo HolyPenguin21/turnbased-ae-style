@@ -71,6 +71,11 @@ namespace Game.Units
         // shared army/stack icon (see GameConfig.armyIconSprite), but ArmyViewerModalUI's
         // card grid shows this real per-unit art instead.
         public Sprite Art;
+        // Carried over from CardDefinition.detailArt at spawn time (falling back to Art itself
+        // when the card never set one — see HexSelectionController.SpawnUnit) — the image
+        // ArmyViewerModalUI/BattleScreenUI's own ShowUnitDetail shows in the detail panel,
+        // deliberately separate from the compact card thumbnail above.
+        public Sprite DetailArt;
 
         // Combat stats (see Game.Combat) — carried over from CardDefinition at spawn time, same
         // as everything else above. Range is how many rows ahead of this unit's own row it can

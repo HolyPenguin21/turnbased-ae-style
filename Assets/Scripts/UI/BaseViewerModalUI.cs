@@ -171,7 +171,6 @@ namespace Game.UI
                 levelLine +
                 $"Structure Points: {_currentBuilding.StructurePointsCurrent}/{_currentBuilding.StructurePointsMax}\n" +
                 $"Defense: {_currentBuilding.Defense}\n" +
-                $"Resistance: {_currentBuilding.Resistance}\n" +
                 $"Fate: {_currentBuilding.Fate}\n" +
                 $"RC: {FormatYield(_currentBuilding.ResourceYield)}\n" +
                 $"{FormatAbilities(_currentBuilding.Abilities)}";
