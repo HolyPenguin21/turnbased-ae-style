@@ -151,9 +151,9 @@ namespace Game.UI
                     break;
                 case CardType.Base:
                     slot1 = 1; // Level — always 1 for a not-yet-built card, see the field block's own comment
-                    slot2 = definition.defense;
-                    hp = definition.structurePointsMax;
-                    slot4 = definition.resistance;
+                    slot2 = definition.defenseRating;
+                    hp = definition.hitPoints;
+                    slot4 = definition.resistanceRating;
                     slot5 = definition.fate;
                     break;
                 default: // Unit

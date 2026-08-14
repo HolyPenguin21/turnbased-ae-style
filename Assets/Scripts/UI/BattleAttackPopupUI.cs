@@ -41,10 +41,30 @@ namespace Game.UI
 
         [Header("Roll State")]
         [SerializeField] private GameObject rollStateRoot;
+        [SerializeField] private TMP_Text titleText;
         [SerializeField] private BattleCombatantRowUI attackerRow;
         [SerializeField] private BattleCombatantRowUI defenderRow;
         [SerializeField] private Button rollButton;
         [SerializeField] private Button acceptButton;
+        // Player-facing "auto-press Roll Die for me" checkbox (Autoroll_Toggle, under
+        // rollStateRoot) — persisted across sessions via PlayerPrefs (see Awake/
+        // OnAutorollToggleChanged), separate from AutoRollIfNoHuman's own AI-vs-AI gate below:
+        // this fires even on a human's own turn once they've opted in.
+        [SerializeField] private Toggle autorollToggle;
+        private const string AutorollPrefKey = "BattleAttackPopup.AutorollEnabled";
+        // How long the AI "thinks" before accepting a roll instead of spending Fate on it (see
+        // RunAiTurn) — without this it used to resolve in the same frame the roll landed, which
+        // read as the AI (most visibly the defender, exercising Defender's Prerogative on the
+        // fresh first roll) accepting suspiciously fast, per the user's own report.
+        [SerializeField] private float aiAcceptDelay = 0.5f;
+        // How long before Roll Die auto-presses itself when neither side is human (see
+        // AutoRollIfNoHuman) — otherwise an AI-vs-AI or AI-vs-neutral encounter just sits on
+        // Phase.NotRolled forever, since rollButton only ever fires from an explicit click.
+        [SerializeField] private float aiRollDelay = 0.5f;
+        // How long a resolved result screen (Ground Combat / Capture Kill / a bare Announcement)
+        // stays up before auto-acknowledging itself when neither side is human (see
+        // AutoCloseResultIfNoHuman) — same reasoning as aiRollDelay above.
+        [SerializeField] private float aiResultCloseDelay = 0.5f;
 
         [Header("Result State")]
         [SerializeField] private GameObject resultStateRoot;
@@ -58,6 +78,14 @@ namespace Game.UI
 
         private enum Phase { NotRolled, InProgress, Resolved }
         private Phase _phase;
+        // Guards OnOkClicked against a same-frame double-fire the same way _phase's own
+        // NotRolled->Resolved transition already does for a fresh Roll/duel — but a bare
+        // ShowAnnouncement (see its own comment) never leaves Phase.Resolved, so _phase alone
+        // can't tell "already acknowledged" apart from "still showing" for that case. Reset
+        // false by every entry point that puts up a new closeable screen (Begin, ShowAnnouncement
+        // — BeginCaptureKill goes through Begin), set true the first time OnOkClicked actually
+        // processes it.
+        private bool _okAlreadyHandled;
 
         // ---- Fate duel state (see RunDuel) — valid only while _phase == InProgress and only
         // meaningful during a human turn (RunHumanTurn); AI turns never touch these, they just run
@@ -101,6 +129,9 @@ namespace Game.UI
         // straight into the SAME roll as any other Ground Combat attack rather than a separate
         // manual-style Siege Challenge (see BattleScreenUI.Combat.cs's BeginAttack, the only
         // caller that ever sets this to non-zero). Never applied to the attacker's own pool.
+        // Set in Begin as defenderTerrainBonus + defenderConstructionBonus (kept as a single sum
+        // here since roll math only cares about the total; the two components are only split out
+        // for BattleCombatantRowUI's own dice-count breakdown text).
         private int _defenderBonusDice;
         // CaptureKill mode only — the hunter's computed dice-pool size (see BeginCaptureKill;
         // there's no per-unit Attack stat to roll against, unlike Ground Combat) and how many
@@ -135,6 +166,17 @@ namespace Game.UI
                 attackerRow.SpendClicked += OnAttackerSpend;
             if (defenderRow != null)
                 defenderRow.SpendClicked += OnDefenderSpend;
+            if (autorollToggle != null)
+            {
+                autorollToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(AutorollPrefKey, 0) != 0);
+                autorollToggle.onValueChanged.AddListener(OnAutorollToggleChanged);
+            }
+        }
+
+        private static void OnAutorollToggleChanged(bool isOn)
+        {
+            PlayerPrefs.SetInt(AutorollPrefKey, isOn ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         // Space as a shortcut for Ok, per the user's own request — gated on resultStateRoot
@@ -155,13 +197,16 @@ namespace Game.UI
         // attackerPoolSize/defenderPoolSize (optional): only BeginCaptureKill needs to override
         // these — its pools are _hunterDicePool/the target hero's own Fate, nothing to do with
         // Attack/Defense (see BeginCaptureKill's own comment). Ground Combat's default (attacker.
-        // Attack / defender.Defense + defenderBonusDice) matches exactly what OnRollClicked
-        // itself rolls against, just surfaced before Roll Die is even clicked (see the user's own
-        // request to see each side's pool size up front, not just its post-roll success count).
+        // Attack / defender.Defense + defenderTerrainBonus + defenderConstructionBonus) matches
+        // exactly what OnRollClicked itself rolls against, just surfaced before Roll Die is even
+        // clicked (see the user's own request to see each side's pool size up front, not just its
+        // post-roll success count).
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
             Sprite factionLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
-            bool defenderIsRetreating = false, int defenderBonusDice = 0, int? attackerPoolSize = null, int? defenderPoolSize = null)
+            bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
+            int? attackerPoolSize = null, int? defenderPoolSize = null)
         {
+            int defenderBonusDice = defenderTerrainBonus + defenderConstructionBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
             // could fire against the fields this call is about to overwrite.
@@ -179,6 +224,7 @@ namespace Game.UI
             _attackerDice = null;
             _defenderDice = null;
             _phase = Phase.NotRolled;
+            _okAlreadyHandled = false;
             _awaitingHumanDecision = false;
             _humanSpent = false;
             _humanDeclined = false;
@@ -193,17 +239,68 @@ namespace Game.UI
                 rollStateRoot.SetActive(true);
             if (resultStateRoot != null)
                 resultStateRoot.SetActive(false);
+            // Reset to the Ground Combat title on every fresh Begin — BeginCaptureKill (below)
+            // overrides it right after calling this, since it reuses this same shell (see the
+            // user's own request: the title should read "Capture/Kill Challenge" specifically
+            // for that flow, not the generic one this popup defaults to).
+            if (titleText != null)
+                titleText.text = "GROUND COMBAT";
 
             attackerRow?.Setup(attacker, attackerHero, factionLogo);
             defenderRow?.Setup(defender, defenderHero, factionLogo);
             attackerRow?.SetDicePoolSize(attackerPoolSize ?? (attacker?.Attack ?? 0));
-            defenderRow?.SetDicePoolSize(defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice));
+            defenderRow?.SetDicePoolSize(defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice),
+                defenderTerrainBonus, defenderConstructionBonus, defender?.Defense ?? 0);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
             if (rollButton != null)
                 rollButton.interactable = true;
             if (acceptButton != null)
                 acceptButton.interactable = false;
+
+            if (NoHumanInvolved || IsAutorollEnabled)
+                StartCoroutine(AutoRollIfNoHuman());
+        }
+
+        // The Autoroll_Toggle checkbox (see Awake/OnAutorollToggleChanged) — lets a human player
+        // opt into the same auto-press-Roll-Die behavior AutoRollIfNoHuman already gives an
+        // AI-vs-AI encounter (see NoHumanInvolved's own call site in Begin), so they don't have to
+        // click Roll Die themselves every single Ground Combat/Capture Kill challenge.
+        private bool IsAutorollEnabled => autorollToggle != null && autorollToggle.isOn;
+
+        private static bool IsHumanSide(UnitData unit) => unit != null && unit.Owner != null && unit.Owner.IsHuman;
+
+        // Neither current side needs to actually look at anything here before it happens — an
+        // AI-vs-AI or AI-vs-neutral encounter (no human on either side), same population this
+        // popup's own auto-roll/auto-close behavior targets. Reads the live _attacker/_defender
+        // fields rather than taking parameters so ShowAnnouncement (no attacker/defender of its
+        // own — see its own comment) can reuse the exact same check off whatever the last real
+        // challenge on this popup instance set them to.
+        private bool NoHumanInvolved => !IsHumanSide(_attacker) && !IsHumanSide(_defender);
+
+        // Nobody human needs to look at this roll before it happens (see NoHumanInvolved) — an
+        // AI-vs-AI or AI-vs-neutral encounter would otherwise just sit on Phase.NotRolled forever,
+        // since rollButton only ever gets pressed by an explicit click. Short delay purely for
+        // visual pacing, same reasoning as aiAcceptDelay.
+        private IEnumerator AutoRollIfNoHuman()
+        {
+            if (aiRollDelay > 0f)
+                yield return new WaitForSeconds(aiRollDelay);
+            if (_phase == Phase.NotRolled)
+                OnRollClicked();
+        }
+
+        // Same "nobody human needs to look at this" gate as AutoRollIfNoHuman, for whichever
+        // result screen just went up (Ground Combat, Capture Kill, or a bare Announcement) — an
+        // AI-vs-AI/AI-vs-neutral encounter would otherwise sit on Phase.Resolved forever waiting
+        // for a click nobody's there to make. OnOkClicked's own _okAlreadyHandled guard makes this
+        // safe even if a human elsewhere in the scene somehow also clicks Ok around the same time.
+        private IEnumerator AutoCloseResultIfNoHuman()
+        {
+            if (aiResultCloseDelay > 0f)
+                yield return new WaitForSeconds(aiResultCloseDelay);
+            if (_phase == Phase.Resolved && !_okAlreadyHandled)
+                OnOkClicked();
         }
 
         // The manual's "Capture Kill Challenge" (pg. 24) — same Roll/Defender's-Prerogative/
@@ -235,9 +332,15 @@ namespace Game.UI
             _hunterDicePool = 1 + hunterUnits / 2;
             _onCaptureKillResolved = onResolved;
 
+            // The manual: "the target hero receives a dice pool equal to his fate" — his FULL
+            // Fate stat, not whatever he happens to have left after spending some earlier this
+            // same battle (see the user's own correction; RunRollAndDuel below reads the same
+            // FateMax for the actual roll).
             Begin(hunterFace, hunterHero, targetHero, targetHero, factionLogo, null, onAiThought,
-                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.Fate ?? 0);
+                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0);
             _kind = ChallengeKind.CaptureKill;
+            if (titleText != null)
+                titleText.text = "CAPTURE/KILL CHALLENGE";
         }
 
         // A plain single-screen announcement — no roll, no dice, no attacker/defender rows —
@@ -250,6 +353,14 @@ namespace Game.UI
         {
             _kind = ChallengeKind.Announcement;
             _onAnnouncementAcknowledged = onAcknowledged;
+            // Never goes through Begin (no attacker/defender roll of its own) — the ONE other
+            // place that puts up a fresh closeable screen, so it needs its own reset of the
+            // OnOkClicked re-entrancy guard (see _okAlreadyHandled's own comment: _phase alone
+            // can't do this job here, since it never leaves Resolved across an Announcement).
+            _okAlreadyHandled = false;
+            // Resolved, not NotRolled/InProgress — this IS the result screen already, there's no
+            // roll to wait for; OnOkClicked's own guard expects Resolved to mean "a result is up".
+            _phase = Phase.Resolved;
 
             if (panelRoot != null)
             {
@@ -273,6 +384,9 @@ namespace Game.UI
                 destroyedStamp.SetActive(false);
             if (resultSummaryText != null)
                 resultSummaryText.text = message;
+
+            if (NoHumanInvolved)
+                StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
         private void OnRollClicked()
@@ -293,7 +407,9 @@ namespace Game.UI
             ChallengeResult result;
             if (_kind == ChallengeKind.CaptureKill)
             {
-                _targetDicePoolSize = _defenderHero?.Fate ?? 0;
+                // FateMax, not the current Fate — same rule as BeginCaptureKill's own
+                // defenderPoolSize (this is the actual roll, that was just the pre-roll preview).
+                _targetDicePoolSize = _defenderHero?.FateMax ?? 0;
                 result = ChallengeResolver.Resolve(_hunterDicePool, _targetDicePoolSize);
             }
             else
@@ -341,33 +457,27 @@ namespace Game.UI
         //    то закончить их может тот, кто их не делал в раунде переброса: если защищающийся
         //    нажал Spend, то атакующий решает — делать переброс или заканчивать челлендж (если
         //    защитник тоже решил нажать Spend, право закончить челлендж передаётся защищающемуся)."
-        // Two different endings, depending on whether a Spend has happened yet AT ALL:
-        //   - Before the first Spend: both sides still get their own untouched first look (matches
-        //     the old two-phase design) — a decline here just hands the still-fresh roll to the
-        //     OTHER side; only once BOTH have declined with nothing having changed does it resolve.
-        //   - Once at least one Spend has happened: every subsequent turn is a REACTION to that
-        //     spend, and belongs to whichever side did NOT just spend — a decline there is final
-        //     (resolves immediately, per the quote above), while a spend hands the "end or
-        //     continue" decision right back to the other side, and so on for as long as either
-        //     side keeps going.
+        // Defender's Prerogative means exactly that, no more: the DEFENDER alone decides whether
+        // a Fate duel happens at all off the fresh roll. Accept there ends it immediately — the
+        // attacker never gets an independent look at this same roll (see the user's own
+        // correction; a previous version of this method gave the attacker an "untouched first
+        // look" too whenever the defender declined, which let an AI attacker start spending off
+        // a roll the defender had already accepted — see the user's own report). Only a defender
+        // Spend opens the reactive queue: attacker responds first, then back to defender, and so
+        // on for as long as either side keeps spending — a decline anywhere in THIS phase is
+        // final and resolves the duel on the spot, per the quote above.
         private IEnumerator RunDuel()
         {
-            bool anySpendYet = false;
-            bool isDefenderTurn = true;
-            int consecutiveDeclinesBeforeAnySpend = 0;
+            yield return RunTurn(true);
+            if (!_turnSpent)
+                yield break;
+
+            bool isDefenderTurn = false;
             while (true)
             {
                 yield return RunTurn(isDefenderTurn);
-                if (_turnSpent)
-                {
-                    anySpendYet = true;
-                    isDefenderTurn = !isDefenderTurn;
-                    continue;
-                }
-                if (anySpendYet)
-                    yield break; // a reactive decline ends the duel on the spot
-                if (++consecutiveDeclinesBeforeAnySpend >= 2)
-                    yield break; // both sides had their untouched first look and neither wanted it
+                if (!_turnSpent)
+                    yield break;
                 isDefenderTurn = !isDefenderTurn;
             }
         }
@@ -458,7 +568,11 @@ namespace Game.UI
                     _attacker, _defender, CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction,
                     isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill);
                 if (!shouldSpend)
+                {
+                    if (aiAcceptDelay > 0f)
+                        yield return new WaitForSeconds(aiAcceptDelay);
                     break;
+                }
 
                 bool rerolled = isDefenderTurn
                     ? RerollOneMiss(ref _defenderDice, out int rerolledIndex)
@@ -622,11 +736,14 @@ namespace Game.UI
             ShowResult(damage, died, wasHit, appliedAbilities);
         }
 
-        private float CriticalDamageMultiplier => abilityCatalog != null ? abilityCatalog.criticalDamageMultiplier : 2f;
-        private int CeramicArmorReduction => abilityCatalog != null ? abilityCatalog.ceramicArmorReduction : 1;
+        // Public so BattleScreenUI.ConsiderAiRetreat can feed the same tunable magnitudes into
+        // BattleAi.AssessRetreat's damage projection — one UnitAbilityCatalog reference for the
+        // whole battle screen instead of wiring a second copy onto BattleScreenUI itself.
+        public float CriticalDamageMultiplier => abilityCatalog != null ? abilityCatalog.criticalDamageMultiplier : 2f;
+        public int CeramicArmorReduction => abilityCatalog != null ? abilityCatalog.ceramicArmorReduction : 1;
         private int BerserkAttackGain => abilityCatalog != null ? abilityCatalog.berserkAttackGain : 1;
         private int BerserkDefenseLoss => abilityCatalog != null ? abilityCatalog.berserkDefenseLoss : 1;
-        private int HyperkineticBonusDamage => abilityCatalog != null ? abilityCatalog.hyperkineticBonusDamage : 2;
+        public int HyperkineticBonusDamage => abilityCatalog != null ? abilityCatalog.hyperkineticBonusDamage : 2;
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the
@@ -694,6 +811,9 @@ namespace Game.UI
             // own report: a 3:2 win that resolved as Captured still showed Destroyed here).
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(outcome == CaptureKillOutcome.Killed);
+
+            if (NoHumanInvolved)
+                StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
         private void ShowResult(int damage, bool died, bool wasHit, List<string> appliedAbilities)
@@ -731,10 +851,37 @@ namespace Game.UI
                 resultTargetHpText.text = $"HP: {_defender.HitPointsCurrent}/{_defender.HitPointsMax}";
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(died);
+
+            if (NoHumanInvolved)
+                StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
         private void OnOkClicked()
         {
+            // Guards against a same-frame double-fire: Space (see Update's own WasSpacePressed
+            // check) can land on the SAME frame the EventSystem's own Submit action already
+            // routes to okButton.onClick because okButton is the currently-selected UI element —
+            // both then call this. A CaptureKill chain (see BattleScreenUI.Combat.cs's
+            // RunNextCaptureKillChallenge) reopens this exact popup for the NEXT hero synchronously
+            // inside the first call's own callback, so without this guard the stray second call
+            // used to fire against that freshly-opened NEXT challenge instead of a no-op — Hide()
+            // closing it early and _captureKillOutcome/_resultDamage (still holding the PREVIOUS
+            // challenge's stale values, since the next one hasn't rolled yet) resolving it on the
+            // spot, corrupting the next result in the chain (see the user's own report: the
+            // Capture/Kill Challenge result popup's second message duplicated/broken). Every
+            // Resolve* site sets _phase = Resolved right before showing this result; the reopen
+            // above always resets it back to NotRolled via Begin, so a stray second call usually
+            // finds the wrong phase and bails here instead — EXCEPT a plain ShowAnnouncement
+            // (e.g. "The enemy retreats." after a hero escapes its Capture Kill Challenge), which
+            // never leaves Phase.Resolved (see its own comment), so that stray second call used
+            // to sail straight through this check and re-fire the announcement's own callback a
+            // second time, showing the same line again (the user's own report of a "parasitic"
+            // duplicate message). _okAlreadyHandled catches that case too, since it's reset fresh
+            // by every entry point that shows something new, not just the ones that also change
+            // _phase.
+            if (_phase != Phase.Resolved || _okAlreadyHandled)
+                return;
+            _okAlreadyHandled = true;
             Hide();
             if (_kind == ChallengeKind.CaptureKill)
             {

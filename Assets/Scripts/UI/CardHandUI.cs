@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -36,7 +37,7 @@ namespace Game.UI
         [SerializeField] private Button scrollRightButton;
         [SerializeField] private GameTurnController turnController;
         [SerializeField] private int drawApCost = 2;
-        [SerializeField] private FactionCardCatalog catalog;
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         // Used to figure out which hex (if any) a card was dropped on, and to actually spawn
         // the unit there — see TryPlayCard.
         [SerializeField] private HexSelectionController hexSelection;
@@ -52,6 +53,14 @@ namespace Game.UI
         [SerializeField] private GameConfig gameConfig;
 
         public GameConfig GameConfig => gameConfig;
+
+        // Exposed so Game.Ai.AiHandRegistry can resolve every AI player's own hand from the same
+        // StartingDeckCatalog the human draws from — each player (human or AI) now resolves
+        // their own deck from it via their own PlayerSetupData.Faction, rather than everyone
+        // sharing one hardcoded catalog+deckIndices pair.
+        public StartingDeckCatalog StartingDeckCatalog => startingDeckCatalog;
+        public int StartingHandSize => startingHandSize;
+        public int DrawApCost => drawApCost;
 
         [Header("Layout")]
         [SerializeField] private Vector2 cardSize = new Vector2(96f, 140f);
@@ -79,17 +88,17 @@ namespace Game.UI
         // reacting to it. See PreviewDrag.
         [SerializeField] private float dragBandBuffer = 50f;
 
-        // The whole deck for this game: indices into catalog.cards, duplicates allowed (e.g.
-        // several Light Infantry entries for several copies) — seeds _remainingDeck on Awake,
-        // which both the starting hand and drawButton draw random cards from without
-        // replacement (see PopRandomDeckIndex).
-        [SerializeField] private List<int> deckIndices = new List<int>();
         [SerializeField] private int startingHandSize = 6;
         // Hard cap on cards the player can hold at once — enforced in OnDrawClicked (the only
         // way a card gets added to hand after the starting deal).
         [SerializeField] private int maxHandSize = 10;
 
         private readonly List<CardUI> _cards = new List<CardUI>();
+        // Dev-only mirror of _cards for GameTurnController's debugFollowAiVision toggle (see
+        // ShowAiHandDebug) — kept fully separate so swapping the display never touches the
+        // human's own real hand/deck state underneath.
+        private readonly List<CardUI> _debugCards = new List<CardUI>();
+        private bool _showingDebugHand;
         // Reused every PreviewDrag call instead of allocating a fresh List each time —
         // OnDrag can fire many times a frame while a card is held, so this was previously
         // the single biggest source of GC garbage (and the FPS drops that go with it) during
@@ -98,8 +107,9 @@ namespace Game.UI
         private int _scrollOffset;
         // Consumed (RemoveAt), not cycled — every card in the deck is one-time-use for the
         // whole game, so drawing must never hand out the same physical card twice, even though
-        // duplicate catalog indices (several copies of the same card) are expected.
-        private readonly List<int> _remainingDeck = new List<int>();
+        // the same CardDefinition can appear several times (several copies of the same card,
+        // see StartingDeckCatalog.BuildDeckPool).
+        private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();
         // Tracks whether the card currently being dragged is still within the hand row's drag
         // band as of the last PreviewDrag call — set there, read in FinishDrop to decide
         // "reorder within the hand" (still in band) vs. "attempt to play it onto the map"
@@ -132,17 +142,20 @@ namespace Game.UI
 
             CreateSlotBackgrounds();
 
-            _remainingDeck.AddRange(deckIndices);
+            if (startingDeckCatalog != null)
+            {
+                PlayerSetupData human = FindHumanPlayer();
+                Faction faction = human != null ? human.Faction : Faction.IronConcord;
+                _remainingDeck.AddRange(startingDeckCatalog.BuildDeckPool(faction));
+            }
 
-            if (catalog != null)
-                for (int i = 0; i < startingHandSize; i++)
-                {
-                    int index = PopRandomDeckIndex();
-                    if (index < 0)
-                        break;
-                    if (index < catalog.cards.Count)
-                        AddCard(new CardData(catalog.cards[index]));
-                }
+            for (int i = 0; i < startingHandSize; i++)
+            {
+                CardDefinition card = PopRandomCard();
+                if (card == null)
+                    break;
+                AddCard(new CardData(card));
+            }
         }
 
         // Faint translucent boxes, one per MaxVisible slot, permanently in place behind
@@ -178,17 +191,17 @@ namespace Game.UI
             }
         }
 
-        // Removes and returns one random catalog index from the remaining deck (-1 if it's
-        // empty) — shared by the starting-hand draw above and OnDrawClicked below, so both
-        // pull from the same shrinking pool without replacement.
-        private int PopRandomDeckIndex()
+        // Removes and returns one random card from the remaining deck (null if it's empty) —
+        // shared by the starting-hand draw above and OnDrawClicked below, so both pull from the
+        // same shrinking pool without replacement.
+        private CardDefinition PopRandomCard()
         {
             if (_remainingDeck.Count == 0)
-                return -1;
+                return null;
             int poolIndex = Random.Range(0, _remainingDeck.Count);
-            int catalogIndex = _remainingDeck[poolIndex];
+            CardDefinition card = _remainingDeck[poolIndex];
             _remainingDeck.RemoveAt(poolIndex);
-            return catalogIndex;
+            return card;
         }
 
         // Called once by GameTurnController.BeginGame, right after citadel setup — same
@@ -280,6 +293,64 @@ namespace Game.UI
         private static PlayerSetupData FindHumanPlayer() => GameSession.FindHumanPlayer();
 
         private static PlayerRoot FindHumanRoot() => GameSession.FindHumanRoot();
+
+        // Dev-only: swaps the visible hand row for `hand`'s own cards (see GameTurnController.
+        // debugFollowAiVision) — the real hand's own _cards are only hidden, never touched, so
+        // nothing about the human's actual hand/deck state changes. Read-only in practice without
+        // needing its own flag: CanDragCards() already requires turnController.CurrentPlayer.
+        // IsHuman, which is false for the whole AI turn this is ever shown during, so these cards
+        // simply can't be picked up. Capped at MaxVisible — no scroll wired up for the debug view,
+        // per the project owner's own "just let me see it" ask, not a full second hand widget.
+        public void ShowAiHandDebug(AiHandData hand)
+        {
+            if (cardPrefab == null || handContainer == null)
+                return;
+
+            foreach (CardUI card in _debugCards)
+                Destroy(card.gameObject);
+            _debugCards.Clear();
+
+            foreach (CardUI card in _cards)
+                card.gameObject.SetActive(false);
+            _showingDebugHand = true;
+
+            if (hand == null)
+                return;
+
+            for (int i = 0; i < hand.Hand.Count && i < MaxVisible; i++)
+            {
+                CardUI card = Instantiate(cardPrefab, handContainer);
+                card.Setup(this, hand.Hand[i], restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
+                card.SetHome(new Vector2(SlotX(i), 0f), animated: false);
+                card.transform.SetAsLastSibling();
+                _debugCards.Add(card);
+            }
+        }
+
+        // Re-lays-out the currently shown debug hand from `hand`'s latest contents — a no-op
+        // unless ShowAiHandDebug is already active, so Game.Ai.AiTurnController can call this
+        // after every decision step (hand contents can change mid-turn — a draw, a deploy) without
+        // needing to know whether debugFollowAiVision is even on.
+        public void RefreshAiHandDebugIfShowing(AiHandData hand)
+        {
+            if (_showingDebugHand)
+                ShowAiHandDebug(hand);
+        }
+
+        // Reverts to the real hand — called once a human's own turn begins again (see
+        // GameTurnController.BeginPlayerTurn).
+        public void HideAiHandDebug()
+        {
+            if (!_showingDebugHand)
+                return;
+            _showingDebugHand = false;
+
+            foreach (CardUI card in _debugCards)
+                Destroy(card.gameObject);
+            _debugCards.Clear();
+
+            Relayout(animated: false);
+        }
 
         public void AddCard(CardData data)
         {
@@ -755,44 +826,19 @@ namespace Game.UI
             return true;
         }
 
-        // Shared by both drop paths above: affordability check, spend, spawn the actual unit,
-        // and add it to whichever army is receiving it — always at that army's own hex, which
-        // is also the only hex it could ever have been dropped to (the hex-drop path only
-        // ever reaches here via that same army's hex, and the modal-drop path deploys straight
-        // into the army it's currently showing).
+        // Shared by both drop paths above — thin wrapper over Game.Map.ArmyActions.
+        // DeployUnitFromCard (the same player-agnostic core Game.Ai.AiTurnController calls for
+        // an AI player), just turning a failure into this player's own hint popup.
         private bool DeployUnit(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy, PlayerRoot root)
         {
             if (hexSelection == null || root == null)
                 return false;
 
-            // UnitAbilities.RapidReaction: "The AP cost to deploy the unit is 0" — overrides the
-            // card's own apCost outright rather than needing a spawned UnitData to check against
-            // (there isn't one yet at this point).
-            int apCost = definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.RapidReaction)
-                ? 0 : definition.apCost;
-
-            if (!root.CanSpendActionPoints(apCost))
+            if (!ArmyActions.DeployUnitFromCard(definition, owner, targetArmy, root, hexSelection, out string failReason))
             {
-                turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
+                if (failReason != null)
+                    turnController.ShowSpawnHint(failReason);
                 return false;
-            }
-            if (!definition.resourceCost.CanAfford(root))
-            {
-                turnController.ShowSpawnHint($"Not enough resources to deploy {definition.displayName}.");
-                return false;
-            }
-
-            root.SpendActionPoints(apCost);
-            definition.resourceCost.PayFrom(root);
-            bool isHero = definition.cardType == CardType.Hero;
-            UnitData spawned = hexSelection.SpawnUnit(definition.displayName, owner, definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate, definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt);
-            if (spawned != null)
-            {
-                targetArmy.AddMemberSorted(spawned);
-                // The unit has no map presence of its own (see Game.Map.ArmyController) — only
-                // targetArmy's own marker does, and this may be its first member ever (e.g. a
-                // garrison that had zero units until now), so its visibility needs refreshing.
-                hexSelection.RestackArmiesOn(targetArmy.Hex, null);
             }
             return true;
         }
@@ -882,7 +928,7 @@ namespace Game.UI
 
         private void OnDrawClicked()
         {
-            if (catalog == null || _remainingDeck.Count == 0 || !CanDragCards())
+            if (_remainingDeck.Count == 0 || !CanDragCards())
                 return;
             if (_cards.Count >= maxHandSize)
             {
@@ -893,13 +939,13 @@ namespace Game.UI
             if (root == null || !root.CanSpendActionPoints(drawApCost))
                 return;
 
-            int index = PopRandomDeckIndex();
-            if (index < 0 || index >= catalog.cards.Count)
+            CardDefinition card = PopRandomCard();
+            if (card == null)
                 return;
 
             RefreshDeckCountText();
             root.SpendActionPoints(drawApCost);
-            AddCard(new CardData(catalog.cards[index]));
+            AddCard(new CardData(card));
         }
 
         private void OnScrollLeftClicked()

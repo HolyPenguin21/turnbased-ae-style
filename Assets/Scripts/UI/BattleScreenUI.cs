@@ -32,9 +32,11 @@ namespace Game.UI
     //              the first. Retreat there gives the OTHER side one final "grace round" (see
     //              OnRetreatClicked/_retreatingArmy) before ResolveRetreat actually relocates or
     //              destroys the retreating army.
-    //   Round    — full grid + initiative queue revealed. The current human unit can click an
-    //              adjacent empty own-side/neutral-row cell to move, or an enemy in range to open
-    //              the Ground Combat popup (see OnCellClicked/BattleAttackPopupUI) — either ends
+    //   Round    — full grid + initiative queue revealed. The current human unit can click any
+    //              adjacent empty cell to move (the Attacker/Defender row split only matters for
+    //              initial Arrangement placement, not round movement — see BattleScreenUI.Grid.cs's
+    //              IsAdjacentMoveTarget), or an enemy in range to open the Ground Combat popup
+    //              (see OnCellClicked/BattleAttackPopupUI) — either ends
     //              its turn (EndTurn), same as Pass. An AI-owned unit's turn still just
     //              auto-passes (no AI decision-making yet).
     //
@@ -136,6 +138,22 @@ namespace Game.UI
         // leaves, per the user's own spec.
         private ArmyData _retreatingArmy;
 
+        // Enqueued by PerformRetreat whenever a retreating army lands on a hex held by an
+        // engageable hostile army/garrison — consumed one at a time by
+        // TryChainPendingRetreatContact once THIS encounter is actually closing (every Hide()
+        // call site in Combat.cs routes through it first), not shown immediately: this battle's
+        // own outcome popup and possible old-hex chain (see OnBattleOutcomeAcknowledged) get
+        // first claim on the screen. A Queue, not a single slot, because a chained old-hex battle
+        // (see OnBattleOutcomeAcknowledged's own nextEnemy branch) can itself produce a SECOND
+        // retreat-into-contact before the first one has ever been shown — a single nullable field
+        // used to let that second one silently overwrite and lose the first (see the user's own
+        // report tracing exactly this: a 3-army battle hex, first army's retreat contact queued,
+        // second chained battle's own retreat contact clobbering it). Survives ResetBattlePanel on
+        // purpose — that only tears down the JUST-finished battle's own UI state, not a
+        // still-pending consequence of it.
+        private readonly Queue<(HexCoord hex, List<ArmyData> participants, bool targetHeroOnly)> _pendingRetreatContacts =
+            new Queue<(HexCoord hex, List<ArmyData> participants, bool targetHeroOnly)>();
+
         // A unit's actual owning army, independent of which grid ROWS it currently occupies — a
         // non-hero unit can advance across the neutral row into the opposing side's own rows
         // during the Round's movement step to reach melee range (see BattleGrid's row-layout
@@ -178,6 +196,12 @@ namespace Game.UI
         // Anti-stalling counter for BattleAi.ChooseAction — how many turns in a row a given AI
         // unit has waited instead of advancing (see BattleAi's own MaxWaitStreak).
         private readonly Dictionary<UnitData, int> _aiWaitStreak = new Dictionary<UnitData, int>();
+        // This round's own BattleAi.RetreatAssessment.FavorableForAdvance for whichever AI army
+        // ConsiderAiRetreat actually assessed (see TryAssessSideRetreat) — read by
+        // AutoActAfterDelay so ChooseAction knows the SAME projection that cleared this army to
+        // keep fighting also already found the numbers clearly in its favor, instead of each
+        // unit re-deciding "is exposure worth it" from zero context every single turn.
+        private readonly Dictionary<ArmyData, bool> _aiFavorableThisRound = new Dictionary<ArmyData, bool>();
         // Seconds since the human's last action on their own turn — past aiIdleThreshold, the AI
         // offers a small idle nudge (see Update). Negative while it isn't the human's turn at all.
         private float _idleTimer = -1f;
@@ -247,6 +271,13 @@ namespace Game.UI
             _defender = participants != null && participants.Count > 1 ? participants[1] : null;
             _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
+
+            // Hero Fate is deliberately NOT touched here — it refills per-battle, but as soon as
+            // the PREVIOUS battle actually ends (see OnBattleOutcomeAcknowledged), not here. A
+            // chained second fight on the same hex shows its own BattleContactPopupUI before this
+            // Show() ever runs again, reading Fate straight off ArmyData.Members — replenishing
+            // this late used to leave that preview showing stale, pre-replenish Fate (see the
+            // user's own report).
             // A hex with a SECOND still-standing enemy army chains straight into a fresh Show()
             // for that fight (see OnBattleOutcomeAcknowledged) without ever going through Hide()
             // in between — Hide() is the only other place this gets cleared, so without this a
@@ -260,6 +291,7 @@ namespace Game.UI
             // again, never actually taking effect).
             _retreatingArmy = null;
             _aiWaitStreak.Clear();
+            _aiFavorableThisRound.Clear();
 
             // AI never gets a UI Arrangement phase — replace whatever FromArmies's generic
             // default just placed for any non-human side with BattleAi's own range-aware layout
@@ -268,9 +300,15 @@ namespace Game.UI
             // comment), never its placement — both sides' arrangement happens in this same call,
             // before either one has a layout to look at.
             if (_attacker?.Owner != null && !_attacker.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, _defender);
+                BattleAi.ArrangeArmy(_grid, _attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, _defender,
+                    attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
+                    attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
+                    attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
             if (_defender?.Owner != null && !_defender.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, _attacker);
+                BattleAi.ArrangeArmy(_grid, _defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, _attacker,
+                    attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
+                    attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
+                    attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
 
             _localArmy = null;
             if (_attacker?.Owner != null && _attacker.Owner.IsHuman)
@@ -360,7 +398,16 @@ namespace Game.UI
             // AI side has already committed to its own retreat this round — only one side
             // retreats per round in this design.
             bool canRetreat = _localArmy != null && !_localArmy.IsGarrison && _retreatingArmy == null;
-            if (roundStartPopup != null)
+
+            // With no local human in this fight at all (see ConsiderAiRetreat's own comment on
+            // how that's reachable now — a retreat-into-contact or old-hex chain can pair up two
+            // non-human armies), there's nobody to click Начать раунд either — per the user's own
+            // spec, the human just watches it play out, same as every individual unit's turn
+            // already auto-acts via AutoActAfterDelay. Skipping straight to OnStartRoundClicked
+            // instead of showing the popup at all (rather than showing it with both buttons
+            // effectively inert) — nothing in it (roster preview, retreat warning) is actionable
+            // by anyone if no one here is human.
+            if (roundStartPopup != null && _localArmy != null)
                 roundStartPopup.Show(_round, _grid, _attacker, _defender, catalog != null ? catalog.logo : null,
                     canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name);
             else
@@ -368,38 +415,72 @@ namespace Game.UI
         }
 
         // The AI's own strategic fight/retreat call, made once per round exactly like the
-        // human's own Retreat button (see BattleAi.AssessRetreat's own projection model). Only
-        // runs for the single-clear-AI-side case (ordinary human-vs-AI); skipped entirely once
-        // someone's already retreating this round, in round 1 (same restriction the human has),
-        // or for a garrison (can never retreat).
+        // human's own Retreat button (see BattleAi.AssessRetreat's own projection model).
+        // Skipped entirely once someone's already retreating this round, or in round 1 (same
+        // restriction the human has).
+        //
+        // With a local human side, only ITS opponent is ever assessed — the human's own side
+        // decides for itself via the Retreat button (OnRetreatClicked), same as always. With NO
+        // human in this fight at all — reachable now that a retreat-into-contact
+        // (BattleScreenUI.Retreat.cs's PerformRetreat) or an old-hex chain
+        // (OnBattleOutcomeAcknowledged) can pair up two non-human armies without any human ever
+        // choosing to fight either one — per the user's own spec, both sides get the exact same
+        // strength-based assessment; a human simply not being party to the fight has no bearing
+        // on whether either army is worth preserving. Attacker checked first purely as an
+        // arbitrary tie-break for "only one side retreats per round" (see canRetreat's own
+        // comment) — the manual doesn't say which side "wins" the choice if both would bail, and
+        // TryAssessSideRetreat has no severity ranking to break the tie on more meaningfully.
         private void ConsiderAiRetreat()
         {
             if (_retreatingArmy != null || _round <= 1)
                 return;
-            ArmyData aiArmy = _localArmy == _attacker ? _defender : (_localArmy == _defender ? _attacker : null);
-            if (aiArmy == null || aiArmy.Owner == null || aiArmy.Owner.IsHuman || aiArmy.IsGarrison)
-                return;
-            ArmyData enemyArmy = aiArmy == _attacker ? _defender : _attacker;
+            if (_localArmy != null)
+            {
+                ArmyData aiArmy = _localArmy == _attacker ? _defender : (_localArmy == _defender ? _attacker : null);
+                TryAssessSideRetreat(aiArmy, aiArmy == _attacker ? _defender : _attacker);
+            }
+            else if (!TryAssessSideRetreat(_attacker, _defender))
+            {
+                TryAssessSideRetreat(_defender, _attacker);
+            }
+        }
 
-            BuildingData building = BuildingRegistry.FindAt(aiArmy.Hex);
-            bool defendingOwnCitadel = building != null && building.Owner == aiArmy.Owner && BuildingAbilities.IsFullCitadel(building);
+        // Runs BattleAi.AssessRetreat for `army` against `enemy` and narrates/commits whatever it
+        // decides — shared by ConsiderAiRetreat's human-opponent and no-human-in-this-fight
+        // cases. Returns true only if `army` actually committed to retreating this round (sets
+        // _retreatingArmy), so the no-human caller knows whether it still needs to try the other
+        // side. False for every other reason too — not AI-controlled, a garrison, the Neutral
+        // faction (per the user's own "neutrals never retreat" rule — a neutral army fights to
+        // the death or wins, it never assesses the numbers at all), citadel defense, or a
+        // fight-it-out verdict — the caller doesn't need to tell those apart.
+        private bool TryAssessSideRetreat(ArmyData army, ArmyData enemy)
+        {
+            if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral)
+                return false;
 
-            BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(aiArmy, enemyArmy, defendingOwnCitadel);
-            UnitData sideHero = BattleTurnOrder.FindHero(_grid, aiArmy == _attacker);
+            BuildingData building = BuildingRegistry.FindAt(army.Hex);
+            bool defendingOwnCitadel = building != null && building.Owner == army.Owner && BuildingAbilities.IsFullCitadel(building);
+
+            BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(_grid, army, enemy, defendingOwnCitadel,
+                attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
+                attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
+                attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
+            _aiFavorableThisRound[army] = assessment.FavorableForAdvance;
+            UnitData sideHero = BattleTurnOrder.FindHero(_grid, army == _attacker);
 
             if (assessment.IsCitadelDefense)
             {
                 aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.CitadelDefense, hasHero: sideHero != null));
+                return false;
             }
-            else if (assessment.ShouldRetreat)
+            if (assessment.ShouldRetreat)
             {
-                _retreatingArmy = aiArmy;
+                _retreatingArmy = army;
                 aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.RetreatDecision, hasHero: sideHero != null));
+                return true;
             }
-            else
-            {
-                aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.FightDecision, hasHero: sideHero != null));
-            }
+            aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.FightDecision, hasHero: sideHero != null));
+            return false;
         }
 
         private void OnStartRoundClicked()
@@ -509,7 +590,14 @@ namespace Game.UI
             if (_grid == null || actor == null || actor != _currentActingUnit)
                 yield break;
 
-            BattleAi.AiAction action = BattleAi.ChooseAction(_grid, actor, _aiWaitStreak);
+            ArmyData ownArmy = _attacker != null && _attacker.Owner == actor.Owner ? _attacker : _defender;
+            ArmyData enemyArmy = ownArmy == _attacker ? _defender : _attacker;
+            bool favorableFight = ownArmy != null && _aiFavorableThisRound.TryGetValue(ownArmy, out bool favorable) && favorable;
+            BattleAi.AiAction action = BattleAi.ChooseAction(_grid, actor, _aiWaitStreak, ownArmy, enemyArmy,
+                attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
+                attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
+                attackPopup != null ? attackPopup.CeramicArmorReduction : 1,
+                favorableFight);
             ShowAiThought(actor, action.Reason, action.Target?.Name);
 
             switch (action.Kind)
@@ -583,9 +671,47 @@ namespace Game.UI
             _arranging = false;
             _arrangeInteractive = false;
             _aiWaitStreak.Clear();
+            _aiFavorableThisRound.Clear();
             _idleTimer = -1f;
             _idleNudgeShown = false;
             aiThoughts?.Clear();
+        }
+
+        // Chains into the Fight/Delay popup for the next queued retreat-into-contact (see
+        // PerformRetreat), if any — same participants/branch shape as HexSelectionController.
+        // Movement.cs's own contact handling for an ordinary strategic move (a hero-only target
+        // goes straight to BeginCaptureKillEncounter, anything else opens a fresh Show()). Called
+        // from every place in Combat.cs that would otherwise call Hide() outright, so a queued
+        // contact always eventually gets its turn no matter which path actually finishes the
+        // current encounter — including a SECOND one enqueued while the first was still waiting
+        // (see _pendingRetreatContacts' own comment): each Hide() site tries this again once
+        // whatever it chained into finishes, so the queue drains one at a time rather than the
+        // newest silently replacing the oldest. Returns true if it chained instead — the caller
+        // must NOT also call Hide() in that case, a new encounter is opening on top of this one
+        // actually closing.
+        private bool TryChainPendingRetreatContact()
+        {
+            if (_pendingRetreatContacts.Count == 0 || battleContactPopup == null)
+                return false;
+            (HexCoord hex, List<ArmyData> participants, bool targetHeroOnly) contact = _pendingRetreatContacts.Dequeue();
+            Action onClosed = _onClosed;
+            battleContactPopup.Show(contact.hex, contact.participants,
+                onFight: () =>
+                {
+                    if (contact.targetHeroOnly)
+                        BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
+                    else
+                        Show(contact.hex, contact.participants, onClosed);
+                },
+                onDelay: () =>
+                {
+                    DelayedBattleRegistry.Add(new PendingBattle { Hex = contact.hex, Participants = contact.participants });
+                    // Delaying THIS queued contact doesn't mean the queue is empty — try the next
+                    // one before actually closing (same reasoning as every other Hide() site).
+                    if (!TryChainPendingRetreatContact())
+                        Hide();
+                });
+            return true;
         }
 
         public void Hide()

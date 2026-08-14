@@ -16,9 +16,11 @@ namespace Game.Cards
     [System.Serializable]
     public class CardDefinition
     {
-        // This card's index within the owning FactionCardCatalog's cards list — the same number
-        // to put into CardHandUI's deckIndices to reference this card in a deck. Auto-synced by
-        // FactionCardCatalog.OnValidate on every inspector change; not hand-edited.
+        // This card's index within the owning FactionCardCatalog's cards list — cosmetic/
+        // editor-facing only; a deck (see StartingDeckCatalog) references this card by its
+        // "<catalog.displayName>/<displayName>" key instead, since that stays unambiguous
+        // across catalogs. Auto-synced by FactionCardCatalog.OnValidate on every inspector
+        // change; not hand-edited.
         [ReadOnly] public int id;
 
         public string displayName;
@@ -65,12 +67,14 @@ namespace Game.Cards
         // Challenge; range is how many rows ahead it can reach; hitPoints is how much damage it
         // can take before being destroyed.
         public int attack;
-        // Named defenseRating, not defense — that name's already taken below by the unrelated
-        // Base Stats section (a BUILDING's defense, e.g. the citadel's). This is
-        // UnitData.Defense: the defender's dice-pool size in a Ground-to-Ground Challenge.
+        // Named defenseRating rather than defense — this is UnitData.Defense: the defender's
+        // dice-pool size in a Ground-to-Ground Challenge. A CardType.Base card reads the exact
+        // same field for its spawned BuildingData.Defense (see HexSelectionController.
+        // SpawnBuilding/CitadelSetupController.SpawnCitadelMarker) rather than keeping a
+        // separate copy — Hero/Unit and Base cards share this one Stats block.
         public int defenseRating = 1;
-        // Named resistanceRating for the same reason as defenseRating — `resistance` below is
-        // the unrelated BUILDING stat.
+        // Named resistanceRating for the same reason as defenseRating — shared with
+        // BuildingData.Resistance for a Base card the same way.
         public int resistanceRating = 1;
         public int range = 1;
         public int hitPoints = 1;
@@ -103,12 +107,15 @@ namespace Game.Cards
         [AbilityTag]
         public List<string> grantedAbilities = new List<string>();
 
-        // Only meaningful for CardType.Base — starting stats for the BuildingData a Base card
-        // spawns (see HexSelectionController.SpawnBuilding).
-        [Header("Base Stats (CardType.Base only)")]
-        public int structurePointsMax = 6;
-        public int defense = 2;
-        public int resistance = 1;
+        // Only meaningful for CardType.Base — the BuildingData a Base card spawns (see
+        // HexSelectionController.SpawnBuilding/CitadelSetupController.SpawnCitadelMarker, both
+        // now read the same shared Stats block above: hitPoints/defenseRating/resistanceRating/
+        // fate) instead of a separate Base-only copy of those same four numbers.
+        //
+        // Resource collection is skill/ability-driven now (see BuildingAbilities.
+        // CollectAbilities) — this isn't wired into BuildingData/spawn at all, kept only for a
+        // future card design that grants a flat resource on its own.
+        [Header("Resource Yield (CardType.Base only, not yet wired to gameplay)")]
         public ResourceYields resourceYield = new ResourceYields();
     }
 }

@@ -86,13 +86,15 @@ namespace Game.Setup
 
         // Neutral armies: 3-5 on a 12x9 map, 12-15 on a 16x13 one (see CalibratedCount) — never
         // on a player's own citadel hex or one of its immediate neighbours (the user's own
-        // call, "Recommended" option), otherwise anywhere. Composition is fully random per
-        // army — weak to strong, hero or not, drawn from the only card catalog that exists yet
-        // (Iron Concord's own; the user's own note: dedicated neutral cards come later) — the
-        // one rule that does hold is no hero repeats across neutral armies.
+        // call, "Recommended" option), otherwise anywhere. Composition is no longer rolled —
+        // each placed army is one whole, hand-authored ArmyDefinition from neutralArmyCatalog.
+        // armies, one army per hex (the user's own call), so at most armies.Count hexes ever
+        // get one.
         private void GenerateNeutralArmies()
         {
-            if (map == null || gameConfig == null || catalog == null || hexSelectionController == null || _neutralPlayer == null)
+            if (map == null || gameConfig == null || neutralArmyCatalog == null || hexSelectionController == null || _neutralPlayer == null)
+                return;
+            if (neutralArmyCatalog.armies == null || neutralArmyCatalog.armies.Count == 0)
                 return;
 
             var excluded = new HashSet<HexCoord>();
@@ -113,66 +115,39 @@ namespace Game.Setup
             int hexCount = gameConfig.mapGeneration.width * gameConfig.mapGeneration.height;
             int min = Mathf.Max(1, CalibratedCount(3, 12, hexCount));
             int max = Mathf.Max(min, CalibratedCount(5, 15, hexCount));
-            int target = Mathf.Clamp(Random.Range(min, max + 1), 0, candidates.Count);
+            int target = Mathf.Clamp(Random.Range(min, max + 1), 0, Mathf.Min(candidates.Count, neutralArmyCatalog.armies.Count));
 
-            List<HexCoord> chosen = PickRandomDistinct(candidates, target);
+            List<HexCoord> chosenHexes = PickRandomDistinct(candidates, target);
+            List<ArmyDefinition> chosenArmies = PickRandomDistinct(neutralArmyCatalog.armies, target);
 
-            List<CardDefinition> allHeroes = catalog.ForType(CardType.Hero).ToList();
-            List<CardDefinition> allUnits = catalog.ForType(CardType.Unit).ToList();
-            var usedHeroNames = new HashSet<string>();
-            var usedArmyNames = new List<string>();
-
-            foreach (HexCoord hex in chosen)
-                SpawnNeutralArmy(hex, allHeroes, allUnits, usedHeroNames, usedArmyNames);
+            for (int i = 0; i < chosenHexes.Count; i++)
+                SpawnNeutralArmy(chosenHexes[i], chosenArmies[i]);
         }
 
-        private void SpawnNeutralArmy(HexCoord hex, List<CardDefinition> allHeroes, List<CardDefinition> allUnits,
-            HashSet<string> usedHeroNames, List<string> usedArmyNames)
+        private void SpawnNeutralArmy(HexCoord hex, ArmyDefinition definition)
         {
-            List<CardDefinition> availableHeroes = allHeroes.Where(c => !usedHeroNames.Contains(c.displayName)).ToList();
-            CardDefinition hero = availableHeroes.Count > 0 && Random.value < 0.5f
-                ? availableHeroes[Random.Range(0, availableHeroes.Count)]
-                : null;
-            if (hero != null)
-                usedHeroNames.Add(hero.displayName);
-
-            // Same capacity rule as ArmyData.ComputeCapacity: no hero -> 2 (hard cap for a
-            // named, non-garrison army), a hero present -> its own CommandRating, one of those
-            // slots being the hero itself.
-            int capacity = hero != null ? Mathf.Max(1, hero.commandRating) : 2;
-            int nonHeroSlots = hero != null ? Mathf.Max(0, capacity - 1) : capacity;
-            // A hero-only army (0 rolled here) is a valid, already-supported case — see
-            // BattleScreenUI.BeginCaptureKillEncounter. A no-hero army must have at least 1
-            // member; there's no such thing as a completely empty "army" to place.
-            int unitCount = hero != null ? Random.Range(0, nonHeroSlots + 1) : Random.Range(1, capacity + 1);
-            if (allUnits.Count == 0)
-                unitCount = 0;
-            if (hero == null && unitCount == 0)
-                return; // nothing left to actually spawn on this hex — skip it entirely
-
-            string name = catalog.GetRandomArmyName(usedArmyNames);
-            usedArmyNames.Add(name);
-
-            var army = new ArmyData { Name = name, Hex = hex, Owner = _neutralPlayer };
+            var army = new ArmyData { Name = definition.name, Hex = hex, Owner = _neutralPlayer };
             ArmyRegistry.Register(army);
 
-            if (hero != null)
+            foreach (ArmyUnitEntry entry in definition.members)
             {
-                UnitData spawnedHero = SpawnNeutralUnit(hero, isHero: true);
-                if (spawnedHero != null)
-                    army.AddMemberSorted(spawnedHero);
+                CardDefinition card = neutralArmyCatalog.ResolveCard(entry?.cardKey);
+                if (card == null)
+                    continue;
+                for (int i = 0; i < entry.count; i++)
+                {
+                    UnitData spawned = SpawnNeutralUnit(card, isHero: card.cardType == CardType.Hero);
+                    if (spawned != null)
+                        army.AddMemberSorted(spawned);
+                }
             }
-            for (int i = 0; i < unitCount; i++)
-            {
-                CardDefinition unitCard = allUnits[Random.Range(0, allUnits.Count)];
-                UnitData spawned = SpawnNeutralUnit(unitCard, isHero: false);
-                if (spawned != null)
-                    army.AddMemberSorted(spawned);
-            }
+
+            if (army.Members.Count == 0)
+                return; // every entry failed to resolve — nothing to actually show on this hex
 
             // Only now, once every member's already in — CreateArmyMarker's very first
             // RestackArmiesOn needs a non-empty army to have anything to show (see
-            // HexSelectionController.NonEmptyArmiesAt), same ordering SpawnTestArmy uses.
+            // HexSelectionController.NonEmptyArmiesAt).
             hexSelectionController.CreateArmyMarker(army);
         }
 
@@ -197,12 +172,12 @@ namespace Game.Setup
         {
         }
 
-        // Shared by GenerateResources/GenerateNeutralArmies — up to `count` distinct hexes
+        // Shared by GenerateResources/GenerateNeutralArmies — up to `count` distinct entries
         // picked without replacement from `pool` (fewer than `count` if the pool runs out).
-        private static List<HexCoord> PickRandomDistinct(List<HexCoord> pool, int count)
+        private static List<T> PickRandomDistinct<T>(List<T> pool, int count)
         {
-            var working = new List<HexCoord>(pool);
-            var result = new List<HexCoord>(Mathf.Min(count, working.Count));
+            var working = new List<T>(pool);
+            var result = new List<T>(Mathf.Min(count, working.Count));
             while (result.Count < count && working.Count > 0)
             {
                 int index = Random.Range(0, working.Count);

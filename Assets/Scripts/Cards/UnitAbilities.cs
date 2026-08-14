@@ -39,5 +39,13 @@ namespace Game.Cards
         // not any stat of the attacker's own. See UnitAbilityCatalog.hyperkineticBonusDamage,
         // BattleAttackPopupUI.ResolveDamage.
         public const string Hyperkinetic = "Hyperkinetic";
+
+        // Extends its army's own vision radius (see Game.Map.VisionSystem) beyond the flat
+        // GameConfig.armyVisionRadius default — same shared-catalog-value pattern as every other
+        // ability above (see UnitAbilityCatalog.recceRadius/recceStrength). An army with any
+        // Recce-tagged member gets the flat bonus once, not summed per member (see ArmyData.
+        // HasRecce) — "strength" itself has no effect yet, reserved for a future use per the
+        // project owner's own call.
+        public const string Recce = "Recce";
     }
 }

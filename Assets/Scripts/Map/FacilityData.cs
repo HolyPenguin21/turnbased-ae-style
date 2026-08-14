@@ -14,6 +14,10 @@ namespace Game.Map
     {
         public string Name;
         public Sprite Art;
+        // Carried over from CardDefinition.detailArt (falling back to Art itself when the card
+        // never set one — same convention as BuildingData.DetailArt/UnitData.DetailArt) — the
+        // image BaseViewerModalUI's detail panel shows for a placed Facility.
+        public Sprite DetailArt;
         public int UpgradeLevel;
         public readonly HashSet<string> Abilities = new HashSet<string>();
 
@@ -24,7 +28,12 @@ namespace Game.Map
         // (CardHandUI.TryDeployFacilityToHex) — so they can't drift on which fields get copied.
         public static FacilityData FromDefinition(CardDefinition definition)
         {
-            var facility = new FacilityData { Name = definition.displayName, Art = definition.art };
+            var facility = new FacilityData
+            {
+                Name = definition.displayName,
+                Art = definition.art,
+                DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
+            };
             foreach (string ability in definition.grantedAbilities)
                 facility.Abilities.Add(ability);
             return facility;

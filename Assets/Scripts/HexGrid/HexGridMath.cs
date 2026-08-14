@@ -66,6 +66,26 @@ namespace Game.HexGrid
             return (Mathf.Abs(dq) + Mathf.Abs(dq + dr) + Mathf.Abs(dr)) / 2;
         }
 
+        // Every hex within `radius` steps of `center` (inclusive), center itself included at
+        // radius 0 — used by VisionSystem to expand an army/building's own hex into its actual
+        // vision footprint. Existence on the map isn't checked here, same convention as
+        // Neighbors — callers already have their own map/registry to validate against.
+        public static IEnumerable<HexCoord> HexesInRange(HexCoord center, int radius)
+        {
+            if (radius <= 0)
+            {
+                yield return center;
+                yield break;
+            }
+            for (int dq = -radius; dq <= radius; dq++)
+            {
+                int rMin = Mathf.Max(-radius, -dq - radius);
+                int rMax = Mathf.Min(radius, -dq + radius);
+                for (int dr = rMin; dr <= rMax; dr++)
+                    yield return new HexCoord(center.Q + dq, center.R + dr);
+            }
+        }
+
         // The real outer boundary of a set of hex cells, tracing actual hex edges — not an
         // idealised shape. An edge belongs to the boundary when the cell across it isn't also
         // in the set (including "doesn't exist on the map", so a cluster clipped by the map's

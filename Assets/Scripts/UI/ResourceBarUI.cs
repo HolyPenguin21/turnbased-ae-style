@@ -28,6 +28,12 @@ namespace Game.UI
         // exist by the time OnEnable runs.
         private PlayerRoot _humanRoot;
 
+        // Whichever PlayerRoot the bar is actually reading from right now — _humanRoot except
+        // during GameTurnController's debugFollowAiVision (see ShowRootDebug), when it's
+        // temporarily the acting AI's own root instead. Always the one RefreshResourceText reads
+        // and ResourcesChanged is subscribed to; SetDisplayedRoot is the only place that changes.
+        private PlayerRoot _displayedRoot;
+
         // Hidden until a citadel exists to report on — GameTurnController calls this once,
         // right after citadel setup finishes, and it never hides again after that.
         public void Show()
@@ -38,11 +44,7 @@ namespace Game.UI
         private void OnEnable()
         {
             _humanRoot = GameSession.FindHumanRoot();
-            if (_humanRoot != null)
-            {
-                _humanRoot.ResourcesChanged += RefreshResourceText;
-                RefreshResourceText();
-            }
+            SetDisplayedRoot(_humanRoot);
             if (turnController == null)
                 return;
             turnController.TurnStarted += OnTurnStarted;
@@ -51,10 +53,37 @@ namespace Game.UI
 
         private void OnDisable()
         {
-            if (_humanRoot != null)
-                _humanRoot.ResourcesChanged -= RefreshResourceText;
+            if (_displayedRoot != null)
+                _displayedRoot.ResourcesChanged -= RefreshResourceText;
+            _displayedRoot = null;
             if (turnController != null)
                 turnController.TurnStarted -= OnTurnStarted;
+        }
+
+        // Dev-only (see GameTurnController.debugFollowAiVision): points the bar at `root`
+        // instead of the human's own — the acting AI's own AP/resources, for the same span its
+        // hand is shown via CardHandUI.ShowAiHandDebug. Null (or the human's own root) reverts to
+        // normal.
+        public void ShowRootDebug(PlayerRoot root)
+        {
+            SetDisplayedRoot(root != null ? root : _humanRoot);
+        }
+
+        public void HideRootDebug()
+        {
+            SetDisplayedRoot(_humanRoot);
+        }
+
+        private void SetDisplayedRoot(PlayerRoot root)
+        {
+            if (root == _displayedRoot)
+                return;
+            if (_displayedRoot != null)
+                _displayedRoot.ResourcesChanged -= RefreshResourceText;
+            _displayedRoot = root;
+            if (_displayedRoot != null)
+                _displayedRoot.ResourcesChanged += RefreshResourceText;
+            RefreshResourceText();
         }
 
         private void OnTurnStarted(int turnNumber)
@@ -69,19 +98,19 @@ namespace Game.UI
         // reason to re-format and re-assign five TMP strings 60 times a second.
         private void RefreshResourceText()
         {
-            if (_humanRoot == null)
+            if (_displayedRoot == null)
                 return;
 
             if (apText != null)
-                apText.text = _humanRoot.ActionPoints.ToString();
+                apText.text = _displayedRoot.ActionPoints.ToString();
             if (humanText != null)
-                humanText.text = _humanRoot.GetResource(ResourceType.Human).ToString();
+                humanText.text = _displayedRoot.GetResource(ResourceType.Human).ToString();
             if (energyText != null)
-                energyText.text = _humanRoot.GetResource(ResourceType.Energy).ToString();
+                energyText.text = _displayedRoot.GetResource(ResourceType.Energy).ToString();
             if (materialsText != null)
-                materialsText.text = _humanRoot.GetResource(ResourceType.Materials).ToString();
+                materialsText.text = _displayedRoot.GetResource(ResourceType.Materials).ToString();
             if (techText != null)
-                techText.text = _humanRoot.GetResource(ResourceType.Tech).ToString();
+                techText.text = _displayedRoot.GetResource(ResourceType.Tech).ToString();
         }
     }
 }

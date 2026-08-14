@@ -7,10 +7,7 @@ namespace Game.Ai
     // executes a goal yet.
     public enum AiGoalKind
     {
-        DefendBorder,
         ExpandEconomy,
-        DestroyEnemyCitadel,
-        HuntExposedHero,
     }
 
     // One scored candidate for what an AI player could spend this turn on — produced by

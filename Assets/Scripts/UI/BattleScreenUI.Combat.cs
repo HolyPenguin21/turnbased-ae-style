@@ -48,14 +48,25 @@ namespace Game.UI
             // own comment) — a bare hero-built extraction facility has nothing built up worth a
             // defense bonus (see HandleBuildingOnArmyDefeat's own note on why those get destroyed
             // outright instead of captured).
-            int defenderBonusDice = 0;
-            if (defenderArmy != null)
+            //
+            // "Defender side" here means the army that was actually attacked into this battle —
+            // _defender (participants[1], see Show/BeginCaptureKillEncounter's own comment: index
+            // 0 is always the original mover/hunter) — NOT just whichever army happens to be on
+            // the receiving end of THIS particular exchange. Ground Combat rounds alternate: a
+            // _defender-side unit taking ITS turn to attack a unit belonging to _attacker must
+            // never hand the terrain/building bonus to _attacker just because `defender` (the
+            // parameter) is one of its units this time around — only the side that was actually
+            // attacked ever holds home-hex terrain, whichever unit happens to be mid-exchange (see
+            // the user's own report).
+            int defenderTerrainBonus = 0;
+            int defenderConstructionBonus = 0;
+            if (defenderArmy != null && defenderArmy == _defender)
             {
                 if (map != null && map.TryGetTerrainAt(defenderArmy.Hex, out TerrainTypeEntry terrain))
-                    defenderBonusDice += terrain.defenseModifier;
+                    defenderTerrainBonus += terrain.defenseModifier;
                 BuildingData defendingBuilding = BuildingRegistry.FindAt(defenderArmy.Hex);
                 if (defendingBuilding != null && defendingBuilding.HasAbility(BuildingAbilities.Base))
-                    defenderBonusDice += defendingBuilding.Defense;
+                    defenderConstructionBonus += defendingBuilding.Defense;
             }
 
             // New rule, per the user: an army with a unit that attacks in the Tactical Battle
@@ -68,7 +79,7 @@ namespace Game.UI
 
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero, catalog != null ? catalog.logo : null,
                 (damage, died) => OnAttackResolved(attacker, defender, damage, died), ShowAiThought, defenderIsRetreating,
-                defenderBonusDice);
+                defenderTerrainBonus, defenderConstructionBonus);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender, int damage, bool defenderDied)
@@ -248,7 +259,8 @@ namespace Game.UI
                 HandleBuildingOnArmyDefeat(hunterArmy, targetArmy);
                 hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
                 hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
-                Hide();
+                if (!TryChainPendingRetreatContact())
+                    Hide();
             }, suppressAiThoughts: true);
             VisibilityChanged?.Invoke(); // opening edge — attackPopup is showing as of this call
         }
@@ -332,8 +344,12 @@ namespace Game.UI
         // setup, per the user's own spec — there's no "nearest base" search or siege/ownership-
         // capture mechanic in this project to route through instead). False (caller falls back
         // to a plain Killed-style discard) if the capturing player has no citadel hex on record
-        // at all — per the user's own call, that's already impossible today (only reachable if
-        // that player's own starting citadel was somehow destroyed first).
+        // at all — reachable two ways: a real player whose own starting citadel was somehow
+        // destroyed first, or hunterArmy.Owner being the Neutral player, which never has a
+        // citadel hex at all (see PlayerSetupData.IsNeutral) and can perfectly well end up as
+        // the winning/hunting side once BattleScreenUI.ConsiderAiRetreat started letting two
+        // non-human armies fight each other unsupervised. Either way, a hero a neutral "captures"
+        // just dies instead of being imprisoned — no Prison to put it in.
         private bool TryImprison(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)
         {
             PlayerSetupData capturer = hunterArmy?.Owner;
@@ -418,19 +434,44 @@ namespace Game.UI
             if (attackerEmpty != defenderEmpty)
                 HandleBuildingOnArmyDefeat(attackerEmpty ? _defender : _attacker, attackerEmpty ? _attacker : _defender);
 
-            string message;
+            string title;
             if (_localArmy == null)
-                message = attackerAlive ? "Attacker wins." : defenderAlive ? "Defender wins." : "Draw.";
+                title = attackerAlive ? "Attacker wins." : defenderAlive ? "Defender wins." : "Draw.";
             else
             {
                 bool localWon = _localArmy == _attacker ? attackerAlive : defenderAlive;
-                message = localWon ? "Victory!" : "Defeat!";
+                title = localWon ? "Victory!" : "Defeat!";
             }
 
+            // Which army actually beat which, plus (on its own line) what happens once this
+            // popup closes — per the user's own request for the newly added Message field.
+            // `survivor` here mirrors OnBattleOutcomeAcknowledged's own attackerHere/defenderHere
+            // check below: at THIS point (no retreat involved, straight combat resolution to a
+            // wipeout) attacker/defender are still exactly where they started, so attackerAlive/
+            // defenderAlive already answers the same question that check re-derives from Hex.
+            string detail = attackerAlive != defenderAlive
+                ? $"{(attackerAlive ? _attacker : _defender)?.Name} defeated {(attackerAlive ? _defender : _attacker)?.Name}."
+                : $"{_attacker?.Name} and {_defender?.Name} destroy each other.";
+            ArmyData survivor = attackerAlive != defenderAlive ? (attackerAlive ? _attacker : _defender) : null;
+            string message = $"{detail}\n{DescribeNextAction(survivor)}";
+
             if (outcomePopup != null)
-                outcomePopup.Show(message, OnBattleOutcomeAcknowledged);
+                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged);
             else
                 OnBattleOutcomeAcknowledged();
+        }
+
+        // Whether the battle screen is about to chain straight into another fight on this same
+        // hex, or return to the map — same question OnBattleOutcomeAcknowledged (below) answers
+        // for real right after this popup closes, computed early here just to describe it in the
+        // BattleOutcome popup's own Message field (see FinishBattleEnd/ResolveRetreat, its only
+        // two callers). `survivor` is null for a mutual wipeout — nothing to chain into either way.
+        private string DescribeNextAction(ArmyData survivor)
+        {
+            bool hasNext = survivor?.Owner != null
+                && !DelayedBattleRegistry.IsHexPending(_battleHex)
+                && BattleInitiator.FindEnemyAt(_battleHex, survivor.Owner) != null;
+            return hasNext ? "Proceeding to the next battle." : "Returning to the map.";
         }
 
         private void FireBattleEndThought(ArmyData army, bool survived)
@@ -444,6 +485,23 @@ namespace Game.UI
 
         private void OnBattleOutcomeAcknowledged()
         {
+            // Hero Fate refills per-battle, not per strategic turn (see UnitData.
+            // ReplenishFateForNewBattle's own comment) — done here, right as THIS battle ends,
+            // rather than in the next Show() like it used to be. A survivor chaining straight
+            // into a second army on the same hex (below) shows that fight's own
+            // BattleContactPopupUI BEFORE Show() ever runs again — reading Fate off ArmyData.
+            // Members directly, not through this screen — so replenishing only in Show() left
+            // that preview showing whatever Fate was left over at the end of the fight that just
+            // finished (see the user's own report). Both sides get it, not just the survivor —
+            // the loser's own members (if any remain, e.g. a hero-only remnant) are about to be
+            // discarded anyway, so this is harmless for them.
+            if (_attacker != null)
+                foreach (UnitData unit in _attacker.Members)
+                    unit.ReplenishFateForNewBattle();
+            if (_defender != null)
+                foreach (UnitData unit in _defender.Members)
+                    unit.ReplenishFateForNewBattle();
+
             // Tears down the just-finished battle's own grid cells/turn-queue icons/sub-popups
             // (see ResetBattlePanel's own comment) right as its outcome is acknowledged — BEFORE
             // deciding whether a second enemy on the same hex chains straight into a fresh Show().
@@ -505,17 +563,33 @@ namespace Game.UI
                 // survivor isn't auto-committed to the next fight just because it's already
                 // standing here.
                 var participants = new List<ArmyData> { survivor, nextEnemy };
+                // Same hero-only branch as HexSelectionController.Movement.cs's own contact
+                // handling / GameTurnController.ResolveDelayedBattlesThen's own targetHeroOnly
+                // check — nothing for a normal Ground Combat round to do against a target with no
+                // non-hero units, so this must skip the grid and go straight to a Capture Kill
+                // Challenge instead. This chained-second-army path used to always call Show(),
+                // opening a full battle with an empty grid row for a hero-only nextEnemy (see the
+                // user's own report).
+                bool nextEnemyHeroOnly = !BattleInitiator.IsCombatCapable(nextEnemy);
                 battleContactPopup.Show(hex, participants,
-                    onFight: () => Show(hex, participants, _onClosed),
+                    onFight: () =>
+                    {
+                        if (nextEnemyHeroOnly)
+                            BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
+                        else
+                            Show(hex, participants, _onClosed);
+                    },
                     onDelay: () =>
                     {
                         DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
-                        Hide();
+                        if (!TryChainPendingRetreatContact())
+                            Hide();
                     });
                 return;
             }
 
-            Hide();
+            if (!TryChainPendingRetreatContact())
+                Hide();
         }
     }
 }

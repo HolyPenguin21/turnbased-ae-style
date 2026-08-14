@@ -9,6 +9,13 @@ namespace Game.Players
         public int ColorIndex;
         public Faction Faction;
         public bool IsHuman;
+        // True only for CitadelSetupController's single shared _neutralPlayer instance — never
+        // set on a real player profile. Explicit flag rather than inferring it from ColorIndex/
+        // Faction.None elsewhere (see BattleScreenUI.TryAssessSideRetreat's own "neutrals never
+        // retreat" rule, per the user's own spec) — those already uniquely identify the neutral
+        // player today, but only as a side effect of how it happens to be constructed, not
+        // because either field means "neutral" anywhere else in this codebase.
+        public bool IsNeutral;
 
         // Where this player's citadel ended up. Plain ints rather than HexCoord — this is a
         // player profile, not a map-geometry type. Null until the citadel-placement step has

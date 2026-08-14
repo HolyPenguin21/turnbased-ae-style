@@ -30,10 +30,14 @@ namespace Game.UI
         //   - Battle hex IS the retreating owner's own Barracks hex: aim for the nearest OTHER
         //     own-Barracks hex instead (can't "step toward" the hex already stood on); if none
         //     exists, step to a random free neighbor.
-        //   - Whichever neighbor is picked must be a real map hex not held by an enemy
-        //     combat-capable army (BattleInitiator.FindEnemyAt); if every neighbor is blocked,
-        //     the manual's own "no valid retreat hex" rule applies — the army is destroyed
-        //     outright, every card it contains discarded.
+        //   - Whichever neighbor is picked must be a real map hex (IsRetreatableHex) — if every
+        //     neighbor is off the map entirely, the manual's own "no valid retreat hex" rule
+        //     applies: the army is destroyed outright, every card it contains discarded. Landing
+        //     on a hex held by someone hostile is no longer a blocker (per the user's own later
+        //     spec): PerformRetreat below handles the consequences — an undefended enemy facility
+        //     is destroyed/captured on arrival, and an engageable enemy army/garrison triggers a
+        //     fresh Battle/Capture Kill Challenge exactly like an ordinary strategic move would
+        //     (see PerformRetreat's own comments).
         private void ResolveRetreat()
         {
             ArmyData army = _retreatingArmy;
@@ -45,13 +49,22 @@ namespace Game.UI
                 return;
             }
 
+            // The OTHER side (not the one that just retreated) is who's still standing on the
+            // battle hex — PerformRetreat has already relocated or cleared `army` by this point,
+            // so it can never be the survivor for DescribeNextAction's own purposes.
+            ArmyData survivingArmy = army == _attacker ? _defender : _attacker;
+
             PerformRetreat(army, out bool destroyed);
-            string message = destroyed
+            string title = destroyed
                 ? (_localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
                 : (_localArmy == army ? "Your army retreats." : "The enemy retreats.");
+            string detail = destroyed
+                ? $"{army.Name} is destroyed retreating."
+                : $"{army.Name} retreats from the battle.";
+            string message = $"{detail}\n{DescribeNextAction(survivingArmy)}";
 
             if (outcomePopup != null)
-                outcomePopup.Show(message, OnBattleOutcomeAcknowledged);
+                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged);
             else
                 OnBattleOutcomeAcknowledged();
         }
@@ -87,6 +100,35 @@ namespace Game.UI
                 ArmyRegistry.MoveArmy(army, destination);
                 hexSelectionController?.RestackArmiesOn(battleHex, null);
                 hexSelectionController?.RestackArmiesOn(destination, null);
+
+                // Per the user's own spec: an undefended enemy extraction facility on the
+                // destination hex doesn't survive the retreating army walking onto it, same rule
+                // an ordinary strategic move already applies (see HexSelectionController.
+                // Movement.cs's identical call).
+                BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner);
+
+                // Per the user's own spec: landing on a hex held by an engageable hostile army
+                // or garrison starts a fresh encounter there too — a full battle if it still has
+                // combat-capable units, a Capture Kill Challenge if it's hero-only (see
+                // BattleInitiator.IsCombatCapable vs IsEngageable, same split
+                // HexSelectionController.Movement.cs's own contact check uses). Only enqueued,
+                // not shown immediately: this battle's own outcome popup (ResolveRetreat, below)
+                // and possible old-hex chain (OnBattleOutcomeAcknowledged) haven't had their turn
+                // yet — TryChainPendingRetreatContact drains the queue once an encounter is
+                // actually closing, one at a time, so an earlier still-unshown entry (e.g. from a
+                // FIRST retreat, while a chained old-hex battle is still playing out) can never be
+                // clobbered by a later one. A hero-only retreating army can't fight OR hunt a
+                // Capture Kill Challenge either (no "Hunter" skill in this project yet — see
+                // BattleAttackPopupUI.BeginCaptureKill's own note), so contact for one simply
+                // never triggers anything, exactly like a hero-only strategic mover.
+                ArmyData contactedEnemy = DelayedBattleRegistry.IsHexPending(destination)
+                    ? null
+                    : BattleInitiator.FindEnemyAt(destination, army.Owner);
+                if (contactedEnemy != null && BattleInitiator.IsCombatCapable(army))
+                {
+                    _pendingRetreatContacts.Enqueue((destination, new List<ArmyData> { army, contactedEnemy },
+                        !BattleInitiator.IsCombatCapable(contactedEnemy)));
+                }
             }
             else
             {
@@ -107,11 +149,11 @@ namespace Game.UI
 
             HexCoord? target = FindNearestOwnBarracksHex(army.Owner, battleHex, excludeBattleHex: battleHexIsOwnBarracks);
             if (target.HasValue)
-                return TryPickNeighborToward(army, battleHex, target.Value, out destination);
+                return TryPickNeighborToward(battleHex, target.Value, out destination);
 
             // No Barracks hex to aim for at all (either none exist, or the only one IS the
             // battle hex itself with nowhere else useful to point at) — a random free neighbor.
-            return TryPickRandomNeighbor(army, battleHex, out destination);
+            return TryPickRandomNeighbor(battleHex, out destination);
         }
 
         // This project's existing stand-in for the manual's "friendly outpost or stronghold"
@@ -138,17 +180,17 @@ namespace Game.UI
             return best;
         }
 
-        // A single greedy step among battleHex's 6 neighbors — whichever unblocked one reduces
-        // distance to target the most, not a full path. False if every neighbor is off the map
-        // or held by an enemy combat-capable army.
-        private bool TryPickNeighborToward(ArmyData army, HexCoord battleHex, HexCoord target, out HexCoord destination)
+        // A single greedy step among battleHex's 6 neighbors — whichever on-map one reduces
+        // distance to target the most, not a full path. False only if every neighbor is off the
+        // map entirely (see IsRetreatableHex's own comment).
+        private bool TryPickNeighborToward(HexCoord battleHex, HexCoord target, out HexCoord destination)
         {
             destination = default;
             int bestDist = int.MaxValue;
             bool found = false;
             foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
             {
-                if (!IsFreeRetreatHex(army, candidate))
+                if (!IsRetreatableHex(candidate))
                     continue;
                 int dist = HexGridMath.Distance(candidate, target);
                 if (dist < bestDist)
@@ -161,13 +203,13 @@ namespace Game.UI
             return found;
         }
 
-        private bool TryPickRandomNeighbor(ArmyData army, HexCoord battleHex, out HexCoord destination)
+        private bool TryPickRandomNeighbor(HexCoord battleHex, out HexCoord destination)
         {
             destination = default;
             var options = new List<HexCoord>();
             foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
             {
-                if (IsFreeRetreatHex(army, candidate))
+                if (IsRetreatableHex(candidate))
                     options.Add(candidate);
             }
             if (options.Count == 0)
@@ -176,11 +218,12 @@ namespace Game.UI
             return true;
         }
 
-        private bool IsFreeRetreatHex(ArmyData army, HexCoord hex)
+        // Only "does this hex actually exist on the map" — who/what is standing on it no longer
+        // disqualifies it (see PerformRetreat's own comment on why landing on a hostile hex is
+        // now a valid, handled outcome rather than something retreat routing avoids).
+        private bool IsRetreatableHex(HexCoord hex)
         {
-            if (map == null || !map.TryGetTerrainAt(hex, out _))
-                return false;
-            return BattleInitiator.FindEnemyAt(hex, army.Owner) == null;
+            return map != null && map.TryGetTerrainAt(hex, out _);
         }
     }
 }

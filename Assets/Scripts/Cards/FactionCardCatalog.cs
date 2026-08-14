@@ -29,7 +29,7 @@ namespace Game.Cards
         public List<CardDefinition> cards = new List<CardDefinition>();
 
         // Keeps every CardDefinition.id in sync with its actual list position, so the inspector
-        // always shows the correct deckIndices value even after cards are added/removed/reordered.
+        // always shows the correct index even after cards are added/removed/reordered.
         private void OnValidate()
         {
             for (int i = 0; i < cards.Count; i++)

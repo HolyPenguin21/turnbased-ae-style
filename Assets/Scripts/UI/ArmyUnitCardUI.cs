@@ -122,7 +122,10 @@ namespace Game.UI
             if (unit.IsHero)
             {
                 slot1 = unit.CommandRating;
-                slot2 = unit.Fate;
+                // Always the hero's max, not however much is currently unspent — this compact
+                // badge is "how much Fate this hero has to work with", not a live spend tracker
+                // (see BattleAttackPopupUI/BattleCombatantRowUI for the actual current value).
+                slot2 = unit.FateMax;
                 slot5 = unit.Initiative;
             }
             else

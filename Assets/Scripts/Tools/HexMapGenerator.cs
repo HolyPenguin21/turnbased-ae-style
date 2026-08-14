@@ -130,6 +130,13 @@ namespace Game.Map
                 MapResourceDisplay resourceDisplay = GetComponent<MapResourceDisplay>();
                 if (resourceDisplay != null)
                     resourceDisplay.RefreshAll();
+
+                // Same reasoning as resourceDisplay above — builds the fog overlay quad, the
+                // visibility mask, and every hex's coordinate label, all of which need the real
+                // hex data SetData just populated.
+                FogOfWarController fogOfWar = GetComponent<FogOfWarController>();
+                if (fogOfWar != null)
+                    fogOfWar.RefreshAll();
             }
 
             // Editor-time regeneration (tuning textures/blend/etc.) must keep working, so only
@@ -373,9 +380,12 @@ namespace Game.Map
             _groundMaterialInstance.color = Settings.groundColor;
             groundObject.GetComponent<MeshRenderer>().sharedMaterial = _groundMaterialInstance;
 
-            // Thin invisible-height box so raycasts (hex picking) can hit the map without
-            // needing a collider on the combined hex mesh itself. Centre matches the ground
-            // quad's own vertices (baked directly into the mesh, not via transform.position).
+            // No longer needed for hex picking (see HexSelectionController.RaycastHex/
+            // CitadelSetupController.Update, both a math Y=0 plane intersection now instead of
+            // a Physics.Raycast against this) — kept anyway as harmless baked geometry in case
+            // something else ever wants a physical hit-test against the ground plane. Centre
+            // matches the ground quad's own vertices (baked directly into the mesh, not via
+            // transform.position).
             var boxCollider = groundObject.GetComponent<BoxCollider>();
             if (boxCollider == null)
                 boxCollider = groundObject.AddComponent<BoxCollider>();

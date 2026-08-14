@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Cameras;
 using Game.Cards;
 using Game.Core;
@@ -61,6 +62,11 @@ namespace Game.Setup
         // reference directly (see those for why there's no per-faction lookup mechanism yet).
         [SerializeField] private FactionCardCatalog catalog;
 
+        // Hand-authored neutral armies placed by GenerateNeutralArmies during map generation —
+        // see NeutralArmyCatalog's own comment ("available for map generation to place fixed
+        // armies on the map"). Assign the NeutralArmyCatalog asset in the Inspector.
+        [SerializeField] private NeutralArmyCatalog neutralArmyCatalog;
+
         [Header("Turns")]
         // Kicked off once every player has placed their citadel — see GameTurnController.
         [SerializeField] private GameTurnController turnController;
@@ -95,6 +101,21 @@ namespace Game.Setup
             HexResourceBonusRegistry.Clear();
             ArmyRegistry.Clear();
             PlayerRootRegistry.Clear();
+            // Configure before AssignStartingHexes/the per-player loop below ever registers an
+            // army or building — both registries recompute vision the moment something is
+            // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
+            // need to already be known by then, not set afterward.
+            VisionSystem.Clear();
+            VisionSystem.Configure(gameConfig);
+            // Same ordering requirement as VisionSystem.Configure above — AiMapMemory listens to
+            // VisionSystem.VisibilityChanged, which the very first Register call below can
+            // already fire, so the subscription (and a clean slate from any previous game) both
+            // need to be in place before that happens.
+            AiMapMemory.Clear();
+            AiMapMemory.EnsureSubscribed();
+            AiTaskRegistry.Clear();
+            AiResourceReservation.Clear();
+            AiManagementPlanner.Clear();
             AssignStartingHexes(GameSession.Players);
 
             _allPlayers.Clear();
@@ -190,17 +211,24 @@ namespace Game.Setup
 
             CardDefinition citadelCard = catalog != null ? catalog.ForType(CardType.Base).FirstOrDefault() : null;
 
+            // Same stats source as a "Concord Citadel" card played later (see
+            // HexSelectionController.SpawnBuilding) — both read the citadel card's own
+            // hitPoints/defenseRating/resistanceRating/fate now, so the two can never drift
+            // apart the way the old GameConfig.startingStructurePoints-and-friends baseline
+            // once could. 1 is just a safe non-zero fallback for a misconfigured scene with no
+            // catalog assigned — same defensive spirit as citadelCard's own null checks below.
+            int structurePoints = citadelCard != null ? citadelCard.hitPoints : 1;
             var building = new BuildingData
             {
                 Name = "Citadel", Hex = hex, Owner = player, Visual = marker,
                 Art = citadelCard != null ? citadelCard.art : null,
+                DetailArt = citadelCard != null ? (citadelCard.detailArt != null ? citadelCard.detailArt : citadelCard.art) : null,
                 Level = 1,
-                StructurePointsMax = gameConfig.startingStructurePoints,
-                StructurePointsCurrent = gameConfig.startingStructurePoints,
-                Defense = gameConfig.startingDefense,
-                Resistance = gameConfig.startingResistance,
-                Fate = gameConfig.startingFate,
-                ResourceYield = gameConfig.citadelResourceBonus,
+                StructurePointsMax = structurePoints,
+                StructurePointsCurrent = structurePoints,
+                Defense = citadelCard != null ? citadelCard.defenseRating : 1,
+                Resistance = citadelCard != null ? citadelCard.resistanceRating : 1,
+                Fate = citadelCard != null ? citadelCard.fate : 1,
                 // The one and only difference from a "Concord Citadel" card played later (see
                 // HexSelectionController.SpawnBuilding) — same card, same abilities below, but
                 // only THIS building's destruction ends the game for this player (see
@@ -407,10 +435,13 @@ namespace Game.Setup
             Vector2 mousePos = Mouse.current.position.ReadValue();
             Ray ray = targetCamera.ScreenPointToRay(mousePos);
 
-            if (!Physics.Raycast(ray, out RaycastHit hit, 1000f, gameConfig.groundLayerMask))
+            // The map is flat at Y=0 — a math plane intersection instead of Physics.Raycast
+            // against a baked Ground collider, so this can't silently break if that collider's
+            // ever missing/disabled (see HexSelectionController.RaycastHex's identical fix).
+            if (!new Plane(Vector3.up, Vector3.zero).Raycast(ray, out float enter))
                 return;
 
-            HexCoord clicked = map.WorldToHex(hit.point);
+            HexCoord clicked = map.WorldToHex(ray.GetPoint(enter));
             if (!_validHexes.Contains(clicked))
                 return; // outside this player's selectable neighbourhood — ignore
 
@@ -441,7 +472,6 @@ namespace Game.Setup
                 hexSelectionController.enabled = true;
 
             CreatePlayerRoots();
-            SpawnTestEnemyArmies();
 
             // Post-generation content passes (see CitadelSetupController.MapContent.cs) — run
             // only now, once every citadel hex is finalized, so they can steer clear of them.
@@ -451,6 +481,21 @@ namespace Game.Setup
             GenerateNeutralArmies();
             GenerateRandomEvents();
             GenerateSpecialHexes();
+
+            // Fog needs an actual viewer the instant citadel placement ends — otherwise it stays
+            // off (VisionSystem.IsVisibleToCurrentViewer fails open with no CurrentViewer) for
+            // the whole dice-off phase and however many AI turns come before the human's own
+            // first one, which is exactly the gap the project owner flagged: resource hexes and
+            // every army sitting fully visible right up until GameTurnController.BeginPlayerTurn
+            // eventually reaches a human. GameTurnController's own turn loop still owns
+            // CurrentViewer from here on (see its BeginPlayerTurn) — this is only the interim
+            // value for the window before that loop's first human turn actually begins.
+            PlayerSetupData viewer = GameSession.FindHumanPlayer();
+            if (viewer != null)
+            {
+                VisionSystem.CurrentViewer = viewer;
+                VisionSystem.RecomputeFor(viewer);
+            }
 
             if (turnController != null)
                 turnController.BeginGame();
@@ -500,99 +545,11 @@ namespace Game.Setup
                 ColorIndex = PlayerColorPalette.NeutralColorIndex, // dark indigo, reserved — never offered to real players
                 Faction = Faction.None,
                 IsHuman = false,
+                IsNeutral = true,
             };
             PlayerRoot neutralRoot = PlayerRoot.Create(null, "Neutral");
             PlayerRootRegistry.Register(_neutralPlayer, neutralRoot);
         }
 
-        // --- Temporary test scaffolding for the new "Initiating Battle" trigger -----------
-        // Two enemy armies spawned 2 hexes from the human player's citadel, owned by the first
-        // AI player, so the trigger (see Game.Combat.BattleInitiator) can be exercised by just
-        // moving into them — no real second economy/army needed for that. Remove once real
-        // combat resolution and/or AI exists and this isn't needed as a manual test fixture.
-
-        private void SpawnTestEnemyArmies()
-        {
-            if (hexSelectionController == null || catalog == null || map == null)
-                return;
-
-            PlayerSetupData human = _allPlayers.Find(p => p != null && p.IsHuman);
-            PlayerSetupData enemyOwner = _allPlayers.Find(p => p != null && !p.IsHuman);
-            if (human == null || enemyOwner == null || !human.CitadelHexQ.HasValue || !human.CitadelHexR.HasValue)
-                return;
-
-            var citadelHex = new HexCoord(human.CitadelHexQ.Value, human.CitadelHexR.Value);
-
-            var testHexes = new List<HexCoord>();
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
-            {
-                var candidate = new HexCoord(citadelHex.Q + dq * 2, citadelHex.R + dr * 2);
-                if (map.TryGetTerrainAt(candidate, out _))
-                    testHexes.Add(candidate);
-                if (testHexes.Count == 2)
-                    break;
-            }
-            if (testHexes.Count < 2)
-                return; // map too small / citadel too close to the edge — skip rather than crash
-
-            SpawnTestArmy(testHexes[0], enemyOwner, "Vanguard",
-                "Dorian Kesh", "Light Infantry", "Light Infantry", "Light Infantry", "Medium Tank");
-            // No hero — exactly 2 units, right at the hero-less hard cap (see ArmyData.
-            // ComputeCapacity), so this specifically exercises a heroless-army battle.
-            SpawnTestArmy(testHexes[1], enemyOwner, "Reserve",
-                "Medium Infantry", "Light Tank");
-            // A second army sharing testHexes[1] with Reserve — testHexes[0] stays a
-            // single-army hex, this one a two-army hex, so both cases are exercisable (e.g. the
-            // battle popup's own side army list — see BattleContactPopupUI).
-            SpawnTestArmy(testHexes[1], enemyOwner, "Outpost Guard",
-                "Light Infantry", "Light Infantry");
-
-            // A lone hero, no units at all — exercises the Capture Kill Challenge / Escaped-
-            // retreat path (see BattleScreenUI.Combat.cs's HandleCaptureKillOutcome) directly,
-            // without first grinding a whole army down to just its hero in a real fight. Not
-            // Dorian Kesh — he's already leading Vanguard above.
-            HexCoord? loneHeroHex = FindTestHex(citadelHex, distance: 3, avoid: testHexes);
-            if (loneHeroHex.HasValue)
-                SpawnTestArmy(loneHeroHex.Value, enemyOwner, "Lone Rider", "Aldric Voss");
-        }
-
-        // Same search as the two-hex loop above (testHexes), just at an arbitrary distance and
-        // skipping anything already claimed — factored out once a second, independent test hex
-        // was needed.
-        private HexCoord? FindTestHex(HexCoord citadelHex, int distance, List<HexCoord> avoid)
-        {
-            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
-            {
-                var candidate = new HexCoord(citadelHex.Q + dq * distance, citadelHex.R + dr * distance);
-                if (map.TryGetTerrainAt(candidate, out _) && (avoid == null || !avoid.Contains(candidate)))
-                    return candidate;
-            }
-            return null;
-        }
-
-        private void SpawnTestArmy(HexCoord hex, PlayerSetupData owner, string name, params string[] cardNames)
-        {
-            var army = new ArmyData { Name = name, Hex = hex, Owner = owner };
-            ArmyRegistry.Register(army);
-
-            foreach (string cardName in cardNames)
-            {
-                CardDefinition definition = catalog.cards.Find(c => c != null && c.displayName == cardName);
-                if (definition == null)
-                    continue;
-                bool isHero = definition.cardType == CardType.Hero;
-                UnitData spawned = hexSelectionController.SpawnUnit(definition.displayName, owner,
-                    definition.moveMax, definition.activationApCost, isHero, definition.commandRating, definition.art,
-                    definition.grantedAbilities, definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                    definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt);
-                if (spawned != null)
-                    army.AddMemberSorted(spawned);
-            }
-            // The army's marker is created only now, after every member's already in — its
-            // very first RestackArmiesOn (inside CreateArmyMarker) needs to see a non-empty
-            // army to have anything to show at all (see HexSelectionController.
-            // NonEmptyArmiesAt).
-            hexSelectionController.CreateArmyMarker(army);
-        }
     }
 }

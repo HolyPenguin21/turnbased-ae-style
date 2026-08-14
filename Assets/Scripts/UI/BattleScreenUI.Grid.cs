@@ -25,19 +25,22 @@ namespace Game.UI
     {
         private bool IsLocalRow(int row) => _localArmy != null && (row == _localFrontRow || row == _localBackRow);
 
-        // Orthogonally adjacent to the actor's own current cell AND within the actor's own two
-        // rows or the shared neutral row — never directly into the enemy's own two rows (same
-        // same-side restriction the Arrangement phase's own drag-and-drop already enforces, just
-        // for a single active unit moving one step instead of free rearranging). Row/adjacency
-        // helpers live on BattleGrid itself now (shared with BattleAi's own movement logic).
-        private bool IsAdjacentOwnSide(UnitData actor, int row, int col)
+        // Orthogonally adjacent to the actor's own current cell — any empty cell on the grid is a
+        // legal move destination during the Round's movement step, per the user's own call: the
+        // Attacker/Defender row split only matters for initial Arrangement placement, not for
+        // where a unit can walk once the battle is under way. Previously restricted to the
+        // actor's own two rows plus the shared Neutral row, which meant a Range-1 unit could
+        // never step into the enemy's own Front row and so could never get within range of
+        // anything sitting in the enemy's Back row — see the user's own report. The Arrangement
+        // phase's own drag-and-drop keeps its own separate same-side restriction (initial
+        // placement is a different rule from mid-battle movement); this is round movement only.
+        // Row/adjacency helpers live on BattleGrid itself (shared with BattleAi's own movement
+        // logic, see BattleAi.FindStepToward).
+        private bool IsAdjacentMoveTarget(UnitData actor, int row, int col)
         {
             if (actor == null || _grid == null || !_grid.TryFindPosition(actor, out int actorRow, out int actorCol))
                 return false;
-            if (!BattleGrid.IsOrthogonallyAdjacent(actorRow, actorCol, row, col))
-                return false;
-            return BattleGrid.IsAttackerSideRow(actorRow) ? (BattleGrid.IsAttackerSideRow(row) || row == BattleGrid.NeutralRow)
-                                                            : (BattleGrid.IsDefenderSideRow(row) || row == BattleGrid.NeutralRow);
+            return BattleGrid.IsOrthogonallyAdjacent(actorRow, actorCol, row, col);
         }
 
         private void RefreshGrid()
@@ -67,7 +70,7 @@ namespace Game.UI
                     bool draggable = _arranging && _arrangeInteractive && IsLocalRow(row) && unit != null;
                     bool isActingUnit = unit != null && unit == _currentActingUnit;
 
-                    bool isLegalMoveTarget = canAct && unit == null && IsAdjacentOwnSide(_currentActingUnit, row, col);
+                    bool isLegalMoveTarget = canAct && unit == null && IsAdjacentMoveTarget(_currentActingUnit, row, col);
                     bool isLegalAttackTarget = canAct && unit != null && unit.Owner != _currentActingUnit.Owner
                         && BattleGrid.IsInRange(actorRow, actorCol, row, col, _currentActingUnit.Range);
 
@@ -110,7 +113,7 @@ namespace Game.UI
 
             if (cell.Unit == null)
             {
-                if (IsAdjacentOwnSide(_currentActingUnit, cell.Row, cell.Col))
+                if (IsAdjacentMoveTarget(_currentActingUnit, cell.Row, cell.Col))
                     PerformMove(actorRow, actorCol, cell.Row, cell.Col);
                 return;
             }

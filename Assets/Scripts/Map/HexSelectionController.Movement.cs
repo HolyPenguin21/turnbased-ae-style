@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -113,6 +114,11 @@ namespace Game.Map
         // hover preview). Only checked for a combat-capable mover itself (a hero-only army isn't
         // "combat capable" per the manual and has its own separate — not yet implemented —
         // capture/kill handling), in which case this is a no-op and returns `path` unchanged.
+        // Only ever looks at a hex `mover.Owner` currently has VISION of — fog means an enemy
+        // sitting on a not-yet-visible hex can't be pre-emptively routed around/stopped at when
+        // the path is first computed; discovering it is what ArmyController.MoveRoutine's own
+        // shouldStopEarly callback (see HandleVisionStep below) is for, mid-move, one hex at a
+        // time, same as the real game.
         private static HexPath TruncateAtEnemyContact(HexPath path, ArmyData mover, out ArmyData enemyArmy)
         {
             enemyArmy = null;
@@ -120,6 +126,8 @@ namespace Game.Map
                 return path;
             for (int i = 1; i < path.Hexes.Count; i++)
             {
+                if (!VisionSystem.IsVisible(mover.Owner, path.Hexes[i]))
+                    continue;
                 enemyArmy = BattleInitiator.FindEnemyAt(path.Hexes[i], mover.Owner);
                 if (enemyArmy != null)
                     return new HexPath(path.Hexes.GetRange(0, i + 1), path.TotalCost);
@@ -134,10 +142,36 @@ namespace Game.Map
         // the shortest route often isn't the one that actually lets the army get furthest this
         // turn, once contact truncation is accounted for). Not gated on IsCombatCapable like
         // TruncateAtEnemyContact — a hero-only mover benefits from steering clear too, even
-        // though it never triggers a stop there itself.
+        // though it never triggers a stop there itself. Vision-gated same as TruncateAtEnemyContact
+        // — only a currently-visible enemy is something the player could plausibly be routing
+        // around; a fog-hidden one is never avoided, only discovered on arrival.
         private static System.Func<HexCoord, bool> AvoidEnemyHex(ArmyData mover)
         {
-            return hex => BattleInitiator.FindEnemyAt(hex, mover.Owner) != null;
+            return hex => VisionSystem.IsVisible(mover.Owner, hex) && BattleInitiator.FindEnemyAt(hex, mover.Owner) != null;
+        }
+
+        // Per-step callback for ArmyController.MoveRoutine's shouldStopEarly — called once per
+        // hex actually entered, right after the army lands there. Recomputes the mover's own
+        // vision from its new position FIRST (so the fog/markers/labels visibly update live as
+        // the army advances, not just once the whole move finishes), then checks whether this
+        // specific hex was previously unknown to the mover's owner: if so and it turns out to
+        // hold an enemy army or a foreign-owned building, the move stops right here instead of
+        // continuing blind toward a destination that was only ever chosen without knowing this
+        // was in the way. A hex the owner could already see (nothing newly revealed) never
+        // interrupts, regardless of what's there — TruncateAtEnemyContact/AvoidEnemyHex already
+        // handled anything visible at path-computation time.
+        private static bool HandleVisionStep(ArmyData mover, HexCoord hex)
+        {
+            bool wasKnown = VisionSystem.IsVisible(mover.Owner, hex);
+            VisionSystem.RecomputeFor(mover.Owner);
+            if (wasKnown)
+                return false;
+
+            if (BattleInitiator.FindEnemyAt(hex, mover.Owner) != null)
+                return true;
+
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            return building != null && building.Owner != null && building.Owner != mover.Owner;
         }
 
         private void HidePathPreview()
@@ -153,16 +187,41 @@ namespace Game.Map
 
         private void TryIssueMoveOrder(HexCoord destination)
         {
-            if (_selectedArmy == null || _selectedArmy.IsMoving)
+            IssueMoveOrder(_selectedArmy, destination);
+        }
+
+        // IssueMoveOrder's own reject-reason feedback (see its guard clauses below) — a blocking
+        // popup only a human can dismiss, so only shown for a human-owned mover. An AI/Neutral
+        // move that can't be afforded just logs and fails quietly instead — same "no one to click
+        // a popup during another player's turn" reasoning as the battle-contact branch further
+        // down, and per the project owner's own report: an unguarded ShowSpawnHint here left the
+        // popup open (and input blocked) for the rest of the game once an AI move failed this way.
+        private void NotifyMoveBlocked(ArmyData army, string message)
+        {
+            if (army?.Owner != null && army.Owner.IsHuman)
+                turnController?.ShowSpawnHint(message);
+            else
+                AiDebugLog.Write($"[AI] {army?.Owner?.Nickname ?? "Neutral"}: move order for {army?.Name} rejected — {message}");
+        }
+
+        // Player-agnostic move-order pipeline — pathfinding, AP spend, animated move, vision
+        // steps, and enemy-contact handling, all identical to what a human's right-click already
+        // triggers via TryIssueMoveOrder above, just taking the mover explicitly instead of
+        // reading _selectedArmy. Used by Game.Ai.AiTurnController so an AI-controlled army's
+        // move looks and behaves exactly like a human's, with no separate/duplicated movement
+        // logic anywhere.
+        public void IssueMoveOrder(ArmyController controller, HexCoord destination)
+        {
+            if (controller == null || controller.IsMoving)
                 return;
 
             // The garrison specifically can never move at all (it's anchored to its Barracks
             // building, not a mobile force) — assign units to a real army first (see the
             // garrison button on HexInfoPanelUI, or a precise click on its own marker).
-            ArmyData army = GetSelectedArmy();
+            ArmyData army = controller.Data;
             if (army == null || army.IsGarrison)
             {
-                turnController?.ShowSpawnHint($"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
+                NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
                 return;
             }
 
@@ -172,12 +231,12 @@ namespace Game.Map
             // resolution can free it. See Game.Combat.BattleInitiator.
             if (BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
             {
-                turnController?.ShowSpawnHint($"{army.Name} is locked in combat and can't move away.");
+                NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
                 return;
             }
             if (army.CurrentMovement <= 0)
             {
-                turnController?.ShowSpawnHint($"{army.Name} has no movement points left this turn.");
+                NotifyMoveBlocked(army, $"{army.Name} has no movement points left this turn.");
                 return;
             }
             if (destination.Equals(army.Hex))
@@ -203,7 +262,7 @@ namespace Game.Map
             int firstStepCost = firstStepEntry != null ? Mathf.Max(1, firstStepEntry.moveCost) : 1;
             if (army.CurrentMovement < firstStepCost)
             {
-                turnController?.ShowSpawnHint(
+                NotifyMoveBlocked(army,
                     $"Not enough movement points to enter that hex ({firstStepCost} needed, {army.CurrentMovement} left).");
                 return;
             }
@@ -219,7 +278,7 @@ namespace Game.Map
             bool needsActivation = !army.HasActivatedThisTurn;
             if (needsActivation && !ownerRoot.CanSpendActionPoints(army.ActivationApCost))
             {
-                turnController?.ShowSpawnHint($"Not enough action points to move {army.Name} ({army.ActivationApCost} AP needed).");
+                NotifyMoveBlocked(army, $"Not enough action points to move {army.Name} ({army.ActivationApCost} AP needed).");
                 return;
             }
             if (needsActivation)
@@ -229,7 +288,7 @@ namespace Game.Map
             }
 
             HexCoord originHex = army.Hex;
-            ArmyController movingArmy = _selectedArmy;
+            ArmyController movingArmy = controller;
 
             // Let the idle hover/pulse animation ease back to its resting pose first — jumping
             // straight from mid-bob/mid-pulse into the move animation was what made movement
@@ -239,6 +298,8 @@ namespace Game.Map
             {
                 movingArmy.MoveAlong(map, path.Hexes, hex => ResolveArmyOffset(hex, movingArmy), () =>
                 {
+                    // shouldStopEarly (below) already recomputed vision for every hex actually
+                    // entered — nothing extra needed here just to catch up on that.
                     // The army can stop short partway along the path, the moment the next hex
                     // would cost more than what's left — movingArmy.CurrentHex (tracked live
                     // during MoveAlong, see ArmyController) reflects wherever it actually ended
@@ -262,20 +323,10 @@ namespace Game.Map
                     // BattleScreenUI.Combat.cs's HandleBuildingOnArmyDefeat for the "army got
                     // wiped mid-fight" case this doesn't cover). Runs regardless of whether an
                     // actual army contact ALSO fires below — a third player's building could sit
-                    // on the same hex as someone else's army.
-                    BuildingData contactedBuilding = BuildingRegistry.FindAt(actualHex);
-                    if (contactedBuilding != null && contactedBuilding.Owner != null && contactedBuilding.Owner != army.Owner)
-                    {
-                        bool ownerDefended = false;
-                        foreach (ArmyData resident in ArmyRegistry.AllAt(actualHex))
-                            if (resident.Owner == contactedBuilding.Owner && BattleInitiator.IsEngageable(resident))
-                            {
-                                ownerDefended = true;
-                                break;
-                            }
-                        if (!ownerDefended)
-                            BuildingRegistry.CaptureOrDestroy(contactedBuilding, army.Owner);
-                    }
+                    // on the same hex as someone else's army. Shared with BattleScreenUI.Retreat.
+                    // cs's PerformRetreat, which needs the exact same check for a retreat landing
+                    // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
+                    BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner);
 
                     // Re-checked fresh against `actualHex`, NOT the `enemyArmy` truncation found
                     // before the move even started — the army can run out of shared move points
@@ -301,7 +352,7 @@ namespace Game.Map
                     ArmyData actualEnemyContact = DelayedBattleRegistry.IsHexPending(actualHex)
                         ? null
                         : BattleInitiator.FindEnemyAt(actualHex, army.Owner);
-                    if (actualEnemyContact != null && battleContactPopup != null && BattleInitiator.IsCombatCapable(army))
+                    if (actualEnemyContact != null && BattleInitiator.IsCombatCapable(army))
                     {
                         // Not a full Deselect() (that would also clear _selectedArmy, still
                         // needed below in the general case) — but the ORIGIN hex's own selection
@@ -317,21 +368,38 @@ namespace Game.Map
                         if (armyInfoPanel != null) armyInfoPanel.Hide();
                         if (armyButtonRow != null) armyButtonRow.Hide();
                         var participants = new List<ArmyData> { army, actualEnemyContact };
-                        // A hero-only contact (see BattleInitiator.IsEngageable vs
-                        // IsCombatCapable) has nothing for a normal Tactical Battle Module round
-                        // to do — no acting units on that side, nothing to click/attack — so it
-                        // skips the grid entirely and goes straight to a Capture Kill Challenge
-                        // sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-                        bool targetHeroOnly = !BattleInitiator.IsCombatCapable(actualEnemyContact);
-                        battleContactPopup.Show(actualHex, participants,
-                            onFight: () =>
-                            {
-                                if (targetHeroOnly)
-                                    battleScreen?.BeginCaptureKillEncounter(army, actualEnemyContact, null);
-                                else
-                                    battleScreen?.Show(actualHex, participants, null);
-                            },
-                            onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = actualHex, Participants = participants }));
+
+                        // A human-controlled mover gets the interactive Fight/Delay choice, same
+                        // as always. An AI/Neutral mover has no one to click either button —
+                        // rather than block the turn on a popup nobody will ever dismiss, it
+                        // defaults straight to Delay (never forces a fight it didn't choose),
+                        // matching the AI architecture doc's own "не ввязываться в бой" scouting
+                        // principle. GameTurnController's own end-of-turn sweep still eventually
+                        // forces the pairing if it's genuinely still unresolved once everyone's
+                        // passed.
+                        if (battleContactPopup != null && army.Owner != null && army.Owner.IsHuman)
+                        {
+                            // A hero-only contact (see BattleInitiator.IsEngageable vs
+                            // IsCombatCapable) has nothing for a normal Tactical Battle Module
+                            // round to do — no acting units on that side, nothing to click/
+                            // attack — so it skips the grid entirely and goes straight to a
+                            // Capture Kill Challenge sequence instead (see BattleScreenUI.
+                            // BeginCaptureKillEncounter).
+                            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(actualEnemyContact);
+                            battleContactPopup.Show(actualHex, participants,
+                                onFight: () =>
+                                {
+                                    if (targetHeroOnly)
+                                        battleScreen?.BeginCaptureKillEncounter(army, actualEnemyContact, null);
+                                    else
+                                        battleScreen?.Show(actualHex, participants, null);
+                                },
+                                onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = actualHex, Participants = participants }));
+                        }
+                        else
+                        {
+                            DelayedBattleRegistry.Add(new PendingBattle { Hex = actualHex, Participants = participants });
+                        }
                     }
                     // Re-arm the hover/pulse animation once the move finishes, if it's still the
                     // active selection (the player may have selected something else meanwhile) —
@@ -349,7 +417,7 @@ namespace Game.Map
                     // there (e.g. it now forms a two-different-owners pair) needs to shift to
                     // match.
                     RestackArmiesOn(actualHex, movingArmy);
-                });
+                }, shouldStopEarly: hex => HandleVisionStep(army, hex));
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);

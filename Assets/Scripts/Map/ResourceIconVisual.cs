@@ -22,16 +22,29 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer circle;
         [SerializeField] private TMP_Text amountText;
 
+        private int _amount;
+
         // Lets other UI (e.g. the initiative dice buy panel) match these same per-resource
         // colours without duplicating the map's colour choices.
         public static Color GetColor(ResourceType type) => ResourceColors[type];
 
-        public void SetResource(ResourceType type, int amount)
+        // amountKnown is false for a hex only ever seen from a neighbor's vision radius, never
+        // physically stood on — the resource type is revealed but not how much of it there is
+        // (see VisionSystem.HasEverSeenByCurrentViewer vs. IsVisitedByCurrentViewer). Call
+        // SetAmountKnown afterwards to flip the same icon between the two once that changes,
+        // without needing to respawn it.
+        public void SetResource(ResourceType type, int amount, bool amountKnown = true)
         {
             if (circle != null && ResourceColors.TryGetValue(type, out Color color))
                 circle.color = color;
+            _amount = amount;
+            SetAmountKnown(amountKnown);
+        }
+
+        public void SetAmountKnown(bool known)
+        {
             if (amountText != null)
-                amountText.text = amount.ToString();
+                amountText.text = known ? _amount.ToString() : "?";
         }
     }
 }

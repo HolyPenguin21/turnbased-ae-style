@@ -89,21 +89,44 @@ namespace Game.Map
         private void OnEnable()
         {
             if (turnController != null)
+            {
                 turnController.TurnChanging += Deselect;
+                turnController.TurnStateChanged += OnTurnStateChangedForVisibility;
+            }
             if (armyViewerModal != null)
                 armyViewerModal.Closed += OnArmyModalClosed;
             if (baseViewerModal != null)
                 baseViewerModal.Closed += OnBaseModalClosed;
+            VisionSystem.VisibilityChanged += OnVisibilityChanged;
         }
 
         private void OnDisable()
         {
             if (turnController != null)
+            {
                 turnController.TurnChanging -= Deselect;
+                turnController.TurnStateChanged -= OnTurnStateChangedForVisibility;
+            }
             if (armyViewerModal != null)
                 armyViewerModal.Closed -= OnArmyModalClosed;
             if (baseViewerModal != null)
                 baseViewerModal.Closed -= OnBaseModalClosed;
+            VisionSystem.VisibilityChanged -= OnVisibilityChanged;
+        }
+
+        // The map is now (potentially) rendered from a different human's perspective — see
+        // VisionSystem.CurrentViewer, set by GameTurnController whenever CurrentPlayer changes
+        // to a human. Every marker's visibility needs re-checking against the new viewer, not
+        // just whichever hexes happen to already have a RestackArmiesOn call scheduled.
+        private void OnTurnStateChangedForVisibility() => RefreshAllVisibility();
+
+        // Only the currently-rendered viewer's own vision changing is worth a refresh here — an
+        // AI's vision recomputing off-screen (once real AI logic exists) touches none of what's
+        // currently drawn.
+        private void OnVisibilityChanged(PlayerSetupData player)
+        {
+            if (player == VisionSystem.CurrentViewer)
+                RefreshAllVisibility();
         }
 
         // The modal doesn't touch the hex-side button row or ArmyInfoPanel itself while it's
@@ -119,6 +142,13 @@ namespace Game.Map
         // player clicked the hex a second time — see ShouldPreserveSelectionAfterModalClose.
         private void OnArmyModalClosed()
         {
+            // Only the current player can ever open their own army/garrison modal in the first
+            // place (see IsInputAllowed) — a member gaining/losing UnitAbilities.Recce in there
+            // changes that army's own HasRecce (see ArmyData), which nothing else would
+            // otherwise notice: adding/removing a unit doesn't re-register the army itself
+            // (see ArmyRegistry.Register/Unregister), so vision never recomputes on its own here.
+            VisionSystem.RecomputeFor(turnController?.CurrentPlayer);
+
             if (_selectedHex.HasValue)
                 SelectHex(_selectedHex.Value, preserveSelection: ShouldPreserveSelectionAfterModalClose(_selectedHex.Value));
         }
@@ -201,10 +231,10 @@ namespace Game.Map
                 && turnController.TurnConfirmed && !turnController.InputBlocked;
         }
 
-        // Turn-based game, mostly-idle camera: re-running the Physics.Raycast every single
-        // frame regardless of whether anything that could change its result actually moved was
-        // pure waste (see RaycastHex's own per-call cost — a real physics query against the
-        // ground mesh, not a cheap property read). Cached against the 3 inputs that can change
+        // Turn-based game, mostly-idle camera: re-running RaycastHex every single frame
+        // regardless of whether anything that could change its result actually moved was pure
+        // waste (see RaycastHex's own per-call cost — a plane intersection plus a
+        // TryGetTerrainAt lookup, not a cheap property read). Cached against the 3 inputs that can change
         // which hex is under the cursor: the mouse's screen position, and the camera's own
         // position/zoom (RtsCameraController's WASD pan and scroll-zoom can move what's under a
         // STATIONARY cursor) — camera rotation is deliberately not checked, this project's
@@ -241,14 +271,19 @@ namespace Game.Map
         // reports its own screen position via PointerEventData, not the mouse singleton).
         public HexCoord? RaycastHex(Vector2 screenPosition)
         {
-            if (targetCamera == null || map == null || gameConfig == null)
+            if (targetCamera == null || map == null)
                 return null;
 
             Ray ray = targetCamera.ScreenPointToRay(screenPosition);
-            if (!Physics.Raycast(ray, out RaycastHit hit, 1000f, gameConfig.groundLayerMask))
+            // The map is flat at Y=0 (see GameConfig's own "every scene element sits flat at
+            // Y=0" comment) — a math plane intersection instead of Physics.Raycast against a
+            // baked Ground collider, so hex-picking can't silently break if that collider's
+            // ever missing/disabled/not regenerated (see CitadelSetupController.Update's
+            // identical intersection for the citadel-placement step).
+            if (!new Plane(Vector3.up, Vector3.zero).Raycast(ray, out float enter))
                 return null;
 
-            HexCoord coord = map.WorldToHex(hit.point);
+            HexCoord coord = map.WorldToHex(ray.GetPoint(enter));
             return map.TryGetTerrainAt(coord, out _) ? coord : (HexCoord?)null;
         }
 
@@ -375,7 +410,24 @@ namespace Game.Map
             ResourceYields effectiveYields = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(coord));
             if (infoPanel != null)
             {
-                infoPanel.ShowHex(col, row, entry, owner?.Nickname, buildingHere?.Name, effectiveYields);
+                // Terrain is always shown (see VisionSystem's own comment: the map itself is
+                // never fogged, only its content) — but a hex outside the current viewer's
+                // vision shows none of what's actually on it right now, own building/army aside
+                // (owning it is what grants the vision in the first place, so it's never hidden
+                // from its own owner).
+                bool contentVisible = owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(coord);
+                string ownerName = contentVisible ? owner?.Nickname : "Unknown";
+                string buildingName = contentVisible ? buildingHere?.Name : (buildingHere != null ? "Unknown" : null);
+                // Resource yield is the one exception: terrain-derived and unchanging, so it's
+                // remembered in two tiers instead of hiding the instant vision leaves — merely
+                // having seen the hex (even from a neighbor's vision radius, never physically
+                // stood on) reveals which types it yields with the amount shown as "?"; having
+                // actually had an army/building stand on it reveals the exact amount (see
+                // VisionSystem.HasEverSeenByCurrentViewer vs. IsVisitedByCurrentViewer).
+                bool amountsKnown = contentVisible || VisionSystem.IsVisitedByCurrentViewer(coord);
+                bool resourceVisible = amountsKnown || VisionSystem.IsVisibleToCurrentViewer(coord) || VisionSystem.HasEverSeenByCurrentViewer(coord);
+                ResourceYields shownYields = resourceVisible ? effectiveYields : null;
+                infoPanel.ShowHex(col, row, entry, ownerName, buildingName, shownYields, amountsKnown);
 
                 bool isOwn = owner != null && owner == turnController?.CurrentPlayer;
 
@@ -695,7 +747,8 @@ namespace Game.Map
                 if (controller == null)
                     continue;
 
-                bool visible = representativeForOwner[army.Owner] == army || controller.IsMoving;
+                bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
+                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex));
                 if (controller.Visual != null)
                 {
                     controller.Visual.SetVisible(visible);
@@ -723,8 +776,29 @@ namespace Game.Map
             {
                 BuildingData building = BuildingRegistry.FindAt(hex);
                 if (building != null && building.Visual != null)
+                {
                     building.Visual.transform.position = map.HexToWorld(hex) + ToWorldOffset(layout.BuildingOffset);
+                    building.Visual.SetVisible(building.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex));
+                }
             }
+        }
+
+        // Re-runs the visibility half of RestackArmiesOn (army/building marker show/hide) for
+        // EVERY occupied hex on the map, without touching anyone's actual world position —
+        // subscribed to VisionSystem.VisibilityChanged and GameTurnController.TurnStateChanged
+        // (see OnEnable) since either can change what VisionSystem.CurrentViewer can currently
+        // see: the mover's own vision expanding step-by-step during a move (see
+        // HexSelectionController.Movement.cs's HandleVisionStep), or the map simply now being
+        // rendered from a different human's perspective after the turn passed to them.
+        private void RefreshAllVisibility()
+        {
+            if (map == null)
+                return;
+            var hexes = new HashSet<HexCoord>(ArmyRegistry.AllOccupiedHexes());
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+                hexes.Add(building.Hex);
+            foreach (HexCoord hex in hexes)
+                RestackArmiesOn(hex, null);
         }
 
         // HexObjectLayout lays out one slot per distinct owner, not one per army — same-owner

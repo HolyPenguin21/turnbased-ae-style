@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b45c8d9a137b4468b2b2eaa84b5c0e37, type: 3}
+  m_Name: EventCatalog
+  m_EditorClassIdentifier: 
+  cardCatalogs:
+  - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
+  - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
+  events:
+  - name: Abandoned warehouse(2)
+    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
+    description: 'An abandoned warehouse has been discovered: a decaying structure
+      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
+      inside smells of dampness, machine oil, and centuries-old dust. Looks like
+      someone is inside: 2 targets'
+    guardArmyName: Inhabitants
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 1
+        materials: 1
+        tech: 0
+      cardKey: 
+    - type: 1
+      resources:
+        human: 0
+        energy: 1
+        materials: 2
+        tech: 0
+      cardKey: Iron Concord/Scrapper
+  - name: Abandoned warehouse
+    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
+    description: 'An abandoned warehouse has been discovered: a decaying structure
+      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
+      inside smells of dampness, machine oil, and centuries-old dust. '
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 1
+        materials: 1
+        tech: 1
+      cardKey: 
+  - name: Abandoned warehouse
+    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
+    description: 'An abandoned warehouse has been discovered: a decaying structure
+      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
+      inside smells of dampness, machine oil, and centuries-old dust. '
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 1
+        energy: 0
+        materials: 0
+        tech: 1
+      cardKey: 

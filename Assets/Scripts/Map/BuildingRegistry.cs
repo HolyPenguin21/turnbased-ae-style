@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
 using Game.Styles;
@@ -31,6 +32,7 @@ namespace Game.Map
         public static void Register(HexCoord hex, BuildingData building)
         {
             ByHex[hex] = building;
+            VisionSystem.RecomputeFor(building?.Owner);
         }
 
         public static BuildingData FindAt(HexCoord hex)
@@ -49,6 +51,7 @@ namespace Game.Map
                 return;
             ByHex.Remove(hex);
             BuildingDestroyed?.Invoke(building);
+            VisionSystem.RecomputeFor(building.Owner);
         }
 
         // Shared by every place a building changes hands through combat, per the user's own
@@ -65,9 +68,16 @@ namespace Game.Map
                 return;
             if (building.HasAbility(BuildingAbilities.Base))
             {
+                PlayerSetupData previousOwner = building.Owner;
                 building.Owner = newOwner;
                 if (building.Visual != null)
                     building.Visual.SetColor(newOwner != null ? PlayerColorPalette.Colors[newOwner.ColorIndex] : Color.white);
+                // Both sides of the handover lose/gain vision from this specific building —
+                // Unregister/Register (the Destroy branch below) already cover that on their
+                // own, but a capture never calls either, so both recomputes are done explicitly
+                // here instead.
+                VisionSystem.RecomputeFor(previousOwner);
+                VisionSystem.RecomputeFor(newOwner);
             }
             else
             {
@@ -75,6 +85,24 @@ namespace Game.Map
                 if (building.Visual != null)
                     UnityEngine.Object.Destroy(building.Visual.gameObject);
             }
+        }
+
+        // Shared by every place an army finishes ARRIVING on a hex without a fight of its own —
+        // an ordinary strategic move (HexSelectionController.Movement.cs) and, per the user's own
+        // spec, a retreat landing there too (BattleScreenUI.Retreat.cs's PerformRetreat). An
+        // enemy-owned building with nobody of its own owner left on `hex` to defend it (garrison
+        // included — same IsEngageable check Contact uses) changes hands/gets destroyed the
+        // moment `mover` arrives, no fight to trigger since there was never anyone there to put
+        // one up. No-op for a building `mover` already owns, or a hex with no building at all.
+        public static void CaptureOrDestroyIfUndefended(HexCoord hex, PlayerSetupData mover)
+        {
+            BuildingData building = FindAt(hex);
+            if (building == null || building.Owner == null || building.Owner == mover)
+                return;
+            foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
+                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident))
+                    return;
+            CaptureOrDestroy(building, mover);
         }
     }
 }

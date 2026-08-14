@@ -21,6 +21,11 @@ namespace Game.Map
         // The building's own card art (citadel's "Concord Citadel" art, or a player-built
         // Base's own card art) — shown on cell 0 of BaseViewerModalUI's grid.
         public Sprite Art;
+        // Carried over from CardDefinition.detailArt at spawn time (falling back to Art itself
+        // when the card never set one — same convention as UnitData.DetailArt) — the image
+        // BaseViewerModalUI's detail panel shows, deliberately separate from the compact grid
+        // cell's own art above.
+        public Sprite DetailArt;
         public readonly HashSet<string> Abilities = new HashSet<string>();
 
         public bool HasAbility(string ability) => Abilities.Contains(ability);
@@ -46,7 +51,6 @@ namespace Game.Map
         // terrain + Defense straight into the same Ground Combat roll. Still not consumed
         // anywhere; kept for whenever a real use for a building's own Fate turns up.
         public int Fate;
-        public ResourceYields ResourceYield;
 
         // Fixed at construction — index i is locked until UnlockedFacilitySlots > i, empty while
         // FacilitySlots[i] is null, otherwise filled. Never resized; a slot's identity (its

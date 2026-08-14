@@ -43,6 +43,7 @@
 
 - [x] Terrain Type / Movement Cost / Terrain Bonus (defenseModifier) — есть, `TerrainTypeEntry`.
 - [x] Resources (Human/Materials/Energy/Tech, сбор через collector-facility) — упрощённая версия сделана: цитадель даёт 1/тип базово, герой строит facility для полного охвата гекса. См. `[[project_armageddon_resource_extraction]]`.
+- [x] Сбор ресурсов юнитами в составе армии (CollectHuman/Energy/Materials/Tech) — армия, стоящая на гексе, добирает остаток дохода сверх того, что уже собирает building/facility на этом гексе; не работает, если гекс делится с engageable вражеской армией. `GameTurnController.CollectArmyIncomeAt`.
 - [ ] Independents (Join/Bargain/Fight третья сторона на гексах) — не реализовано, ни одного упоминания в коде.
 - [ ] Discoveries (золотые звёзды: resource cache / bonus card) — не реализовано.
 - [ ] Salvage (шанс подобрать attachment/munition с убитого юнита) — не реализовано.

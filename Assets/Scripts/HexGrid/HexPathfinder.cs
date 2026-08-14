@@ -29,7 +29,15 @@ namespace Game.HexGrid
         // matching what ArmyController.MoveRoutine will actually charge during the move itself
         // (it recomputes cost from terrain independently, never reads this search's own routing
         // cost) — so a preview/order never shows or spends an inflated AP/MP figure.
-        public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination, System.Func<HexCoord, bool> avoidHex = null)
+        //
+        // blockHex: optional HARD block — unlike avoidHex, a flagged hex is never entered at
+        // all, even if that means a longer detour or no route exists (see AiTurnController's
+        // own "герой должен идти по посещённым хексам" case: an unvisited hex can hide an
+        // enemy the hero has no way to react to, so it must never be crossed blind, not just
+        // discouraged). The caller is responsible for exempting `destination` itself if it
+        // should still be reachable despite being flagged.
+        public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination,
+            System.Func<HexCoord, bool> avoidHex = null, System.Func<HexCoord, bool> blockHex = null)
         {
             if (map == null)
                 return null;
@@ -56,6 +64,8 @@ namespace Game.HexGrid
                 foreach (HexCoord next in HexGridMath.Neighbors(current))
                 {
                     if (!map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
+                        continue;
+                    if (blockHex != null && blockHex(next))
                         continue;
 
                     int stepCost = Mathf.Max(1, entry.moveCost);

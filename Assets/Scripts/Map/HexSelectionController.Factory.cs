@@ -135,13 +135,13 @@ namespace Game.Map
                 Name = definition.displayName, Hex = hex, Owner = owner,
                 Visual = CreateBuildingMarker(hex, owner, gameConfig.buildingMarkerPrefab, gameConfig.citadelIconSprite),
                 Art = definition.art,
+                DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 Level = 1,
-                StructurePointsMax = definition.structurePointsMax,
-                StructurePointsCurrent = definition.structurePointsMax,
-                Defense = definition.defense,
-                Resistance = definition.resistance,
+                StructurePointsMax = definition.hitPoints,
+                StructurePointsCurrent = definition.hitPoints,
+                Defense = definition.defenseRating,
+                Resistance = definition.resistanceRating,
                 Fate = definition.fate,
-                ResourceYield = definition.resourceYield,
             };
             building.Abilities.Add(BuildingAbilities.Base);
             foreach (string ability in definition.grantedAbilities)
@@ -160,12 +160,11 @@ namespace Game.Map
             }
 
             // A "Concord Citadel" card played from hand is otherwise identical to the starting
-            // citadel (see BuildingData.IsStartingCitadel) — including the permanent hex bonus
-            // (see CitadelSetupController.SpawnCitadelMarker/HexResourceBonusRegistry), so it
-            // gets stamped here too whenever the card's own abilities add up to a full citadel
-            // (see BuildingAbilities.IsFullCitadel).
-            if (BuildingAbilities.IsFullCitadel(building))
-                HexResourceBonusRegistry.Set(hex, gameConfig.citadelResourceBonus);
+            // citadel (same abilities, same stats) but per the user's own spec does NOT get the
+            // permanent hex resource bonus — that belongs only to the hex the player chose at
+            // game start (see CitadelSetupController.SpawnCitadelMarker/BuildingData.
+            // IsStartingCitadel). A later citadel only ever collects whatever the hex's own
+            // terrain actually yields.
 
             // Now that BuildingRegistry actually has this building, re-resolve the layout for
             // the whole hex — positions the new marker correctly (and re-centres any armies
@@ -234,11 +233,11 @@ namespace Game.Map
                 building = new BuildingData(totalFacilitySlots: 4)
                 {
                     Name = "Resource Site", Hex = hex, Owner = owner,
-                    StructurePointsMax = gameConfig.startingStructurePoints,
-                    StructurePointsCurrent = gameConfig.startingStructurePoints,
-                    Defense = gameConfig.startingDefense,
-                    Resistance = gameConfig.startingResistance,
-                    Fate = gameConfig.startingFate,
+                    StructurePointsMax = gameConfig.resourceSiteStructurePoints,
+                    StructurePointsCurrent = gameConfig.resourceSiteStructurePoints,
+                    Defense = gameConfig.resourceSiteDefense,
+                    Resistance = gameConfig.resourceSiteResistance,
+                    Fate = gameConfig.resourceSiteFate,
                     HasTieredUnlock = false,
                 };
             }

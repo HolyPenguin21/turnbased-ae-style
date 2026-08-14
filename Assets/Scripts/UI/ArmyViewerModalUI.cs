@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Cards;
 using Game.Core;
 using Game.Map;
+using Game.Terrain;
 using Game.Turns;
 using Game.Units;
 using TMPro;
@@ -22,11 +23,6 @@ namespace Game.UI
     // (Create Army for the garrison, Rename otherwise), see OnContextButtonClicked.
     public class ArmyViewerModalUI : MonoBehaviour
     {
-        // Charged once per Create Army click — matches the "administrative but not free"
-        // feel the user asked for; shown on the context button's own label (see RefreshTitle)
-        // when it reads "Create Army" so the cost is never a surprise.
-        private const int CreateArmyApCost = 2;
-
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Image factionLogo;
         [SerializeField] private TMP_Text titleText;
@@ -50,6 +46,10 @@ namespace Game.UI
         // see Game.Map.ArmyController) and RestackArmiesOn (moving a unit between armies here
         // can flip one empty<->non-empty, changing which marker is visible on the shared hex).
         [SerializeField] private HexSelectionController hexSelectionController;
+        // Terrain lookup for ShowArmySummary's own Terrain Def line — same reference
+        // HexSelectionController/BattleContactPopupUI already hold, wired separately here since
+        // neither exposes it publicly.
+        [SerializeField] private HexMap map;
 
         // Read by ArmyUnitCardUI (via the modal reference it already keeps) for
         // GameConfig.FormatAbilities — see ShowUnitDetail for this modal's own use of it.
@@ -338,18 +338,9 @@ namespace Game.UI
             if (targetIndex == currentIndex)
                 return;
 
-            // Capacity is read off whichever hero ends up at the front (see
-            // ArmyData.ComputeCapacity) — moving a lower-CommandRating hero into that spot can
-            // shrink it below how many members are actually here. Simulate the swap first and
-            // reject it outright rather than applying a reorder that would silently strand
-            // members past the new (smaller) capacity — RefreshGrid only ever renders Capacity
-            // slots, so anyone past that just vanishes from the grid without being removed from
-            // Members.
             var candidate = new List<UnitData>(_dragPreviewOrder);
             candidate.RemoveAt(currentIndex);
             candidate.Insert(targetIndex, card.Unit);
-            if (ArmyData.ComputeCapacity(candidate, _currentArmy.IsGarrison) < candidate.Count)
-                return;
 
             _dragPreviewOrder = candidate;
             RepositionNonDraggedCards();
@@ -436,54 +427,19 @@ namespace Game.UI
             if (targetButton != null)
             {
                 ArmyData target = targetButton.Army;
-                if (target == null || target == _currentArmy || target.IsPrison)
+                if (target == null || target == _currentArmy)
                     return false;
 
-                if (!target.HasRoom)
+                // Same rule Game.Ai.AiManagementPlanner-driven moves use (garrison overflow
+                // splits, lone-army consolidation) — pulled into ArmyActions so both this drag-
+                // drop and the AI go through one shared implementation of the capacity/orphan/AP
+                // rules instead of two.
+                if (!ArmyActions.TransferMember(card.Unit, _currentArmy, target, hexSelectionController, out string failReason))
                 {
-                    turnController?.ShowSpawnHint($"{target.Name} is full — can't move {card.Unit.Name} in.");
-                    return false;
-                }
-
-                // Same orphan risk as the in-grid reorder (see PreviewReorder's own capacity
-                // check) — removing this army's own front/commanding hero can shrink ITS
-                // capacity below however many members are left behind.
-                var remaining = new List<UnitData>(_currentArmy.Members);
-                remaining.Remove(card.Unit);
-                if (ArmyData.ComputeCapacity(remaining, _currentArmy.IsGarrison) < remaining.Count)
-                {
-                    turnController?.ShowSpawnHint($"Moving {card.Unit.Name} out would leave {_currentArmy.Name} without room for everyone else.");
+                    turnController?.ShowSpawnHint(failReason);
                     return false;
                 }
 
-                // An army that's already spent its own ActivationApCost this turn (see
-                // ArmyData.HasActivatedThisTurn) moves for free the rest of the turn — without
-                // this, reinforcing it mid-turn by dragging units in from elsewhere would let
-                // those members ride along for free too, bypassing the AP they'd otherwise have
-                // owed as part of that same activation (see the user's own report: move a cheap
-                // 1-unit army first, then bulk it up from the garrison at zero extra AP cost).
-                // Only the INCOMING unit's own share is charged — target's other, already-paid-for
-                // members aren't re-billed, and a target that hasn't activated yet this turn pays
-                // for everyone, this unit included, on its own first move order as normal.
-                PlayerRoot targetRoot = null;
-                if (target.HasActivatedThisTurn)
-                {
-                    targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                    if (targetRoot == null || !targetRoot.CanSpendActionPoints(card.Unit.ActivationApCost))
-                    {
-                        turnController?.ShowSpawnHint($"Not enough action points to add {card.Unit.Name} to {target.Name} ({card.Unit.ActivationApCost} AP needed — it already moved this turn).");
-                        return false;
-                    }
-                }
-
-                _currentArmy.Members.Remove(card.Unit);
-                target.AddMemberSorted(card.Unit);
-                targetRoot?.SpendActionPoints(card.Unit.ActivationApCost);
-                // Neither army has a marker of its own that follows individual units around
-                // (see Game.Map.ArmyController) — only whichever is each owner's visible
-                // representative on the shared hex does, and this move can flip either army
-                // between empty and non-empty, which changes that.
-                hexSelectionController?.RestackArmiesOn(_currentArmy.Hex, null);
                 // _currentArmy itself may have just lost its last member — actual deletion (see
                 // DeleteArmyIfEmptied) is deferred until this modal closes, not done here, in
                 // case the player isn't done reorganizing yet (see _pendingEmptyCheck).
@@ -549,14 +505,26 @@ namespace Game.UI
             }
             if (titleText != null)
             {
-                string factionName = catalog != null ? catalog.displayName : string.Empty;
-                string playerName = _currentArmy?.Owner != null ? _currentArmy.Owner.Nickname : string.Empty;
                 string armyName = _currentArmy != null ? _currentArmy.Name : string.Empty;
-                string prefix = string.Join(" — ", new[] { factionName, playerName }.Where(s => !string.IsNullOrEmpty(s)));
+                // Owner is null for Neutral (see GameTurnController.ReplenishMoveForOwner's own
+                // comment) — catalog is a fixed serialized reference to the human's own faction
+                // (this modal is shared, not swapped per-owner), so it would otherwise mislabel
+                // every Neutral army as "Iron Concord". Say "Neutral" instead of reading it.
+                string prefix;
+                if (_currentArmy != null && _currentArmy.Owner == null)
+                {
+                    prefix = "Neutral";
+                }
+                else
+                {
+                    string factionName = catalog != null ? catalog.displayName : string.Empty;
+                    string playerName = _currentArmy?.Owner != null ? _currentArmy.Owner.Nickname : string.Empty;
+                    prefix = string.Join(" — ", new[] { factionName, playerName }.Where(s => !string.IsNullOrEmpty(s)));
+                }
                 titleText.text = string.IsNullOrEmpty(armyName) ? prefix : $"{prefix} — <b>{armyName}</b>";
             }
             if (contextButtonLabel != null)
-                contextButtonLabel.text = _currentArmy != null && _currentArmy.IsGarrison ? $"Create Army ({CreateArmyApCost} AP)" : "Rename";
+                contextButtonLabel.text = _currentArmy != null && _currentArmy.IsGarrison ? $"Create Army ({ArmyActions.CreateArmyApCost} AP)" : "Rename";
             // No administrative actions on someone else's army — Create Army/Rename both
             // mutate it (see OnContextButtonClicked) — nor on a Prison, even the owner's own.
             if (contextButton != null)
@@ -591,16 +559,19 @@ namespace Game.UI
             armyButtonRow.Show(siblings, SwitchTo);
         }
 
-        // One slot per point of Capacity, not just one per actual Member — the empty ones
-        // render as faint placeholders (see ArmyUnitCardUI.Setup) so it's obvious a card can
-        // be dropped there, instead of the grid just looking randomly short of a full row.
+        // One slot per point of EffectiveCapacity, not just one per actual Member — the empty
+        // ones render as faint placeholders (see ArmyUnitCardUI.Setup) so it's obvious a card
+        // can be dropped there, instead of the grid just looking randomly short of a full row.
+        // EffectiveCapacity, not the raw Capacity: an over-cap roster (hand-authored, or a
+        // hero that died leaving more survivors than the no-hero baseline) must still show
+        // every member it actually has.
         private void RefreshGrid()
         {
             ClearGrid();
             if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null || _currentArmy == null)
                 return;
 
-            for (int i = 0; i < _currentArmy.Capacity; i++)
+            for (int i = 0; i < _currentArmy.EffectiveCapacity; i++)
             {
                 UnitData member = i < _currentArmy.Members.Count ? _currentArmy.Members[i] : null;
                 ArmyUnitCardUI card = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
@@ -613,11 +584,13 @@ namespace Game.UI
         private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
 
         // Default detail-panel state — the army's own aggregate stats, shown whenever nothing
-        // is selected (on open, on switching army, after a drag-and-drop move). Fate Points and
-        // Stealth are stub text (no mechanic behind them yet); Experience/Battle Honors/Prestige
-        // are declined mechanics (see MECHANICS_CHECKLIST.md pt. 10) and are omitted entirely
-        // rather than stubbed. Leader/capacity and Movement Range are real, computed from
-        // Members.
+        // is selected (on open, on switching army, after a drag-and-drop move). Stealth is stub
+        // text (no mechanic behind it yet); Experience/Battle Honors/Prestige are declined
+        // mechanics (see MECHANICS_CHECKLIST.md pt. 10) and are omitted entirely rather than
+        // stubbed. Leader/capacity, Movement Range and Fate Points are real, computed from
+        // Members. Terrain/Construction Def mirror BattleParticipantColumnUI's own identical
+        // lookup for the in-battle version of this same info — shown here too so the player can
+        // see what this army's hex would give it before it's actually attacked.
         private void ShowArmySummary()
         {
             if (detailArt != null)
@@ -627,8 +600,8 @@ namespace Game.UI
 
             UnitData hero = _currentArmy.Members.FirstOrDefault(m => m.IsHero);
             string leaderLine = hero != null
-                ? $"{hero.Name} Commanding ({_currentArmy.Capacity})"
-                : $"No Hero Commanding ({_currentArmy.Capacity})";
+                ? $"{hero.Name} Commanding ({_currentArmy.EffectiveCapacity})"
+                : $"No Hero Commanding ({_currentArmy.EffectiveCapacity})";
 
             int heroCount = hero != null ? 1 : 0;
             int unitCount = _currentArmy.Members.Count - heroCount;
@@ -636,9 +609,20 @@ namespace Game.UI
                 ? $"1 Hero and {unitCount} Unit{(unitCount == 1 ? "" : "s")}"
                 : $"{unitCount} Unit{(unitCount == 1 ? "" : "s")}";
 
+            int fatePoints = hero != null ? hero.FateMax : 0;
+
+            int terrainDefMod = 0;
+            if (map != null && map.TryGetTerrainAt(_currentArmy.Hex, out TerrainTypeEntry terrain))
+                terrainDefMod = terrain.defenseModifier;
+            int buildingDefMod = 0;
+            BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
+            if (building != null && building.HasAbility(BuildingAbilities.Base))
+                buildingDefMod = building.Defense;
+
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
-                "0 Fate Points\nNot Stealth Capable\n" +
-                $"Movement Range: {_currentArmy.MaxMovement}";
+                $"{fatePoints} Fate Points\nNot Stealth Capable\n" +
+                $"Movement Range: {_currentArmy.MaxMovement}\n" +
+                $"Terrain Def: {terrainDefMod:+0;-0;+0}\nConstruction Def: {buildingDefMod:+0;-0;+0}";
         }
 
         private void OnContextButtonClicked()
@@ -657,27 +641,17 @@ namespace Game.UI
             if (catalog == null || _currentArmy == null)
                 return;
 
-            PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
-            if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
+            // Every army needs its own map marker (see Game.Map.ArmyController) — starts
+            // invisible (RestackArmiesOn never shows an empty army) until units are dragged
+            // into it from the garrison. Null only means "couldn't afford it" here — catalog/
+            // _currentArmy are already guaranteed non-null above.
+            ArmyData army = ArmyActions.CreateArmy(_currentArmy.Owner, _currentArmy.Hex, catalog, hexSelectionController);
+            if (army == null)
             {
                 turnController?.ShowSpawnHint("Not enough action points to create a new army.");
                 return;
             }
-            root.SpendActionPoints(CreateArmyApCost);
 
-            var takenNames = ArmyRegistry.AllForOwner(_currentArmy.Owner).Select(a => a.Name);
-            var army = new ArmyData
-            {
-                Name = catalog.GetRandomArmyName(takenNames),
-                Hex = _currentArmy.Hex,
-                Owner = _currentArmy.Owner,
-                IsGarrison = false,
-            };
-            ArmyRegistry.Register(army);
-            // Every army needs its own map marker (see Game.Map.ArmyController) — starts
-            // invisible (RestackArmiesOn never shows an empty army) until units are dragged
-            // into it from the garrison.
-            hexSelectionController?.CreateArmyMarker(army);
             // Stays on whatever's currently shown (the garrison, always, since that's the only
             // thing Create Army is ever clicked from) — the new army just needs to show up as a
             // button in the row, not take over the view.

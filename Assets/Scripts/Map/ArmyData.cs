@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
 using Game.Units;
@@ -66,7 +67,10 @@ namespace Game.Map
         // meant to catch everything fresh off a card before it's sorted; a hero present ->
         // that hero's own CommandRating overrides both. Hard cap — no overflow-with-penalty
         // like the original (see project_armageddon_army_mechanic memory: user explicitly
-        // dropped the soft-cap penalty).
+        // dropped the soft-cap penalty). This is the nominal/target number — governs whether
+        // something new may be ADDED (HasRoom, AiManagementPlanner.FindGarrisonOverflow's
+        // "shrink back toward this size" target) — NOT how many of the current Members are
+        // shown; see EffectiveCapacity for that.
         private const int BaseCapacity = 2;
         private const int GarrisonBaseCapacity = 4;
 
@@ -74,10 +78,7 @@ namespace Game.Map
 
         // The Capacity rule as a pure function of a (candidate) member list, rather than always
         // reading this instance's own Members — lets a caller ask "what would capacity become
-        // if the roster looked like THIS" before actually committing to an order, e.g.
-        // ArmyViewerModalUI validating a drag-reorder that would move a lower-CommandRating
-        // hero into the front slot ahead of members it can no longer all hold (see
-        // ArmyViewerModalUI.PreviewReorder's orphan check).
+        // if the roster looked like THIS" before actually committing to an order.
         public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison)
         {
             foreach (UnitData member in members)
@@ -86,7 +87,24 @@ namespace Game.Map
             return isGarrison ? GarrisonBaseCapacity : BaseCapacity;
         }
 
+        // The cap only ever bites when something is about to be ADDED (see Capacity's own
+        // comment) — an already-formed roster must never shrink or go partly invisible because
+        // of it. Covers both a hand-authored map army built straight past the normal cap (see
+        // CitadelSetupController.SpawnNeutralArmy) and a hero dying in battle leaving more
+        // survivors than the no-hero baseline alone would show — the user's own call. Anything
+        // that renders "how many slots does this army have" (ArmyViewerModalUI's grid/label)
+        // should read this, not the raw Capacity.
+        public int EffectiveCapacity => System.Math.Max(Capacity, Members.Count);
+
         public bool HasRoom => Members.Count < Capacity;
+
+        // Whether any member carries UnitAbilities.Recce — computed fresh every time, same
+        // "never cached" rule as Capacity/ActivationApCost above, so it's always correct as
+        // members come and go. The magnitude itself is a single shared UnitAbilityCatalog value
+        // now (like every other ability), not per-member, so having several Recce-tagged members
+        // doesn't stack anything — see Game.Map.VisionSystem.RecomputeFor, which reads this flag
+        // to expand this army's own vision beyond GameConfig.armyVisionRadius's flat default.
+        public bool HasRecce => Members.Exists(m => m.HasAbility(UnitAbilities.Recce));
 
         // Heroes always sit at the front of the roster (ArmyViewerModalUI's grid keeps them
         // there even as the player freely drags cards to reorder — see its hero-first reorder

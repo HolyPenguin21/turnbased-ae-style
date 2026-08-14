@@ -55,5 +55,13 @@ namespace Game.Cards
 
         [Header("Hyperkinetic +2 vs Armored — UnitAbilities.Hyperkinetic")]
         public int hyperkineticBonusDamage = 2;
+
+        [Header("Recce — UnitAbilities.Recce")]
+        // Extra hex steps an army with a Recce-tagged member sees beyond GameConfig.
+        // armyVisionRadius — a single shared magnitude like every other ability above (see
+        // ArmyData.HasRecce/VisionSystem.RecomputeFor), not per-card any more.
+        public int recceRadius = 1;
+        // Reserved for a future use, no gameplay effect yet — per the project owner's own call.
+        public int recceStrength;
     }
 }

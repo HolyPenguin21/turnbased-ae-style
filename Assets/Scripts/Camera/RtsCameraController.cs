@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using Game.HexGrid;
+using Game.Map;
 using Game.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -36,6 +38,13 @@ namespace Game.Cameras
         [SerializeField] private Vector2 boundsMin = new Vector2(-30f, -30f);
         [SerializeField] private Vector2 boundsMax = new Vector2(30f, 30f);
 
+        [Header("Initial Position (optional)")]
+        // When assigned, Start() re-centers the camera's ground target on the map's own x/z
+        // center instead of keeping whatever x/z the editor-placed transform happened to be
+        // at — camera height (y) is untouched either way, since that's fixed purely by
+        // _forward/distance below, never by _groundTarget's own y (always 0, the ground plane).
+        [SerializeField] private HexMap map;
+
         private Camera _camera;
         private Vector3 _groundTarget;
         private Vector3 _forward;
@@ -67,6 +76,14 @@ namespace Game.Cameras
             // Recover the ground point this camera is currently framing, from wherever it
             // was placed in the editor, so panning/zooming starts from that same spot.
             _groundTarget = transform.position - _forward * distance;
+
+            if (map != null && map.Width > 0 && map.Height > 0)
+            {
+                Vector3 mapCenter = map.HexToWorld(HexCoord.FromOffset(map.Width / 2, map.Height / 2));
+                _groundTarget.x = mapCenter.x;
+                _groundTarget.z = mapCenter.z;
+            }
+
             ApplyPosition();
         }
 
@@ -80,6 +97,15 @@ namespace Game.Cameras
             if (_panRoutine != null)
                 StopCoroutine(_panRoutine);
             _panRoutine = StartCoroutine(PanRoutine(worldPosition, duration, onComplete));
+        }
+
+        // Convenience overload for anything that only knows a hex, not a world position — e.g.
+        // Game.Ai.AiTurnController panning to wherever an AI army currently is or is headed.
+        public void PanToHex(HexCoord hex, HexMap map, float duration = 1.5f, Action onComplete = null)
+        {
+            if (map == null)
+                return;
+            PanTo(map.HexToWorld(hex), duration, onComplete);
         }
 
         private IEnumerator PanRoutine(Vector3 worldPosition, float duration, Action onComplete)

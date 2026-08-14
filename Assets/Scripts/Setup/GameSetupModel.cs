@@ -41,11 +41,13 @@ namespace Game.Setup
             if (!CanAddPlayer)
                 return null;
 
+            // First player (the human) defaults to the one real faction; everyone else
+            // defaults to Random — the project owner's own call on the default lineup.
             var data = new PlayerSetupData
             {
                 Nickname = PickRandomNickname(),
                 ColorIndex = PickColorIndexForNewPlayer(),
-                Faction = Faction.Random,
+                Faction = Players.Count == 0 ? Faction.IronConcord : Faction.Random,
                 IsHuman = Players.Count == 0 // first player added defaults to human, the rest AI
             };
             Players.Add(data);

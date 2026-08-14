@@ -91,10 +91,30 @@ namespace Game.UI
         // Pool size is known as soon as this side's Attack/Defense (+ any bonus dice) or
         // Capture Kill pool is computed — BattleAttackPopupUI calls this at the same point it
         // sets up the rest of the row, so it's visible before Roll Die is even clicked.
-        public void SetDicePoolSize(int count)
+        //
+        // terrainBonus/constructionBonus/baseDefense (defender side only — see BattleAttackPopupUI.
+        // Begin, the attacker row and Capture Kill's pool-size override both leave these at their
+        // default 0): when the hex is contributing to this side's pool, the count alone doesn't
+        // say why it's bigger than the unit's own stat, so the prefix spells out the breakdown
+        // instead (per the user's own request) — plain "Dice: {count}" otherwise, unchanged.
+        public void SetDicePoolSize(int count, int terrainBonus = 0, int constructionBonus = 0, int baseDefense = 0)
         {
-            if (diceCountText != null)
+            if (diceCountText == null)
+                return;
+
+            if (terrainBonus == 0 && constructionBonus == 0)
+            {
                 diceCountText.text = $"Dice: {count}";
+                return;
+            }
+
+            var parts = new List<string>();
+            if (terrainBonus != 0)
+                parts.Add($"Terrain({terrainBonus})");
+            if (constructionBonus != 0)
+                parts.Add($"Construction({constructionBonus})");
+            parts.Add($"Defence({baseDefense})");
+            diceCountText.text = $"{string.Join(" + ", parts)}, Dices: {count}";
         }
 
         private void RefreshFate()

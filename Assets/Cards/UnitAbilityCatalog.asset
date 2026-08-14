@@ -42,8 +42,12 @@ MonoBehaviour:
   - tag: Hyperkinetic
     description: Adds 2 damage against "Armored" targets, once the attack has already
       dealt at least 1 damage
+  - tag: Recce
+    description: Extends this unit's army vision radius
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
   berserkDefenseLoss: 1
   hyperkineticBonusDamage: 2
+  recceRadius: 1
+  recceStrength: 0

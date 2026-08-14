@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
-using Game.Combat;
 using Game.Core;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -10,18 +10,21 @@ using UnityEngine;
 namespace Game.Ai
 {
     // Stage 1 of an AI turn (see the AI architecture design doc): scores every AiGoalKind for
-    // `actor` against the CURRENT map state and picks the single best one. Pure read-only logic,
-    // same stateless-static style as BattleAi — never mutates ArmyRegistry/BuildingRegistry,
-    // only reads them. Turning the winning goal into an actual task chain executed across
-    // armies/heroes is a later phase (needs the player-agnostic action API first) — today
-    // GameTurnController only logs what was picked, nothing on the map actually happens yet.
+    // `actor` against the CURRENT map state. Pure read-only logic, same stateless-static style
+    // as BattleAi — never mutates ArmyRegistry/BuildingRegistry, only reads them (and, for
+    // ScoreExpandEconomy, AiMapMemory's own honest per-player memory rather than live state —
+    // see that class's own comment). ExpandEconomy is currently the only AiGoalKind — the only
+    // one with a real task chain behind it (see AiTurnController.TryStartEconomyCandidates/
+    // AdvanceEconomyTask, which reuse ScoreExpandEconomyHex directly rather than going through
+    // PickBest). Оборона/Атака goals (DefendBorder,
+    // DestroyEnemyCitadel, HuntExposedHero) were removed — no AiTaskCategory exists for them yet
+    // (see AiTaskCategory's own class comment); re-add once that category is designed rather than
+    // scoring goals nothing can act on.
     public static class AiGoalScorer
     {
-        // How far (in hex steps) from the actor's own territory a threat/opportunity still
-        // counts. Deliberately coarse for now — a real reachability check (actual move points,
-        // terrain) belongs to task execution, not this first-pass scoring gate. Tune once
-        // Combat Worth-It scoring exists to weigh in instead of a flat radius.
-        private const int ScanRadius = 4;
+        // See AiConfig.goalScanRadius for what this means and why — moved there so it's tunable
+        // without recompiling.
+        private static int ScanRadius => AiConfig.Current.goalScanRadius;
 
         public static List<AiGoal> ScoreGoals(PlayerSetupData actor)
         {
@@ -29,10 +32,7 @@ namespace Game.Ai
             if (actor == null)
                 return goals;
 
-            AddIfPositive(goals, ScoreDefendBorder(actor));
             AddIfPositive(goals, ScoreExpandEconomy(actor));
-            AddIfPositive(goals, ScoreDestroyEnemyCitadel(actor));
-            AddIfPositive(goals, ScoreHuntExposedHero(actor));
             return goals;
         }
 
@@ -53,7 +53,11 @@ namespace Game.Ai
                 goals.Add(goal);
         }
 
-        private static List<HexCoord> OwnHexes(PlayerSetupData actor) =>
+        // Public — AiTurnController's own unified per-step arbiter re-derives a per-CANDIDATE
+        // Economy score (see ScoreExpandEconomyHex) for hexes other than just the single best one
+        // ScoreExpandEconomy itself returns, and needs the same own-hexes list to do it without
+        // recomputing ArmyRegistry.AllForOwner per candidate.
+        public static List<HexCoord> OwnHexes(PlayerSetupData actor) =>
             ArmyRegistry.AllForOwner(actor).Select(a => a.Hex).Distinct().ToList();
 
         private static int MinDistanceToAny(List<HexCoord> fromHexes, HexCoord target)
@@ -64,54 +68,17 @@ namespace Game.Ai
             return min;
         }
 
-        // ---- Defend Border ----
-
-        // Highest-scoring enemy/neutral army within ScanRadius of any of the actor's own
-        // occupied hexes — rewards both proximity (closer = more urgent) and threat size (more
-        // members = more dangerous).
-        private static AiGoal ScoreDefendBorder(PlayerSetupData actor)
-        {
-            List<HexCoord> ownHexes = OwnHexes(actor);
-            if (ownHexes.Count == 0)
-                return null;
-
-            AiGoal best = null;
-            foreach (HexCoord threatHex in ArmyRegistry.AllOccupiedHexes())
-            {
-                foreach (ArmyData threat in ArmyRegistry.AllAt(threatHex))
-                {
-                    if (threat.Owner == actor || !BattleInitiator.IsEngageable(threat))
-                        continue;
-
-                    int minDist = MinDistanceToAny(ownHexes, threatHex);
-                    if (minDist > ScanRadius)
-                        continue;
-
-                    float proximity = ScanRadius + 1 - minDist;
-                    float score = proximity * 15f + threat.Members.Count * 8f;
-
-                    if (best == null || score > best.Score)
-                    {
-                        best = new AiGoal
-                        {
-                            Kind = AiGoalKind.DefendBorder,
-                            Score = score,
-                            TargetHex = threatHex,
-                            Description = $"{threat.Name} ({threat.Members.Count} юнита) в {minDist} хексах от своей территории",
-                        };
-                    }
-                }
-            }
-            return best;
-        }
-
         // ---- Expand Economy ----
 
         // Free (no building yet) resource hexes within reach, weighted by proximity — needs at
         // least one of the actor's own heroes somewhere on the map, since only a hero can build
         // an extraction facility (see HexSelectionController.TryBuildExtractionFacility); with
-        // no hero at all this goal could never actually be executed, so it doesn't score.
-        private static AiGoal ScoreExpandEconomy(PlayerSetupData actor)
+        // no hero at all this goal could never actually be executed, so it doesn't score. Only
+        // considers hexes AiMapMemory has actually observed at least once (per doc 2.2.1: "на
+        // уже разведанных хексах") — BuildingRegistry.FindAt's own "already claimed" check stays
+        // a live, unfiltered lookup on purpose: whether a hex has ANY building on it is world
+        // state, not intel about a specific rival, unlike everything AiMapMemory itself guards.
+        public static AiGoal ScoreExpandEconomy(PlayerSetupData actor)
         {
             bool hasHero = ArmyRegistry.AllForOwner(actor).Any(a => a.Members.Any(m => m.IsHero));
             if (!hasHero)
@@ -124,115 +91,84 @@ namespace Game.Ai
             AiGoal best = null;
             foreach (HexCoord hex in HexResourceBonusRegistry.AllBonusHexes())
             {
+                if (!AiMapMemory.IsResourceHexKnown(actor, hex))
+                    continue; // never actually scouted — no guessing (see the doc's own principle)
                 if (BuildingRegistry.FindAt(hex) != null)
                     continue; // already claimed
 
-                int minDist = MinDistanceToAny(ownHexes, hex);
-                if (minDist > ScanRadius)
+                float? hexScore = ScoreExpandEconomyHex(actor, hex, ownHexes);
+                if (!hexScore.HasValue)
                     continue;
 
-                float score = (ScanRadius + 1 - minDist) * 10f;
-                if (best == null || score > best.Score)
+                if (best == null || hexScore.Value > best.Score)
                 {
+                    int minDist = MinDistanceToAny(ownHexes, hex);
                     best = new AiGoal
                     {
                         Kind = AiGoalKind.ExpandEconomy,
-                        Score = score,
+                        Score = hexScore.Value,
                         TargetHex = hex,
                         Description = $"свободный ресурсный хекс в {minDist} хексах, есть герой для стройки",
                     };
                 }
             }
+
+            if (best != null)
+                best.Score += IncomeBehindBonus(actor);
             return best;
         }
 
-        // ---- Destroy Enemy Citadel ----
-
-        // Weakest enemy citadel relative to the actor's own total military strength — only
-        // scores once the actor is clearly ahead (ratio > 1), since this is the long-game
-        // win-condition goal, not a discretionary skirmish; a losing/even matchup should never
-        // outscore Defend/Expand. Replace the flat ratio-threshold with real Combat Worth-It
-        // scoring once that exists.
-        private static AiGoal ScoreDestroyEnemyCitadel(PlayerSetupData actor)
+        // The proximity half of ScoreExpandEconomy's own per-hex formula, pulled out so
+        // AiTurnController's unified per-step arbiter can score a SPECIFIC candidate hex (a
+        // BuildFacility task's own fixed TargetHex, or one particular free known hex among
+        // several TryStartEconomyCandidates is choosing between) rather than only ever getting back
+        // ScoreExpandEconomy's single best-of-the-turn pick. Null (not 0) if `hex` is farther
+        // than ScanRadius — same "doesn't even count" semantics ScoreExpandEconomy's own loop
+        // `continue` already had, not a valid-but-low score. Deliberately excludes
+        // IncomeBehindBonus — that's a flat per-actor offset, not per-hex, so callers add it once
+        // themselves (see ScoreExpandEconomy's own tail) rather than paying for GameSession.Players
+        // enumeration on every hex.
+        public static float? ScoreExpandEconomyHex(PlayerSetupData actor, HexCoord hex, List<HexCoord> ownHexes)
         {
-            float ownStrength = ArmyRegistry.AllForOwner(actor).SelectMany(a => a.Members).Where(m => !m.IsHero).Sum(m => m.Attack);
-            if (ownStrength <= 0f || GameSession.Players == null)
-                return null;
-
-            AiGoal best = null;
-            foreach (PlayerSetupData other in GameSession.Players)
-            {
-                if (other == actor || other.IsEliminated || !other.CitadelHexQ.HasValue || !other.CitadelHexR.HasValue)
-                    continue;
-
-                var citadelHex = new HexCoord(other.CitadelHexQ.Value, other.CitadelHexR.Value);
-                BuildingData citadel = BuildingRegistry.FindAt(citadelHex);
-                float garrisonStrength = ArmyRegistry.AllAt(citadelHex)
-                    .Where(a => a.Owner == other)
-                    .SelectMany(a => a.Members)
-                    .Where(m => !m.IsHero)
-                    .Sum(m => m.Defense);
-                float defenseStat = citadel != null ? citadel.Defense : 0f;
-
-                float ratio = ownStrength / Mathf.Max(1f, garrisonStrength + defenseStat);
-                if (ratio <= 1f)
-                    continue;
-
-                float score = (ratio - 1f) * 20f;
-                if (best == null || score > best.Score)
-                {
-                    best = new AiGoal
-                    {
-                        Kind = AiGoalKind.DestroyEnemyCitadel,
-                        Score = score,
-                        TargetHex = citadelHex,
-                        Description = $"цитадель {other.Nickname} слабее нашей армии (x{ratio:0.0})",
-                    };
-                }
-            }
-            return best;
+            int minDist = MinDistanceToAny(ownHexes, hex);
+            return minDist <= ScanRadius ? (ScanRadius + 1 - minDist) * 10f : (float?)null;
         }
 
-        // ---- Hunt Exposed Hero ----
-
-        // Any enemy army that's hero-only (no rank-and-file units, so it can't fight back in
-        // Ground Combat — only a Capture Kill Challenge applies, see
-        // BattleInitiator.IsCombatCapable) within reach — an opportunistic, usually-cheap win.
-        private static AiGoal ScoreHuntExposedHero(PlayerSetupData actor)
+        // The doc's own one documented cheat slice for 2.2 Экономика: "сравнивает свой income с
+        // остальными игроками (без учёта видимости) и старается не отставать" — compares the
+        // actor's own current resource stockpile against the rest of the field (ignoring
+        // visibility on purpose, unlike everything else in this file) and boosts ExpandEconomy's
+        // urgency the further behind the actor is. A flat stockpile comparison, not a real
+        // income-rate calculation — simplest thing that satisfies "старается не отставать"
+        // without re-deriving GameTurnController.CollectResourceIncome's own per-turn math here.
+        // Public — the unified arbiter (see ScoreExpandEconomyHex's own comment) adds this same
+        // flat per-actor offset to every Economy candidate itself, once per Decide() call.
+        public static float IncomeBehindBonus(PlayerSetupData actor)
         {
-            List<HexCoord> ownHexes = OwnHexes(actor);
-            if (ownHexes.Count == 0)
-                return null;
+            PlayerRoot ownRoot = PlayerRootRegistry.FindFor(actor);
+            if (ownRoot == null || GameSession.Players == null)
+                return 0f;
 
-            AiGoal best = null;
-            foreach (HexCoord hex in ArmyRegistry.AllOccupiedHexes())
-            {
-                foreach (ArmyData candidate in ArmyRegistry.AllAt(hex))
-                {
-                    if (candidate.Owner == null || candidate.Owner == actor || candidate.Owner.IsEliminated)
-                        continue;
-                    if (BattleInitiator.IsCombatCapable(candidate) || !BattleInitiator.IsEngageable(candidate))
-                        continue; // either can still fight back (not "exposed"), or nothing there at all
+            List<int> otherTotals = GameSession.Players
+                .Where(p => p != actor && !p.IsEliminated)
+                .Select(PlayerRootRegistry.FindFor)
+                .Where(r => r != null)
+                .Select(TotalResources)
+                .ToList();
+            if (otherTotals.Count == 0)
+                return 0f;
 
-                    int minDist = MinDistanceToAny(ownHexes, hex);
-                    if (minDist > ScanRadius)
-                        continue;
+            float avgOther = (float)otherTotals.Average();
+            int ownTotal = TotalResources(ownRoot);
+            if (avgOther <= ownTotal)
+                return 0f;
 
-                    float heroValue = candidate.Members.Sum(m => m.CommandRating + m.Fate);
-                    float score = (ScanRadius + 1 - minDist) * 12f + heroValue * 5f;
-                    if (best == null || score > best.Score)
-                    {
-                        best = new AiGoal
-                        {
-                            Kind = AiGoalKind.HuntExposedHero,
-                            Score = score,
-                            TargetHex = hex,
-                            Description = $"герой {candidate.Owner.Nickname} без охраны в {minDist} хексах",
-                        };
-                    }
-                }
-            }
-            return best;
+            float deficitRatio = Mathf.Clamp01((avgOther - ownTotal) / Mathf.Max(1f, avgOther));
+            return deficitRatio * 20f; // same order of magnitude as the per-hex proximity term above
         }
+
+        private static int TotalResources(PlayerRoot root) =>
+            root.GetResource(ResourceType.Human) + root.GetResource(ResourceType.Energy)
+            + root.GetResource(ResourceType.Materials) + root.GetResource(ResourceType.Tech);
     }
 }

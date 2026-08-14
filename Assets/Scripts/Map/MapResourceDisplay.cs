@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using Game.Core;
 using Game.Economy;
 using Game.HexGrid;
+using Game.Players;
 using Game.Terrain;
+using Game.Turns;
 using UnityEngine;
 
 namespace Game.Map
@@ -16,6 +18,9 @@ namespace Game.Map
     public class MapResourceDisplay : MonoBehaviour
     {
         [SerializeField] private GameConfig gameConfig;
+        // Only wired for the VisionSystem.VisibilityChanged/TurnStateChanged subscriptions below
+        // — RefreshHex/RefreshAll themselves don't need it.
+        [SerializeField] private GameTurnController turnController;
 
         private static readonly ResourceType[] AllResourceTypes =
         {
@@ -28,6 +33,53 @@ namespace Game.Map
         // so RefreshAll can be called (from HexMapGenerator, which is) before Awake has ever
         // run, e.g. while tuning the map in the editor outside Play mode.
         private HexMap Map => GetComponent<HexMap>();
+
+        private void OnEnable()
+        {
+            VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            if (turnController != null)
+                turnController.TurnStateChanged += RefreshVisibility;
+        }
+
+        private void OnDisable()
+        {
+            VisionSystem.VisibilityChanged -= OnVisibilityChanged;
+            if (turnController != null)
+                turnController.TurnStateChanged -= RefreshVisibility;
+        }
+
+        private void OnVisibilityChanged(PlayerSetupData player)
+        {
+            if (player == VisionSystem.CurrentViewer)
+                RefreshVisibility();
+        }
+
+        // A hex's own yield icons are "content" per the project owner's own spec, but unlike
+        // armies/buildings they're remembered once seen, in two tiers: merely having been inside
+        // vision radius (even from a neighboring hex, never physically visited) reveals which
+        // resource types are there with the amount shown as "?"; having actually had an army/
+        // building stand on the hex reveals the exact amount (see VisionSystem.
+        // HasEverSeenByCurrentViewer vs. IsVisitedByCurrentViewer). Toggled/updated here rather
+        // than destroying/respawning the icons (RefreshHex already owns that lifecycle).
+        private void RefreshVisibility()
+        {
+            foreach (KeyValuePair<HexCoord, List<ResourceIconVisual>> entry in _iconsByHex)
+            {
+                GetVisibilityTier(entry.Key, out bool active, out bool amountKnown);
+                foreach (ResourceIconVisual icon in entry.Value)
+                    if (icon != null)
+                    {
+                        icon.gameObject.SetActive(active);
+                        icon.SetAmountKnown(amountKnown);
+                    }
+            }
+        }
+
+        private static void GetVisibilityTier(HexCoord coord, out bool active, out bool amountKnown)
+        {
+            amountKnown = VisionSystem.IsVisitedByCurrentViewer(coord);
+            active = amountKnown || VisionSystem.IsVisibleToCurrentViewer(coord) || VisionSystem.HasEverSeenByCurrentViewer(coord);
+        }
 
         // Called once right after the map finishes generating — shows every hex's own terrain
         // yield, before any citadel exists yet.
@@ -103,6 +155,7 @@ namespace Game.Map
             float radius = map.OuterRadius;
             float startX = -(present.Count - 1) * gameConfig.resourceIconSpacing * 0.5f;
 
+            GetVisibilityTier(coord, out bool active, out bool amountKnown);
             var icons = new List<ResourceIconVisual>(present.Count);
             for (int i = 0; i < present.Count; i++)
             {
@@ -110,7 +163,12 @@ namespace Game.Map
                 float x = startX + i * gameConfig.resourceIconSpacing;
                 ResourceIconVisual icon = Instantiate(gameConfig.resourceIconPrefab, map.transform);
                 icon.transform.position = center + new Vector3(x * radius, 0f, gameConfig.resourceRowOffset * radius);
-                icon.SetResource(type, amount);
+                icon.SetResource(type, amount, amountKnown);
+                // A hex re-yielded mid-game (see RefreshHex's own callers, e.g. a citadel bonus
+                // just stamped) must start in whatever visibility state the current viewer
+                // already has for it — otherwise it would flash visible until the next
+                // VisionSystem.VisibilityChanged sweep happens to run.
+                icon.gameObject.SetActive(active);
                 icons.Add(icon);
             }
             _iconsByHex[coord] = icons;

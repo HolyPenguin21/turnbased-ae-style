@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d40f69396e6b420d9d8452e69867b31b, type: 3}
+  m_Name: StartingDeckCatalog
+  m_EditorClassIdentifier: 
+  catalogs:
+  - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
+  - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
+  decks:
+  - deckName: Iron Concord Starter
+    faction: 0
+    cards:
+    - cardKey: Iron Concord/Concord Citadel
+      count: 1
+    - cardKey: Iron Concord/Research Facility
+      count: 1
+    - cardKey: Iron Concord/Dorian Kesh
+      count: 1
+    - cardKey: Iron Concord/Aldric Voss
+      count: 1
+    - cardKey: Iron Concord/Nadia Thorne
+      count: 1
+    - cardKey: Iron Concord/Kessa Vrail
+      count: 1
+    - cardKey: Iron Concord/Lira Sable
+      count: 1
+    - cardKey: Iron Concord/Scout
+      count: 1
+    - cardKey: Iron Concord/Scrapper
+      count: 1
+    - cardKey: Iron Concord/RC Vehicle
+      count: 1
+    - cardKey: Iron Concord/Light Infantry
+      count: 1
+    - cardKey: Iron Concord/Medium Infantry
+      count: 1
+    - cardKey: Iron Concord/Heavy Infantry
+      count: 1
+    - cardKey: Iron Concord/Flamer
+      count: 1
+    - cardKey: Iron Concord/AT Infantry
+      count: 1
+    - cardKey: Iron Concord/Battle Suit
+      count: 1
+    - cardKey: Iron Concord/Light Tank
+      count: 1
+    - cardKey: Iron Concord/Medium Tank
+      count: 1
+    - cardKey: Iron Concord/Artillery Cannon
+      count: 1
+    - cardKey: Iron Concord/Artillery Tank
+      count: 1
+    - cardKey: Iron Concord/Pulse Cannon
+      count: 1

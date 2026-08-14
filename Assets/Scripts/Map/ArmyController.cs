@@ -138,7 +138,7 @@ namespace Game.Map
         // destination. IsMoving is deliberately NOT checked/set here any more — SettleThen
         // already claims it the moment a move order is committed, so a caller going through that
         // gate first is what makes re-entrancy safe.
-        public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete = null)
+        public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
@@ -148,10 +148,16 @@ namespace Game.Map
 
             _currentHex = Data.Hex;
             ResetTransform(map, resolveOffset(Data.Hex));
-            StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete));
+            StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly));
         }
 
-        private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete)
+        // shouldStopEarly is called once per hex actually entered (never the origin), AFTER this
+        // army has visually landed there and _currentHex/vision have been updated for it — same
+        // "stop short" idea as running out of shared move points below, just driven by the
+        // caller instead (see HexSelectionController.Movement.cs's own reveal-on-entry check:
+        // fog hides what a hex holds until the mover is actually standing on it, so a path
+        // computed from the fogged-out start can't already know to stop there on its own).
+        private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly)
         {
             List<UnitData> members = Data.Members;
             for (int i = 1; i < path.Count; i++)
@@ -173,6 +179,9 @@ namespace Game.Map
 
                 Vector3 targetPosition = map.HexToWorld(next) + resolveOffset(next);
                 yield return StepTo(targetPosition);
+
+                if (shouldStopEarly != null && shouldStopEarly(next))
+                    break;
             }
 
             // onComplete (see HexSelectionController.TryIssueMoveOrder) reads CurrentHex to find

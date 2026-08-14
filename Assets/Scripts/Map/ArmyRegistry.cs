@@ -29,12 +29,16 @@ namespace Game.Map
                 ByHex[army.Hex] = list;
             }
             list.Add(army);
+            VisionSystem.RecomputeFor(army.Owner);
         }
 
         public static void Unregister(ArmyData army)
         {
-            if (army != null && ByHex.TryGetValue(army.Hex, out List<ArmyData> list))
+            if (army == null)
+                return;
+            if (ByHex.TryGetValue(army.Hex, out List<ArmyData> list))
                 list.Remove(army);
+            VisionSystem.RecomputeFor(army.Owner);
         }
 
         // Never null — callers can foreach this directly without a null check.
@@ -76,6 +80,10 @@ namespace Game.Map
         // Re-keys `army` from wherever it's currently filed to `newHex` — the only way
         // ArmyData.Hex ever changes after creation. Needed now that whole armies move (see
         // HexSelectionController.TryIssueMoveOrder); a no-op if it's already there.
+        // Note: Unregister/Register both already recompute the owner's vision on their own (see
+        // above) — the per-step recompute during the move itself (see ArmyController.MoveRoutine's
+        // shouldStopEarly callback) already reflects wherever the army actually is mid-animation,
+        // so this re-keying doesn't need its own extra recompute on top of that.
         public static void MoveArmy(ArmyData army, HexCoord newHex)
         {
             if (army == null || army.Hex.Equals(newHex))

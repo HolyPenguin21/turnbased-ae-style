@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Cameras;
 using Game.Combat;
 using Game.Core;
 using Game.Economy;
@@ -34,7 +35,13 @@ namespace Game.Turns
         [SerializeField] private TurnOrderPopupUI turnOrderPopup;
         [SerializeField] private Button endTurnButton;
         [SerializeField] private float minAiPassDelay = 0.5f;
-        [SerializeField] private float maxAiPassDelay = 1f;
+        [SerializeField] private float maxAiPassDelay = 0.5f;
+
+        // Dev-only: when on, the fog overlay follows whichever AI is currently acting instead of
+        // staying on the last human's view (see BeginPlayerTurn) — lets the project owner watch
+        // an AI turn play out through that AI's own VisionSystem set. Inspector checkbox for now,
+        // per the owner's own call — may become a real pre-game setup option later.
+        [SerializeField] private bool debugFollowAiVision;
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
         // the citadel yield bonus) — everything else in this controller is pure turn
@@ -51,6 +58,12 @@ namespace Game.Turns
 
         // Hidden until the game actually starts — see BeginGame. Same trigger as resourceBar.
         [SerializeField] private CardHandUI cardHand;
+
+        // AI turn visualization (see Game.Ai.AiTurnController) — the camera pans to whatever the
+        // AI is doing and armyViewerModal below opens read-only on whichever army it's acting
+        // with, so an AI turn looks the same to watch as a human's would.
+        [SerializeField] private RtsCameraController cameraController;
+        [SerializeField] private HexSelectionController hexSelectionController;
 
         // Blocking "can't do that" hint (e.g. tried to deploy a card on a hex with no
         // Barracks) — shown by CardHandUI. While it's up, both map input
@@ -514,31 +527,98 @@ namespace Game.Turns
         // every building (citadel or a hero-built extraction Facility/resource site) only ever
         // COLLECTS 1 unit per resource type it has a matching CollectX ability for, capped by
         // whatever the hex actually offers — a rich hex needs real extraction Facilities built
-        // on it to be fully exploited (see BuildingData.CollectedAmount).
+        // on it to be fully exploited (see BuildingData.CollectedAmount). Whatever headroom is
+        // left after the building's own cut then goes to any army SITTING on the hex with a
+        // matching CollectX unit (see CollectArmyIncomeAt) — so a hex needs no building at all
+        // for an army alone to work it, and iterates every occupied hex too, not just built ones.
         private void CollectResourceIncome()
         {
             if (map == null || gameConfig == null)
                 return;
 
+            HashSet<HexCoord> hexes = new HashSet<HexCoord>();
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
+                hexes.Add(building.Hex);
+            foreach (HexCoord hex in ArmyRegistry.AllOccupiedHexes())
+                hexes.Add(hex);
+
+            foreach (HexCoord hex in hexes)
             {
-                if (building.Owner == null || !map.TryGetTerrainAt(building.Hex, out TerrainTypeEntry entry))
+                if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry entry))
                     continue;
 
-                PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
-                if (root == null)
-                    continue;
-
-                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(building.Hex));
+                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(hex));
                 if (!hexYield.HasAnyYield)
                     continue;
 
+                BuildingData building = BuildingRegistry.FindAt(hex);
+                PlayerRoot buildingRoot = building?.Owner != null ? PlayerRootRegistry.FindFor(building.Owner) : null;
+
                 foreach (ResourceType type in AllResourceTypes)
                 {
-                    int collected = Mathf.Min(building.CollectedAmount(type), hexYield.Get(type));
-                    if (collected > 0)
-                        root.AddResource(type, collected);
+                    int hexAmount = hexYield.Get(type);
+                    if (hexAmount <= 0)
+                        continue;
+
+                    int remaining = hexAmount;
+
+                    if (buildingRoot != null)
+                    {
+                        int buildingCollected = Mathf.Min(building.CollectedAmount(type), remaining);
+                        if (buildingCollected > 0)
+                        {
+                            buildingRoot.AddResource(type, buildingCollected);
+                            remaining -= buildingCollected;
+                        }
+                    }
+
+                    if (remaining > 0)
+                        CollectArmyIncomeAt(hex, type, remaining);
                 }
+            }
+        }
+
+        // Mirrors BuildingData.CollectedAmount, but for whatever headroom is left of the hex's
+        // yield once the building there (if any) already took its own cut — a unit with a
+        // matching CollectX ability contributes 1, same rate as a citadel/facility's own baked-in
+        // ability, but purely for as long as its army is actually parked on the hex; nothing here
+        // is ever cached across turns, so the contribution vanishes the instant the army leaves
+        // or the unit's removed/killed. Grouped and credited per ARMY OWNER rather than always
+        // going to the building's owner, since the whole point is letting a player with no
+        // building on the hex at all still collect via a unit alone (see the user's own two
+        // examples: a bare hex, and a partially-worked one with a Facility already on it). An
+        // owner whose army shares the hex with an engageable enemy army gets nothing this turn —
+        // "no stealth yet" (see ResolveDelayedBattlesThen) only forces a fight between COMBAT-
+        // CAPABLE armies, so two hero-only armies of different owners can still coexist on a hex
+        // indefinitely, which is exactly the "shared with an enemy" case this guard exists for.
+        private static void CollectArmyIncomeAt(HexCoord hex, ResourceType type, int remaining)
+        {
+            string ability = BuildingAbilities.CollectAbilityFor(type);
+
+            foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
+            {
+                if (remaining <= 0)
+                    break;
+
+                PlayerSetupData owner = ownerArmies.Key;
+                if (owner == null)
+                    continue;
+
+                ArmyData enemy = BattleInitiator.FindEnemyAt(hex, owner);
+                if (enemy != null)
+                    continue;
+
+                int unitCount = ownerArmies.Sum(army => army.Members.Count(unit => unit.HasAbility(ability)));
+                if (unitCount <= 0)
+                    continue;
+
+                PlayerRoot root = PlayerRootRegistry.FindFor(owner);
+                if (root == null)
+                    continue;
+
+                int granted = Mathf.Min(unitCount, remaining);
+                root.AddResource(type, granted);
+                remaining -= granted;
             }
         }
 
@@ -637,10 +717,20 @@ namespace Game.Turns
 
             CurrentPlayer = player;
             ReplenishMoveForOwner(player);
+            // The map is rendered from whichever human's turn it currently is (see
+            // VisionSystem.CurrentViewer) — a hot-seat game can have several human players
+            // sharing one screen, so this has to track CurrentPlayer, not "the" human (there
+            // isn't always exactly one). Left untouched on an AI/Neutral turn — no screen to
+            // switch to, so the last human's own view stays up rather than going blank — unless
+            // debugFollowAiVision opts into watching that AI's own vision instead.
+            if (player.IsHuman || debugFollowAiVision)
+                VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
 
             if (player.IsHuman)
             {
+                cardHand?.HideAiHandDebug();
+                resourceBar?.HideRootDebug();
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForHuman(player, OnTurnConfirmed);
             }
@@ -649,21 +739,34 @@ namespace Game.Turns
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(player);
                 LogAiGoal(player);
-                StartCoroutine(PassAfterDelay(AdvanceToNextPlayer));
+                // debugFollowAiVision's hand/resources half (see ShowAiHandDebug/ShowRootDebug's
+                // own comments) — shown before RunTurn starts so both are already visible for the
+                // very first decision; the hand stays live via ctx.HumanCardHandUI's own refresh
+                // calls, resources via PlayerRoot.ResourcesChanged same as the human's own always
+                // did.
+                if (debugFollowAiVision && cardHand != null)
+                    cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
+                if (debugFollowAiVision)
+                    resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
+                AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
+                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig);
+                StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
         }
 
-        // Stage 1 of the AI architecture doc (goal scoring) wired in for visibility only —
-        // nothing below actually acts on the picked goal yet (no task chain, no execution), so
-        // the turn still just passes after PassAfterDelay same as before. Debug.Log only, per
-        // the user's own call — no in-game UI for this until execution actually exists.
+        // Stage 1 of the AI architecture doc (goal scoring) — this call itself is still only for
+        // visibility (PickBest's own top pick, independent of whatever AiTurnController.RunTurn
+        // below ends up doing). ExpandEconomy is currently the only AiGoalKind, and the one goal
+        // actually wired into AiTurnController's own unified per-step arbiter (see
+        // AiTurnController.EconomyBaseWeight's own class comment) via AiGoalScorer.
+        // ScoreExpandEconomyHex, not through PickBest here — see AiGoalScorer's own class comment
+        // for why DefendBorder/DestroyEnemyCitadel/HuntExposedHero were removed rather than left
+        // as log-only. Debug.Log only, per the user's own call — no in-game UI for this yet.
         private static void LogAiGoal(PlayerSetupData player)
         {
             AiGoal goal = AiGoalScorer.PickBest(player);
-            if (goal == null)
-                Debug.Log($"[AI] {player.Nickname}: нет целей выше нуля этот ход.");
-            else
-                Debug.Log($"[AI] {player.Nickname}: {goal.Kind} (score {goal.Score:0.0}) — {goal.Description}");
+            if (goal != null)
+                AiDebugLog.Write($"[AI] {player.Nickname}: {goal.Kind} (score {goal.Score:0.0}) — {goal.Description}");
         }
 
         // Fired by TurnInfoPopupUI's Confirm button — the only thing that actually lets the
@@ -679,19 +782,18 @@ namespace Game.Turns
             TurnStateChanged?.Invoke();
         }
 
-        // Restores move points and hero Fate for every unit belonging to whoever's turn is
-        // starting — player is null for Neutral's slot, matching ArmyData.Owner for any Neutral
-        // armies. Units have no registry of their own any more (see Game.Map.ArmyController) —
-        // reached only through the armies that contain them.
+        // Restores move points for every unit belonging to whoever's turn is starting — player
+        // is null for Neutral's slot, matching ArmyData.Owner for any Neutral armies. Units have
+        // no registry of their own any more (see Game.Map.ArmyController) — reached only through
+        // the armies that contain them. Hero Fate is deliberately NOT touched here any more — it
+        // refills as soon as each battle ends now (see UnitData.ReplenishFateForNewBattle/
+        // BattleScreenUI.Combat.cs's OnBattleOutcomeAcknowledged), not per strategic turn.
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 foreach (UnitData unit in army.Members)
-                {
                     unit.ReplenishMoveForNewTurn();
-                    unit.ReplenishFateForNewTurn();
-                }
                 // Activation is tracked per-ARMY, not per-unit (see ArmyData.
                 // HasActivatedThisTurn) — a unit never moves on its own.
                 army.HasActivatedThisTurn = false;

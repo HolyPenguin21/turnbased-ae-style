@@ -55,8 +55,21 @@ namespace Game.Setup
 
         public void OnStartGameClicked()
         {
+            ResolveRandomFactions();
             GameSession.Players = _model.Players;
             SceneManager.LoadScene(SceneNames.Game);
+        }
+
+        // "Random" is a setup-time placeholder, never itself a real faction (see Faction's own
+        // comment) — nothing downstream (CardHandUI's starting hand, AiTurnController's
+        // army/card catalog lookups, ...) knows how to resolve it, so it must become a concrete
+        // faction exactly once, here, before the Game scene ever sees these players. Only
+        // IronConcord exists to resolve into yet — revisit once a second one does.
+        private void ResolveRandomFactions()
+        {
+            foreach (PlayerSetupData player in _model.Players)
+                if (player.Faction == Faction.Random)
+                    player.Faction = Faction.IronConcord;
         }
 
         public void OnBackClicked()

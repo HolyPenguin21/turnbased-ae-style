@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82d98b83e1eba8549848c72180aecc9c, type: 3}
+  m_Name: AiConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Game.Ai.AiConfig
+  maxStepsPerTurn: 12
+  economyBaseWeight: 200
+  reconBaseWeight: 150
+  managementBaseWeight: 50
+  maxConcurrentVisitHex: 3
+  visitRingBand: 3
+  scoutProximityWeight: 5
+  freshNeighborWeight: 4
+  citadelDistancePenalty: 3
+  attackOpportunityBonus: 30
+  soloHeroHomeRadius: 1
+  maxConcurrentScoutResourceHex: 2
+  resourceScoutMaxDistanceFraction: 0.5
+  scoutFleeRadius: 1
+  scoutFleeBonus: 50
+  buildFacilityReadyBonus: 100
+  neutralBuildAvoidRadius: 1
+  maxBuildAttempts: 2
+  resourceScrapBaseWeightBonus: 20
+  resourceScrapDetachScoreBonus: 10
+  economySafetyRadius: 1
+  maxSpareArmies: 2
+  managementReturnHomeScore: 100
+  managementReorgScore: 80
+  playRecceCardBonus: 20
+  managementFallbackHighScore: 15
+  managementFallbackLowScore: 5
+  economyWaitScore: 1
+  goalScanRadius: 4
+  makeshiftScoutMinMembers: 3

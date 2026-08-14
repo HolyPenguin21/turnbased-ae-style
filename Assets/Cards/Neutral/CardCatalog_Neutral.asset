@@ -1,0 +1,201 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b8ee3a273e056e4ea1f2a042382c3fa, type: 3}
+  m_Name: CardCatalog_Neutral
+  m_EditorClassIdentifier: 
+  faction: 3
+  displayName: Neutral
+  logo: {fileID: 21300000, guid: 779241b27d7148c4681ea5824b534703, type: 3}
+  cards:
+  - id: 0
+    displayName: Scav
+    art: {fileID: 21300000, guid: 0ae0bff57d8366f4190bf7e004ceca0e, type: 3}
+    detailArt: {fileID: 21300000, guid: a0fbb54c578639a4cb4fd0b9f8824c7e, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 1
+    range: 2
+    hitPoints: 3
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 1
+    displayName: Slasher
+    art: {fileID: 21300000, guid: 9d45e641dbae83f47a88167d96a5b3f3, type: 3}
+    detailArt: {fileID: 21300000, guid: 0edb57d1f4c326e498bc7f9c4b0de95b, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 2
+    displayName: Gunner
+    art: {fileID: 21300000, guid: b663fbb85ceb18e4293e94862966cc68, type: 3}
+    detailArt: {fileID: 21300000, guid: 06930fa60b885a34a8b7bb73bf89613c, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 3
+    displayName: Trapper
+    art: {fileID: 21300000, guid: 8daf08096ddbf70478e4389d50f0fe18, type: 3}
+    detailArt: {fileID: 21300000, guid: dfb92db8c7f5d1149a2a75cd6896d20d, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 1
+    range: 1
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities:
+    - ShockAttack
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 4
+    displayName: Brute
+    art: {fileID: 21300000, guid: 4e671a9bfb9ffce41acd974b2c4c752e, type: 3}
+    detailArt: {fileID: 21300000, guid: 05699d9cd87e8584cb03a86845ae8966, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 2
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 1
+    range: 1
+    hitPoints: 6
+    initiative: 2
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 5
+    displayName: Wrecker
+    art: {fileID: 21300000, guid: 41b146a0401e7d74f889a059ffd0985a, type: 3}
+    detailArt: {fileID: 21300000, guid: 7082ae6e696763540ba818f2df696f2f, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 5
+    resistanceRating: 3
+    range: 1
+    hitPoints: 10
+    initiative: 1
+    unitTypeTags: 0100000002000000
+    grantedAbilities:
+    - CeramicArmor
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  armyNamePool: []

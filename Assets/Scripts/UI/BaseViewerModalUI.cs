@@ -20,7 +20,7 @@ namespace Game.UI
     // slot-position/drag-reorder machinery at all. Upgrading the Base (grants the next Facility
     // slot + Defense/Resistance) and improving/repairing either the Base or a placed Facility
     // both happen via a small hover-revealed button pair on the relevant cell (see
-    // BaseSlotCardUI's hoverActionsRoot) rather than a title-bar context button.
+    // BaseSlotCardUI's Improve/Repair buttons) rather than a title-bar context button.
     public class BaseViewerModalUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -31,7 +31,13 @@ namespace Game.UI
         // this is kept separately typed instead of duplicating cell metrics as tunables.
         [SerializeField] private GridLayoutGroup grid;
         [SerializeField] private Image detailArt;
-        [SerializeField] private TMP_Text detailText;
+        // Split in two: detailText1 is the fixed identity/stat block (name, level, HP, defense,
+        // resistance, fate — same for a Base cell or a Facility cell, minus whichever of those
+        // don't apply), detailText2 is the ability list (name + full description per tag, see
+        // FormatAbilities) — kept separate so each can be laid out/styled on its own rather than
+        // sharing one growing text block.
+        [SerializeField] private TMP_Text detailText1;
+        [SerializeField] private TMP_Text detailText2;
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
         // Only needed to look up the hex's own effective yield for a Collect-tagged Facility's
@@ -158,22 +164,24 @@ namespace Game.UI
         {
             if (detailArt != null)
             {
-                detailArt.sprite = _currentBuilding != null ? _currentBuilding.Art : null;
-                detailArt.gameObject.SetActive(_currentBuilding != null && _currentBuilding.Art != null);
+                detailArt.sprite = _currentBuilding != null ? _currentBuilding.DetailArt : null;
+                detailArt.gameObject.SetActive(_currentBuilding != null && _currentBuilding.DetailArt != null);
             }
-            if (detailText == null || _currentBuilding == null)
+            if (_currentBuilding == null)
                 return;
 
             // Level is meaningless for a non-tiered building (see BuildingData.HasTieredUnlock)
             // — a resource site never upgrades, so showing "Level 1" forever would just be noise.
             string levelLine = _currentBuilding.HasTieredUnlock ? $"Level {_currentBuilding.Level}\n" : string.Empty;
-            detailText.text = $"{_currentBuilding.Name}\n" +
-                levelLine +
-                $"Structure Points: {_currentBuilding.StructurePointsCurrent}/{_currentBuilding.StructurePointsMax}\n" +
-                $"Defense: {_currentBuilding.Defense}\n" +
-                $"Fate: {_currentBuilding.Fate}\n" +
-                $"RC: {FormatYield(_currentBuilding.ResourceYield)}\n" +
-                $"{FormatAbilities(_currentBuilding.Abilities)}";
+            if (detailText1 != null)
+                detailText1.text = $"{_currentBuilding.Name}\n" +
+                    levelLine +
+                    $"Structure Points: {_currentBuilding.StructurePointsCurrent}/{_currentBuilding.StructurePointsMax}\n" +
+                    $"Defense: {_currentBuilding.Defense}\n" +
+                    $"Resistance: {_currentBuilding.Resistance}\n" +
+                    $"Fate: {_currentBuilding.Fate}";
+            if (detailText2 != null)
+                detailText2.text = FormatAbilities(_currentBuilding.Abilities);
         }
 
         public void ShowFacilityDetail(FacilityData facility)
@@ -186,11 +194,13 @@ namespace Game.UI
 
             if (detailArt != null)
             {
-                detailArt.sprite = facility.Art;
+                detailArt.sprite = facility.DetailArt;
                 detailArt.gameObject.SetActive(true);
             }
-            if (detailText != null)
-                detailText.text = $"{facility.Name}\nUpgrade Level: {facility.UpgradeLevel}\n{FormatAbilities(facility.Abilities)}";
+            if (detailText1 != null)
+                detailText1.text = $"{facility.Name}\nUpgrade Level: {facility.UpgradeLevel}";
+            if (detailText2 != null)
+                detailText2.text = FormatAbilities(facility.Abilities);
         }
 
         // Full name + description per ability (this modal only ever shows the detail panel, no
@@ -199,20 +209,6 @@ namespace Game.UI
         private string FormatAbilities(IEnumerable<string> abilities)
         {
             return gameConfig != null ? gameConfig.FormatAbilitiesDetailed(abilities) : string.Join(" ", abilities);
-        }
-
-        // Only the non-zero amounts, e.g. "1 Human, 1 Materials" — same convention as
-        // HexInfoPanelUI's own yield formatting.
-        private static string FormatYield(ResourceYields yield)
-        {
-            if (yield == null || !yield.HasAnyYield)
-                return "—";
-            var parts = new List<string>();
-            if (yield.human > 0) parts.Add($"{yield.human} Human");
-            if (yield.energy > 0) parts.Add($"{yield.energy} Energy");
-            if (yield.materials > 0) parts.Add($"{yield.materials} Materials");
-            if (yield.tech > 0) parts.Add($"{yield.tech} Tech");
-            return string.Join(", ", parts);
         }
 
         // Called by CardHandUI when a Facility card is dropped onto this open modal (see

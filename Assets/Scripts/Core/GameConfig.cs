@@ -17,10 +17,6 @@ namespace Game.Core
     [CreateAssetMenu(fileName = "GameConfig", menuName = "Game/Game Config")]
     public class GameConfig : ScriptableObject
     {
-        [Header("Map Interaction")]
-        // Shared by every controller that raycasts against the map's ground collider.
-        public LayerMask groundLayerMask = ~0;
-
         [Header("Map Objects")]
         // Two variants of the same coloured-circle-plus-icon visual: buildings and units sit
         // at different spots on the same hex (and can overlap a little — that's fine), so they
@@ -87,13 +83,6 @@ namespace Game.Core
         // armyUnitCardPrefab above (shared prefab reference, not a duplicated per-component
         // [SerializeField]).
         public BaseSlotCardUI baseSlotCardPrefab;
-        // The auto-placed starting citadel has no CardDefinition to source stats from (unlike a
-        // player-built Base, which reads its own card's structurePointsMax/defense/resistance)
-        // — these are its baseline instead. See CitadelSetupController.SpawnCitadelMarker.
-        public int startingStructurePoints = 6;
-        public int startingDefense = 2;
-        public int startingResistance = 1;
-        public int startingFate = 1;
         // Exactly 3 tiers this pass — Level 1->2->3->4, each unlocking one more Facility slot
         // (see BuildingData.UnlockedFacilitySlots). Costs from the user's own spec.
         public BaseUpgradeTier[] baseUpgradeTiers =
@@ -109,8 +98,8 @@ namespace Game.Core
         // action buttons (see HexSelectionController.TryBuildExtractionFacility). Embedded here
         // directly rather than living in a FactionCardCatalog — CardDefinition is a plain
         // [System.Serializable] record, not its own asset, so there'd be nothing for a catalog
-        // entry to be referenced BY; CardHandUI/deckIndices never see these at all, so they can
-        // never be drawn into a hand.
+        // entry to be referenced BY; CardHandUI/StartingDeckCatalog never see these at all, so
+        // they can never be drawn into a hand.
         public CardDefinition[] extractionFacilityCards = new CardDefinition[4];
         // Paid upgrade tiers for an already-placed Collect-tagged Facility (see
         // BaseViewerModalUI.ImproveFacility) — a separate, cheaper ladder from baseUpgradeTiers
@@ -128,6 +117,18 @@ namespace Game.Core
         // different icon swapped in at runtime, since its icon is baked directly onto its own
         // Object_Image sprite rather than set via MapObjectVisual.SetIcon.
         public MapObjectVisual facilityMarkerPrefab;
+        // A hero-built resource site has no CardDefinition of its own to source stats from
+        // (unlike a citadel/card-built Base, which now reads its own card's hitPoints/
+        // defenseRating/resistanceRating/fate — see CitadelSetupController.SpawnCitadelMarker/
+        // HexSelectionController.SpawnBuilding) — these are its baseline instead. See
+        // TryBuildExtractionFacility. StructurePoints and Defense are both live (repair, and
+        // Defense folds into a defending army's combat roll — see BattleContactPopupUI's
+        // buildingDefMod); Resistance/Fate aren't consumed by anything yet, same as
+        // BuildingData.Fate's own general status.
+        public int resourceSiteStructurePoints = 6;
+        public int resourceSiteDefense = 2;
+        public int resourceSiteResistance = 1;
+        public int resourceSiteFate = 1;
 
         [Header("Ability Abbreviations")]
         // Short display form for each ability tag (see BuildingAbilities) — used wherever a
@@ -274,5 +275,17 @@ namespace Game.Core
         // Custom/CloudDrift.shader) — one shared style, same pattern as every other style block
         // above, so the look is tuned here rather than as loose fields on the overlay component.
         public CloudStyle cloudStyle = new CloudStyle();
+
+        [Header("Vision / Fog of War")]
+        // How many hex steps out an army/building's own hex grants vision — 0 means "only the
+        // hex it's standing on". Per the project owner's own spec: armies start at 0 (a future
+        // scout skill raises this to 1-2 for the army that has it — not modelled yet, so every
+        // army uses this same default for now), buildings/citadels default to 1 so a garrisoned
+        // base always sees its own immediate neighbourhood. See Game.Map.VisionSystem.
+        public int armyVisionRadius = 0;
+        public int buildingVisionRadius = 1;
+        // Dimming overlay + coordinate-label tunables (see Game.Map.FogOfWarController /
+        // Custom/FogOfWar.shader) — one shared style, same pattern as every other style block.
+        public FogOfWarStyle fogOfWarStyle = new FogOfWarStyle();
     }
 }

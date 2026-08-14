@@ -23,7 +23,6 @@ namespace Game.UI
         [SerializeField] private Image artImage;
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text statusText;
-        [SerializeField] private GameObject hoverActionsRoot;
         [SerializeField] private Button improveButton;
         [SerializeField] private Button repairButton;
         // Sits in the gap between the name (top) and the hover Improve/Repair buttons (bottom) —
@@ -112,8 +111,11 @@ namespace Game.UI
 
             RefreshStatsRow(isBaseCell, building);
 
-            if (hoverActionsRoot != null)
-                hoverActionsRoot.SetActive(false);
+            // Hover-revealed (see OnPointerEnter/OnPointerExit) — hidden by default until then.
+            if (improveButton != null)
+                improveButton.gameObject.SetActive(false);
+            if (repairButton != null)
+                repairButton.gameObject.SetActive(false);
 
             // A Facility cell only offers Improve while there's actually something to gain from
             // it — a Collect-tagged Facility already at the hex's yield cap has nothing left to
@@ -169,9 +171,8 @@ namespace Game.UI
         // full Structure Points — a Facility cell never gets one at all (see class comment).
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (_locked || !_occupied || hoverActionsRoot == null)
+            if (_locked || !_occupied)
                 return;
-            hoverActionsRoot.SetActive(true);
             if (repairButton != null)
                 repairButton.gameObject.SetActive(_isBaseCell && _building.StructurePointsCurrent < _building.StructurePointsMax);
             if (improveButton != null)
@@ -180,8 +181,10 @@ namespace Game.UI
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (hoverActionsRoot != null)
-                hoverActionsRoot.SetActive(false);
+            if (repairButton != null)
+                repairButton.gameObject.SetActive(false);
+            if (improveButton != null)
+                improveButton.gameObject.SetActive(false);
         }
 
         // Reveals a row of cost badges — one coloured circle + number per non-zero cost
