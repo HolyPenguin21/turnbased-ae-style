@@ -256,11 +256,20 @@ namespace Game.UI
             // while a real battle's panelRoot IS already showing, so that one still narrates.
             RunNextCaptureKillChallenge(pending, () =>
             {
+                // hunterArmy.Hex (captured BEFORE any of this runs — see hunterArmy's own
+                // comment on why it's stable here even for a targetArmy that ends up retreating)
+                // rather than targetArmy.Hex — a hero that Escaped this exact Challenge stays a
+                // member of targetArmy and may have just retreated it to a different hex below.
+                HexCoord hunterHex = hunterArmy.Hex;
                 HandleBuildingOnArmyDefeat(hunterArmy, targetArmy);
                 hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
                 hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
-                if (!TryChainPendingRetreatContact())
-                    Hide();
+
+                // Same "what's left on this hex" resolution OnBattleOutcomeAcknowledged's own
+                // chain uses (see ResolveHexAfterVictory's own comment) — needed here too since a
+                // hero-only guard/contact never goes through that method at all, it resolves
+                // entirely through this Capture Kill Challenge chain instead.
+                ResolveHexAfterVictory(hunterHex, hunterArmy);
             }, suppressAiThoughts: true);
             VisibilityChanged?.Invoke(); // opening edge — attackPopup is showing as of this call
         }
@@ -547,15 +556,57 @@ namespace Game.UI
             hexSelectionController?.DeleteArmyIfEmptied(_defender);
             hexSelectionController?.RestackArmiesOn(hex, null);
 
-            // DelayedBattleRegistry.IsHexPending guards against re-offering a Fight/Delay choice
-            // for an army that's already reserved for a different pending battle at this same
-            // hex (e.g. queued earlier this turn by a different attacker's own Delay choice) —
-            // per the user's own call, a reserved army can't be signed up for a second one.
-            // Left unresolved here on purpose; GameTurnController's own end-of-turn sweep is
-            // what eventually forces this pairing too, once the earlier one's been drained.
-            ArmyData nextEnemy = survivor?.Owner != null && !DelayedBattleRegistry.IsHexPending(hex)
+            ResolveHexAfterVictory(hex, survivor);
+        }
+
+        // Shared by OnBattleOutcomeAcknowledged and BeginCaptureKillEncounter's own ending
+        // callback (see its own comment on why it needs this too) — once `survivor` is the only
+        // side left standing on `hex`, decides what happens next.
+        //
+        // hexPending (DelayedBattleRegistry.IsHexPending) covers two distinct things at once, on
+        // purpose: it guards against re-offering a Fight/Delay choice for an army that's already
+        // reserved for a different pending battle at this same hex (e.g. queued earlier this turn
+        // by a different attacker's own Delay choice — per the user's own call, a reserved army
+        // can't be signed up for a second one), AND it holds the event trigger back too — per the
+        // user's own call, a hex with a still-undelivered Delay isn't actually "clear" yet, even
+        // though FindEnemyAt has nothing left to report right this moment. Both are left
+        // unresolved here on purpose; GameTurnController's own end-of-turn sweep is what
+        // eventually forces the delayed pairing, and once THAT battle also ends, this same method
+        // runs again and finds the hex genuinely clear.
+        //
+        // Hex Events, "collision hex" case: an unrelated pre-existing neutral army (or, same code
+        // path since this method is shared, an event's own guard, spawned only once Explore was
+        // actually chosen — see HexEventRegistry.Entry.ResolvedGuardMembers) shared this event's
+        // hex (see CitadelSetupController.MapContent.GenerateRandomEvents), so the ordinary
+        // contact flow forced combat here before the event's own choice popup ever got a chance
+        // to show (see HexSelectionController.Movement.cs's own HasUnclaimedCleanEventHex, which
+        // deliberately never claims a hex like this). Only reached once nextEnemy == null and
+        // nothing is still pending — nothing hostile left standing here at all, regardless of
+        // whether that took one fight or a whole chain of them — matching the user's own
+        // "triggers only after full battle resolution" rule. survivor.Owner.IsNeutral is excluded
+        // so a neutral-vs-neutral mutual fight (if that's ever reachable) never triggers anything.
+        // TriggerHexEventIfClear (HexSelectionController.Events.cs) is what actually tells "hex
+        // just went clear of an unrelated army" apart from "the event's own guard just lost" —
+        // see its own comment.
+        private void ResolveHexAfterVictory(HexCoord hex, ArmyData survivor)
+        {
+            bool hexPending = DelayedBattleRegistry.IsHexPending(hex);
+            ArmyData nextEnemy = survivor?.Owner != null && !hexPending
                 ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
                 : null;
+
+            // TEMP DIAGNOSTIC — after-battle snapshot, hex-event trigger investigation.
+            {
+                HexEventRegistry.Entry diagEntry = HexEventRegistry.FindAt(hex);
+                Debug.Log($"[EventDiag:AfterBattle] hex={hex} survivor={survivor?.Name} " +
+                    $"survivorOwner={survivor?.Owner?.Nickname} survivorIsNeutral={survivor?.Owner?.IsNeutral} " +
+                    $"hexPending={hexPending} nextEnemy={nextEnemy?.Name} hasEvent={diagEntry != null} " +
+                    $"eventConsumed={diagEntry?.Consumed} eventTriggered={diagEntry?.Triggered}");
+            }
+
+            if (nextEnemy == null && !hexPending && survivor?.Owner != null && !survivor.Owner.IsNeutral)
+                hexSelectionController?.TriggerHexEventIfClear(hex, survivor);
+
             if (nextEnemy != null && battleContactPopup != null)
             {
                 // Same Fight/Delay choice as the very first contact on the strategic map (see

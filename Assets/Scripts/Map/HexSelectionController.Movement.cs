@@ -174,6 +174,32 @@ namespace Game.Map
             return building != null && building.Owner != null && building.Owner != mover.Owner;
         }
 
+        // A pure check (no side effects) for shouldStopEarly: does `hex` carry an active,
+        // un-consumed Hex Event with no engageable enemy also on it — the "clean hex" case (see
+        // HexSelectionController.Events.cs's BeginCleanHexEvent). A Hex Event's own guard is never
+        // a real ArmyRegistry entry until the player actually commits to Explore (see
+        // HexEventRegistry.Entry.ResolvedGuardMembers's own comment), so it can never be what's
+        // found here — only an unrelated pre-existing neutral army (see CitadelSetupController.
+        // MapContent.GenerateNeutralArmies) can. A hex carrying one of those is deliberately NOT
+        // claimed here — that "collision" case is left entirely to the ordinary enemy-contact
+        // handling right below in onComplete, which already stops the move on its own (see
+        // TruncateAtEnemyContact/actualEnemyContact); the event itself only resolves once that
+        // combat is fully done AND the hex is fully clear (see BattleScreenUI.Combat.cs's own
+        // ResolveHexAfterVictory, which hooks into HexSelectionController.TriggerHexEventIfClear),
+        // per the user's own "triggers only after full battle resolution" rule. Vision is
+        // deliberately NOT recomputed here, unlike HandleVisionStep — an event hex isn't gated on
+        // fog/reveal, it triggers whenever entered, known or not.
+        private static bool HasUnclaimedCleanEventHex(ArmyData mover, HexCoord hex)
+        {
+            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+            if (entry == null || entry.Consumed)
+                return false;
+            foreach (ArmyData other in ArmyRegistry.AllAt(hex))
+                if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other))
+                    return false;
+            return true;
+        }
+
         private void HidePathPreview()
         {
             if (_pathArrow != null)
@@ -290,6 +316,13 @@ namespace Game.Map
             HexCoord originHex = army.Hex;
             ArmyController movingArmy = controller;
 
+            // Set true by shouldStopEarly below the instant it claims the stop for a "clean" Hex
+            // Event hex — read inside onComplete to skip the ordinary enemy-contact branch for
+            // this same hex-entry (see HasUnclaimedCleanEventHex's own comment on why a
+            // "collision" hex is deliberately NOT claimed here and falls through to that branch
+            // unmodified instead).
+            bool eventStopClaimed = false;
+
             // Let the idle hover/pulse animation ease back to its resting pose first — jumping
             // straight from mid-bob/mid-pulse into the move animation was what made movement
             // look jerky right as it started. SettleThen already claims IsMoving immediately,
@@ -349,9 +382,24 @@ namespace Game.Map
                     // finishes onto the hex and coexists with it for now — GameTurnController's
                     // own end-of-turn sweep is what eventually forces this pairing too, once the
                     // earlier one's been drained.
+                    // Hex Events: a "clean" hex claimed by shouldStopEarly below — resolved here,
+                    // AFTER the registry re-keying/RestackArmiesOn(originHex, ...) above, rather
+                    // than synchronously inside shouldStopEarly itself (mid-coroutine, before that
+                    // re-keying), so a popup showing or a battle opening from BeginCleanHexEvent
+                    // never sees the mover still registered at its stale origin hex. Takes over
+                    // this whole branch (see the else below) — the ordinary enemy-contact check
+                    // never even runs for this hex-entry.
+                    if (eventStopClaimed)
+                    {
+                        BeginCleanHexEvent(army, actualHex, destination, movingArmy);
+                        RestackArmiesOn(actualHex, movingArmy);
+                        return;
+                    }
+
                     ArmyData actualEnemyContact = DelayedBattleRegistry.IsHexPending(actualHex)
                         ? null
                         : BattleInitiator.FindEnemyAt(actualHex, army.Owner);
+
                     if (actualEnemyContact != null && BattleInitiator.IsCombatCapable(army))
                     {
                         // Not a full Deselect() (that would also clear _selectedArmy, still
@@ -417,7 +465,15 @@ namespace Game.Map
                     // there (e.g. it now forms a two-different-owners pair) needs to shift to
                     // match.
                     RestackArmiesOn(actualHex, movingArmy);
-                }, shouldStopEarly: hex => HandleVisionStep(army, hex));
+                }, shouldStopEarly: hex =>
+                {
+                    if (HasUnclaimedCleanEventHex(army, hex))
+                    {
+                        eventStopClaimed = true;
+                        return true;
+                    }
+                    return HandleVisionStep(army, hex);
+                });
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);

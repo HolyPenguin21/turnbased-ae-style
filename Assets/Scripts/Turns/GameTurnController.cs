@@ -88,6 +88,11 @@ namespace Game.Turns
         // BeginNewTurn/ResolveDelayedBattlesThen).
         [SerializeField] private BattleContactPopupUI battleContactPopup;
         [SerializeField] private BattleScreenUI battleScreen;
+        // Same "map input locked out entirely, never a valid card-drop target" treatment as
+        // battleContactPopup/battleScreen above — see EventChoicePopupUI/EventRewardPopupUI's own
+        // comments (HexSelectionController.Events.cs owns showing/hiding both).
+        [SerializeField] private EventChoicePopupUI eventChoicePopup;
+        [SerializeField] private EventRewardPopupUI eventRewardPopup;
 
         // Both cached and recomputed only when one of the underlying popups' own
         // VisibilityChanged fires (see OnEnable/RecomputeBlockedState) — this game is
@@ -121,11 +126,15 @@ namespace Game.Turns
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
-                || (battleScreen != null && battleScreen.IsShowing);
+                || (battleScreen != null && battleScreen.IsShowing)
+                || (eventChoicePopup != null && eventChoicePopup.IsShowing)
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
             bool newCardDraggingBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
-                || (battleScreen != null && battleScreen.IsShowing);
+                || (battleScreen != null && battleScreen.IsShowing)
+                || (eventChoicePopup != null && eventChoicePopup.IsShowing)
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
 
             if (newInputBlocked != _inputBlocked)
             {
@@ -191,6 +200,8 @@ namespace Game.Turns
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
+            if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged += RecomputeBlockedState;
+            if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged += RecomputeBlockedState;
             RecomputeBlockedState();
         }
 
@@ -202,6 +213,8 @@ namespace Game.Turns
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
+            if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged -= RecomputeBlockedState;
+            if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged -= RecomputeBlockedState;
         }
 
         // The win condition: destroying a player's starting citadel (see

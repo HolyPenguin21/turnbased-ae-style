@@ -67,6 +67,13 @@ namespace Game.Setup
         // armies on the map"). Assign the NeutralArmyCatalog asset in the Inspector.
         [SerializeField] private NeutralArmyCatalog neutralArmyCatalog;
 
+        // Hand-authored Hex Events placed by GenerateRandomEvents during map generation — see
+        // EventCatalog's own comment. A guarded event's guard army still resolves through
+        // neutralArmyCatalog above (EventDefinition.guardArmyName), same [ArmyTag] convention as
+        // every other map-guard reference; this catalog only supplies the event's own
+        // image/description/rewards.
+        [SerializeField] private EventCatalog eventCatalog;
+
         [Header("Turns")]
         // Kicked off once every player has placed their citadel — see GameTurnController.
         [SerializeField] private GameTurnController turnController;
@@ -99,6 +106,7 @@ namespace Game.Setup
 
             BuildingRegistry.Clear();
             HexResourceBonusRegistry.Clear();
+            HexEventRegistry.Clear();
             ArmyRegistry.Clear();
             PlayerRootRegistry.Clear();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
