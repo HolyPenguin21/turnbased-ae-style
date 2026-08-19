@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b8ee3a273e056e4ea1f2a042382c3fa, type: 3}
+  m_Name: CardCatalog_TheAshen
+  m_EditorClassIdentifier: 
+  faction: 4
+  displayName: The Ashen
+  logo: {fileID: 21300000, guid: cb778ab0ebcb8d156743dcdec93ea136, type: 3}
+  cards: []
+  citadelIcon: {fileID: 21300000, guid: f09d779560f46b12cba4b6f59dd27a08, type: 3}
+  facilityIcon: {fileID: 21300000, guid: dbefd1c8617631c4c993b24406121f37, type: 3}
+  armyIcon: {fileID: 21300000, guid: d264f417b3727ea49b36b30342b1184d, type: 3}
+  armyNamePool:
+  - Brutes

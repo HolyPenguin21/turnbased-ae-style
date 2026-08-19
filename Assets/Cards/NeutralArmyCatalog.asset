@@ -46,7 +46,25 @@ MonoBehaviour:
       count: 1
     - cardKey: Neutral/Slasher
       count: 1
-  - name: Wrecker
+  - name: Brutes
     members:
-    - cardKey: Neutral/Wrecker
+    - cardKey: Neutral/Brute
+      count: 2
+    - cardKey: Neutral/Scav
+      count: 1
+  - name: Deserters squad
+    members:
+    - cardKey: Iron Concord/Light Tank
+      count: 1
+    - cardKey: Neutral/Scav
+      count: 3
+    - cardKey: Iron Concord/Flamer
+      count: 2
+  - name: Desert scrappers
+    members:
+    - cardKey: Neutral/AA Relic Crawler
+      count: 1
+    - cardKey: Neutral/Scav
+      count: 2
+    - cardKey: Neutral/Slasher
       count: 1

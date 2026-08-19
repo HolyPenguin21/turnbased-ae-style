@@ -28,26 +28,27 @@ MonoBehaviour:
     description: Collects Materials resource each turn
   - tag: CollectTech
     description: Collects Tech resource each turn
-  - tag: CriticalDamage
-    description: Damage dealt in a successful attack is x2
-  - tag: CeramicArmor
-    description: Damage received is reduced by a flat amount
-  - tag: Berserk
-    description: +Attack/-Defense each time this unit is hit
-  - tag: RapidReaction
-    description: Deploys for 0 AP; costs 0 AP to move as part of an army
-  - tag: ShockAttack
-    description: A successful hit drops the target from the rest of this round's
-      turn order
-  - tag: Hyperkinetic
-    description: Adds 2 damage against "Armored" targets, once the attack has already
-      dealt at least 1 damage
   - tag: Recce
     description: Extends this unit's army vision radius
+  - tag: RapidReaction
+    description: Deploys for 0 AP; costs 0 AP to move as part of an army
+  - tag: CeramicArmor
+    description: Dmg received is reduced by a flat amount
+  - tag: Berserk
+    description: 'Each time this unit is hit: +Attack/-Defense'
+  - tag: CriticalDamage
+    description: Dmg dealt in a successful attack is x2
+  - tag: Hyperkinetic
+    description: Adds 2 dmg against "Armored" targets
+  - tag: Pyrokinetic
+    description: Adds 2 dmg against "Bio" targets
+  - tag: ShockAttack
+    description: Hit forces target to skip turn
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
   berserkDefenseLoss: 1
   hyperkineticBonusDamage: 2
+  pyrokineticBonusDamage: 2
   recceRadius: 1
   recceStrength: 0

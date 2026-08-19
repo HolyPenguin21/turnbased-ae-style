@@ -15,14 +15,18 @@ MonoBehaviour:
   catalogs:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
+  - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   decks:
+  - deckName: The Ashen Starter
+    faction: 4
+    cards: []
   - deckName: Iron Concord Starter
     faction: 0
     cards:
     - cardKey: Iron Concord/Concord Citadel
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Research Facility
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Dorian Kesh
       count: 1
     - cardKey: Iron Concord/Aldric Voss
@@ -39,9 +43,13 @@ MonoBehaviour:
       count: 1
     - cardKey: Iron Concord/RC Vehicle
       count: 1
+    - cardKey: Iron Concord/AA Crawler
+      count: 1
     - cardKey: Iron Concord/Light Infantry
       count: 1
-    - cardKey: Iron Concord/Medium Infantry
+    - cardKey: Iron Concord/Medium infantry
+      count: 1
+    - cardKey: Iron Concord/Iron guards
       count: 1
     - cardKey: Iron Concord/Heavy Infantry
       count: 1
@@ -49,15 +57,23 @@ MonoBehaviour:
       count: 1
     - cardKey: Iron Concord/AT Infantry
       count: 1
-    - cardKey: Iron Concord/Battle Suit
+    - cardKey: Iron Concord/LT-54
       count: 1
-    - cardKey: Iron Concord/Light Tank
+    - cardKey: Iron Concord/LT-78
       count: 1
     - cardKey: Iron Concord/Medium Tank
+      count: 1
+    - cardKey: Iron Concord/Heavy Tank
+      count: 1
+    - cardKey: Iron Concord/BS Melee
+      count: 1
+    - cardKey: Iron Concord/BS Ranged
       count: 1
     - cardKey: Iron Concord/Artillery Cannon
       count: 1
     - cardKey: Iron Concord/Artillery Tank
       count: 1
     - cardKey: Iron Concord/Pulse Cannon
+      count: 1
+    - cardKey: Iron Concord/Watcher Drone
       count: 1
