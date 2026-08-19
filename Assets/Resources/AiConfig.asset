@@ -15,28 +15,51 @@ MonoBehaviour:
   maxStepsPerTurn: 12
   economyBaseWeight: 200
   reconBaseWeight: 150
+  aggressionBaseWeight: 150
   managementBaseWeight: 50
   maxConcurrentVisitHex: 3
-  visitRingBand: 3
+  visitRingBand: 2
   scoutProximityWeight: 5
   freshNeighborWeight: 4
   citadelDistancePenalty: 3
-  attackOpportunityBonus: 30
-  soloHeroHomeRadius: 1
-  maxConcurrentScoutResourceHex: 2
-  resourceScoutMaxDistanceFraction: 0.5
+  reconPriorityDecayStartTurn: 5
+  reconPriorityDecayPerTurn: 15
+  reconPriorityDecayFloor: 60
+  reconRequestArmyPenalty: -100
+  reconRequestCardPenalty: -60
+  reconAssembleBonus: 20
+  maxConcurrentRaid: 2
+  raidReadyArmyBonus: 20
+  raidCounterAttackBonus: 30
+  raidThreatRadius: 2
+  raidCommittedBonus: 40
+  raidRecallScore: 30
+  raidBuildingUndefendedBonus: 15
+  raidBuildingGuardedWeakerBonus: 10
+  raidRequestArmyPenalty: -100
+  raidAssembleBonus: 20
+  raidReturnHomeScore: 40
   scoutFleeRadius: 1
   scoutFleeBonus: 50
   buildFacilityReadyBonus: 100
   neutralBuildAvoidRadius: 1
   maxBuildAttempts: 2
+  buildScarcityWeight: 1
+  economyReturnHomeScore: 40
+  economyHeroDetachScore: 90
   resourceScrapBaseWeightBonus: 20
   resourceScrapDetachScoreBonus: 10
-  economySafetyRadius: 1
+  economySafetyRadius: 2
   maxSpareArmies: 2
+  garrisonReservedSlots: 1
+  minArmyStrengthShare: 0.35
   managementReturnHomeScore: 100
   managementReorgScore: 80
   playRecceCardBonus: 20
+  unitCardBacklogWeight: 10
+  playHeroCardBonus: 20
+  heroCardBacklogWeight: 15
+  managementGarrisonBalanceScore: 20
   managementFallbackHighScore: 15
   managementFallbackLowScore: 5
   economyWaitScore: 1

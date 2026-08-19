@@ -7,35 +7,18 @@ using UnityEngine;
 namespace Game.EditorTools
 {
     // Draws each CardDefinition.grantedAbilities entry as a dropdown of every
-    // UnitAbilityCatalog.knownAbilities tag, the same "pick from a list" experience
-    // UnitTypeTag's real enum gives unitTypeTags — except the choices come from whichever
-    // UnitAbilityCatalog asset is in the project, since that list is tuned as data, not code.
-    // Falls back to a plain text field if no catalog asset can be found, so grantedAbilities
-    // stays editable either way.
+    // Game.Cards.UnitAbilities.All tag — the single real source of every ability tag in the
+    // game (see its own comment) — the same "pick from a list" experience UnitTypeTag's real
+    // enum gives unitTypeTags. Reading straight from the code constants themselves, rather than
+    // from a data asset's own copy of them, is what makes a stored tag unable to ever drift
+    // from what the effect-checking code actually reads (see UnitAbilityCatalog's own comment
+    // on the incident — a hand-typed tag with a stray space — this replaced).
     [CustomPropertyDrawer(typeof(AbilityTagAttribute))]
     public class AbilityTagDrawer : PropertyDrawer
     {
-        private static UnitAbilityCatalog cachedCatalog;
-
-        private static UnitAbilityCatalog FindCatalog()
-        {
-            if (cachedCatalog != null)
-                return cachedCatalog;
-
-            string[] guids = AssetDatabase.FindAssets("t:UnitAbilityCatalog");
-            if (guids.Length > 0)
-                cachedCatalog = AssetDatabase.LoadAssetAtPath<UnitAbilityCatalog>(AssetDatabase.GUIDToAssetPath(guids[0]));
-
-            return cachedCatalog;
-        }
-
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            UnitAbilityCatalog catalog = FindCatalog();
-            List<string> tags = catalog?.knownAbilities?
-                .Where(entry => entry != null && !string.IsNullOrEmpty(entry.tag))
-                .Select(entry => entry.tag)
-                .ToList();
+            List<string> tags = UnitAbilities.All?.ToList();
 
             if (tags == null || tags.Count == 0)
             {

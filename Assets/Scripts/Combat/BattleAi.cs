@@ -49,8 +49,8 @@ namespace Game.Combat
         // ever about OUR OWN column choice, never about guessing theirs. No literal stat
         // thresholds are hardcoded anywhere here; whichever shape actually comes out ahead in the
         // simulation wins.
-        public static void ArrangeArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow, ArmyData enemyArmy = null,
-            float criticalDamageMultiplier = 2f, int hyperkineticBonusDamage = 2, int ceramicArmorReduction = 1)
+        public static void ArrangeArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow, ArmyData enemyArmy,
+            AbilityMagnitudes magnitudes)
         {
             if (grid == null || army == null)
                 return;
@@ -86,8 +86,7 @@ namespace Game.Combat
                 PlaceTankAnchoredSplit(trial, army, frontRow, backRow, centerOut, enemyArmy);
                 PlaceRangeSplit(trial, enemyArmy, enemyFrontRow, enemyBackRow);
 
-                SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
+                SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3, magnitudes);
 
                 float ownLoss = ownTotalHp > 0f ? Mathf.Clamp01((ownTotalHp - outcome.OwnHpRemaining) / ownTotalHp) : 1f;
                 float enemyLoss = enemyTotalHp > 0f ? Mathf.Clamp01((enemyTotalHp - outcome.EnemyHpRemaining) / enemyTotalHp) : 1f;
@@ -319,11 +318,9 @@ namespace Game.Combat
         // for this fight/retreat call, never for in-round target coordination (that emerges on
         // its own from ChooseAction's fresh-each-turn finishing-blow priority). defendingOwnCitadel
         // short-circuits straight to "never retreat" regardless of the numbers.
-        // criticalDamageMultiplier/hyperkineticBonusDamage/ceramicArmorReduction: same three
-        // tunable ability magnitudes ShouldSpendFate already takes — see BattleAttackPopupUI's
-        // public CriticalDamageMultiplier/HyperkineticBonusDamage/CeramicArmorReduction, so this
-        // call site and the actual damage resolution can never disagree about what those
-        // abilities are worth.
+        // magnitudes: same tunable ability magnitudes FateDuelAi/BattleTargetSelector already
+        // take — see BattleAttackPopupUI's own Magnitudes property, so this call site and the
+        // actual damage resolution can never disagree about what those abilities are worth.
         //
         // Checked at BOTH the 2-round and the 3-round mark, same RetreatMarginFraction on each —
         // per the user's own call, that margin already IS the "how much worse is too much"
@@ -332,7 +329,7 @@ namespace Game.Combat
         // SimulateRounds are permanent for the rest of that same playout, so a bad round 2 rarely
         // "recovers" by round 3 the way a smoothed average might suggest.
         public static RetreatAssessment AssessRetreat(BattleGrid grid, ArmyData aiArmy, ArmyData enemyArmy, bool defendingOwnCitadel,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction)
+            AbilityMagnitudes magnitudes)
         {
             if (defendingOwnCitadel)
                 return new RetreatAssessment { ShouldRetreat = false, IsCitadelDefense = true };
@@ -340,10 +337,8 @@ namespace Game.Combat
             float ownHp = TotalHp(aiArmy);
             float enemyHp = TotalHp(enemyArmy);
 
-            SimulationOutcome twoRound = SimulateRounds(grid, aiArmy, enemyArmy, 2,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
-            SimulationOutcome threeRound = SimulateRounds(grid, aiArmy, enemyArmy, 3,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
+            SimulationOutcome twoRound = SimulateRounds(grid, aiArmy, enemyArmy, 2, magnitudes);
+            SimulationOutcome threeRound = SimulateRounds(grid, aiArmy, enemyArmy, 3, magnitudes);
 
             float twoRoundMargin = LossMarginAgainstUs(ownHp, enemyHp, twoRound);
             float threeRoundMargin = LossMarginAgainstUs(ownHp, enemyHp, threeRound);
@@ -393,7 +388,7 @@ namespace Game.Combat
         // meant to call into later, per the user's own note that whatever gets built for the
         // reactive in-battle retreat should be reusable there too.
         public static SimulationOutcome SimulateRounds(BattleGrid liveGrid, ArmyData ownArmy, ArmyData enemyArmy, int rounds,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction)
+            AbilityMagnitudes magnitudes)
         {
             var grid = new BattleGrid();
             var hp = new Dictionary<UnitData, float>();
@@ -408,7 +403,7 @@ namespace Game.Combat
 
             List<UnitData> order = BuildInterleavedOrder(ownUnits, enemyUnits, null);
             for (int round = 0; round < rounds; round++)
-                RunOneRound(grid, hp, order, criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, null, smartAdvance: true);
+                RunOneRound(grid, hp, order, magnitudes, null, smartAdvance: true);
 
             var result = new SimulationOutcome();
             foreach (UnitData member in ownUnits)
@@ -454,18 +449,20 @@ namespace Game.Combat
         // already the smart lookahead, so recursing into another one per candidate direction
         // would multiply the search without changing the answer meaningfully.
         private static void RunOneRound(BattleGrid grid, Dictionary<UnitData, float> hp, List<UnitData> order,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
-            Dictionary<UnitData, float> damageDealtByUnit, bool smartAdvance = false)
+            AbilityMagnitudes magnitudes, Dictionary<UnitData, float> damageDealtByUnit, bool smartAdvance = false)
         {
-            foreach (UnitData actor in order)
+            // Indexed rather than foreach — BattleTargetSelector needs to know each actor's own
+            // position within `order` to tell whether a candidate target still has an action
+            // coming later this same round (see ShockAttack's own scoring bonus there).
+            for (int i = 0; i < order.Count; i++)
             {
+                UnitData actor = order[i];
                 if (!hp.TryGetValue(actor, out float actorHp) || actorHp <= 0f)
                     continue;
                 if (!grid.TryFindPosition(actor, out int row, out int col))
                     continue;
 
-                if (TryFindBestReachableTarget(grid, hp, actor, row, col,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction,
+                if (BattleTargetSelector.TryFindBestReachableTarget(grid, hp, actor, row, col, magnitudes, order, i,
                     out UnitData target, out float damage))
                 {
                     hp[target] -= damage;
@@ -477,9 +474,7 @@ namespace Game.Combat
                 }
 
                 (int row, int col)? step = smartAdvance
-                    ? FindBestAdvanceStepInSim(grid, hp, order, actor, row, col,
-                        criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction)
-                        ?? FindStepToward(grid, actor, row, col)
+                    ? FindBestAdvanceStepInSim(grid, hp, order, actor, row, col, magnitudes) ?? FindStepToward(grid, actor, row, col)
                     : FindStepToward(grid, actor, row, col);
                 if (step != null)
                 {
@@ -506,100 +501,9 @@ namespace Game.Combat
             }
         }
 
-        // Shared target-desirability math — finishing blow (cheapest kill first) > damage
-        // efficiency (with the target's own Attack as a minor tiebreak) > unreachable-for-damage
-        // — used by BOTH the live per-turn pick (TryChooseAttackTarget) and the round-simulation
-        // pick (TryFindBestReachableTarget) so a projected fight can never favor a target the real
-        // AI wouldn't actually go for, or vice versa. Per the user's own request: one calculation,
-        // not two that happen to agree most of the time.
-        //
-        // `candidateHp` is a parameter rather than read off UnitData directly because the two
-        // callers track HP differently — TryFindBestReachableTarget works off SimulateRounds' own
-        // shadow `hp` dictionary (mid-playout, may already be lower than the real UnitData), while
-        // TryChooseAttackTarget reads the live `candidate.HitPointsCurrent`.
-        //
-        // Returns false for a target this attack can't meaningfully hurt (rawExpected <= 0, or
-        // ability modifiers — CeramicArmor in particular — knock the modified damage back down to
-        // 0; the old TryChooseAttackTarget never applied modifiers before this refactor, so a
-        // CeramicArmor target could wrongly score as a normal PriorityTarget). `score`/`reason`
-        // are still filled in on a false return — TryChooseAttackTarget still wants to compare
-        // "useless" candidates against each other for its own last-resort fallback (a live Duel
-        // Challenge rolls real dice, so an ~0-expected target can still land a hit via variance or
-        // Fate); TryFindBestReachableTarget's deterministic expected-value model has no such
-        // variance to hope for, so it skips a false return entirely and lets the actor advance
-        // instead — see each caller's own handling.
-        private static bool TryScoreTarget(UnitData actor, UnitData candidate, float candidateHp,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
-            out float score, out int damage, out AiThoughtCategory reason)
-        {
-            int rawExpected = Mathf.RoundToInt(actor.Attack * 0.5f - candidate.Defense * 0.5f);
-            if (rawExpected > 0)
-                damage = ChallengeResult.ApplyAbilityModifiers(rawExpected, actor, candidate,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
-            else
-                damage = 0; // modifiers can't turn a non-positive base into a hit — every step in
-                            // ApplyAbilityModifiers is itself gated on damage > 0, so there's
-                            // nothing to compute.
-
-            if (damage <= 0)
-            {
-                // Can't penetrate this one's Defense — only ever picked if literally nothing
-                // better is in range at all (see each caller).
-                score = -1000f + candidate.Attack;
-                reason = AiThoughtCategory.UselessTargetSkip;
-                return false;
-            }
-
-            if (candidateHp > 0f && damage >= candidateHp)
-            {
-                // Among multiple finishable targets, prefer the cheapest kill.
-                score = 10000f - candidateHp;
-                reason = AiThoughtCategory.FinishingBlow;
-            }
-            else
-            {
-                // damage dominates (x10) — how much actually lands is the real measure of
-                // efficiency; candidate.Attack only nudges the choice (x0.5) when two targets are
-                // roughly equally easy to hurt.
-                score = 100f + damage * 10f + candidate.Attack * 0.5f;
-                reason = AiThoughtCategory.PriorityTarget;
-            }
-            return true;
-        }
-
-        private static bool TryFindBestReachableTarget(BattleGrid grid, Dictionary<UnitData, float> hp, UnitData actor,
-            int actorRow, int actorCol, float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
-            out UnitData bestTarget, out float bestDamage)
-        {
-            bestTarget = null;
-            bestDamage = 0f;
-            float bestScore = float.NegativeInfinity;
-            foreach (UnitData candidate in grid.AllUnits())
-            {
-                if (candidate.Owner == actor.Owner || !hp.TryGetValue(candidate, out float candidateHp) || candidateHp <= 0f)
-                    continue;
-                if (!grid.TryFindPosition(candidate, out int candRow, out int candCol)
-                    || !BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
-                    continue;
-
-                // A target this attack can't meaningfully hurt gets left out here (unlike
-                // TryChooseAttackTarget's own last-resort fallback) — a deterministic
-                // expected-value playout has no dice variance to hope for, so "attacking" for a
-                // modeled 0 damage is strictly worse than spending the round advancing instead.
-                if (!TryScoreTarget(actor, candidate, candidateHp,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction,
-                    out float score, out int damage, out _))
-                    continue;
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestDamage = damage;
-                    bestTarget = candidate;
-                }
-            }
-            return bestTarget != null;
-        }
+        // Target-desirability scoring itself now lives in BattleTargetSelector (shared by the live
+        // per-turn pick and the round-simulation pick) — see ChooseAction/RunOneRound's own calls
+        // into it.
 
         private static float TotalHp(ArmyData army)
         {
@@ -629,10 +533,13 @@ namespace Game.Combat
         // regardless of exposure risk — per the user's own anti-stalling spec.
         private const int MaxWaitStreak = 3;
 
-        // ownArmy/enemyArmy are only used for the FindBestAdvanceStep lookahead below; the three
-        // ability magnitudes feed both that lookahead AND TryChooseAttackTarget's own scoring (see
-        // TryScoreTarget) — see BattleScreenUI.AutoActAfterDelay's call site for where these come
-        // from.
+        // ownArmy/enemyArmy are only used for the FindBestAdvanceStep lookahead below; `magnitudes`
+        // feeds both that lookahead AND BattleTargetSelector.TryChooseAttackTarget's own scoring —
+        // see BattleScreenUI.AutoActAfterDelay's call site for where these come from.
+        // turnOrder/turnIndex: this round's live turn order (BattleScreenUI's own _turnOrder/
+        // _turnIndex) — passed straight through to BattleTargetSelector so a ShockAttack-carrying
+        // actor can weigh knocking a still-to-act enemy out of the round (see that method's own
+        // comment); ChooseAction has no turn-order concept of its own.
         // favorableFight: this round's own AssessRetreat already ran the SAME multi-round
         // projection for this army and found a clear advantage (see RetreatAssessment.
         // FavorableForAdvance) — when true, exposure risk on the step itself is no longer a
@@ -640,37 +547,53 @@ namespace Game.Combat
         // instead of sitting through up to MaxWaitStreak turns first (see the user's own report:
         // an army with the numbers to win was refusing to close distance at all).
         public static AiAction ChooseAction(BattleGrid grid, UnitData actor, Dictionary<UnitData, int> waitStreak,
-            ArmyData ownArmy, ArmyData enemyArmy, float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
-            bool favorableFight = false)
+            ArmyData ownArmy, ArmyData enemyArmy, AbilityMagnitudes magnitudes,
+            List<UnitData> turnOrder, int turnIndex, bool favorableFight = false)
         {
             var passAction = new AiAction { Kind = AiActionKind.Pass, Reason = AiThoughtCategory.CautiousWait };
             if (grid == null || actor == null || waitStreak == null
                 || !grid.TryFindPosition(actor, out int actorRow, out int actorCol))
                 return passAction;
 
-            if (TryChooseAttackTarget(grid, actor, actorRow, actorCol,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, out AiAction attackAction))
+            if (BattleTargetSelector.TryChooseAttackTarget(grid, actor, actorRow, actorCol, magnitudes,
+                turnOrder, turnIndex, out AiAction attackAction))
             {
                 waitStreak[actor] = 0;
                 return attackAction;
             }
 
+            Debug.Log($"[MoveDiag] actor {actor.Name} at ({actorRow},{actorCol}): no attack target in range, evaluating a move");
+
             bool alreadyExposed = IsExposedToEnemy(grid, actorRow, actorCol, actor);
-            (int row, int col)? step = FindBestAdvanceStep(grid, ownArmy, enemyArmy, actor, actorRow, actorCol,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction)
-                ?? FindStepToward(grid, actor, actorRow, actorCol);
+            (int row, int col)? bestStep = FindBestAdvanceStep(grid, ownArmy, enemyArmy, actor, actorRow, actorCol, magnitudes);
+            (int row, int col)? step = bestStep ?? FindStepToward(grid, actor, actorRow, actorCol);
+            Debug.Log($"[MoveDiag] actor {actor.Name}: FindBestAdvanceStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
+                $"finalStep={(step.HasValue ? step.Value.ToString() : "null")} (fallback used: {!bestStep.HasValue})");
 
             if (step == null)
             {
                 waitStreak[actor] = 0;
+                Debug.Log($"[MoveDiag] actor {actor.Name}: no legal step at all -> Pass");
                 return passAction;
             }
 
             bool stepExposes = !alreadyExposed && IsExposedToEnemy(grid, step.Value.row, step.Value.col, actor);
             int streak = waitStreak.TryGetValue(actor, out int s) ? s : 0;
             bool forceAdvance = streak >= MaxWaitStreak;
+            // Melee (Range<=2) never hesitates over exposure risk before closing distance — per
+            // the user's own call, there's no point in a melee unit hanging back to avoid a
+            // single round of return fire when the whole point of the unit is to reach melee
+            // range. FindBestAdvanceStep/FindStepToward already guarantee `step` itself is never
+            // a retreat for a melee actor (see their own isMelee handling), so this only ever
+            // skips the WAIT-and-eat-the-risk-later behavior, never turns a real retreat into an
+            // advance.
+            bool isMelee = actor.Range <= 2;
 
-            if (alreadyExposed || !stepExposes || forceAdvance || favorableFight)
+            Debug.Log($"[MoveDiag] actor {actor.Name}: alreadyExposed={alreadyExposed} stepExposes={stepExposes} " +
+                $"waitStreak={streak} forceAdvance={forceAdvance} favorableFight={favorableFight} isMelee={isMelee} " +
+                $"-> {((isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight) ? "MOVE" : "WAIT")} to {step.Value}");
+
+            if (isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight)
             {
                 waitStreak[actor] = 0;
                 return new AiAction
@@ -684,59 +607,6 @@ namespace Game.Combat
 
             waitStreak[actor] = streak + 1;
             return passAction;
-        }
-
-        // Target priority, highest to lowest: finishing blow > damage-efficiency (how much of our
-        // attack actually gets through the target's own Defense, per the user's own report — a
-        // high-Attack "tank" used to get picked over an easier-to-hurt target standing right next
-        // to it purely for being scary, even though the softer target would've taken far more
-        // damage) with the target's own Attack only as a minor tiebreak between similarly-easy
-        // targets > (skip if our expected damage against them is ~0, prefer any other legal
-        // target instead). Scoring itself lives in TryScoreTarget, shared with the round
-        // simulation's own target pick — see that method's own comment for why. Unlike the
-        // simulation, a "can't hurt them" candidate is still scored and compared here (via
-        // TryScoreTarget's false return, still used as a last resort) rather than skipped
-        // outright — a live Duel Challenge rolls real dice, so an ~0-expected target can still
-        // land a hit through variance or a Fate spend.
-        private static bool TryChooseAttackTarget(BattleGrid grid, UnitData actor, int actorRow, int actorCol,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction, out AiAction action)
-        {
-            UnitData bestTarget = null;
-            int bestRow = -1, bestCol = -1;
-            float bestScore = float.NegativeInfinity;
-            AiThoughtCategory bestReason = AiThoughtCategory.PriorityTarget;
-
-            foreach (UnitData candidate in grid.AllUnits())
-            {
-                if (candidate.Owner == actor.Owner)
-                    continue;
-                if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
-                    continue;
-                if (!BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
-                    continue;
-
-                TryScoreTarget(actor, candidate, candidate.HitPointsCurrent,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction,
-                    out float score, out _, out AiThoughtCategory reason);
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestTarget = candidate;
-                    bestRow = candRow;
-                    bestCol = candCol;
-                    bestReason = reason;
-                }
-            }
-
-            if (bestTarget == null)
-            {
-                action = default;
-                return false;
-            }
-
-            action = new AiAction { Kind = AiActionKind.Attack, Target = bestTarget, Row = bestRow, Col = bestCol, Reason = bestReason };
-            return true;
         }
 
         // True if any enemy unit currently on the grid could attack `row`/`col` from where it
@@ -783,6 +653,13 @@ namespace Game.Combat
             if (nearestEnemy == null)
                 return null;
 
+            // Melee never retreats (see isMelee's own comment on FindBestAdvanceStep) — a step
+            // that would land farther from the nearest enemy than staying put is dropped from
+            // consideration entirely here too, since this is also the fallback FindBestAdvanceStep
+            // itself uses whenever it finds no legal step at all.
+            bool isMelee = actor.Range <= 2;
+            int currentDist = Mathf.Abs(actorRow - nearestRow) + Mathf.Abs(actorCol - nearestCol);
+
             (int row, int col)? best = null;
             int bestDist = int.MaxValue;
             int[] dRows = { -1, 1, 0, 0 };
@@ -795,6 +672,8 @@ namespace Game.Combat
                     continue;
 
                 int dist = Mathf.Abs(row - nearestRow) + Mathf.Abs(col - nearestCol);
+                if (isMelee && dist > currentDist)
+                    continue;
                 if (dist < bestDist)
                 {
                     bestDist = dist;
@@ -818,13 +697,24 @@ namespace Game.Combat
         // killed before it would even get a real turn — callers should fall back to the plain
         // FindStepToward in that case.
         private static (int row, int col)? FindBestAdvanceStep(BattleGrid liveGrid, ArmyData ownArmy, ArmyData enemyArmy, UnitData actor,
-            int actorRow, int actorCol, float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction)
+            int actorRow, int actorCol, AbilityMagnitudes magnitudes)
         {
             if (liveGrid == null || ownArmy == null || enemyArmy == null)
                 return null;
 
             int[] dRows = { -1, 1, 0, 0 };
             int[] dCols = { 0, 0, -1, 1 };
+
+            // Melee (Range<=2) never retreats — per the user's own call, there's no tactical
+            // point in a melee unit backing away from a fight it's trying to close on, so a step
+            // that lands farther from the nearest enemy than staying put isn't a real candidate
+            // at all, and dying before its own next turn no longer disqualifies a candidate either
+            // (a melee unit accepts that risk rather than dance sideways forever to avoid it —
+            // see the user's own report that the old death-pruning left only sideways/no-progress
+            // steps standing almost every turn). Non-melee units keep the old risk-averse
+            // behavior unchanged.
+            bool isMelee = actor.Range <= 2;
+            int curDistanceToNearest = NearestEnemyManhattanDistance(liveGrid, actor, actorRow, actorCol);
 
             (int row, int col)? bestStep = null;
             float bestDamage = -1f;
@@ -836,6 +726,14 @@ namespace Game.Combat
                 int candCol = actorCol + dCols[i];
                 if (!BattleGrid.InBounds(candRow, candCol) || liveGrid.Get(candRow, candCol) != null)
                     continue;
+
+                int immediateDistance = NearestEnemyManhattanDistance(liveGrid, actor, candRow, candCol);
+                if (isMelee && immediateDistance > curDistanceToNearest)
+                {
+                    Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                        $"SKIPPED — retreat step (immediateDistance={immediateDistance} > curDistanceToNearest={curDistanceToNearest})");
+                    continue;
+                }
 
                 var grid = new BattleGrid();
                 var hp = new Dictionary<UnitData, float>();
@@ -851,20 +749,42 @@ namespace Game.Combat
                     grid.Set(curRow, curCol, null);
                 grid.Set(candRow, candCol, actor);
 
-                RunOneRound(grid, hp, BuildInterleavedOrder(ownUnits, enemyUnits, actor),
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, null);
+                RunOneRound(grid, hp, BuildInterleavedOrder(ownUnits, enemyUnits, actor), magnitudes, null);
 
-                if (hp[actor] <= 0f)
+                if (!isMelee && hp[actor] <= 0f)
+                {
+                    Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                        $"SKIPPED — projected dead (hp<=0) before its own next turn from there");
                     continue; // didn't survive to get a real turn from here — not a real candidate
+                }
 
-                var damageDealt = new Dictionary<UnitData, float>();
-                RunOneRound(grid, hp, BuildInterleavedOrder(ownUnits, enemyUnits, null),
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, damageDealt);
+                float damage = 0f;
+                int distance = immediateDistance;
+                if (hp[actor] > 0f)
+                {
+                    var damageDealt = new Dictionary<UnitData, float>();
+                    RunOneRound(grid, hp, BuildInterleavedOrder(ownUnits, enemyUnits, null), magnitudes, damageDealt);
 
-                float damage = damageDealt.TryGetValue(actor, out float dealt) ? dealt : 0f;
-                int distance = grid.TryFindPosition(actor, out int aRow, out int aCol)
-                    ? NearestEnemyManhattanDistance(grid, actor, aRow, aCol)
-                    : int.MaxValue;
+                    // Same "not a real candidate" rule as the movement-round check above, just
+                    // applied to the round this whole lookahead exists to score — see the old
+                    // comment history: skipped only for non-melee, where survivability still
+                    // matters (a melee actor accepts dying here per isMelee's own comment above).
+                    if (!isMelee && hp[actor] <= 0f)
+                    {
+                        Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                            $"SKIPPED — projected dead (hp<=0) during its own acting round from there");
+                        continue;
+                    }
+
+                    damage = damageDealt.TryGetValue(actor, out float dealt) ? dealt : 0f;
+                    distance = grid.TryFindPosition(actor, out int aRow, out int aCol)
+                        ? NearestEnemyManhattanDistance(grid, actor, aRow, aCol)
+                        : immediateDistance;
+                }
+
+                Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}, distToNearest={curDistanceToNearest}): " +
+                    $"candidate ({candRow},{candCol}) projectedDamageDealt={damage} distToNearestAfter={distance} " +
+                    $"(closer={distance < curDistanceToNearest}, farther={distance > curDistanceToNearest}) survivedHp={hp[actor]}");
 
                 // Most damage dealt within the 2-round window wins; ties (usually both 0, nobody
                 // gets there in time) fall back to the same "closer to the nearest enemy" the old
@@ -877,6 +797,8 @@ namespace Game.Combat
                 }
             }
 
+            Debug.Log($"[AdvanceDiag] actor {actor.Name}: chosen bestStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
+                $"bestDamage={bestDamage} bestDistance={bestDistance}");
             return bestStep;
         }
 
@@ -902,11 +824,16 @@ namespace Game.Combat
         // `grid`/`hp` (RunOneRound mutates both in place) so scoring one candidate direction can
         // never leak into another's, or into the real round this was called from.
         private static (int row, int col)? FindBestAdvanceStepInSim(BattleGrid grid, Dictionary<UnitData, float> hp,
-            List<UnitData> order, UnitData actor, int actorRow, int actorCol,
-            float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction)
+            List<UnitData> order, UnitData actor, int actorRow, int actorCol, AbilityMagnitudes magnitudes)
         {
             int[] dRows = { -1, 1, 0, 0 };
             int[] dCols = { 0, 0, -1, 1 };
+
+            // Same never-retreat/never-refuse-the-risk rule as the live FindBestAdvanceStep (see
+            // its own comment) — kept in sync so AssessRetreat/ArrangeArmy's own projections don't
+            // diverge from how melee actually behaves on a real turn.
+            bool isMelee = actor.Range <= 2;
+            int curDistanceToNearest = NearestEnemyManhattanDistance(grid, actor, actorRow, actorCol);
 
             var orderExcludingActor = new List<UnitData>();
             foreach (UnitData unit in order)
@@ -924,26 +851,35 @@ namespace Game.Combat
                 if (!BattleGrid.InBounds(candRow, candCol) || grid.Get(candRow, candCol) != null)
                     continue;
 
+                int immediateDistance = NearestEnemyManhattanDistance(grid, actor, candRow, candCol);
+                if (isMelee && immediateDistance > curDistanceToNearest)
+                    continue;
+
                 BattleGrid trialGrid = CloneGrid(grid);
                 var trialHp = new Dictionary<UnitData, float>(hp);
                 trialGrid.Set(actorRow, actorCol, null);
                 trialGrid.Set(candRow, candCol, actor);
 
                 // This round is spent moving to the candidate cell instead of acting normally.
-                RunOneRound(trialGrid, trialHp, orderExcludingActor,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, null);
+                RunOneRound(trialGrid, trialHp, orderExcludingActor, magnitudes, null);
 
-                if (!trialHp.TryGetValue(actor, out float actorHpAfter) || actorHpAfter <= 0f)
+                if (!trialHp.TryGetValue(actor, out float actorHpAfter))
+                    continue;
+                if (!isMelee && actorHpAfter <= 0f)
                     continue; // didn't survive to get a real turn from here — not a real candidate
 
-                var damageDealt = new Dictionary<UnitData, float>();
-                RunOneRound(trialGrid, trialHp, order,
-                    criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction, damageDealt);
+                float damage = 0f;
+                int distance = immediateDistance;
+                if (actorHpAfter > 0f)
+                {
+                    var damageDealt = new Dictionary<UnitData, float>();
+                    RunOneRound(trialGrid, trialHp, order, magnitudes, damageDealt);
 
-                float damage = damageDealt.TryGetValue(actor, out float dealt) ? dealt : 0f;
-                int distance = trialGrid.TryFindPosition(actor, out int aRow, out int aCol)
-                    ? NearestEnemyManhattanDistance(trialGrid, actor, aRow, aCol)
-                    : int.MaxValue;
+                    damage = damageDealt.TryGetValue(actor, out float dealt) ? dealt : 0f;
+                    distance = trialGrid.TryFindPosition(actor, out int aRow, out int aCol)
+                        ? NearestEnemyManhattanDistance(trialGrid, actor, aRow, aCol)
+                        : immediateDistance;
+                }
 
                 if (damage > bestDamage || (damage == bestDamage && distance < bestDistance))
                 {
@@ -969,94 +905,8 @@ namespace Game.Combat
             return clone;
         }
 
-        // ---- Defender's/Attacker's Prerogative Fate spend (BattleAttackPopupUI) ----
-
-        // isDefender: true when evaluating the DEFENDER's own spend (wants damage reduced to 0),
-        // false for the ATTACKER's (wants damage to actually land) — see the user's own spec:
-        // spend as many times as it takes as long as each one still matters, never spend once the
-        // exchange is already settled in this side's favor.
-        //
-        // isRetreating/defendingUnitHp (defender only): a retreating army can have several of its
-        // own units attacked in sequence within the same grace round (see BattleScreenUI.
-        // _retreatingArmy) before it actually leaves — spending freely on whichever hit lands
-        // first can drain Fate (it doesn't replenish again until THIS battle actually ends, see
-        // UnitData.ReplenishFateForNewBattle/BattleScreenUI.Combat.cs's
-        // OnBattleOutcomeAcknowledged — nothing restores it mid-battle)
-        // before a LATER hit that turns out to actually be lethal to a different unit ever gets
-        // a chance at it. While
-        // retreating, only spend on a hit that would genuinely kill the defender right now;
-        // outside a retreat, keep trying on any damage as before (there's no such queue of
-        // still-to-come attacks against the same Fate pool to protect against). Either way, a
-        // hopeless hit — one where even the best possible reroll outcome (every remaining missed
-        // die flipping to a hit) still deals lethal damage — never spends at all; see the
-        // best-case check right before the final isRetreating branch below.
-        // isCaptureKill: the target hero's own Fate spend during a Capture Kill Challenge (see
-        // BattleAttackPopupUI.ResolveCaptureKill) — a TIED roll resolves as Killed there, not the
-        // safe non-event a 0-damage tie is in Ground Combat (see ChallengeResult.Damage's own
-        // floor-at-0, which can't tell "tied" apart from "defender strictly ahead" once damage is
-        // clamped to 0 either way) — so the defending hero must keep rerolling on a tie too, not
-        // just when outright behind. Per the user's own report: the AI sat on 3 unused Fate at
-        // 1:1, about to lose its hero to what damage-based math read as "no damage, nothing to
-        // fix". The hunter side needs no separate branch — it already rerolls on a tie (damage<=0
-        // there too), which was already correct: more successes only ever helps it, tie or not.
-        // attacker/defender + the three ability magnitudes: needed to weigh the SAME effective
-        // damage ResolveDamage will actually deal (see ChallengeResult.ApplyAbilityModifiers),
-        // not the raw dice differential — otherwise a defender's own CeramicArmor (which might
-        // already reduce a hit to 0 for free) or the attacker's Hyperkinetic (which can push a
-        // hit's true size past what the raw dice alone show) never factor into whether spending
-        // Fate here is actually worth it. isCaptureKill skips all of this — that challenge deals
-        // no HP damage, so none of these abilities apply to it.
-        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
-            UnitData attacker, UnitData defender, float criticalDamageMultiplier, int hyperkineticBonusDamage, int ceramicArmorReduction,
-            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false)
-        {
-            if (fateAvailable <= 0)
-                return false;
-            bool[] ownDice = isDefender ? defenderDice : attackerDice;
-            if (ownDice == null || !HasMiss(ownDice))
-                return false;
-
-            var result = new ChallengeResult(attackerDice, defenderDice);
-
-            if (isCaptureKill)
-                return isDefender
-                    ? result.AttackerSuccesses >= result.DefenderSuccesses
-                    : result.Damage <= 0;
-
-            int damage = ChallengeResult.ApplyAbilityModifiers(result.Damage, attacker, defender,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
-
-            if (!isDefender)
-                return damage <= 0;
-
-            if (damage <= 0)
-                return false;
-
-            // Hopeless check — per the user's own report: HP 2, Defense 1, challenge already 3:0
-            // means even a successful reroll (one miss flipped to a hit) still leaves damage >=
-            // HP, so the unit dies no matter how many times Fate gets spent here. Best case is
-            // EVERY remaining missed die flipping to a hit (defenderDice.Length successes, the
-            // ceiling no reroll can exceed) — if that still doesn't get damage below the unit's
-            // current HP, spending is pure waste of a resource that won't replenish until this
-            // battle ends (see the isRetreating comment above), so don't even start.
-            int bestCaseDefenderSuccesses = defenderDice.Length;
-            int bestCaseRawDamage = Mathf.Max(0, result.AttackerSuccesses - bestCaseDefenderSuccesses);
-            int bestCaseDamage = ChallengeResult.ApplyAbilityModifiers(bestCaseRawDamage, attacker, defender,
-                criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction);
-            if (bestCaseDamage >= defendingUnitHp)
-                return false;
-
-            return !isRetreating || damage >= defendingUnitHp;
-        }
-
-        private static bool HasMiss(bool[] dice)
-        {
-            if (dice == null)
-                return false;
-            foreach (bool hit in dice)
-                if (!hit)
-                    return true;
-            return false;
-        }
+        // Fate-duel spend decisions now live in FateDuelAi (BattleAttackPopupUI.RunAiTurn calls
+        // into it directly) — kept out of this file to keep BattleAi.cs to arrangement/retreat/
+        // tactical-move logic only.
     }
 }

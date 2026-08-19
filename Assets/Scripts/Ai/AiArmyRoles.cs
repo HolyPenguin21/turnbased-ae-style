@@ -43,14 +43,33 @@ namespace Game.Ai
             return army.HasRoom;
         }
 
-        // A fresh, empty, non-garrison army — the only kind of army a Recce or Hero card ever
-        // founds (see AiTurnController.TryPlayCard). Never an army with anything already in it:
-        // per the project owner's own report, a Recce unit belongs SOLO (bigger armies cost more
-        // AP to move and cover fewer hexes per trip for the same vision bonus), and a Hero always
-        // leads its own force rather than folding into whatever already has room.
+        // A fresh, empty, non-garrison army — the only kind of army a Recce card ever founds (see
+        // AiManagementPlanner.FindPlacement). Never an army with anything already in it: per the
+        // project owner's own report, a Recce unit belongs SOLO (bigger armies cost more AP to
+        // move and cover fewer hexes per trip for the same vision bonus). A Hero card used to
+        // found one of these too, but no longer does — see IsPlainReserveArmy's own comment.
         public static bool IsEmptyDeployableArmy(ArmyData army)
         {
             return HasOpenSlot(army) && army.Members.Count == 0;
+        }
+
+        // Garrison/prison, Recce, and hero-led-with-room armies all have their own dedicated
+        // roles above — this is everything else with room: a stockpile army growing toward
+        // becoming a real force, whether it's still empty or already holds a few plain units. Not
+        // hero-led YET (a hero card joining one of these is exactly how it becomes
+        // IsHeroLedCombatArmy instead — see AiManagementPlanner.FindPlacement's own Hero-role
+        // tier), so a second hero card is never offered this same army once the first one lands.
+        // Supersedes the old "only Members.Count == 0 counts" rule everywhere a card or garrison-
+        // overflow unit looks for a reserve army to grow (see AiManagementPlanner.FindPlacement/
+        // FindGarrisonOverflowDestination) — that rule meant a reserve army could only ever
+        // receive its FIRST unit and then never another, since every path in only ever matched
+        // Members.Count == 0 (the project owner's own "ИИ выставляет по одному юниту в армию"
+        // report).
+        public static bool IsPlainReserveArmy(ArmyData army)
+        {
+            if (army == null || army.IsGarrison || army.IsPrison || army.HasRecce)
+                return false;
+            return army.Members.Count(m => m.IsHero) == 0 && army.HasRoom;
         }
 
         // A non-Recce hero's own escort — exactly one hero, no Recce member (that's
@@ -94,11 +113,10 @@ namespace Game.Ai
         }
 
         // A hero-led army with no escorts AT ALL yet — too fragile for AiScoutPlanner's normal
-        // into-the-fog search (that's IsMakeshiftScoutCapable's job, once it's Hero+2), but not
-        // idle either: the project owner's own 1.1 spec has it walk down already-VISIBLE-but-
-        // unvisited hexes near home (see AiTurnController's own requireVisible scout pass and
-        // TryReturnHomeCandidates) instead of just sitting at the garrison doing nothing while it
-        // waits on the deck for its first escort.
+        // into-the-fog search (that's IsMakeshiftScoutCapable's job, once it's Hero+2). No longer
+        // scouts on its own — the project owner dropped that composition from Разведка · Задача
+        // 1 — it just walks home and waits at the garrison for its first escort instead (see
+        // AiTurnController.TryReturnHomeCandidates).
         public static bool IsSoloHeroAwaitingEscort(ArmyData army)
         {
             return IsHeroLedCombatArmy(army) && army.Members.Count == 1;

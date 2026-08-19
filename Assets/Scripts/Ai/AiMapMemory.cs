@@ -1,30 +1,36 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai
 {
     // Honest per-player memory of hex CONTENT — the piece VisionSystem itself explicitly does
     // NOT keep (see its own class comment: "Content has no memory either way and re-hides the
     // instant vision leaves"). Subscribes to VisionSystem.VisibilityChanged and, on every
-    // recompute, snapshots whatever's on `player`'s own currently-visible hexes into two
+    // recompute, snapshots whatever's on `player`'s own currently-visible hexes into three
     // permanent-until-corrected stores: which hexes are known to carry a resource bonus (and,
     // as of the Разведка Задача 2 pass, which ResourceType — reading the type off an already-
     // VISIBLE hex isn't the cheat AiEconomyPlanner.DominantResourceType's own caller guards
     // against elsewhere, since a real player would see the bonus icon the moment fog lifts too),
-    // and where an enemy/neutral army was last actually seen. Per the project owner's own
-    // "Видимость с памятью" principle — stale info is never auto-expired, only overwritten by a
-    // fresh observation of that SAME hex (see OnVisibilityChanged's own `sightings.Remove`
-    // branch).
+    // where an enemy/neutral army was last actually seen, and (as of the Агрессия redesign) which
+    // hexes carry a known active Hex Event with a real guard — see KnownEventGuardDefenseAt. Per
+    // the project owner's own "Видимость с памятью" principle — stale info is never auto-expired,
+    // only overwritten by a fresh observation of that SAME hex (see OnVisibilityChanged's own
+    // `sightings.Remove` branch) — except an event actually being consumed, a real world-state
+    // change corrected for every player immediately (OnEventConsumed), not left for each to
+    // individually re-discover.
     //
-    // Deliberately narrow in scope — only the slices AiGoalScorer/AiScoutPlanner/AiTurnController
-    // actually need honesty for right now (resource hexes + type, enemy armies). Other players'
-    // own resource stockpiles stay the project's own documented cheat exception (see
-    // AiGoalScorer's own IncomeBehindBonus) and never route through here.
+    // Deliberately narrow in scope — only the slices AiGoalScorer/AiScoutPlanner/AiTurnController/
+    // RaidWeakerArmyTask actually need honesty for right now (resource hexes + type, enemy
+    // armies, event guards). Other players' own resource stockpiles stay the project's own
+    // documented cheat exception (see AiGoalScorer's own IncomeBehindBonus) and never route
+    // through here.
     public static class AiMapMemory
     {
         private class EnemySighting
@@ -32,6 +38,8 @@ namespace Game.Ai
             public PlayerSetupData Owner;
             public int MemberCount;
             public float DefenseSum;
+            public float AttackSum;
+            public List<WorthIt.DefenderProfile> Defenders;
         }
 
         public readonly struct KnownEnemySighting
@@ -40,13 +48,37 @@ namespace Game.Ai
             public readonly PlayerSetupData Owner;
             public readonly int MemberCount;
             public readonly float DefenseSum;
+            public readonly float AttackSum;
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
 
-            public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, int memberCount, float defenseSum)
+            public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, int memberCount, float defenseSum, float attackSum,
+                IReadOnlyList<WorthIt.DefenderProfile> defenders)
             {
                 Hex = hex;
                 Owner = owner;
                 MemberCount = memberCount;
                 DefenseSum = defenseSum;
+                AttackSum = attackSum;
+                Defenders = defenders;
+            }
+        }
+
+        // Aggregate Attack/Defense sums plus the per-unit DefenderProfile list WorthIt.CanDamageAll
+        // needs for its coverage check (see that method's own comment) — shared shape for both a
+        // Hex Event's card-stat guard (KnownEventGuards below) and a physical army sighting
+        // (EnemySighting above reuses the same three numbers/list, just not through this struct
+        // directly since it's already its own class).
+        public readonly struct GuardStrength
+        {
+            public readonly float Defense;
+            public readonly float Attack;
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
+
+            public GuardStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders)
+            {
+                Defense = defense;
+                Attack = attack;
+                Defenders = defenders;
             }
         }
 
@@ -57,6 +89,14 @@ namespace Game.Ai
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, ResourceType>>();
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, EnemySighting>> EnemySightings =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, EnemySighting>>();
+        // HexCoord -> guard's own card-stat strength, for every Hex Event this player has ever
+        // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
+        // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
+        // "видимость с памятью" honesty rule as everything else here: a hex only enters this once
+        // actually visible AND HexEventRegistry.HasActiveEvent(hex) AND it carries a real guard
+        // (an unguarded event is never a combat target, nothing to remember here for it).
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> KnownEventGuards =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>>();
 
         private static bool _subscribed;
 
@@ -67,6 +107,11 @@ namespace Game.Ai
             if (_subscribed)
                 return;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            // The event itself being cleared (guard actually beaten, reward claimed) is a real
+            // world-state change, not a per-player illusion — every player's own memory of it
+            // corrects immediately rather than waiting for each to individually re-observe the
+            // hex (see OnEventConsumed's own comment).
+            HexEventRegistry.EventConsumed += OnEventConsumed;
             _subscribed = true;
         }
 
@@ -74,6 +119,7 @@ namespace Game.Ai
         {
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
+            KnownEventGuards.Clear();
         }
 
         private static void OnVisibilityChanged(PlayerSetupData player)
@@ -91,6 +137,11 @@ namespace Game.Ai
                 sightings = new Dictionary<HexCoord, EnemySighting>();
                 EnemySightings[player] = sightings;
             }
+            if (!KnownEventGuards.TryGetValue(player, out Dictionary<HexCoord, GuardStrength> eventGuards))
+            {
+                eventGuards = new Dictionary<HexCoord, GuardStrength>();
+                KnownEventGuards[player] = eventGuards;
+            }
 
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
@@ -101,11 +152,17 @@ namespace Game.Ai
                 ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player && BattleInitiator.IsEngageable(a));
                 if (enemy != null)
                 {
+                    List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero).ToList();
                     sightings[hex] = new EnemySighting
                     {
                         Owner = enemy.Owner,
                         MemberCount = enemy.Members.Count,
-                        DefenseSum = enemy.Members.Where(m => !m.IsHero).Sum(m => m.Defense),
+                        DefenseSum = nonHero.Sum(m => m.Defense),
+                        AttackSum = nonHero.Sum(m => m.Attack),
+                        // Just enough per-unit read for WorthIt.CanDamageAll's coverage check
+                        // (Defense + CeramicArmor) — see DefenderProfile's own comment for why
+                        // every other ability is deliberately left out.
+                        Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor))).ToList(),
                     };
                 }
                 else
@@ -115,7 +172,36 @@ namespace Game.Ai
                     // наблюдение" comment).
                     sightings.Remove(hex);
                 }
+
+                HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
+                if (eventEntry != null && eventEntry.ResolvedGuardMembers.Count > 0)
+                {
+                    // Same flat card-stat sum WorthIt/AiEventPlanner.ShouldExplore already use —
+                    // the guard is never a live ArmyData until Explore is chosen (see
+                    // HexEventRegistry.Entry's own comment), so card stats are all there is to
+                    // read.
+                    var guardMembers = eventEntry.ResolvedGuardMembers
+                        .Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
+                    float defense = guardMembers.Sum(g => g.card.defenseRating * g.count);
+                    float attack = guardMembers.Sum(g => g.card.attack * g.count);
+                    var defenders = guardMembers.Select(g => new WorthIt.DefenderProfile(g.card.defenseRating,
+                        g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor))).ToList();
+                    eventGuards[hex] = new GuardStrength(defense, attack, defenders);
+                }
+                else
+                {
+                    eventGuards.Remove(hex);
+                }
             }
+        }
+
+        // The event's own guard just got beaten for real (reward claimed) — a genuine world-state
+        // change, so every player's own memory of it is corrected immediately rather than left to
+        // go stale until each individually re-observes the hex.
+        private static void OnEventConsumed(HexCoord hex)
+        {
+            foreach (Dictionary<HexCoord, GuardStrength> eventGuards in KnownEventGuards.Values)
+                eventGuards.Remove(hex);
         }
 
         // A hex's resource bonus counts as "known" the moment it's ever been merely VISIBLE, not
@@ -124,19 +210,6 @@ namespace Game.Ai
         public static bool IsResourceHexKnown(PlayerSetupData actor, HexCoord hex)
         {
             return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set) && set.ContainsKey(hex);
-        }
-
-        // Разведка Задача 2's own completion/target read: every known hex whose dominant type
-        // matches `type` — callers still need to check BuildingRegistry.FindAt themselves for
-        // "already claimed", same live-world-state split AiGoalScorer.ScoreExpandEconomy already
-        // draws (memory says WHAT was seen, never whether it's still free).
-        public static IEnumerable<HexCoord> KnownResourceHexesOfType(PlayerSetupData actor, ResourceType type)
-        {
-            if (!KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set))
-                yield break;
-            foreach (KeyValuePair<HexCoord, ResourceType> kv in set)
-                if (kv.Value == type)
-                    yield return kv.Key;
         }
 
         public static bool HasKnownEnemyWithin(PlayerSetupData actor, HexCoord center, int radius)
@@ -156,6 +229,19 @@ namespace Game.Ai
                     && HexGridMath.Distance(center, kv.Key) <= radius);
         }
 
+        // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
+        // target pool isn't wavefront/radius-bounded like Разведка's (see that class's own class
+        // comment), it just scores every known target by raw distance from the citadel.
+        public static IEnumerable<KnownEnemySighting> AllKnownNeutralSightings(PlayerSetupData actor)
+        {
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+                yield break;
+            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
+                if (kv.Value.Owner != null && kv.Value.Owner.IsNeutral)
+                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.MemberCount, kv.Value.DefenseSum,
+                        kv.Value.AttackSum, kv.Value.Defenders);
+        }
+
         public static IEnumerable<KnownEnemySighting> KnownEnemySightingsNear(PlayerSetupData actor,
             IReadOnlyList<HexCoord> ownHexes, int radius)
         {
@@ -164,18 +250,19 @@ namespace Game.Ai
 
             foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
                 if (ownHexes.Any(own => HexGridMath.Distance(own, kv.Key) <= radius))
-                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.MemberCount, kv.Value.DefenseSum);
+                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.MemberCount, kv.Value.DefenseSum,
+                        kv.Value.AttackSum, kv.Value.Defenders);
         }
 
-        // One specific hex's own last-known sighting, if any — Разведка Задача 1's own "может
-        // напасть на армию послабее" check (see AiScoutPlanner.FindVisitTargetHex) needs exactly
-        // this hex, not a radius scan.
+        // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
+        // RequiredStrengthAt/IsStillValidTarget need exactly this hex, not a radius scan.
         public static KnownEnemySighting? KnownEnemySightingAt(PlayerSetupData actor, HexCoord hex)
         {
             if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings)
                 || !sightings.TryGetValue(hex, out EnemySighting sighting))
                 return null;
-            return new KnownEnemySighting(hex, sighting.Owner, sighting.MemberCount, sighting.DefenseSum);
+            return new KnownEnemySighting(hex, sighting.Owner, sighting.MemberCount, sighting.DefenseSum,
+                sighting.AttackSum, sighting.Defenders);
         }
 
         public static float KnownGarrisonDefenseAt(PlayerSetupData actor, HexCoord hex)
@@ -184,6 +271,37 @@ namespace Game.Ai
                 && sightings.TryGetValue(hex, out EnemySighting sighting)
                 ? sighting.DefenseSum
                 : 0f;
+        }
+
+        // Null = no known active guarded event at this hex (never seen one, or it's since been
+        // consumed — see OnEventConsumed). RaidWeakerArmyTask's own event-guard half of a target's
+        // required strength (see that class's own FindTarget/RequiredStrengthAt — takes the max of
+        // this and KnownGarrisonDefenseAt for a hex, not their sum, since a physical neutral army
+        // sharing this hex and this event's own card-guard are two separate fights, never fought
+        // at once).
+        public static GuardStrength? KnownEventGuardStrengthAt(PlayerSetupData actor, HexCoord hex)
+        {
+            return KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> eventGuards)
+                && eventGuards.TryGetValue(hex, out GuardStrength strength)
+                ? strength
+                : (GuardStrength?)null;
+        }
+
+        public static float? KnownEventGuardDefenseAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Defense;
+
+        // Same guard, its own card-stat Attack sum instead of Defense — WorthIt.Score's own "how
+        // hard would the guard hit back" half (see RaidWeakerArmyTask.RequiredStrengthAt).
+        public static float? KnownEventGuardAttackAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Attack;
+
+        // Every hex this player has ever seen an active guarded event on — RaidWeakerArmyTask's
+        // own candidate-gatherer needs to enumerate these the same way it enumerates
+        // EnemySightings via KnownEnemySightingsNear, just without a radius (Агрессия's own
+        // target pool isn't wavefront-bounded — see that class's own class comment).
+        public static IEnumerable<HexCoord> KnownEventGuardHexes(PlayerSetupData actor)
+        {
+            return KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> eventGuards)
+                ? eventGuards.Keys
+                : Enumerable.Empty<HexCoord>();
         }
     }
 }

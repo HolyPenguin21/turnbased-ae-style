@@ -40,7 +40,7 @@ namespace Game.Cards
         public int apCost;
         public ResourceCost resourceCost = new ResourceCost();
 
-        // Which building ability (see Game.Map.BuildingAbilities) a hex needs before this card
+        // Which building ability (see Game.Cards.UnitAbilities) a hex needs before this card
         // can be deployed there — only checked for Hero/Unit cards (see CardHandUI.TryPlayCard).
         // Empty for Facility cards, which don't go through that flow yet.
         [Header("Deployment")]
@@ -95,7 +95,7 @@ namespace Game.Cards
 
         // Ability tags — the only skill/ability list a card has (see Game.Cards.UnitAbilities
         // for the fixed-value ones this project actually gives combat effects to, and
-        // Game.Map.BuildingAbilities for the Base-card ones like Barracks/Lab/CollectX). Still
+        // Game.Cards.UnitAbilities for the Base-card ones like Barracks/Lab/CollectX). Still
         // a List<string>, not an enum like unitTypeTags — the choices are UnitAbilityCatalog.
         // knownAbilities (tunable data, not compiled code) — but [AbilityTag] (see
         // Assets/Editor/AbilityTagDrawer.cs) gives it the same per-entry dropdown in the
@@ -112,7 +112,7 @@ namespace Game.Cards
         // now read the same shared Stats block above: hitPoints/defenseRating/resistanceRating/
         // fate) instead of a separate Base-only copy of those same four numbers.
         //
-        // Resource collection is skill/ability-driven now (see BuildingAbilities.
+        // Resource collection is skill/ability-driven now (see UnitAbilities.
         // CollectAbilities) — this isn't wired into BuildingData/spawn at all, kept only for a
         // future card design that grants a flat resource on its own.
         [Header("Resource Yield (CardType.Base only, not yet wired to gameplay)")]

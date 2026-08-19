@@ -28,6 +28,15 @@ namespace Game.Cards
 
         public List<CardDefinition> cards = new List<CardDefinition>();
 
+        // Per-faction map marker icons for this faction's own citadel/facility buildings (see
+        // HexSelectionController.Factory.SpawnBuilding/TryBuildExtractionFacility,
+        // CitadelSetupController.SpawnCitadelMarker). Left unassigned, the marker just keeps
+        // whatever icon its prefab already has baked in.
+        [Header("Map Icons")]
+        public Sprite citadelIcon;
+        public Sprite facilityIcon;
+        public Sprite armyIcon;
+
         // Keeps every CardDefinition.id in sync with its actual list position, so the inspector
         // always shows the correct index even after cards are added/removed/reordered.
         private void OnValidate()

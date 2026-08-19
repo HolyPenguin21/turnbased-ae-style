@@ -17,7 +17,7 @@ namespace Game.Ai
     // as independent AiTaskCategory pools over the same turn's armies rather than competing for
     // one pick (see AiTask's own class comment), can share this one pool instead of each keeping
     // a parallel claim-tracker: Decide claims every in-flight AiTask's own army up front, and each
-    // "start a NEW task" candidate-gatherer (TryStartVisitCandidatesFor, TryStartScoutResource
+    // "start a NEW task" candidate-gatherer (TryStartVisitCandidates, TryStartScoutResource
     // Candidates) reads AvailableArmies() to decide who's even eligible to propose a candidate for
     // — the actual ClaimArmy call itself is deferred to Decide's own Commit step, only for
     // whichever single candidate wins the step's arbitration (see AiTurnController's own Commit
