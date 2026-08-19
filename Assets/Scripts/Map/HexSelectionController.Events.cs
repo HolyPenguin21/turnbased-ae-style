@@ -53,6 +53,9 @@ namespace Game.Map
             if (armyInfoPanel != null) armyInfoPanel.Hide();
             if (armyButtonRow != null) armyButtonRow.Hide();
 
+            // Return value unused here — this caller never Hide()s the battle screen itself
+            // afterward, so it has no clobbered-callback risk to guard against (see
+            // TriggerHexEventIfClear's own comment for the caller that does).
             ShowEventChoice(mover, hex, entry, onSkip: () => ResolveEventSkip(mover, finalDestination, moverController));
         }
 
@@ -68,32 +71,55 @@ namespace Game.Map
         // already chosen once (see ResolveEventExplore) and THIS fight was that choice's own guard
         // fight — nothing left to ask, the reward just pays out, matching the manual's own
         // "guarded → fight → reward" sequence with no extra click in between.
-        public void TriggerHexEventIfClear(HexCoord hex, ArmyData survivor)
+        // Return value: true only when this call synchronously opened (or reopened) the battle
+        // screen for a guard fight (see ResolveEventExplore's own return) — BattleScreenUI.
+        // Combat.cs's ResolveHexAfterVictory (this method's only non-BeginCleanHexEvent caller)
+        // needs to know that, since it would otherwise fall through to its own Hide() right after
+        // this returns, tearing down the fight this call just reentrantly opened on the SAME
+        // battleScreen instance and losing whatever completion callback the ORIGINAL battle
+        // (the one that just triggered this event) was still counting on _onClosed to fire — see
+        // BattleScreenUI.Show's single shared _onClosed field, clobbered by the second Show() call
+        // before the first ever gets a chance to invoke it (the project owner's own report,
+        // 2026-08-16: an AI army's win over a neutral guarding this exact event hung the turn
+        // loop, because ResolveDelayedBattlesThen's own WaitUntil(() => closed) never saw its
+        // closure fire). BeginCleanHexEvent (the other caller) never Hide()s the battle screen
+        // itself, so it has no need for this and just discards it.
+        public bool TriggerHexEventIfClear(HexCoord hex, ArmyData survivor)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
             if (entry == null || entry.Consumed || survivor?.Owner == null)
-                return;
+                return false;
 
             if (entry.Triggered)
             {
                 GrantEventReward(hex, survivor);
-                return;
+                return false;
             }
 
-            ShowEventChoice(survivor, hex, entry, onSkip: () => { });
+            return ShowEventChoice(survivor, hex, entry, onSkip: () => { });
         }
 
         // Shared by BeginCleanHexEvent (hex-entry trigger) and TriggerHexEventIfClear (post-battle,
         // "collision hex just went clear" trigger) — the only difference between the two is what
         // "Skip" means for that caller (continue a queued move vs. simply leave the event
-        // untouched for a later visit), so onSkip is the one thing left for each to supply.
-        private void ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip)
+        // untouched for a later visit), so onSkip is the one thing left for each to supply. Return
+        // value — see TriggerHexEventIfClear's own comment for why this matters at all: true only
+        // for the AI/Neutral branch's own ResolveEventExplore actually opening a guard fight right
+        // now; the human branch always returns false since eventChoicePopup resolves asynchronously
+        // (by the time a human clicks Explore, whatever battle triggered this has long since
+        // Hide()-d safely on its own).
+        private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip)
         {
             if (mover.Owner != null && mover.Owner.IsHuman && eventChoicePopup != null)
             {
                 eventChoicePopup.Show(mover, entry.Definition,
                     onExplore: () => ResolveEventExplore(mover, hex, entry),
-                    onSkip: onSkip);
+                    // Marked right here, ahead of the caller's own onSkip (BeginCleanHexEvent's
+                    // move-continuation vs. TriggerHexEventIfClear's no-op) — see
+                    // HexEventRegistry.MarkSkipped for why this is the one place both the human
+                    // and AI decline branches below funnel through.
+                    onSkip: () => { HexEventRegistry.MarkSkipped(hex); onSkip(); });
+                return false;
             }
             else
             {
@@ -103,9 +129,10 @@ namespace Game.Map
                 bool shouldExplore = AiEventPlanner.ShouldExplore(mover, entry);
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} — {(shouldExplore ? "accepted" : "declined")}.");
                 if (shouldExplore)
-                    ResolveEventExplore(mover, hex, entry);
-                else
-                    onSkip();
+                    return ResolveEventExplore(mover, hex, entry);
+                HexEventRegistry.MarkSkipped(hex);
+                onSkip();
+                return false;
             }
         }
 
@@ -117,7 +144,10 @@ namespace Game.Map
         // later, unrelated one on the same hex once it ends. A guardless event skips straight to
         // the reward; a guarded one spawns its guard fresh, right now (see SpawnEventGuard's own
         // comment on why it was never spawned any earlier than this).
-        private void ResolveEventExplore(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry)
+        // Return value — see ShowEventChoice/TriggerHexEventIfClear's own comments: true only when
+        // this call just opened a fresh guard fight on battleScreen (the two GrantEventReward
+        // branches never touch battleScreen at all, so false is always correct for them).
+        private bool ResolveEventExplore(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry)
         {
             foreach (UnitData member in mover.Members)
                 member.MoveCurrent = 0;
@@ -126,14 +156,14 @@ namespace Game.Map
             if (entry.ResolvedGuardMembers == null || entry.ResolvedGuardMembers.Count == 0)
             {
                 GrantEventReward(hex, mover);
-                return;
+                return false;
             }
 
             ArmyData guard = SpawnEventGuard(hex, entry);
             if (guard == null) // every member entry failed to resolve — nothing to actually fight
             {
                 GrantEventReward(hex, mover);
-                return;
+                return false;
             }
 
             var participants = new List<ArmyData> { mover, guard };
@@ -144,6 +174,7 @@ namespace Game.Map
                 battleScreen?.BeginCaptureKillEncounter(mover, guard, null);
             else
                 battleScreen?.Show(hex, participants, null);
+            return true;
         }
 
         // Builds `entry`'s own guard as a fresh ArmyData, right now — the only place one of these
@@ -172,7 +203,8 @@ namespace Game.Map
                     UnitData spawned = SpawnUnit(card.displayName, entry.GuardOwner, card.moveMax,
                         card.activationApCost, card.cardType == CardType.Hero, card.commandRating, card.art,
                         card.grantedAbilities, card.attack, card.range, card.hitPoints, card.initiative, card.fate,
-                        card.defenseRating, card.resistanceRating, card.unitTypeTags, card.detailArt);
+                        card.defenseRating, card.resistanceRating, card.unitTypeTags, card.detailArt,
+                        card.apCost, card.resourceCost);
                     if (spawned != null)
                         guard.AddMemberSorted(spawned);
                 }

@@ -74,7 +74,7 @@ namespace Game.UI
         }
 
         // Same idea as SetGarrisonButtonVisible, for BaseViewerModalUI — visible whenever this
-        // hex's building is tagged BuildingAbilities.Base and owned by the current player (see
+        // hex's building is tagged UnitAbilities.Base and owned by the current player (see
         // HexSelectionController.SelectHex).
         public void SetBaseButtonVisible(bool visible, Action onClick)
         {

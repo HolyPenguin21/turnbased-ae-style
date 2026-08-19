@@ -57,6 +57,21 @@ namespace Game.Map
         // check is simpler than adding one just for this.
         [SerializeField] private float armyMarkerClickRadius = 30f;
 
+        // AiTurnController.MoveArmyRoutine's own wait signal — a contact-triggered fight now
+        // resolves immediately instead of deferring to end of turn (see Movement.cs's own
+        // onComplete comment), but battleScreen.Show() only kicks the whole fight off
+        // asynchronously from there (grid combat rounds, any chained second/third fight on the
+        // same hex, a Hex Event's own guard fight, a Capture Kill Challenge — all still the SAME
+        // battleScreen instance, see BattleScreenUI.Combat.cs's own ResolveHexAfterVictory
+        // chaining, and BattleScreenUI.IsShowing already folds the Capture Kill popup in too).
+        // Deliberately narrower than GameTurnController.InputBlocked, which also folds in
+        // armyViewerModal — the AI's own MoveArmyRoutine keeps that open (read-only) for the
+        // whole duration of its own move, so waiting on InputBlocked here would deadlock against
+        // the AI's own debug visualization instead of the battle it's actually meant to wait for
+        // (the project owner's own report, 2026-08-16: other AI armies kept acting while a fight
+        // was still playing out on screen).
+        public bool IsBattleActive => battleScreen != null && battleScreen.IsShowing;
+
         // The army (if any) currently playing its selected-hover animation and eligible for
         // move orders — tracked so selecting a different hex stops it, instead of leaving it
         // animating (or receiving right-click orders) forever.
@@ -331,7 +346,7 @@ namespace Game.Map
             if (ownRepresentative != null && Vector2.Distance(targetCamera.WorldToScreenPoint(ownRepresentative.Controller.transform.position), screenPosition) <= armyMarkerClickRadius)
             {
                 BuildingData building = BuildingRegistry.FindAt(hex);
-                bool hasBarracks = building != null && building.Owner == human && building.HasAbility(BuildingAbilities.Barracks);
+                bool hasBarracks = building != null && building.Owner == human && building.HasAbility(UnitAbilities.Barracks);
                 if (hasBarracks)
                 {
                     ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, human);
@@ -436,7 +451,7 @@ namespace Game.Map
                 // the only army here, which is otherwise unreachable (see the Army-only-
                 // movement plan: a lone unit sits in the garrison, which can't move, until
                 // it's sorted into a real army from this modal).
-                bool isOwnBarracks = isOwn && buildingHere.HasAbility(BuildingAbilities.Barracks);
+                bool isOwnBarracks = isOwn && buildingHere.HasAbility(UnitAbilities.Barracks);
                 ArmyData garrisonForButton = isOwnBarracks ? ArmyRegistry.FindGarrisonAt(coord, owner) : null;
                 infoPanel.SetGarrisonButtonVisible(garrisonForButton != null, () => ShowArmyModal(garrisonForButton));
 
@@ -445,7 +460,7 @@ namespace Game.Map
                 // CardType.Base card, see SpawnBuilding) OR a hero-built resource site (see
                 // TryBuildExtractionFacility, identified by HasTieredUnlock=false rather than a
                 // separate tag) — both use the exact same modal.
-                bool isOwnBase = isOwn && (buildingHere.HasAbility(BuildingAbilities.Base) || !buildingHere.HasTieredUnlock);
+                bool isOwnBase = isOwn && (buildingHere.HasAbility(UnitAbilities.Base) || !buildingHere.HasTieredUnlock);
                 BuildingData baseForButton = isOwnBase ? buildingHere : null;
                 infoPanel.SetBaseButtonVisible(baseForButton != null, () => ShowBaseModal(baseForButton));
             }
@@ -539,7 +554,7 @@ namespace Game.Map
                     int yield = effectiveYields.Get(type);
                     if (yield <= 0)
                         continue;
-                    string ability = BuildingAbilities.CollectAbilityFor(type);
+                    string ability = UnitAbilities.CollectAbilityFor(type);
                     if (buildingHere != null && buildingHere.HasFacilityWithAbility(ability))
                         continue;
                     int alreadyCollected = buildingHere != null ? buildingHere.CollectedAmount(type) : 0;
@@ -747,13 +762,25 @@ namespace Game.Map
                 if (controller == null)
                     continue;
 
+                // A neutral army never moves on its own (see SpawnNeutralArmy/SpawnEventGuard —
+                // both place it once and never relocate it again), so once a viewer has actually
+                // seen it, remembering it there can never go stale the way remembering a real
+                // player's army would — same "remembered once seen" exception the resource row
+                // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
+                bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
                 bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
-                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex));
+                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex) || everSeenNeutral);
                 if (controller.Visual != null)
                 {
                     controller.Visual.SetVisible(visible);
                     if (visible)
-                        controller.Visual.SetIcon(gameConfig.armyIconSprite);
+                    {
+                        FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                            ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
+                            : null;
+                        if (ownerCatalog != null && ownerCatalog.armyIcon != null)
+                            controller.Visual.SetIcon(ownerCatalog.armyIcon);
+                    }
                 }
 
                 if (controller == exclude || controller.IsMoving)
@@ -818,7 +845,7 @@ namespace Game.Map
         // Whoever owns the building at this hex (citadel or a player-built Base alike) — there's
         // still no territory/zone-of-control system, so "owns this hex" and "owns the building
         // here" are the same question. Delegates to BuildingRegistry rather than only matching
-        // each player's own citadel coordinates, now that BuildingAbilities.Base buildings can
+        // each player's own citadel coordinates, now that UnitAbilities.Base buildings can
         // exist anywhere a Base card gets played, not just on the starting citadel hex.
         private static PlayerSetupData FindOwnerAt(HexCoord coord)
         {

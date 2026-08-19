@@ -299,16 +299,11 @@ namespace Game.UI
             // opposing army is passed only for its current STATS (see ArrangeArmy's own
             // comment), never its placement — both sides' arrangement happens in this same call,
             // before either one has a layout to look at.
+            AbilityMagnitudes arrangeMagnitudes = attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default;
             if (_attacker?.Owner != null && !_attacker.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, _defender,
-                    attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
-                    attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
-                    attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
+                BattleAi.ArrangeArmy(_grid, _attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, _defender, arrangeMagnitudes);
             if (_defender?.Owner != null && !_defender.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, _attacker,
-                    attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
-                    attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
-                    attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
+                BattleAi.ArrangeArmy(_grid, _defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, _attacker, arrangeMagnitudes);
 
             _localArmy = null;
             if (_attacker?.Owner != null && _attacker.Owner.IsHuman)
@@ -458,13 +453,21 @@ namespace Game.UI
             if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral)
                 return false;
 
+            // IsStartingCitadel, not UnitAbilities.IsFullCitadel — the "never retreat" rule has
+            // to key off the actual main/starting citadel (the one building whose loss ends the
+            // game for this owner, see BuildingData.IsStartingCitadel's own comment), not off
+            // "has all 4 resource-collection facilities built". Per the user's own report: an AI
+            // army retreated OUT of its own main citadel because IsFullCitadel doesn't require
+            // IsStartingCitadel at all (a citadel not yet fully upgraded with every facility type
+            // failed this check, and a random fully-upgraded Base elsewhere would have wrongly
+            // PASSED it) — either way the wrong building decided whether retreat was allowed,
+            // when retreating out of the actual main citadel is never sensible: losing it loses
+            // the game outright.
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            bool defendingOwnCitadel = building != null && building.Owner == army.Owner && BuildingAbilities.IsFullCitadel(building);
+            bool defendingOwnCitadel = building != null && building.Owner == army.Owner && building.IsStartingCitadel;
 
             BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(_grid, army, enemy, defendingOwnCitadel,
-                attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
-                attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
-                attackPopup != null ? attackPopup.CeramicArmorReduction : 1);
+                attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default);
             _aiFavorableThisRound[army] = assessment.FavorableForAdvance;
             UnitData sideHero = BattleTurnOrder.FindHero(_grid, army == _attacker);
 
@@ -485,7 +488,7 @@ namespace Game.UI
 
         private void OnStartRoundClicked()
         {
-            _turnOrder = BattleTurnOrder.BuildOrder(_grid);
+            _turnOrder = BattleTurnOrder.BuildOrder(_grid, _attacker, _defender);
             // The retreating side gets no more actions this round (see _retreatingArmy's own
             // comment) — everyone else still acts normally, giving them one last chance to hit
             // the fleeing army before ResolveRetreat actually moves/destroys it at round's end.
@@ -594,10 +597,8 @@ namespace Game.UI
             ArmyData enemyArmy = ownArmy == _attacker ? _defender : _attacker;
             bool favorableFight = ownArmy != null && _aiFavorableThisRound.TryGetValue(ownArmy, out bool favorable) && favorable;
             BattleAi.AiAction action = BattleAi.ChooseAction(_grid, actor, _aiWaitStreak, ownArmy, enemyArmy,
-                attackPopup != null ? attackPopup.CriticalDamageMultiplier : 2f,
-                attackPopup != null ? attackPopup.HyperkineticBonusDamage : 2,
-                attackPopup != null ? attackPopup.CeramicArmorReduction : 1,
-                favorableFight);
+                attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
+                _turnOrder, _turnIndex, favorableFight);
             ShowAiThought(actor, action.Reason, action.Target?.Name);
 
             switch (action.Kind)

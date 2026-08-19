@@ -89,7 +89,8 @@ namespace Game.Map
             var spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt);
+                definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt,
+                definition.apCost, definition.resourceCost);
             if (spawned == null)
             {
                 failReason = $"Could not spawn {definition.displayName}.";

@@ -14,10 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Core.GameConfig
   buildingMarkerPrefab: {fileID: 100002, guid: b68af2d021920d243a72bb50ac508be7, type: 3}
   armyMarkerPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
+  eventMarkerPrefab: {fileID: 1514539978742884714, guid: 55c207a3e28f969499cd6921199964be, type: 3}
+  eventIconOffset: {x: 0.4, y: -0.5}
   buildingIconOffset: {x: -0.25, y: -0.15}
   armyIconOffset: {x: 0.4, y: -0.3}
   twoArmySideOffset: {x: 0.375, y: 0}
   mapSortingOrder: 0
+  eventIconSortingOrder: 1
   buildingCircleSortingOrder: 3
   buildingIconSortingOrder: 4
   armyCircleSortingOrder: 9
@@ -206,48 +209,36 @@ MonoBehaviour:
   resourceSiteResistance: 1
   resourceSiteFate: 1
   abilityAbbreviations:
-  - ability: Barracks
-    abbreviation: Barracks
-    fullName: 
-  - ability: Base
-    abbreviation: Base
-    fullName: 
-  - ability: Lab
-    abbreviation: Lab
-    fullName: 
-  - ability: CollectHuman
-    abbreviation: cH
-    fullName: 
-  - ability: CollectEnergy
-    abbreviation: cE
-    fullName: 
-  - ability: CollectMaterials
-    abbreviation: cM
-    fullName: 
-  - ability: CollectTech
-    abbreviation: cT
-    fullName: 
   - ability: CriticalDamage
     abbreviation: Crit x2
-    fullName: 
   - ability: CeramicArmor
     abbreviation: cArmor
-    fullName: 
   - ability: Berserk
     abbreviation: Bers
-    fullName: 
   - ability: RapidReaction
     abbreviation: Rapid
-    fullName: 
   - ability: ShockAttack
     abbreviation: Shock
-    fullName: 
   - ability: Hyperkinetic
     abbreviation: Hyper +2
-    fullName: 
+  - ability: Pyrokinetic
+    abbreviation: Pyro +2
   - ability: Recce
     abbreviation: Recce
-    fullName: 
+  - ability: Barracks
+    abbreviation: Barracks
+  - ability: Base
+    abbreviation: Base
+  - ability: Lab
+    abbreviation: Lab
+  - ability: CollectHuman
+    abbreviation: cH
+  - ability: CollectEnergy
+    abbreviation: cE
+  - ability: CollectMaterials
+    abbreviation: cM
+  - ability: CollectTech
+    abbreviation: cT
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   regionHighlightStyle:

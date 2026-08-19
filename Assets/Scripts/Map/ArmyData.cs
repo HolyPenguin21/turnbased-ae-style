@@ -68,7 +68,7 @@ namespace Game.Map
         // that hero's own CommandRating overrides both. Hard cap — no overflow-with-penalty
         // like the original (see project_armageddon_army_mechanic memory: user explicitly
         // dropped the soft-cap penalty). This is the nominal/target number — governs whether
-        // something new may be ADDED (HasRoom, AiManagementPlanner.FindGarrisonOverflow's
+        // something new may be ADDED (HasRoom, GarrisonReorgTask.FindGarrisonOverflow's
         // "shrink back toward this size" target) — NOT how many of the current Members are
         // shown; see EffectiveCapacity for that.
         private const int BaseCapacity = 2;

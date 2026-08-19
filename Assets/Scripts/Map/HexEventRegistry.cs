@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Game.Cards;
 using Game.HexGrid;
@@ -45,9 +46,24 @@ namespace Game.Map
             // to ask.
             public bool Triggered;
             public List<(RewardEntry reward, CardDefinition card)> ResolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
+            // Set once the player (or AI) leaves this event unresolved via Skip (see
+            // HexSelectionController.Events.cs's own ShowEventChoice) — drives MapEventDisplay's
+            // standalone marker: never shown before this (an undiscovered event has no map
+            // presence at all), and once true, remembered forever the same "seen once, never
+            // re-hidden" way the resource row already is (see VisionSystem.
+            // HasEverSeenByCurrentViewer). Exploring straight through on the very first visit
+            // never needs a marker at all — the event is usually already Consumed by the time
+            // fog would matter again.
+            public bool Skipped;
         }
 
         private static readonly Dictionary<HexCoord, Entry> ByHex = new Dictionary<HexCoord, Entry>();
+
+        // Fired the moment MarkSkipped/MarkConsumed actually change an entry — MapEventDisplay's
+        // own subscription is what actually spawns/despawns the on-map marker; kept here rather
+        // than as a bool other code has to poll, same reasoning as VisionSystem.VisibilityChanged.
+        public static event Action<HexCoord> EventSkipped;
+        public static event Action<HexCoord> EventConsumed;
 
         public static void Clear()
         {
@@ -86,7 +102,21 @@ namespace Game.Map
         public static void MarkConsumed(HexCoord hex)
         {
             if (ByHex.TryGetValue(hex, out Entry entry))
+            {
                 entry.Consumed = true;
+                EventConsumed?.Invoke(hex);
+            }
+        }
+
+        // "Пропустить" — see ShowEventChoice's own comment for why this fires from both the
+        // human Skip button and the AI's own decline branch alike.
+        public static void MarkSkipped(HexCoord hex)
+        {
+            if (ByHex.TryGetValue(hex, out Entry entry) && !entry.Skipped)
+            {
+                entry.Skipped = true;
+                EventSkipped?.Invoke(hex);
+            }
         }
     }
 }

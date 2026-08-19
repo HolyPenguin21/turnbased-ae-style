@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
@@ -7,10 +8,10 @@ using UnityEngine;
 namespace Game.Map
 {
     // Plain data for one building on the map — same data/visual split as ArmyData/ArmyController.
-    // Abilities is a small open-ended tag set (see BuildingAbilities) rather than a building-type
+    // Abilities is a small open-ended tag set (see UnitAbilities) rather than a building-type
     // enum, since what a building can do is more naturally a set of tags than a rigid type
     // hierarchy. Doubles as the "Base" runtime record for BaseViewerModalUI (the citadel and any
-    // player-built Base are both just a BuildingData tagged BuildingAbilities.Base) — same role
+    // player-built Base are both just a BuildingData tagged UnitAbilities.Base) — same role
     // ArmyData plays for armies.
     public class BuildingData
     {
@@ -38,7 +39,7 @@ namespace Game.Map
         // does. That flag is the sole difference between the two.
         public bool IsStartingCitadel;
 
-        // --- Base stats (only meaningful on a BuildingAbilities.Base-tagged building) --------
+        // --- Base stats (only meaningful on a UnitAbilities.Base-tagged building) --------
 
         public int Level = 1;
         public int StructurePointsCurrent;
@@ -108,10 +109,10 @@ namespace Game.Map
         // Facility with that ability. Doesn't know about the hex's actual yield — callers cap
         // against that themselves. Shared by GameTurnController's actual per-turn collection AND
         // HexSelectionController's resource-action button visibility, so the two can never
-        // disagree about how much is already being collected (see BuildingAbilities.CollectAbilities).
+        // disagree about how much is already being collected (see UnitAbilities.CollectAbilities).
         public int CollectedAmount(ResourceType type)
         {
-            string ability = BuildingAbilities.CollectAbilityFor(type);
+            string ability = UnitAbilities.CollectAbilityFor(type);
             int amount = HasAbility(ability) ? 1 : 0;
             foreach (FacilityData facility in FacilitySlots)
                 if (facility != null && facility.HasAbility(ability))

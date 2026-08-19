@@ -16,12 +16,68 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   events:
-  - name: Abandoned warehouse(2)
-    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
+  - name: Oasis outpost
+    image: {fileID: 21300000, guid: a8ff5139211963a4ba9c4071e7ad163c, type: 3}
+    description: You found a dried-up oasis outpost, once a thriving desert trading
+      hub built around a deep well, now reduced to a circle of sun-bleached adobe
+      buildings and dead palm trees half-choked by the dunes.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 2
+        energy: 0
+        materials: 0
+        tech: 0
+      cardKey: 
+  - name: Solar farm
+    image: {fileID: 21300000, guid: b8125e3b9e589a2438d6e66d8c80f7e8, type: 3}
+    description: You found an abandoned solar farm stretching across miles of flat
+      desert, where tens of thousands of massive, black photovoltaic mirrors face
+      the sky like a silent, dead army.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 2
+        materials: 0
+        tech: 0
+      cardKey: 
+  - name: Crashed cargo blimp
+    image: {fileID: 21300000, guid: d3d2a7273506a574da64907964c0f68e, type: 3}
+    description: You found a crashed cargo blimp, a massive pre-war luxury airship
+      that deflated and draped its colossal, sun-bleached fabric hull over a cluster
+      of jagged desert rocks.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 0
+        materials: 2
+        tech: 0
+      cardKey: 
+  - name: Orbital satellite
+    image: {fileID: 21300000, guid: e110a89a93bed9345a939fd80bd2d6aa, type: 3}
+    description: You found a crashed orbital satellite that plummeted from the sky
+      years ago, carving a massive scar through the desert dunes and now resting
+      like a shattered titanium spear in the sand.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 0
+        materials: 0
+        tech: 2
+      cardKey: 
+  - name: Abandoned warehouse
+    image: {fileID: 21300000, guid: a220bd1f5f6eb7a4fbd3c515e0e6df1a, type: 3}
     description: 'An abandoned warehouse has been discovered: a decaying structure
       with a rusted sign and a heavy iron door sealed by a massive padlock. The air
       inside smells of dampness, machine oil, and centuries-old dust. Looks like
-      someone is inside: 2 targets'
+      someone is inside: 2 targets.'
     guardArmyName: Inhabitants
     rewards:
     - type: 0
@@ -38,12 +94,64 @@ MonoBehaviour:
         materials: 2
         tech: 0
       cardKey: Iron Concord/Scrapper
-  - name: Abandoned warehouse
-    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
-    description: 'An abandoned warehouse has been discovered: a decaying structure
-      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
-      inside smells of dampness, machine oil, and centuries-old dust. '
-    guardArmyName: 
+  - name: Concrete bunker
+    image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
+    description: 'Your group has discovered a massive reinforced concrete bunker
+      with a faded "Logistics & Supply" sign, hidden beneath the ruins of an old
+      highway. Looks like someone is inside: 2 targets.'
+    guardArmyName: Inhabitants
+    rewards:
+    - type: 0
+      resources:
+        human: 1
+        energy: 0
+        materials: 0
+        tech: 1
+      cardKey: 
+  - name: Resort settlement
+    image: {fileID: 21300000, guid: e899db11b325dca4abbf7d226647091f, type: 3}
+    description: 'You found a mirage town - a pre-war resort settlement entirely
+      constructed from heavy glass and polished steel, now half-buried by the desert
+      dunes and perfectly preserving a surreal, frozen moment in time. Looks like
+      someone is inside: 4 targets.'
+    guardArmyName: Nomads
+    rewards:
+    - type: 0
+      resources:
+        human: 1
+        energy: 1
+        materials: 1
+        tech: 0
+      cardKey: 
+  - name: Auto repair shop
+    image: {fileID: 21300000, guid: f182ac5c45a6b894ba60e907bc147d9e, type: 3}
+    description: 'Your combat group has stumbled upon a collapsed auto repair shop
+      with a rusted, half-open roller shutter. Inside, the skeleton of an old pickup
+      truck rests on a mechanical lift, frozen in time, providing temporary cover
+      for your squad. Looks like someone is inside: 3 targets.'
+    guardArmyName: Desert striders
+    rewards:
+    - type: 0
+      resources:
+        human: 1
+        energy: 1
+        materials: 1
+        tech: 0
+      cardKey: 
+    - type: 1
+      resources:
+        human: 0
+        energy: 0
+        materials: 1
+        tech: 0
+      cardKey: Iron Concord/RC Vehicle
+  - name: Nuclear silo
+    image: {fileID: 21300000, guid: 26e3f7db440643843a22bba89cad625f, type: 3}
+    description: 'You found a sunken nuclear silo whose massive concrete dome cracked
+      and sunk halfway into a dry desert lakebed, leaving the gaping missile hatch
+      exposed to the sky like a hollow stone well. Looks like someone is inside:
+      3 targets.'
+    guardArmyName: Brutes
     rewards:
     - type: 0
       resources:
@@ -52,17 +160,109 @@ MonoBehaviour:
         materials: 1
         tech: 1
       cardKey: 
-  - name: Abandoned warehouse
-    image: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
-    description: 'An abandoned warehouse has been discovered: a decaying structure
-      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
-      inside smells of dampness, machine oil, and centuries-old dust. '
+  - name: Research bunker
+    image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
+    description: 'Your combat group has halted before a heavily fortified, underground
+      research bunker, its entrance disguised as an ordinary sewer treatment substation.
+      Looks like someone is inside: 1 target. '
+    guardArmyName: Brutes
+    rewards:
+    - type: 0
+      resources:
+        human: 2
+        energy: 0
+        materials: 1
+        tech: 1
+      cardKey: 
+    - type: 1
+      resources:
+        human: 2
+        energy: 0
+        materials: 1
+        tech: 1
+      cardKey: Neutral/Wrecker
+  - name: Factory
+    image: {fileID: 21300000, guid: 5b8041f5d35ba1445b31169b8b12c6e0, type: 3}
+    description: Your combat group has secured the perimeter of a sprawling, monolithic
+      manufacturing plant with collapsed brick walls and towering, dead smokestacks.
+      The heavy steel blast doors have been breached by past artillery fire, opening
+      a path into the shadowy, cavernous assembly floor.
     guardArmyName: 
     rewards:
     - type: 0
       resources:
         human: 1
+        energy: 1
+        materials: 2
+        tech: 1
+      cardKey: 
+  - name: Airplane boneyard
+    image: {fileID: 21300000, guid: 163172a6c2e2e93409c7f956e041a13a, type: 3}
+    description: You found a sprawling airplane boneyard on the edge of the desert,
+      where the skeletal remains of commercial airliners and military transport jets
+      sit half-buried in the shifting sands.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
         energy: 0
+        materials: 1
+        tech: 1
+      cardKey: 
+  - name: Tunnel
+    image: {fileID: 21300000, guid: 705ae8d5867e0f349a77e77ee190e92b, type: 3}
+    description: 'You found a blocked mountain tunnel that once served as a major
+      trade route, now choked with a massive pile-up of rusted cars, armored transport
+      trucks, and collapsed granite boulders. Looks like someone is inside: 2 targets.'
+    guardArmyName: Inhabitants
+    rewards:
+    - type: 0
+      resources:
+        human: 2
+        energy: 0
+        materials: 1
+        tech: 0
+      cardKey: 
+  - name: Train station
+    image: {fileID: 21300000, guid: 334db0f20a20a304390f75bc764d8e33, type: 3}
+    description: You found a buried train station in the heart of the desert, where
+      a high-speed railway line has been completely swallowed by shifting sand dunes,
+      leaving only the concrete roof structure visible above the surface.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 1
+        materials: 1
+        tech: 0
+      cardKey: 
+  - name: Oil refinery
+    image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
+    description: You found an abandoned oil refinery shimmering in the desert heat,
+      its twisted maze of pipelines, massive storage tanks, and rusted cracking towers
+      surrounded by a sea of black, hardened sludge.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 0
+        energy: 2
         materials: 0
+        tech: 0
+      cardKey: 
+  - name: "\u0421asino resort"
+    image: {fileID: 21300000, guid: e0d33263f0ad6694594ce8ba63bbd50b, type: 3}
+    description: You found a looted casino resort rising from the desert dunes like
+      a neon-lit ghost town, its massive glass towers shattered and its grand entrance
+      half-buried in the shifting sands.
+    guardArmyName: 
+    rewards:
+    - type: 0
+      resources:
+        human: 1
+        energy: 1
+        materials: 1
         tech: 1
       cardKey: 

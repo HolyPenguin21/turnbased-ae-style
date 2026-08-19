@@ -181,7 +181,7 @@ namespace Game.UI
                         if (map != null && map.TryGetTerrainAt(army.Hex, out TerrainTypeEntry terrain))
                             terrainDefMod = terrain.defenseModifier;
                         BuildingData building = BuildingRegistry.FindAt(army.Hex);
-                        if (building != null && building.HasAbility(BuildingAbilities.Base))
+                        if (building != null && building.HasAbility(UnitAbilities.Base))
                             buildingDefMod = building.Defense;
                     }
 

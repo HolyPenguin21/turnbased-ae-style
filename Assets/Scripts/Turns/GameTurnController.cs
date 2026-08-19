@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Cameras;
+using Game.Cards;
 using Game.Combat;
 using Game.Core;
 using Game.Economy;
@@ -42,6 +43,23 @@ namespace Game.Turns
         // an AI turn play out through that AI's own VisionSystem set. Inspector checkbox for now,
         // per the owner's own call — may become a real pre-game setup option later.
         [SerializeField] private bool debugFollowAiVision;
+
+        // Dev-only: reveals every hex to whichever human is VisionSystem.CurrentViewer, as if
+        // they'd stood on it — the project owner's own request to click straight onto an AI's
+        // citadel and read its army compositions while testing, without having to actually scout
+        // there first. Editor Inspector checkbox during Play Mode only, same convention as
+        // debugFollowAiVision right above — no in-game UI. Purely a render-side override (see
+        // VisionSystem.DebugRevealAll's own comment): it short-circuits only the CurrentViewer-
+        // facing read paths (IsVisibleToCurrentViewer/IsVisitedByCurrentViewer/
+        // HasEverSeenByCurrentViewer), never touches any player's own Visible/Visited/EverSeen
+        // sets — so it can never leak into what an AI itself perceives (AiMapMemory reads those
+        // sets directly, not through CurrentViewer — see VisionSystem's own class comment).
+        [SerializeField] private bool debugRevealFogOfWar;
+
+        private void OnValidate()
+        {
+            VisionSystem.DebugRevealAll = debugRevealFogOfWar;
+        }
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
         // the citadel yield bonus) — everything else in this controller is pure turn
@@ -194,6 +212,10 @@ namespace Game.Turns
 
         private void OnEnable()
         {
+            // OnValidate already applies this on every Inspector edit, but that never fires on a
+            // plain scene load/Play Mode entry with the checkbox left untouched — this covers
+            // that startup case too.
+            VisionSystem.DebugRevealAll = debugRevealFogOfWar;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
@@ -322,6 +344,17 @@ namespace Game.Turns
                 endTurnButton.interactable = TurnConfirmed && !InputBlocked;
         }
 
+        // The same physical Enter press that just dismissed TurnInfoPopupUI's "Your turn, X"
+        // popup — Unity's own Submit action fires on Enter too, straight to whichever Selectable
+        // is currently selected, entirely separate from TurnInfoPopupUI's own Update (that one
+        // only polls Space, see its own comment) — must never ALSO end the turn below in that
+        // same frame. OnTurnConfirmed flips endTurnButton.interactable to true synchronously as
+        // part of handling that Submit, so without this guard the Enter-key poll right below sees
+        // an already-interactable button and a still-true wasPressedThisFrame for the very same
+        // keypress, ending the turn before the player ever got to act on it (see the user's own
+        // report: one Enter both dismissed the turn-start message and skipped the turn outright).
+        private int _turnConfirmedFrame = -1;
+
         // Enter ends the human's turn whenever the button itself would currently accept a
         // click — active AND interactable, so this can't fire during an AI/Neutral pass or
         // before the button's own listener is wired up for the new current player. Only the
@@ -341,6 +374,8 @@ namespace Game.Turns
             // actually confirmed pressed, not every frame — the EventSystem/GetComponent
             // lookup isn't free.
             if (UIFocusUtility.IsTextFieldFocused())
+                return;
+            if (_turnConfirmedFrame == Time.frameCount)
                 return;
             OnEndTurnClicked();
         }
@@ -368,19 +403,23 @@ namespace Game.Turns
         // Every player has just passed (Neutral's own fixed last slot in phase 2 — see
         // BeginPlayerTurn) — exactly when the manual's Delay Attack says a delayed battle
         // actually starts. Drained here, one at a time, before the new round's dice-off gets a
-        // chance to run — see ResolveDelayedBattlesThen.
+        // chance to run — see ResolveDelayedBattlesThen. Always starts the coroutine, even with
+        // an empty DelayedBattleRegistry — ResolveDelayedBattlesThen's own loop already falls
+        // back to TryFindNextContestedBattle in that case, which is the ONLY place that sweeps
+        // for a leftover contested hex nobody ever explicitly Delayed (e.g. a hero that Escaped
+        // a Capture Kill Challenge started via direct Fight contact — the hunter army just stays
+        // parked on its hex, never queued in DelayedBattleRegistry at all). Gating the coroutine
+        // itself behind HasAny, like this used to, skipped that fallback sweep entirely whenever
+        // no EXPLICIT delay was pending, leaving a stuck pair like that coexisting forever — the
+        // enemy-present check in RefreshResourceActionRow then keeps that hex's own extraction
+        // Facility action permanently unavailable, since nothing ever forces the standoff to a
+        // conclusion (see the user's own report).
         private void BeginNewTurn()
         {
             if (_gameOver)
                 return;
 
-            if (DelayedBattleRegistry.HasAny)
-            {
-                StartCoroutine(ResolveDelayedBattlesThen(ProceedWithNewTurn));
-                return;
-            }
-
-            ProceedWithNewTurn();
+            StartCoroutine(ResolveDelayedBattlesThen(ProceedWithNewTurn));
         }
 
         private IEnumerator ResolveDelayedBattlesThen(Action onDone)
@@ -414,8 +453,19 @@ namespace Game.Turns
                 if (!IsStillAGenuineBattle(battle))
                     continue;
 
+                // ShowResolved only makes sense when a human is actually there to click its own
+                // "Continue" button — same human-only gating every other contact point in this
+                // project already applies (see HexSelectionController.Movement.cs's own onFight/
+                // onDelay branch). Ordinary AI-vs-Neutral contact no longer reaches this drain at
+                // all (it fights immediately on contact now — see that same branch's own comment),
+                // but TryFindNextContestedBattle's own fallback sweep just above can still surface
+                // a leftover pairing with no human on either side (its own comment: e.g. a hero
+                // that Escaped a Capture Kill Challenge). Without this check that used to wait on a
+                // click nobody was ever going to make — the exact same hang, just through a rarer
+                // door.
                 bool acknowledged = false;
-                if (battleContactPopup != null)
+                bool anyHuman = battle.Participants.Any(a => a.Owner != null && a.Owner.IsHuman);
+                if (battleContactPopup != null && anyHuman)
                     battleContactPopup.ShowResolved(battle.Hex, battle.Participants, () => acknowledged = true);
                 else
                     acknowledged = true;
@@ -606,7 +656,7 @@ namespace Game.Turns
         // indefinitely, which is exactly the "shared with an enemy" case this guard exists for.
         private static void CollectArmyIncomeAt(HexCoord hex, ResourceType type, int remaining)
         {
-            string ability = BuildingAbilities.CollectAbilityFor(type);
+            string ability = UnitAbilities.CollectAbilityFor(type);
 
             foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
             {
@@ -751,7 +801,6 @@ namespace Game.Turns
             {
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(player);
-                LogAiGoal(player);
                 // debugFollowAiVision's hand/resources half (see ShowAiHandDebug/ShowRootDebug's
                 // own comments) — shown before RunTurn starts so both are already visible for the
                 // very first decision; the hand stays live via ctx.HumanCardHandUI's own refresh
@@ -762,24 +811,9 @@ namespace Game.Turns
                 if (debugFollowAiVision)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
-                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig);
+                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig, TurnNumber);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
-        }
-
-        // Stage 1 of the AI architecture doc (goal scoring) — this call itself is still only for
-        // visibility (PickBest's own top pick, independent of whatever AiTurnController.RunTurn
-        // below ends up doing). ExpandEconomy is currently the only AiGoalKind, and the one goal
-        // actually wired into AiTurnController's own unified per-step arbiter (see
-        // AiTurnController.EconomyBaseWeight's own class comment) via AiGoalScorer.
-        // ScoreExpandEconomyHex, not through PickBest here — see AiGoalScorer's own class comment
-        // for why DefendBorder/DestroyEnemyCitadel/HuntExposedHero were removed rather than left
-        // as log-only. Debug.Log only, per the user's own call — no in-game UI for this yet.
-        private static void LogAiGoal(PlayerSetupData player)
-        {
-            AiGoal goal = AiGoalScorer.PickBest(player);
-            if (goal != null)
-                AiDebugLog.Write($"[AI] {player.Nickname}: {goal.Kind} (score {goal.Score:0.0}) — {goal.Description}");
         }
 
         // Fired by TurnInfoPopupUI's Confirm button — the only thing that actually lets the
@@ -788,6 +822,7 @@ namespace Game.Turns
         private void OnTurnConfirmed()
         {
             TurnConfirmed = true;
+            _turnConfirmedFrame = Time.frameCount;
             if (endTurnButton != null)
                 endTurnButton.interactable = true;
             if (turnInfoPopup != null)

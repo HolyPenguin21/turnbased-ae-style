@@ -40,7 +40,10 @@ namespace Game.UI
         [SerializeField] private TMP_Text detailText;
         [SerializeField] private RenameArmyPopupUI renamePopup;
         [SerializeField] private GameConfig gameConfig;
-        [SerializeField] private FactionCardCatalog catalog;
+        // Resolved per-owner via ResolveCatalog (GetCatalog(owner.Faction)) rather than a fixed
+        // reference — this modal is shared across every player's armies, human or AI, whichever
+        // faction each one picked in setup (see CardHandUI's identical per-player resolution).
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         [SerializeField] private GameTurnController turnController;
         // Only needed for CreateArmyMarker (a freshly created army needs its own map marker —
         // see Game.Map.ArmyController) and RestackArmiesOn (moving a unit between armies here
@@ -304,6 +307,29 @@ namespace Game.UI
             }
         }
 
+        // Read by ArmyUnitCardUI.OnPointerEnter to decide whether to reveal its own Repair
+        // button — read-only view (someone else's army) never offers it, same as dragging.
+        public bool CanRepairUnit(UnitData unit) =>
+            !IsReadOnly && _currentArmy != null && UnitRepair.IsWounded(unit) && UnitRepair.CanRepairAt(_currentArmy.Hex, _currentArmy.Owner);
+
+        // Called by ArmyUnitCardUI's Repair button — same "afford-check, hint-on-fail, spend,
+        // refresh" shape as BaseViewerModalUI.UpgradeBase/RepairBase, except the actual spend+heal
+        // transaction lives in UnitRepair.TryRepair so Game.Ai.AiManagementPlanner's own repair
+        // routine can call the identical logic instead of duplicating it here.
+        public void RepairUnit(UnitData unit)
+        {
+            if (_currentArmy == null)
+                return;
+            PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
+            if (!UnitRepair.TryRepair(unit, _currentArmy.Hex, root, out string failReason))
+            {
+                turnController?.ShowSpawnHint(failReason);
+                return;
+            }
+            RefreshGrid();
+            ShowUnitDetail(unit);
+        }
+
         // Called by ArmyUnitCardUI.OnBeginDrag, before the card starts following the pointer —
         // snapshots the current roster order as the scratch list PreviewReorder live-edits, so
         // dragging can show the eventual result without touching _currentArmy.Members until the
@@ -496,8 +522,15 @@ namespace Game.UI
             return row * columns + col;
         }
 
+        // Owner is null for Neutral (see GameTurnController.ReplenishMoveForOwner's own
+        // comment) and for a read-only view of an army whose owner hasn't loaded a deck —
+        // callers fall back to null/empty in either case rather than guessing a faction.
+        private FactionCardCatalog ResolveCatalog(Game.Players.PlayerSetupData owner) =>
+            owner != null && startingDeckCatalog != null ? startingDeckCatalog.GetCatalog(owner.Faction) : null;
+
         private void RefreshTitle()
         {
+            FactionCardCatalog catalog = _currentArmy != null ? ResolveCatalog(_currentArmy.Owner) : null;
             if (factionLogo != null)
             {
                 factionLogo.sprite = catalog != null ? catalog.logo : null;
@@ -506,10 +539,8 @@ namespace Game.UI
             if (titleText != null)
             {
                 string armyName = _currentArmy != null ? _currentArmy.Name : string.Empty;
-                // Owner is null for Neutral (see GameTurnController.ReplenishMoveForOwner's own
-                // comment) — catalog is a fixed serialized reference to the human's own faction
-                // (this modal is shared, not swapped per-owner), so it would otherwise mislabel
-                // every Neutral army as "Iron Concord". Say "Neutral" instead of reading it.
+                // Neutral has no faction catalog to speak of — say "Neutral" instead of reading
+                // one, same as before.
                 string prefix;
                 if (_currentArmy != null && _currentArmy.Owner == null)
                 {
@@ -616,7 +647,7 @@ namespace Game.UI
                 terrainDefMod = terrain.defenseModifier;
             int buildingDefMod = 0;
             BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
-            if (building != null && building.HasAbility(BuildingAbilities.Base))
+            if (building != null && building.HasAbility(UnitAbilities.Base))
                 buildingDefMod = building.Defense;
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
@@ -638,7 +669,10 @@ namespace Game.UI
 
         private void CreateArmy()
         {
-            if (catalog == null || _currentArmy == null)
+            if (_currentArmy == null)
+                return;
+            FactionCardCatalog catalog = ResolveCatalog(_currentArmy.Owner);
+            if (catalog == null)
                 return;
 
             // Every army needs its own map marker (see Game.Map.ArmyController) — starts

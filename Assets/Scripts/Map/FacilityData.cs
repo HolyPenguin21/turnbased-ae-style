@@ -8,7 +8,7 @@ namespace Game.Map
     // equivalent for a placed Facility, but far smaller: Facilities have no behavior yet (see
     // CardHandUI.TryDeployIntoBaseModal), just identity and a stub upgrade counter that
     // BaseSlotCardUI's hover "Improve" button increments with no cost or effect. Abilities is
-    // the same open-tag pattern as BuildingData.Abilities (see BuildingAbilities) — populated
+    // the same open-tag pattern as BuildingData.Abilities (see UnitAbilities) — populated
     // from the placed card's own CardDefinition.grantedAbilities, no behavior wired yet.
     public class FacilityData
     {

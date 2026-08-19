@@ -36,60 +36,145 @@ namespace Game.Setup
             return Mathf.RoundToInt(Mathf.Lerp(smallValue, largeValue, t));
         }
 
-        // Resources: 12-18 hexes on a 12x9 map, 40-50 on a 16x13 one (see CalibratedCount) —
-        // roughly equal counts of each of the 4 resource types, citadel hexes left untouched
-        // (they already carry their own fixed bonus, see FinalizePlayer/gameConfig.
-        // citadelResourceBonus — the user's own call: leave that hex exactly as it already
-        // works). A hex getting picked here doesn't exclude it from GenerateNeutralArmies —
-        // sharing is fine, per the user's own call ("the army guards the resource").
+        private static readonly ResourceType[] AllResourceTypes =
+            { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
+
+        // Resources, per the user's own spec (2.2) — two groups per citadel'd player, not a
+        // single size-calibrated random spread any more:
+        //  - "Near": one hex of EACH of the 4 resource types (amount 1, always), 1-3 hex steps
+        //    from that player's own citadel (never the citadel itself, never beyond radius 3 —
+        //    no other resource spawns inside that radius at all, the user's own explicit call).
+        //  - "Far": 2 more hexes per player, anywhere else on the map, each with up to 2
+        //    resource units of random type (see RollFarYields) — never adjacent to another far
+        //    hex, checked map-wide rather than just within one player's own pair (the user's own
+        //    call, since two different players' far hexes could otherwise still end up touching).
+        // Throughout both groups: two resource hexes of the SAME type are never adjacent (2.2.1,
+        // see HexHasAdjacentType) — citadel hexes themselves are skipped automatically since they
+        // already carry their own fixed bonus (see FinalizePlayer/gameConfig.
+        // citadelResourceBonus) and every near-zone hex is excluded from the far pass regardless.
+        // A hex getting picked here doesn't exclude it from GenerateNeutralArmies — sharing is
+        // fine, per the user's own earlier call ("the army guards the resource").
         private void GenerateResources()
         {
             if (map == null || gameConfig == null)
                 return;
 
-            List<HexCoord> candidates = map.AllCoords
-                .Where(h => HexResourceBonusRegistry.GetBonus(h) == null)
+            List<PlayerSetupData> citadelPlayers = _allPlayers
+                .Where(p => p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue)
                 .ToList();
-            if (candidates.Count == 0)
+            if (citadelPlayers.Count == 0)
                 return;
-
-            int hexCount = gameConfig.mapGeneration.width * gameConfig.mapGeneration.height;
-            int min = Mathf.Max(4, CalibratedCount(12, 40, hexCount));
-            int max = Mathf.Max(min, CalibratedCount(18, 50, hexCount));
-            int target = Mathf.Clamp(Random.Range(min, max + 1), 0, candidates.Count);
-
-            List<HexCoord> chosen = PickRandomDistinct(candidates, target);
-            ResourceType[] types = BuildRoundRobinTypes(chosen.Count);
 
             // RefreshAll already ran once, back when HexMapGenerator first built the map (all
             // zero yield, since baseline was reset to 0 — see the user's own change) — every hex
             // this pass touches needs the same per-hex redraw CitadelSetupController.
             // FinalizePlayer already does for its own citadel bonus, or the icon never appears.
             MapResourceDisplay resourceDisplay = map.GetComponent<MapResourceDisplay>();
+            var mapHexes = new HashSet<HexCoord>(map.AllCoords);
+            var nearZone = new HashSet<HexCoord>();
 
-            for (int i = 0; i < chosen.Count; i++)
+            foreach (PlayerSetupData player in citadelPlayers)
             {
-                // Very rarely 2 instead of 1 — a flat 5% roll per hex, per the user's own call.
-                int amount = Random.value < 0.05f ? 2 : 1;
-                var yields = new ResourceYields();
-                switch (types[i])
+                var citadel = new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value);
+                nearZone.UnionWith(HexGridMath.HexesInRange(citadel, 3).Where(mapHexes.Contains));
+
+                List<HexCoord> band = HexGridMath.HexesInRange(citadel, 3)
+                    .Where(h => !h.Equals(citadel) && mapHexes.Contains(h))
+                    .ToList();
+
+                foreach (ResourceType type in PickRandomDistinct(AllResourceTypes.ToList(), AllResourceTypes.Length))
                 {
-                    case ResourceType.Human: yields.human = amount; break;
-                    case ResourceType.Energy: yields.energy = amount; break;
-                    case ResourceType.Materials: yields.materials = amount; break;
-                    case ResourceType.Tech: yields.tech = amount; break;
+                    List<HexCoord> pool = band
+                        .Where(h => HexResourceBonusRegistry.GetBonus(h) == null && !HexHasAdjacentType(h, type))
+                        .ToList();
+                    if (pool.Count == 0)
+                        continue; // band exhausted at this radius — extremely unlikely, skip rather than crash
+
+                    HexCoord hex = pool[Random.Range(0, pool.Count)];
+                    var yields = new ResourceYields();
+                    AddYieldUnit(yields, type);
+                    HexResourceBonusRegistry.Set(hex, yields);
+                    resourceDisplay?.RefreshHex(hex);
                 }
-                HexResourceBonusRegistry.Set(chosen[i], yields);
-                resourceDisplay?.RefreshHex(chosen[i]);
             }
+
+            List<HexCoord> farCandidates = map.AllCoords
+                .Where(h => !nearZone.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null)
+                .ToList();
+            var farHexes = new List<HexCoord>();
+            int farTarget = citadelPlayers.Count * 2;
+
+            while (farHexes.Count < farTarget)
+            {
+                List<HexCoord> pool = farCandidates.Where(h =>
+                    HexResourceBonusRegistry.GetBonus(h) == null &&
+                    !farHexes.Any(f => f.Equals(h) || HexGridMath.Neighbors(f).Contains(h)))
+                    .ToList();
+                if (pool.Count == 0)
+                    break;
+
+                HexCoord hex = pool[Random.Range(0, pool.Count)];
+                ResourceYields yields = RollFarYields(hex);
+                if (!yields.HasAnyYield)
+                {
+                    farCandidates.Remove(hex); // boxed in by adjacent types on every draw — try elsewhere
+                    continue;
+                }
+
+                HexResourceBonusRegistry.Set(hex, yields);
+                resourceDisplay?.RefreshHex(hex);
+                farHexes.Add(hex);
+            }
+        }
+
+        // 2.2.1: true if placing `type` on `hex` would put it next to another resource hex that
+        // already carries that same type.
+        private static bool HexHasAdjacentType(HexCoord hex, ResourceType type)
+        {
+            foreach (HexCoord neighbor in HexGridMath.Neighbors(hex))
+            {
+                ResourceYields bonus = HexResourceBonusRegistry.GetBonus(neighbor);
+                if (bonus != null && bonus.Get(type) > 0)
+                    return true;
+            }
+            return false;
+        }
+
+        private static void AddYieldUnit(ResourceYields yields, ResourceType type)
+        {
+            switch (type)
+            {
+                case ResourceType.Human: yields.human++; break;
+                case ResourceType.Energy: yields.energy++; break;
+                case ResourceType.Materials: yields.materials++; break;
+                case ResourceType.Tech: yields.tech++; break;
+            }
+        }
+
+        // 2.2.2.2: up to 2 resource units on a "far" hex, each drawn independently and uniformly
+        // from whichever of the 4 types wouldn't violate 2.2.1 on this hex — landing on the same
+        // type twice gives a single-type "2" (e.g. 2h0e0m0t), landing on two different types
+        // splits 1/1 (e.g. 1h1e0m0t), matching the user's own examples. Empty result (every type
+        // boxed in by a neighbor) is possible but rare — caller re-rolls a different hex instead.
+        private ResourceYields RollFarYields(HexCoord hex)
+        {
+            List<ResourceType> allowed = AllResourceTypes.Where(t => !HexHasAdjacentType(hex, t)).ToList();
+            var yields = new ResourceYields();
+            if (allowed.Count == 0)
+                return yields;
+
+            AddYieldUnit(yields, allowed[Random.Range(0, allowed.Count)]);
+            AddYieldUnit(yields, allowed[Random.Range(0, allowed.Count)]);
+            return yields;
         }
 
         // Neutral armies: 3-5 on a 12x9 map, 12-15 on a 16x13 one (see CalibratedCount) — never
         // on a player's own citadel hex or one of its immediate neighbours (the user's own
-        // call, "Recommended" option), otherwise anywhere. Composition is no longer rolled —
-        // each placed army is one whole, hand-authored ArmyDefinition from neutralArmyCatalog.
-        // armies, one army per hex (the user's own call), so at most armies.Count hexes ever
-        // get one.
+        // call, "Recommended" option), and never adjacent to another neutral army either (2.1,
+        // the user's own call — at least 1 empty hex of gap between any two), otherwise
+        // anywhere. Composition is no longer rolled — each placed army is one whole,
+        // hand-authored ArmyDefinition from neutralArmyCatalog.armies, one army per hex (the
+        // user's own call), so at most armies.Count hexes ever get one.
         private void GenerateNeutralArmies()
         {
             if (map == null || gameConfig == null || neutralArmyCatalog == null || hexSelectionController == null || _neutralPlayer == null)
@@ -107,11 +192,24 @@ namespace Game.Setup
             int max = Mathf.Max(min, CalibratedCount(5, 15, hexCount));
             int target = Mathf.Clamp(Random.Range(min, max + 1), 0, Mathf.Min(candidates.Count, neutralArmyCatalog.armies.Count));
 
-            List<HexCoord> chosenHexes = PickRandomDistinct(candidates, target);
-            List<ArmyDefinition> chosenArmies = PickRandomDistinct(neutralArmyCatalog.armies, target);
+            List<ArmyDefinition> shuffledArmies = PickRandomDistinct(neutralArmyCatalog.armies, neutralArmyCatalog.armies.Count);
 
-            for (int i = 0; i < chosenHexes.Count; i++)
-                SpawnNeutralArmy(chosenHexes[i], chosenArmies[i]);
+            var placedHexes = new List<HexCoord>();
+            int armyIndex = 0;
+            while (placedHexes.Count < target && armyIndex < shuffledArmies.Count)
+            {
+                List<HexCoord> pool = candidates.Where(h =>
+                    !placedHexes.Contains(h) &&
+                    !placedHexes.Any(p => HexGridMath.Neighbors(p).Contains(h)))
+                    .ToList();
+                if (pool.Count == 0)
+                    break;
+
+                HexCoord hex = pool[Random.Range(0, pool.Count)];
+                placedHexes.Add(hex);
+                SpawnNeutralArmy(hex, shuffledArmies[armyIndex]);
+                armyIndex++;
+            }
         }
 
         // Every player's citadel hex plus its immediate neighbours — shared by
@@ -169,7 +267,8 @@ namespace Game.Setup
             return hexSelectionController.SpawnUnit(definition.displayName, _neutralPlayer, definition.moveMax,
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
-                definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt);
+                definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt,
+                definition.apCost, definition.resourceCost);
         }
 
         // Events: 6-12 hexes on a 12x9 map, 24-30 on a 16x13 one (see CalibratedCount — 3x the
@@ -312,25 +411,6 @@ namespace Game.Setup
                 working.RemoveAt(index);
             }
             return result;
-        }
-
-        // One of each of the 4 resource types repeated to fill `count` slots, shuffled — keeps
-        // the actual per-type split exactly balanced (off by at most 1) while still landing on
-        // a random hex, matching "roughly equal, can vary a little" without needing true
-        // randomness in the split itself.
-        private static ResourceType[] BuildRoundRobinTypes(int count)
-        {
-            ResourceType[] all = { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
-            var pool = new List<ResourceType>(count);
-            for (int i = 0; i < count; i++)
-                pool.Add(all[i % all.Length]);
-
-            for (int i = pool.Count - 1; i > 0; i--)
-            {
-                int j = Random.Range(0, i + 1);
-                (pool[i], pool[j]) = (pool[j], pool[i]);
-            }
-            return pool.ToArray();
         }
     }
 }

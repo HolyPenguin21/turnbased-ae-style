@@ -53,14 +53,16 @@ namespace Game.Setup
 
         [Header("Config")]
         // Starting-hex rule, highlight prefabs/height, ground raycast layer, citadel marker
-        // prefab/icon/resource bonus all live on the shared GameConfig asset — see GameConfig.
+        // prefab/resource bonus all live on the shared GameConfig asset — see GameConfig. The
+        // icon itself now comes from each player's own catalog (see ResolveCatalog below).
         [SerializeField] private GameConfig gameConfig;
 
         [Header("Cards")]
-        // Only used to look up "Concord Citadel"'s own card art for the auto-placed starting
-        // citadel's BuildingData.Art — same single catalog CardHandUI/ArmyViewerModalUI already
-        // reference directly (see those for why there's no per-faction lookup mechanism yet).
-        [SerializeField] private FactionCardCatalog catalog;
+        // Looked up per-player via ResolveCatalog (GetCatalog(player.Faction)) for that
+        // player's own starting citadel card art/icon — same per-player resolution CardHandUI
+        // already uses, so a mixed-faction game no longer stamps every citadel with whichever
+        // faction happened to be wired into a single fixed reference.
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
 
         // Hand-authored neutral armies placed by GenerateNeutralArmies during map generation —
         // see NeutralArmyCatalog's own comment ("available for map generation to place fixed
@@ -201,6 +203,9 @@ namespace Game.Setup
                 resourceDisplay.RefreshHex(hex);
         }
 
+        private FactionCardCatalog ResolveCatalog(PlayerSetupData player) =>
+            player != null && startingDeckCatalog != null ? startingDeckCatalog.GetCatalog(player.Faction) : null;
+
         // Not parented under this controller (which FinishAllPlacements destroys) or even
         // under the map yet — it ends up under the player's own PlayerRoot once that's
         // created, at the end of the whole step (see CreatePlayerRoots).
@@ -209,12 +214,15 @@ namespace Game.Setup
             if (gameConfig == null || gameConfig.buildingMarkerPrefab == null || map == null)
                 return;
 
+            FactionCardCatalog catalog = ResolveCatalog(player);
+
             MapObjectVisual marker = Instantiate(gameConfig.buildingMarkerPrefab);
             Vector3 offset = new Vector3(offset2D.x, 0f, offset2D.y) * map.OuterRadius;
             marker.transform.position = map.HexToWorld(hex) + offset;
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);
-            marker.SetIcon(gameConfig.citadelIconSprite);
-            marker.SetSortingOrder(gameConfig.buildingCircleSortingOrder, gameConfig.buildingIconSortingOrder);
+            if (catalog != null && catalog.citadelIcon != null)
+                marker.SetIcon(catalog.citadelIcon);
+            marker.SetSortingOrder(MapSortingOrder.BuildingCircle, MapSortingOrder.BuildingIcon);
             _citadelMarkers[player] = marker;
 
             CardDefinition citadelCard = catalog != null ? catalog.ForType(CardType.Base).FirstOrDefault() : null;
@@ -243,7 +251,7 @@ namespace Game.Setup
                 // BuildingRegistry.BuildingDestroyed).
                 IsStartingCitadel = true,
             };
-            building.Abilities.Add(BuildingAbilities.Base);
+            building.Abilities.Add(UnitAbilities.Base);
             // Abilities come from the card itself (Barracks, Citadel, the 4 CollectX — see the
             // catalog) rather than being hardcoded here a second time — a card played later
             // reads the exact same list (see SpawnBuilding), so the two can never drift apart
@@ -551,7 +559,7 @@ namespace Game.Setup
             {
                 Nickname = "Neutral",
                 ColorIndex = PlayerColorPalette.NeutralColorIndex, // dark indigo, reserved — never offered to real players
-                Faction = Faction.None,
+                Faction = Faction.Neutral,
                 IsHuman = false,
                 IsNeutral = true,
             };

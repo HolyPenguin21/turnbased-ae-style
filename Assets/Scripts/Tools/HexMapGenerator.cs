@@ -113,7 +113,7 @@ namespace Game.Map
             EnsureMaterialInstances(variantSlots);
             MeshRenderer mapRenderer = GetComponent<MeshRenderer>();
             mapRenderer.sharedMaterials = _materialInstances.ToArray();
-            mapRenderer.sortingOrder = gameConfig.mapSortingOrder;
+            mapRenderer.sortingOrder = MapSortingOrder.Map;
 
             GenerateGround(bounds);
 

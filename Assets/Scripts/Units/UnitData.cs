@@ -49,6 +49,14 @@ namespace Game.Units
         // an army, so there's no such thing as "this one unit already activated" any more.
         public int ActivationApCost = 1;
 
+        // What this unit originally cost to play from hand — carried over from
+        // CardDefinition.apCost/resourceCost at spawn time, same as ActivationApCost. Only
+        // consumed by UnitRepair (repair cost is half of this, per resource, rounded down); a
+        // neutral/hex-event spawn carries these too for consistency even though it's never
+        // repairable (repair is gated to the player's own Base — see UnitRepair.CanRepairAt).
+        public int ApCost;
+        public ResourceCost OriginalResourceCost;
+
         // Whether this unit is a Hero card, and if so, how many army slots it unlocks (see
         // ArmyData.Capacity) — a hero-led army's capacity comes from this instead of the flat
         // no-hero default. Meaningless when IsHero is false. Carried over from
@@ -69,8 +77,8 @@ namespace Game.Units
 
         // The card art this unit was spawned from (see CardDefinition.art), carried over at
         // spawn time same as MoveMax/CommandRating — the map marker itself only ever shows the
-        // shared army/stack icon (see GameConfig.armyIconSprite), but ArmyViewerModalUI's
-        // card grid shows this real per-unit art instead.
+        // owner's own shared army/stack icon (see FactionCardCatalog.armyIcon), but
+        // ArmyViewerModalUI's card grid shows this real per-unit art instead.
         public Sprite Art;
         // Carried over from CardDefinition.detailArt at spawn time (falling back to Art itself
         // when the card never set one — see HexSelectionController.SpawnUnit) — the image

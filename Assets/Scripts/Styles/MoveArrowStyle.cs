@@ -87,11 +87,11 @@ namespace Game.Styles
         // either way) — the head's outline is a solid, slightly larger duplicate of the head
         // silhouette (see BuildArrowMesh), so if it drew on top it would blot out the fill's
         // whole arrowhead instead of just framing it.
-        // Above every army marker's own sorting order (GameConfig.armyIconSortingOrder = 10,
+        // Above every army marker's own sorting order (Game.Map.MapSortingOrder.ArmyIcon = 10,
         // the highest currently in use) — the arrow and its badges must never draw behind an
         // army icon they happen to pass under or sit beside, or that info reads as missing
         // instead of just covered.
-        [Header("Sorting (order in layer — see GameConfig for map/highlight/army values)")]
+        [Header("Sorting (order in layer — see Game.Map.MapSortingOrder for map/army values)")]
         public int outlineSortingOrder = 11;
         public int fillSortingOrder = 12;
         public int badgeBorderSortingOrder = 13;

@@ -16,18 +16,18 @@ namespace Game.UI
     //
     // Roll state: both sides' BattleCombatantRowUI, a Roll Die button, and a single shared Accept
     // button whose meaning depends on whose turn it currently is in the Fate duel (see RunDuel).
-    // Per the user's own spec: the defender always gets the first say (Defender's Prerogative),
-    // and every single Spend immediately hands the "spend again or end the challenge" decision to
-    // the OTHER side — this alternates for as long as either side keeps spending, and only
-    // resolves once two decisions in a row go by with nobody spending (both sides having had a
-    // fair, undisturbed last look). A side with no hero (no Fate to spend) or that isn't the local
-    // human still gets its turn — the AI evaluates via BattleAi.ShouldSpendFate, a human still has
-    // to explicitly click Accept even with nothing to Spend — but never spends more than once
-    // before yielding the decision back (see RunTurn). Every turn's own reroll animation is
-    // awaited before the NEXT turn (or Resolve) begins, and Accept/Spend are locked out for that
-    // whole window — see the user's own report: the AI's own reactive reroll used to resolve
-    // invisibly in the same frame as the human's own Spend/Accept click, so a tied roll the player
-    // could see with their own eyes still lost right in front of them.
+    // Per the user's own spec: the defender always gets the first say (Defender's Prerogative);
+    // declining there hands the turn to the attacker rather than ending the duel outright — the
+    // duel only actually resolves once BOTH sides have declined back-to-back (two declines in a
+    // row, not just one), so either side can still react to the other's decline before it's
+    // final. If NEITHER side has any Fate to spend at all, the whole duel phase is skipped and
+    // the result shows immediately off the raw roll. A side with no hero, no Fate, or no miss
+    // left to reroll on ITS OWN turn auto-declines after a short delay instead of forcing a human
+    // to click Accept on a turn with nothing to decide (see RunHumanTurn/RunAiTurn). Every turn's
+    // own reroll animation is awaited before the NEXT turn (or Resolve) begins, and Accept/Spend
+    // are locked out for that whole window — see the user's own report: the AI's own reactive
+    // reroll used to resolve invisibly in the same frame as the human's own Spend/Accept click,
+    // so a tied roll the player could see with their own eyes still lost right in front of them.
     //
     // Result state: attacker's own art (standing in for the original's cinematic "scan" insert),
     // a text summary, and the target's outcome with a DESTROYED stamp if it died.
@@ -122,7 +122,7 @@ namespace Game.UI
         // Whether the DEFENDER's own army is the one currently retreating (see BattleScreenUI.
         // _retreatingArmy) — the attacker is never the retreating side, since a retreating army's
         // units are excluded from the turn order and can't act (see BattleScreenUI.
-        // OnStartRoundClicked), only get attacked. Feeds BattleAi.ShouldSpendFate's own Fate-
+        // OnStartRoundClicked), only get attacked. Feeds FateDuelAi.ShouldSpendFate's own Fate-
         // conservation rule for that case (see RunAiTurn).
         private bool _defenderIsRetreating;
         // GroundCombat only — terrain modifier + (Base-tagged building's own Defense), folded
@@ -452,32 +452,62 @@ namespace Game.UI
         // still needs to see the result and click Accept themselves.
         private static bool CanSpend(UnitData hero) => hero != null && hero.Owner != null && hero.Owner.IsHuman;
 
-        // The Fate duel itself — per the user's own spec, worked through by example:
-        //   "первый рол 3:2. Именно защитник решает начинать ли перебросы. Если перебросы начаты,
-        //    то закончить их может тот, кто их не делал в раунде переброса: если защищающийся
-        //    нажал Spend, то атакующий решает — делать переброс или заканчивать челлендж (если
-        //    защитник тоже решил нажать Spend, право закончить челлендж передаётся защищающемуся)."
-        // Defender's Prerogative means exactly that, no more: the DEFENDER alone decides whether
-        // a Fate duel happens at all off the fresh roll. Accept there ends it immediately — the
-        // attacker never gets an independent look at this same roll (see the user's own
-        // correction; a previous version of this method gave the attacker an "untouched first
-        // look" too whenever the defender declined, which let an AI attacker start spending off
-        // a roll the defender had already accepted — see the user's own report). Only a defender
-        // Spend opens the reactive queue: attacker responds first, then back to defender, and so
-        // on for as long as either side keeps spending — a decline anywhere in THIS phase is
-        // final and resolves the duel on the spot, per the quote above.
+        // Whether `hero` has any Fate left to POSSIBLY spend at all — used only to decide whether
+        // the whole duel phase is worth entering in the first place (see RunDuel's own skip
+        // check), not whether THIS turn specifically has anything to do (that's canSpend/
+        // shouldSpend inside RunHumanTurn/RunAiTurn, which also need a miss on the dice).
+        private static bool HasFateToSpend(UnitData hero) => hero != null && hero.Fate > 0;
+
+        // The Fate duel itself. Defender's Prerogative: the defender always goes first. Declining
+        // (Accept, or an AI/no-Fate side auto-declining — see RunHumanTurn/RunAiTurn) hands the
+        // turn to the OTHER side rather than ending the duel — that side still gets its own look
+        // at the roll and a chance to spend, since the dice it would be reacting to just changed.
+        // Tracked per side (defenderDone/attackerDone) rather than a single "two declines in a
+        // row" counter: a side is done the instant ITS OWN turn ends (RunHumanTurn/RunAiTurn
+        // always end in a decline, whether chosen or forced by having nothing left to spend), and
+        // is only reopened when the OTHER side's turn actually spent Fate — declining changes
+        // nothing, so it must never reopen anyone. The duel ends once both sides are done. Per
+        // the user's own report: with a plain "two declines in a row" counter, a defender with no
+        // hero (permanently nothing to decide, e.g. an army without a hero) still counted as a
+        // fresh decline every time it was asked, so its second forced auto-decline — after the
+        // attacker had already spent, reconsidered, and explicitly declined — wrongly earned the
+        // attacker one more redundant round against dice that hadn't changed at all.
         private IEnumerator RunDuel()
         {
-            yield return RunTurn(true);
-            if (!_turnSpent)
-                yield break;
-
-            bool isDefenderTurn = false;
-            while (true)
+            if (!HasFateToSpend(_defenderHero) && !HasFateToSpend(_attackerHero))
             {
+                // Neither side has any Fate left to spend, so there's no Spend-or-Accept turn for
+                // anyone to take — but resolving with zero pause right after the dice land reads as
+                // the roll being skipped entirely. Same beat as RunHumanTurn/RunAiTurn's own
+                // auto-decline (aiAcceptDelay) so this case doesn't feel instant/broken.
+                if (aiAcceptDelay > 0f)
+                    yield return new WaitForSeconds(aiAcceptDelay);
+                yield break;
+            }
+
+            bool defenderDone = false;
+            bool attackerDone = false;
+            bool isDefenderTurn = true;
+            while (!defenderDone || !attackerDone)
+            {
+                if (isDefenderTurn ? defenderDone : attackerDone)
+                {
+                    isDefenderTurn = !isDefenderTurn;
+                    continue;
+                }
+
                 yield return RunTurn(isDefenderTurn);
-                if (!_turnSpent)
-                    yield break;
+                if (isDefenderTurn)
+                    defenderDone = true;
+                else
+                    attackerDone = true;
+                if (_turnSpent)
+                {
+                    if (isDefenderTurn)
+                        attackerDone = false;
+                    else
+                        defenderDone = false;
+                }
                 isDefenderTurn = !isDefenderTurn;
             }
         }
@@ -486,10 +516,8 @@ namespace Game.UI
         // (see the user's own example: defender Spend → Accept; attacker Spend, Spend-again,
         // *then* effectively done) — a single Spend does NOT hand the turn to the other side by
         // itself anymore; only Accept (human) or the AI running out of reasons to keep going does.
-        // AI evaluates and acts on its own (see RunAiTurn); a human side always gets an explicit
-        // Accept click, even with nothing to Spend on, to conclude — same as the old two-phase
-        // design's own "still needs to see the result and click Accept" behavior, just now able to
-        // Spend more than once first.
+        // AI evaluates and acts on its own (see RunAiTurn); a human side with nothing to Spend on
+        // auto-declines instead of forcing an empty click (see RunHumanTurn's own canSpend gate).
         private IEnumerator RunTurn(bool isDefenderTurn)
         {
             UnitData actingUnit = isDefenderTurn ? _defender : _attacker;
@@ -516,14 +544,24 @@ namespace Game.UI
                 bool[] ownDice = isDefenderTurn ? _defenderDice : _attackerDice;
                 bool canSpend = CanSpend(hero) && hero.Fate > 0 && HasMiss(ownDice);
 
+                // Nothing this side could possibly do this turn (no hero, no Fate, or no miss
+                // left to reroll) — auto-decline after a short beat instead of forcing a click on
+                // a decision that isn't actually one (mirrors RunAiTurn's own aiAcceptDelay pause).
+                if (!canSpend)
+                {
+                    if (aiAcceptDelay > 0f)
+                        yield return new WaitForSeconds(aiAcceptDelay);
+                    break;
+                }
+
                 _defenderTurnActive = isDefenderTurn;
                 _humanSpent = false;
                 _humanDeclined = false;
                 _awaitingHumanDecision = true;
                 if (isDefenderTurn)
-                    defenderRow?.SetSpendInteractable(canSpend);
+                    defenderRow?.SetSpendInteractable(true);
                 else
-                    attackerRow?.SetSpendInteractable(canSpend);
+                    attackerRow?.SetSpendInteractable(true);
                 if (acceptButton != null)
                     acceptButton.interactable = true;
 
@@ -547,11 +585,12 @@ namespace Game.UI
         }
 
         // AI path for a whole duel turn — mirrors the human Spend/Accept loop exactly (may spend
-        // more than once), just decided via BattleAi.ShouldSpendFate instead of a click. Per the
+        // more than once), just decided via FateDuelAi.ShouldSpendFate instead of a click. Per the
         // user's own correction: the AI isn't "obligated" to keep rerolling — it evaluates the
         // CURRENT dice fresh before EVERY reroll (same as a human deciding again after each one)
-        // and stops the instant ShouldSpendFate says it's no longer worth it; getting a turn at
-        // all only happens because the other side just spent, per RunDuel.
+        // and stops the instant ShouldSpendFate says it's no longer worth it, or the instant a
+        // reroll it just made comes back a miss again (see the stop-on-failed-reroll check below);
+        // getting a turn at all only happens because the other side just spent, per RunDuel.
         private IEnumerator RunAiTurn(bool isDefenderTurn)
         {
             UnitData hero = isDefenderTurn ? _defenderHero : _attackerHero;
@@ -563,9 +602,9 @@ namespace Game.UI
                 bool[] ownDice = isDefenderTurn ? _defenderDice : _attackerDice;
                 bool isRetreating = isDefenderTurn && _defenderIsRetreating;
                 int defendingUnitHp = _defender != null ? _defender.HitPointsCurrent : int.MaxValue;
-                bool shouldSpend = hero != null && hero.Fate > 0 && HasMiss(ownDice) && BattleAi.ShouldSpendFate(
+                bool shouldSpend = hero != null && hero.Fate > 0 && HasMiss(ownDice) && FateDuelAi.ShouldSpendFate(
                     _attackerDice, _defenderDice, hero.Fate, isDefenderTurn,
-                    _attacker, _defender, CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction,
+                    _attacker, _defender, Magnitudes,
                     isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill);
                 if (!shouldSpend)
                 {
@@ -594,6 +633,17 @@ namespace Game.UI
                     attackerRow?.OnFateSpent();
                 }
                 yield return new WaitUntil(() => !animating);
+
+                // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
+                // just came back a miss again — this side is done trying Fate for the rest of
+                // THIS duel turn, even with Fate still left and even if ShouldSpendFate would say
+                // to keep going against the fresh dice; re-evaluating right after proving unlucky
+                // isn't what "keep trying" means here. Checked on the slot RerollOneMiss actually
+                // touched (rerolledIndex), not the whole array, since other slots may still hold
+                // pre-existing (already-resolved) misses.
+                bool[] postRerollDice = isDefenderTurn ? _defenderDice : _attackerDice;
+                if (!postRerollDice[rerolledIndex])
+                    break;
                 // Loop back — re-evaluate from scratch against the now-updated dice before
                 // deciding whether another reroll is still worth it.
             }
@@ -702,17 +752,17 @@ namespace Game.UI
                 acceptButton.interactable = false;
 
             var result = new ChallengeResult(_attackerDice, _defenderDice);
-            // UnitAbilities.CriticalDamage/Hyperkinetic/CeramicArmor — see ChallengeResult.
-            // ApplyAbilityModifiers for the fixed order (x2 multiplier, then the Hyperkinetic
-            // bonus, then CeramicArmor's flat reduction last so it always comes off the
-            // already-boosted total) — shared with BattleAi.ShouldSpendFate so the AI's
-            // Fate-spend prediction always matches the damage actually dealt here.
+            // UnitAbilities.CriticalDamage/Hyperkinetic/Pyrokinetic/CeramicArmor — see
+            // ChallengeResult.ApplyAbilityModifiers for the fixed order (x2 multiplier, then the
+            // Hyperkinetic/Pyrokinetic bonuses, then CeramicArmor's flat reduction last so it
+            // always comes off the already-boosted total) — shared with FateDuelAi/
+            // BattleTargetSelector so the AI's own predictions always match the damage actually
+            // dealt here.
             // wasHit reads the RAW dice roll, not the ability-adjusted damage below — a hit that
             // CeramicArmor reduces all the way to 0 is still a hit, not a miss (see ShowResult).
             bool wasHit = result.Damage > 0;
             int damage = ChallengeResult.ApplyAbilityModifiers(result.Damage, _attacker, _defender,
-                CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction,
-                out List<string> appliedAbilities);
+                Magnitudes, out List<string> appliedAbilities);
 
             _defender.HitPointsCurrent = Mathf.Max(0, _defender.HitPointsCurrent - damage);
             bool died = _defender.HitPointsCurrent <= 0;
@@ -744,6 +794,13 @@ namespace Game.UI
         private int BerserkAttackGain => abilityCatalog != null ? abilityCatalog.berserkAttackGain : 1;
         private int BerserkDefenseLoss => abilityCatalog != null ? abilityCatalog.berserkDefenseLoss : 1;
         public int HyperkineticBonusDamage => abilityCatalog != null ? abilityCatalog.hyperkineticBonusDamage : 2;
+        public int PyrokineticBonusDamage => abilityCatalog != null ? abilityCatalog.pyrokineticBonusDamage : 2;
+
+        // Bundles the four properties above — see AbilityMagnitudes' own comment for why this
+        // exists; every call site that used to read Critical/Hyperkinetic/Ceramic(/Pyrokinetic)
+        // individually now just reads this once.
+        public AbilityMagnitudes Magnitudes => new AbilityMagnitudes(
+            CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction, PyrokineticBonusDamage);
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the
@@ -783,8 +840,11 @@ namespace Game.UI
 
             if (resultArtImage != null)
             {
-                resultArtImage.sprite = _attacker?.Art;
-                resultArtImage.gameObject.SetActive(_attacker?.Art != null);
+                Sprite attackerArt = _attacker != null
+                    ? (_attacker.DetailArt != null ? _attacker.DetailArt : _attacker.Art)
+                    : null;
+                resultArtImage.sprite = attackerArt;
+                resultArtImage.gameObject.SetActive(attackerArt != null);
             }
             if (resultSummaryText != null)
             {
@@ -825,8 +885,9 @@ namespace Game.UI
 
             if (resultArtImage != null)
             {
-                resultArtImage.sprite = _attacker.Art;
-                resultArtImage.gameObject.SetActive(_attacker.Art != null);
+                Sprite attackerArt = _attacker.DetailArt != null ? _attacker.DetailArt : _attacker.Art;
+                resultArtImage.sprite = attackerArt;
+                resultArtImage.gameObject.SetActive(attackerArt != null);
             }
             if (resultSummaryText != null)
             {

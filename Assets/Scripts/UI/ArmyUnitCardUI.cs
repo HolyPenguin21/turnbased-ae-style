@@ -1,4 +1,5 @@
 using System.Collections;
+using Game.Cards;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -23,7 +24,8 @@ namespace Game.UI
     // (the earlier design), every OTHER card would instantly compact into the gap the moment a
     // drag started, with no way to show one sliding smoothly from its old slot to a new one —
     // exactly the "no clear sense of where it'll land" complaint this replaced.
-    public class ArmyUnitCardUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
+    public class ArmyUnitCardUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler,
+        IPointerEnterHandler, IPointerExitHandler
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
@@ -48,6 +50,13 @@ namespace Game.UI
         [SerializeField] private TMP_Text moveStatText;
         [SerializeField] private TMP_Text rangeStatText;
         [SerializeField] private float slotAnimDuration = 0.12f;
+        // Hover-revealed Repair button + cost strip — same shape as BaseSlotCardUI's own
+        // repairButton/costPreviewRoot (Improve there, Repair here; see UnitRepair for the cost
+        // math). Order: AP, Human, Energy, Materials, Tech.
+        [SerializeField] private Button repairButton;
+        [SerializeField] private GameObject costPreviewRoot;
+        [SerializeField] private Image[] costBadgeIcons;
+        [SerializeField] private TMP_Text[] costBadgeAmounts;
 
         public UnitData Unit { get; private set; }
         public bool IsDragging { get; private set; }
@@ -105,6 +114,17 @@ namespace Game.UI
             // noise here.
             if (commandBadgeRoot != null)
                 commandBadgeRoot.SetActive(false);
+
+            // Hover-revealed (see OnPointerEnter/OnPointerExit) — hidden by default until then.
+            if (repairButton != null)
+            {
+                repairButton.gameObject.SetActive(false);
+                repairButton.onClick.RemoveAllListeners();
+                if (unit != null)
+                    repairButton.onClick.AddListener(() => _modal.RepairUnit(unit));
+            }
+            if (costPreviewRoot != null)
+                costPreviewRoot.SetActive(false);
         }
 
         // See the field block's own comment for the fixed per-slot mapping. Hidden entirely for
@@ -180,6 +200,56 @@ namespace Game.UI
         public void OnPointerClick(PointerEventData eventData)
         {
             _modal?.ShowUnitDetail(Unit);
+        }
+
+        // Repair only ever shows while the unit is actually wounded AND its army is standing on
+        // the player's own Base (see ArmyViewerModalUI.CanRepairUnit/UnitRepair.CanRepairAt) —
+        // same "hover-only, condition re-checked live" shape as BaseSlotCardUI's own Repair.
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            bool show = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
+            repairButton?.gameObject.SetActive(show);
+            if (show)
+                ShowRepairCostPreview();
+            else
+                HideRepairCostPreview();
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            repairButton?.gameObject.SetActive(false);
+            HideRepairCostPreview();
+        }
+
+        // One coloured circle badge per non-zero cost component, AP first — same convention as
+        // BaseSlotCardUI's own ShowUpgradeCostPreview/SetBadge.
+        private void ShowRepairCostPreview()
+        {
+            if (costPreviewRoot == null || Unit == null)
+                return;
+            costPreviewRoot.SetActive(true);
+            ResourceCost cost = UnitRepair.ResourceCost(Unit);
+            SetBadge(0, UnitRepair.ApCost(Unit));
+            SetBadge(1, cost.human);
+            SetBadge(2, cost.energy);
+            SetBadge(3, cost.materials);
+            SetBadge(4, cost.tech);
+        }
+
+        private void SetBadge(int index, int amount)
+        {
+            if (costBadgeIcons == null || index >= costBadgeIcons.Length || costBadgeIcons[index] == null)
+                return;
+            bool visible = amount > 0;
+            costBadgeIcons[index].gameObject.SetActive(visible);
+            if (visible && costBadgeAmounts != null && index < costBadgeAmounts.Length && costBadgeAmounts[index] != null)
+                costBadgeAmounts[index].text = amount.ToString();
+        }
+
+        private void HideRepairCostPreview()
+        {
+            if (costPreviewRoot != null)
+                costPreviewRoot.SetActive(false);
         }
 
         // An empty slot has nothing to drag — guarded here rather than left to TryDropUnit's

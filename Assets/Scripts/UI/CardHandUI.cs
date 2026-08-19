@@ -508,7 +508,7 @@ namespace Game.UI
             if (definition == null || definition.cardType != CardType.Facility)
                 return false;
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && building.HasAbility(BuildingAbilities.Base);
+            return building != null && building.Owner == player && building.HasAbility(UnitAbilities.Base);
         }
 
         private bool IsWithinDragBand(float localY)
@@ -863,12 +863,16 @@ namespace Game.UI
                 card.transform.SetAsLastSibling();
         }
 
-        // Maps a drop x-position to an absolute index into _cards, by comparing against the
-        // slot positions of the currently VISIBLE cards only (dragged card excluded) — the
-        // dragged card is always visible while held, so this never needs to reason about
-        // cards currently scrolled out of view. Called from PreviewDrag, which can fire many
-        // times a frame while a card is held, so this reuses _scratchVisible instead of
-        // allocating a new list every call.
+        // Maps a drop x-position to an absolute index into _cards, the same way
+        // ArmyViewerModalUI.ResolveGridSlotIndex maps a drop position to a grid cell: divide the
+        // distance from the first slot's left edge by the slot pitch and floor it, instead of
+        // comparing dropX against each neighbour's slot centre in turn. The old centre-comparison
+        // approach effectively used a single shared threshold near the hand's own pivot (x=0)
+        // rather than each neighbour's actual position, so a neighbour could give way well before
+        // (or only well after) the dragged card actually reached it. Flooring from the slot's left
+        // edge instead makes a neighbour give way right as the dragged card crosses into its slot,
+        // symmetrically on both sides — dragged card excluded via _scratchVisible, and only visible
+        // cards are considered since the dragged card is always visible while held.
         private int IndexForDropX(CardUI dragged, float dropX)
         {
             _scratchVisible.Clear();
@@ -876,12 +880,14 @@ namespace Game.UI
                 if (c != dragged && c.gameObject.activeSelf)
                     _scratchVisible.Add(c);
 
-            for (int i = 0; i < _scratchVisible.Count; i++)
-            {
-                if (dropX < SlotX(i))
-                    return _scrollOffset + i;
-            }
-            return _scrollOffset + _scratchVisible.Count;
+            float step = cardSize.x * (1f - overlapFraction);
+            if (step <= 0f)
+                return _scrollOffset + _scratchVisible.Count;
+
+            float totalWidth = MaxVisible > 0 ? (MaxVisible - 1) * step : 0f;
+            float slot0LeftEdge = -totalWidth * 0.5f - step * 0.5f;
+            int slot = Mathf.FloorToInt((dropX - slot0LeftEdge) / step);
+            return _scrollOffset + Mathf.Clamp(slot, 0, _scratchVisible.Count);
         }
 
         private void Relayout(bool animated)

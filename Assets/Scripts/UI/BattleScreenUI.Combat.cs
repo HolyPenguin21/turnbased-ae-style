@@ -44,7 +44,7 @@ namespace Game.UI
             // second dice roll against the building itself) — instead, terrain and a Base-tagged
             // building's own Defense fold straight into THIS SAME Ground Combat roll, defender
             // side only. Terrain always applies (every hex has one); the building only counts
-            // when it's Base-tagged (a citadel or player-built Base, see BuildingAbilities.Base's
+            // when it's Base-tagged (a citadel or player-built Base, see UnitAbilities.Base's
             // own comment) — a bare hero-built extraction facility has nothing built up worth a
             // defense bonus (see HandleBuildingOnArmyDefeat's own note on why those get destroyed
             // outright instead of captured).
@@ -65,7 +65,7 @@ namespace Game.UI
                 if (map != null && map.TryGetTerrainAt(defenderArmy.Hex, out TerrainTypeEntry terrain))
                     defenderTerrainBonus += terrain.defenseModifier;
                 BuildingData defendingBuilding = BuildingRegistry.FindAt(defenderArmy.Hex);
-                if (defendingBuilding != null && defendingBuilding.HasAbility(BuildingAbilities.Base))
+                if (defendingBuilding != null && defendingBuilding.HasAbility(UnitAbilities.Base))
                     defenderConstructionBonus += defendingBuilding.Defense;
             }
 
@@ -77,9 +77,17 @@ namespace Game.UI
                 foreach (UnitData member in attackerArmy.Members)
                     member.MoveCurrent = 0;
 
+            // A hero directly targeted by a Ground Combat attack (heroes are valid attack
+            // candidates — see BattleTargetSelector, which doesn't exclude them) defends with a
+            // dice pool equal to its own FateMax rather than its plain Defense stat — same "the
+            // target hero receives a dice pool equal to his fate" rule the manual already gives
+            // the standalone Capture/Kill Challenge (see BeginCaptureKill's own comment), just
+            // applied here too since a hero can be attacked mid-battle, not only hunted after it.
+            int? defenderPoolSize = defender.IsHero ? defender.FateMax : (int?)null;
+
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero, catalog != null ? catalog.logo : null,
                 (damage, died) => OnAttackResolved(attacker, defender, damage, died), ShowAiThought, defenderIsRetreating,
-                defenderTerrainBonus, defenderConstructionBonus);
+                defenderTerrainBonus, defenderConstructionBonus, defenderPoolSize: defenderPoolSize);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender, int damage, bool defenderDied)
@@ -595,24 +603,18 @@ namespace Game.UI
                 ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
                 : null;
 
-            // TEMP DIAGNOSTIC — after-battle snapshot, hex-event trigger investigation.
-            {
-                HexEventRegistry.Entry diagEntry = HexEventRegistry.FindAt(hex);
-                Debug.Log($"[EventDiag:AfterBattle] hex={hex} survivor={survivor?.Name} " +
-                    $"survivorOwner={survivor?.Owner?.Nickname} survivorIsNeutral={survivor?.Owner?.IsNeutral} " +
-                    $"hexPending={hexPending} nextEnemy={nextEnemy?.Name} hasEvent={diagEntry != null} " +
-                    $"eventConsumed={diagEntry?.Consumed} eventTriggered={diagEntry?.Triggered}");
-            }
-
+            // True only when TriggerHexEventIfClear just opened (or reopened) a fresh guard fight
+            // on THIS SAME battleScreen instance, reentrantly, from inside this very call stack —
+            // see that method's own comment. When it did, the Hide() below must NOT run: it would
+            // tear down the fight just opened (its _attacker/_defender/_onClosed already
+            // overwritten by that reentrant Show()) instead of the one actually finishing here,
+            // and drop whoever was still waiting on the outcome of the fight that finished.
+            bool eventOpenedBattle = false;
             if (nextEnemy == null && !hexPending && survivor?.Owner != null && !survivor.Owner.IsNeutral)
-                hexSelectionController?.TriggerHexEventIfClear(hex, survivor);
+                eventOpenedBattle = hexSelectionController?.TriggerHexEventIfClear(hex, survivor) ?? false;
 
-            if (nextEnemy != null && battleContactPopup != null)
+            if (nextEnemy != null)
             {
-                // Same Fight/Delay choice as the very first contact on the strategic map (see
-                // HexSelectionController.TryIssueMoveOrder) — per the user's own spec, the
-                // survivor isn't auto-committed to the next fight just because it's already
-                // standing here.
                 var participants = new List<ArmyData> { survivor, nextEnemy };
                 // Same hero-only branch as HexSelectionController.Movement.cs's own contact
                 // handling / GameTurnController.ResolveDelayedBattlesThen's own targetHeroOnly
@@ -622,22 +624,43 @@ namespace Game.UI
                 // opening a full battle with an empty grid row for a hero-only nextEnemy (see the
                 // user's own report).
                 bool nextEnemyHeroOnly = !BattleInitiator.IsCombatCapable(nextEnemy);
-                battleContactPopup.Show(hex, participants,
-                    onFight: () =>
-                    {
-                        if (nextEnemyHeroOnly)
-                            BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
-                        else
-                            Show(hex, participants, _onClosed);
-                    },
-                    onDelay: () =>
-                    {
-                        DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
-                        if (!TryChainPendingRetreatContact())
-                            Hide();
-                    });
+
+                // Same human-only gating as the very first contact on the strategic map (see
+                // HexSelectionController.Movement.cs's own onFight/onDelay branch) — this used to
+                // always show the interactive Fight/Delay popup here regardless of who `survivor`
+                // belongs to, which meant a chained second enemy on an AI/Neutral survivor's own
+                // hex opened a popup nobody would ever click, hanging the same way a deferred
+                // AI-vs-Neutral contact used to (see that branch's own comment for the full report).
+                if (survivor.Owner != null && survivor.Owner.IsHuman && battleContactPopup != null)
+                {
+                    battleContactPopup.Show(hex, participants,
+                        onFight: () =>
+                        {
+                            if (nextEnemyHeroOnly)
+                                BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
+                            else
+                                Show(hex, participants, _onClosed);
+                        },
+                        onDelay: () =>
+                        {
+                            DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
+                            if (!TryChainPendingRetreatContact())
+                                Hide();
+                        });
+                }
+                else if (nextEnemyHeroOnly)
+                {
+                    BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
+                }
+                else
+                {
+                    Show(hex, participants, _onClosed);
+                }
                 return;
             }
+
+            if (eventOpenedBattle)
+                return;
 
             if (!TryChainPendingRetreatContact())
                 Hide();

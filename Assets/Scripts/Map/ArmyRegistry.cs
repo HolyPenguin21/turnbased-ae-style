@@ -30,6 +30,9 @@ namespace Game.Map
             }
             list.Add(army);
             VisionSystem.RecomputeFor(army.Owner);
+            // Anyone else already watching this hex needs to know it just gained content too —
+            // see VisionSystem.NotifyContentChanged's own comment.
+            VisionSystem.NotifyContentChanged(army.Hex);
         }
 
         public static void Unregister(ArmyData army)
@@ -39,6 +42,7 @@ namespace Game.Map
             if (ByHex.TryGetValue(army.Hex, out List<ArmyData> list))
                 list.Remove(army);
             VisionSystem.RecomputeFor(army.Owner);
+            VisionSystem.NotifyContentChanged(army.Hex);
         }
 
         // Never null — callers can foreach this directly without a null check.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Players;
 using Game.Styles;
 using TMPro;
@@ -13,6 +14,25 @@ namespace Game.UI
     // and wire these references — this script only owns the behaviour.
     public class PlayerRowUI : MonoBehaviour
     {
+        // Player-selectable options for the faction dropdown, in display order. Dropdown option
+        // index is mapped through this array rather than cast directly to/from Faction, since
+        // Faction's own enum values don't run consecutively from 0 (None/Neutral sit in between
+        // and aren't player-selectable) — see Faction.cs.
+        private static readonly Faction[] SelectableFactions =
+        {
+            Faction.IronConcord,
+            Faction.Ashen,
+            Faction.Random
+        };
+
+        private static string FactionLabel(Faction faction) => faction switch
+        {
+            Faction.IronConcord => "Iron Concord",
+            Faction.Ashen => "The Ashen",
+            Faction.Random => "Random",
+            _ => faction.ToString()
+        };
+
         [SerializeField] private TMP_InputField nicknameField;
         [SerializeField] private Image colorSwatch;
         [SerializeField] private TMP_Dropdown colorDropdown;
@@ -101,12 +121,14 @@ namespace Game.UI
             if (factionDropdown == null) return;
 
             factionDropdown.ClearOptions();
-            factionDropdown.AddOptions(new List<string> { "Iron Concord", "Random" });
-            factionDropdown.SetValueWithoutNotify((int)Data.Faction);
+            factionDropdown.AddOptions(SelectableFactions.Select(FactionLabel).ToList());
+            int selectedOption = Array.IndexOf(SelectableFactions, Data.Faction);
+            factionDropdown.SetValueWithoutNotify(Mathf.Max(selectedOption, 0));
             factionDropdown.onValueChanged.RemoveAllListeners();
             factionDropdown.onValueChanged.AddListener(value =>
             {
-                Data.Faction = (Faction)value;
+                if (value < 0 || value >= SelectableFactions.Length) return;
+                Data.Faction = SelectableFactions[value];
                 _onChanged?.Invoke();
             });
         }

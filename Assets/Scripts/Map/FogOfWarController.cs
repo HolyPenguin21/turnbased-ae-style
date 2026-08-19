@@ -229,7 +229,7 @@ namespace Game.Map
                 _maskPixels[y * _maskWidth + x] = visible ? (byte)255 : (byte)0;
 
                 if (_labels.TryGetValue(coord, out HexCoordLabel label))
-                    label.SetVisited(viewer == null || VisionSystem.IsVisited(viewer, coord));
+                    label.SetVisited(VisionSystem.IsVisitedByCurrentViewer(coord));
             }
 
             _mask.SetPixelData(_maskPixels, 0);

@@ -99,35 +99,52 @@ namespace Game.UI
             {
                 ArmyRegistry.MoveArmy(army, destination);
                 hexSelectionController?.RestackArmiesOn(battleHex, null);
-                hexSelectionController?.RestackArmiesOn(destination, null);
 
                 // Per the user's own spec: an undefended enemy extraction facility on the
                 // destination hex doesn't survive the retreating army walking onto it, same rule
                 // an ordinary strategic move already applies (see HexSelectionController.
-                // Movement.cs's identical call).
+                // Movement.cs's identical call). Run BEFORE the destination's own RestackArmiesOn
+                // below, not after — otherwise that restack resolves the retreating army's offset
+                // while the building it's about to destroy still counts as "hasBuilding", leaving
+                // it stranded beside a marker that's gone a moment later (see HexSelectionController
+                // .Movement.cs's own identical ordering fix for the same bug on an ordinary move).
                 BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner);
+                hexSelectionController?.RestackArmiesOn(destination, null);
 
                 // Per the user's own spec: landing on a hex held by an engageable hostile army
-                // or garrison starts a fresh encounter there too — a full battle if it still has
-                // combat-capable units, a Capture Kill Challenge if it's hero-only (see
-                // BattleInitiator.IsCombatCapable vs IsEngageable, same split
+                // or garrison starts a fresh encounter there too — a full battle if both sides
+                // still have combat-capable units, a Capture Kill Challenge if only one side
+                // does (see BattleInitiator.IsCombatCapable vs IsEngageable, same split
                 // HexSelectionController.Movement.cs's own contact check uses). Only enqueued,
                 // not shown immediately: this battle's own outcome popup (ResolveRetreat, below)
                 // and possible old-hex chain (OnBattleOutcomeAcknowledged) haven't had their turn
                 // yet — TryChainPendingRetreatContact drains the queue once an encounter is
                 // actually closing, one at a time, so an earlier still-unshown entry (e.g. from a
                 // FIRST retreat, while a chained old-hex battle is still playing out) can never be
-                // clobbered by a later one. A hero-only retreating army can't fight OR hunt a
-                // Capture Kill Challenge either (no "Hunter" skill in this project yet — see
-                // BattleAttackPopupUI.BeginCaptureKill's own note), so contact for one simply
-                // never triggers anything, exactly like a hero-only strategic mover.
+                // clobbered by a later one.
+                //
+                // Hunter/target is whichever side actually HAS non-hero units, not assumed to
+                // always be the retreating army — per the user's own report: a hero fleeing a
+                // Capture Kill Challenge who retreats onto a hex held by a combat-capable enemy
+                // army got no follow-up challenge at all, even though that enemy army clearly
+                // could (and, per the manual's own hunter rule, should) hunt the escaped hero
+                // right there. Silent only when NEITHER side has any non-hero units to hunt with
+                // (both hero-only) — same as a hero-only strategic mover contacting a hero-only
+                // army (see HexSelectionController.Movement.cs's own identical case).
                 ArmyData contactedEnemy = DelayedBattleRegistry.IsHexPending(destination)
                     ? null
                     : BattleInitiator.FindEnemyAt(destination, army.Owner);
-                if (contactedEnemy != null && BattleInitiator.IsCombatCapable(army))
+                if (contactedEnemy != null)
                 {
-                    _pendingRetreatContacts.Enqueue((destination, new List<ArmyData> { army, contactedEnemy },
-                        !BattleInitiator.IsCombatCapable(contactedEnemy)));
+                    bool armyCanFight = BattleInitiator.IsCombatCapable(army);
+                    bool enemyCanFight = BattleInitiator.IsCombatCapable(contactedEnemy);
+                    if (armyCanFight || enemyCanFight)
+                    {
+                        ArmyData hunter = armyCanFight ? army : contactedEnemy;
+                        ArmyData target = armyCanFight ? contactedEnemy : army;
+                        _pendingRetreatContacts.Enqueue((destination, new List<ArmyData> { hunter, target },
+                            !BattleInitiator.IsCombatCapable(target)));
+                    }
                 }
             }
             else
@@ -145,7 +162,7 @@ namespace Game.UI
 
             BuildingData battleHexBuilding = BuildingRegistry.FindAt(battleHex);
             bool battleHexIsOwnBarracks = battleHexBuilding != null && battleHexBuilding.Owner == army.Owner
-                && battleHexBuilding.HasAbility(BuildingAbilities.Barracks);
+                && battleHexBuilding.HasAbility(UnitAbilities.Barracks);
 
             HexCoord? target = FindNearestOwnBarracksHex(army.Owner, battleHex, excludeBattleHex: battleHexIsOwnBarracks);
             if (target.HasValue)
@@ -166,7 +183,7 @@ namespace Game.UI
             int bestDist = int.MaxValue;
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
             {
-                if (building.Owner != owner || !building.HasAbility(BuildingAbilities.Barracks))
+                if (building.Owner != owner || !building.HasAbility(UnitAbilities.Barracks))
                     continue;
                 if (excludeBattleHex && building.Hex.Equals(from))
                     continue;

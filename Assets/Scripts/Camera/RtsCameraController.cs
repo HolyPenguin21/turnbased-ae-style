@@ -58,9 +58,10 @@ namespace Game.Cameras
         private Vector3 _dragAnchorGround;
 
         // Turned off for the duration of the Tactical Battle Module (see BattleScreenUI.Show/
-        // Hide) — the battle grid has its own fixed camera, dragging the strategic map's view
-        // around underneath it makes no sense while it's up. PanTo (a programmatic glide, not
-        // player-driven) still works regardless — this only gates the WASD/edge-scroll input.
+        // Hide) — the battle grid has its own fixed camera, panning/zooming the strategic map's
+        // view around underneath it makes no sense while it's up. PanTo (a programmatic glide,
+        // not player-driven) still works regardless — this gates WASD/edge-scroll/drag AND
+        // scroll-wheel zoom, all player-driven input.
         public void SetPanningEnabled(bool enabled) => _panningEnabled = enabled;
 
         private void Start()
@@ -205,7 +206,10 @@ namespace Game.Cameras
                 _groundTarget.z = Mathf.Clamp(_groundTarget.z, boundsMin.y, boundsMax.y);
             }
 
-            if (mouse != null)
+            // Gated by _panningEnabled too, same as WASD/edge-scroll/drag above — while the
+            // Tactical Battle Module is up (see SetPanningEnabled's own call sites), the
+            // strategic map underneath shouldn't zoom out from under it either.
+            if (mouse != null && _panningEnabled)
             {
                 float scroll = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f)

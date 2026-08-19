@@ -31,7 +31,7 @@ namespace Game.Map
         // returned UnitData to whichever ArmyData it belongs to (ArmyData.AddMemberSorted) and,
         // if that changes the army's own visibility (e.g. its first member ever), refreshing the
         // hex with RestackArmiesOn.
-        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null)
+        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null)
         {
             if (owner == null)
                 return null;
@@ -45,6 +45,7 @@ namespace Game.Map
                 Art = art, DetailArt = detailArt != null ? detailArt : art,
                 Attack = attack, Defense = defense, Resistance = resistance, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
                 Initiative = initiative, Fate = fate, FateMax = fate,
+                ApCost = apCost, OriginalResourceCost = resourceCost,
             };
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)
@@ -82,7 +83,7 @@ namespace Game.Map
 
             marker.transform.position = map.HexToWorld(army.Hex);
             marker.SetColor(PlayerColorPalette.Colors[army.Owner.ColorIndex]);
-            marker.SetSortingOrder(gameConfig.armyCircleSortingOrder, gameConfig.armyIconSortingOrder);
+            marker.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
             marker.SetVisible(false); // RestackArmiesOn below decides if it should actually show
 
             RestackArmiesOn(army.Hex, null);
@@ -105,7 +106,7 @@ namespace Game.Map
                 return;
 
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (building != null && building.Owner == army.Owner && building.HasAbility(BuildingAbilities.Barracks))
+            if (building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
                 return;
 
             ArmyRegistry.Unregister(army);
@@ -120,20 +121,24 @@ namespace Game.Map
 
         // Spawns a brand-new Base building at `hex` for `owner` — used by CardHandUI when a
         // CardType.Base card is played onto an empty hex (see CardHandUI.TryPlayCard). Uses the
-        // same buildingMarkerPrefab/citadelIconSprite the auto-placed citadel already uses — no
-        // visual distinction yet between "the citadel" and a player-built Base. Position/offset
-        // resolution is left entirely to the RestackArmiesOn call at the end, same as
-        // CitadelSetupController relies on its own one-off HexObjectLayout call before either
-        // the registry or RestackArmiesOn existed.
+        // same buildingMarkerPrefab (and owner's own FactionCardCatalog.citadelIcon) the
+        // auto-placed citadel already uses — no visual distinction yet between "the citadel" and
+        // a player-built Base. Position/offset resolution is left entirely to the RestackArmiesOn
+        // call at the end, same as CitadelSetupController relies on its own one-off
+        // HexObjectLayout call before either the registry or RestackArmiesOn existed.
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
             if (gameConfig == null || gameConfig.buildingMarkerPrefab == null || map == null || owner == null || definition == null)
                 return null;
 
+            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
+                : null;
+
             var building = new BuildingData
             {
                 Name = definition.displayName, Hex = hex, Owner = owner,
-                Visual = CreateBuildingMarker(hex, owner, gameConfig.buildingMarkerPrefab, gameConfig.citadelIconSprite),
+                Visual = CreateBuildingMarker(hex, owner, gameConfig.buildingMarkerPrefab, ownerCatalog?.citadelIcon),
                 Art = definition.art,
                 DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 Level = 1,
@@ -143,7 +148,7 @@ namespace Game.Map
                 Resistance = definition.resistanceRating,
                 Fate = definition.fate,
             };
-            building.Abilities.Add(BuildingAbilities.Base);
+            building.Abilities.Add(UnitAbilities.Base);
             foreach (string ability in definition.grantedAbilities)
                 building.Abilities.Add(ability);
             BuildingRegistry.Register(hex, building);
@@ -152,7 +157,7 @@ namespace Game.Map
             // a Barracks-tagged building needs its own garrison to receive Unit/Hero cards
             // deployed from hand — not every Base card grants Barracks, so this only fires when
             // the card's own grantedAbilities actually include it.
-            if (building.HasAbility(BuildingAbilities.Barracks))
+            if (building.HasAbility(UnitAbilities.Barracks))
             {
                 var garrison = new ArmyData { Name = "Garrison", Hex = hex, Owner = owner, IsGarrison = true };
                 ArmyRegistry.Register(garrison);
@@ -190,7 +195,7 @@ namespace Game.Map
             marker.SetColor(PlayerColorPalette.Colors[owner.ColorIndex]);
             if (icon != null)
                 marker.SetIcon(icon);
-            marker.SetSortingOrder(gameConfig.buildingCircleSortingOrder, gameConfig.buildingIconSortingOrder);
+            marker.SetSortingOrder(MapSortingOrder.BuildingCircle, MapSortingOrder.BuildingIcon);
             return marker;
         }
 
@@ -246,7 +251,7 @@ namespace Game.Map
                 return false; // not this player's building — no hint, same as any other irrelevant target
             }
 
-            string ability = definition.grantedAbilities.Find(a => System.Array.IndexOf(BuildingAbilities.CollectAbilities, a) >= 0);
+            string ability = definition.grantedAbilities.Find(a => System.Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
             if (ability != null && building.HasFacilityWithAbility(ability))
             {
                 turnController.ShowSpawnHint($"{building.Name} already has a {definition.displayName}.");
@@ -297,7 +302,10 @@ namespace Game.Map
 
             if (isNewSite)
             {
-                building.Visual = CreateBuildingMarker(hex, owner, gameConfig.facilityMarkerPrefab);
+                FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                    ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
+                    : null;
+                building.Visual = CreateBuildingMarker(hex, owner, gameConfig.facilityMarkerPrefab, ownerCatalog?.facilityIcon);
                 BuildingRegistry.Register(hex, building);
                 RestackArmiesOn(hex, null);
             }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
@@ -33,6 +34,7 @@ namespace Game.Map
         {
             ByHex[hex] = building;
             VisionSystem.RecomputeFor(building?.Owner);
+            VisionSystem.NotifyContentChanged(hex);
         }
 
         public static BuildingData FindAt(HexCoord hex)
@@ -52,6 +54,7 @@ namespace Game.Map
             ByHex.Remove(hex);
             BuildingDestroyed?.Invoke(building);
             VisionSystem.RecomputeFor(building.Owner);
+            VisionSystem.NotifyContentChanged(hex);
         }
 
         // Shared by every place a building changes hands through combat, per the user's own
@@ -66,7 +69,7 @@ namespace Game.Map
         {
             if (building == null)
                 return;
-            if (building.HasAbility(BuildingAbilities.Base))
+            if (building.HasAbility(UnitAbilities.Base))
             {
                 PlayerSetupData previousOwner = building.Owner;
                 building.Owner = newOwner;
@@ -78,6 +81,7 @@ namespace Game.Map
                 // here instead.
                 VisionSystem.RecomputeFor(previousOwner);
                 VisionSystem.RecomputeFor(newOwner);
+                VisionSystem.NotifyContentChanged(building.Hex);
             }
             else
             {

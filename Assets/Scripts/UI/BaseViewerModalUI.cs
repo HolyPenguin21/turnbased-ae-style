@@ -289,7 +289,7 @@ namespace Game.UI
         {
             if (facility == null || gameConfig == null || gameConfig.facilityUpgradeTiers == null)
                 return null;
-            if (!facility.Abilities.Overlaps(BuildingAbilities.CollectAbilities))
+            if (!facility.Abilities.Overlaps(UnitAbilities.CollectAbilities))
                 return null;
             if (IsFacilityAtYieldCap(facility))
                 return null;
@@ -327,7 +327,7 @@ namespace Game.UI
         {
             foreach (string ability in facility.Abilities)
             {
-                int index = Array.IndexOf(BuildingAbilities.CollectAbilities, ability);
+                int index = Array.IndexOf(UnitAbilities.CollectAbilities, ability);
                 if (index >= 0)
                     return (ResourceType)index;
             }
@@ -396,7 +396,7 @@ namespace Game.UI
         }
 
         // Called by a Facility cell's Improve button. A resource-collecting Facility (see
-        // BuildingAbilities.CollectAbilities) has a real paid upgrade — each tier raises its
+        // UnitAbilities.CollectAbilities) has a real paid upgrade — each tier raises its
         // per-turn contribution by 1 (see GameTurnController's collection math) — everything
         // else (Research Facility/Lab and any other cosmetic-only Facility) keeps the original
         // free no-op stub, since their behavior is out of scope this pass.
@@ -408,7 +408,7 @@ namespace Game.UI
             if (facility == null)
                 return;
 
-            if (!facility.Abilities.Overlaps(BuildingAbilities.CollectAbilities))
+            if (!facility.Abilities.Overlaps(UnitAbilities.CollectAbilities))
             {
                 facility.UpgradeLevel++;
                 ShowFacilityDetail(facility);

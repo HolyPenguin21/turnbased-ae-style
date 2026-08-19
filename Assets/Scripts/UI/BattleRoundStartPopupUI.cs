@@ -101,9 +101,9 @@ namespace Game.UI
                 defenderNameText.text = defender != null ? defender.Name : string.Empty;
 
             if (attackerRosterText != null)
-                attackerRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attackerSide: true));
+                attackerRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attacker, defender, attackerSide: true));
             if (defenderRosterText != null)
-                defenderRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attackerSide: false));
+                defenderRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attacker, defender, attackerSide: false));
         }
 
         private static string FormatRoster((UnitData hero, List<(UnitData unit, int initiative)> acting) side)

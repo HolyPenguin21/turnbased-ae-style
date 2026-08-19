@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -27,6 +28,16 @@ namespace Game.Core
         // RestackArmiesOn), never one per individual unit; a unit has no map presence of its
         // own at all.
         public MapObjectVisual armyMarkerPrefab;
+        // The event's own picture (see EventDefinition.image), shown standalone on a hex once
+        // its Hex Event has been left unresolved via Skip — never shown before that (an
+        // undiscovered event is a surprise, no map presence at all), and never removed again
+        // just because fog covers the hex afterward, same "remembered once seen" exception the
+        // resource row already gets (see MapEventDisplay, VisionSystem.
+        // HasEverSeenByCurrentViewer). Only removed once the event's reward is actually claimed.
+        // Unlike buildingMarkerPrefab/armyMarkerPrefab, never goes through HexObjectLayout —
+        // always sits at eventIconOffset regardless of what else shares the hex.
+        public EventMarkerVisual eventMarkerPrefab;
+        public Vector2 eventIconOffset = Vector2.zero;
         // Where each sits within its hex, in hex-radius units (x = left/right, y = the world Z
         // axis, same convention as the resource row). These three fields are only ever used
         // when a hex has MORE than one occupant — a lone occupant (building, army, or whatever
@@ -42,24 +53,6 @@ namespace Game.Core
         // instead stack visually — not designed yet, see HexObjectLayout's fallback.
         public Vector2 twoArmySideOffset = new Vector2(0.25f, 0f);
 
-        // Every scene element sits flat at Y=0 (the ground quad is the one exception, see
-        // MapGenerationSettings — it's pushed slightly below) — draw order between everything
-        // else is Renderer.sortingOrder, not height. See also HexHighlightStyle.sortingOrder
-        // (hex highlights: 1-2) and MoveArrowStyle's own sortingOrder fields (5-8).
-        [Header("Map Object Sorting (order in layer)")]
-        public int mapSortingOrder = 0;
-        public int buildingCircleSortingOrder = 3;
-        public int buildingIconSortingOrder = 4;
-        public int armyCircleSortingOrder = 9;
-        public int armyIconSortingOrder = 10;
-
-        [Header("Army")]
-        // The only icon actually shown on the map — a unit is purely an army member, with no
-        // independent map presence of its own, so the marker always represents an owner's whole
-        // army (see HexSelectionController.RestackArmiesOn). Global for now (one faction);
-        // becomes per-faction once more than one exists.
-        public Sprite armyIconSprite;
-
         [Header("Army Viewer")]
         // Instantiated by two different controllers (ArmyButtonRowUI — both the hex-side row
         // and the one embedded in ArmyViewerModalUI — and ArmyViewerModalUI's own unit grid),
@@ -69,7 +62,6 @@ namespace Game.Core
         public ArmyUnitCardUI armyUnitCardPrefab;
 
         [Header("Citadel")]
-        public Sprite citadelIconSprite;
         public ResourceYields citadelResourceBonus = new ResourceYields
         {
             human = 1,
@@ -131,16 +123,43 @@ namespace Game.Core
         public int resourceSiteFate = 1;
 
         [Header("Ability Abbreviations")]
-        // Short display form for each ability tag (see BuildingAbilities) — used wherever a
+        // Short display form for each ability tag (see UnitAbilities) — used wherever a
         // card/building/unit's abilities are listed in a description area (CardUI, ArmyUnitCardUI,
         // BaseSlotCardUI, and the two viewer modals' own detail panels — see FormatAbilities).
-        // An ability not listed here just falls back to showing its raw tag name.
+        // ability is synced from UnitAbilities.All (see SyncAbilityAbbreviations), one entry per
+        // real tag — abbreviation is the only field ever hand-edited here.
         public AbilityAbbreviation[] abilityAbbreviations = new AbilityAbbreviation[0];
 
         // Descriptions for FormatAbilitiesDetailed come from here rather than being duplicated
         // onto AbilityAbbreviation — this asset is already the populated reference for every
         // ability tag (see UnitAbilityCatalog.knownAbilities).
         public UnitAbilityCatalog abilityCatalog;
+
+        // Keeps abilityAbbreviations in exact 1:1 sync with UnitAbilities.All on every inspector
+        // refresh — same self-healing idea as UnitAbilityCatalog.OnValidate, so this array can
+        // never again carry a hand-typed ability tag that's silently drifted from the real one
+        // (see UnitAbilityCatalog's own comment on the incident this replaced).
+        private void OnValidate()
+        {
+            SyncAbilityAbbreviations();
+        }
+
+        private void SyncAbilityAbbreviations()
+        {
+            var abbreviationsByTag = new Dictionary<string, string>();
+            if (abilityAbbreviations != null)
+                foreach (AbilityAbbreviation entry in abilityAbbreviations)
+                    if (entry != null && !string.IsNullOrEmpty(entry.ability))
+                        abbreviationsByTag[entry.ability] = entry.abbreviation;
+
+            abilityAbbreviations = UnitAbilities.All
+                .Select(tag => new AbilityAbbreviation
+                {
+                    ability = tag,
+                    abbreviation = abbreviationsByTag.TryGetValue(tag, out string abbreviation) ? abbreviation : string.Empty,
+                })
+                .ToArray();
+        }
 
         // Falls back to the raw tag if it has no entry above.
         public string GetAbilityAbbreviation(string ability)
@@ -165,16 +184,10 @@ namespace Game.Core
             return string.Join(" ", parts);
         }
 
-        // Falls back to the raw tag if it has no entry above (same fallback rule as
-        // GetAbilityAbbreviation).
-        public string GetAbilityFullName(string ability)
-        {
-            if (abilityAbbreviations != null)
-                foreach (AbilityAbbreviation entry in abilityAbbreviations)
-                    if (entry != null && entry.ability == ability && !string.IsNullOrEmpty(entry.fullName))
-                        return entry.fullName;
-            return ability;
-        }
+        // Full display name is derived straight from the tag itself (see UnitAbilities.
+        // PrettyName) rather than a separate hand-typed copy — see AbilityAbbreviation's own
+        // comment for why that field was removed.
+        public string GetAbilityFullName(string ability) => UnitAbilities.PrettyName(ability);
 
         // Null if abilityCatalog isn't assigned, or the tag has no entry (or an empty
         // description) there — callers skip the "- description" line entirely rather than

@@ -43,6 +43,16 @@ namespace Game.Map
 
         public static PlayerSetupData CurrentViewer { get; set; }
 
+        // Dev-only override — see GameTurnController.debugRevealFogOfWar's own comment. Touches
+        // only the three CurrentViewer-facing read paths directly below, never the underlying
+        // per-player Visible/Visited/EverSeen sets themselves and never IsVisible/IsVisited/
+        // HasEverSeen taking an explicit `player` argument — those are what AiMapMemory and every
+        // other per-player AI read directly (see this class's own header comment), so this can
+        // only ever change what gets RENDERED to whichever human is CurrentViewer, never what any
+        // player (AI included) actually knows. Not reset by Clear() — a dev preference outlives
+        // any one game session, same as any other Inspector-set debug toggle.
+        public static bool DebugRevealAll { get; set; }
+
         public static void Configure(GameConfig config)
         {
             _config = config;
@@ -85,7 +95,7 @@ namespace Game.Map
         // wrongly hidden before the fog system actually has a perspective to render from.
         public static bool IsVisibleToCurrentViewer(HexCoord hex)
         {
-            return CurrentViewer == null || IsVisible(CurrentViewer, hex);
+            return DebugRevealAll || CurrentViewer == null || IsVisible(CurrentViewer, hex);
         }
 
         // Same fail-open rule as IsVisibleToCurrentViewer. The one deliberate exception to "content
@@ -96,7 +106,7 @@ namespace Game.Map
         // HexSelectionController.SelectHex).
         public static bool IsVisitedByCurrentViewer(HexCoord hex)
         {
-            return CurrentViewer == null || IsVisited(CurrentViewer, hex);
+            return DebugRevealAll || CurrentViewer == null || IsVisited(CurrentViewer, hex);
         }
 
         // Same fail-open rule again. The looser tier below IsVisitedByCurrentViewer: a hex merely
@@ -104,7 +114,7 @@ namespace Game.Map
         // resource types are there (see MapResourceDisplay/HexInfoPanelUI's "?" amount display).
         public static bool HasEverSeenByCurrentViewer(HexCoord hex)
         {
-            return CurrentViewer == null || HasEverSeen(CurrentViewer, hex);
+            return DebugRevealAll || CurrentViewer == null || HasEverSeen(CurrentViewer, hex);
         }
 
         // Rebuilds `player`'s own visible set from scratch — every one of their armies and
@@ -178,6 +188,24 @@ namespace Game.Map
                 return;
             foreach (PlayerSetupData player in players)
                 RecomputeFor(player);
+        }
+
+        // RecomputeFor above only ever recomputes and fires for the mover/builder's own owner
+        // (see ArmyRegistry.Register/Unregister, BuildingRegistry.Register/Unregister/
+        // CaptureOrDestroy) — a bystander who already has `hex` inside their own Visible set
+        // otherwise never finds out its content just changed (an army arrived/left/moved through)
+        // until their OWN vision happens to recompute for an unrelated reason. That starved
+        // AiMapMemory's EnemySightings snapshot (its only refresh hook is this same event) of any
+        // update when an enemy walked next to a stationary AI army — the AI kept deciding off a
+        // stale "no threat nearby" memory (see the project owner's own "разведчик не отступает"
+        // report). Deliberately does NOT touch that player's own Visible/Visited/EverSeen — their
+        // vision radius didn't move, only what's sitting on `hex` did, so re-snapshotting content
+        // is all any subscriber (AiMapMemory chief among them) actually needs.
+        public static void NotifyContentChanged(HexCoord hex)
+        {
+            foreach (KeyValuePair<PlayerSetupData, HashSet<HexCoord>> entry in new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible))
+                if (entry.Value.Contains(hex))
+                    VisibilityChanged?.Invoke(entry.Key);
         }
     }
 }
