@@ -22,6 +22,7 @@ namespace Game.Ai
         BuildFacility,
         RepairUnit,
         SplitGarrisonArmy,
+        CollapseAssembly,
         ConsolidateUnits,
         ConsolidateSwap,
         DetachCollector,
@@ -58,6 +59,8 @@ namespace Game.Ai
         // SplitGarrisonArmy only — the garrison members SplitGarrisonArmyRoutine moves into
         // MergeTarget (see GarrisonReorgTask.FindGarrisonOverflow).
         public IReadOnlyList<UnitData> UnitsToMove;
+        // CollapseAssembly only — see GarrisonReorgTask.FindCollapseMove.
+        public GarrisonReorgTask.CollapseMove CollapseMove;
         // ConsolidateUnits only — see GarrisonReorgTask.FindReorgMove.
         public GarrisonReorgTask.ConsolidationMove ConsolidationMove;
         // ConsolidateSwap only — see GarrisonReorgTask.FindReorgSwap.
@@ -307,6 +310,21 @@ namespace Game.Ai
             Reason = reason ?? (destination != null
                 ? $"garrison is full — moving {unitsToMove.Count} unit(s) into \"{destination.Name}\""
                 : $"garrison is full — splitting off a new army ({unitsToMove.Count} unit(s))"),
+        };
+
+        // Менеджмент · CollapseTemporaryAssembly — see GarrisonReorgTask.FindCollapseMove. One
+        // decision covers the WHOLE still-forming task-army's roster at once (atomic — FindCollapseMove
+        // only ever returns a move once it's already verified every member will fit), never
+        // competes in arbitration (same reasoning as Consolidate/Swap below — this only runs from
+        // AiTurnController.RunGarrisonReorgPhase's own end-of-turn drain).
+        public static AiDecision Collapse(GarrisonReorgTask.CollapseMove move) => new AiDecision
+        {
+            Kind = AiActionKind.CollapseAssembly,
+            ExistingArmy = move.Source,
+            TargetHex = move.Source.Hex,
+            CollapseMove = move,
+            Category = AiTaskCategory.Management,
+            Reason = move.Reason,
         };
 
         // Менеджмент · передача юнитов между армиями в базе — see GarrisonReorgTask.FindReorgMove.

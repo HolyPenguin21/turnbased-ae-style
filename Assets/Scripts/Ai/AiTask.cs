@@ -166,17 +166,29 @@ namespace Game.Ai
 
         public string Reason;
 
-        // VisitHex only (see VisitHexTask.TryFlee) — a ONE-TURN, resumable retreat: set whenever a
-        // flight-to-garrison candidate was used to advance the task, cleared again the very next
-        // continuation regardless of outcome, so a persistent threat produces "flee, resume, flee,
-        // resume, ..." rather than a full march home. BuildFacility/ResourcesScrap don't use this
-        // field at all — Экономика's own threat reaction is a hard cancel, nothing to flag.
-        // RaidWeakerArmy doesn't use it either — see Retreating below, a different, one-way shape.
-        public bool FledLastTurn;
+        // VisitHex only (see VisitHexTask.TryFlee) — a ONE-TURN, resumable retreat: the TURN
+        // NUMBER a flight-to-garrison candidate last advanced this task, -1 meaning "never fled
+        // (yet)". A persistent threat re-triggers this every turn it's still seen ("flee, resume,
+        // flee, resume, ..."), rather than a full march home. Deliberately keyed on the TURN
+        // NUMBER, not "the previous continuation call" (that was the old FledLastTurn bool,
+        // replaced 2026-08-23 — project owner's own report: AiTurnController.Decide calls
+        // TryContinueVisitTask several times within the SAME turn as the army walks its movement
+        // budget down, and the old flag reset itself on the very next CALL rather than the next
+        // TURN — a scout that fled once could have an ordinary Recon candidate immediately
+        // override the retreat before it ever reached safety, in that same turn). While
+        // FledOnTurn == the current turn, VisitHexTask.TryFlee keeps proposing the garrison
+        // regardless of whether the triggering threat is still in range THIS call (it may have
+        // simply fallen out of scoutFleeRadius as the scout moved away) — covers both "still
+        // mid-retreat, needs more flee steps this turn" and "already reached the garrison earlier
+        // this same turn, must not resume routine scouting until next turn" with one check.
+        // BuildFacility/ResourcesScrap don't use this field at all — Экономика's own threat
+        // reaction is a hard cancel, nothing to flag. RaidWeakerArmy doesn't use it either — see
+        // Retreating below, a different, one-way shape.
+        public int FledOnTurn = -1;
 
         // RaidWeakerArmy and DefendCitadel (2026-08-21 — Оборона's own local retreat, see
         // AiDefencePlanner.BuildPostureDecision, reuses this exact shape rather than inventing a
-        // second one). Unlike FledLastTurn's resumable one-turn detour, this is a ONE-WAY
+        // second one). Unlike FledOnTurn's resumable one-turn detour, this is a ONE-WAY
         // commitment: once true (an outmatched threat, a target that stopped being known, a
         // dead-end assembly, or — DefendCitadel only — a locally outmatched encounter or a
         // critically wounded army standing down), every future continuation walks straight to the
@@ -208,11 +220,13 @@ namespace Game.Ai
         // TryRaidAssembleCandidates/TryStartDefenceCandidates — same
         // "recomputed fresh, never trusted stale" rule Posture above already follows — so it's
         // never more than one step out of date. GarrisonReorgTask reads this to decide whether a
-        // task-claimed army sitting at the garrison hex is still being built (safe to keep folding
-        // members into the garrison between recruits) or already a finished force just waiting on
-        // AP to depart (must NOT be pulled apart) — see GarrisonReorgTask.FindAssemblingArmyFoldMove's
-        // own comment. Nothing else reads this; it exists purely so GarrisonReorgTask (which has no
-        // idea how any one task category scores its own readiness) doesn't need to re-derive it.
+        // task-claimed army sitting at the garrison hex is still being built (eligible for
+        // CollapseTemporaryAssembly's own atomic fold back to the garrison between recruits) or
+        // already a finished force (off-limits to generic Reorg entirely — see
+        // GarrisonReorgTask.IsProtectedTaskArmy's own comment) — see GarrisonReorgTask.
+        // FindCollapseMove's own comment. Nothing else reads this; it exists purely so
+        // GarrisonReorgTask (which has no idea how any one task category scores its own readiness)
+        // doesn't need to re-derive it.
         public bool StillAssembling;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);

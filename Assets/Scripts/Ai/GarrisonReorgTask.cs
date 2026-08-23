@@ -27,8 +27,39 @@ namespace Game.Ai
     //
     // Композиция — n/a, doesn't run through one owned army.
     //
-    // Поведение — FindReorgMove tries, in order, every call (2026-08-20 redesign, project owner's
-    // own spec):
+    // Поведение — 2026-08-23 redesign, project owner's own spec: three EXPLICIT, separately-named
+    // regimes instead of one generic drain, tried in this fixed priority order every drain
+    // iteration (see AiTurnController.RunGarrisonReorgPhase, which recomputes all three fresh each
+    // iteration — nothing here is cached or batched across iterations):
+    //
+    //   CollapseTemporaryAssembly → HandleOverflow (unconditional) → IdleBalance
+    //
+    // CollapseTemporaryAssembly (FindCollapseMove) — a still-recruiting RaidWeakerArmy/
+    // DefendCitadel army (AiTask.StillAssembling == true) sitting at this garrison's own hex
+    // returns to the garrison as ONE atomic move: either its whole roster (hero included) fits and
+    // moves this call, or nothing moves at all — see FindCollapseMove's own comment for why a
+    // partial per-unit trickle (the OLD tier 1b's own shape) defeats the point. Task/TargetHex/
+    // StillAssembling are untouched — this is a safety fold, not progress on the task — so the
+    // very next assemble step just recruits back out of garrison stock, hero included if the shell
+    // went fully empty (RaidWeakerArmyTask.FindRecruitAt's own NeedsHero check). Tried FIRST every
+    // iteration; when it can't act (garrison doesn't have literal room for the WHOLE roster yet),
+    // it simply declines and HandleOverflow/IdleBalance get this same iteration instead — see the
+    // safety-case note on FindCollapseMove itself for how a full-but-not-overflowing garrison still
+    // eventually frees enough room via IdleBalance's own strength-balance step.
+    //
+    // HandleOverflow (FindGarrisonOverflow/FindGarrisonOverflowDestination) — the mirror-image
+    // capacity concern (garrison itself OVER capacity, evicting outward). Tried second, and
+    // UNCONDITIONALLY — a hard constraint (the garrison is literally over its own capacity), never
+    // optional the way Collapse/IdleBalance are, so it always gets a look regardless of what
+    // Collapse just did or declined to do.
+    //
+    // IdleBalance (FindReorgMove/FindReorgSwap) — everything else: tiers 0-2 below, deliberately
+    // cut down to genuinely idle/lone/disbalanced material only (2026-08-23 — see
+    // IsProtectedTaskArmy's own comment for the exclusion this whole regime now respects: it has NO
+    // authority over a task-owned Raid or Active/Turtle-Defence army's composition, assembling or
+    // ready alike — that belongs exclusively to AiAggressionPlanner /
+    // AiDefencePlanner.TryStrengthenCandidate). Tried last, only once Collapse/Overflow both come
+    // up empty this same iteration:
     //   0) FindHeroCapacityExpansionMove — a lone hero sitting alone at base can't fold into a
     //      genuinely full garrison the ordinary way (ArmyActions.TransferMember only ever checks
     //      the target's CURRENT capacity, never what the capacity would become once the mover
@@ -41,7 +72,7 @@ namespace Game.Ai
     //      folds straight back in the call after that (tier 1 again). Net effect over 2-3 drain
     //      calls: the hero ends up leading the garrison, every unit that was ever involved ends up
     //      back inside it too, and the now-empty former hero army is left behind (fine — empty
-    //      armies don't disappear at a barracks hex, see RunGarrisonReorgPhase's own comment).
+    //      armies don't disappear at a barracks hex, see IsLoneArmyAtBase's own comment).
     //   1) A lone (single-member) army — hero or plain unit alike, no distinction between the two
     //      (see IsLoneArmyAtBase's own comment) — folds back into garrison instead of sitting there
     //      a fragile single unit forever, gated on raw HasRoom, NOT AiManagementPlanner.
@@ -56,27 +87,20 @@ namespace Game.Ai
     //      owner's own call, point 1.2) — this class no longer tracks scouting composition at all;
     //      Разведка/Агрессия each assemble their own dedicated army from scratch when they need
     //      one, so an idle Recce solo sitting at base is just another lone army to this class.
-    //   1b) FindAssemblingArmyFoldMove — 2026-08-21 follow-up, project owner's own report: tier 1
-    //      above only ever matches EXACTLY one member, so a RaidWeakerArmy/DefendCitadel army that's
-    //      grown past its first recruit but is still AiTask.StillAssembling (not yet IsReady) sat
-    //      at the garrison hex completely untouched — no different from before the task-claim guard
-    //      was loosened at all. This tier picks up everything tier 1 can't: any
-    //      still-assembling task-claimed army with 2+ members, garrison-hex only, folding its
-    //      weakest member in at a time for as long as the garrison HasRoom. Garrison-only
-    //      destination, no "other field army" fallback the way tier 1 has — if the garrison has no
-    //      room, the member is exactly as safe staying put in its own still-forming army as it
-    //      would be homeless in some unrelated host, nothing gained by scattering it. Reads
-    //      StillAssembling rather than recomputing readiness itself (see that field's own comment)
-    //      — this class has no idea how any one task category scores its own composition target.
-    //   2) FindHexBalanceMove — once no lone/still-assembling army is left to fold (or the garrison has no room and
+    //      IsProtectedTaskArmy-excluded (2026-08-23) — a lone hero anchoring a protected Raid/
+    //      Active/Turtle-Defence army in practice never even reaches this tier (CollapseTemporary
+    //      Assembly claims any StillAssembling one first, and every StillAssembling==true army IS
+    //      one of those two Kinds), but a READY one down to its own lone hero must stay untouched
+    //      too, so the exclusion applies unconditionally here.
+    //   2) FindHexBalanceMove — once no lone army is left to fold (or the garrison has no room and
     //      nothing else can absorb one) AND the garrison genuinely has no room, this ONE tier now
     //      covers both strength and composition (merged 2026-08-20, project owner's own follow-up —
     //      "нужно смотреть на все армии хекса и гарнизон", not just garrison-vs-one-field-army):
-    //        - Strength — garrison vs the COMBINED power of every field army at this hex, leveled
-    //          toward AiConfig.garrisonPowerShareTarget/garrisonPowerShareTolerance (default 70/30,
-    //          project owner's own pick) — garrison's own strongest spare moves out to whichever
-    //          field army with room currently needs it most (lowest average) when garrison is
-    //          carrying more than its target share (the garrison ends up the bigger, not
+    //        - Strength — garrison vs the COMBINED power of every eligible field army at this hex,
+    //          leveled toward AiConfig.garrisonPowerShareTarget/garrisonPowerShareTolerance (default
+    //          70/10, project owner's own pick) — garrison's own strongest spare moves out to
+    //          whichever field army with room currently needs it most (lowest average) when
+    //          garrison is carrying more than its target share (the garrison ends up the bigger, not
     //          necessarily individually-stronger-per-unit, army over time just from capacity and
     //          hero accumulation — point 2.1.2). Exception (point 2.1.3): with only ONE hero
     //          anywhere on the roster and more non-hero units on this hex than even a hero-led
@@ -85,33 +109,38 @@ namespace Game.Ai
     //          behind the base's own defense bonus, so it stays; a hard hitter (Defense>2,
     //          Attack>=4) is wasted sitting still, so it goes to a field army instead.
     //        - Composition — once strength has nothing left to correct, even out TYPE composition
-    //          (melee vs ranged, ability-heavy vs plain) across every army at this hex, garrison
-    //          included (point 3.2) — the exact same roster-shape criteria AiManagementPlanner.
-    //          UnitCompositionFitBonus already reads off the player's whole stock for Unit-card
-    //          placement (point 3.1), just applied army-to-army here instead of card-to-roster.
-    //      Gated on AiConfig.minHexUnitsForBalancing (point 3 — "один, два, три юнита на хексе
-    //      балансировать нечего") — splitting a handful of units across several armies just to hit
-    //      a ratio produces several forces too small to survive anything, worse than one coherent
-    //      garrison-led stack; below that floor everything just stays put no matter how skewed the
-    //      raw ratio looks. Ordering (point 2): fill the garrison first (tiers 0-1), only once it's
-    //      genuinely full does anything get pushed OUT to field armies (this tier) — never a
-    //      proactive "keep the ratio right" correction while the garrison still has spare room.
+    //          (melee vs ranged, ability-heavy vs plain) across every eligible army at this hex,
+    //          garrison included (point 3.2) — the exact same roster-shape criteria
+    //          AiManagementPlanner.UnitCompositionFitBonus already reads off the player's whole
+    //          stock for Unit-card placement (point 3.1), just applied army-to-army here instead of
+    //          card-to-roster. Gated on AiConfig.compositionImbalanceThreshold (2026-08-23, an
+    //          initial tuning value, not yet checked against a real playtest log — a raw 1-count gap
+    //          used to fire this every single drain call).
+    //      "Eligible" everywhere above means IsProtectedTaskArmy-excluded (2026-08-23) — a Raid or
+    //      Active/Turtle-Defence army, assembling or ready, never enters this tier's own pool as
+    //      either donor or recipient. Gated on AiConfig.minHexUnitsForBalancing (point 3 — "один,
+    //      два, три юнита на хексе балансировать нечего") — splitting a handful of units across
+    //      several armies just to hit a ratio produces several forces too small to survive anything,
+    //      worse than one coherent garrison-led stack; below that floor everything just stays put no
+    //      matter how skewed the raw ratio looks. Ordering (point 2): fill the garrison first
+    //      (tiers 0-1), only once it's genuinely full does anything get pushed OUT to field armies
+    //      (this tier) — never a proactive "keep the ratio right" correction while the garrison
+    //      still has spare room.
     //
     // FindReorgSwap is a separate, LAST-RESORT entry point (not one of FindReorgMove's own tiers
     // above — see AiManagementPlanner.TryConsolidationCandidate, which only calls it once
     // FindReorgMove itself returns nothing this same call) for when the whole hex is genuinely
-    // packed — garrison full AND every field army full too, so tier 2's own moves can never find a
-    // free slot to land in no matter how skewed things are. ArmyActions.SwapMembers trades two
-    // units 1-for-1 with no free slot needed at all (project owner's own 2026-08-20 call — "если
+    // packed — garrison full AND every eligible field army full too, so tier 2's own moves can never
+    // find a free slot to land in no matter how skewed things are. ArmyActions.SwapMembers trades
+    // two units 1-for-1 with no free slot needed at all (project owner's own 2026-08-20 call — "если
     // вообще нет места на хексе, то добавить функционал замены юнитов между армиями"), reading the
-    // exact same strength/composition/2.1.3-exception signals tier 2 does, just executing a trade
-    // instead of a move wherever tier 2 itself would have been stuck.
+    // exact same strength/composition/2.1.3-exception/IsProtectedTaskArmy signals tier 2 does, just
+    // executing a trade instead of a move wherever tier 2 itself would have been stuck.
     //
-    // FindGarrisonOverflow/FindGarrisonOverflowDestination are the mirror-image concern (garrison
-    // itself over capacity, evicting outward) — kept here too since it's the same "капасити
-    // гарнизона" half of this one task, just the opposite direction. Tried before every tier above,
-    // each drain call (see AiTurnController.RunGarrisonReorgPhase) — overflow is a hard constraint
-    // (the garrison is literally over its own capacity), never optional the way 0-2 above are.
+    // FindGarrisonOverflow/FindGarrisonOverflowDestination are HandleOverflow's own two halves —
+    // kept here too since it's the same "капасити гарнизона" concern this whole task owns, just the
+    // opposite direction. See the priority-order note above for where it sits relative to Collapse/
+    // IdleBalance.
     public static class GarrisonReorgTask
     {
         // ---- Капасити гарнизона ----
@@ -265,23 +294,37 @@ namespace Game.Ai
                 && army.Members.Count == 1 && army.Hex.Equals(garrisonHex);
         }
 
-        // The ONE task-claimed shape Tier 2 (FindHexBalanceMove) and FindReorgSwap still leave
-        // alone — a DefendCitadel task actually in its Turtle posture (2026-08-21, narrowed from
-        // "any task-claimed army" per the project owner's own report — see IsLoneArmyAtBase's own
-        // comment on why the broader exclusion turned out unnecessary elsewhere: those two tiers
-        // never fully drain an army the way Tier 1's fold-back can, so there's no deletion/AP-
-        // oscillation risk to guard against here). Turtle's whole point is concentrating power at
-        // the garrison hex ABOVE the ordinary garrisonPowerShareTarget/garrisonPowerShareTolerance
-        // ratio (see AiDefencePlanner's own class comment) — without this one exclusion, Tier 2's
-        // strength-balance step would read that deliberate over-concentration as an imbalance and
-        // donate the Turtle "кулак"'s own strongest units back out to other field armies, directly
-        // undoing the posture's own purpose. Every OTHER task-claimed army (a RaidWeakerArmy still
-        // assembling, DefendCitadel in Patrol/Active, RaidReinforce, ...) has no such standing
-        // strategic intent to protect, so it's ordinary balancing material like anything else here.
-        private static bool IsProtectedTurtleFist(PlayerSetupData player, ArmyData army)
+        // IdleBalance's own no-go list (2026-08-23 redesign, project owner's own spec point 3):
+        // a task-owned RaidWeakerArmy army, or a DefendCitadel army in Active or Turtle posture, is
+        // off-limits to every generic Reorg move/swap here — tier 0's hero-capacity-expansion
+        // source, tier 1's lone-army fold, tier 2's strength/composition balance, and FindReorgSwap
+        // all skip it. Composition ownership for these belongs exclusively to the task's own
+        // planner (AiAggressionPlanner for Raid, AiDefencePlanner.TryStrengthenCandidate for
+        // Active/Turtle Defence) — "не пускать generic balancing внутрь активных специализированных
+        // задач". Deliberately NOT gated on StillAssembling (narrowed FROM that during planning —
+        // the earlier draft only protected a READY army, on the theory that a still-forming one was
+        // already covered by FindCollapseMove; that left a StillAssembling army fully exposed to
+        // this class's own tier 2 composition-evening donor/recipient pool on any drain iteration
+        // FindCollapseMove itself declined, e.g. not enough garrison room yet for the WHOLE roster —
+        // exactly the interference this method exists to prevent, assembling or not). Which
+        // mechanism is ALLOWED to touch the army is decided elsewhere (FindCollapseMove's own
+        // StillAssembling gate, or the task's own planner reading task state directly) — this
+        // method only ever answers "can IdleBalance touch it", never "is it done recruiting".
+        // Patrol-postured DefendCitadel is deliberately NOT in this list (project owner's own call,
+        // 2026-08-23) — it has no standing strategic intent above the ordinary ratio yet (unlike
+        // Turtle, see the old single-posture version of this method), so it stays ordinary
+        // balancing material like any task-less army. RaidReinforce/BuildBase (the other two
+        // Aggression-category Kinds) are likewise NOT protected — only RaidWeakerArmy itself was
+        // ever in scope of the project owner's "Raid" wording here.
+        private static bool IsProtectedTaskArmy(PlayerSetupData player, ArmyData army)
         {
             AiTask task = AiTaskRegistry.TaskFor(player, army);
-            return task != null && task.Kind == AiTaskKind.DefendCitadel && task.Posture == AiDefencePosture.Turtle;
+            if (task == null)
+                return false;
+            if (task.Kind == AiTaskKind.RaidWeakerArmy)
+                return true;
+            return task.Kind == AiTaskKind.DefendCitadel
+                && (task.Posture == AiDefencePosture.Active || task.Posture == AiDefencePosture.Turtle);
         }
 
         // Average non-hero unit strength (Defense+Attack) — the yardstick tier 1's "which field
@@ -315,7 +358,7 @@ namespace Game.Ai
                 return null;
 
             ArmyData loneHeroArmy = ArmyRegistry.AllForOwner(player)
-                .Where(a => IsLoneArmyAtBase(a, garrisonHex) && a.Members[0].IsHero)
+                .Where(a => IsLoneArmyAtBase(a, garrisonHex) && a.Members[0].IsHero && !IsProtectedTaskArmy(player, a))
                 .OrderByDescending(a => a.Members[0].CommandRating)
                 .FirstOrDefault();
             if (loneHeroArmy == null)
@@ -342,7 +385,8 @@ namespace Game.Ai
         // exactly backwards from this whole class's own point.
         private static ConsolidationMove? FindLoneArmyFoldMove(PlayerSetupData player, HexCoord garrisonHex, ArmyData garrison, AiTurnContext ctx)
         {
-            List<ArmyData> loneArmies = ArmyRegistry.AllForOwner(player).Where(a => IsLoneArmyAtBase(a, garrisonHex))
+            List<ArmyData> loneArmies = ArmyRegistry.AllForOwner(player)
+                .Where(a => IsLoneArmyAtBase(a, garrisonHex) && !IsProtectedTaskArmy(player, a))
                 .OrderBy(a => a.Members[0].Defense).ThenBy(a => a.Members[0].Attack)
                 .ToList();
 
@@ -381,41 +425,87 @@ namespace Game.Ai
             return null;
         }
 
-        // Tier 1b — see this class's own class comment. Every member of every still-assembling
-        // task-claimed army at the garrison hex, weakest unit first across the whole combined pool
-        // (Defense, then Attack) — same "don't strip a strong stray while a weak one waits" rule
-        // tier 1 already follows, just spanning several source armies' own rosters now instead of
-        // one candidate per army. Garrison-only; returns null outright once the garrison itself has
-        // no room rather than falling back to some other host the way tier 1 does — see this
-        // method's own doc bullet in the class comment for why that fallback doesn't apply here.
-        private static ConsolidationMove? FindAssemblingArmyFoldMove(PlayerSetupData player, HexCoord garrisonHex, ArmyData garrison, AiTurnContext ctx)
+        // ---- CollapseTemporaryAssembly ----
+
+        public readonly struct CollapseMove
+        {
+            public readonly ArmyData Source;
+            public readonly ArmyData Garrison;
+            public readonly IReadOnlyList<UnitData> UnitsToMove;
+            public readonly AiTask Task;
+            public readonly string Reason;
+
+            public CollapseMove(ArmyData source, ArmyData garrison, IReadOnlyList<UnitData> unitsToMove, AiTask task, string reason)
+            {
+                Source = source;
+                Garrison = garrison;
+                UnitsToMove = unitsToMove;
+                Task = task;
+                Reason = reason;
+            }
+        }
+
+        // CollapseTemporaryAssembly (2026-08-23 redesign, project owner's own spec) — replaces the
+        // old tier 1b (FindAssemblingArmyFoldMove), which folded a still-assembling task army back
+        // in one member at a time, several drain iterations and several log lines for what's really
+        // one event: "this recruit isn't ready yet, stand down until next turn". Now it's a single
+        // atomic move — either the WHOLE roster fits in the garrison this call, or nothing moves at
+        // all (project owner's own explicit correction during planning: gating the move loop on
+        // `garrison.HasRoom` per-unit would silently move SOME of the roster and stop, reproducing
+        // the exact per-unit trickle this mechanism exists to replace, just inside one coroutine
+        // instead of several drain iterations). First in the whole phase's priority order — tried
+        // before HandleOverflow/IdleBalance every drain iteration (see AiTurnController.
+        // RunGarrisonReorgPhase) — but never forces its way through: if the roster doesn't fit this
+        // call, it simply declines and lets Overflow/IdleBalance run instead, which (see
+        // FindHexBalanceMove's own strength-balance step) can donate a garrison slot to a field army
+        // and free room for a LATER call to finally succeed.
+        //
+        // Hero included in the collapse (project owner's own confirmed call) — unlike the old tier
+        // 1b, which kept the hero anchoring the field escort and only cycled non-hero members, this
+        // can empty the source army down to nothing. Safe because RaidWeakerArmyTask.FindRecruitAt's
+        // own NeedsHero check already re-picks a hero FIRST from garrison stock the next time this
+        // same task needs one — an emptied shell just re-recruits from scratch, no different from
+        // any other still-assembling army that never had a hero yet.
+        //
+        // Task/TargetHex/StillAssembling are all left completely untouched — the point of this move
+        // is safety, not progress or regress on the task itself (project owner's own spec: "task не
+        // завершается; target не теряется; StillAssembling сохраняется; армия остаётся привязана к
+        // task"). HexSelectionController.DeleteArmyIfEmptied's own Barracks-hex exception (see
+        // IsLoneArmyAtBase's own comment) is exactly why the now-possibly-empty Source object
+        // survives as a registered shell instead of vanishing along with the task that owns it.
+        public static CollapseMove? FindCollapseMove(PlayerSetupData player, HexCoord garrisonHex, ArmyData garrison, AiTurnContext ctx)
         {
             if (garrison == null || !garrison.HasRoom)
                 return null;
 
-            // Non-hero members only (2026-08-21 fix, own re-simulation finding) — sorting the raw
-            // candidate pool by Defense/Attack alone reads a hero as "weakest" (their value is
-            // CommandRating/leadership, not combat stats), so an unfiltered sort would preferentially
-            // evict the exact hero anchoring this still-forming RaidWeakerArmy/DefendCitadel escort —
-            // backwards from the whole point (a raid/defense force needs its hero, see
-            // AiArmyRoles.IsHeroLedCombatArmy's own comment). Same `!m.IsHero` convention every other
-            // tier here already follows for ordinary rank-and-file shuffling (TotalNonHeroPower/
-            // AverageNonHeroStrength) — a lone bare hero with nothing else yet is a different case,
-            // already handled by tier 1 (IsLoneArmyAtBase's own "no distinction" is fine there since
-            // there's no escort structure yet to protect).
-            var candidates = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Members.Count > 1
-                    && AiTaskRegistry.TaskFor(player, a)?.StillAssembling == true)
-                .SelectMany(a => a.Members.Where(m => !m.IsHero).Select(unit => (Army: a, Unit: unit)))
-                .OrderBy(c => c.Unit.Defense).ThenBy(c => c.Unit.Attack);
+            ArmyData source = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a != null && !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex)
+                    && a.Members.Count > 0 && AiTaskRegistry.TaskFor(player, a)?.StillAssembling == true);
+            if (source == null)
+                return null;
 
-            foreach ((ArmyData army, UnitData unit) in candidates)
-            {
-                if (CanAffordTransferInto(garrison, unit) && !ctx.WouldRevisitArmy(unit, garrison))
-                    return new ConsolidationMove(army, unit, garrison,
-                        $"{unit.Name} — \"{army.Name}\" still assembling, folding a member into the garrison meanwhile");
-            }
-            return null;
+            AiTask task = AiTaskRegistry.TaskFor(player, source);
+
+            // Non-hero weakest-first, then heroes — ordering only actually matters for the verbose
+            // per-unit debug trace below (a real proposal here is all-or-nothing, see this method's
+            // own comment), kept anyway since it reads naturally as "the rank and file file back in,
+            // the leader last".
+            List<UnitData> members = source.Members.Where(m => !m.IsHero).OrderBy(m => m.Defense).ThenBy(m => m.Attack)
+                .Concat(source.Members.Where(m => m.IsHero))
+                .ToList();
+
+            // Atomicity gate — EVERY member has to individually clear both checks, AND the garrison
+            // has to have literal room for the whole headcount, or this proposes nothing at all this
+            // call (see this method's own class comment on why a partial collapse defeats the point).
+            if (members.Any(m => !CanAffordTransferInto(garrison, m) || ctx.WouldRevisitArmy(m, garrison)))
+                return null;
+            if (garrison.Capacity - garrison.Members.Count < members.Count)
+                return null;
+
+            string label = task.Kind == AiTaskKind.RaidWeakerArmy ? "Raid" : "Defence";
+            return new CollapseMove(source, garrison, members, task,
+                $"\"{source.Name}\" temporary {label} assembly collapsing into the garrison — {members.Count} unit(s) returning; "
+                    + $"task preserved, target=({task.TargetHex.Q},{task.TargetHex.R})");
         }
 
         // Tier 2 — see this class's own class comment, points 2/2.1/2.1.2/2.1.3/3/3.1/3.2. Merged
@@ -428,16 +518,15 @@ namespace Game.Ai
             if (garrison == null || garrison.HasRoom)
                 return null; // fill the garrison first (tiers 0-1) — point 2's own ordering; nothing gets pushed OUT until it's genuinely full
 
-            // Excludes only a Turtle-postured DefendCitadel "кулак" (2026-08-21 fix, simulation
-            // report finding, NARROWED 2026-08-21 follow-up, project owner's own call — see
-            // IsProtectedTurtleFist's own comment for why every OTHER task-claimed army is fair
-            // game here now) — without this one exclusion, a Turtle "кулак" deliberately
-            // concentrating power above the ordinary 70/30 garrison/field ratio would just get
-            // rebalanced back down by this same method, working directly against the whole point
-            // of Оборона's Turtle posture.
+            // Excludes every protected task army (2026-08-23 redesign — see IsProtectedTaskArmy's
+            // own comment) — a Raid or Active/Turtle-Defence force's composition belongs to its own
+            // planner, and a Turtle "кулак" deliberately concentrating power above the ordinary
+            // 70/30 garrison/field ratio would otherwise just get read as an imbalance and
+            // rebalanced back down by this same method, working directly against the posture's own
+            // purpose.
             List<ArmyData> fieldArmies = ArmyRegistry.AllForOwner(player)
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
-                    && !IsProtectedTurtleFist(player, a))
+                    && !IsProtectedTaskArmy(player, a))
                 .ToList();
             if (fieldArmies.Count == 0)
                 return null;
@@ -503,6 +592,11 @@ namespace Game.Ai
             // hex (point 3.2) — the exact same roster-shape criteria AiManagementPlanner.
             // UnitCompositionFitBonus already reads off the player's whole stock for Unit-card
             // placement (point 3.1), just applied army-to-army here instead of card-to-roster.
+            // Gated on AiConfig.compositionImbalanceThreshold (2026-08-23, project owner's own call
+            // — an initial tuning value, not yet checked against a real playtest log) — a raw 1-unit
+            // gap used to fire this every single drain call for a difference nobody would call
+            // "imbalanced", the main source of the churn the project owner flagged; now the gap has
+            // to actually be meaningful before this proposes shuffling anything.
             var allArmies = new List<ArmyData> { garrison };
             allArmies.AddRange(fieldArmies);
             foreach (ArmyData recipient in allArmies)
@@ -517,11 +611,11 @@ namespace Game.Ai
                 int simple = recipientUnits.Count(m => m.Abilities.Count == 0);
 
                 Func<UnitData, bool> needs;
-                if (melee > ranged)
+                if (melee - ranged >= AiConfig.compositionImbalanceThreshold)
                     needs = m => m.Range > 1;
-                else if (ranged > melee)
+                else if (ranged - melee >= AiConfig.compositionImbalanceThreshold)
                     needs = m => m.Range <= 1;
-                else if (abilityHeavy > simple)
+                else if (abilityHeavy - simple >= AiConfig.compositionImbalanceThreshold)
                     needs = m => m.Abilities.Count == 0;
                 else
                     continue;
@@ -557,11 +651,11 @@ namespace Game.Ai
             if (garrison == null || garrison.HasRoom)
                 return null;
 
-            // Excludes only a Turtle-postured DefendCitadel "кулак" — see IsProtectedTurtleFist's
-            // own comment (same narrowed 2026-08-21 exclusion FindHexBalanceMove uses).
+            // Excludes every protected task army — see IsProtectedTaskArmy's own comment (same
+            // exclusion FindHexBalanceMove uses).
             List<ArmyData> fieldArmies = ArmyRegistry.AllForOwner(player)
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
-                    && !IsProtectedTurtleFist(player, a))
+                    && !IsProtectedTaskArmy(player, a))
                 .ToList();
             if (fieldArmies.Count == 0)
                 return null;
@@ -616,8 +710,9 @@ namespace Game.Ai
             }
 
             // Composition — same roster-shape gap FindHexBalanceMove's own composition step reads,
-            // traded instead of moved since nobody has room. `giveUp` is the recipient's own
-            // excess-type spare — the thing it trades AWAY for the donor's needed-type unit.
+            // same AiConfig.compositionImbalanceThreshold gate, traded instead of moved since nobody
+            // has room. `giveUp` is the recipient's own excess-type spare — the thing it trades
+            // AWAY for the donor's needed-type unit.
             var allArmies = new List<ArmyData> { garrison };
             allArmies.AddRange(fieldArmies);
             foreach (ArmyData recipient in allArmies)
@@ -632,9 +727,9 @@ namespace Game.Ai
 
                 Func<UnitData, bool> needs;
                 Func<UnitData, bool> excess;
-                if (melee > ranged) { needs = m => m.Range > 1; excess = m => m.Range <= 1; }
-                else if (ranged > melee) { needs = m => m.Range <= 1; excess = m => m.Range > 1; }
-                else if (abilityHeavy > simple) { needs = m => m.Abilities.Count == 0; excess = m => m.Abilities.Count > 0; }
+                if (melee - ranged >= AiConfig.compositionImbalanceThreshold) { needs = m => m.Range > 1; excess = m => m.Range <= 1; }
+                else if (ranged - melee >= AiConfig.compositionImbalanceThreshold) { needs = m => m.Range <= 1; excess = m => m.Range > 1; }
+                else if (abilityHeavy - simple >= AiConfig.compositionImbalanceThreshold) { needs = m => m.Abilities.Count == 0; excess = m => m.Abilities.Count > 0; }
                 else continue;
 
                 UnitData giveUp = recipientUnits.Where(excess).OrderBy(m => m.Defense).ThenBy(m => m.Attack).FirstOrDefault();
@@ -669,7 +764,6 @@ namespace Game.Ai
         {
             return FindHeroCapacityExpansionMove(player, garrisonHex, garrison, ctx)
                 ?? FindLoneArmyFoldMove(player, garrisonHex, garrison, ctx)
-                ?? FindAssemblingArmyFoldMove(player, garrisonHex, garrison, ctx)
                 ?? FindHexBalanceMove(player, garrisonHex, garrison, ctx);
         }
 

@@ -11,6 +11,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using Game.UI;
 using Game.Units;
 using UnityEngine;
@@ -478,6 +479,24 @@ namespace Game.Ai
         // candidates this step must never register more than the ONE that actually wins.
         private static void Commit(PlayerSetupData player, AiDecision decision, AiResourcePool pool)
         {
+            // A "preemption" that's actually just this SAME task continuing — same army, same
+            // Kind, same TargetHex — is never a real preemption, whatever candidate-generation
+            // path produced it (2026-08-23 fix, project owner's own report/spec: a self-recommit
+            // like this must never unfinished-mark or remove→add a task that was never actually
+            // interrupted, since that resets BuildAttempts/StartedWithNoIncome/reservation and any
+            // other future per-task counter for zero real change). decision.Task is always a
+            // freshly-built object at this point (every planner re-derives its own candidate task
+            // fresh each step — see e.g. AiEconomyPlanner.TryStartEconomyCandidates), never the
+            // literal same instance as PreemptedTask, so this compares by identity fields instead
+            // of by reference. The already-registered PreemptedTask instance is simply left alone;
+            // decision.Task is discarded, same as any other non-winning candidate's leftovers.
+            if (decision.PreemptedTask != null && decision.Task != null
+                && decision.PreemptedTask.Army == decision.Task.Army && decision.PreemptedTask.Kind == decision.Task.Kind
+                && decision.PreemptedTask.TargetHex.Equals(decision.Task.TargetHex))
+            {
+                return;
+            }
+
             if (decision.PreemptedTask != null)
             {
                 // decision.TargetHex is only this step's own next move-step (see
@@ -546,7 +565,12 @@ namespace Game.Ai
             {
                 for (int i = 0; i < AiConfig.maxGarrisonReorgStepsPerTurn; i++)
                 {
-                    AiDecision decision = AiManagementPlanner.TryGarrisonSplitCandidate(player, garrison)
+                    // CollapseTemporaryAssembly → HandleOverflow (unconditional) → IdleBalance — see
+                    // GarrisonReorgTask's own class comment for the full three-regime writeup. A
+                    // fresh recompute of all three every iteration, not a cached batch — whichever
+                    // one fires changes what the very next iteration itself sees.
+                    AiDecision decision = AiManagementPlanner.TryCollapseCandidate(player, garrison, ctx)
+                        ?? AiManagementPlanner.TryGarrisonSplitCandidate(player, garrison)
                         ?? AiManagementPlanner.TryConsolidationCandidate(player, garrison, ctx);
                     if (decision == null)
                         break;
@@ -583,6 +607,9 @@ namespace Game.Ai
                     break;
                 case AiActionKind.SplitGarrisonArmy:
                     yield return AiManagementPlanner.SplitGarrisonArmyRoutine(player, decision, ctx);
+                    break;
+                case AiActionKind.CollapseAssembly:
+                    yield return AiManagementPlanner.CollapseTemporaryAssemblyRoutine(player, decision, ctx);
                     break;
                 case AiActionKind.ConsolidateUnits:
                     yield return AiManagementPlanner.ConsolidateUnitsRoutine(player, decision, ctx);
@@ -845,10 +872,37 @@ namespace Game.Ai
             System.Func<HexCoord, bool> blockHex = avoidCenter.HasValue
                 ? (System.Func<HexCoord, bool>)(hex => !hex.Equals(destination) && HexGridMath.Distance(hex, avoidCenter.Value) <= avoidRadius)
                 : null;
+            return FindAffordableStep(map, army, destination, blockHex);
+        }
+
+        // Centralized "one step toward `destination`, but only if the army can actually afford to
+        // enter it this turn" — HexPathfinder.FindPath only guarantees a route EXISTS, never that
+        // its first step's terrain cost fits inside army.CurrentMovement. A rough-terrain hex right
+        // next to the army can already cost more than everything it has left, and a planner that
+        // only checks "does a path exist" (or checks affordability against a DIFFERENT, unblocked
+        // path than the one it actually walks) can hand HexSelectionController.Movement.
+        // IssueMoveOrder's own matching first-step check a move order it's guaranteed to reject
+        // outright — 2026-08-23 fix (project owner's own report, two live cases: a Разведка scout
+        // and an Экономика hero both ordered onto a next hex costing more movement than either had
+        // left). Every planner that proposes a next-step move candidate now routes through this one
+        // method — directly, or via FindPathStepAvoidingZone above — instead of reading
+        // path.Hexes[1] by hand, so this only needs fixing once. Null both when no route exists yet
+        // and when the only route's first step is already unaffordable — either way "nothing to do
+        // this step, retry next step/turn", never "walk as far as the path allows" (that fallback
+        // already lives at the IssueMoveOrder layer, for a full-target move like Задача 2's own
+        // ResourcesScrap — this helper is only for callers that need the SINGLE next hex).
+        internal static HexCoord? FindAffordableStep(HexMap map, ArmyData army, HexCoord destination,
+            System.Func<HexCoord, bool> blockHex = null)
+        {
+            if (map == null || army == null || destination.Equals(army.Hex))
+                return null;
             HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: blockHex);
             if (path == null || path.Hexes.Count < 2)
                 return null;
-            return path.Hexes[1];
+            HexCoord step = path.Hexes[1];
+            map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
+            int cost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+            return army.CurrentMovement >= cost ? step : (HexCoord?)null;
         }
 
         // Trailer for an action's own log line — "what did this actually cost", read as a

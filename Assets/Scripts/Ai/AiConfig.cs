@@ -741,7 +741,15 @@ namespace Game.Ai
         // the roster toward a more balanced state (nothing in that class proposes undoing a move it
         // just made), so a real turn settles in well under this many. Not the same constant as
         // maxStepsPerTurn on purpose — that one bounds the whole turn's main arbitrated loop, this
-        // one bounds only the dedicated end-of-turn reorg drain.
+        // one bounds only the dedicated end-of-turn reorg drain. Deliberately NOT lowered for the
+        // 2026-08-23 CollapseTemporaryAssembly redesign, even though collapse now folds what used to
+        // be several per-unit tier-1b steps into one atomic move (project owner's own correction
+        // during planning) — that atomicity cuts BOTH ways: a full-but-not-overflowing garrison can
+        // legitimately need several drain iterations (IdleBalance freeing one slot at a time via its
+        // own strength-balance step, recomputed fresh each iteration) before Collapse ever finds
+        // enough room to fire even once, so the new mechanism doesn't reliably shrink the iteration
+        // count the way it first looked like it would. Leave this alone until a real playtest log
+        // shows it's safe to shrink.
         public const int maxGarrisonReorgStepsPerTurn = 20;
         // GarrisonReorgTask.FindGarrisonArmyStrengthBalanceMove's own target split of combined
         // non-hero power between the garrison and the one field army it's currently leveling
@@ -757,6 +765,18 @@ namespace Game.Ai
         // the garrison as one coherent stack instead of getting split toward a ratio that doesn't
         // matter yet.
         public const int minHexUnitsForBalancing = 3;
+        // GarrisonReorgTask.FindHexBalanceMove/FindReorgSwap's own composition-evening gate
+        // (2026-08-23, project owner's own call, part of the CollapseTemporaryAssembly/HandleOverflow/
+        // IdleBalance split) — a raw 1-count gap (4 melee/3 ranged, say) used to trigger a move every
+        // single drain call for a difference nobody would actually call imbalanced, the main source
+        // of the churn the project owner flagged when asking for this. An initial tuning value, NOT
+        // yet validated against a real playtest AiDebug.log — revisit once one exists.
+        public const int compositionImbalanceThreshold = 2;
+        // GarrisonReorgTask.CollapseTemporaryAssemblyRoutine's own per-unit trace (2026-08-23,
+        // project owner's own "внутри можно оставить verbose debug-флаг" ask) — off by default so a
+        // collapse logs its one summary line only; flip to true to also see each individual
+        // ArmyActions.TransferMember call it made along the way.
+        public const bool verboseGarrisonReorgLogging = false;
         // Leftover-AP fallbacks (Reserve army / draw a card) — whichever AiManagementPlanner.
         // IsPreferred says is due next gets High, the other gets Low, so the two alternate turn by
         // turn.

@@ -761,6 +761,19 @@ namespace Game.Ai
             return false;
         }
 
+        // Менеджмент · CollapseTemporaryAssembly — see GarrisonReorgTask.FindCollapseMove's own
+        // comment. First in the three-way priority (Collapse → Overflow → IdleBalance, see
+        // AiTurnController.RunGarrisonReorgPhase) — FindCollapseMove itself already does all the
+        // "checked before proposing" work (atomic fit, AP affordability, oscillation guard), so
+        // there's nothing left for this method to gate on its own.
+        public static AiDecision TryCollapseCandidate(PlayerSetupData player, ArmyData garrison, AiTurnContext ctx)
+        {
+            if (garrison == null)
+                return null;
+            GarrisonReorgTask.CollapseMove? move = GarrisonReorgTask.FindCollapseMove(player, garrison.Hex, garrison, ctx);
+            return move.HasValue ? AiDecision.Collapse(move.Value) : null;
+        }
+
         // Менеджмент · капасити гарнизона — see GarrisonReorgTask.FindGarrisonOverflow's own
         // comment for why this moves just enough members to open one slot rather than an
         // arbitrary batch, and FindGarrisonOverflowDestination's own comment for where those
@@ -962,6 +975,59 @@ namespace Game.Ai
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(destination);
+            yield return AiTurnController.WaitStep(ctx);
+        }
+
+        // Менеджмент · CollapseTemporaryAssembly — see GarrisonReorgTask.FindCollapseMove's own
+        // comment and TryCollapseCandidate above. move.UnitsToMove is already fully verified atomic
+        // (every member individually checked for AP affordability/oscillation, and the garrison's
+        // own free-slot count already covers the whole list) — this loop is defensive only (still
+        // reads ArmyActions.TransferMember's own return value per unit rather than assuming success,
+        // same "never trust a stale precondition through a yield" caution every other routine here
+        // already follows), never the mechanism the atomicity guarantee itself relies on. Per-unit
+        // detail only logs when AiConfig.verboseGarrisonReorgLogging is on (project owner's own
+        // debug-flag ask) — the one line every collapse always writes, win or partial, is the
+        // "{N} unit(s) returned" summary below, replacing what the old per-unit tier 1b would have
+        // logged as several separate ConsolidateUnits lines for the exact same event.
+        public static IEnumerator CollapseTemporaryAssemblyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            GarrisonReorgTask.CollapseMove move = decision.CollapseMove;
+            yield return AiTurnController.PanTo(ctx, move.Source.Hex);
+
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+
+            int moved = 0;
+            foreach (UnitData unit in move.UnitsToMove)
+            {
+                if (!move.Garrison.HasRoom)
+                    break;
+                if (ArmyActions.TransferMember(unit, move.Source, move.Garrison, ctx.HexSelection, out string failReason))
+                {
+                    moved++;
+                    ctx.RecordArmyVisit(unit, move.Source, move.Garrison);
+                    if (AiConfig.verboseGarrisonReorgLogging)
+                        AiDebugLog.Write($"[AI] {player.Nickname}: {unit.Name} returns from \"{move.Source.Name}\" to the garrison (collapse).");
+                }
+                else if (AiConfig.verboseGarrisonReorgLogging)
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: couldn't return {unit.Name} to the garrison — {failReason}");
+                }
+            }
+
+            string label = move.Task.Kind == AiTaskKind.RaidWeakerArmy ? "Raid" : "Defence";
+            string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{move.Source.Name}\" temporary {label} assembly collapsed into the garrison — "
+                + $"{moved} unit(s) returned; task preserved, target=({move.Task.TargetHex.Q},{move.Task.TargetHex.R}).{delta}");
+
+            ctx.HexSelection?.DeleteArmyIfEmptied(move.Source);
+
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
+                ctx.ArmyViewerModal.ShowReadOnly(move.Garrison);
             yield return AiTurnController.WaitStep(ctx);
         }
 
