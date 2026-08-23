@@ -449,7 +449,7 @@ namespace Game.Ai
                     candidates.Add(decision);
             }
             candidates.AddRange(AiManagementPlanner.TryStartRepairCandidates(player, root, hand));
-            candidates.AddRange(AiManagementPlanner.TryPlayCardCandidates(player, root, hand));
+            candidates.AddRange(AiManagementPlanner.TryPlayCardCandidates(player, root, hand, ctx));
             candidates.AddRange(AiManagementPlanner.GatherFallbackCandidates(player, root, hand, ctx));
 
             AiDebugLog.Write($"[AI] {player.Nickname}: {candidates.Count} candidate(s) — {DescribeCandidates(candidates)}");

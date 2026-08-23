@@ -400,7 +400,14 @@ namespace Game.Ai
         // be the one exception, which could read a defender as damageable off its raw stat alone
         // while the hex bonus on top would actually make it un-killable. Defaults to 0f so a
         // caller with no hex to check against (a pure stat comparison) is unaffected.
-        private static bool CanDamage(float attack, DefenderProfile defender, float extraDefense = 0f)
+        //
+        // Public since 2026-08-23 (project owner's own report) — AiManagementPlanner's own
+        // UnitCompositionFitBonus needs this exact per-unit check to ask a hypothetical "would
+        // THIS candidate card cover a defender none of a StillAssembling raid's current roster
+        // can already damage", the same single-source-of-truth rule every other coverage read in
+        // this codebase already follows (see CanDamageAll's own comment) — no second copy of this
+        // formula anywhere else.
+        public static bool CanDamage(float attack, DefenderProfile defender, float extraDefense = 0f)
         {
             float expected = attack * 0.5f - (defender.Defense + extraDefense) * 0.5f;
             if (defender.HasCeramicArmor)

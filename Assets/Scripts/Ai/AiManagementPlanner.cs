@@ -316,7 +316,7 @@ namespace Game.Ai
         // all; it gets its own look once this one's played (or fails to place) and hand/roster are
         // re-read fresh next step — see this method's own re-invocation every Decide() call, which
         // is also what keeps RosterShape from ever going stale between one played card and the next.
-        public static List<AiDecision> TryPlayCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand)
+        public static List<AiDecision> TryPlayCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             var results = new List<AiDecision>();
             if (hand == null)
@@ -376,7 +376,7 @@ namespace Game.Ai
                 CardPlacement? placement = FindPlacement(player, root, card);
                 if (!placement.HasValue)
                     continue;
-                float fit = UnitCompositionFitBonus(player, card.Definition, roster);
+                float fit = UnitCompositionFitBonus(player, card.Definition, roster, ctx.Map);
                 float value = CardCombatValue(card.Definition);
                 // FitBonus is a sum of flat gate bonuses, so exact ties are common; break them by
                 // raw combat value instead of falling back to hand order.
@@ -462,7 +462,21 @@ namespace Game.Ai
         //  7)   Counter-tech — Hyperkinetic once AiMapMemory.KnownEnemyTypeTagCount reports a
         //       real, actually-scouted Armored sighting; Pyrokinetic the same way for Bio. Honest
         //       by construction — that count is never anything but an observed sighting.
-        private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster)
+        //  8)   Closes a StillAssembling raid's own CanDamageAll gap against its ACTUAL target
+        //       (2026-08-23, project owner's own report) — narrower than criterion 7 above:
+        //       criterion 7 only ever fires for the two hard-coded Hyperkinetic/Pyrokinetic
+        //       counters, and reads AiMapMemory globally (any known Armored/Bio anywhere), not
+        //       specifically what the assembling raid itself is stuck on. This one asks the real
+        //       question directly — would THIS card cover a defender at the raid's own TargetHex
+        //       that nobody currently in `task.Army` can already damage (WorthIt.CanDamage, the
+        //       same coverage math RaidWeakerArmyTask.IsReady's own CanDamageAll gate uses) —
+        //       so a plain stat/type gap the roster-wide heuristics above have no gate for (e.g. a
+        //       melee-heavy roster already "balanced" by criteria 3/4 but still short the one
+        //       ranged unit that can actually reach a specific defender) still gets recognized,
+        //       not just the two named counter-tech abilities. Only ever checked against a task
+        //       that's still recruiting (StillAssembling, not Retreating) — a raid already moving
+        //       out doesn't recruit through the hand any more (see FindRecruitAt's own scope).
+        private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster, HexMap map)
         {
             float bonus = 0f;
 
@@ -504,7 +518,40 @@ namespace Game.Ai
                     bonus += AiConfig.unitCompositionGapBonus;
             }
 
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player))
+            {
+                if (task.Kind != AiTaskKind.RaidWeakerArmy || !task.StillAssembling || task.Retreating || task.Army == null)
+                    continue;
+                RaidWeakerArmyTask.ThreatStrength required = RaidWeakerArmyTask.RequiredStrengthAt(player, task.TargetHex, map);
+                if (ClosesDamageGap(definition, task.Army, required.Defenders, required.HexBonus))
+                {
+                    bonus += AiConfig.unitCompositionGapBonus;
+                    break; // one matching StillAssembling raid is enough — don't stack per additional one
+                }
+            }
+
             return bonus;
+        }
+
+        // Would `definition` cover a defender at a StillAssembling raid's own target that nobody
+        // currently in `army` can already damage? See UnitCompositionFitBonus's own criterion 8
+        // comment for why this reads the raid's ACTUAL target instead of the roster-wide gap
+        // heuristics above. Routes through WorthIt.CanDamage — the exact same per-unit coverage
+        // check RaidWeakerArmyTask.IsReady's own CanDamageAll gate uses — so this can never
+        // disagree with what actually decides the raid ready to fight.
+        private static bool ClosesDamageGap(CardDefinition definition, ArmyData army,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, float hexBonus)
+        {
+            if (defenders == null || defenders.Count == 0)
+                return false; // nothing guarding the target — no gap to close
+            List<UnitData> ours = army.Members.Where(m => !m.IsHero).ToList();
+            foreach (WorthIt.DefenderProfile defender in defenders)
+            {
+                bool alreadyCovered = ours.Any(u => WorthIt.CanDamage(u.Attack, defender, hexBonus));
+                if (!alreadyCovered && WorthIt.CanDamage(definition.attack, defender, hexBonus))
+                    return true;
+            }
+            return false;
         }
 
         // Raw combat value of a Unit card, used only to break exact UnitCompositionFitBonus ties

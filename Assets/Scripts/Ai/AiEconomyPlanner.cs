@@ -306,16 +306,17 @@ namespace Game.Ai
                 // fix — used to leave a fresh, never-reused empty army shell behind EVERY time,
                 // instead of recycling the one the last attempt already abandoned).
                 //
-                // Scored the same as every other Задача 1 step now (economyBaseWeight + ScoreHex,
-                // see economyHeroDetachScore's own removal note in AiConfig) — the base task score
-                // alone already reliably wins arbitration, no separate dedicated number needed.
+                // Scored the same as every other travelling Задача 1 step now (BuildFacilityTask.
+                // TravelScore, see economyHeroDetachScore's own removal note in AiConfig) — the
+                // base task score alone already reliably wins arbitration, no separate dedicated
+                // number needed.
                 if (!atCap && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost)
                     && !BuildFacilityTask.HasEnemyThreat(player, pick.Garrison.Hex))
                 {
                     ArmyData reuse = pool.AvailableArmies()
                         .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(pick.Garrison.Hex));
                     AiDecision detach = AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, reuse,
-                        AiConfig.economyBaseWeight + BuildFacilityTask.ScoreHex(player, root, hex, resourceType),
+                        BuildFacilityTask.TravelScore(player, root, hex, resourceType),
                         $"{pick.GarrisonHero.Name} — pulled out of the garrison to lead a build at ({hex.Q},{hex.R})",
                         AiTaskCategory.Economy);
                     detach.EconomyBuildHex = hex;
@@ -451,12 +452,10 @@ namespace Game.Ai
                 {
                     if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
                         return null;
-                    float attackScore = AiConfig.economyBaseWeight
-                        + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value);
                     return AiDecision.Move(task.Army, enemyThreat.Value.Hex,
                         $"\"{task.Army.Name}\" attacks a known weaker army at ({enemyThreat.Value.Hex.Q},{enemyThreat.Value.Hex.R}) "
                             + "on its way to build",
-                        task, attackScore, AiTaskCategory.Economy);
+                        task, AiConfig.economyExecuteScore, AiTaskCategory.Economy);
                 }
                 // weaker but out of this turn's movement reach — no reaction, carries on below
             }
@@ -503,8 +502,7 @@ namespace Game.Ai
                     return null; // no currently-known safe route yet — wait for more of the map to be scouted
                 var target = new AiScoutPlanner.ScoutTarget(nextStep.Value, 0f,
                     $"carries the hero to build {task.ResourceType}");
-                float score = AiConfig.economyBaseWeight
-                    + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value);
+                float score = BuildFacilityTask.TravelScore(player, root, task.TargetHex, task.ResourceType.Value);
                 return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 
@@ -558,11 +556,12 @@ namespace Game.Ai
                     + $"to build {task.ResourceType} at ({task.TargetHex.Q},{task.TargetHex.R}) — waiting");
             }
 
-            // No separate buildFacilityReadyBonus any more (removed 2026-08-19) — same ScoreHex
-            // this task already carries while travelling, so the score doesn't jump right as it
-            // arrives; the base task score alone already reliably wins arbitration.
-            return AiDecision.BuildFacility(task,
-                AiConfig.economyBaseWeight + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value));
+            // "BuildFacility Execute" — a flat AiConfig.economyExecuteScore now (2026-08-23,
+            // project owner's own ladder spec: "= 120 фиксированно, а не 115 + IncomeBonus. Так
+            // шкала будет проще и предсказуемее"), decoupled from ScoreHex entirely — arriving and
+            // actually building this turn always wins arbitration outright, regardless of how far
+            // behind on income the player happens to be right now.
+            return AiDecision.BuildFacility(task, AiConfig.economyExecuteScore);
         }
 
         // One step of a BuildFacility hero's own route toward `targetHex` — for a SOLO hero (see
@@ -674,7 +673,13 @@ namespace Game.Ai
             var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = targetHex, ResourceType = type };
             var target = new AiScoutPlanner.ScoutTarget(targetHex, 0f,
                 $"\"{collector.Name}\" goes to collect {type} at ({targetHex.Q},{targetHex.R}) without building");
-            float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
+            // "Scrap Collect" — this move lands the collector on the target hex THIS turn, the same
+            // "about to finish" moment BuildFacility's own Execute/economyExecuteScore covers (see
+            // that constant's own comment) — collection itself starts passively the instant it
+            // arrives (AdvanceResourcesScrapTask returns null from then on), so THIS is the one
+            // decision that actually needs to win arbitration for it to happen on schedule.
+            bool arrivesThisTurn = HexGridMath.Distance(collector.Hex, targetHex) <= collector.CurrentMovement;
+            float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player);
             results.Add(AiDecision.Move(collector, target, task, score, AiTaskCategory.Economy));
             return results;
         }
@@ -778,7 +783,9 @@ namespace Game.Ai
                 var target = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
                     $"\"{task.Army.Name}\" goes to collect {task.ResourceType} at "
                         + $"({task.TargetHex.Q},{task.TargetHex.R}) without building");
-                float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
+                // "Scrap Collect" — see TryStartResourcesScrapCandidates' own matching comment.
+                bool arrivesThisTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.CurrentMovement;
+                float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player);
                 return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 

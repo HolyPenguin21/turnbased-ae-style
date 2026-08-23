@@ -50,10 +50,39 @@ namespace Game.Ai
         // to a common ~100 scale instead of an ad hoc spread (was 200/150/220/50) — modifiers now
         // read as small, deliberate nudges off a shared baseline instead of needing to overcome a
         // 50-70 point head start baked into the base itself.
-        public const float economyBaseWeight = 110f;
+        // 110 → 105 (2026-08-23, project owner's own top-of-arbiter ladder spec) — Экономика's own
+        // "базовый" travel tier now lines up with BuildBase Travel (aggressionBaseWeight+5=105) and
+        // managementReturnHomeScore (105) instead of sitting 5 above them on its own; see
+        // BuildFacilityTask.TravelScore's own comment for how ScoreHex's modifiers (income deficit,
+        // citadel distance) still move off this base, now capped at economyTravelScoreCap.
+        public const float economyBaseWeight = 105f;
         public const float reconBaseWeight = 100f;
         public const float aggressionBaseWeight = 100f;
         public const float managementBaseWeight = 50f;
+
+        // Экономика's own top-of-arbiter ceiling/tactical tier (2026-08-23, project owner's own
+        // ladder spec — full arbiter documented top-to-bottom, this project's own "нужно смотреть
+        // на всё сразу, не по одной задаче" rebalance): "никакой обычный Economy travel после всех
+        // бонусов не должен превышать 115. 120+ оставляем для немедленного завершения/тактических
+        // действий, 125 — для спасения scout."
+        //
+        // economyTravelScoreCap — hard ceiling on economyBaseWeight+ScoreHex (BuildFacilityTask.
+        // TravelScore/ResourcesScrapTask.TravelScore, both callers) regardless of how large
+        // AiGoalScorer.IncomeBehindBonus's own deficit term gets tuned to later — a cap enforced at
+        // the point the two combine, not a magnitude constraint on IncomeBehindBonus itself, so the
+        // 115 ceiling holds even if that term's own scale changes independently down the line.
+        public const float economyTravelScoreCap = 115f;
+        // economyExecuteScore — Экономика's own "немедленное завершение/тактическая реакция" tier,
+        // ONE shared value for three genuinely distinct triggers (same "no near-duplicate constant"
+        // reasoning AiConfig.defencePreemptScore's own comment already gives for its own reuse):
+        // BuildFacilityTask's arrival "build now" step, a counter-attack against a known weaker
+        // army encountered en route to a build/collect site, and a Scrap collector's own final
+        // arrival step. Deliberately a flat economyBaseWeight+15 — NEVER modified by ScoreHex/
+        // IncomeBehindBonus the way ordinary Economy travel still is (project owner's own explicit
+        // spec: "BuildFacility Execute = 120 фиксированно, а не 115 + IncomeBonus. Так шкала будет
+        // проще и предсказуемее") — so completing/reacting right now always outranks merely being
+        // further behind on income, instead of the two effects competing.
+        public const float economyExecuteScore = economyBaseWeight + 15f;
 
         // ---- Разведка — Задача 1 (Посещение хекса) ----
         // 2026-08-23 (project owner's own call): 3 → 2 — fewer scouts wandering at once.
@@ -242,7 +271,11 @@ namespace Game.Ai
         // ARRIVED-at-target execution step's own score — a bump above ordinary travel
         // (aggressionBaseWeight + buildBaseTravelBonus, see above), same shape
         // raidReinforceDispatchScore already uses for "finish the job now that we're here".
-        public const float buildBaseExecuteScore = aggressionBaseWeight + 15f;
+        // 2026-08-23 (project owner's own ladder spec): +15 → +20, same tier/offset
+        // raidCounterAttackBonus already uses (aggressionBaseWeight+20=120) — "BuildBase Execute"
+        // now sits on the same "немедленное завершение" rung as every other category's own execute/
+        // counter-attack reaction, not one rung below it.
+        public const float buildBaseExecuteScore = aggressionBaseWeight + 20f;
         // How far forward BuildBaseTask.FindTargetHex aims from the player's own citadel along the
         // bisector direction. 2026-08-21 retune (project owner's own call): 4, paired with
         // buildBaseMinDistanceFromExistingBase below also dropping to 3 so the aim point still
@@ -365,11 +398,11 @@ namespace Game.Ai
         // AiTurnController.Decide's `candidate.Score > best.Score` — are gathered EARLIER in
         // Decide's own candidate list, so on a tie Оборона silently lost to routine scouting/raiding
         // instead of the "гарантированная немедленная реакция" the project owner asked for. Bumped
-        // clear of economyBaseWeight (110) too, same shape Агрессия's own raidCounterAttackBonus
+        // clear of economyBaseWeight (105) too, same shape Агрессия's own raidCounterAttackBonus
         // already uses for "react to a nearby known army" (aggressionBaseWeight + 20).
         public const float defenceActiveScore = 120f;
         // 1.2 — Patrol's own routine movement score, deliberately BELOW the real-work tier
-        // (economyBaseWeight 110, reconBaseWeight/aggressionBaseWeight 100) — patrol is proactive
+        // (economyBaseWeight 105, reconBaseWeight/aggressionBaseWeight 100) — patrol is proactive
         // background coverage, not urgent, but still comfortably above every Менеджмент idle
         // fallback (managementFallbackHighScore 15). Known open question (simulation report): at
         // 90 Patrol can lose arbitration to Economy/Recon/Aggression on essentially every busy
@@ -434,7 +467,7 @@ namespace Game.Ai
         public const int maxConcurrentBuildFacility = 1;
         // buildFacilityReadyBonus/economyHeroDetachScore/economyReturnHomeScore all removed
         // 2026-08-19 (project owner's own call) — a task standing at its own base score
-        // (economyBaseWeight, now 110) already reliably wins arbitration on its own; none of these
+        // (economyBaseWeight, now 105) already reliably wins arbitration on its own; none of these
         // sub-steps needs its own inflated top-up any more the way they did stacked on the old
         // 200-point base.
 
@@ -511,7 +544,12 @@ namespace Game.Ai
         // AP/resources, so it should still edge out a Задача 1 candidate, just by a slimmer margin
         // now (project owner's own 2026-08-19 rebalance: 20 → 5, was winning arbitration too
         // reliably).
-        public const float resourceScrapBaseWeightBonus = 5f;
+        // 5 → 0 (2026-08-23, project owner's own ladder spec): "базовый Scrap Travel" now reads at
+        // the exact same 105 tier as "базовый BuildFacility Travel"/BuildBase Travel, no separate
+        // edge — the two Экономика sub-tasks no longer need to out-rank each other at the travel
+        // stage now that ScoreHex's own modifiers (and the shared economyExecuteScore tier once
+        // either one is ready to finish) already give real work its own priority.
+        public const float resourceScrapBaseWeightBonus = 0f;
         // Задача 2's own INTERNAL hex-ranking term (project owner's own 2026-08-23 call, same
         // "which hex first, never leak into the cross-category score" split BuildFacilityTask.
         // RankHex already uses — see ResourcesScrapTask.RankHex) — degrades a candidate hex the

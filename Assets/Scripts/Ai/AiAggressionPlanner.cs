@@ -461,10 +461,27 @@ namespace Game.Ai
         // doesn't need a hero, has no room, hand holds no matching card, or the one it holds isn't
         // affordable right now — checked here, not after, same "never re-propose a doomed
         // candidate" principle AiManagementPlanner.FindPlacement's own comment documents.
+        //
+        // Hero/Unit alternation gate (2026-08-23, project owner's own report): this method's own
+        // fixed score (aggressionBaseWeight+raidAssembleBonus, well above anything
+        // AiManagementPlanner.TryPlayCardCandidates itself ever proposes) used to always win
+        // arbitration outright whenever a raid needed a hero — the DECISION to play never
+        // consulted AiManagementPlanner.IsCardRoleCoolingDown at all, only the shared
+        // NotifyCardRolePlayed afterward ever touched the alternation state. That's correct for
+        // keeping Менеджмент's OWN next-step scoring honest, but it let a raid grab a Hero card
+        // the very step right after Менеджмент had just played one itself — two Hero cards back
+        // to back, exactly the alternation is meant to prevent. Skipping outright while Hero is
+        // cooling down (rather than damping the score) is the safe direction here: this method is
+        // already only ever the FALLBACK once FindRecruitAt's own garrison-stock pull comes up
+        // empty (see this method's own comment above), so a raid that skips one step here still
+        // has next step's fresh re-evaluation, and the cooldown itself clears the moment any Unit
+        // card gets played anywhere (by Менеджмент or otherwise) — it doesn't stall the raid for
+        // more than a step in the ordinary case.
         private static AiDecision TryHeroCardForRaid(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             ArmyData formingArmy, AiTask task, float score)
         {
-            if (hand == null || !formingArmy.HasRoom || !RaidWeakerArmyTask.NeedsHero(formingArmy))
+            if (hand == null || !formingArmy.HasRoom || !RaidWeakerArmyTask.NeedsHero(formingArmy)
+                || AiManagementPlanner.IsCardRoleCoolingDown(player, AiManagementPlanner.CardRole.Hero))
                 return null;
 
             foreach (CardData card in hand.Hand)

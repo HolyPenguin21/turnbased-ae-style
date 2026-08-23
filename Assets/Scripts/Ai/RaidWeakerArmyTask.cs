@@ -388,9 +388,19 @@ namespace Game.Ai
         // not yet part of `army` itself — hero first if `army` still needs one (see NeedsHero),
         // otherwise the strongest available non-hero unit, same "converge fastest" reasoning
         // FindReadyIdleArmy's own ordering uses. `source` is which army it's currently sitting in
-        // (needed by the caller to actually issue the same-hex ArmyActions.TransferMember). No HP
-        // filter — IsReady's own real-HP full-battle simulation is what keeps a critically wounded
-        // composition from reading as ready (see IsReady's own comment), not a recruiting-time ban.
+        // (needed by the caller to actually issue the same-hex ArmyActions.TransferMember).
+        //
+        // HP-aware since 2026-08-23 (project owner's own report) — a healthy recruit is always
+        // preferred over a critically wounded one (IsCriticallyWounded's own <=50%HP threshold),
+        // even when the wounded one has higher Attack: without this, a half-dead unit that
+        // happened to be the strongest by raw stat got pulled into a brand-new raid army ahead of
+        // AiManagementPlanner's own Repair task ever getting to it (repairUnitBaseWeight sits
+        // below both raidAssembleBonus and a plain raid move on purpose — see repairUnitBaseWeight's
+        // own comment — so Менеджмент alone can never outrace this pick). A wounded unit is only
+        // ever offered here as a last resort, when nothing healthy is available anywhere at `hex`
+        // — still better than leaving `army` short a body outright, and IsReady's own real-HP
+        // full-battle simulation continues to discount it fairly once it's actually in the roster
+        // (see IsReady's own comment).
         //
         // Recce-tagged units are never offered as recruits — this exclusion is this method's own,
         // independent of GarrisonReorgTask (which dropped its OWN Recce carve-out 2026-08-20, see
@@ -402,6 +412,13 @@ namespace Game.Ai
         // between Агрессия and Разведка that burned a whole turn's step budget without either task
         // ever finishing (see AiDebug.log 2026-08-17, turn 8).
         public static UnitData FindRecruitAt(PlayerSetupData player, HexCoord hex, ArmyData army, AiResourcePool pool, out ArmyData source)
+        {
+            UnitData best = FindRecruitAt(player, hex, army, pool, allowCriticallyWounded: false, out source);
+            return best ?? FindRecruitAt(player, hex, army, pool, allowCriticallyWounded: true, out source);
+        }
+
+        private static UnitData FindRecruitAt(PlayerSetupData player, HexCoord hex, ArmyData army, AiResourcePool pool,
+            bool allowCriticallyWounded, out ArmyData source)
         {
             source = null;
             bool wantHero = NeedsHero(army);
@@ -415,6 +432,8 @@ namespace Game.Ai
                 foreach (UnitData unit in candidate.Members)
                 {
                     if (unit.IsHero != wantHero || unit.HasAbility(UnitAbilities.Recce))
+                        continue;
+                    if (!wantHero && !allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                         continue;
                     // Would pulling `unit` out leave `candidate` (often the Garrison) unable to
                     // hold its own remaining roster? A hero can be the only thing propping the

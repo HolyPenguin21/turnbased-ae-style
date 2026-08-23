@@ -68,6 +68,17 @@ namespace Game.Ai
             return AiGoalScorer.IncomeBehindBonus(player) + CitadelDistanceScore(player, hex);
         }
 
+        // AiEconomyPlanner's own actual cross-category MoveArmy score while a Задача 1 hero is
+        // still travelling (dispatch AND ongoing continuation both call this — see AiConfig.
+        // economyTravelScoreCap's own comment) — economyBaseWeight+ScoreHex, capped so a bad-enough
+        // income deficit alone can never push routine travel into the same tier as an actual
+        // arrival/execute/counter-attack reaction (AiConfig.economyExecuteScore). The cap is
+        // enforced here, at the one place travel score gets assembled, not by constraining
+        // ScoreHex/IncomeBehindBonus's own magnitude — see economyTravelScoreCap's own comment for
+        // why that's the more robust place for it to live.
+        public static float TravelScore(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType) =>
+            System.Math.Min(AiConfig.economyBaseWeight + ScoreHex(player, root, hex, resourceType), AiConfig.economyTravelScoreCap);
+
         // Внутренний выбор — какой из известных свободных ресурсных хексов строить первым
         // (project owner's own 2026-08-19 call). Используется ТОЛЬКО AiEconomyPlanner.
         // TryStartEconomyCandidates' own pre-pass, чтобы выбрать один хекс до генерации кандидата
