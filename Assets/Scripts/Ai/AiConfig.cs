@@ -313,6 +313,12 @@ namespace Game.Ai
         // RaidWeakerArmyTask.ProximityScore already establish for their own internal hex picks.
         public const float buildBaseDefenseBonusWeight = 10f;
         public const float buildBaseResourceSiteMergeBonus = 20f;
+        // See AiTask.BuildBaseWaitTurns's own comment — consecutive steps the task may sit at its
+        // own target hex genuinely unable to afford the Base card (reservation included) before
+        // giving up and freeing the army rather than holding it hostage to a stale plan. First-pass
+        // placeholder, same as every other freshly-added BuildBase tunable — flagged for the
+        // project owner's own tuning later.
+        public const int buildBaseMaxWaitTurns = 5;
 
         // ---- Оборона (Patrol / Active / Turtle) ----
         // Full redesign 2026-08-21 (project owner's own spec) — ONE persistent DefendCitadel task/
@@ -497,6 +503,15 @@ namespace Game.Ai
         // TryStartEconomyCandidates) still lets the one active hero redirect to a newly-found
         // scarcer hex even at this cap — only starting a genuinely NEW build is capped.
         public const int maxConcurrentBuildFacility = 1;
+        // See AiEconomyPlanner.EconomyCommitmentMargin's own comment — how many units scarcer a
+        // rival resource hex must be before it's worth redirecting a hero off an already-committed
+        // BuildFacility task, scaled by how much progress that task has already made. First-pass
+        // placeholder values, flagged for the project owner's own tuning later, same as every other
+        // freshly-added tunable in this codebase.
+        public const int economyCommitmentMarginSelected = 2;
+        public const int economyCommitmentMarginEnRoute = 4;
+        public const int economyCommitmentMarginArrived = 8;
+        public const int economyCommitmentMarginReserved = 15;
         // buildFacilityReadyBonus/economyHeroDetachScore/economyReturnHomeScore all removed
         // 2026-08-19 (project owner's own call) — a task standing at its own base score
         // (economyBaseWeight, now 105) already reliably wins arbitration on its own; none of these
@@ -630,7 +645,19 @@ namespace Game.Ai
         // GarrisonReorgTask's own class comment). Nothing left reads either constant.
         // AiArmyRoles.IsSoloHeroAwaitingEscort's own fallback move — protecting this fragile,
         // escort-less hero outranks every OTHER Менеджмент action. 2026-08-20: 100 → 105.
-        public const float managementReturnHomeScore = 105f;
+        // 105 → 104 (2026-08-23, project owner's own report/spec): sitting at the exact same 105
+        // shared by economyBaseWeight/aggressionBaseWeight/BuildBase's own travel tier let this
+        // fallback WIN a same-step tie against a real, freshly-available Экономика candidate for
+        // the very same hero (Decide's own arbiter only replaces `best` on a STRICT >, so whichever
+        // tier is gathered first keeps a tie — this one is gathered before Экономика's own start
+        // tier, see AiTurnController.Decide's own candidate order) — observed as a hero walking
+        // itself home for an escort one step, then immediately being pulled straight back out to
+        // build the next. One point below the shared 105 tier is enough to lose that tie to any
+        // genuinely productive same-step candidate while still safely clearing every real
+        // Менеджмент score (PlayCard ~65-90, managementReorgScore 80, managementBaseWeight 50) —
+        // this fallback still fires as soon as nothing else wants the hero this step, exactly the
+        // "not a real fallback tier" case it exists for.
+        public const float managementReturnHomeScore = 104f;
         // Экономика · Задача 2's own detach-prerequisite base (see ResourceScrapDetachScore) —
         // garrison-overflow/consolidation no longer read a score at all any more (see
         // AiTurnController.RunGarrisonReorgPhase's own comment). Kept above PlayCard on purpose: an

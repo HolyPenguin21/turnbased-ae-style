@@ -760,7 +760,8 @@ namespace Game.Ai
                     if (!existing.Army.HasRecce)
                     {
                         UnitData recce = FindPatrolRecceCandidate(ctx.TurnNumber, homeHex, pool, out ArmyData recceSource);
-                        if (recce != null && recceSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(recce, existing.Army))
+                        if (recce != null && recceSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(recce, existing.Army)
+                            && CanAffordSwapInto(existing.Army, recce))
                             results.Add(AiDecision.ActiveDefenceForce(recceSource, recce, existing.Army, existing, AiConfig.defencePatrolScore));
                     }
                     return results; // ready — TryContinueDefenceTask picks it up from here
@@ -768,7 +769,8 @@ namespace Game.Ai
                 existing.StillAssembling = true;
 
                 UnitData existingRecruit = RaidWeakerArmyTask.FindRecruitAt(player, homeHex, existing.Army, pool, out ArmyData existingSource);
-                if (existingRecruit != null && existingSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(existingRecruit, existing.Army))
+                if (existingRecruit != null && existingSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(existingRecruit, existing.Army)
+                    && CanAffordSwapInto(existing.Army, existingRecruit))
                 {
                     results.Add(AiDecision.ActiveDefenceForce(existingSource, existingRecruit, existing.Army, existing, assemblyScore));
                     return results;
@@ -795,7 +797,8 @@ namespace Game.Ai
                 var readyTask = new AiTask { Kind = AiTaskKind.DefendCitadel, Army = readyDefender, Posture = AiDefencePosture.Patrol, HomeHex = homeHex };
 
                 UnitData mergeRecruit = RaidWeakerArmyTask.FindCoLocatedMergeRecruit(readyDefender, pool, out ArmyData mergeSource);
-                if (mergeRecruit != null && mergeSource != null && readyDefender.HasRoom && !ctx.WouldRevisitArmy(mergeRecruit, readyDefender))
+                if (mergeRecruit != null && mergeSource != null && readyDefender.HasRoom && !ctx.WouldRevisitArmy(mergeRecruit, readyDefender)
+                    && CanAffordSwapInto(readyDefender, mergeRecruit))
                 {
                     results.Add(AiDecision.ActiveDefenceForce(mergeSource, mergeRecruit, readyDefender, readyTask, assemblyScore));
                     return results;
@@ -818,7 +821,7 @@ namespace Game.Ai
 
             var newTask = new AiTask { Kind = AiTaskKind.DefendCitadel, Army = forming, Posture = AiDefencePosture.Patrol, StillAssembling = true, HomeHex = homeHex };
             UnitData recruit = RaidWeakerArmyTask.FindRecruitAt(player, homeHex, forming, pool, out ArmyData source);
-            if (recruit != null && source != null && !ctx.WouldRevisitArmy(recruit, forming))
+            if (recruit != null && source != null && !ctx.WouldRevisitArmy(recruit, forming) && CanAffordSwapInto(forming, recruit))
                 results.Add(AiDecision.ActiveDefenceForce(source, recruit, forming, newTask, assemblyScore));
             return results;
         }
@@ -913,9 +916,17 @@ namespace Game.Ai
         }
 
         // Same "already-activated armies pay for what joins them" pre-check GarrisonReorgTask.
-        // CanAffordTransferInto already runs before proposing a swap of its own — ArmyActions.
-        // SwapMembers re-validates this anyway, but checking here first avoids emitting a decision
-        // that would just fail outright.
+        // CanAffordTransferInto already runs before proposing a swap/transfer of its own —
+        // ArmyActions.SwapMembers/TransferMember re-validate this anyway, but checking here first
+        // avoids emitting a decision that's guaranteed to fail outright (2026-08-23 fix, project
+        // owner's own report: every ActiveDefenceForce recruit/merge/recce site below this method
+        // used to skip this check entirely, so a target that had already activated this turn with
+        // no AP left to spare kept getting offered the exact same doomed recruit every remaining
+        // step of the turn — AssembleRaidForceRoutine's own TransferMember call would silently
+        // fail, nothing about the world changed, and the identical candidate just came right back
+        // next step, burning the whole AiConfig.maxStepsPerTurn budget on one impossible move).
+        // Now shared by every recruit/merge/recce/siege-strip tier in this class, not just
+        // TryStrengthenCandidate's own swap.
         private static bool CanAffordSwapInto(ArmyData target, UnitData unit)
         {
             if (!target.HasActivatedThisTurn)
@@ -993,7 +1004,8 @@ namespace Game.Ai
             if (defenceTask != null)
             {
                 UnitData siegeRecruit = FindSiegeRaidStripCandidate(player, citadelHexForPreempt, reference, out ArmyData siegeSource);
-                if (siegeRecruit != null && siegeSource != null && reference.HasRoom && !ctx.WouldRevisitArmy(siegeRecruit, reference))
+                if (siegeRecruit != null && siegeSource != null && reference.HasRoom && !ctx.WouldRevisitArmy(siegeRecruit, reference)
+                    && CanAffordSwapInto(reference, siegeRecruit))
                     results.Add(AiDecision.ActiveDefenceForce(siegeSource, siegeRecruit, reference, defenceTask, AiConfig.defencePreemptScore));
             }
 
@@ -1121,6 +1133,9 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{delta}");
                 ctx.RecordArmyVisit(move.UnitA, move.ArmyA, move.ArmyB);
                 ctx.RecordArmyVisit(move.UnitB, move.ArmyB, move.ArmyA);
+                // DefendCitadel's own stall clock — see AiTask.AssemblyProgressTurn's own comment.
+                if (decision.Task != null)
+                    decision.Task.AssemblyProgressTurn = ctx.TurnNumber;
             }
             else
             {

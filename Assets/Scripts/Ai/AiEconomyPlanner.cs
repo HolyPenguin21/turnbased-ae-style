@@ -372,10 +372,22 @@ namespace Game.Ai
                 // StartedWithNoIncome/reservation state for no actual gain.
                 if (hex.Equals(existingTask.TargetHex))
                     return results;
+                // Commitment margin (2026-08-23, project owner's own report/spec) — a bare
+                // isScarcer (any amount scarcer at all) used to redirect a hero away from an
+                // in-progress build the instant a marginally scarcer hex turned up, with no regard
+                // for how much travel/setup was already sunk into the CURRENT one (the project
+                // owner's own report: a hero already standing ON its build site, "saving up
+                // resources to build Energy", got yanked to a brand-new Human site one decision
+                // later). The required scarcity gap now grows with how committed the current task
+                // already is — see EconomyCommitmentMargin below — so a small lead is enough to
+                // redirect a hero that's barely started, but a hero already on-site (worse, already
+                // holding a near-complete resource reservation) needs a genuinely large deficit
+                // elsewhere before abandoning real sunk cost makes sense.
+                int margin = EconomyCommitmentMargin(player, root, ctx, hero, existingTask);
                 bool isScarcer = existingTask.ResourceType.HasValue
-                    && root.GetResource(resourceType) < root.GetResource(existingTask.ResourceType.Value);
+                    && root.GetResource(resourceType) < root.GetResource(existingTask.ResourceType.Value) - margin;
                 if (!isScarcer)
-                    return results; // already building elsewhere and not scarcer — would only shuffle work, not add any
+                    return results; // already building elsewhere and not scarcer enough to outweigh its own sunk commitment
                 // isScarcer redirects this SAME task's own hero to a different hex — a swap,
                 // not a net-new slot — so it proceeds even at cap (see atCap's own comment).
             }
@@ -406,6 +418,32 @@ namespace Game.Ai
             decision.PreemptedTask = existingTask;
             results.Add(decision);
             return results;
+        }
+
+        // See TryStartEconomyCandidates' own isScarcer comment — how much scarcer a rival hex's
+        // own resource type must be before it's worth abandoning `existingTask`'s already-sunk
+        // progress. Four stages, each strictly more committed than the last: not yet left the
+        // garrison (barely started — small margin), en route (real travel already spent — medium),
+        // arrived and sitting on the build site itself (large — see the project owner's own report
+        // this whole mechanism exists for), and arrived with the build's own resource cost already
+        // fully reserved (see AiResourceReservation.IsFullyReserved — the build is one spend away
+        // from actually landing, so only a drastic deficit elsewhere should ever throw that away).
+        // First-pass placeholder values (AiConfig.economyCommitmentMargin*), same as every other
+        // freshly-added tunable in this codebase — flagged for the project owner's own tuning.
+        private static int EconomyCommitmentMargin(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ArmyData hero, AiTask existingTask)
+        {
+            if (!hero.Hex.Equals(existingTask.TargetHex))
+            {
+                HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+                return hero.Hex.Equals(garrisonHex) ? AiConfig.economyCommitmentMarginSelected : AiConfig.economyCommitmentMarginEnRoute;
+            }
+
+            CardDefinition definition = ctx.GameConfig?.extractionFacilityCards != null && existingTask.ResourceType.HasValue
+                && (int)existingTask.ResourceType.Value < ctx.GameConfig.extractionFacilityCards.Length
+                ? ctx.GameConfig.extractionFacilityCards[(int)existingTask.ResourceType.Value]
+                : null;
+            bool nearlyPaidFor = definition != null && AiResourceReservation.IsFullyReserved(existingTask, definition.resourceCost);
+            return nearlyPaidFor ? AiConfig.economyCommitmentMarginReserved : AiConfig.economyCommitmentMarginArrived;
         }
 
         // Drives `task` one stage forward: still travelling → a move decision toward the fixed

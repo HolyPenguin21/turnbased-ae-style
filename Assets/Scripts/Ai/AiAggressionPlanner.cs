@@ -271,9 +271,36 @@ namespace Game.Ai
                 : WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), required.Attack, required.Defense);
             float enemyChance = 1f - ourChance;
 
+            // Readiness diagnostic (2026-08-23, project owner's own report): IsReady is
+            // `winChance > 50% AND CanDamageAll` (see RaidWeakerArmyTask.IsReady) — two
+            // independent gates — but this log used to only ever print winChance, so a high
+            // winChance next to "not enough force" read as contradictory/misleading when the REAL
+            // reason was the coverage gate (some defender none of our units can actually scratch,
+            // e.g. heavy Defense/CeramicArmor with nothing in the roster strong enough), not raw
+            // power. Spelled out explicitly here so a log reader doesn't have to guess which gate
+            // failed — and, notably, a composition failure the garrison genuinely has nothing left
+            // to fix (no counter-unit anywhere) would otherwise wait for a "reinforcement" that can
+            // never actually satisfy this task.
+            bool winChanceOk = ourChance > 0.5f;
+            bool coverageOk = WorthIt.CanDamageAll(army, enemyDefenders, required.HexBonus);
+            string readyDiag;
+            if (!winChanceOk && !coverageOk)
+                readyDiag = $"winChance {ourChance:P0} <= 50% AND composition can't cover every defender";
+            else if (!winChanceOk)
+                readyDiag = $"winChance {ourChance:P0} <= 50%";
+            else
+            {
+                var uncovered = enemyDefenders?.Where(d => !army.Members.Where(m => !m.IsHero)
+                    .Any(u => WorthIt.CanDamage(u.Attack, d, required.HexBonus))).ToList();
+                readyDiag = uncovered != null && uncovered.Count > 0
+                    ? $"winChance {ourChance:P0} OK but composition FAIL — {uncovered.Count} defender(s) nothing in the roster can damage: "
+                        + string.Join(", ", uncovered.Select(d => $"{d.Attack:0.#}/{d.Defense:0.#}/{d.HitPoints:0.#}"))
+                    : "ready"; // shouldn't be reachable — this method is only called once IsReady already said false
+            }
+
             return $"[AI] {player.Nickname}: \"{army.Name}\" ({army.Members.Count} units: {ourList} = {ourChance:P0} win chance) "
-                + $"— not enough force vs {enemyName} ({enemyDefenders?.Count ?? 0} units: {enemyList} = {enemyChance:P0} win chance), "
-                + "waits for reinforcement.";
+                + $"— not enough force vs {enemyName} ({enemyDefenders?.Count ?? 0} units: {enemyList} = {enemyChance:P0} win chance) "
+                + $"— {readyDiag}, waits for reinforcement.";
         }
 
         // Both "start a brand new raid" and "recruit the next member into an already-forming one"
@@ -767,14 +794,27 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{delta}");
                 if (!source.IsGarrison)
                     ctx.HexSelection?.DeleteArmyIfEmptied(source);
-                // Feeds the cross-category oscillation guard (see AiTurnContext.WouldRevisitArmy's
-                // own comment) — same "only a landed move counts" rule ConsolidateUnitsRoutine follows.
-                ctx.RecordArmyVisit(unit, source, formingArmy);
+                // DefendCitadel's own stall clock (see AiTask.AssemblyProgressTurn's own comment) —
+                // a no-op for RaidWeakerArmy, which never reads this field, so setting it
+                // unconditionally here is simpler than branching on decision.Task.Kind.
+                if (decision.Task != null)
+                    decision.Task.AssemblyProgressTurn = ctx.TurnNumber;
             }
             else
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't assemble the Aggression force — {failReason}");
             }
+
+            // Feeds the cross-category oscillation guard (see AiTurnContext.WouldRevisitArmy's own
+            // comment) — recorded on BOTH outcomes now (2026-08-23 fix, project owner's own report),
+            // not just a landed move. A failed transfer leaves `unit`/source/formingArmy exactly as
+            // they were, so every candidate-generation tier that fed this exact (unit, source,
+            // target) triple would just re-offer the identical doomed transfer again next step —
+            // AiDefencePlanner's own CanAffordSwapInto pre-check (added the same fix) already stops
+            // the one known repeat cause (an already-activated target with no AP left), but this is
+            // the general backstop for whatever OTHER reason TransferMember could still reject a
+            // transfer nothing about the candidate-generation side predicts.
+            ctx.RecordArmyVisit(unit, source, formingArmy);
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(formingArmy);
@@ -964,6 +1004,21 @@ namespace Game.Ai
             if (army == null)
                 return results;
 
+            // Feasibility before proposing (2026-08-23 fix, project owner's own report): every
+            // other "start a new task" tier already checks the candidate army can actually take
+            // its first step THIS turn before ever building a Move decision (see e.g.
+            // AiEconomyPlanner.TryStartEconomyCandidates' own army.CurrentMovement/
+            // CanSpendActionPoints check) — this tier was the one exception, so a high-scoring
+            // BuildBase candidate could win arbitration, get Commit()ed (destroying `preempted`'s
+            // own in-progress Raid task in the process), and only THEN discover at
+            // HexSelectionController.Movement's own IssueMoveOrder check that the army had no AP/
+            // movement left this step — a real Raid force lost for nothing. Checked here, before
+            // the task/decision is even built, so an infeasible pick simply produces no candidate
+            // this step (the army — and any task it's still running — is untouched, tried again
+            // fresh next step) instead of winning arbitration and failing execution.
+            if (army.CurrentMovement <= 0 || (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost)))
+                return results;
+
             HexCoord? targetHex = BuildBaseTask.FindTargetHex(player, army, ctx.Map);
             if (!targetHex.HasValue)
                 return results;
@@ -1017,6 +1072,18 @@ namespace Game.Ai
         // (pool.AvailableArmies(), which already excludes anything claimed by another task this
         // step), then among armies currently running an active RaidWeakerArmy task (`preempted`
         // set only for that second group — redirecting one of those means giving up its raid).
+        //
+        // Task lock (2026-08-23, project owner's own report/spec): only a raid still in
+        // task.StillAssembling (still recruiting, composition not yet reading as ready — see
+        // AiTask.StillAssembling's own comment) is eligible to be preempted here. The moment a
+        // raid's own composition reads as ready (StillAssembling flips false in
+        // TryRaidAssembleCandidates) it's already moving toward — or engaging — its target, and
+        // BuildBase must never grab it out from under that: a raid this far along represents real
+        // sunk cost (every recruit gathered, every step already walked toward the target) that a
+        // same-turn "build a base instead" opportunity shouldn't be allowed to erase. Only genuine
+        // Citadel-emergency logic (AiDefencePlanner.TryDefencePreemptCandidates, IsUnderSiege) may
+        // still pull a ready/en-route/engaged raid off its own task — that path is untouched by
+        // this filter, it doesn't go through FindBuildBaseArmy at all.
         private static ArmyData FindBuildBaseArmy(PlayerSetupData player, AiResourcePool pool, float requiredStrength, out AiTask preempted)
         {
             preempted = null;
@@ -1036,7 +1103,7 @@ namespace Game.Ai
 
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
-                if (task.Kind != AiTaskKind.RaidWeakerArmy || task.Retreating || task.Army == null
+                if (task.Kind != AiTaskKind.RaidWeakerArmy || task.Retreating || !task.StillAssembling || task.Army == null
                     || !AiArmyRoles.IsHeroLed(task.Army) || !BattleInitiator.IsCombatCapable(task.Army))
                     continue;
                 float strength = WorthIt.AttackSum(task.Army) + WorthIt.DefenseSum(task.Army);
@@ -1071,12 +1138,14 @@ namespace Game.Ai
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army) || !AiArmyRoles.IsHeroLed(task.Army))
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
 
             if (AiDefencePlanner.IsUnderSiege(player, ctx))
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — citadel under siege, base-building task cancelled.");
                 return null;
@@ -1084,6 +1153,7 @@ namespace Game.Ai
 
             if (BuildBaseTask.HasThreateningEnemyNear(player, task.TargetHex, task.Army, AiConfig.buildBaseCancelRadius))
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — a known enemy near the target could likely beat it, base-building task cancelled.");
                 return null;
@@ -1101,10 +1171,25 @@ namespace Game.Ai
                     return AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army on the way to found the new base",
                         task, AiConfig.aggressionBaseWeight + AiConfig.raidCounterAttackBonus, AiTaskCategory.Aggression);
 
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — unexpectedly outmatched on the way to found the new base, task cancelled.");
                 return null;
             }
+
+            // Resource reservation (2026-08-23, project owner's own report/spec — see
+            // AiResourceReservation.TotalReservedExcluding's own comment on why BuildBase now
+            // shares BuildFacility's own pool): resolved here, before the travel/arrived branch,
+            // same "starts once this turn's own movement guarantees arrival" rule
+            // AiEconomyPlanner.AdvanceEconomyTask already documents for BuildFacility — starting any
+            // earlier locks the resource type out of every OTHER AI spend for the whole multi-turn
+            // trip; any later leaves the stockpile fully exposed right up to the one turn arrival is
+            // actually guaranteed.
+            CardData card = hand?.Hand.FirstOrDefault(c => c.Definition.cardType == CardType.Base);
+            CardDefinition definition = card?.Definition;
+            bool willArriveThisTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.MaxMovement;
+            if (definition != null && willArriveThisTurn)
+                AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
                 return AiDecision.Move(task.Army, task.TargetHex, $"heads to found a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
@@ -1115,22 +1200,45 @@ namespace Game.Ai
             BuildingData existingBuilding = BuildingRegistry.FindAt(task.TargetHex);
             if (existingBuilding != null && !BuildBaseTask.CanMergeIntoResourceSite(existingBuilding))
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — target hex no longer buildable, base-building task cancelled.");
                 return null;
             }
 
-            CardData card = hand?.Hand.FirstOrDefault(c => c.Definition.cardType == CardType.Base);
             if (card == null)
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — no Base card left in hand, base-building task cancelled.");
                 return null;
             }
 
-            CardDefinition definition = card.Definition;
-            if (!root.CanSpendActionPoints(definition.apCost) || !definition.resourceCost.CanAfford(root))
-                return AiDecision.Wait(task, $"\"{task.Army.Name}\" is saving up to found the new base");
+            // Belt-and-suspenders on top of IsFullyReserved's own virtual ledger — same reasoning
+            // AiEconomyPlanner.AdvanceEconomyTask's own matching check documents.
+            bool shortOnResources = !AiResourceReservation.IsFullyReserved(task, definition.resourceCost) || !definition.resourceCost.CanAfford(root);
+            bool shortOnAp = !root.CanSpendActionPoints(definition.apCost);
+            if (shortOnResources || shortOnAp)
+            {
+                // Stale-plan timeout (2026-08-23, project owner's own report/spec) — see
+                // AiTask.BuildBaseWaitTurns's own comment. A hero-led combat army sitting here
+                // forever, unable to ever actually pay for the base while other AI spending keeps
+                // outcompeting it, is a worse outcome than giving up and freeing it back to
+                // Raid/Defence.
+                task.BuildBaseWaitTurns++;
+                if (task.BuildBaseWaitTurns > AiConfig.buildBaseMaxWaitTurns)
+                {
+                    AiResourceReservation.Release(task);
+                    AiTaskRegistry.Remove(player, task);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — stuck unable to afford the new base for "
+                        + $"{task.BuildBaseWaitTurns} turns, base-building task abandoned, army freed.");
+                    return null;
+                }
+                string reason = shortOnResources && shortOnAp
+                    ? "saving up resources and short on AP" : shortOnResources ? "saving up resources" : "short on AP";
+                return AiDecision.Wait(task, $"\"{task.Army.Name}\" is on-site, {reason} to found the new base "
+                    + $"at ({task.TargetHex.Q},{task.TargetHex.R}) — waiting ({task.BuildBaseWaitTurns}/{AiConfig.buildBaseMaxWaitTurns})");
+            }
 
             return AiDecision.BuildBase(task, AiConfig.buildBaseExecuteScore);
         }
@@ -1154,6 +1262,7 @@ namespace Game.Ai
             if (root == null || card == null)
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" — no Base card left, couldn't found the new base.");
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 yield break;
             }
@@ -1198,6 +1307,7 @@ namespace Game.Ai
             AiDebugLog.Write(building != null
                 ? $"[AI] {player.Nickname}: \"{army.Name}\" founds a new base at ({task.TargetHex.Q},{task.TargetHex.R}) — Aggression task complete.{delta}"
                 : $"[AI] {player.Nickname}: \"{army.Name}\" couldn't found the new base — spawn failed.{delta}");
+            AiResourceReservation.Release(task);
             AiTaskRegistry.Remove(player, task);
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)

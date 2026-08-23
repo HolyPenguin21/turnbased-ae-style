@@ -152,6 +152,17 @@ namespace Game.Ai
         // precise diagnosis; see AiEconomyPlanner.MaxBuildAttempts.
         public int BuildAttempts;
 
+        // BuildBase only (2026-08-23, project owner's own report/spec) — consecutive steps this
+        // task has sat AT its own target hex unable to afford the Base card's own AP/resource cost
+        // (see AiAggressionPlanner.TryContinueBuildBaseTask's own Wait branch, which increments
+        // this every time; any other outcome — travelling, executing, or any cancel — never
+        // touches it, so there's no separate reset needed). A hero-led combat army is expensive to
+        // tie up indefinitely on a build the AI can't actually pay for — once this exceeds
+        // AiConfig.buildBaseMaxWaitTurns the task gives up and frees the army rather than holding
+        // it hostage to a plan that's gone stale (the project owner's own "не держать шестиюнитную
+        // армию десять ходов" report).
+        public int BuildBaseWaitTurns;
+
         // BuildFacility only — true if ResourceType had NO income source anywhere at task creation
         // (see BuildFacilityTask.HasIncomeSource), i.e. this build was ever only justified by
         // BuildFacilityTask.ScarcityBonus's own buildNoIncomeBonus branch, not merely "already
@@ -220,14 +231,31 @@ namespace Game.Ai
         // TryRaidAssembleCandidates/TryStartDefenceCandidates — same
         // "recomputed fresh, never trusted stale" rule Posture above already follows — so it's
         // never more than one step out of date. GarrisonReorgTask reads this to decide whether a
-        // task-claimed army sitting at the garrison hex is still being built (eligible for
-        // CollapseTemporaryAssembly's own atomic fold back to the garrison between recruits) or
-        // already a finished force (off-limits to generic Reorg entirely — see
-        // GarrisonReorgTask.IsProtectedTaskArmy's own comment) — see GarrisonReorgTask.
-        // FindCollapseMove's own comment. Nothing else reads this; it exists purely so
+        // task-claimed army sitting at the garrison hex is still being built — for Active-posture
+        // DefendCitadel specifically, one input (alongside AssemblyProgressTurn below) into whether
+        // it's eligible for CollapseTemporaryAssembly's own atomic fold back to the garrison
+        // (RaidWeakerArmy is never eligible for that fold at all any more, whatever this flag says —
+        // see GarrisonReorgTask.IsCollapseEligible's own comment) — or already a finished force
+        // (off-limits to generic Reorg entirely — see GarrisonReorgTask.IsProtectedTaskArmy's own
+        // comment) — see GarrisonReorgTask.FindCollapseMove's own comment. Nothing else reads this
+        // (except IsCollapseEligible above); it exists purely so
         // GarrisonReorgTask (which has no idea how any one task category scores its own readiness)
         // doesn't need to re-derive it.
         public bool StillAssembling;
+
+        // DefendCitadel only (2026-08-23 fix, project owner's own report/spec) — which
+        // AiTurnContext.TurnNumber a recruit/strengthen/merge last actually landed on this task's
+        // own army, -1 until the first one ever does. GarrisonReorgTask.FindCollapseMove reads this
+        // to tell a genuinely stalled Active-posture assembly (nothing added THIS turn — safe to
+        // fold back to the garrison) apart from one making real cross-turn progress (2 units → 4 →
+        // 5 over several turns is real progress, not something Collapse should ever be allowed to
+        // erase just because the composition target isn't fully met yet). Set by
+        // AiAggressionPlanner.AssembleRaidForceRoutine/AiDefencePlanner.StrengthenDefenceForceRoutine
+        // on a successful landing only — a failed transfer changes nothing about the roster, so it
+        // must not reset the stall clock either. Left at -1 forever for RaidWeakerArmy — Collapse
+        // never runs against that Kind at all any more (see FindCollapseMove's own comment), so
+        // nothing ever reads it there.
+        public int AssemblyProgressTurn = -1;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

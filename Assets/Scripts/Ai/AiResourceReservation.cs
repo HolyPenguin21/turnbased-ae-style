@@ -95,17 +95,21 @@ namespace Game.Ai
             return true;
         }
 
-        // Sum of every OTHER active BuildFacility task's own claim on `type` — `excluding` lets a
-        // task's own continuation (TopUp/a future affordability check) read what's free to grow
-        // INTO without double-subtracting its own already-reserved amount. A brand-new candidate
-        // task (not yet in AiTaskRegistry) naturally excludes itself just by not being found in
-        // the loop below, `excluding` only matters once a task is actually registered.
+        // Sum of every OTHER active BuildFacility/BuildBase task's own claim on `type` —
+        // `excluding` lets a task's own continuation (TopUp/a future affordability check) read
+        // what's free to grow INTO without double-subtracting its own already-reserved amount. A
+        // brand-new candidate task (not yet in AiTaskRegistry) naturally excludes itself just by
+        // not being found in the loop below, `excluding` only matters once a task is actually
+        // registered. Widened 2026-08-23 (project owner's own report/spec) to also count BuildBase
+        // — a founded-base card costs real resources same as a facility, and the two must share
+        // the same "все траты ИИ" pool this class already enforces rather than being able to eat
+        // into each other's reservation.
         private static int TotalReservedExcluding(PlayerSetupData player, ResourceType type, AiTask excluding)
         {
             int total = 0;
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
-                if (task == excluding || task.Kind != AiTaskKind.BuildFacility)
+                if (task == excluding || (task.Kind != AiTaskKind.BuildFacility && task.Kind != AiTaskKind.BuildBase))
                     continue;
                 if (ReservedByTask.TryGetValue(task, out int[] reserved))
                     total += reserved[(int)type];

@@ -34,18 +34,28 @@ namespace Game.Ai
     //
     //   CollapseTemporaryAssembly → HandleOverflow (unconditional) → IdleBalance
     //
-    // CollapseTemporaryAssembly (FindCollapseMove) — a still-recruiting RaidWeakerArmy/
-    // DefendCitadel army (AiTask.StillAssembling == true) sitting at this garrison's own hex
-    // returns to the garrison as ONE atomic move: either its whole roster (hero included) fits and
-    // moves this call, or nothing moves at all — see FindCollapseMove's own comment for why a
-    // partial per-unit trickle (the OLD tier 1b's own shape) defeats the point. Task/TargetHex/
-    // StillAssembling are untouched — this is a safety fold, not progress on the task — so the
-    // very next assemble step just recruits back out of garrison stock, hero included if the shell
-    // went fully empty (RaidWeakerArmyTask.FindRecruitAt's own NeedsHero check). Tried FIRST every
-    // iteration; when it can't act (garrison doesn't have literal room for the WHOLE roster yet),
-    // it simply declines and HandleOverflow/IdleBalance get this same iteration instead — see the
-    // safety-case note on FindCollapseMove itself for how a full-but-not-overflowing garrison still
-    // eventually frees enough room via IdleBalance's own strength-balance step.
+    // CollapseTemporaryAssembly (FindCollapseMove) — narrowed 2026-08-23 (project owner's own
+    // report/spec, after a real log showed the original blanket StillAssembling trigger erasing
+    // healthy multi-turn recruiting progress every single end of turn — see IsCollapseEligible's
+    // own comment for the full reasoning). No longer "any still-recruiting RaidWeakerArmy/
+    // DefendCitadel army" — RaidWeakerArmy is excluded outright (a forming raid at home has nothing
+    // to fold away FROM; a real siege already gets a stronger, dedicated response via
+    // AiDefencePlanner.IsUnderSiege), and DefendCitadel only qualifies in its Active posture, and
+    // only once AiTask.AssemblyProgressTurn confirms the roster genuinely didn't grow THIS turn —
+    // Patrol has no elevated standing to protect (ordinary IdleBalance already owns it) and Turtle
+    // (a real siege in progress) is exactly the case where an incomplete extra stack still has
+    // defensive value, never a candidate for folding away just because the turn ran out. What DOES
+    // still qualify returns to the garrison as ONE atomic move: either its whole roster (hero
+    // included) fits and moves this call, or nothing moves at all — see FindCollapseMove's own
+    // comment for why a partial per-unit trickle (the OLD tier 1b's own shape) defeats the point.
+    // Task/TargetHex/StillAssembling are untouched — this is a safety fold, not progress on the
+    // task — so the very next assemble step just recruits back out of garrison stock, hero included
+    // if the shell went fully empty (RaidWeakerArmyTask.FindRecruitAt's own NeedsHero check). Tried
+    // FIRST every iteration; when it can't act (garrison doesn't have literal room for the WHOLE
+    // roster yet), it simply declines and HandleOverflow/IdleBalance get this same iteration
+    // instead — see the safety-case note on FindCollapseMove itself for how a full-but-not-
+    // overflowing garrison still eventually frees enough room via IdleBalance's own strength-
+    // balance step.
     //
     // HandleOverflow (FindGarrisonOverflow/FindGarrisonOverflowDestination) — the mirror-image
     // capacity concern (garrison itself OVER capacity, evicting outward). Tried second, and
@@ -88,10 +98,11 @@ namespace Game.Ai
     //      Разведка/Агрессия each assemble their own dedicated army from scratch when they need
     //      one, so an idle Recce solo sitting at base is just another lone army to this class.
     //      IsProtectedTaskArmy-excluded (2026-08-23) — a lone hero anchoring a protected Raid/
-    //      Active/Turtle-Defence army in practice never even reaches this tier (CollapseTemporary
-    //      Assembly claims any StillAssembling one first, and every StillAssembling==true army IS
-    //      one of those two Kinds), but a READY one down to its own lone hero must stay untouched
-    //      too, so the exclusion applies unconditionally here.
+    //      Active/Turtle-Defence army stays untouched here regardless of whether Collapse itself
+    //      would also claim it (Collapse's own eligibility narrowed 2026-08-23 too — see
+    //      IsCollapseEligible's own comment — it no longer claims Raid at all, or Turtle, or a
+    //      still-progressing Active assembly), so this exclusion has to stand on its own rather
+    //      than assume Collapse already handled every StillAssembling case upstream.
     //   2) FindHexBalanceMove — once no lone army is left to fold (or the garrison has no room and
     //      nothing else can absorb one) AND the garrison genuinely has no room, this ONE tier now
     //      covers both strength and composition (merged 2026-08-20, project owner's own follow-up —
@@ -473,6 +484,43 @@ namespace Game.Ai
         // task"). HexSelectionController.DeleteArmyIfEmptied's own Barracks-hex exception (see
         // IsLoneArmyAtBase's own comment) is exactly why the now-possibly-empty Source object
         // survives as a registered shell instead of vanishing along with the task that owns it.
+        // CollapseTemporaryAssembly's own eligibility gate (2026-08-23 narrowing, project owner's
+        // own report/spec — a real Aggression/Defence log showed the old blanket StillAssembling
+        // trigger erasing healthy multi-turn progress every single end of turn, not just genuinely
+        // stalled assemblies):
+        //   - RaidWeakerArmy is EXCLUDED outright. A forming raid sitting at its own garrison hex
+        //     poses no safety question folding-into-garrison would even address — the home hex
+        //     isn't threatened just because a raid hasn't left yet, and a REAL siege already has its
+        //     own, stronger response (AiAggressionPlanner.TryRaidAssembleCandidates refuses to start
+        //     new raids and TryContinueRaidTask force-recalls active ones the moment
+        //     AiDefencePlanner.IsUnderSiege fires — never a Collapse fold). Collapsing it here only
+        //     ever destroyed cross-turn recruiting progress for no offsetting benefit. IsProtectedTaskArmy
+        //     (this class's own IdleBalance gate) already shields a StillAssembling Raid army from
+        //     every OTHER generic reorg tier unconditionally, Collapse or not — see its own comment.
+        //   - DefendCitadel Patrol posture is EXCLUDED too — it carries no elevated standing intent
+        //     (IsProtectedTaskArmy deliberately doesn't shield it either, same reasoning), so ordinary
+        //     IdleBalance already has full authority over it; a dedicated Collapse pass on top is
+        //     redundant.
+        //   - DefendCitadel Turtle posture is EXCLUDED — a real siege in progress (Turtle only exists
+        //     under IsUnderSiege) is exactly the case where an incomplete-but-real extra stack next to
+        //     the garrison still has defensive value; folding it away purely because the turn ran out
+        //     serves no one.
+        //   - DefendCitadel Active posture is the only case left, and even then only once
+        //     AiTask.AssemblyProgressTurn confirms nothing actually landed THIS turn — a composition
+        //     that grew (recruit/strengthen/merge, tracked by AssembleRaidForceRoutine/
+        //     StrengthenDefenceForceRoutine) this same turn is real progress, not something safety
+        //     housekeeping gets to erase just because the target isn't fully met yet.
+        private static bool IsCollapseEligible(AiTask task, AiTurnContext ctx)
+        {
+            if (task == null || !task.StillAssembling)
+                return false;
+            if (task.Kind != AiTaskKind.DefendCitadel)
+                return false;
+            if (task.Posture != AiDefencePosture.Active)
+                return false;
+            return task.AssemblyProgressTurn != ctx.TurnNumber;
+        }
+
         public static CollapseMove? FindCollapseMove(PlayerSetupData player, HexCoord garrisonHex, ArmyData garrison, AiTurnContext ctx)
         {
             if (garrison == null || !garrison.HasRoom)
@@ -480,7 +528,7 @@ namespace Game.Ai
 
             ArmyData source = ArmyRegistry.AllForOwner(player)
                 .FirstOrDefault(a => a != null && !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex)
-                    && a.Members.Count > 0 && AiTaskRegistry.TaskFor(player, a)?.StillAssembling == true);
+                    && a.Members.Count > 0 && IsCollapseEligible(AiTaskRegistry.TaskFor(player, a), ctx));
             if (source == null)
                 return null;
 
@@ -529,9 +577,11 @@ namespace Game.Ai
             if (garrison.Capacity - garrison.Members.Count < members.Count)
                 return null;
 
-            string label = task.Kind == AiTaskKind.RaidWeakerArmy ? "Raid" : "Defence";
+            // IsCollapseEligible above only ever admits DefendCitadel/Active now — no more "Raid"
+            // label branch to pick between (2026-08-23 narrowing, see IsCollapseEligible's own
+            // comment for why RaidWeakerArmy never reaches this method at all any more).
             return new CollapseMove(source, garrison, members, task,
-                $"\"{source.Name}\" temporary {label} assembly collapsing into the garrison — {members.Count} unit(s) returning; "
+                $"\"{source.Name}\" temporary Defence assembly collapsing into the garrison — {members.Count} unit(s) returning; "
                     + $"task preserved, target=({task.TargetHex.Q},{task.TargetHex.R})");
         }
 

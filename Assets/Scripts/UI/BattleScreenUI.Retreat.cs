@@ -54,6 +54,14 @@ namespace Game.UI
             // so it can never be the survivor for DescribeNextAction's own purposes.
             ArmyData survivingArmy = army == _attacker ? _defender : _attacker;
 
+            // A retreat ends the battle without ever going through FinishBattleEnd
+            // (BattleScreenUI.Combat.cs) — revert Berserk here too, on both sides, or the
+            // "for the duration of the battle" buff/debuff sticks around permanently on whoever
+            // retreated AND on whoever stayed and fought. Before PerformRetreat, which may clear
+            // `army`'s Members outright (the destroyed/no-valid-hex case).
+            RevertBerserkStacks(army);
+            RevertBerserkStacks(survivingArmy);
+
             PerformRetreat(army, out bool destroyed);
             string title = destroyed
                 ? (_localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
