@@ -117,6 +117,9 @@ namespace Game.Ai
         // own comment) — while Агрессия has a real committed raid force out working, routine
         // VisitHex scouting cedes a flat amount of ground instead of competing evenly. Replaces the
         // old raidCommittedBonus top-up on Агрессия's own side of the arbiter.
+        // Both call sites below skip this penalty on a flee candidate (isFlee) — see AiConfig.
+        // scoutFleeBonus's own comment: a scout fleeing a real threat must reliably land at
+        // reconBaseWeight+scoutFleeBonus=125, not have a committed raid eat into that.
         private static float AggressionSuppressionPenalty(PlayerSetupData player) =>
             AiTaskRegistry.CountActive(player, AiTaskKind.RaidWeakerArmy) > 0
                 ? AiConfig.reconAggressionSuppressionPenalty
@@ -161,7 +164,8 @@ namespace Game.Ai
             if (nextStep == null)
                 return null; // fully boxed in by fog for now — target stays valid, re-tried next step
 
-            float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue) - AggressionSuppressionPenalty(player)
+            float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
+                - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                 + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
             var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
             return AiDecision.Move(task.Army, stepTarget, task, score, AiTaskCategory.Reconnaissance);
@@ -205,7 +209,8 @@ namespace Game.Ai
                     Kind = AiTaskKind.VisitHex, Army = army, TargetHex = target.Value.Hex, Reason = target.Value.Reason,
                     FledLastTurn = fleeTarget.HasValue,
                 };
-                float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue) - AggressionSuppressionPenalty(player)
+                float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
+                    - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                     + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
                 var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
                 results.Add(AiDecision.Move(army, stepTarget, task, score, AiTaskCategory.Reconnaissance));
