@@ -39,7 +39,7 @@ namespace Game.Ai
             int bestDistance = int.MaxValue;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
-                if (!AiArmyRoles.IsHeroLed(army))
+                if (!AiArmyRoles.IsHeroLed(army) || IsProtectedFromEconomyPreemption(player, army))
                     continue;
                 int distance = HexGridMath.Distance(army.Hex, targetHex);
                 if (distance < bestDistance)
@@ -49,6 +49,25 @@ namespace Game.Ai
                 }
             }
             return best;
+        }
+
+        // Экономика · Задача 1's own preemption path (see this method's own class comment above,
+        // and TryStartEconomyCandidates' own PreemptedTask handling) may still reach into a hero
+        // currently on routine Разведка — "его текущее задание можно отложить" — but NOT into an
+        // active Агрессия campaign (2026-08-23, project owner's own call: "BuildFacility запрещено
+        // preempt'ить активные Raid и BuildBase; разрешён preempt Recon"). Both RaidWeakerArmy and
+        // BuildBase represent real committed military investment — an assembling/travelling raid
+        // force, a base under active construction — that a routine facility build must never be
+        // allowed to interrupt, unlike a scout that simply resumes VisitHex once un-preempted.
+        // Checked centrally here (both FindNearestHero's own caller AND BuildFacilityTask.RankHex's
+        // internal HeroTravelCostScore route through this same method) rather than only at
+        // TryStartEconomyCandidates' own PreemptedTask assignment, so a protected hero never even
+        // gets picked as the "nearest" one in the first place — RankHex's own hex ranking stays
+        // consistent with which hero would actually be usable if that hex won.
+        private static bool IsProtectedFromEconomyPreemption(PlayerSetupData player, ArmyData army)
+        {
+            AiTask task = AiTaskRegistry.TaskFor(player, army);
+            return task != null && (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.BuildBase);
         }
 
         // FindNearestHero's own blind spot — AiArmyRoles.IsHeroLed always excludes IsGarrison, so
