@@ -170,7 +170,23 @@ namespace Game.Ai
         // WHICH members leave is the strongest first (Defense, then Attack as the tiebreak) — a
         // tank or artillery piece is worth fielding, a bare rifleman is worth stockpiling instead,
         // since a garrisoned unit gets the base's own defense bonus the field doesn't (the project
-        // owner's own call). Null if the garrison already has room or doesn't exist.
+        // owner's own call). Null if the garrison already has room or doesn't exist; can also come
+        // back EMPTY (not null) once the CanLeaveWithoutOvercrowding filter below removes every
+        // over-capacity member from contention — same "decline, let a later drain call retry"
+        // handling TryGarrisonSplitCandidate already gives an empty list.
+        // Candidate-feasibility fix (2026-08-23, real log: Economy kept re-proposing
+        // SplitGarrisonArmy on a hero whose OWN CommandRating was what kept the garrison's Capacity
+        // above its member count in the first place — removing him collapses Capacity back to
+        // GarrisonBaseCapacity, which ArmyData.CanLeaveWithoutOvercrowding already exists to catch
+        // (ArmyActions.TransferMember already enforces it, see that method's own guard), but this
+        // method never consulted it before picking candidates. Filtered out BEFORE the strongest-
+        // first ordering below, not after — a hero excluded this way is invisible to `.Take`, so a
+        // weaker but actually-removable unit gets picked in his place instead of the batch just
+        // coming up short. Safe to check each member independently against the CURRENT roster
+        // (rather than simulating sequential removal the way FindCollapseMove's own AP batch-check
+        // has to): Capacity only ever depends on whether the retained roster still has a hero in
+        // it, never on the plain-unit headcount, so evicting any number of non-hero members changes
+        // nothing about whether a DIFFERENT member could also leave.
         public static IReadOnlyList<UnitData> FindGarrisonOverflow(ArmyData garrison)
         {
             if (garrison == null || garrison.HasRoom)
@@ -178,7 +194,8 @@ namespace Game.Ai
             int overflow = garrison.Members.Count - garrison.Capacity;
             if (overflow <= 0)
                 return null;
-            return garrison.Members.OrderByDescending(m => m.Defense).ThenByDescending(m => m.Attack)
+            return garrison.Members.Where(garrison.CanLeaveWithoutOvercrowding)
+                .OrderByDescending(m => m.Defense).ThenByDescending(m => m.Attack)
                 .Take(overflow).ToList();
         }
 

@@ -578,9 +578,51 @@ namespace Game.Ai
                     AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn reorg — {decision.Kind} ({decision.Category}) — {decision.Reason}.");
                     actionCounts.TryGetValue(decision.Kind, out int count);
                     actionCounts[decision.Kind] = count + 1;
+
+                    // No-progress circuit breaker (2026-08-23, project owner's own report — a real
+                    // log showed a candidate-feasibility mismatch between a Try*Candidate method and
+                    // the transfer routine it feeds into re-proposing the exact same impossible
+                    // SplitGarrisonArmy every single drain iteration, burning the entire
+                    // maxGarrisonReorgStepsPerTurn budget on one hex for nothing every turn). This is
+                    // a safety net, not a substitute for fixing the specific mismatch when one is
+                    // found (see FindGarrisonOverflow's own 2026-08-23 fix for the mismatch that
+                    // actually triggered this): whichever of Collapse/Split/Consolidate/Swap just ran
+                    // is re-checked against the hex's OWN roster (every army at `garrison.Hex`, not
+                    // just `garrison` itself — a Consolidate move can land entirely between two field
+                    // armies and never touch the garrison's own Members at all) before and after
+                    // executing. Identical rosters both times means the decision's own execution
+                    // routine silently failed to move anything, and every OTHER tier would just
+                    // recompute the identical decision next iteration too (nothing about game state
+                    // changed) — so this stops draining THIS garrison for the rest of the phase
+                    // rather than spinning through the remaining budget on repeats. Scoped to one
+                    // garrison's own loop, not the whole phase — a later-founded base's own drain
+                    // still gets its full budget even when the citadel's hits this.
+                    string rosterBefore = HexRosterSignature(player, garrison.Hex);
                     yield return PerformDecision(player, decision, ctx);
+                    if (HexRosterSignature(player, garrison.Hex) == rosterBefore)
+                    {
+                        AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn reorg — {decision.Kind} made no "
+                            + $"progress on \"{garrison.Name}\"'s hex — stopping reorg there for the rest of this turn.");
+                        break;
+                    }
                 }
             }
+        }
+
+        // RunGarrisonReorgPhase's own circuit breaker — a cheap stand-in for "did anything actually
+        // move on this hex", built as a name-keyed string rather than any ArmyData/UnitData object
+        // identity, specifically so a freshly created destination army (SplitGarrisonArmyRoutine's
+        // own no-existing-destination branch spawns a brand new ArmyData instance every time) still
+        // shows up correctly as a change — the "before" string simply won't mention that army's name
+        // yet. Approximate by design (unit/army NAME rather than a stable per-unit id — none exists
+        // on UnitData right now) — good enough for "did the roster change", not meant for anything
+        // identity-sensitive.
+        private static string HexRosterSignature(PlayerSetupData player, HexCoord hex)
+        {
+            return string.Join("|", ArmyRegistry.AllForOwner(player)
+                .Where(a => a.Hex.Equals(hex))
+                .OrderBy(a => a.Name)
+                .Select(a => a.Name + ":" + string.Join(",", a.Members.Select(m => m.Name).OrderBy(n => n))));
         }
 
         private static IEnumerator PerformDecision(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
