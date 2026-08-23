@@ -737,10 +737,16 @@ namespace Game.Ai
                 ? MeetsActiveComposition(army, activeSighting.Value, ctx.Map)
                 : PatrolCompositionReady(army);
 
-            // Recruiting/growing the force is buildup, not a confirmed engagement — scored off
-            // DynamicPatrolUrgencyScore (see that method's own comment), NOT defenceActiveScore,
-            // which stays reserved for BuildPostureDecision's own real-sighting-gated branches.
-            float assemblyScore = DynamicPatrolUrgencyScore(player, homeHex);
+            // Recruiting/growing the force under a mere PROXIMITY heuristic (no confirmed sighting
+            // yet) is buildup, not urgent — scored off DynamicPatrolUrgencyScore (see that method's
+            // own comment), same as before. But once activeSighting actually HAS a value, this is
+            // no longer a heuristic guess — it's the exact same confirmed AiMapMemory sighting
+            // BuildPostureDecision's own Active branch reacts to below, so the recruit this step
+            // would feed the defender is exactly as urgent as the engagement itself (2026-08-23,
+            // project owner's own report — see AiConfig.defenceActiveAssemblyScore's own comment
+            // for the starvation this fixes: a real threat's own recruit used to still lose to a
+            // routine Raid assembly pull at a flat 110 every step).
+            float assemblyScore = activeSighting.HasValue ? AiConfig.defenceActiveAssemblyScore : DynamicPatrolUrgencyScore(player, homeHex);
 
             AiTask existing = AiTaskRegistry.TasksFor(player).FirstOrDefault(t => t.Kind == AiTaskKind.DefendCitadel && t.HomeHex.Equals(homeHex));
             if (existing != null)
@@ -920,11 +926,27 @@ namespace Game.Ai
 
         // Оборона's own emergency reinforcement — now gated on IsUnderSiege (Turtle only, per the
         // project owner's own call: outside a real siege there's no urgent need to strip another
-        // category's task for the citadel's sake). Only fires once idle reinforcement genuinely
-        // can't cover the defending army's own ceiling, and even then only pulls a field army off
+        // category's task for the citadel's sake). This is the ONLY place in this whole class that
+        // ever sets AiDecision.PreemptedTask / reaches past a live task's own claim — ordinary
+        // Active(defenceActiveScore=120)/Patrol, at the citadel OR any later-founded base, runs
+        // entirely through BuildPostureDecision/TryStartDefenceCandidatesFor instead, which only
+        // ever draw from AiResourcePool.AvailableArmies() (armies with no task of their own), never
+        // from another category's committed army (2026-08-23, project owner's own explicit call: a
+        // routine threat at Base2 must fight with its own Defence-army/assembly, never reach across
+        // the map for a Raid or a BuildBase army — only a real Citadel Turtle emergency has that
+        // right). IsUnderSiege itself is citadel-only (AiTurnController.GarrisonHexFor is always the
+        // starting citadel, see its own definition) — a threat at Base2 alone can never even reach
+        // this method's own IsUnderSiege gate above, regardless of score. Only fires once idle
+        // reinforcement genuinely can't cover the defending army's own ceiling, and even then
+        // only pulls a field army off
         // routine work elsewhere (never another ready-to-strike raid/defense, or an already-
         // retreating raid) — same "cancel and redirect" primitive AiEconomyPlanner.
-        // TryStartEconomyCandidates already established via AiDecision.PreemptedTask.
+        // TryStartEconomyCandidates already established via AiDecision.PreemptedTask. One
+        // exception to "never another raid" (2026-08-23, project owner's own call): a StillAssembling
+        // raid parked right at the citadel — see FindSiegeRaidStripCandidate below — has no
+        // offensive sunk cost yet and is fair game, same 130 tier as everything else here. BuildBase
+        // is fair game outright, unlike AiEconomyPlanner's own routine-preemption protection for it
+        // — see the loop's own comment below.
         public static List<AiDecision> TryDefencePreemptCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             var results = new List<AiDecision>();
@@ -955,6 +977,26 @@ namespace Game.Ai
             if (RaidWeakerArmyTask.IsReady(reference, required))
                 return results; // already strong enough — normal continuation (or the garrison itself) handles the rest
 
+            // A StillAssembling Раид sitting right at the citadel is a different case from every
+            // exclusion the loop below enforces (project owner's own call, 2026-08-23): a raid
+            // that's already ready-to-strike or already retreating stays untouchable (real
+            // offensive sunk cost, or already mid-recall on its own), but one that never left —
+            // hero home, one or two recruits in, still short of RequiredStrengthAt — has spent
+            // nothing offensive yet, and its bodies are already exactly where Defence needs them.
+            // Reaches past this step's own AiResourcePool claim on purpose (the raid task claimed
+            // this army already, same as FindBuildBaseArmy's own second pass does for Агрессия's
+            // BuildBase) — only while defenceTask actually exists (the very-first-siege bootstrap
+            // above already falls back to the bare garrison with no task to fold into; that rare
+            // case is left to the ordinary recruit tiers instead of special-cased here). Same
+            // hero/Recce protection and "strongest first" ordering every other per-unit strip tier
+            // here already uses, one member per call like every assembly move in this codebase.
+            if (defenceTask != null)
+            {
+                UnitData siegeRecruit = FindSiegeRaidStripCandidate(player, citadelHexForPreempt, reference, out ArmyData siegeSource);
+                if (siegeRecruit != null && siegeSource != null && reference.HasRoom && !ctx.WouldRevisitArmy(siegeRecruit, reference))
+                    results.Add(AiDecision.ActiveDefenceForce(siegeSource, siegeRecruit, reference, defenceTask, AiConfig.defencePreemptScore));
+            }
+
             // No separate "idle armies alone would eventually cover it" ceiling pre-check any more
             // (2026-08-22, project owner's own call, same simplification RaidWeakerArmyTask's own
             // dead-end gate already went through — see its own class comment): WorthIt.IsReady
@@ -971,6 +1013,17 @@ namespace Game.Ai
                     || !BattleInitiator.IsCombatCapable(army) || AiArmyRoles.IsSoloRecce(army))
                     continue;
 
+                // BuildBase deliberately has NO exclusion clause here (project owner's own call,
+                // 2026-08-23: "от Citadel emergency BuildBase защищать нельзя") — unlike
+                // AiEconomyPlanner.IsProtectedFromEconomyPreemption, which shields BuildBase from a
+                // routine BuildFacility, a REAL siege must outrank even an outpost one step from
+                // execute (buildBaseExecuteScore=120, buildBaseTravelBonus-tier=105 — both already
+                // below defencePreemptScore=130). A BuildBase army falls through this whole
+                // condition untouched and gets recalled/preempted exactly like any other field army
+                // below; Commit's own generic AiTaskRegistry.Remove(decision.PreemptedTask) already
+                // clears the old task fully on commit (BuildBase reserves nothing that needs an
+                // AiResourceReservation.Release the way BuildFacility does), so Агрессия is free to
+                // re-decide whether/where to build again once the siege is over.
                 AiTask existingTask = AiTaskRegistry.TaskFor(player, army);
                 if (existingTask != null && (existingTask.Kind == AiTaskKind.DefendCitadel || existingTask.Retreating
                     || (existingTask.Kind == AiTaskKind.RaidWeakerArmy
@@ -985,6 +1038,39 @@ namespace Game.Ai
                 results.Add(decision);
             }
             return results;
+        }
+
+        // TryDefencePreemptCandidates' own siege-strip source — the strongest non-hero, non-Recce
+        // member of whichever StillAssembling RaidWeakerArmy task's army is sitting on `citadelHex`
+        // right now (excludes `excludeArmy`, the defending force itself, in case the two are ever
+        // somehow the same army). Deliberately reads AiTaskRegistry directly rather than
+        // AiResourcePool.AvailableArmies() — that pool already claimed this army for its own raid
+        // task this step (see AiResourcePool's own class comment), and a real siege legitimately
+        // outranks that claim. Hero protected same as FindStrengthenCandidate above; no
+        // allowCriticallyWounded fallback here — unlike an ordinary recruit search this only ever
+        // has the one still-forming army to draw from, so "nothing healthy" just means propose
+        // nothing this call rather than settle for a wounded pull.
+        private static UnitData FindSiegeRaidStripCandidate(PlayerSetupData player, HexCoord citadelHex, ArmyData excludeArmy, out ArmyData source)
+        {
+            source = null;
+            UnitData best = null;
+            float bestAttack = -1f;
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player))
+            {
+                if (task.Kind != AiTaskKind.RaidWeakerArmy || !task.StillAssembling || task.Army == null
+                    || task.Army == excludeArmy || !task.Army.Hex.Equals(citadelHex))
+                    continue;
+                foreach (UnitData unit in task.Army.Members)
+                {
+                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce) || unit.HitPointsCurrent <= unit.HitPointsMax / 2
+                        || unit.Attack <= bestAttack)
+                        continue;
+                    best = unit;
+                    bestAttack = unit.Attack;
+                    source = task.Army;
+                }
+            }
+            return best;
         }
 
         // ---- Execution ----

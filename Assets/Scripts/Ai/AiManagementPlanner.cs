@@ -376,7 +376,7 @@ namespace Game.Ai
                 CardPlacement? placement = FindPlacement(player, root, card);
                 if (!placement.HasValue)
                     continue;
-                float fit = UnitCompositionFitBonus(player, card.Definition, roster, ctx.Map);
+                float fit = UnitCompositionFitBonus(player, card.Definition, roster, ctx);
                 float value = CardCombatValue(card.Definition);
                 // FitBonus is a sum of flat gate bonuses, so exact ties are common; break them by
                 // raw combat value instead of falling back to hand order.
@@ -478,7 +478,7 @@ namespace Game.Ai
         //       driving that assembly — see TaskNeedBonus's own comment for the full split. Only
         //       ever checked against a task that's still recruiting (StillAssembling, not
         //       Retreating) — a task already moving out doesn't recruit through the hand any more.
-        private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster, HexMap map)
+        private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster, AiTurnContext ctx)
         {
             float bonus = 0f;
 
@@ -520,7 +520,7 @@ namespace Game.Ai
                     bonus += AiConfig.unitCompositionGapBonus;
             }
 
-            bonus += TaskNeedBonus(player, definition, map);
+            bonus += TaskNeedBonus(player, definition, ctx);
 
             return bonus;
         }
@@ -537,9 +537,9 @@ namespace Game.Ai
         // flat tier whenever a real threat drives it (see that method's own comment), so whichever
         // task's own need is genuinely bigger this step always wins, with no hand-coded "check
         // Defence before Raid" ordering to keep in sync as more task kinds get added later.
-        private static float TaskNeedBonus(PlayerSetupData player, CardDefinition definition, HexMap map)
+        private static float TaskNeedBonus(PlayerSetupData player, CardDefinition definition, AiTurnContext ctx)
         {
-            return System.Math.Max(RaidNeedBonus(player, definition, map), DefenceNeedBonus(player, definition, map));
+            return System.Math.Max(RaidNeedBonus(player, definition, ctx.Map), DefenceNeedBonus(player, definition, ctx));
         }
 
         // Raid's own share of TaskNeedBonus — unchanged in substance from the pre-2026-08-23
@@ -575,9 +575,21 @@ namespace Game.Ai
         // base); returning on the first one found in registry order could report a routine Patrol
         // headcount gap for one base while a genuinely under-threat Active assembly on the other sits
         // unseen right behind it — exactly the priority inversion this bonus exists to prevent.
-        private static float DefenceNeedBonus(PlayerSetupData player, CardDefinition definition, HexMap map)
+        //
+        // A THIRD tier on top of the two above (2026-08-23, project owner's own follow-up — "Turtle
+        // need > Active Defence need > Raid need > generic composition need"): the sighted branch
+        // scores AiConfig.turtleNeedBonusMultiplier instead of the plain defenceNeedBonusMultiplier
+        // whenever the task in question is the CITADEL's own AND AiDefencePlanner.IsUnderSiege is
+        // true right now — a real siege outranks an ordinary Active sighting at some other base the
+        // same way it already outranks everything else in this codebase (defencePreemptScore/
+        // defenceTurtleScore's own 130 cross-category tier). Checked once per call, not per task
+        // (IsUnderSiege is already citadel-scoped internally, so re-checking it once per iteration
+        // would just repeat the exact same read for a second base's own task).
+        private static float DefenceNeedBonus(PlayerSetupData player, CardDefinition definition, AiTurnContext ctx)
         {
             float best = 0f;
+            HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+            bool turtle = AiDefencePlanner.IsUnderSiege(player, ctx);
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
                 if (task.Kind != AiTaskKind.DefendCitadel || !task.StillAssembling || task.Retreating || task.Army == null)
@@ -590,9 +602,13 @@ namespace Game.Ai
                     continue;
                 }
 
-                float hexBonus = WorthIt.HexDefenseBonus(threat.Value.Hex, map);
+                float hexBonus = WorthIt.HexDefenseBonus(threat.Value.Hex, ctx.Map);
                 if (ClosesDamageGap(definition, task.Army, threat.Value.Defenders, hexBonus))
-                    best = System.Math.Max(best, AiConfig.unitCompositionGapBonus * AiConfig.defenceNeedBonusMultiplier); // a REAL threat is driving this
+                {
+                    float multiplier = turtle && task.HomeHex.Equals(citadelHex)
+                        ? AiConfig.turtleNeedBonusMultiplier : AiConfig.defenceNeedBonusMultiplier;
+                    best = System.Math.Max(best, AiConfig.unitCompositionGapBonus * multiplier); // a REAL threat is driving this
+                }
             }
             return best;
         }

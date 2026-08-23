@@ -401,6 +401,24 @@ namespace Game.Ai
         // clear of economyBaseWeight (105) too, same shape Агрессия's own raidCounterAttackBonus
         // already uses for "react to a nearby known army" (aggressionBaseWeight + 20).
         public const float defenceActiveScore = 120f;
+        // 1.1b — Active's own assembly/strengthen score, split out 2026-08-23 (project owner's own
+        // report: "враг реально идёт на Base → Defence недостаточно сильна → нужный юнит лежит в
+        // гарнизоне → Raid забирает его на 110 — это плохо"). TryStartDefenceCandidatesFor used to
+        // score EVERY recruit/strengthen pull off DynamicPatrolUrgencyScore alone (ceiling
+        // defencePatrolScore=90, deliberately below raidAssembleBonus's flat 110 tier — see that
+        // method's own comment) even once activeSighting.HasValue was true, i.e. even once the
+        // threat was no longer a proximity heuristic but the exact same confirmed AiMapMemory
+        // sighting BuildPostureDecision's own Active branch reacts to — so a real, known army
+        // closing on a base could still lose its own next recruit to a routine Raid assembly pull
+        // every single step, right up until the moment it either finished assembling on its own or
+        // the enemy actually arrived. Pinned to the same 120 tier as defenceActiveScore itself
+        // (project owner's own call) — under a real confirmed threat, feeding the defender its
+        // missing recruit IS the urgent response, exactly as time-critical as the engagement itself
+        // would be if the force were already complete. Kept as its own named constant rather than
+        // reusing defenceActiveScore directly so TryStartDefenceCandidatesFor's own assembly call
+        // site stays self-documenting about which of the two concepts (buildup vs. actual
+        // engagement) it's scoring — see that method's own comment.
+        public const float defenceActiveAssemblyScore = 120f;
         // 1.2 — Patrol's own routine movement score, deliberately BELOW the real-work tier
         // (economyBaseWeight 105, reconBaseWeight/aggressionBaseWeight 100) — patrol is proactive
         // background coverage, not urgent, but still comfortably above every Менеджмент idle
@@ -441,8 +459,10 @@ namespace Game.Ai
         // spec) — pinned to the same top "Citadel emergency" tier as defenceTurtleScore now that the
         // two have split apart, since an emergency field-army recall is exactly as urgent as Turtle's
         // own march-home. Also reused as-is by AiAggressionPlanner's own siege-forced raid recall
-        // (see TryContinueRaidTask) — the project owner's own call to keep both "siege demands this
-        // army NOW" reactions on the same urgent tier, rather than a third near-duplicate constant.
+        // (see TryContinueRaidTask) and by AiDefencePlanner's own siege-strip of a StillAssembling
+        // raid parked at the citadel (see TryDefencePreemptCandidates/FindSiegeRaidStripCandidate)
+        // — the project owner's own call to keep every "siege demands this army/body NOW" reaction
+        // on the same urgent tier, rather than a near-duplicate constant per reaction.
         public const float defencePreemptScore = 130f;
         // 1.2's own local retreat (AiDefencePlanner.ContinueLocalRetreat) — used to share
         // defenceActiveScore(120) with Active intercept/Local patrol attack (see that method's own
@@ -698,6 +718,17 @@ namespace Game.Ai
         // "приоритет Defence должен быть выше Raid, если есть реальная угроза базе". Internal
         // ranking key only, same scope as unitCompositionGapBonus itself.
         public const float defenceNeedBonusMultiplier = 2f;
+        // DefenceNeedBonus's own Turtle tier, split above defenceNeedBonusMultiplier (2026-08-23,
+        // project owner's own spec — "Turtle need > Active Defence need > Raid need > generic
+        // composition need", "не обязательно через огромные числа — достаточно multiplier/priority
+        // внутри TaskNeedBonus"). Only ever applies to the CITADEL's own DefendCitadel task while
+        // AiDefencePlanner.IsUnderSiege is true — an Active sighting at some OTHER base still uses
+        // the plain defenceNeedBonusMultiplier tier, same as before; this is strictly the "the
+        // citadel itself is genuinely under siege right now" case, the same gate
+        // TryDefencePreemptCandidates already reserves its own 130 cross-category tier for. Internal
+        // ranking key only, same scope as unitCompositionGapBonus/defenceNeedBonusMultiplier — never
+        // leaks into the cross-category AiDecision.Score.
+        public const float turtleNeedBonusMultiplier = 3f;
         // managementGarrisonBalanceScore removed 2026-08-20 (project owner's own call: "задача
         // бесплатная, поэтому ей не с кем конкурировать") — garrison-overflow split and lone-army
         // consolidation are no longer AiDecision.Score-bearing candidates in Decide's own per-step
