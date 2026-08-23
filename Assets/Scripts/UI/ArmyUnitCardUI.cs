@@ -151,7 +151,10 @@ namespace Game.UI
             else
             {
                 slot1 = unit.Attack;
-                slot2 = unit.Defense;
+                // Terrain + Base-building defense bonus, folded in so this badge always matches
+                // what the army would actually defend with on its current hex (see
+                // ArmyViewerModalUI.CurrentArmyDefenseBonus's own comment).
+                slot2 = unit.Defense + (_modal != null ? _modal.CurrentArmyDefenseBonus : 0);
                 slot5 = unit.Range;
             }
 

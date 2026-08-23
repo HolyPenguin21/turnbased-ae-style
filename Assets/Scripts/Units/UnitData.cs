@@ -33,6 +33,13 @@ namespace Game.Units
         // not a permanent buff — see UnitAbilities.Berserk).
         public int BerserkStacks;
 
+        // Total Defense actually removed by Berserk stacks so far (<= BerserkStacks, since
+        // ResolveDamage floors Defense at 1 and a stack triggered while already at that floor
+        // removes nothing). FinishBattleEnd's revert adds this back rather than BerserkStacks
+        // itself, so a unit that got floored mid-battle doesn't end up with MORE Defense than it
+        // started with once the buff is reverted.
+        public int BerserkDefenseLost;
+
         // Restored at the start of every turn. A move never spends more than what's left — an
         // army stops short of any hex it can't fully afford (see ArmyController.MoveRoutine) —
         // so this never goes negative; only ever capped from above at Max.

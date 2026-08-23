@@ -5,6 +5,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using Game.Units;
 using UnityEngine;
 
@@ -39,21 +40,30 @@ namespace Game.Setup
         private static readonly ResourceType[] AllResourceTypes =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
-        // Resources, per the user's own spec (2.2) — two groups per citadel'd player, not a
-        // single size-calibrated random spread any more:
-        //  - "Near": one hex of EACH of the 4 resource types (amount 1, always), 1-3 hex steps
-        //    from that player's own citadel (never the citadel itself, never beyond radius 3 —
-        //    no other resource spawns inside that radius at all, the user's own explicit call).
-        //  - "Far": 2 more hexes per player, anywhere else on the map, each with up to 2
-        //    resource units of random type (see RollFarYields) — never adjacent to another far
-        //    hex, checked map-wide rather than just within one player's own pair (the user's own
-        //    call, since two different players' far hexes could otherwise still end up touching).
-        // Throughout both groups: two resource hexes of the SAME type are never adjacent (2.2.1,
+        // Near-zone types only — Tech no longer spawns next to a citadel at all (the user's own
+        // later call): a player's own base now guarantees Human/Energy/Materials nearby but has
+        // to go find Tech elsewhere on the map, same as every other player.
+        private static readonly ResourceType[] NearResourceTypes =
+            { ResourceType.Human, ResourceType.Energy, ResourceType.Materials };
+
+        // Resources, per the user's own spec (2.2, later revised) — two groups per citadel'd
+        // player, not a single size-calibrated random spread any more:
+        //  - "Near": one hex of EACH of the 3 non-Tech resource types (amount 1, always), 1-3 hex
+        //    steps from that player's own citadel (never the citadel itself, never beyond radius
+        //    3 — no other resource spawns inside that radius at all), and no two of a player's own
+        //    near-zone hexes closer than 2 hex steps to each other (the user's own later call).
+        //  - "Outside" (everything beyond every player's near zone): 2 ordinary resource hexes per
+        //    player (any of the 4 types, see RollFarYields) plus 1 dedicated Tech-only hex per
+        //    player (the user's own later call) — spread across the map via BuildEvenSectors
+        //    rather than picked purely at random, so the whole group (both kinds together) reads
+        //    as evenly distributed instead of clumping by chance. Never adjacent to another
+        //    outside hex, checked across both kinds together and map-wide rather than per player.
+        // Throughout every group: two resource hexes of the SAME type are never adjacent (2.2.1,
         // see HexHasAdjacentType) — citadel hexes themselves are skipped automatically since they
         // already carry their own fixed bonus (see FinalizePlayer/gameConfig.
-        // citadelResourceBonus) and every near-zone hex is excluded from the far pass regardless.
-        // A hex getting picked here doesn't exclude it from GenerateNeutralArmies — sharing is
-        // fine, per the user's own earlier call ("the army guards the resource").
+        // citadelResourceBonus) and every near-zone hex is excluded from the outside pass
+        // regardless. A hex getting picked here doesn't exclude it from GenerateNeutralArmies —
+        // sharing is fine, per the user's own earlier call ("the army guards the resource").
         private void GenerateResources()
         {
             if (map == null || gameConfig == null)
@@ -82,15 +92,19 @@ namespace Game.Setup
                     .Where(h => !h.Equals(citadel) && mapHexes.Contains(h))
                     .ToList();
 
-                foreach (ResourceType type in PickRandomDistinct(AllResourceTypes.ToList(), AllResourceTypes.Length))
+                var placedNear = new List<HexCoord>();
+                foreach (ResourceType type in PickRandomDistinct(NearResourceTypes.ToList(), NearResourceTypes.Length))
                 {
                     List<HexCoord> pool = band
-                        .Where(h => HexResourceBonusRegistry.GetBonus(h) == null && !HexHasAdjacentType(h, type))
+                        .Where(h => HexResourceBonusRegistry.GetBonus(h) == null
+                            && !HexHasAdjacentType(h, type)
+                            && placedNear.All(p => HexGridMath.Distance(h, p) >= 2))
                         .ToList();
                     if (pool.Count == 0)
                         continue; // band exhausted at this radius — extremely unlikely, skip rather than crash
 
                     HexCoord hex = pool[Random.Range(0, pool.Count)];
+                    placedNear.Add(hex);
                     var yields = new ResourceYields();
                     AddYieldUnit(yields, type);
                     HexResourceBonusRegistry.Set(hex, yields);
@@ -98,33 +112,104 @@ namespace Game.Setup
                 }
             }
 
-            List<HexCoord> farCandidates = map.AllCoords
+            List<HexCoord> outsideCandidates = map.AllCoords
                 .Where(h => !nearZone.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null)
                 .ToList();
-            var farHexes = new List<HexCoord>();
             int farTarget = citadelPlayers.Count * 2;
+            int techTarget = citadelPlayers.Count;
 
-            while (farHexes.Count < farTarget)
+            List<List<HexCoord>> rawSectors = BuildEvenSectors(outsideCandidates, farTarget + techTarget);
+            List<List<HexCoord>> sectors = PickRandomDistinct(rawSectors, rawSectors.Count); // shuffled order — which sector serves a resource hex vs. a Tech hex is otherwise arbitrary
+
+            var placedOutside = new List<HexCoord>();
+            int sectorIndex = 0;
+
+            int farPlaced = 0;
+            while (farPlaced < farTarget && sectorIndex < sectors.Count)
             {
-                List<HexCoord> pool = farCandidates.Where(h =>
-                    HexResourceBonusRegistry.GetBonus(h) == null &&
-                    !farHexes.Any(f => f.Equals(h) || HexGridMath.Neighbors(f).Contains(h)))
-                    .ToList();
-                if (pool.Count == 0)
-                    break;
-
-                HexCoord hex = pool[Random.Range(0, pool.Count)];
-                ResourceYields yields = RollFarYields(hex);
-                if (!yields.HasAnyYield)
-                {
-                    farCandidates.Remove(hex); // boxed in by adjacent types on every draw — try elsewhere
+                HexCoord? hex = PickFromSector(sectors[sectorIndex], placedOutside, null);
+                sectorIndex++;
+                if (hex == null)
                     continue;
-                }
 
-                HexResourceBonusRegistry.Set(hex, yields);
-                resourceDisplay?.RefreshHex(hex);
-                farHexes.Add(hex);
+                ResourceYields yields = RollFarYields(hex.Value);
+                if (!yields.HasAnyYield)
+                    continue; // boxed in by adjacent types — try the next sector instead
+
+                HexResourceBonusRegistry.Set(hex.Value, yields);
+                resourceDisplay?.RefreshHex(hex.Value);
+                placedOutside.Add(hex.Value);
+                farPlaced++;
             }
+
+            int techPlaced = 0;
+            while (techPlaced < techTarget && sectorIndex < sectors.Count)
+            {
+                HexCoord? hex = PickFromSector(sectors[sectorIndex], placedOutside, ResourceType.Tech);
+                sectorIndex++;
+                if (hex == null)
+                    continue;
+
+                var yields = new ResourceYields();
+                AddYieldUnit(yields, ResourceType.Tech);
+                HexResourceBonusRegistry.Set(hex.Value, yields);
+                resourceDisplay?.RefreshHex(hex.Value);
+                placedOutside.Add(hex.Value);
+                techPlaced++;
+            }
+        }
+
+        // Splits `candidates` into up to `sectorCount` spatial buckets by (col, row) — offset
+        // coordinates, not axial, so bucket boundaries follow the map's own rectangular grid —
+        // so a caller can draw one hex per bucket instead of purely at random and get a result
+        // that's actually spread across the map (the user's own later call). Bucket grid
+        // dimensions approximate the map's aspect ratio so buckets are roughly square rather than
+        // tall slivers or wide strips. Empty buckets are dropped, so the result can hold fewer
+        // than `sectorCount` entries if candidates are sparse or clumped in one region.
+        private List<List<HexCoord>> BuildEvenSectors(List<HexCoord> candidates, int sectorCount)
+        {
+            var sectors = new List<List<HexCoord>>();
+            if (sectorCount <= 0 || candidates.Count == 0)
+                return sectors;
+
+            int width = Mathf.Max(1, gameConfig.mapGeneration.width);
+            int height = Mathf.Max(1, gameConfig.mapGeneration.height);
+
+            int cols = Mathf.Clamp(Mathf.RoundToInt(Mathf.Sqrt(sectorCount * (float)width / height)), 1, sectorCount);
+            int rows = Mathf.CeilToInt(sectorCount / (float)cols);
+
+            var buckets = new List<HexCoord>[cols * rows];
+            for (int i = 0; i < buckets.Length; i++)
+                buckets[i] = new List<HexCoord>();
+
+            foreach (HexCoord hex in candidates)
+            {
+                (int col, int row) = hex.ToOffset();
+                int cellX = Mathf.Clamp(col * cols / width, 0, cols - 1);
+                int cellY = Mathf.Clamp(row * rows / height, 0, rows - 1);
+                buckets[cellY * cols + cellX].Add(hex);
+            }
+
+            foreach (List<HexCoord> bucket in buckets)
+                if (bucket.Count > 0)
+                    sectors.Add(bucket);
+
+            return sectors;
+        }
+
+        // One random candidate hex from `sector` — never already resource-occupied, never
+        // adjacent to a hex already placed by either outside pass this call (`placed`, shared
+        // between the resource pass and the Tech pass so neither ends up touching the other), and
+        // — when `requiredType` is set (the Tech pass) — never boxed in by an existing same-type
+        // neighbour either (2.2.1, same rule RollFarYields applies per-type on its own draws).
+        private static HexCoord? PickFromSector(List<HexCoord> sector, List<HexCoord> placed, ResourceType? requiredType)
+        {
+            List<HexCoord> pool = sector.Where(h =>
+                HexResourceBonusRegistry.GetBonus(h) == null &&
+                !placed.Any(p => p.Equals(h) || HexGridMath.Neighbors(p).Contains(h)) &&
+                (requiredType == null || !HexHasAdjacentType(h, requiredType.Value)))
+                .ToList();
+            return pool.Count == 0 ? (HexCoord?)null : pool[Random.Range(0, pool.Count)];
         }
 
         // 2.2.1: true if placing `type` on `hex` would put it next to another resource hex that
@@ -183,6 +268,7 @@ namespace Game.Setup
                 return;
 
             HashSet<HexCoord> excluded = BuildCitadelExclusion();
+            excluded.UnionWith(BuildCityRuinsExclusion());
             List<HexCoord> candidates = map.AllCoords.Where(h => !excluded.Contains(h)).ToList();
             if (candidates.Count == 0)
                 return;
@@ -212,9 +298,30 @@ namespace Game.Setup
             }
         }
 
-        // Every player's citadel hex plus its immediate neighbours — shared by
-        // GenerateNeutralArmies and GenerateRandomEvents so the exclusion rule can never drift
-        // apart between the two passes.
+        // Every "City ruins" hex plus its immediate neighbours (project owner's own call,
+        // 2026-08-22 — neutral armies/events shouldn't cluster right next to a ruins outpost).
+        // A ruins hex itself still gets exactly one garrisoned army (GenerateCityRuinsGarrisons)
+        // and exactly one guaranteed event (GenerateRandomEvents' guaranteedHexes tier) — this
+        // exclusion only keeps everything ELSE off the hex and its ring, same shape as
+        // BuildCitadelExclusion below. Reuses GetCityRuinsHexes (CitadelSetupController.cs) —
+        // terrain is already fully painted on `map` before this whole setup step starts, see
+        // that method's own comment.
+        private HashSet<HexCoord> BuildCityRuinsExclusion()
+        {
+            var excluded = new HashSet<HexCoord>();
+            foreach (HexCoord ruin in GetCityRuinsHexes())
+            {
+                excluded.Add(ruin);
+                foreach (HexCoord neighbor in HexGridMath.Neighbors(ruin))
+                    excluded.Add(neighbor);
+            }
+            return excluded;
+        }
+
+        // Every player's citadel hex plus its immediate neighbours — used by GenerateNeutralArmies
+        // only (GenerateRandomEvents used to share this too, but now uses the narrower
+        // BuildCitadelHexExclusion below instead — the user's own later call to let events land
+        // next to a starting citadel, just never on it).
         private HashSet<HexCoord> BuildCitadelExclusion()
         {
             var excluded = new HashSet<HexCoord>();
@@ -228,6 +335,67 @@ namespace Game.Setup
                     excluded.Add(neighbor);
             }
             return excluded;
+        }
+
+        // Just every player's citadel hex itself — no neighbours — used by GenerateRandomEvents
+        // (the user's own later call: events may now land adjacent to a starting citadel, only
+        // the citadel's own hex stays off-limits).
+        private HashSet<HexCoord> BuildCitadelHexExclusion()
+        {
+            var excluded = new HashSet<HexCoord>();
+            foreach (PlayerSetupData player in _allPlayers)
+                if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
+                    excluded.Add(new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
+            return excluded;
+        }
+
+        // Terrain name driving GenerateCityRuinsGarrisons below — matches GameConfig's
+        // MapGenerationSettings.terrainTypes entry, same lookup-by-name convention
+        // HexMapGenerator.IndexOfTerrainNamed already uses for mountainsTerrainName.
+        private const string CityRuinsTerrainName = "City ruins";
+
+        // Chance that any single eligible "City ruins" hex becomes a garrisoned outpost at all
+        // (the user's own later call, 2026-08-23) — a miss leaves that ruins hex with no neutral
+        // army and, since GenerateRandomEvents only guarantees an event on hexes already carrying
+        // a neutral-owned army, no event either.
+        private const float CityRuinsGarrisonChance = 0.3f;
+
+        // Every eligible "City ruins" hex on the map has a CityRuinsGarrisonChance shot at being a
+        // garrisoned outpost (the user's own later call, in addition to
+        // GenerateNeutralArmies/GenerateRandomEvents above) — a real neutral defending army,
+        // unless a citadel already sits there (can't hostile-garrison a player's own base) or
+        // GenerateNeutralArmies already placed one here (no point stacking a second army on top).
+        // Deliberately doesn't place an event directly: any hex carrying a neutral-owned army
+        // already becomes a GUARANTEED event target in GenerateRandomEvents below (same check,
+        // "any army here owned by _neutralPlayer") — must run after GenerateNeutralArmies and
+        // before GenerateRandomEvents so that hookup actually fires.
+        private void GenerateCityRuinsGarrisons()
+        {
+            if (map == null || neutralArmyCatalog == null || hexSelectionController == null || _neutralPlayer == null)
+                return;
+            if (neutralArmyCatalog.armies == null || neutralArmyCatalog.armies.Count == 0)
+                return;
+
+            var citadelHexes = new HashSet<HexCoord>();
+            foreach (PlayerSetupData player in _allPlayers)
+                if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
+                    citadelHexes.Add(new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
+
+            foreach (HexCoord hex in map.AllCoords)
+            {
+                if (citadelHexes.Contains(hex))
+                    continue;
+                if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) ||
+                    !string.Equals(terrain.terrainName, CityRuinsTerrainName, System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (ArmyRegistry.AllAt(hex).Any(a => a.Owner == _neutralPlayer))
+                    continue;
+                if (Random.value >= CityRuinsGarrisonChance)
+                    continue;
+
+                ArmyDefinition definition = neutralArmyCatalog.armies[Random.Range(0, neutralArmyCatalog.armies.Count)];
+                SpawnNeutralArmy(hex, definition);
+            }
         }
 
         // Returns the ArmyData it just built (or null if every entry failed to resolve, in which
@@ -272,32 +440,39 @@ namespace Game.Setup
         }
 
         // Events: 6-12 hexes on a 12x9 map, 24-30 on a 16x13 one (see CalibratedCount — 3x the
-        // original starting calibration, per the user's own explicit call). Never on a
-        // citadel hex/its neighbours (same exclusion GenerateNeutralArmies uses). Every hex
-        // already carrying a neutral army from the pass above (GenerateNeutralArmies, which
-        // always runs first — see FinishAllPlacements) is a GUARANTEED event target, per the
-        // user's own explicit call — not just eligible like a plain candidate, it always gets
-        // one (and unlike a plain candidate, it's exempt from the "no resource bonus" rule
-        // below: an army sharing its hex with a resource is already an accepted stack, see
-        // GenerateResources's own comment, and now the event stacks with both). The event still
-        // spawns its own separate guard there — two armies coexisting on one hex, same as
-        // ArmyRegistry already supports — it never reuses that unrelated army as its own guard.
-        // The remaining event budget then fills from plain (army-free, resource-free) hexes,
-        // same as before, each additionally barred from landing adjacent to an already-placed
-        // event this same pass.
+        // original starting calibration, per the user's own explicit call). Never on a citadel
+        // hex itself, but — unlike GenerateNeutralArmies — its immediate neighbours are fair game
+        // now (BuildCitadelHexExclusion, not BuildCitadelExclusion; the user's own later call).
+        // Every hex already carrying a neutral army from the passes above (GenerateNeutralArmies
+        // and GenerateCityRuinsGarrisons, which always run first — see FinishAllPlacements) is a
+        // GUARANTEED event target, per the user's own explicit call — not just eligible like a
+        // plain candidate, it always gets one (and unlike a plain candidate, it's exempt from the
+        // "no resource bonus" rule below: an army sharing its hex with a resource is already an
+        // accepted stack, see GenerateResources's own comment, and now the event stacks with
+        // both). The event still spawns its own separate guard there — two armies coexisting on
+        // one hex, same as ArmyRegistry already supports — it never reuses that unrelated army as
+        // its own guard. The remaining event budget then fills from plain (army-free,
+        // resource-free) hexes, same as before, each additionally barred from landing adjacent to
+        // an already-placed event this same pass.
         private void GenerateRandomEvents()
         {
             if (map == null || gameConfig == null || eventCatalog == null || eventCatalog.events == null || eventCatalog.events.Count == 0)
                 return;
 
-            HashSet<HexCoord> excluded = BuildCitadelExclusion();
+            HashSet<HexCoord> excluded = BuildCitadelHexExclusion();
 
             List<HexCoord> guaranteedHexes = map.AllCoords
                 .Where(h => !excluded.Contains(h) && ArmyRegistry.AllAt(h).Any(a => a.Owner == _neutralPlayer))
                 .ToList();
 
+            // Ruins buffer applies only to the plain pool below, never to guaranteedHexes — a
+            // ruins hex is ITSELF a guaranteed hex by now (its own garrison from
+            // GenerateCityRuinsGarrisons already qualifies it via the ArmyRegistry check above)
+            // and still needs its own event; this only keeps an unrelated plain event from
+            // landing on the ring right around it (see BuildCityRuinsExclusion's own comment).
+            HashSet<HexCoord> ruinsBuffer = BuildCityRuinsExclusion();
             List<HexCoord> candidates = map.AllCoords
-                .Where(h => !excluded.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedHexes.Contains(h))
+                .Where(h => !excluded.Contains(h) && !ruinsBuffer.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedHexes.Contains(h))
                 .ToList();
             if (candidates.Count == 0 && guaranteedHexes.Count == 0)
                 return;

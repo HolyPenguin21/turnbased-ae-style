@@ -212,6 +212,14 @@ namespace Game.UI
                 return;
             }
 
+            // Defense includes the same terrain/Base-building bonus BeginAttack actually rolls
+            // with (only ever nonzero for the battle's original _defender — see
+            // GetDisplayedDefenseBonus's own comment), so this always matches the real dice pool.
+            int defenseBonus = GetDisplayedDefenseBonus(unit);
+            string defenseLine = defenseBonus != 0
+                ? $"Defense {unit.Defense + defenseBonus} ({defenseBonus:+0;-0})"
+                : $"Defense {unit.Defense}";
+
             // Type tags right after the name, and no Resistance line — same convention as
             // ArmyViewerModalUI.ShowUnitDetail, per the user's own request.
             string text = $"{unit.Name}\n";
@@ -219,7 +227,7 @@ namespace Game.UI
                 text += $"{string.Join(", ", unit.TypeTags)}\n";
             text +=
                 $"Attack {unit.Attack}\n" +
-                $"Defense {unit.Defense}\n" +
+                $"{defenseLine}\n" +
                 $"Range {unit.Range}\n" +
                 $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                 $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +

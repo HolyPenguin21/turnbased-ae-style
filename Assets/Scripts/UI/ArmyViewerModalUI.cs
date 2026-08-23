@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Cards;
 using Game.Core;
 using Game.Map;
@@ -57,6 +58,13 @@ namespace Game.UI
         // Read by ArmyUnitCardUI (via the modal reference it already keeps) for
         // GameConfig.FormatAbilities — see ShowUnitDetail for this modal's own use of it.
         public GameConfig GameConfig => gameConfig;
+
+        // Terrain + Base-building defense bonus this army's own hex grants right now — same
+        // lookup as ShowArmySummary's own Terrain Def/Construction Def lines, just as one number
+        // for per-unit card display (see ArmyUnitCardUI.RefreshStatsRow). Every member of
+        // _currentArmy shares this same hex, so it's one value for the whole grid, not per-unit.
+        public int CurrentArmyDefenseBonus =>
+            _currentArmy != null ? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map)) : 0;
 
         private readonly List<ArmyUnitCardUI> _cards = new List<ArmyUnitCardUI>();
         private ArmyData _currentArmy;
@@ -285,12 +293,20 @@ namespace Game.UI
                 // ArmyData.Capacity), so it's skipped entirely for a plain unit rather than
                 // showing a meaningless number. Resistance is deliberately left out too, per the
                 // user's own request.
+                // Defense includes this army's own terrain/Base-building bonus — same figure it
+                // would actually defend with if attacked on this hex right now (see
+                // CurrentArmyDefenseBonus's own comment).
+                int defenseBonus = CurrentArmyDefenseBonus;
+                string defenseLine = defenseBonus != 0
+                    ? $"Defense {unit.Defense + defenseBonus} ({defenseBonus:+0;-0})"
+                    : $"Defense {unit.Defense}";
+
                 string text = $"{unit.Name}\n";
                 if (unit.TypeTags.Count > 0)
                     text += $"{string.Join(", ", unit.TypeTags)}\n";
                 text +=
                     $"Attack {unit.Attack}\n" +
-                    $"Defense {unit.Defense}\n" +
+                    $"{defenseLine}\n" +
                     $"Range {unit.Range}\n" +
                     $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                     $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +
@@ -576,16 +592,19 @@ namespace Game.UI
                 return;
             }
             // Prison goes first, per the user's own spec, and only appears at all once it holds
-            // at least one captured hero — everyone else keeps ArmyRegistry's own natural
-            // (registration) order, same as before this existed, rather than a full sort that
-            // could otherwise reshuffle them unpredictably (List.Sort isn't stable).
+            // at least one captured hero; Garrison goes second. Everyone else keeps ArmyRegistry's
+            // own natural (registration) order, same as before this existed, rather than a full
+            // sort that could otherwise reshuffle them unpredictably (List.Sort isn't stable).
             List<ArmyData> atHex = ArmyRegistry.AllAt(_currentArmy.Hex).FindAll(a => a.Owner == _currentArmy.Owner);
             var siblings = new List<ArmyData>();
             ArmyData prison = atHex.Find(a => a.IsPrison && a.Members.Count > 0);
             if (prison != null)
                 siblings.Add(prison);
+            ArmyData garrison = atHex.Find(a => a.IsGarrison);
+            if (garrison != null)
+                siblings.Add(garrison);
             foreach (ArmyData army in atHex)
-                if (!army.IsPrison)
+                if (!army.IsPrison && !army.IsGarrison)
                     siblings.Add(army);
             armyButtonRow.Show(siblings, SwitchTo);
         }

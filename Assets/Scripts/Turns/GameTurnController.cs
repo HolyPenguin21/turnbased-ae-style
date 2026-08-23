@@ -56,6 +56,16 @@ namespace Game.Turns
         // sets directly, not through CurrentViewer — see VisionSystem's own class comment).
         [SerializeField] private bool debugRevealFogOfWar;
 
+        // Dev-only: lets an AI turn's own ArmyViewerModal.ShowReadOnly/Hide calls (AiTurnController.
+        // MoveArmyRoutine/PlayCardRoutine and every Level-1 planner's own execution routine) actually
+        // open the popup. Off by default (project owner's own call, 2026-08-21) — with one MoveArmy
+        // per step and several steps per AI turn, the popup opening and closing every single step
+        // reads as constant flicker rather than something watchable. AiDebugLog (Logs/AiDebug.log,
+        // also mirrored to the Console) already logs the same "what did the AI just do" info
+        // alongside every one of these same routines, so testing doesn't need this on to follow an
+        // AI turn — flip it on only to actually watch one army's own popup update live.
+        [SerializeField] private bool debugShowAiArmyModal;
+
         private void OnValidate()
         {
             VisionSystem.DebugRevealAll = debugRevealFogOfWar;
@@ -498,7 +508,13 @@ namespace Game.Turns
         // requirement — a hex where every engageable army present is hero-only (nobody able to
         // hunt, see BattleInitiator.IsEngageable's own note) is left alone rather than returned
         // here, same as it already is everywhere else in this project; otherwise this would loop
-        // forever trying to "resolve" a pairing nothing can ever actually fight.
+        // forever trying to "resolve" a pairing nothing can ever actually fight. The defending
+        // side (`other`) is picked via BattleInitiator.FindEnemyAt rather than a hand-rolled
+        // "first engageable enemy" scan (2026-08-21 fix, consistency follow-up to FindEnemyAt's
+        // own strongest-defender fix) — a multi-army hex left with several unresolved contests at
+        // once (e.g. a delayed battle plus a second, uninvolved attacker that also landed there)
+        // should keep offering up its strongest remaining defender each time this sweep asks, not
+        // whichever one the registry happens to enumerate first.
         private static bool TryFindNextContestedBattle(out HexCoord hex, out List<ArmyData> participants)
         {
             foreach (HexCoord candidateHex in ArmyRegistry.AllOccupiedHexes())
@@ -509,14 +525,14 @@ namespace Game.Turns
                     if (BattleInitiator.IsCombatCapable(candidate)) { mover = candidate; break; }
                 if (mover == null)
                     continue;
-                foreach (ArmyData other in armies)
-                {
-                    if (other == mover || other.Owner == mover.Owner || !BattleInitiator.IsEngageable(other))
-                        continue;
-                    hex = candidateHex;
-                    participants = new List<ArmyData> { mover, other };
-                    return true;
-                }
+
+                ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover.Owner);
+                if (other == null)
+                    continue;
+
+                hex = candidateHex;
+                participants = new List<ArmyData> { mover, other };
+                return true;
             }
             hex = default;
             participants = null;
@@ -811,7 +827,7 @@ namespace Game.Turns
                 if (debugFollowAiVision)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
-                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig, TurnNumber);
+                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig, TurnNumber, debugShowAiArmyModal);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
         }

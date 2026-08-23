@@ -21,14 +21,20 @@ namespace Game.Ai
     // don't yet have a hero to rally behind (see AiTurnController.TryPlayCard's own fallback).
     public static class AiArmyRoles
     {
-        // A scout party for this pass: not the garrison, and carrying exactly one Recce member —
-        // several would stack no mechanical benefit at all (see ArmyData.HasRecce's own comment),
-        // so more than one is treated as "not worth calling a dedicated scout", same as zero.
-        public static bool IsScoutCapable(ArmyData army)
+        // A lone Recce carrier — not a "scout army" role/class, just what this exact composition
+        // is: one member, and that member has Recce. Deliberately checks the TOTAL roster size,
+        // not merely "how many Recce members" (project owner's own 2026-08-19 correction — the
+        // old count-only check let a Recce unit buried inside a full combat army still match,
+        // which then made VisitHexTask consider that combat force eligible for scouting duty AND
+        // made AiAggressionPlanner treat it as an off-limits scout, neither of which is true: a
+        // Recce member riding along in a bigger army is just cheap vision on a real combat force,
+        // still fully usable for raids — see the project owner's own "recce-юнит с армией для
+        // обзора хексов" note, not implemented yet, just no longer accidentally blocked).
+        public static bool IsSoloRecce(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison)
+            if (army == null || army.IsGarrison || army.IsPrison || army.Members.Count != 1)
                 return false;
-            return army.Members.Count(m => m.HasAbility(UnitAbilities.Recce)) == 1;
+            return army.Members[0].HasAbility(UnitAbilities.Recce);
         }
 
         // Whether `army` has a real roster slot at all — not the garrison (nothing there is a
@@ -73,7 +79,7 @@ namespace Game.Ai
         }
 
         // A non-Recce hero's own escort — exactly one hero, no Recce member (that's
-        // IsScoutCapable's job instead), not the garrison/prison. Where a plain Unit card tops up
+        // IsSoloRecce's job instead), not the garrison/prison. Where a plain Unit card tops up
         // first (see AiTurnController.TryPlayCard) so it grows toward a small but survivable
         // fighting force instead of spinning up yet another one-off army.
         public static bool IsHeroLedCombatArmy(ArmyData army)
@@ -85,7 +91,7 @@ namespace Game.Ai
 
         // Any hero-led army at all — bare, Recce-carrying, or already escorted, the only thing
         // that matters is "exactly one hero". Broader than IsHeroLedCombatArmy (excludes Recce)
-        // and IsScoutCapable (excludes non-Recce escorts) on purpose: AiEconomyPlanner.
+        // and IsSoloRecce (excludes non-Recce escorts) on purpose: AiEconomyPlanner.
         // FindNearestHero's own "герой с армией или без (разведчик)" spec for Экономика · Задача
         // 1 — only a hero can build an extraction facility, and which hero is otherwise
         // unconstrained.
@@ -98,7 +104,7 @@ namespace Game.Ai
 
         // See AiConfig.makeshiftScoutMinMembers for what this means and why — moved there so
         // it's tunable without recompiling.
-        private static int MakeshiftScoutMinMembers => AiConfig.Current.makeshiftScoutMinMembers;
+        private static int MakeshiftScoutMinMembers => AiConfig.makeshiftScoutMinMembers;
 
         // A hero-led army sturdy enough to explore even without a dedicated Recce member — the
         // project owner's own fallback for when cards accumulate into an army (see

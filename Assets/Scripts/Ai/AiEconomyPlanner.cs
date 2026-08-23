@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +24,7 @@ namespace Game.Ai
     public static class AiEconomyPlanner
     {
         // See AiConfig.maxBuildAttempts — moved there so it's tunable without recompiling.
-        public static int MaxBuildAttempts => AiConfig.Current.maxBuildAttempts;
+        public static int MaxBuildAttempts => AiConfig.maxBuildAttempts;
 
         // "герой с армией или без (разведчик)" — the project owner's own Задача 1 spec: any
         // hero-led army qualifies (bare, Recce-carrying, or already escorted — only being a hero
@@ -189,9 +189,10 @@ namespace Game.Ai
         // ---- Экономика · Задача 1 (Постройка добывающей facility) ----
 
         // "если найден хекс с ресурсами, то туда нужно отправить ближайшего героя" — the project
-        // owner's own spec: tries every free known resource hex not already targeted by an
-        // existing BuildFacility task, and for each, the nearest hero overall (see
-        // BuildFacilityTask.FindActor) — INCLUDING a hero another task already claimed. A
+        // owner's own spec. Restructured 2026-08-19: first picks a single best known free resource
+        // hex internally (BuildFacilityTask.RankHex — scarcity/no-income pressure, never exposed to
+        // Decide, see that method's own comment), THEN runs the usual actor lookup for that one hex
+        // alone (BuildFacilityTask.FindActor) — INCLUDING a hero another task already claimed. A
         // candidate for a hero already mid-Разведка carries PreemptedTask so AiTurnController.
         // Decide's own Commit step can drop that old task IF (and only if) this specific candidate
         // ends up winning the step's arbitration — "его текущее задание можно отложить в угоду
@@ -199,78 +200,157 @@ namespace Game.Ai
         // невыполненное)".
         //
         // A hero already on a DIFFERENT BuildFacility task is normally never offered a candidate
-        // here — that would only shuffle the same work around. The one exception: a candidate hex
-        // whose own resource type is currently MORE scarce than what that hero is already building
-        // (see BuildFacilityTask.ScoreHex's own scarcity term) is still offered, so the project
-        // owner's own deficit-switch rule ("может сменить цель постройки ... если найдётся
-        // дефицитный ресурс") can fire through this exact same preemption path. Nothing is
-        // actually lost by switching — a reservation is just an accounting claim (see
-        // AiResourceReservation's own class comment), released in Commit like any other preempted
-        // task, not a real spend.
+        // here — that would only shuffle the same work around. The one exception: the internally-
+        // picked hex is currently MORE scarce than what that hero is already building (see
+        // BuildFacilityTask.RankHex's own scarcity term) — still offered, so the project owner's
+        // own deficit-switch rule ("может сменить цель постройки ... если найдётся дефицитный
+        // ресурс") can fire through this exact same preemption path. Nothing is actually lost by
+        // switching — a reservation is just an accounting claim (see AiResourceReservation's own
+        // class comment), released in Commit like any other preempted task, not a real spend.
         public static List<AiDecision> TryStartEconomyCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            HashSet<ArmyData> stuckScouts)
+            HashSet<ArmyData> stuckScouts, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
             var alreadyTargeted = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
                 .Where(t => t.Kind == AiTaskKind.BuildFacility)
                 .Select(t => t.TargetHex));
+            // Caps how many BuildFacility tasks run at once (project owner's own 2026-08-19 call —
+            // several concurrent builds were each reserving toward a different resource type,
+            // between them locking card play out of all four at once). Checked below, not as a
+            // blanket early-return, because the scarcity-switch branch further down (isScarcer)
+            // redirects a hero ALREADY on a BuildFacility task rather than adding a new one — that
+            // swap must stay exempt or a hero mid-build could never retarget a newly-found scarcer
+            // hex once the cap is reached.
+            bool atCap = AiTaskRegistry.CountActive(player, AiTaskKind.BuildFacility) >= AiConfig.maxConcurrentBuildFacility;
 
-            foreach (HexCoord hex in HexResourceBonusRegistry.AllBonusHexes())
+            // Internal-only pre-pass (project owner's own 2026-08-19 call) — WHICH known free hex
+            // to build on next is Economy's own business (scarcity/no-income pressure) and must
+            // never leak into the cross-category score every OTHER category's candidate actually
+            // competes against — see BuildFacilityTask.RankHex/ScoreHex's own comments. Picks
+            // exactly one hex; everything below runs for that hex alone — same "internal scan picks
+            // one winner, THEN score against everything else" split VisitHexTask.FindTarget already
+            // uses for Разведка.
+            HexCoord? bestHex = null;
+            ResourceType? bestResourceType = null;
+            float bestRank = float.NegativeInfinity;
+            foreach (HexCoord candidate in HexResourceBonusRegistry.AllBonusHexes())
             {
-                if (!AiMapMemory.IsResourceHexKnown(player, hex) || BuildingRegistry.FindAt(hex) != null || alreadyTargeted.Contains(hex))
+                if (!AiMapMemory.IsResourceHexKnown(player, candidate) || BuildingRegistry.FindAt(candidate) != null
+                    || alreadyTargeted.Contains(candidate))
                     continue;
-
-                // Resolved BEFORE touching any existing task below — a hex whose bonus turns out
-                // to carry no real amount (DominantResourceType's own "shouldn't happen, but
-                // don't assume" case) must never cost a Разведка task its own preemption for
-                // nothing.
-                ResourceType? resourceType = DominantResourceType(hex);
-                if (resourceType == null)
+                // A known neutral within neutralBuildTriggerRadius rules this hex out as a build
+                // site before a task is ever started — same radius AdvanceEconomyTask's own cancel
+                // check uses (see AiConfig.neutralBuildTriggerRadius's own comment), so a hex that
+                // passes here never turns around and cancels itself again right after starting.
+                if (BuildFacilityTask.HasAdjacentNeutralThreat(player, candidate))
                     continue;
-
-                NearestHeroPick pick = BuildFacilityTask.FindActor(player, hex);
-                if (pick.GarrisonHero != null)
+                // A known REAL enemy within economySafetyRadius of the TARGET hex also rules it out
+                // at this same pre-pass stage (2026-08-22, project owner's own call — a hard entry
+                // gate, symmetric to the neutral check above, not merely AdvanceEconomyTask's own
+                // strength-reactive attack-or-flee once a task is already under way): no point ever
+                // registering a task whose own build site a known enemy could immediately threaten.
+                if (BuildFacilityTask.HasEnemyThreat(player, candidate))
+                    continue;
+                ResourceType? candidateType = DominantResourceType(candidate);
+                if (candidateType == null)
+                    continue;
+                float rank = BuildFacilityTask.RankHex(player, root, candidate, candidateType.Value);
+                if (bestHex == null || rank > bestRank)
                 {
-                    // Closest hero to this hex is stuck inside the Garrison stockpile (see
-                    // FindNearestHeroAnywhere's own comment) — detach it into its own fresh army
-                    // first, same two-step shape TryStartCollectorDetachCandidates already uses
-                    // for Задача 2's own solo-collector prep. The NEXT Decide() step finds the
-                    // resulting hero-led army through the normal FindNearestHero path and picks
-                    // up the actual build/travel from there.
-                    // Same HasEnemyThreat gate BuildFacilityTask already applies to the TARGET hex
-                    // — a hero stepping out of the garrison solo, escort-less, is exactly as
-                    // vulnerable as one already travelling, so a known enemy sitting right next to
-                    // the garrison itself must block the detach too (the project owner's own
-                    // "герой застрял в гарнизоне... опять таки имеет смысл если рядом нет врагов"
-                    // qualifier) — better left safely stockpiled than handed to the enemy.
-                    if (root.CanSpendActionPoints(ArmyActions.CreateArmyApCost)
-                        && !BuildFacilityTask.HasEnemyThreat(player, pick.Garrison.Hex))
-                        results.Add(AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, null,
-                            AiConfig.Current.economyHeroDetachScore,
-                            $"задача «Экономика»: {pick.GarrisonHero.Name} — забирается из гарнизона, чтобы возглавить стройку у ({hex.Q},{hex.R})"));
-                    continue;
+                    bestHex = candidate;
+                    bestResourceType = candidateType;
+                    bestRank = rank;
                 }
-
-                ArmyData hero = pick.Army;
-                if (hero == null || stuckScouts.Contains(hero))
-                    continue;
-
-                AiTask existingTask = AiTaskRegistry.TaskFor(player, hero);
-                if (existingTask != null && existingTask.Kind == AiTaskKind.BuildFacility)
-                {
-                    bool isScarcer = existingTask.ResourceType.HasValue
-                        && root.GetResource(resourceType.Value) < root.GetResource(existingTask.ResourceType.Value);
-                    if (!isScarcer)
-                        continue; // already building elsewhere and not scarcer — would only shuffle work, not add any
-                }
-
-                var task = new AiTask { Kind = AiTaskKind.BuildFacility, Army = hero, TargetHex = hex, ResourceType = resourceType };
-                AiDecision decision = AdvanceEconomyTask(player, root, ctx, task);
-                if (decision == null)
-                    continue;
-                decision.PreemptedTask = existingTask;
-                results.Add(decision);
             }
+            if (bestHex == null)
+                return results;
+
+            HexCoord hex = bestHex.Value;
+            ResourceType resourceType = bestResourceType.Value;
+
+            NearestHeroPick pick = BuildFacilityTask.FindActor(player, hex);
+            if (pick.GarrisonHero != null)
+            {
+                // Closest hero to this hex is stuck inside the Garrison stockpile (see
+                // FindNearestHeroAnywhere's own comment) — detach it into its own army first, same
+                // two-step shape TryStartCollectorDetachCandidates already uses for Задача 2's own
+                // solo-collector prep. The NEXT Decide() step finds the resulting hero-led army
+                // through the normal FindNearestHero path and picks up the actual build/travel from
+                // there.
+                // Same HasEnemyThreat gate BuildFacilityTask already applies to the TARGET hex
+                // — a hero stepping out of the garrison solo, escort-less, is exactly as
+                // vulnerable as one already travelling, so a known enemy sitting right next to
+                // the garrison itself must block the detach too (the project owner's own
+                // "герой застрял в гарнизоне... опять таки имеет смысл если рядом нет врагов"
+                // qualifier) — better left safely stockpiled than handed to the enemy.
+                //
+                // Reuses an already-idle, empty deployable army sitting at the garrison hex when one
+                // exists — same AiArmyRoles.IsEmptyDeployableArmy scan every other planner's own
+                // "forming" lookup already uses (see AiAggressionPlanner/AiDefencePlanner's own
+                // TryStart*Candidates) — rather than always spawning a brand-new one (2026-08-21 fix,
+                // project owner's own report: a hex that gets picked, detached into, then cancelled
+                // again — see AiConfig.neutralBuildTriggerRadius's own comment on the matching radius
+                // fix — used to leave a fresh, never-reused empty army shell behind EVERY time,
+                // instead of recycling the one the last attempt already abandoned).
+                //
+                // Scored the same as every other Задача 1 step now (economyBaseWeight + ScoreHex,
+                // see economyHeroDetachScore's own removal note in AiConfig) — the base task score
+                // alone already reliably wins arbitration, no separate dedicated number needed.
+                if (!atCap && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost)
+                    && !BuildFacilityTask.HasEnemyThreat(player, pick.Garrison.Hex))
+                {
+                    ArmyData reuse = pool.AvailableArmies()
+                        .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(pick.Garrison.Hex));
+                    AiDecision detach = AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, reuse,
+                        AiConfig.economyBaseWeight + BuildFacilityTask.ScoreHex(player, root, hex, resourceType),
+                        $"{pick.GarrisonHero.Name} — pulled out of the garrison to lead a build at ({hex.Q},{hex.R})",
+                        AiTaskCategory.Economy);
+                    detach.EconomyBuildHex = hex;
+                    detach.EconomyResourceType = resourceType;
+                    results.Add(detach);
+                }
+                return results;
+            }
+
+            ArmyData hero = pick.Army;
+            if (hero == null || stuckScouts.Contains(hero))
+                return results;
+            // Same hard entry gate as the GarrisonHero branch above (HasEnemyThreat on
+            // pick.Garrison.Hex) — a known REAL enemy within economySafetyRadius of the hero's OWN
+            // current hex (wherever it's actually standing right now, garrison or already deployed
+            // in the field) blocks starting/redirecting a BuildFacility task from here at all.
+            if (BuildFacilityTask.HasEnemyThreat(player, hero.Hex))
+                return results;
+
+            AiTask existingTask = AiTaskRegistry.TaskFor(player, hero);
+            if (existingTask != null && existingTask.Kind == AiTaskKind.BuildFacility)
+            {
+                bool isScarcer = existingTask.ResourceType.HasValue
+                    && root.GetResource(resourceType) < root.GetResource(existingTask.ResourceType.Value);
+                if (!isScarcer)
+                    return results; // already building elsewhere and not scarcer — would only shuffle work, not add any
+                // isScarcer redirects this SAME task's own hero to a different hex — a swap,
+                // not a net-new slot — so it proceeds even at cap (see atCap's own comment).
+            }
+            else if (atCap)
+            {
+                return results; // cap reached and this hero has no BuildFacility task to redirect — would be a brand-new slot
+            }
+
+            var task = new AiTask { Kind = AiTaskKind.BuildFacility, Army = hero, TargetHex = hex, ResourceType = resourceType };
+            AiDecision decision = AdvanceEconomyTask(player, root, ctx, task);
+            // decision.Task null means AdvanceEconomyTask's own threat-reaction fired instead of
+            // actually starting anything (see its own "known enemy too strong" flee branch) — this
+            // was only ever a HYPOTHETICAL probe ("would this hero be safe building here"), `task`
+            // itself was never registered. Bailing here (2026-08-21 fix, live log report: a hero
+            // mid-RaidWeakerArmy kept getting yanked home at economyBaseWeight every turn for a
+            // build that was never actually going to happen) — PreemptedTask must never be set on a
+            // candidate that isn't actually starting real Economy work, or it silently cancels
+            // whatever the hero's own real task legitimately had it doing.
+            if (decision == null || decision.Task == null)
+                return results;
+            decision.PreemptedTask = existingTask;
+            results.Add(decision);
             return results;
         }
 
@@ -295,41 +375,84 @@ namespace Game.Ai
                 return null;
             }
 
-            // Both threat checks are a hard cancel now, not a temporary retreat (unlike Разведка's
-            // own tasks) — a BuildFacility hero has nothing better to fall back to mid-build, and
-            // a neutral guarding the hex was never a good build spot to begin with (see
-            // BuildFacilityTask's own class comment). Re-checked every call — a threat wandering
-            // within range AFTER the task started cancels it outright, same shape
-            // TryStartEconomyCandidates' own filtering effectively gets for free (it calls this
-            // same method on a brand-new task), so a better, unguarded hex gets tried next step.
+            // Neutrals — never fled from, only a hard cancel (not a temporary retreat, unlike
+            // Разведка's own tasks): a neutral guarding the hex was never a good build spot to
+            // begin with (see BuildFacilityTask's own class comment). Re-checked every call — a
+            // neutral wandering within range AFTER the task started cancels it outright, same
+            // radius TryStartEconomyCandidates' own pre-pass filter already rules the hex out on
+            // for a brand-new task (this method runs on that too), so a hex that ever gets this far
+            // should never immediately cancel itself right back out — a better, unguarded hex gets
+            // tried next step only for a neutral that's genuinely moved in since.
             if (BuildFacilityTask.HasNeutralThreat(player, task.TargetHex))
             {
                 if (AiTaskRegistry.TasksFor(player).Contains(task))
-                    AiDebugLog.Write($"[AI] {player.Nickname}: {task.Army.Name} — известная нейтральная армия в "
-                        + $"{AiConfig.Current.neutralBuildAvoidRadius} хексах от ({task.TargetHex.Q},{task.TargetHex.R}), "
-                        + "задача «Экономика» отменена.");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — a known neutral army within "
+                        + $"{AiConfig.neutralBuildTriggerRadius} hexes of ({task.TargetHex.Q},{task.TargetHex.R}), "
+                        + "Economy task cancelled.");
                 AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
-            if (BuildFacilityTask.HasEnemyThreat(player, task.TargetHex))
+
+            // Real (non-neutral) enemies — reaction now depends on strength, via WorthIt (project
+            // owner's own 2026-08-19 combat-reaction spec, see BuildFacilityTask's own class
+            // comment): a solo hero (BuildFacilityTask.IsSolo) needs no special case here — zero
+            // Attack/Defense on its own means ArmyBeats always reads it as outmatched, same as an
+            // escorted army genuinely too weak for the sighting. Stronger-or-solo: retreat to the
+            // citadel AND cancel; weaker AND within this turn's own movement reach: attack it
+            // instead of continuing to the build site THIS step (task stays registered, re-
+            // evaluated fresh next step); weaker but out of reach: no reaction at all, carries on
+            // toward the build as normal.
+            AiMapMemory.KnownEnemySighting? enemyThreat = BuildFacilityTask.NearbyRealEnemyThreat(player, task.TargetHex);
+            if (enemyThreat.HasValue)
             {
-                if (AiTaskRegistry.TasksFor(player).Contains(task))
-                    AiDebugLog.Write($"[AI] {player.Nickname}: {task.Army.Name} — известная вражеская армия в "
-                        + $"{AiConfig.Current.economySafetyRadius} хексах от ({task.TargetHex.Q},{task.TargetHex.R}), "
-                        + "задача «Экономика» отменена.");
-                AiResourceReservation.Release(task);
-                AiTaskRegistry.Remove(player, task);
-                return null;
+                bool weBeatThem = BuildFacilityTask.ArmyBeats(task.Army, enemyThreat.Value, ctx.Map);
+
+                if (!weBeatThem)
+                {
+                    if (AiTaskRegistry.TasksFor(player).Contains(task))
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — a known enemy army within "
+                            + $"{AiConfig.economySafetyRadius} hexes of ({task.TargetHex.Q},{task.TargetHex.R}) "
+                            + (BuildFacilityTask.IsSolo(task.Army) ? "and the hero can't fight alone" : "is stronger")
+                            + ", Economy task cancelled.");
+                    AiResourceReservation.Release(task);
+                    AiTaskRegistry.Remove(player, task);
+
+                    HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+                    if (task.Army.Hex.Equals(garrisonHex) || task.Army.CurrentMovement <= 0
+                        || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
+                        return null;
+                    var fleeTarget = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
+                        "a known enemy army is too strong — retreats to the citadel");
+                    return AiDecision.Move(task.Army, fleeTarget, null, AiConfig.economyBaseWeight, AiTaskCategory.Economy);
+                }
+
+                if (HexGridMath.Distance(task.Army.Hex, enemyThreat.Value.Hex) <= task.Army.CurrentMovement)
+                {
+                    if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
+                        return null;
+                    float attackScore = AiConfig.economyBaseWeight
+                        + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value);
+                    return AiDecision.Move(task.Army, enemyThreat.Value.Hex,
+                        $"\"{task.Army.Name}\" attacks a known weaker army at ({enemyThreat.Value.Hex.Q},{enemyThreat.Value.Hex.R}) "
+                            + "on its way to build",
+                        task, attackScore, AiTaskCategory.Economy);
+                }
+                // weaker but out of this turn's movement reach — no reaction, carries on below
             }
 
             CardDefinition definition = ctx.GameConfig?.extractionFacilityCards != null && task.ResourceType.HasValue
                 && (int)task.ResourceType.Value < ctx.GameConfig.extractionFacilityCards.Length
                 ? ctx.GameConfig.extractionFacilityCards[(int)task.ResourceType.Value]
                 : null;
-            // Tops up toward this turn's own share even while still travelling — "по мере
-            // поступления ресурсов" per the owner's own spec, not just once the hero arrives.
-            if (definition != null)
+            // Reservation now waits until the hero is within one turn's movement of the target
+            // hex (arriving this turn or already there) — topping up from the very first step of
+            // a multi-turn walk locked card play out of that resource type for however long the
+            // trip took (AiResourceReservation.CanAfford feeds FindPlacement's own affordability
+            // check — see the project owner's own 2026-08-19 report). Supersedes the earlier "по
+            // мере поступления ресурсов, пока герой ещё идёт" spec.
+            bool withinOneTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.MaxMovement;
+            if (definition != null && withinOneTurn)
                 AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
@@ -339,23 +462,23 @@ namespace Game.Ai
                 if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
                     return null;
 
-                // A BuildFacility hero has no way to react to an enemy it stumbles onto — a
-                // hero-only army can't fight OR hunt yet (see Game.Combat.BattleInitiator's own
-                // note), so contact with anything sitting on an unvisited hex would just be
-                // silently ignored instead of stopping the hero. Routed one hex at a time,
-                // through only-already-visited ground (never straight through the fog, even
-                // toward a target the AI otherwise already knows about via AiMapMemory) so this
-                // task never walks the hero blind — see HexPathfinder.FindPath's own blockHex.
-                // The target hex itself is exempted: that's the one hex this trip is allowed to
-                // step onto without having visited it first.
+                // A bare solo hero has no way to react to an enemy it stumbles onto, so
+                // FindNextVisitedStep still routes it one hex at a time through only-already-
+                // visited ground for that case (never straight through the fog, even toward a
+                // target the AI otherwise already knows about via AiMapMemory) — see
+                // HexPathfinder.FindPath's own blockHex and FindNextVisitedStep's own comment.
+                // An escorted army can now fight back (see this method's own threat-reaction
+                // block above) so it paths straight through the fog like any other combat-capable
+                // army. Either way `targetHex` itself is exempted: that's the one hex this trip is
+                // always allowed to step onto without having visited it first.
                 HexCoord? nextStep = FindNextVisitedStep(ctx.Map, task.Army, task.TargetHex);
                 if (nextStep == null)
                     return null; // no currently-known safe route yet — wait for more of the map to be scouted
                 var target = new AiScoutPlanner.ScoutTarget(nextStep.Value, 0f,
-                    $"задача «Экономика»: везёт героя строить {task.ResourceType}");
-                float score = AiConfig.Current.economyBaseWeight
+                    $"carries the hero to build {task.ResourceType}");
+                float score = AiConfig.economyBaseWeight
                     + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value);
-                return AiDecision.Move(task.Army, target, task, score);
+                return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 
             if (definition == null)
@@ -380,26 +503,37 @@ namespace Game.Ai
             if (shortOnResources || shortOnAp)
             {
                 string reason = shortOnResources && shortOnAp
-                    ? "копит ресурсы и не хватает AP"
-                    : shortOnResources ? "копит ресурсы" : "не хватает AP";
-                return AiDecision.Wait(task, $"задача «Экономика»: {task.Army.Name} на месте, {reason} "
-                    + $"чтобы построить {task.ResourceType} на ({task.TargetHex.Q},{task.TargetHex.R}) — ждёт");
+                    ? "saving up resources and short on AP"
+                    : shortOnResources ? "saving up resources" : "short on AP";
+                return AiDecision.Wait(task, $"\"{task.Army.Name}\" is on-site, {reason} "
+                    + $"to build {task.ResourceType} at ({task.TargetHex.Q},{task.TargetHex.R}) — waiting");
             }
 
-            return AiDecision.BuildFacility(task, AiConfig.Current.economyBaseWeight + AiConfig.Current.buildFacilityReadyBonus);
+            // No separate buildFacilityReadyBonus any more (removed 2026-08-19) — same ScoreHex
+            // this task already carries while travelling, so the score doesn't jump right as it
+            // arrives; the base task score alone already reliably wins arbitration.
+            return AiDecision.BuildFacility(task,
+                AiConfig.economyBaseWeight + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value));
         }
 
-        // One step of a BuildFacility hero's own route toward `targetHex` — hard-restricted to
-        // hexes `army`'s owner has already VISITED (see VisionSystem.IsVisited; broader than just
-        // currently visible), `targetHex` itself always exempted since that's the one hex this
-        // trip is inherently allowed to arrive at unvisited. Null if no such route exists yet
-        // (fully boxed in by fog on every side) — AdvanceEconomyTask's own caller treats that as
-        // "nothing to do this step", same as any other unaffordable/blocked move candidate,
-        // rather than falling back to the unsafe direct route.
+        // One step of a BuildFacility hero's own route toward `targetHex` — for a SOLO hero (see
+        // BuildFacilityTask.IsSolo) still hard-restricted to hexes `army`'s owner has already
+        // VISITED (see VisionSystem.IsVisited; broader than just currently visible), `targetHex`
+        // itself always exempted since that's the one hex this trip is inherently allowed to
+        // arrive at unvisited — a bare hero has no way to react to an enemy it stumbles onto (see
+        // AdvanceEconomyTask's own threat-reaction comment), so it must never be routed blind
+        // through the fog. An ESCORTED army can now fight back (ArmyBeats/attack-or-flee, same
+        // comment) so it's free to path straight through the fog like any other combat-capable
+        // army (project owner's own 2026-08-19 call). Null if no such route exists yet (fully
+        // boxed in by fog on every side, solo case only) — AdvanceEconomyTask's own caller treats
+        // that as "nothing to do this step", same as any other unaffordable/blocked move
+        // candidate, rather than falling back to the unsafe direct route.
         private static HexCoord? FindNextVisitedStep(HexMap map, ArmyData army, HexCoord targetHex)
         {
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex,
-                blockHex: hex => !hex.Equals(targetHex) && !VisionSystem.IsVisited(army.Owner, hex));
+            System.Func<HexCoord, bool> blockHex = BuildFacilityTask.IsSolo(army)
+                ? hex => !hex.Equals(targetHex) && !VisionSystem.IsVisited(army.Owner, hex)
+                : (System.Func<HexCoord, bool>)null;
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex, blockHex: blockHex);
             if (path == null || path.Hexes.Count < 2)
                 return null;
             return path.Hexes[1];
@@ -408,9 +542,10 @@ namespace Game.Ai
         // Экономика · Задача 1's own "nothing left to build" fallback — a hero-led army with no
         // active task, sitting somewhere other than the garrison, while BuildFacilityTask.
         // HasAnythingToBuild says there's no known free resource hex left anywhere to build on.
-        // Same idea as AiScoutPlanner.TryReturnHomeCandidates just above, own dedicated score
-        // (economyReturnHomeScore) since the two situations aren't equally urgent — a fragile
-        // escort-less hero protects itself first (see managementReturnHomeScore's own comment).
+        // No dedicated score any more (economyReturnHomeScore removed 2026-08-19, project owner's
+        // own call) — an idle hero with nothing left to build doesn't need an inflated priority to
+        // walk home, just the same flat economyWaitScore floor an arrived-but-still-saving task
+        // already uses.
         public static List<AiDecision> TryEconomyReturnHomeCandidates(PlayerSetupData player, PlayerRoot root,
             HashSet<ArmyData> stuckScouts)
         {
@@ -427,8 +562,8 @@ namespace Game.Ai
                 if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     continue;
                 var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
-                    "строить больше нечего — возвращается в цитадель");
-                results.Add(AiDecision.Move(army, target, null, AiConfig.Current.economyReturnHomeScore));
+                    "nothing left to build — returns to the citadel");
+                results.Add(AiDecision.Move(army, target, null, AiConfig.economyWaitScore, AiTaskCategory.Economy));
             }
             return results;
         }
@@ -464,9 +599,9 @@ namespace Game.Ai
 
                 var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = hex, ResourceType = resourceType };
                 var target = new AiScoutPlanner.ScoutTarget(hex, 0f,
-                    $"задача «Экономика»: {collector.Name} идёт добывать {resourceType} на ({hex.Q},{hex.R}) без стройки");
-                float score = AiConfig.Current.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
-                results.Add(AiDecision.Move(collector, target, task, score));
+                    $"\"{collector.Name}\" goes to collect {resourceType} at ({hex.Q},{hex.R}) without building");
+                float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
+                results.Add(AiDecision.Move(collector, target, task, score, AiTaskCategory.Economy));
             }
             return results;
         }
@@ -501,7 +636,13 @@ namespace Game.Ai
                 if (plan.Value.MergeTarget == null && !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
                     continue;
 
-                results.Add(AiDecision.DetachCollector(plan.Value, resourceType.Value, AiConfig.Current.ResourceScrapDetachScore));
+                // The collector's own source army shouldn't drop real, already-in-progress work
+                // just to get ferried out for a detach — see AiConfig.resourceScrapDetachOnTaskPenalty's
+                // own comment (project owner's own 2026-08-19 call).
+                bool sourceOnActiveTask = AiTaskRegistry.TaskFor(player, plan.Value.Source) != null;
+                float score = AiConfig.ResourceScrapDetachScore
+                    - (sourceOnActiveTask ? AiConfig.resourceScrapDetachOnTaskPenalty : 0f);
+                results.Add(AiDecision.DetachCollector(plan.Value, resourceType.Value, score));
             }
             return results;
         }
@@ -527,16 +668,16 @@ namespace Game.Ai
 
             if (ResourcesScrapTask.HasEnemyThreat(player, task.TargetHex))
             {
-                AiDebugLog.Write($"[AI] {player.Nickname}: {task.Army.Name} — известная армия в {AiConfig.Current.economySafetyRadius} "
-                    + $"хексах от ({task.TargetHex.Q},{task.TargetHex.R}), задача «Экономика» (добыча) отменена.");
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — a known army within {AiConfig.economySafetyRadius} "
+                    + $"hexes of ({task.TargetHex.Q},{task.TargetHex.R}), Economy task (scrapping) cancelled.");
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
 
             if (task.ResourceType.HasValue && ResourcesScrapTask.HasExtractionFacility(task.TargetHex, task.ResourceType.Value))
             {
-                AiDebugLog.Write($"[AI] {player.Nickname}: {task.Army.Name} — на ({task.TargetHex.Q},{task.TargetHex.R}) "
-                    + "построена добывающая facility, задача «Экономика» (добыча) завершена, юнит свободен.");
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — an extraction facility was built at "
+                    + $"({task.TargetHex.Q},{task.TargetHex.R}), Economy task (scrapping) complete, unit freed.");
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
@@ -548,10 +689,10 @@ namespace Game.Ai
                 if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
                     return null;
                 var target = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
-                    $"задача «Экономика»: {task.Army.Name} идёт добывать {task.ResourceType} на "
-                        + $"({task.TargetHex.Q},{task.TargetHex.R}) без стройки");
-                float score = AiConfig.Current.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
-                return AiDecision.Move(task.Army, target, task, score);
+                    $"\"{task.Army.Name}\" goes to collect {task.ResourceType} at "
+                        + $"({task.TargetHex.Q},{task.TargetHex.R}) without building");
+                float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
+                return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 
             return null; // arrived and collecting — nothing left to decide, see this method's own comment
@@ -576,7 +717,7 @@ namespace Game.Ai
             }
 
             yield return AiTurnController.PanTo(ctx, army.Hex);
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return AiTurnController.WaitStep(ctx);
 
@@ -593,26 +734,26 @@ namespace Game.Ai
             if (built)
             {
                 string delta = AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
-                AiDebugLog.Write($"[AI] {player.Nickname}: {army.Name} построил объект добычи {task.ResourceType} "
-                    + $"на ({task.TargetHex.Q},{task.TargetHex.R}) — задача «Экономика» завершена.{delta}");
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" built a {task.ResourceType} extraction facility "
+                    + $"at ({task.TargetHex.Q},{task.TargetHex.R}) — Economy task complete.{delta}");
                 AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
             }
             else
             {
                 task.BuildAttempts++;
-                AiDebugLog.Write($"[AI] {player.Nickname}: не смог построить {task.ResourceType} "
-                    + $"на ({task.TargetHex.Q},{task.TargetHex.R}) — попытка {task.BuildAttempts}.");
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't build {task.ResourceType} "
+                    + $"at ({task.TargetHex.Q},{task.TargetHex.R}) — attempt {task.BuildAttempts}.");
                 if (task.BuildAttempts >= MaxBuildAttempts)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: отказывается от задачи «Экономика» на "
-                        + $"({task.TargetHex.Q},{task.TargetHex.R}) после {task.BuildAttempts} неудачных попыток.");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: abandons the Economy task at "
+                        + $"({task.TargetHex.Q},{task.TargetHex.R}) after {task.BuildAttempts} failed attempts.");
                     AiResourceReservation.Release(task);
                     AiTaskRegistry.Remove(player, task);
                 }
             }
 
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
@@ -627,6 +768,13 @@ namespace Game.Ai
             UnitData collector = decision.CollectorUnit;
             yield return AiTurnController.PanTo(ctx, source.Hex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+
             if (decision.MergeTarget != null)
             {
                 ArmyData target = decision.MergeTarget;
@@ -637,26 +785,30 @@ namespace Game.Ai
                     if (ArmyActions.TransferMember(member, source, target, ctx.HexSelection, out string failReason))
                         moved++;
                     else
-                        AiDebugLog.Write($"[AI] {player.Nickname}: не смог перевести {member.Name} из {source.Name} "
-                            + $"в {target.Name} — {failReason}");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: couldn't transfer {member.Name} from \"{source.Name}\" "
+                            + $"to \"{target.Name}\" — {failReason}");
                 }
-                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason} ({moved}/{others.Count} юнит(ов) переведено).");
+                string mergeDelta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason} ({moved}/{others.Count} unit(s) transferred).{mergeDelta}");
             }
             else
             {
                 ArmyData newArmy = ArmyActions.CreateArmy(player, source.Hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
                 if (newArmy == null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: не хватило AP на новую армию для {collector.Name} — добыча отложена.");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: not enough AP for a new army for {collector.Name} — collecting postponed.");
                     yield break;
                 }
                 if (ArmyActions.TransferMember(collector, source, newArmy, ctx.HexSelection, out string failReason))
-                    AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.");
+                {
+                    string splitDelta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                    AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{splitDelta}");
+                }
                 else
-                    AiDebugLog.Write($"[AI] {player.Nickname}: не смог выделить {collector.Name} — {failReason}");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: couldn't detach {collector.Name} — {failReason}");
             }
 
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }

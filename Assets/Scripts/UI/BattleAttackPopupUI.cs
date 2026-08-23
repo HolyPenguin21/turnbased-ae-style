@@ -63,8 +63,14 @@ namespace Game.UI
         [SerializeField] private float aiRollDelay = 0.5f;
         // How long a resolved result screen (Ground Combat / Capture Kill / a bare Announcement)
         // stays up before auto-acknowledging itself when neither side is human (see
-        // AutoCloseResultIfNoHuman) — same reasoning as aiRollDelay above.
-        [SerializeField] private float aiResultCloseDelay = 0.5f;
+        // AutoCloseResultIfNoHuman) — same reasoning as aiRollDelay above. 2026-08-21: 0.5 → 1.2
+        // (project owner's own report) — this fires even while a human is just SPECTATING an
+        // AI-vs-AI/AI-vs-neutral fight (e.g. watching the AI's own turn play out), not only in a
+        // truly unattended battle, and 0.5s wasn't enough to actually read the Hit/Miss/damage
+        // line before it dismissed itself. Also now doubles as the delay for
+        // autoCloseResultToggle's own human-opted-in case (see IsAutoCloseResultEnabled) — a
+        // human who turned that on still wants a glance at the result, not zero.
+        [SerializeField] private float aiResultCloseDelay = 1.2f;
 
         [Header("Result State")]
         [SerializeField] private GameObject resultStateRoot;
@@ -75,6 +81,14 @@ namespace Game.UI
         [SerializeField] private TMP_Text resultTargetHpText;
         [SerializeField] private GameObject destroyedStamp;
         [SerializeField] private Button okButton;
+        // Player-facing "auto-press Ok for me" checkbox (Autoroll_Toggle, under
+        // Challenge_Popup > ChallengeResultRoot) — same principle as rollStateRoot's own
+        // autorollToggle (persisted via PlayerPrefs, opts a human into the same auto-advance
+        // AutoCloseResultIfNoHuman already gives an AI-vs-AI encounter), just for the Result
+        // state instead of the Roll state: this dismisses a resolved Ground Combat/Capture Kill/
+        // Announcement screen automatically instead of making the player click Ok every time.
+        [SerializeField] private Toggle autoCloseResultToggle;
+        private const string AutoCloseResultPrefKey = "BattleAttackPopup.AutoCloseResultEnabled";
 
         private enum Phase { NotRolled, InProgress, Resolved }
         private Phase _phase;
@@ -171,11 +185,22 @@ namespace Game.UI
                 autorollToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(AutorollPrefKey, 0) != 0);
                 autorollToggle.onValueChanged.AddListener(OnAutorollToggleChanged);
             }
+            if (autoCloseResultToggle != null)
+            {
+                autoCloseResultToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(AutoCloseResultPrefKey, 0) != 0);
+                autoCloseResultToggle.onValueChanged.AddListener(OnAutoCloseResultToggleChanged);
+            }
         }
 
         private static void OnAutorollToggleChanged(bool isOn)
         {
             PlayerPrefs.SetInt(AutorollPrefKey, isOn ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        private static void OnAutoCloseResultToggleChanged(bool isOn)
+        {
+            PlayerPrefs.SetInt(AutoCloseResultPrefKey, isOn ? 1 : 0);
             PlayerPrefs.Save();
         }
 
@@ -202,7 +227,7 @@ namespace Game.UI
         // clicked (see the user's own request to see each side's pool size up front, not just its
         // post-roll success count).
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
-            Sprite factionLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
+            Sprite attackerLogo, Sprite defenderLogo, Action<int, bool> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null)
         {
@@ -246,8 +271,8 @@ namespace Game.UI
             if (titleText != null)
                 titleText.text = "GROUND COMBAT";
 
-            attackerRow?.Setup(attacker, attackerHero, factionLogo);
-            defenderRow?.Setup(defender, defenderHero, factionLogo);
+            attackerRow?.Setup(attacker, attackerHero, attackerLogo);
+            defenderRow?.Setup(defender, defenderHero, defenderLogo);
             attackerRow?.SetDicePoolSize(attackerPoolSize ?? (attacker?.Attack ?? 0));
             defenderRow?.SetDicePoolSize(defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice),
                 defenderTerrainBonus, defenderConstructionBonus, defender?.Defense ?? 0);
@@ -267,6 +292,11 @@ namespace Game.UI
         // AI-vs-AI encounter (see NoHumanInvolved's own call site in Begin), so they don't have to
         // click Roll Die themselves every single Ground Combat/Capture Kill challenge.
         private bool IsAutorollEnabled => autorollToggle != null && autorollToggle.isOn;
+
+        // The ChallengeResultRoot checkbox's own read — same principle as IsAutorollEnabled
+        // above, just gating AutoCloseResultIfNoHuman's three call sites (ShowResult/
+        // ShowCaptureKillResult/ShowAnnouncement) instead of Begin's Roll-Die auto-press.
+        private bool IsAutoCloseResultEnabled => autoCloseResultToggle != null && autoCloseResultToggle.isOn;
 
         private static bool IsHumanSide(UnitData unit) => unit != null && unit.Owner != null && unit.Owner.IsHuman;
 
@@ -293,8 +323,11 @@ namespace Game.UI
         // Same "nobody human needs to look at this" gate as AutoRollIfNoHuman, for whichever
         // result screen just went up (Ground Combat, Capture Kill, or a bare Announcement) — an
         // AI-vs-AI/AI-vs-neutral encounter would otherwise sit on Phase.Resolved forever waiting
-        // for a click nobody's there to make. OnOkClicked's own _okAlreadyHandled guard makes this
-        // safe even if a human elsewhere in the scene somehow also clicks Ok around the same time.
+        // for a click nobody's there to make. Also started when IsAutoCloseResultEnabled (see its
+        // own comment) even with a human on both sides — same opt-in idea as IsAutorollEnabled,
+        // just for dismissing the result instead of pressing Roll Die. OnOkClicked's own
+        // _okAlreadyHandled guard makes this safe even if a human elsewhere in the scene somehow
+        // also clicks Ok around the same time.
         private IEnumerator AutoCloseResultIfNoHuman()
         {
             if (aiResultCloseDelay > 0f)
@@ -323,7 +356,7 @@ namespace Game.UI
         //     hunting alone requires a skill (e.g. the manual's own "Hunter") this project doesn't
         //     have yet either; see the user's own note to add that as a future task once such
         //     hero skills exist.
-        public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite factionLogo,
+        public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite hunterLogo, Sprite targetLogo,
             Action<CaptureKillOutcome> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null)
         {
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
@@ -336,7 +369,7 @@ namespace Game.UI
             // Fate stat, not whatever he happens to have left after spending some earlier this
             // same battle (see the user's own correction; RunRollAndDuel below reads the same
             // FateMax for the actual roll).
-            Begin(hunterFace, hunterHero, targetHero, targetHero, factionLogo, null, onAiThought,
+            Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, null, onAiThought,
                 attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0);
             _kind = ChallengeKind.CaptureKill;
             if (titleText != null)
@@ -385,7 +418,7 @@ namespace Game.UI
             if (resultSummaryText != null)
                 resultSummaryText.text = message;
 
-            if (NoHumanInvolved)
+            if (NoHumanInvolved || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -777,7 +810,16 @@ namespace Game.UI
             if (damage > 0 && _defender.HasAbility(UnitAbilities.Berserk))
             {
                 _defender.Attack += BerserkAttackGain;
-                _defender.Defense -= BerserkDefenseLoss;
+                // Defense never drops below 1 from Berserk — per the user's own call, a unit
+                // that's been hit enough times shouldn't end up rolling defense dice at a
+                // negative count. A stack triggered while already at the floor still counts
+                // towards BerserkStacks (Attack still grows), it just removes 0 Defense.
+                int defenseLoss = Mathf.Min(BerserkDefenseLoss, _defender.Defense - 1);
+                if (defenseLoss > 0)
+                {
+                    _defender.Defense -= defenseLoss;
+                    _defender.BerserkDefenseLost += defenseLoss;
+                }
                 _defender.BerserkStacks++;
             }
 
@@ -872,7 +914,7 @@ namespace Game.UI
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(outcome == CaptureKillOutcome.Killed);
 
-            if (NoHumanInvolved)
+            if (NoHumanInvolved || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -913,7 +955,7 @@ namespace Game.UI
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(died);
 
-            if (NoHumanInvolved)
+            if (NoHumanInvolved || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 

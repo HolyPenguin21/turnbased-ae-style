@@ -136,9 +136,7 @@ namespace Game.Map
                 return false;
             }
 
-            var remaining = new List<UnitData>(source.Members);
-            remaining.Remove(unit);
-            if (ArmyData.ComputeCapacity(remaining, source.IsGarrison) < remaining.Count)
+            if (!source.CanLeaveWithoutOvercrowding(unit))
             {
                 failReason = $"Moving {unit.Name} out would leave {source.Name} without room for everyone else.";
                 return false;
@@ -167,6 +165,92 @@ namespace Game.Map
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
+            return true;
+        }
+
+        // A direct 1-for-1 exchange between two armies — the same net effect as two TransferMember
+        // calls but without either one ever needing a free slot, since a straight swap never
+        // changes either army's headcount. TransferMember alone can't express this: it always
+        // requires the DESTINATION to already have room, so two armies that are BOTH already full
+        // can never trade a single member through it at all (Game.Ai.GarrisonReorgTask's own
+        // "garrison full, every field army full too" dead end — project owner's own 2026-08-20 call
+        // to add this instead of leaving that a permanent no-op). Capacity is still re-checked on
+        // both sides — a swap that drags a hero out (or in) changes that army's own Capacity, so
+        // the resulting headcount still needs to actually fit once the trade lands.
+        public static bool SwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
+            HexSelectionController hexSelectionController, out string failReason)
+        {
+            failReason = null;
+            if (unitA == null || armyA == null || unitB == null || armyB == null || armyA == armyB
+                || armyA.IsPrison || armyB.IsPrison)
+            {
+                failReason = "Invalid swap request.";
+                return false;
+            }
+            if (!armyA.Members.Contains(unitA))
+            {
+                failReason = $"{unitA.Name} is not a member of {armyA.Name}.";
+                return false;
+            }
+            if (!armyB.Members.Contains(unitB))
+            {
+                failReason = $"{unitB.Name} is not a member of {armyB.Name}.";
+                return false;
+            }
+
+            var remainingA = new List<UnitData>(armyA.Members);
+            remainingA.Remove(unitA);
+            remainingA.Add(unitB);
+            if (ArmyData.ComputeCapacity(remainingA, armyA.IsGarrison) < remainingA.Count)
+            {
+                failReason = $"{unitB.Name} wouldn't fit in {armyA.Name} once {unitA.Name} leaves.";
+                return false;
+            }
+
+            var remainingB = new List<UnitData>(armyB.Members);
+            remainingB.Remove(unitB);
+            remainingB.Add(unitA);
+            if (ArmyData.ComputeCapacity(remainingB, armyB.IsGarrison) < remainingB.Count)
+            {
+                failReason = $"{unitA.Name} wouldn't fit in {armyB.Name} once {unitB.Name} leaves.";
+                return false;
+            }
+
+            // Same "already-activated armies pay for what joins them" rule TransferMember
+            // enforces, checked on both directions independently before either one commits.
+            PlayerRoot rootA = null;
+            if (armyA.HasActivatedThisTurn)
+            {
+                rootA = PlayerRootRegistry.FindFor(armyA.Owner);
+                if (rootA == null || !rootA.CanSpendActionPoints(unitB.ActivationApCost))
+                {
+                    failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
+                        + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
+                    return false;
+                }
+            }
+            PlayerRoot rootB = null;
+            if (armyB.HasActivatedThisTurn)
+            {
+                rootB = PlayerRootRegistry.FindFor(armyB.Owner);
+                if (rootB == null || !rootB.CanSpendActionPoints(unitA.ActivationApCost))
+                {
+                    failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
+                        + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
+                    return false;
+                }
+            }
+
+            armyA.Members.Remove(unitA);
+            armyB.Members.Remove(unitB);
+            armyA.AddMemberSorted(unitB);
+            armyB.AddMemberSorted(unitA);
+            rootA?.SpendActionPoints(unitB.ActivationApCost);
+            rootB?.SpendActionPoints(unitA.ActivationApCost);
+
+            hexSelectionController?.RestackArmiesOn(armyA.Hex, null);
+            if (!armyB.Hex.Equals(armyA.Hex))
+                hexSelectionController?.RestackArmiesOn(armyB.Hex, null);
             return true;
         }
     }

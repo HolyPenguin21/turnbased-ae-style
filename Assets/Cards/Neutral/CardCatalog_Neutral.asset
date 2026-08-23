@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   faction: 3
   displayName: Neutral
-  logo: {fileID: 21300000, guid: 7cf2ef53e52798e41a4d6e5e5406811a, type: 3}
+  logo: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
   cards:
   - id: 0
     displayName: Scav
@@ -37,7 +37,7 @@ MonoBehaviour:
     defenseRating: 1
     resistanceRating: 1
     range: 2
-    hitPoints: 3
+    hitPoints: 4
     initiative: 1
     unitTypeTags: 00000000
     grantedAbilities: []
@@ -155,10 +155,10 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 3
+    defenseRating: 2
     resistanceRating: 1
     range: 1
-    hitPoints: 6
+    hitPoints: 5
     initiative: 2
     unitTypeTags: 00000000
     grantedAbilities: []
@@ -188,7 +188,7 @@ MonoBehaviour:
     defenseRating: 5
     resistanceRating: 3
     range: 1
-    hitPoints: 10
+    hitPoints: 12
     initiative: 1
     unitTypeTags: 0100000002000000
     grantedAbilities:
@@ -200,8 +200,8 @@ MonoBehaviour:
       tech: 0
   - id: 6
     displayName: AA Relic Crawler
-    art: {fileID: 21300000, guid: fc56eb865aacb1c4c8d815c104d6a287, type: 3}
-    detailArt: {fileID: 21300000, guid: 6aa41708893f0cc4cb56ba44960dd13e, type: 3}
+    art: {fileID: 21300000, guid: 7437df6f5d6cdc147835a6674fda940f, type: 3}
+    detailArt: {fileID: 21300000, guid: b71b215a5e304d442b419b8b2f413c02, type: 3}
     faction: 3
     cardType: 1
     apCost: 1
@@ -219,7 +219,7 @@ MonoBehaviour:
     defenseRating: 1
     resistanceRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 6
     initiative: 1
     unitTypeTags: 01000000
     grantedAbilities: []
@@ -228,8 +228,8 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  citadelIcon: {fileID: 21300000, guid: e12126fa30d64b548ab632f83454d6e7, type: 3}
-  facilityIcon: {fileID: 21300000, guid: dbefd1c8617631c4c993b24406121f37, type: 3}
-  armyIcon: {fileID: 21300000, guid: 7cf2ef53e52798e41a4d6e5e5406811a, type: 3}
+  citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
+  facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
+  armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
   armyNamePool:
   - Desert striders

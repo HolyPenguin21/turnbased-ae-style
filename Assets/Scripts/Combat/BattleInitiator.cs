@@ -1,3 +1,4 @@
+using Game.Ai;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -9,8 +10,11 @@ namespace Game.Combat
     // triggers: a non-stealthed combat capable army moves into a hex containing another
     // non-stealthed combat capable army. Stealth doesn't exist yet in this project, so every
     // army counts as non-stealthed — this reduces to "any enemy combat-capable army on the
-    // hex". Siege, the empty-garrison rule, and delay-attack aren't handled yet either — see
-    // HexSelectionController.TryIssueMoveOrder for where this gets called.
+    // hex". Siege and delay-attack aren't handled yet either — see
+    // HexSelectionController.TryIssueMoveOrder for where this gets called. The empty-garrison
+    // rule IS now partially covered — see FindEnemyAt's own comment — every army on the hex is
+    // a real defense candidate, not just the garrison, since a full "stack" mechanic (merging
+    // every defender into one combined battle) isn't built yet.
     public static class BattleInitiator
     {
         // "Not Combat Capable": a hero-only army (or an empty one) can't fight a Ground Combat
@@ -40,14 +44,34 @@ namespace Game.Combat
         // for a normal battle round to actually do against it.
         public static bool IsEngageable(ArmyData army) => army != null && army.Members.Count > 0;
 
-        // The first enemy CONTACTABLE army found at `hex`, if any — null if the hex is clear or
-        // only holds friendly/empty armies. See IsEngageable for what counts.
+        // The STRONGEST enemy CONTACTABLE army at `hex`, if any — null if the hex is clear or
+        // only holds friendly/empty armies. See IsEngageable for what counts. Ranked by raw
+        // Defense+Attack (WorthIt.DefenseSum/AttackSum, non-hero members only, no hex bonus —
+        // same flat power read GarrisonReorgTask.TotalNonHeroPower/AiDefencePlanner.
+        // CheatEstimateRaiderThreat already use elsewhere) rather than whichever army the
+        // registry happens to enumerate first (2026-08-21 fix, project owner's own report: an
+        // attacking army moving onto a multi-army hex — e.g. a citadel with the garrison PLUS a
+        // still-forming raid/patrol force sitting beside it — used to fight whatever ArmyRegistry
+        // returned first, which could easily be the weakest, freshly-recruited force instead of
+        // the garrison or the hex's real main body). Still only ever picks ONE defending army, not
+        // a merged stack — see this class's own comment on why a real "stack defends together"
+        // mechanic isn't built yet; this only fixes WHICH single army gets offered up.
         public static ArmyData FindEnemyAt(HexCoord hex, PlayerSetupData mover)
         {
+            ArmyData strongest = null;
+            float strongestPower = float.NegativeInfinity;
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (army.Owner != mover && IsEngageable(army))
-                    return army;
-            return null;
+            {
+                if (army.Owner == mover || !IsEngageable(army))
+                    continue;
+                float power = WorthIt.DefenseSum(army) + WorthIt.AttackSum(army);
+                if (strongest == null || power > strongestPower)
+                {
+                    strongest = army;
+                    strongestPower = power;
+                }
+            }
+            return strongest;
         }
     }
 }

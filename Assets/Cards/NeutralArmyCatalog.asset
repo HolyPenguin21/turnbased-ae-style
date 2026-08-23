@@ -16,41 +16,39 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   armies:
-  - name: Desert striders
-    members:
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Trapper
-      count: 1
-  - name: Nomads
-    members:
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Slasher
-      count: 1
-    - cardKey: Neutral/Trapper
-      count: 1
-  - name: Deserters
-    members:
-    - cardKey: Neutral/Gunner
-      count: 2
-    - cardKey: Iron Concord/Medium Infantry
-      count: 1
   - name: Inhabitants
     members:
     - cardKey: Neutral/Scav
       count: 1
     - cardKey: Neutral/Slasher
       count: 1
-  - name: Brutes
+  - name: Inhabitants
     members:
-    - cardKey: Neutral/Brute
-      count: 2
     - cardKey: Neutral/Scav
+      count: 1
+    - cardKey: Neutral/Brute
+      count: 1
+  - name: Rats
+    members:
+    - cardKey: Neutral/Scav
+      count: 3
+  - name: Desert striders
+    members:
+    - cardKey: Neutral/Scav
+      count: 2
+    - cardKey: Neutral/Trapper
+      count: 1
+  - name: Nomads
+    members:
+    - cardKey: Neutral/Scav
+      count: 2
+    - cardKey: Neutral/Slasher
+      count: 1
+  - name: Deserters
+    members:
+    - cardKey: Neutral/Gunner
+      count: 2
+    - cardKey: Iron Concord/Iron guards
       count: 1
   - name: Deserters squad
     members:
@@ -60,6 +58,12 @@ MonoBehaviour:
       count: 3
     - cardKey: Iron Concord/Flamer
       count: 2
+  - name: Brutes
+    members:
+    - cardKey: Neutral/Brute
+      count: 2
+    - cardKey: Neutral/Scav
+      count: 1
   - name: Desert scrappers
     members:
     - cardKey: Neutral/AA Relic Crawler

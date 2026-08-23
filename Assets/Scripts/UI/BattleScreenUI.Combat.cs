@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Cameras;
 using Game.Cards;
 using Game.Combat;
@@ -24,6 +25,19 @@ namespace Game.UI
     // file (EndTurn, Show/Hide, ShowAiThought) automatically via `partial`.
     public partial class BattleScreenUI
     {
+        // Same terrain + Base-building defense bonus BeginAttack folds into the real dice roll,
+        // exposed for card/detail display so a unit's shown Defense always matches what it would
+        // actually roll with right now. Only ever the original battle _defender's own hex — see
+        // BeginAttack's own comment for why the attacker (or a mid-exchange role reversal) never
+        // gets this.
+        public int GetDisplayedDefenseBonus(UnitData unit)
+        {
+            ArmyData owner = OwningArmy(unit);
+            if (owner == null || owner != _defender)
+                return 0;
+            return Mathf.RoundToInt(WorthIt.HexDefenseBonus(owner.Hex, map));
+        }
+
         private void BeginAttack(UnitData attacker, UnitData defender)
         {
             if (attackPopup == null)
@@ -85,7 +99,8 @@ namespace Game.UI
             // applied here too since a hero can be attacked mid-battle, not only hunted after it.
             int? defenderPoolSize = defender.IsHero ? defender.FateMax : (int?)null;
 
-            attackPopup.Begin(attacker, attackerHero, defender, defenderHero, catalog != null ? catalog.logo : null,
+            attackPopup.Begin(attacker, attackerHero, defender, defenderHero,
+                ResolveCatalog(attacker.Owner)?.logo, ResolveCatalog(defender.Owner)?.logo,
                 (damage, died) => OnAttackResolved(attacker, defender, damage, died), ShowAiThought, defenderIsRetreating,
                 defenderTerrainBonus, defenderConstructionBonus, defenderPoolSize: defenderPoolSize);
         }
@@ -294,7 +309,8 @@ namespace Game.UI
                 return;
             }
             (UnitData hero, ArmyData heroArmy, ArmyData hunterArmy) next = pending.Dequeue();
-            attackPopup.BeginCaptureKill(next.hunterArmy, next.hero, catalog != null ? catalog.logo : null,
+            attackPopup.BeginCaptureKill(next.hunterArmy, next.hero,
+                ResolveCatalog(next.hunterArmy?.Owner)?.logo, ResolveCatalog(next.hero?.Owner)?.logo,
                 outcome => HandleCaptureKillOutcome(outcome, next.hero, next.heroArmy, next.hunterArmy, pending, onAllResolved, suppressAiThoughts),
                 suppressAiThoughts ? null : ShowAiThought);
         }
@@ -422,8 +438,9 @@ namespace Game.UI
                 if (unit.BerserkStacks <= 0)
                     continue;
                 unit.Attack -= unit.BerserkStacks;
-                unit.Defense += unit.BerserkStacks;
+                unit.Defense += unit.BerserkDefenseLost;
                 unit.BerserkStacks = 0;
+                unit.BerserkDefenseLost = 0;
             }
         }
 
@@ -472,8 +489,11 @@ namespace Game.UI
             ArmyData survivor = attackerAlive != defenderAlive ? (attackerAlive ? _attacker : _defender) : null;
             string message = $"{detail}\n{DescribeNextAction(survivor)}";
 
+            // No human involved in this fight (AI vs. neutrals/event guards/another AI) — nobody's
+            // there to click Ok, so the popup closes itself after a beat instead of stalling the
+            // AI's turn (see BattleOutcomePopupUI.Show's own comment).
             if (outcomePopup != null)
-                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged);
+                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged, autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();
         }

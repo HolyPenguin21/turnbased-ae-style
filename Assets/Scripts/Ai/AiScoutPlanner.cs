@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -54,10 +55,12 @@ namespace Game.Ai
 
         // Разведка's own assembly step (AI architecture doc, section 02 · 2.1) — a Recce-tagged
         // unit/hero already deployed but buried inside a bigger, non-scout army instead of
-        // standing solo. Rare in practice: every other planner keeps a Recce member solo forever
-        // on purpose (see GarrisonReorgTask.FindReorgMove's own IsLoneArmyAtBase
-        // exclusion) — this only ever fires after something outside the AI's own logic put one
-        // there (a human drag-drop, say). Only ever proposes a member sitting on the SAME hex as
+        // standing solo. Used to be rare in practice (every other planner kept a Recce member solo
+        // forever on purpose); GarrisonReorgTask no longer carves Recce out of its own consolidation
+        // sweep as of 2026-08-20 (project owner's own call — see GarrisonReorgTask's own class
+        // comment, point 1.2), so a solo Recce idling at the garrison hex between tasks can now get
+        // folded into garrison like any other lone army, and this is what pulls it back out again
+        // once Разведка actually wants it. Only ever proposes a member sitting on the SAME hex as
         // `emptyArmyHex` — no cross-hex army-merge primitive exists in this codebase (ArmyActions.
         // TransferMember is same-hex only, like every other reorg move here), so a buried member
         // elsewhere is simply never offered rather than scored down (see AiTurnController's own
@@ -68,9 +71,22 @@ namespace Game.Ai
             {
                 if (source.IsPrison || !source.Hex.Equals(emptyArmyHex))
                     continue;
+                // Never reclaim from an army an ACTIVE task already claims — 2026-08-21 fix
+                // (simulation report finding): AiDefencePlanner's own Patrol Recce pickup
+                // (FindPatrolRecceCandidate) can now deliberately un-solo a Recce unit into a
+                // task-claimed DefendCitadel army sitting at this exact hex, and without this guard
+                // this method would read it right back out as "buried" the very next step — the
+                // same recruit/reclaim ping-pong already fixed once for Агрессия (see
+                // RaidWeakerArmyTask.FindRecruitAt's own comment, 2026-08-17) reappearing on the
+                // Оборона/Разведка axis. Every other cross-category recruit lookup in this codebase
+                // already gets this for free by only ever scanning pool.AvailableArmies(); this one
+                // scans the raw ArmyRegistry instead (a fresh empty army has no pool entry yet at
+                // the point some of its own callers use this), so the check is explicit here.
+                if (AiTaskRegistry.TaskFor(player, source) != null)
+                    continue;
                 UnitData unit = source.Members.FirstOrDefault(m => m.HasAbility(UnitAbilities.Recce) && m.IsHero == wantHero);
                 if (unit == null || (!source.IsGarrison && source.Members.Count == 1))
-                    continue; // already solo — already IsScoutCapable, nothing to assemble
+                    continue; // already solo — already IsSoloRecce, nothing to assemble
                 return new BuriedRecceUnit(source, unit);
             }
             return null;
@@ -81,16 +97,24 @@ namespace Game.Ai
         // the point reconBaseWeight would otherwise be added to a target's own Score — the two
         // MoveArmy sites below (TryContinueVisitTask/TryStartVisitCandidates).
         // SpawnReconArmy/AssembleRecceScout/RequestReconArmy keep reading
-        // AiConfig.Current.reconBaseWeight directly, untouched by this taper.
+        // AiConfig.reconBaseWeight directly, untouched by this taper.
         private static float ReconMoveWeight(AiTurnContext ctx)
         {
-            AiConfig config = AiConfig.Current;
-            int turnsPast = ctx.TurnNumber - config.reconPriorityDecayStartTurn;
+            int turnsPast = ctx.TurnNumber - AiConfig.reconPriorityDecayStartTurn;
             if (turnsPast <= 0)
-                return config.reconBaseWeight;
-            float decayed = config.reconBaseWeight - turnsPast * config.reconPriorityDecayPerTurn;
-            return Math.Max(decayed, config.reconPriorityDecayFloor);
+                return AiConfig.reconBaseWeight;
+            float decayed = AiConfig.reconBaseWeight - turnsPast * AiConfig.reconPriorityDecayPerTurn;
+            return Math.Max(decayed, AiConfig.reconPriorityDecayFloor);
         }
+
+        // Project owner's own 2026-08-19 rebalance (see AiConfig.reconAggressionSuppressionPenalty's
+        // own comment) — while Агрессия has a real committed raid force out working, routine
+        // VisitHex scouting cedes a flat amount of ground instead of competing evenly. Replaces the
+        // old raidCommittedBonus top-up on Агрессия's own side of the arbiter.
+        private static float AggressionSuppressionPenalty(PlayerSetupData player) =>
+            AiTaskRegistry.CountActive(player, AiTaskKind.RaidWeakerArmy) > 0
+                ? AiConfig.reconAggressionSuppressionPenalty
+                : 0f;
 
         // ---- Разведка · Задача 1 (Посещение хекса) ----
 
@@ -112,15 +136,29 @@ namespace Game.Ai
             // started). Задача 1 has no single completion hex: it keeps proposing a next
             // unvisited target for as long as one exists nearby (see AiTaskKind's own comment),
             // so "nothing left" is what actually frees the army, not "arrived once".
-            ScoutTarget? target = VisitHexTask.TryFlee(player, task.Army, task)
-                ?? VisitHexTask.FindTarget(player, task.Army, ctx.Map);
+            // fleeTarget carries a real cross-category score of its own (scoutFleeBonus) that must
+            // still reach the final decision; FindTarget's own Score does NOT — see AiConfig.
+            // scoutProximityWeight's own comment for why that stays a purely internal ranking term.
+            ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, task.Army, task);
+            ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, task.Army, ctx.Map);
             if (!target.HasValue)
             {
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
             task.TargetHex = target.Value.Hex;
-            return AiDecision.Move(task.Army, target.Value, task, ReconMoveWeight(ctx) + target.Value.Score);
+
+            // Route only through already-visited ground — see VisitHexTask.FindNextSafeStep's own
+            // comment. `target.Value.Hex` itself stays the task's own bookkeeping target above;
+            // this is only ever how far THIS step's actual move order reaches toward it.
+            HexCoord? nextStep = VisitHexTask.FindNextSafeStep(ctx.Map, task.Army, target.Value.Hex);
+            if (nextStep == null)
+                return null; // fully boxed in by fog for now — target stays valid, re-tried next step
+
+            float score = ReconMoveWeight(ctx) - AggressionSuppressionPenalty(player)
+                + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
+            var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
+            return AiDecision.Move(task.Army, stepTarget, task, score, AiTaskCategory.Reconnaissance);
         }
 
         // Composition/target logic both live on VisitHexTask now (IsEligibleComposition/
@@ -130,7 +168,7 @@ namespace Game.Ai
             AiResourcePool pool, HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
-            if (AiTaskRegistry.CountActive(player, AiTaskKind.VisitHex) >= AiConfig.Current.maxConcurrentVisitHex)
+            if (AiTaskRegistry.CountActive(player, AiTaskKind.VisitHex) >= AiConfig.maxConcurrentVisitHex)
                 return results;
 
             foreach (ArmyData army in pool.AvailableArmies())
@@ -149,12 +187,22 @@ namespace Game.Ai
                 if (!target.HasValue)
                     continue;
 
+                // Same fog-safety restriction as TryContinueVisitTask — see VisitHexTask.
+                // FindNextSafeStep's own comment. A brand new task never gets to skip it just
+                // because it hasn't started yet.
+                HexCoord? nextStep = VisitHexTask.FindNextSafeStep(ctx.Map, army, target.Value.Hex);
+                if (nextStep == null)
+                    continue; // can't safely take even one step toward it yet — no candidate this step
+
                 var task = new AiTask
                 {
                     Kind = AiTaskKind.VisitHex, Army = army, TargetHex = target.Value.Hex, Reason = target.Value.Reason,
                     FledLastTurn = fleeTarget.HasValue,
                 };
-                results.Add(AiDecision.Move(army, target.Value, task, ReconMoveWeight(ctx) + target.Value.Score));
+                float score = ReconMoveWeight(ctx) - AggressionSuppressionPenalty(player)
+                    + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
+                var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
+                results.Add(AiDecision.Move(army, stepTarget, task, score, AiTaskCategory.Reconnaissance));
             }
             return results;
         }
@@ -177,18 +225,21 @@ namespace Game.Ai
                 if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     continue;
                 var target = new ScoutTarget(garrisonHex, 0f,
-                    "рядом нечего посетить — возвращается в цитадель дожидаться подкрепления");
-                results.Add(AiDecision.Move(army, target, null, AiConfig.Current.managementReturnHomeScore));
+                    "nothing nearby to visit — returns to the citadel to wait for an escort");
+                results.Add(AiDecision.Move(army, target, null, AiConfig.managementReturnHomeScore, AiTaskCategory.Reconnaissance));
             }
             return results;
         }
 
         // ---- Разведка · сборка Recce-состава (юнит-Recce / герой-Recce) ----
-        // The project owner's own call: card placement for a Recce composition shouldn't be a
-        // Менеджмент leftover any more (AiManagementPlanner.FindPlacement/TryPlayCardCandidates
-        // still exist and still propose the SAME PlayCard action for the same card at
-        // managementBaseWeight+playRecceCardBonus — this is a competing, Разведка-flavored
-        // proposal for it, not a replacement; only the higher-scoring one ever actually commits).
+        // The project owner's own call (2026-08-19 — "ScoutPlanner должен сам решить куда
+        // положить своего скаута, менеджеру об этом знать не обязательно"): a Recce card's
+        // placement is entirely this category's own concern now, not a Менеджмент leftover.
+        // AiManagementPlanner.TryPlayCardCandidates skips every Recce card outright (see its own
+        // comment) — this is the ONLY path a Recce card ever gets played through, no competing
+        // proposal, no tie-break to win. Playing one still shrinks hand.Hand for whatever
+        // Менеджмент's own backlog scoring reads next step, same as any other category playing a
+        // card would (see TryPlayCardCandidates' own comment on that cross-effect).
         // One candidate per step per template (Unit-Recce, Hero-Recce), whichever prerequisite is
         // still missing:
         //   1) no empty deployable army anywhere → RequestReconArmy (score BELOW a real recon
@@ -200,10 +251,12 @@ namespace Game.Ai
         //      offered — no cross-hex army-merge primitive exists — so that state simply
         //      contributes no candidate this step, same as "no card in hand" below.
         //   3) an empty army exists, nothing buried to assemble, and hand holds a matching
-        //      Recce-tagged card → PlayCard (same action AiManagementPlanner.FindPlacement would
-        //      have proposed anyway, just scored on Разведка's own scale).
-        // Once assembled (AiArmyRoles.IsScoutCapable true), TryStartVisitCandidates already claims
+        //      Recce-tagged card → PlayCard, straight into that same empty army (own placement
+        //      check below, not routed through AiManagementPlanner.FindPlacement at all — that
+        //      method no longer knows Recce exists).
+        // Once assembled (AiArmyRoles.IsSoloRecce true), TryStartVisitCandidates already claims
         // the army directly — no further step here.
+        //
         public static List<AiDecision> TryStartReconAssemblyCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiHandData hand, AiResourcePool pool)
         {
@@ -235,15 +288,28 @@ namespace Game.Ai
 
             // Every Разведка task slot already spoken for — no point assembling a scout with
             // nowhere for it to actually work this turn (or any turn soon).
-            if (AiTaskRegistry.CountActive(player, AiTaskKind.VisitHex) >= AiConfig.Current.maxConcurrentVisitHex)
+            if (AiTaskRegistry.CountActive(player, AiTaskKind.VisitHex) >= AiConfig.maxConcurrentVisitHex)
                 return results;
 
             // Already have an idle, ready-to-go composition of this exact shape?
             // TryStartVisitCandidates already claims it directly next — nothing to assemble.
-            if (pool.AvailableArmies().Any(a => AiArmyRoles.IsScoutCapable(a) && a.Members.Any(m => m.IsHero == wantHero)))
+            if (pool.AvailableArmies().Any(a => AiArmyRoles.IsSoloRecce(a) && a.Members.Any(m => m.IsHero == wantHero)))
                 return results;
 
-            ArmyData emptyArmy = pool.AvailableArmies().FirstOrDefault(AiArmyRoles.IsEmptyDeployableArmy);
+            // Scoped to this player's own garrisoned (Barracks) hexes only — a player can have
+            // several bases (see AiTurnController.OwnGarrisonHexes), and an empty shell sitting on
+            // ANY of them is just as reusable as one at the starting citadel; SpawnReconArmyRoutine
+            // itself still only ever creates a NEW one at the citadel (Разведка stays anchored
+            // there for target-selection purposes, unchanged), this is purely "don't spin up a
+            // fresh empty army when a perfectly good one is already sitting at a base" — 2026-08-22
+            // fix (project owner's own report): the old unscoped `pool.AvailableArmies().FirstOrDefault
+            // (IsEmptyDeployableArmy)` could in principle also match an idle empty army stranded
+            // out in the field (not that this alone caused the "recon never leaves" bug — that was
+            // FindNextSafeStep, see its own comment — but a stray field army was never actually
+            // useful here as a Recce host: it isn't at a Barracks hex a card could deploy into).
+            var ownGarrisonHexes = new HashSet<HexCoord>(AiTurnController.OwnGarrisonHexes(player));
+            ArmyData emptyArmy = pool.AvailableArmies()
+                .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && ownGarrisonHexes.Contains(a.Hex));
             if (emptyArmy == null)
             {
                 // Trigger-gated, not speculative: only request a new empty army if hand actually
@@ -254,26 +320,50 @@ namespace Game.Ai
                 // AiManagementPlanner's own spare-army fallback (which reaches the exact same empty
                 // army as a side effect, just without a speculative purpose attached) even when no
                 // Recce card was anywhere in sight.
-                if (FindMatchingRecceCard(hand, wantHero) != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
-                    results.Add(AiDecision.RequestReconArmy(AiConfig.Current.reconBaseWeight + AiConfig.Current.reconRequestArmyPenalty));
+                //
+                // Affordability check covers the FULL two-step cost, not just the army itself
+                // (project owner's own 2026-08-19 follow-up): spawning an empty army only to find
+                // the Recce card unaffordable next step leaves an orphan empty army that
+                // AiManagementPlanner's own spare-army fallback would have created anyway, just
+                // without a real Разведка purpose behind it. So this mirrors
+                // AiManagementPlanner.FindPlacement's own final branch — CreateArmyApCost +
+                // EffectiveDeployApCost(definition) AP, AND the card's own resource cost via
+                // AiResourceReservation.CanAfford (not definition.resourceCost.CanAfford(root)
+                // directly, same reason as FindPlacement — never spend what an active
+                // BuildFacility task already claimed).
+                CardData recceCard = FindMatchingRecceCard(hand, wantHero);
+                if (recceCard != null)
+                {
+                    CardDefinition definition = recceCard.Definition;
+                    int totalApCost = ArmyActions.CreateArmyApCost + ArmyActions.EffectiveDeployApCost(definition);
+                    if (root.ActionPoints >= totalApCost && AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                        results.Add(AiDecision.RequestReconArmy(AiConfig.reconBaseWeight + AiConfig.reconRequestArmyPenalty));
+                }
                 return results;
             }
 
             BuriedRecceUnit? buried = FindBuriedRecceUnit(player, wantHero, emptyArmy.Hex);
             if (buried.HasValue && !ctx.WouldRevisitArmy(buried.Value.Unit, emptyArmy))
             {
-                results.Add(AiDecision.AssembleRecceScout(buried.Value, emptyArmy, AiConfig.Current.reconBaseWeight + AiConfig.Current.reconAssembleBonus));
+                results.Add(AiDecision.AssembleRecceScout(buried.Value, emptyArmy, AiConfig.reconBaseWeight + AiConfig.reconAssemblePenalty));
                 return results;
             }
 
             CardData card = FindMatchingRecceCard(hand, wantHero);
             if (card == null)
-                return results; // no candidate this step — Разведка simply isn't competitive right now
+                return results; // no candidate this step — nothing left to place
 
-            AiManagementPlanner.CardPlacement? placement = AiManagementPlanner.FindPlacement(player, root, card, AiManagementPlanner.CardRole.Recce);
-            if (placement.HasValue)
-                results.Add(AiDecision.PlayCard(placement.Value.ExistingArmy, card, AiManagementPlanner.CardRole.Recce,
-                    AiConfig.Current.reconBaseWeight + AiConfig.Current.reconRequestCardPenalty));
+            // Own placement check, entirely self-contained — a Recce card always deploys into the
+            // SAME empty army this method already found above (`emptyArmy`), never routed through
+            // AiManagementPlanner.FindPlacement (see this method's own class comment).
+            CardDefinition cardDefinition = card.Definition;
+            int deployApCost = ArmyActions.EffectiveDeployApCost(cardDefinition);
+            if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, cardDefinition.resourceCost)
+                || !AiManagementPlanner.IsAtRequiredBuilding(emptyArmy, player, cardDefinition))
+                return results;
+
+            results.Add(AiDecision.PlayCard(emptyArmy, card, AiManagementPlanner.CardRole.Recce,
+                AiConfig.reconBaseWeight, AiTaskCategory.Reconnaissance));
             return results;
         }
 
@@ -295,10 +385,17 @@ namespace Game.Ai
             HexCoord hex = AiTurnController.GarrisonHexFor(player);
             yield return AiTurnController.PanTo(ctx, hex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             ArmyData army = ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
             AiDebugLog.Write(army != null
-                ? $"[AI] {player.Nickname}: задача «Разведка» — создаёт пустую армию {army.Name} под Recce-состав."
-                : $"[AI] {player.Nickname}: задача «Разведка» — не хватило AP на новую армию под Recce-состав.");
+                ? $"[AI] {player.Nickname}: Reconnaissance task — creates empty army \"{army.Name}\" for a Recce composition.{delta}"
+                : $"[AI] {player.Nickname}: Reconnaissance task — not enough AP for a new army for a Recce composition.");
 
             yield return AiTurnController.WaitStep(ctx);
         }
@@ -312,17 +409,24 @@ namespace Game.Ai
             UnitData unit = decision.CollectorUnit;
             yield return AiTurnController.PanTo(ctx, source.Hex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             if (ArmyActions.TransferMember(unit, source, emptyArmy, ctx.HexSelection, out string failReason))
             {
-                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.");
+                string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{delta}");
                 // Feeds the cross-category oscillation guard (see AiTurnContext.WouldRevisitArmy's
                 // own comment) — same "only a landed move counts" rule ConsolidateUnitsRoutine follows.
                 ctx.RecordArmyVisit(unit, source, emptyArmy);
             }
             else
-                AiDebugLog.Write($"[AI] {player.Nickname}: не смог собрать Recce-состав — {failReason}");
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't assemble the Recce composition — {failReason}");
 
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }

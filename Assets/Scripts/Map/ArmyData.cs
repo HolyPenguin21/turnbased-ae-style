@@ -98,6 +98,21 @@ namespace Game.Map
 
         public bool HasRoom => Members.Count < Capacity;
 
+        // Whether `unit` can leave this army without stranding its own remaining roster over
+        // capacity — the exact guard ArmyActions.TransferMember enforces before actually
+        // committing a move (see that method's own "without room for everyone else" failReason),
+        // exposed here so candidate-generation code can check BEFORE proposing a transfer that's
+        // guaranteed to fail. Matters most for the Garrison: a hero standing in it can be the
+        // only thing keeping an otherwise-over-stuffed roster legal (see ComputeCapacity — pull
+        // that hero out and capacity falls back to GarrisonBaseCapacity), so recruiting them into
+        // a field army can silently violate the very capacity rule TransferMember polices.
+        public bool CanLeaveWithoutOvercrowding(UnitData unit)
+        {
+            var remaining = new List<UnitData>(Members);
+            remaining.Remove(unit);
+            return ComputeCapacity(remaining, IsGarrison) >= remaining.Count;
+        }
+
         // Whether any member carries UnitAbilities.Recce — computed fresh every time, same
         // "never cached" rule as Capacity/ActivationApCost above, so it's always correct as
         // members come and go. The magnitude itself is a single shared UnitAbilityCatalog value

@@ -1,185 +1,422 @@
-using UnityEngine;
-
 namespace Game.Ai
 {
-    // Single tunable-numbers asset for every static AI class (AiTurnController, AiScoutPlanner,
-    // AiEconomyPlanner, AiGoalScorer, AiArmyRoles) — same "one asset, referenced wherever needed"
-    // idea as Game.Core.GameConfig, but for AI tuning specifically so a designer can retune the AI
-    // without touching code/recompiling. Loaded lazily via Resources rather than wired as a
-    // [SerializeField] on some scene object (the way GameConfig itself is) — nothing needs to
-    // remember to drag this into an inspector field, and every pure stateless static class
-    // reading it (several calls deep, no natural place to carry an instance reference) just reads
-    // AiConfig.Current directly. Requires exactly one asset at Assets/Resources/AiConfig.asset —
-    // create it via Assets/Create/Game/AI Config, in a folder named "Resources" (any depth under
-    // Assets), keeping the file itself named "AiConfig".
-    [CreateAssetMenu(fileName = "AiConfig", menuName = "Game/AI Config")]
-    public class AiConfig : ScriptableObject
+    // Single tunable-numbers holder for every static AI class (AiTurnController, AiScoutPlanner,
+    // AiEconomyPlanner, AiGoalScorer, AiArmyRoles) — same "one place, referenced wherever needed"
+    // idea as Game.Core.GameConfig, but for AI tuning specifically. Plain static class with const
+    // fields now (converted 2026-08-19, project owner's own call) — this used to be a
+    // ScriptableObject loaded via Resources.Load, but the serialized .asset silently kept its own
+    // stale field values on disk forever, so editing a default here never actually took effect at
+    // runtime unless someone remembered to manually re-save the asset in the Inspector (see the
+    // project owner's own "BuildFacility scored 205 instead of the new ~130" report — the asset
+    // still had economyBaseWeight: 200 from before the 110 rebalance). A const in code can't silently
+    // disagree with itself the way a serialized asset could — retune by editing this file only, no
+    // separate .asset to keep in sync and no Resources/AiConfig.asset any more.
+    public static class AiConfig
     {
-        private static AiConfig _current;
-
-        public static AiConfig Current => _current != null ? _current : (_current = Resources.Load<AiConfig>("AiConfig"));
-
-        [Header("Turn Loop")]
+        // ---- Turn Loop ----
         // Guards against an accidental infinite loop — not a real gameplay limit, just a safety
-        // net (a normal turn resolves in well under this many steps).
-        public int maxStepsPerTurn = 12;
+        // net (a normal turn resolves in well under this many steps). Raised from 12 to 40
+        // (project owner's own report, 2026-08-22 — AiDebug.log showed real turns hitting the
+        // old cap exactly, step 12/12, with AP still unspent and a legitimate MoveArmy candidate
+        // still on the table: a handful of steps that cost no AP at all — AssembleRaidForce,
+        // DrawCard, ReserveArmy — were eating into the same per-turn step budget as the AP-
+        // costing ones, so this genuinely started acting as a real gameplay limit instead of a
+        // pure safety net as the empire grew). Each of those free-action tiers is still bounded
+        // by its own finite pool (hand size, idle army count) regardless of this cap, and a truly
+        // stuck army is separately guarded by `stuckScouts` in RunTurn below — so a normal turn
+        // still settles in well under this many steps, same as before.
+        public const int maxStepsPerTurn = 40;
 
-        [Header("Task Arbiter — Category Base Weights")]
+        // ---- Task Arbiter — Category Base Weights ----
         // Every candidate action a turn could take gets a Score in this same shared space, and
         // the single highest-scoring one wins the step (see AiTurnController.Decide). Tuned so
         // the everyday case still lands in the old Economy > Recon > Management order, without
         // hard-coding that order — a weak Economy target and a strong Recon one (e.g.
         // raidCounterAttackBonus) CAN cross.
-        public float economyBaseWeight = 200f;
-        public float reconBaseWeight = 150f;
-        // Above economyBaseWeight on purpose — moving an army to attack costs more AP overall
-        // (activation + the eventual fight) than either Экономика or Разведка's own moves, so a
-        // viable raid should generally win the arbiter once one exists at all. The project owner's
-        // own note: this is also the natural seed for a LATER AP-reservation mechanic (saving up
-        // toward wanting to win the initiative roll at turn start) — not built yet, just why this
-        // number sits where it does.
-        public float aggressionBaseWeight = 220f;
-        public float managementBaseWeight = 50f;
+        // Rebalanced 2026-08-19 (project owner's own call): every category base weight normalized
+        // to a common ~100 scale instead of an ad hoc spread (was 200/150/220/50) — modifiers now
+        // read as small, deliberate nudges off a shared baseline instead of needing to overcome a
+        // 50-70 point head start baked into the base itself.
+        public const float economyBaseWeight = 110f;
+        public const float reconBaseWeight = 100f;
+        public const float aggressionBaseWeight = 100f;
+        public const float managementBaseWeight = 50f;
 
-        [Header("Разведка — Задача 1 (Посещение хекса)")]
-        public int maxConcurrentVisitHex = 3;
+        // ---- Разведка — Задача 1 (Посещение хекса) ----
+        public const int maxConcurrentVisitHex = 3;
         // How far past the map's own nearest still-unvisited hex (measured from the citadel) a
         // Задача 1 candidate is still allowed to be, so visiting sweeps outward from the citadel
         // "as a wave" rather than beelining for whatever's farthest. Агрессия no longer shares
         // this band (RaidWeakerArmyTask's own target pool isn't wavefront-bounded at all — see
         // its own class comment) — VisitHexTask is the only user now.
-        public int visitRingBand = 3;
+        public const int visitRingBand = 3;
         // scoutProximityWeight is also reused by RaidWeakerArmyTask's own ProximityScore —
         // "closer to the mover" means the same thing whether the target is unexplored fog or a
-        // known raid target.
-        public float scoutProximityWeight = 5f;
-        public float freshNeighborWeight = 4f;
-        public float citadelDistancePenalty = 3f;
+        // known raid target. Both this and freshNeighborWeight are Разведка's own INTERNAL target-
+        // ranking terms only (project owner's own 2026-08-19 call) — used by VisitHexTask.
+        // ScoreCandidate to pick which candidate hex wins among several, never added to the final
+        // cross-category AiDecision.Score AiScoutPlanner hands to Decide (see ReconMoveWeight's own
+        // callers) — VisitHex always contributes exactly reconBaseWeight (minus
+        // reconAggressionSuppressionPenalty, see below) to the arbiter regardless of which specific
+        // hex won internally.
+        public const float scoutProximityWeight = 5f;
+        public const float freshNeighborWeight = 4f;
+        // Разведка's own internal-only citadel-distance term (see scoutProximityWeight's own
+        // comment above for why this never reaches the cross-category score) — separate from
+        // citadelDistancePenaltyPerHex below, which IS cross-category for Экономика/Агрессия.
+        public const float visitTargetCitadelWeight = 2f;
+        // While Агрессия has an active RaidWeakerArmy task (any — a real committed raid force
+        // matters more than another routine scouting hop), subtracted from VisitHex's own flat
+        // reconBaseWeight contribution to the arbiter (project owner's own 2026-08-19 rebalance —
+        // replaces the old raidCommittedBonus top-up on Агрессия's own side; suppressing Разведка
+        // achieves the same "raid reliably keeps moving" outcome from the other direction instead).
+        public const float reconAggressionSuppressionPenalty = 10f;
 
-        [Header("Разведка — приоритет передвижения по ходам")]
+        // ---- Разведка — приоритет передвижения по ходам ----
         // From this turn on, a Recce army's own routine MoveArmy score (Задача 1/2 only — see
         // AiTurnController.ReconMoveWeight, the sole reader) starts tapering off instead of
         // staying flat at reconBaseWeight forever. Early game, scouting SHOULD win the arbiter
-        // over everything else — there's nothing else worth doing with a fresh map. Once the
-        // early reveal rush is over, though, a Recce army kept outbidding Агрессия/Экономика's
-        // own bigger-army moves turn after turn purely because reconBaseWeight (150) plus a good
-        // freshNeighborWeight hit could still clear aggressionBaseWeight (220) minus that raid's
-        // own citadel-distance penalty (the project owner's own report, 2026-08-16, AiDebug.log:
-        // scouting hops kept winning against a raid army already mid-attack). Assembly/request
-        // candidates (SpawnReconArmy/AssembleRecceScout/RequestReconArmy) are untouched — the AI
-        // should keep building its scout pipeline even once actually walking it around stops
-        // being the AP priority.
-        public int reconPriorityDecayStartTurn = 5;
+        // over everything else — there's nothing else worth doing with a fresh map. Assembly/
+        // request candidates (SpawnReconArmy/AssembleRecceScout/RequestReconArmy) are untouched —
+        // the AI should keep building its scout pipeline even once actually walking it around
+        // stops being the AP priority.
+        public const int reconPriorityDecayStartTurn = 5;
         // Flat reduction per turn past reconPriorityDecayStartTurn, subtracted from
         // reconBaseWeight only for a MoveArmy candidate — never below reconPriorityDecayFloor.
-        public float reconPriorityDecayPerTurn = 15f;
+        public const float reconPriorityDecayPerTurn = 5f;
         // A scouting move should still beat outright idleness (managementFallbackHighScore/Low)
         // even once fully decayed — this floor sits comfortably above those.
-        public float reconPriorityDecayFloor = 60f;
+        public const float reconPriorityDecayFloor = 60f;
 
-        [Header("Разведка — сборка Recce-состава")]
+        // ---- Разведка — сборка Recce-состава ----
         // Added on top of reconBaseWeight (negative) — no empty army anywhere to receive a Recce
         // card/unit yet. Below a real recon move, generally above Менеджмент's own flat Reserve
         // fallback (managementFallbackHighScore/Low) so a genuine Разведка need still wins.
-        public float reconRequestArmyPenalty = -100f;
-        // Added on top of reconBaseWeight (negative) — an empty army exists, waiting on a
-        // matching Recce card from hand. Smaller than reconRequestArmyPenalty (closer to done),
-        // and comfortably above AiManagementPlanner's own flat playRecceCardBonus placement so
-        // Разведка's own need for THIS card outranks Менеджмент's opportunistic one.
-        public float reconRequestCardPenalty = -60f;
-        // Added on top of reconBaseWeight (positive) — a Recce-tagged unit/hero is already
-        // deployed and sitting on the SAME hex as an empty army, just buried inside a bigger
-        // army; see AiScoutPlanner.FindBuriedRecceUnit for why this is rare in practice.
-        public float reconAssembleBonus = 20f;
+        // Was -100 until the project owner's own 2026-08-19 follow-up: post-rebalance that left
+        // the candidate at reconBaseWeight-100 = 0, actually BELOW managementFallbackHighScore
+        // (15) despite the comment above — the request could lose the tie-break to outright
+        // Менеджмент idleness. -10 keeps the candidate at 90, comfortably above both fallback
+        // tiers again.
+        public const float reconRequestArmyPenalty = -10f;
+        // reconRequestCardPenalty removed 2026-08-19 (project owner's own follow-up, same shape
+        // as reconRequestArmyPenalty's own fix above): an empty army exists, waiting on a
+        // matching Recce card from hand — used to score reconBaseWeight-60 = 40. This step of the
+        // Разведка pipeline (empty army already exists, card is the only thing missing) is now
+        // scored at the plain reconBaseWeight, same as a real recon move. Moot as a tie-break
+        // concern since 2026-08-19's later change: Recce cards no longer reach
+        // AiManagementPlanner.TryPlayCardCandidates at all (see cardRoleBacklogShareWeight's own
+        // comment) — Разведка is the only path a Recce card ever gets played through now, nothing
+        // left to lose a tie against.
+        // Added on top of reconBaseWeight — a Recce-tagged unit/hero is already deployed and
+        // sitting on the SAME hex as an empty army, just buried inside a bigger army; see
+        // AiScoutPlanner.FindBuriedRecceUnit for why this is rare in practice.
+        // 2026-08-22 rebalance (project owner's own call): +20 → −5. At +20 this scored 120,
+        // ABOVE every real VisitHex move (reconBaseWeight=100 or less once decay starts) —
+        // meaning "assemble one more scout" unconditionally preempted "actually walk the scout(s)
+        // we already have" every single time a buried Recce member existed anywhere, which combined
+        // with GarrisonReorgTask's own consolidation (sweeps a not-yet-departed solo Recce back
+        // into the garrison at end of turn — see that class's own class comment point 1.2) fed an
+        // endless extract→never-move→re-bury→extract-again loop that starved actual scouting.
+        // −5 keeps this ordering instead: 100 (a scout's own move, or PlayCard handing us one
+        // outright) → 95 (assemble one from an already-deployed member) → 90 (reconRequestArmyPenalty,
+        // build one from nothing) — assembly still comfortably beats spinning up a brand new empty
+        // army from scratch, but never again outranks just using a scout that's ready to go.
+        public const float reconAssemblePenalty = -5f;
 
-        [Header("Агрессия — Задача 1 (Зачистка нейтралов/эвентов)")]
+        // ---- Агрессия — Задача 1 (Зачистка нейтралов/эвентов) ----
         // Target = a known neutral army and/or the Hex Event it may be guarding — composition is
         // no longer a fixed predicate (see RaidWeakerArmyTask's own class comment): assembled/
         // picked via WorthIt against whichever target is chosen, up to this many raid tasks
         // running at once.
-        public int maxConcurrentRaid = 2;
-        // Added on top of the normal proximity score for a candidate whose target is ALREADY
-        // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path" — no
-        // assembly needed) — a ready win this turn should generally outrank a target that still
-        // needs several turns of assembling first.
-        public float raidReadyArmyBonus = 20f;
+        // 2026-08-20, project owner's own call — dropped from 2: only one raid campaign running
+        // at a time, tune back up later depending on how this plays.
+        public const int maxConcurrentRaid = 1;
+        // raidReadyArmyBonus removed 2026-08-20 (project owner's own call) — a target already
+        // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path", no
+        // assembly needed) now scores the same flat aggressionBaseWeight as any other ready
+        // continuation, no separate top-up.
         // A known non-neutral (real player) army within raidThreatRadius of the raiding army's own
         // hex — if our current force still beats it, added on top of the normal score for
         // attacking THAT army this turn instead of the original neutral/event target (see
         // RaidWeakerArmyTask's own threat-reaction comment); if our force does NOT beat it, this
         // task retreats to the garrison instead — no bonus applies to that branch at all, it isn't
         // a scored candidate, just a forced redirect.
-        public float raidCounterAttackBonus = 30f;
-        public int raidThreatRadius = 2;
-        // Added on top of the normal continuation score (AiTurnController.TryContinueRaidTask's
-        // "advance toward target" leg only) once a raid task is READY and actually travelling —
-        // per the user's own call: an army already "на задании" (mid-mission) must reliably keep
-        // moving ahead of Разведка's own routine scouting hops turn after turn, not just win the
-        // arbiter when everything else happens to line up. RaidWeakerArmyTask.ScoreForContinuation
-        // already drops the citadel-distance penalty for this same reason (see its own comment) —
-        // this bonus is the flat top-up on top of that, sized to clear even a fully-fresh
-        // (pre-reconPriorityDecayStartTurn) recon score at its own best case.
-        public float raidCommittedBonus = 40f;
+        // 2026-08-20 rebalance (project owner's own call): 30 → 20.
+        public const float raidCounterAttackBonus = 20f;
+        public const int raidThreatRadius = 2;
+        // raidCommittedBonus removed 2026-08-19 — superseded by Разведка's own
+        // reconAggressionSuppressionPenalty (see above): keeping a committed raid ahead of routine
+        // scouting is now handled by suppressing Разведка's score instead of inflating Агрессия's.
         // Recall step's own score — an idle army elsewhere on the map walking back toward the
         // garrison to be folded into an assembling raid force (see RaidWeakerArmyTask's own
-        // "Композиция" comment). Deliberately modest: real progress (an actual attack move) should
-        // always outrank prep work, but prep work still needs to actually happen instead of never
-        // winning arbitration against every other candidate every single step.
-        public float raidRecallScore = 30f;
-        // Раздел 5 — "рейд экономики" — a temporary, testing-only extension bundled into THIS task
-        // rather than its own future category (the project owner's own call, 2026): a known enemy
-        // (non-neutral) Base building with no known guard, or one whose known guard our current
-        // force already beats, is also offered as a candidate target, same WorthIt gate as any
-        // neutral/event target. Expect this pair to move to its own dedicated task later.
-        public float raidBuildingUndefendedBonus = 15f;
-        public float raidBuildingGuardedWeakerBonus = 10f;
+        // "Композиция" comment), OR nothing left to do at all (TryRaidReturnHomeCandidates — merged
+        // in here 2026-08-20, project owner's own call: same "walk home, low priority" meaning as
+        // the old separate aggressionWaitScore, no need for two constants). Retuned 2026-08-20
+        // (was -15, before that 30) — still below routine Разведка/Экономика work, but not so low
+        // it never wins arbitration at all against genuine idleness.
+        public const float raidRecallScore = 85f;
+        // Раздел 5 ("рейд экономики") no longer carries its own bonus (removed 2026-08-19,
+        // project owner's own call — raidCounterAttackBonus already covers "attack a known enemy
+        // target we're stronger than"; an enemy building is now just another RaidWeakerArmyTask
+        // target scored on ProximityScore alone, same as any neutral/event target).
         // Сборка с нуля (AiTurnController.TryRaidAssembleCandidates) — own dedicated numbers,
-        // same shape as Разведка's reconRequestArmyPenalty/reconAssembleBonus but not shared with
-        // them (each task's own copy, established pattern by now).
-        public float raidRequestArmyPenalty = -100f;
-        public float raidAssembleBonus = 20f;
-        // AiTurnController.TryRaidReturnHomeCandidates' own fallback — same idea as Экономика's
-        // own economyReturnHomeScore (a taskless field army with nothing left in its own category
-        // anywhere on the map walks home instead of sitting wherever it last stopped), own
-        // dedicated number since the two situations aren't equally urgent. Gated on
-        // RaidWeakerArmyTask.HasAnythingToRaid returning false — a raid army that simply wasn't
-        // this step's pick for a target that DOES still exist elsewhere is left alone rather than
-        // sent home prematurely (the project owner's own report, 2026-08-16: a raid army that won
-        // its fight and had nothing left to chase just sat there forever).
-        public float raidReturnHomeScore = 40f;
-        // TryRaidRegroupCandidates' own dispatch step (AiDecision.DispatchReinforcement) — a
-        // critically wounded field army chose to wait rather than march home itself (cheaper per
-        // its own AP/distance comparison), so a single non-hero courier peels off from the
-        // garrison. Set comparably to raidAssembleBonus's own tier (aggressionBaseWeight +
-        // raidAssembleBonus) so it competes evenly with normal raid-force assembly rather than
-        // always losing or always winning against it.
-        public float raidReinforceDispatchScore = 240f;
+        // same shape as Разведка's reconRequestArmyPenalty/reconAssemblePenalty but not shared with
+        // them (each task's own copy, established pattern by now). Also reused as-is by
+        // AiDefencePlanner's own request-new-army fallback — same "spend AP on a fresh empty army"
+        // situation, no need for a second copy. 2026-08-20 rebalance: -30 → -5, now paired with a
+        // guard (see TryRaidAssembleCandidates/AiDefencePlanner.TryStartDefenceCandidates) that
+        // skips this candidate entirely whenever an idle empty army already exists anywhere on the
+        // map — this penalty only ever applies to the genuinely-nothing-spare case now.
+        public const float raidRequestArmyPenalty = -5f;
+        // 2026-08-20 rebalance (project owner's own call): 20 → 10.
+        public const float raidAssembleBonus = 10f;
+        // TryRaidRegroupCandidates' own dispatch step, AND TryContinueRaidTask's own in-flight
+        // "weakened mid-travel, not from an enemy threat" branch (both AiDecision.
+        // DispatchReinforcement) — a field army chose to wait rather than march home itself
+        // (cheaper per its own AP/distance comparison), so a single non-hero courier peels off
+        // from the garrison. 2026-08-20 rebalance: flattened to aggressionBaseWeight + 15 (was a
+        // standalone 200) — above raidAssembleBonus's own 110, below raidCounterAttackBonus's 120.
+        public const float raidReinforceDispatchScore = aggressionBaseWeight + 15f;
 
-        [Header("Агрессия — Оборона цитадели (temporary, see AiTask.DefendingCitadel)")]
-        // Added on top of aggressionBaseWeight for assembling/recruiting into a DefendingCitadel
-        // task — own dedicated number, parallel to raidAssembleBonus, kept separate since the two
-        // situations (routine raid buildup vs. a real threat sitting next to the player's own
-        // base) aren't equally urgent and may need to diverge later.
-        public float citadelDefenseBonus = 40f;
-        // TryCitadelDefensePreemptCandidates' own score — pulling an army off whatever ACTIVE task
-        // it's currently doing to instead march home and defend the citadel. Set well above
-        // routine VisitHex/BuildFacility travel scores so a genuine "idle reinforcement won't be
-        // enough" emergency reliably wins, comparable in weight-class to raidReinforceDispatchScore.
-        public float citadelDefensePreemptScore = 260f;
+        // ---- Агрессия — Задача 2 (Постройка дополнительной базы) ----
+        // Trigger gate — see BuildBaseTask's own class comment for the full trigger/condition list;
+        // this is just the turn-number floor, checked fresh every step like every other trigger
+        // here (project owner's own call — not a one-time "unlocked at turn 10" latch).
+        public const int buildBaseMinTurn = 10;
+        // At most one base-building campaign running at once — same reasoning as maxConcurrentRaid.
+        public const int maxConcurrentBuildBase = 1;
+        // "Агрессивная армия примерно равна силе активных армий противника" — the composing
+        // army's own (Attack+Defense) must reach at least this SHARE of the single STRONGEST real
+        // enemy army anywhere on the map, among every opponent (AiAggressionPlanner.
+        // RequiredBuildBaseStrength — a deliberate cheat reading live ArmyData, same value whether
+        // there's 1, 2, or 3+ opponents; 2026-08-22, project owner's own call, superseding the
+        // 2026-08-21 "sum of each known enemy player's own honest-memory max" version, which turned
+        // out to have its own bug — a stale AiMapMemory sighting could inflate the requirement
+        // forever, see RequiredBuildBaseStrength's own comment). "Примерно равна", not "beats
+        // outright", so a floor below 1.0 rather than a WorthIt.Beats-style strict comparison.
+        // 2026-08-22 rebalance (project owner's own call): 0.8 → 0.4 — a second base is itself a
+        // strength investment (new production/defense, a forward position), not a reward for
+        // already being strong, so the AI no longer needs to be almost caught up with the single
+        // strongest enemy army before it's allowed to commit to one; being able to field at least
+        // 40% of that army's own combined Attack+Defense is enough of a floor to rule out founding
+        // one with a hero-led army too weak to survive contact at all.
+        public const float buildBaseStrengthToleranceRatio = 0.4f;
+        // Travel score (start-new dispatch AND ordinary in-flight continuation, both in
+        // AiAggressionPlanner) — used to be plain aggressionBaseWeight, tied EXACTLY with
+        // RaidWeakerArmy's own ordinary travel score. AiTurnController.Decide's own candidate list
+        // adds the Raid continuation earlier than the BuildBase one every step (see
+        // TryContinueRaidTask/TryContinueBuildBaseTask's own call order there), and ties break by
+        // list order (`candidate.Score > best.Score`, strict), so on an exact tie BuildBase always
+        // lost arbitration for that step (2026-08-21 simulation report finding). +5 (project
+        // owner's own pick) clears the tie without displacing BuildBase from its overall tier —
+        // still well below buildBaseExecuteScore/raidCounterAttackBonus reactions.
+        public const float buildBaseTravelBonus = 5f;
+        // ARRIVED-at-target execution step's own score — a bump above ordinary travel
+        // (aggressionBaseWeight + buildBaseTravelBonus, see above), same shape
+        // raidReinforceDispatchScore already uses for "finish the job now that we're here".
+        public const float buildBaseExecuteScore = aggressionBaseWeight + 15f;
+        // How far forward BuildBaseTask.FindTargetHex aims from the player's own citadel along the
+        // bisector direction. 2026-08-21 retune (project owner's own call): 4, paired with
+        // buildBaseMinDistanceFromExistingBase below also dropping to 3 so the aim point still
+        // clears that exclusion boundary with a hex or two of neighbor-refinement room to spare —
+        // see that constant's own comment for why the two must move together.
+        public const float buildBaseForwardDistanceHexes = 4f;
+        // Target hex legality — never within this many hexes of an existing own Base-tagged
+        // building (a player can found several bases; this just keeps them spread out rather than
+        // clustered) — the starting citadel itself counts (see buildBaseForwardDistanceHexes's own
+        // comment). 2026-08-21 retune (project owner's own call): 5 → 3, alongside
+        // buildBaseForwardDistanceHexes's own 6 → 4 — the two must stay in the same relative
+        // order (forward distance clear of this exclusion radius) or FindTargetHex's aim point
+        // lands inside its own no-build zone and every candidate near it gets rejected.
+        public const int buildBaseMinDistanceFromExistingBase = 3;
+        // Both the target-selection pre-filter (BuildBaseTask.FindTargetHex skips a hex with a
+        // threatening known non-neutral sighting this close) and the cancel condition once a task
+        // is actually under way (a known enemy sighted within this radius of the target, that could
+        // actually beat the army building there, cancels the task outright). 2026-08-22 rebalance
+        // (project owner's own call): 4 → 2, alongside switching the check itself from bare
+        // presence to a real WorthIt read (see buildBaseMinWinChance and BuildBaseTask.
+        // HasThreateningEnemyNear) — a strength-gated check can afford to sit closer without
+        // over-cancelling on a real threat that hasn't actually closed the distance yet.
+        public const int buildBaseCancelRadius = 2;
+        // BuildBaseTask.HasThreateningEnemyNear's own floor (2026-08-22, project owner's own
+        // simplification — reframed from "the sighting's own win chance" to the more direct "OUR
+        // own win chance"): the BUILDING ARMY's own win chance against a known nearby sighting
+        // (WorthIt.WinChance, buildingArmy as attacker) must stay AT OR ABOVE this before the hex
+        // stays legal / the task keeps going. Below it — cancel. Not the usual 0.5 "would win" bar
+        // every other readiness check in this codebase uses — this is a construction site, not a
+        // fight either side is committing to, so only a real long-shot (below 30%) is worth
+        // abandoning the spot over.
+        public const float buildBaseMinWinChance = 0.3f;
+        // Internal (non-cross-category) hex-ranking weights only — BuildBaseTask.ScoreCandidateHex
+        // never leaks these into AiDecision.Score, same principle BuildFacilityTask.RankHex/
+        // RaidWeakerArmyTask.ProximityScore already establish for their own internal hex picks.
+        public const float buildBaseDefenseBonusWeight = 10f;
+        public const float buildBaseResourceSiteMergeBonus = 20f;
 
-        [Header("Разведка — реакция на угрозу (Задача 1)")]
+        // ---- Оборона (Patrol / Active / Turtle) ----
+        // Full redesign 2026-08-21 (project owner's own spec) — ONE persistent DefendCitadel task/
+        // army cycling through three Posture values (see AiTask.AiDefencePosture) rather than a
+        // single reactive "attack the threat" shape. Triggers/composition retuned again 2026-08-22
+        // (project owner's own follow-up spec — explicit per-posture triggers, WorthIt-only
+        // comparisons everywhere). See AiDefencePlanner's own class comment for the full decision
+        // tree.
+        // Raised from 1 to 2 (2026-08-21, project owner's own call) — a later-founded second base
+        // now fields its own dedicated defender rather than sharing the single roaming one with the
+        // citadel (see AiTask.HomeHex and AiDefencePlanner.TryStartDefenceCandidates' own per-home
+        // loop). The citadel is still serviced first every step — a hard tie-break, not a scoring
+        // bonus — so a second base's own assembly only ever proceeds once the citadel's own task has
+        // nothing left to ask for that step.
+        public const int maxConcurrentDefend = 2;
+        // 1.1 (Active) — a known non-neutral army within this many hexes of ANY of this player's
+        // own Base-tagged hexes (citadel, or a later-built Base) is a real threat worth reacting
+        // to. Wider than the old raidThreatRadius(2) it replaces for this purpose — the project
+        // owner's own spec ("в пределах пяти хексов от любого хекса с базой"). This alone is 1.1's
+        // own TRIGGER (2026-08-22, project owner's own follow-up spec — "видел или видит армию", in
+        // radius) — no separate reachability-in-turns gate any more (removed alongside
+        // defenceReachTurns/TravelTurns): a sighting this close simply IS worth reacting to, full
+        // stop. Whether the task actually moves to attack THIS step is a composition question
+        // instead — see defenceActiveWinChance below.
+        public const int defenceReactionRadius = 5;
+        // 1.1 — Active's own chase-abandon radius (2026-08-22, project owner's own follow-up spec —
+        // "не надо преследовать если армия врага ушла дальше шести хексов от цитадели"): the
+        // sighted target must stay within this many hexes of the task's own HomeHex (the citadel,
+        // or a later-founded base for its own task — NOT the pursuing army's current hex; measured
+        // from home the same way defenceReactionRadius itself is) for Active to keep pursuing it,
+        // re-checked fresh every step exactly like every other trigger in this file — the chase
+        // simply stops the moment the target's own known position drifts past this, no separate
+        // "gave up" bookkeeping needed (an army that arrives at a last-known hex and finds nobody
+        // there falls through to ordinary Patrol from wherever it ended up, same as any other "no
+        // target" step). Deliberately WIDER than defenceReactionRadius(5) — that one only gates
+        // STARTING a chase; a target that drifts a little past the trigger radius while already
+        // being pursued shouldn't immediately cancel the chase that radius itself just started, or
+        // Active would flip-flop start/stop right at the boundary. See
+        // AiDefencePlanner.FindActiveThreatSighting.
+        public const int defenceChaseAbandonRadius = 6;
+        // 1.1 — Active's own composition target, dynamic against whichever real sighting triggered
+        // it (2026-08-22, project owner's own spec: "сильнее... шанс победы 60 на 40%... если армии
+        // равны то это 50 на 50%") — WorthIt.WinChance must clear this before the task actually
+        // moves to intercept rather than keep assembling in place. 0.5 would be a bare coin-flip
+        // "technically wins"; 0.6 is the project owner's own explicit margin.
+        public const float defenceActiveWinChance = 0.6f;
+        // 1.3 (Turtle) — AiDefencePlanner.IsUnderSiege's own trigger radius: a known non-neutral
+        // army THIS CLOSE to the citadel, stronger (WorthIt) than the current DefendCitadel task's
+        // own army (or the bare garrison if no task exists yet) forces full alarm — mass at the
+        // citadel, recall active raids (see AiAggressionPlanner). Narrower than
+        // defenceReactionRadius on purpose: 1.1 reacts early at range, Turtle is the "it's already
+        // at the door and we can't win" fallback.
+        public const int siegeRadius = 4;
+        // 1.2 (Patrol) — how far from the citadel this player's own extraction facilities are
+        // still patrol targets. Same number as defenceReactionRadius today, own constant since the
+        // project owner specified it independently (nothing requires the two to stay equal).
+        public const int patrolRadius = 5;
+        // 1.2 — Patrol's own fixed composition target (2026-08-22, project owner's own spec: "два
+        // юнита или герой + два юнита") — replaces the old CheatEstimateRaiderThreat-sized target
+        // entirely; a hero is welcome but never required to count as ready. CheatEstimateRaiderThreat
+        // is now purely Patrol's own TRIGGER (see AiDefencePlanner.PatrolThreatPresent) — a real
+        // scout/raider within defenceReactionRadius of a base is what starts/grows this task at all,
+        // not what sizes it.
+        public const int defencePatrolMinUnits = 2;
+        // 1.2's own LOCAL reaction radius — distinct from defenceReactionRadius (which is measured
+        // from the CITADEL, not from the patrol itself). A known non-neutral army THIS CLOSE to the
+        // patrol's own current hex, regardless of distance from base, is Patrol's own business to
+        // react to (2026-08-21, project owner's own follow-up spec — "на то он и патруль"): beat it
+        // (WorthIt) → attack, then resume patrol; can't beat it → retreat to the garrison, one-way
+        // (reuses AiTask.Retreating, same shape Агрессия's own outmatched-threat reaction already
+        // uses). Deliberately tight (2, not patrolRadius/defenceReactionRadius's own 5) — this is
+        // "something right next to me", not "somewhere in my patrol zone".
+        public const int patrolLocalThreatRadius = 2;
+        // 1.3.3 — Turtle's own forced raid-recall path avoids every hex within this many hexes of
+        // the known threat (not just the threat's own hex) so a retreating army's own Recce isn't
+        // spotted marching home weak — see AiAggressionPlanner.FindNextRetreatStep's own blockHex
+        // parameter. The garrison hex itself is always exempt from this buffer (the project
+        // owner's own call: the last step may enter home directly even inside the buffer).
+        public const int defenceRetreatAvoidRadius = 1;
+        // 1.1 — Active engagement/assembly score. Retuned 2026-08-21 (simulation report finding):
+        // a flat 100 tied EXACTLY with Recon's own undecayed baseline and Aggression's own routine
+        // continuation, both of which — the same simulation's own arbitration read of
+        // AiTurnController.Decide's `candidate.Score > best.Score` — are gathered EARLIER in
+        // Decide's own candidate list, so on a tie Оборона silently lost to routine scouting/raiding
+        // instead of the "гарантированная немедленная реакция" the project owner asked for. Bumped
+        // clear of economyBaseWeight (110) too, same shape Агрессия's own raidCounterAttackBonus
+        // already uses for "react to a nearby known army" (aggressionBaseWeight + 20).
+        public const float defenceActiveScore = 120f;
+        // 1.2 — Patrol's own routine movement score, deliberately BELOW the real-work tier
+        // (economyBaseWeight 110, reconBaseWeight/aggressionBaseWeight 100) — patrol is proactive
+        // background coverage, not urgent, but still comfortably above every Менеджмент idle
+        // fallback (managementFallbackHighScore 15). Known open question (simulation report): at
+        // 90 Patrol can lose arbitration to Economy/Recon/Aggression on essentially every busy
+        // step — left as-is pending the project owner's own call on whether that's acceptable.
+        public const float defencePatrolScore = 90f;
+        // Patrol's own dynamic floor (2026-08-21, project owner's own "option 2" call) — the score
+        // an assembling/growing Defence force gets when AiDefencePlanner.DynamicPatrolUrgencyScore
+        // finds nothing worth reacting to anywhere near a base or facility hex. Deliberately below
+        // aggressionBaseWeight/reconBaseWeight (100) so an empty map never lets Оборона's own
+        // buildup outrank Агрессия just because it exists — the whole point of the dynamic score is
+        // that early-game buildup with nothing nearby should NOT compete for AP/recruits against
+        // real work. Still comfortably above managementFallbackHighScore so an idle army still
+        // prefers slowly forming a patrol over doing nothing.
+        public const float defencePatrolScoreFloor = 55f;
+        // How far a real (cheat-read, see DynamicPatrolUrgencyScore's own comment) enemy army has to
+        // be from a base/facility hex before it stops contributing to Patrol's own urgency at all —
+        // one flat radius for every enemy army shape (2026-08-22, project owner's own follow-up
+        // call, dropped the old scout-vs-real-army split this used to share with
+        // patrolScoutDangerRadius, now removed — "если враг в радиусе 8 хексов, то нужен патруль и
+        // всё", a scout included).
+        public const int patrolDangerRadius = 8;
+        // 1.3 — Turtle's own march-to/hold-at-citadel score. Same tier as defenceActiveScore (was
+        // separately flat-100 before the 2026-08-21 retune above) — a sortie out of Turtle IS a
+        // conversion into Active (see AiDefencePlanner's own class comment), so the two should never
+        // be allowed to drift apart again the way defenceActiveScore alone almost did.
+        public const float defenceTurtleScore = defenceActiveScore;
+        // AiDefencePlanner's own preempt tier — gated on IsUnderSiege (Turtle only, per the project
+        // owner's own call: outside an active siege there's no urgent need to strip another
+        // category's task for the citadel's sake). Retuned 2026-08-21 alongside defenceActiveScore
+        // for the same reason (simulation report: a flat 100 tied routine Recon/Aggression work and
+        // lost outright to Economy(110) — an "emergency reinforcement" must not be a coin flip
+        // against ordinary turns). Also reused as-is by AiAggressionPlanner's own siege-forced raid
+        // recall (see TryContinueRaidTask) — the project owner's own call to keep both "siege demands
+        // this army NOW" reactions on the same urgent tier, rather than a third near-duplicate
+        // constant.
+        public const float defencePreemptScore = 120f;
+
+        // ---- Разведка — реакция на угрозу (Задача 1) ----
         // A known enemy army within this many hexes of a scout's own current hex reroutes it
         // toward the garrison for one turn instead of whatever Задача 1 would otherwise propose.
         // Neutral armies never trigger this — see VisitHexTask.TryFlee.
-        public int scoutFleeRadius = 2;
-        public float scoutFleeBonus = 50f;
+        public const int scoutFleeRadius = 2;
+        // Retuned 2026-08-20 (was 120, before that 50) — 120 pushed the total flee score to
+        // ~210-220 (reconBaseWeight + this, minus AggressionSuppressionPenalty if a raid is
+        // active), badly out of scale with the rest of the arbiter; 25 keeps the nominal total at
+        // ReconMoveWeight(100) + 25 = 125 — still reliably above every routine candidate (still
+        // above scoutFleeRadius's own trigger radius reasoning: a scout under threat must win
+        // arbitration over everything else the same step, just not by triple the score of
+        // anything it's actually competing against).
+        public const float scoutFleeBonus = 25f;
 
-        [Header("Экономика — Задача 1 (Постройка facility)")]
-        // A BuildFacility task already standing at its target, able to afford building right now —
-        // flat, since the hero already fully committed to this specific hex.
-        public float buildFacilityReadyBonus = 100f;
+        // ---- Экономика — Задача 1 (Постройка facility) ----
+        // "1 постройка за раз" — the project owner's own 2026-08-19 call: several concurrent builds
+        // were each reserving a different resource type, between them locking card play out of all
+        // four at once (see AiResourceReservation). The existing scarcity-switch (isScarcer, see
+        // TryStartEconomyCandidates) still lets the one active hero redirect to a newly-found
+        // scarcer hex even at this cap — only starting a genuinely NEW build is capped.
+        public const int maxConcurrentBuildFacility = 1;
+        // buildFacilityReadyBonus/economyHeroDetachScore/economyReturnHomeScore all removed
+        // 2026-08-19 (project owner's own call) — a task standing at its own base score
+        // (economyBaseWeight, now 110) already reliably wins arbitration on its own; none of these
+        // sub-steps needs its own inflated top-up any more the way they did stacked on the old
+        // 200-point base.
 
-        [Header("Менеджмент — Починка юнита")]
+        // ---- Задачи 1 уровня — дальность от цитадели (кросс-категорийно) ----
+        // Shared by Экономика (BuildFacilityTask.ScoreHex) and Агрессия (RaidWeakerArmyTask.
+        // ProximityScore) — project owner's own 2026-08-19 rebalance: "мы не особо хотим строить/
+        // рейдить в далеке от цитадели", applied identically to both category base scores. NOT
+        // shared with Разведка — VisitHex's own citadel-distance term (visitTargetCitadelWeight,
+        // see above) stays purely internal to which hex VisitHexTask itself picks, by explicit
+        // contrast with these two.
+        public const int citadelPenaltyFreeRadius = 3;
+        public const float citadelDistancePenaltyPerHex = 5f;
+
+        // ---- Менеджмент — Починка юнита ----
         // Owned by AiManagementPlanner, not AiEconomyPlanner — see AiTask.cs's own AiTaskKind.
         // RepairUnit comment for why. Deliberately its own tier, not economyBaseWeight — cheap, so
         // it should usually beat a typical unpressured PlayCard score (managementBaseWeight + a
@@ -189,177 +426,219 @@ namespace Game.Ai
         // (see AiManagementPlanner.WouldBlockAffordableCard for the one explicit exception —
         // repair still yields for a turn if paying for it would specifically make a pricier,
         // otherwise-affordable Unit/Hero card unaffordable).
-        public float repairUnitBaseWeight = 90f;
+        public const float repairUnitBaseWeight = 90f;
         // Never start, and never continue, a BuildFacility task while a known NEUTRAL army sits
         // within this many hexes of the target — a neutral guarding the area isn't a threat to
-        // react to, it's simply a bad spot to commit a facility to (see BuildFacilityTask.
-        // HasNeutralThreat). Cancels the task outright (same as picking a different hex never
-        // having been offered in the first place) so a better, unguarded hex gets picked instead —
-        // same hard-cancel treatment a known ENEMY within economySafetyRadius now also gets (see
-        // BuildFacilityTask.HasEnemyThreat); Задача 1 no longer has a temporary one-turn retreat
-        // like Разведка's own tasks do, the project owner's own call that a hero mid-build has
-        // nothing better to fall back to anyway.
-        public int neutralBuildAvoidRadius = 2;
+        // react to (we can walk past/around one freely, per the project owner's own call — this
+        // radius governs BUILDING near it, not travel), it's simply a bad spot to commit a facility
+        // to (see BuildFacilityTask.HasNeutralThreat/HasAdjacentNeutralThreat, now the SAME radius
+        // for both the initial hex pre-pass and an already-committed task's own cancel check —
+        // 2026-08-21 fix, project owner's own report: a separate, wider neutralBuildAvoidRadius
+        // used to gate cancellation alone, so a hex just outside the narrower start-trigger radius
+        // but still inside that wider one would pass the pre-pass, get selected, spawn a fresh
+        // hero-led army for it, and cancel again almost immediately — leaving a pile of empty,
+        // never-reused army shells behind every single time that same hex got re-picked next turn).
+        // Cancels the task outright (same as picking a different hex never having been offered in
+        // the first place) so a better, unguarded hex gets picked instead — same hard-cancel
+        // treatment a known ENEMY within economySafetyRadius now also gets (see BuildFacilityTask.
+        // HasEnemyThreat, a genuinely different, combat-strength-based reaction — real enemy
+        // players never route through this neutral-only radius); Задача 1 no longer has a temporary
+        // one-turn retreat like Разведка's own tasks do, the project owner's own call that a hero
+        // mid-build has nothing better to fall back to anyway.
+        public const int neutralBuildTriggerRadius = 1;
         // Blunt safeguard against a permanently-stuck task (hex claimed by someone else, facility
         // slot full).
-        public int maxBuildAttempts = 3;
-        // Added to a candidate hex's own score, one resource type's own current stockpile at a
-        // time (BuildFacilityTask.ScoreHex) — a scarcer type (lower root.GetResource) scores
-        // higher, same "строим то, чего меньше всего в закромах" heuristic Разведка · Задача 2's
-        // own WantedResourceType already uses, just applied directly to Задача 1's own hex
-        // candidates instead of gating what Разведка goes looking for. Strong enough that a hero
-        // ALREADY mid-build for a less scarce type can be preempted by a newly-known hex of a
-        // scarcer type (see TryStartEconomyCandidates's own scarcity-switch comment) — reservations
-        // are just an accounting claim (see AiResourceReservation's own class comment), never an
-        // actual spend, so releasing one to redirect a hero costs nothing but travel time.
-        public float buildScarcityWeight = 1f;
-        // Flat score for a resourceType with NO current income source at all (see
-        // BuildFacilityTask.HasIncomeSource) — replaces buildScarcityWeight's own stockpile term
-        // entirely rather than adding to it, so a type sitting on a large one-off event stockpile
-        // but genuinely un-mined still always outranks any type that already has SOME income,
-        // regardless of that stockpile's size (project owner's own call, 2026-08-17: deficit must
-        // be judged by income first, current stock only second).
-        public float buildNoIncomeBonus = 100f;
-        // A hero-led army with no active task, nothing left anywhere to build (BuildFacilityTask.
-        // HasAnythingToBuild), and not already at the garrison — walks home instead of sitting
-        // wherever it last stopped, same idea as Разведка's own TryReturnHomeCandidates but its
-        // own separate number since the two situations aren't equally urgent.
-        public float economyReturnHomeScore = 40f;
-        // A hero sitting solo inside the Garrison stockpile is invisible to AiEconomyPlanner.
-        // FindNearestHero's own AiArmyRoles.IsHeroLed scan (that always excludes IsGarrison) —
-        // this is the prep step that pulls it out into its own fresh army first (see
-        // AiEconomyPlanner.FindNearestHeroAnywhere/TryStartEconomyCandidates), mirroring
-        // ResourceScrapDetachScore's own "prep step for the OTHER Economy task" shape. Above
-        // ordinary Менеджмент housekeeping, below the actual walk/build steps that follow it next
-        // turn (the project owner's own "герой застрял в гарнизоне, невидим для стройки" report).
-        public float economyHeroDetachScore = 90f;
+        public const int maxBuildAttempts = 3;
+        // Экономика's own INTERNAL hex-ranking terms only (project owner's own 2026-08-19 call,
+        // same "какой ресурс выбрать первым — не должно течь наружу" principle as Разведка's own
+        // scoutProximityWeight/freshNeighborWeight) — used by BuildFacilityTask.RankHex to pick
+        // WHICH known free resource hex TryStartEconomyCandidates commits to next, one per player
+        // per step (maxConcurrentBuildFacility caps it at one build overall anyway). Never added to
+        // BuildFacilityTask.ScoreHex — the cross-category score every OTHER category's candidate
+        // actually competes against — any more.
+        //
+        // buildScarcityWeight — a scarcer type (lower root.GetResource) ranks higher, same
+        // "строим то, чего меньше всего в закромах" heuristic Разведка · Задача 2 used to use.
+        public const float buildScarcityWeight = 1f;
+        // buildNoIncomeBonus — flat rank bonus for a resourceType with NO current income source at
+        // all (see BuildFacilityTask.HasIncomeSource), replacing buildScarcityWeight's own
+        // stockpile term entirely rather than adding to it (project owner's own call, 2026-08-17:
+        // deficit must be judged by income first, current stock only second).
+        public const float buildNoIncomeBonus = 100f;
 
-        [Header("Экономика — Задача 2 (ResourcesScrap)")]
+        // ---- Экономика — Задача 2 (ResourcesScrap) ----
         // Added on top of economyBaseWeight — scrapping via a unit's own CollectX ability costs no
-        // AP/resources, so it should generally win the arbiter over a Задача 1 candidate.
-        public float resourceScrapBaseWeightBonus = 20f;
-        // Added on top of managementReorgScore — comfortably above ordinary garrison upkeep, but
-        // below the actual walk/build steps of either Economy task.
-        public float resourceScrapDetachScoreBonus = 10f;
+        // AP/resources, so it should still edge out a Задача 1 candidate, just by a slimmer margin
+        // now (project owner's own 2026-08-19 rebalance: 20 → 5, was winning arbitration too
+        // reliably).
+        public const float resourceScrapBaseWeightBonus = 5f;
+        // Detach-prerequisite penalty (see ResourceScrapDetachScore/AiEconomyPlanner.
+        // TryStartCollectorDetachCandidates) — subtracted whenever the collector unit sits inside
+        // an army that's already mid another active task, so that army doesn't abandon real work
+        // just to ferry the collector out for a detach (project owner's own 2026-08-19 call).
+        public const float resourceScrapDetachOnTaskPenalty = 20f;
         // Never start, and never continue, a ResourcesScrap task while a known enemy army sits
         // within this many hexes of the target. Shared with Задача 1's own enemy-threat check
         // (BuildFacilityTask.HasEnemyThreat) — one "how close is too close for Economy" number for
         // both tasks, each still free to get its own value later if that turns out wrong.
-        public int economySafetyRadius = 2;
+        public const int economySafetyRadius = 2;
 
-        [Header("Менеджмент")]
+        // ---- Менеджмент ----
+        // Multi-base routing (2026-08-21, project owner's own call) — which of this player's own
+        // garrisoned hexes (citadel or a later-founded base) card-play/reserve-spawn/garrison-reorg
+        // should favor right now: whichever has more real, fog-of-war-honest enemy activity nearby
+        // (AiMapMemory sightings only — deliberately NOT the raw-ArmyData cheat AiDefencePlanner.
+        // CheatEstimateRaiderThreat/DynamicPatrolUrgencyScore use for Оборона's own proactive
+        // patrol sizing; Менеджмент's routing only ever reacts to what's actually been scouted).
+        // Same value as AiConfig.defenceReactionRadius today, own constant since the two measure
+        // different things and may need to diverge later.
+        public const int managementActivityRadius = 5;
         // "не надо их плодить каждый ход, одной-двух армий про запас должно хватить".
-        public int maxSpareArmies = 2;
+        public const int maxSpareArmies = 2;
         // Garrison stops accepting fresh PlayCard deposits (Unit or Hero card alike) once only
         // THIS many slots remain open — "если в гарнизоне уже заканчивается место (остаётся один
-        // слот), юниты перераспределяются в резервную армию" (the project owner's own spec).
-        // FindGarrisonOverflow's own eviction trigger already aims for this exact same
-        // "Capacity - 1" equilibrium from the other direction (evicts down to one free slot), so
-        // garrison settles there either way.
-        public int garrisonReservedSlots = 1;
-        // "лучше держать несколько героев в гарнизоне, чем плодить слабые армии" — the project
-        // owner's own spec: N hero-led armies splitting whatever combat strength exists can never
-        // ALL average more than 1/N of the whole (an even split is the best case), so this
-        // directly caps how many can exist at once — see MaxActiveHeroArmies below for the actual
-        // derived count, and GarrisonReorgTask.CanSupportAnotherHeroArmy for where it's enforced.
-        // 0.35 → at most 2 (a three-way split would floor around 33%, under the 35% floor).
-        public float minArmyStrengthShare = 0.35f;
-        // Derived from minArmyStrengthShare above — see its own comment for the math. At least 1,
-        // so a single hero can always lead something even if the share were configured absurdly
-        // high.
-        public int MaxActiveHeroArmies => System.Math.Max(1, (int)(1f / minArmyStrengthShare));
+        // слот), юниты перераспределяются в резервную армию" (the project owner's own spec). Card
+        // deposits only — GarrisonReorgTask.FindGarrisonOverflow used to aim for this exact same
+        // "Capacity - 1" equilibrium from the eviction side too, but doesn't any more (2026-08-20,
+        // project owner's own fix — see that method's own comment): it now evicts down to LITERAL
+        // full capacity, not one below, so the garrison no longer settles at this same buffer from
+        // both directions any more, just this one (card deposits).
+        public const int garrisonReservedSlots = 1;
+        // MaxActiveHeroArmies/minArmyStrengthShare removed 2026-08-19 (project owner's own call —
+        // "что это вообще такое? = надо убрать"): FindPlacement no longer benches a Hero card in
+        // garrison to stay under a hero-army cap — every Unit/Hero card now goes through the same
+        // garrison-first placement (see FindPlacement's own comment), and
+        // GarrisonReorgTask.FindGarrisonHeroToPromote no longer gated on it either (its own former
+        // sibling, FindHeroEscortFromGarrison, has since been removed entirely — see
+        // GarrisonReorgTask's own class comment). Nothing left reads either constant.
         // AiArmyRoles.IsSoloHeroAwaitingEscort's own fallback move — protecting this fragile,
-        // escort-less hero outranks every OTHER Менеджмент action.
-        public float managementReturnHomeScore = 100f;
+        // escort-less hero outranks every OTHER Менеджмент action. 2026-08-20: 100 → 105.
+        public const float managementReturnHomeScore = 105f;
         // Экономика · Задача 2's own detach-prerequisite base (see ResourceScrapDetachScore) —
-        // no longer read by garrison-overflow/consolidation, see managementGarrisonBalanceScore
-        // for that. Kept above PlayCard on purpose: an Economy collector detach is a real
+        // garrison-overflow/consolidation no longer read a score at all any more (see
+        // AiTurnController.RunGarrisonReorgPhase's own comment). Kept above PlayCard on purpose: an
+        // Economy collector detach is a real
         // in-progress task, not idle housekeeping.
-        public float managementReorgScore = 80f;
-        // A Recce card grows the scout pipeline, so it's worth a small nudge over an otherwise-
-        // equal Unit/Hero card.
-        public float playRecceCardBonus = 20f;
-        // Added per additional unplayed plain Unit card sitting in hand beyond the first (see
-        // TryPlayCardCandidates's own comment) — a growing backlog itself raises the urgency of
-        // playing ANY of them, rather than staying pinned at a flat managementBaseWeight forever
-        // and routinely losing the tie-break to RequestRaidArmy/SpawnReconArmy's own flat 50 (the
-        // project owner's own "AI won't deploy units" report — cards just piled up in hand turn
-        // after turn). 10 → a hand of 5 unplayed Unit cards already outscores those 50-flat
-        // infra-creation candidates (managementBaseWeight 50 + 10×4 = 90) without needing to touch
-        // Economy/Recon's own much higher range.
-        public float unitCardBacklogWeight = 10f;
-        // A non-Recce Hero card's own equivalent of playRecceCardBonus — before this a Hero sat at
-        // a permanently flat managementBaseWeight with no nudge at all, so it lost the tie-break to
-        // literally any Unit card the moment the Unit backlog reached 2 (the project owner's own
-        // "ИИ не использует героев из руки" report — logged hand snapshots showed a hero sitting
-        // unplayed for 5+ turns straight while Unit cards kept getting drawn AND played ahead of
-        // it). A flat nudge so a single hero in hand still outranks a similarly-fresh Unit card.
-        // Deliberately smaller than the original fix's 20 (see the project owner's own 2026-08-17
-        // follow-up report: at the old 20 + the old Hero-only heroCardBacklogWeight(15), a hand
-        // with just 3 heroes already outscored a Recce card's own flat playRecceCardBonus even with
-        // reconHandDemandBacklogDamping applied) — this is the shaved-down replacement, kept small
-        // rather than removed outright so the original starvation fix doesn't regress.
-        public float playHeroCardBonus = 15f;
-        // Hero's own backlog growth now reuses unitCardBacklogWeight directly instead of its own
-        // separate (and steeper) constant — see playHeroCardBonus's own comment for why a Hero
-        // growing its backlog FASTER than a Unit was part of what let a handful of heroes outscore
-        // Разведка's own Recce-card demand. Counted separately from unplayedUnitCards still (own
-        // pile, own urgency) — only the per-card weight is now shared, not the count.
+        public const float managementReorgScore = 80f;
+        // Recce cards never reach TryPlayCardCandidates at all any more (2026-08-19, project
+        // owner's own call — "ScoutPlanner должен сам решить куда положить своего скаута,
+        // менеджеру об этом знать не обязательно") — AiScoutPlanner.
+        // TryStartReconAssemblyCandidatesFor fetches and places its own matching Recce card
+        // directly, at plain reconBaseWeight, without ever competing against this file's own
+        // managementBaseWeight. Менеджмент's own backlog pressure below is Unit/Hero only.
         //
-        // Multiplies this shared weight down (not to zero — a stalled Разведка assembly still
-        // shouldn't stall Менеджмент's own backlog pressure completely) whenever Разведка already
-        // has an active SpawnReconArmy/AssembleRecceScout candidate this same step — i.e. it's
-        // already mid-pursuit of a matching Recce card from this exact hand. Without this, a hand
-        // that piles up several plain Unit/Hero cards drowns out a flat Recce card in the backlog
-        // race even though playing the Recce card ALSO relieves the hand — see the project owner's
-        // own 2026-08-17 report (Scrapper sitting unplayed behind AT Infantry purely because
-        // unitCardBacklogWeight had already stacked past playRecceCardBonus). Damping alone still
-        // isn't airtight against a large enough Hero/Unit pile, which is what
-        // TryPlayCardCandidates's own reconHandDemandActive Recce score bump (matching Разведка's
-        // OWN valuation of the identical situation — reconBaseWeight + reconRequestCardPenalty,
-        // see AiScoutPlanner.TryStartReconAssemblyCandidatesFor's own PlayCard branch) is for.
-        public float reconHandDemandBacklogDamping = 0.5f;
+        // Scaled by a role's own SHARE of the unplayed Unit+Hero pool (unplayedThisRole /
+        // (unplayedHero + unplayedUnit), 2026-08-21 fix, project owner's own report — a growing
+        // backlog itself raises the urgency of playing ANY of them, rather than staying pinned at
+        // a flat managementBaseWeight forever and routinely losing the tie-break to
+        // RequestRaidArmy/SpawnReconArmy's own flat 50 (the project owner's own "AI won't deploy
+        // units" report — cards just piled up in hand turn after turn). Deliberately a SHARE, not
+        // a raw per-extra-card count the way this used to work (own report, 2026-08-21: "карта
+        // героя не розыгрывается") — Hero cards are structurally rarer in this deck than Unit
+        // cards, so a plain "+10 per card beyond the first" formula let Unit's own backlog climb
+        // several times higher than Hero's ever could just from deck composition alone, no matter
+        // how long Hero cards sat unplayed; cardRoleAlternationDamping's own halving on top of
+        // that still never closed a 3:1+ gap, so Hero essentially never won. Share is bounded to
+        // [0,1] for BOTH roles regardless of how lopsided the deck's own Hero:Unit ratio is — 50 →
+        // a role that's 100% of the currently-unplayed pool tops out at managementBaseWeight 50 +
+        // 50 = 100, the same ceiling either role could reach on its own, never structurally
+        // favoring whichever role the deck simply deals more copies of. Unit and Hero cards each
+        // read their own share of the SAME pool (they sum to 1 between them), but share this one
+        // weight and formula — no separate Hero-only bonus any more (playHeroCardBonus removed
+        // 2026-08-19, project owner's own call: "убираем playHeroCardBonus, альтернейшен закроет
+        // необходимость в героях" — see cardRoleAlternationDamping below for the mechanism that's
+        // meant to cover it instead).
+        public const float cardRoleBacklogShareWeight = 50f;
         // Hero/Unit PlayCard alternation (see AiManagementPlanner's own "Разыгрывание карты —
         // чередование ролей" section, IsCardRoleCoolingDown/NotifyCardRolePlayed) — multiplies a
-        // role's own bonus+backlog terms down for the step right after THAT role's own card just
-        // got played, until the OTHER role gets one played instead. The project owner's own
+        // role's own backlog term down for the step right after THAT role's own card just got
+        // played, until the OTHER role gets one played instead. The project owner's own
         // 2026-08-17 follow-up: with a hand holding several of both, the AI kept exhausting every
         // Hero card back-to-back before touching a single Unit (or vice versa) purely because
         // whichever role still had the taller backlog pile always kept winning — this makes
         // playing ONE card of a role cool that same role off for a turn, so a hand with 3 heroes
-        // and 3 units alternates between them turn to turn instead. Partial, not full suppression
-        // — same reasoning as reconHandDemandBacklogDamping: if the OTHER role has nothing left in
-        // hand at all, this role still has to keep winning, just at a discount.
-        public float cardRoleAlternationDamping = 0.5f;
-        // Garrison-overflow rebalance / lone-army consolidation — deliberately BELOW PlayCard's
-        // own managementBaseWeight (a hero/unit card in hand must always get played before the AI
-        // starts reshuffling its own base stock) and ABOVE both Reserve/Draw fallback tiers below
-        // (idle housekeeping still beats doing literally nothing with leftover AP). Used to share
-        // managementReorgScore (80, well above PlayCard) — that let the split→consolidate cycle
-        // (garrison overflows → new army spun up → that new lone army folds straight back into
-        // the now-open garrison slot → overflows again) eat the whole turn's step budget before a
-        // hero card ever got a chance to be proposed as the winner (see the project owner's own
-        // "ИИ перестал создавать героев" / "21 пустая армия" report).
-        public float managementGarrisonBalanceScore = 20f;
+        // and 3 units alternates between them turn to turn instead. Lowered from 0.5 to 0.1
+        // (2026-08-21 fix, project owner's own report — same "карта героя не розыгрывается"
+        // investigation cardRoleBacklogShareWeight's own comment describes): even with backlog now
+        // read as a bounded SHARE, 0.5 still isn't a strong enough discount to flip the winner once
+        // one role's share gets much bigger than the other's — the just-played role only loses the
+        // tie once damping × itsShare < theOtherRole'sShare, i.e. (since the two shares sum to 1)
+        // once damping < otherShare / (1 − otherShare). At 0.5 that only ever holds once the
+        // damped role's own share drops below 1/3 of the pool — comfortably above what a real
+        // Hero-light hand (say 1 Hero in 9 relevant cards, share ≈0.1) ever reaches, so Unit kept
+        // winning turn after turn regardless. 0.1 holds the alternation up to roughly a 1-in-9
+        // split — the discounted role still wins outright once the OTHER role's hand is completely
+        // empty (Partial, not full suppression — if the OTHER role has nothing left in hand at
+        // all, this role still has to keep winning, just at this same discount).
+        public const float cardRoleAlternationDamping = 0.1f;
+        // Unit card composition-fit — see AiManagementPlanner.UnitCompositionFitBonus's own
+        // comment for the full list of gaps this checks (Defense/Attack imbalance, melee/ranged
+        // imbalance, too many ability-heavy units, a critically wounded raid-force member of a
+        // matching type, a counter-tech ability against an already-scouted enemy TypeTag). Flat
+        // and shared across every one of those checks on purpose (2026-08-19, project owner's own
+        // call: "нормальный скоринг" — several can independently apply to the same card and
+        // simply add up, rather than each needing its own hand-tuned weight before any of this
+        // has even been playtested once). Purely an INTERNAL ranking key, same "видимость с
+        // памятью"-style scoping VisitHexTask.FindTarget's own Score and BuildFacilityTask.
+        // RankHex already keep to themselves — TryPlayCardCandidates' own pre-pass uses this only
+        // to pick which ONE Unit card to nominate this step; the AiDecision.Score that card
+        // actually competes against MoveArmy/BuildFacility/etc. with never includes it at all
+        // (the project owner's own explicit check: "надеюсь это внутренний скоринг ... не влияет
+        // на скоринг между остальными задачами" — confirmed, and enforced by construction now,
+        // not just by convention). So this constant's own absolute magnitude doesn't need to stay
+        // small relative to cardRoleBacklogShareWeight the way a cross-category term would — it
+        // only ever has to be able to tell two Unit cards apart from each other.
+        public const float unitCompositionGapBonus = 15f;
+        // managementGarrisonBalanceScore removed 2026-08-20 (project owner's own call: "задача
+        // бесплатная, поэтому ей не с кем конкурировать") — garrison-overflow split and lone-army
+        // consolidation are no longer AiDecision.Score-bearing candidates in Decide's own per-step
+        // arbitration at all; AiTurnController.RunGarrisonReorgPhase runs them unconditionally
+        // instead, once per turn, as the very last thing a turn does (see that method's own
+        // comment). GarrisonReorgTask.CanAffordTransferInto already gates every move on real
+        // affordability, so neither ever needed a score to justify running.
+        // Safety net for RunGarrisonReorgPhase only, same shape as maxStepsPerTurn's own comment —
+        // each iteration performs at most one move and GarrisonReorgTask's own tiers strictly move
+        // the roster toward a more balanced state (nothing in that class proposes undoing a move it
+        // just made), so a real turn settles in well under this many. Not the same constant as
+        // maxStepsPerTurn on purpose — that one bounds the whole turn's main arbitrated loop, this
+        // one bounds only the dedicated end-of-turn reorg drain.
+        public const int maxGarrisonReorgStepsPerTurn = 20;
+        // GarrisonReorgTask.FindGarrisonArmyStrengthBalanceMove's own target split of combined
+        // non-hero power between the garrison and the one field army it's currently leveling
+        // against (2026-08-20, project owner's own pick out of the 80/20-50/50 range they offered
+        // — "70/30 (Рекомендую)"). Tolerance keeps a share that's already close to target from
+        // triggering a correction every single drain call over a fractional-percent difference —
+        // same purpose as garrisonReservedSlots above, just for a ratio instead of a slot count.
+        public const float garrisonPowerShareTarget = 0.7f;
+        public const float garrisonPowerShareTolerance = 0.1f;
+        // GarrisonReorgTask.FindHexBalanceMove's own floor (2026-08-20, project owner's own point
+        // 3) — with this few non-hero units total on a hex, there's nothing worth balancing: three
+        // armies of one unit each get picked off one at a time, so everything just stays put in
+        // the garrison as one coherent stack instead of getting split toward a ratio that doesn't
+        // matter yet.
+        public const int minHexUnitsForBalancing = 3;
         // Leftover-AP fallbacks (Reserve army / draw a card) — whichever AiManagementPlanner.
         // IsPreferred says is due next gets High, the other gets Low, so the two alternate turn by
         // turn.
-        public float managementFallbackHighScore = 15f;
-        public float managementFallbackLowScore = 5f;
+        public const float managementFallbackHighScore = 15f;
+        public const float managementFallbackLowScore = 5f;
         // An arrived BuildFacility task that still can't build (short on AP/still saving up) — a
         // deliberately tiny score so real work always wins, but this still beats a silent Pass.
-        public float economyWaitScore = 1f;
+        public const float economyWaitScore = 1f;
 
-        [Header("Army Roles (AiArmyRoles)")]
+        // ---- Army Roles (AiArmyRoles) ----
         // AiArmyRoles.IsMakeshiftScoutCapable's own lower bound — filled to at least Hero+2 (or as
         // full as a lower-CommandRating hero's own Capacity allows).
-        public int makeshiftScoutMinMembers = 3; // hero + 2
+        public const int makeshiftScoutMinMembers = 3; // hero + 2
 
         // Экономика · Задача 2's own base weight — see resourceScrapBaseWeightBonus's own comment.
-        public float ResourceScrapBaseWeight => economyBaseWeight + resourceScrapBaseWeightBonus;
+        public static float ResourceScrapBaseWeight => economyBaseWeight + resourceScrapBaseWeightBonus;
 
-        // Экономика · Задача 2's own detach-prerequisite score — see
-        // resourceScrapDetachScoreBonus's own comment.
-        public float ResourceScrapDetachScore => managementReorgScore + resourceScrapDetachScoreBonus;
+        // Экономика · Задача 2's own detach-prerequisite score — same tier as the actual
+        // ResourcesScrap walk/collect score itself now (project owner's own 2026-08-19 call: no
+        // longer pinned to managementReorgScore), so a detach never loses arbitration to routine
+        // garrison housekeeping. resourceScrapDetachOnTaskPenalty is applied by the caller, not
+        // baked in here — see TryStartCollectorDetachCandidates.
+        public static float ResourceScrapDetachScore => ResourceScrapBaseWeight;
     }
 }

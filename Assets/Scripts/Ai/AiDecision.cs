@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -23,6 +23,7 @@ namespace Game.Ai
         RepairUnit,
         SplitGarrisonArmy,
         ConsolidateUnits,
+        ConsolidateSwap,
         DetachCollector,
         SpawnReconArmy,
         AssembleRecceScout,
@@ -30,6 +31,10 @@ namespace Game.Ai
         AssembleRaidForce,
         DispatchReinforcement,
         ReinforceSwap,
+        RequestDefendArmy,
+        ActiveDefenceForce,
+        StrengthenDefenceForce,
+        BuildBase,
         Wait,
         Pass,
     }
@@ -41,11 +46,22 @@ namespace Game.Ai
         public HexCoord TargetHex;
         public CardData Card;
         public string Reason;
+        // Which Level-1 task category this candidate belongs to (see AiTaskCategory's own class
+        // comment) — set explicitly by every factory below, either from the AiTask it carries
+        // (Category is task-derived there, since e.g. Wait/RepairUnit run under more than one
+        // real Kind→Category mapping) or from an explicit `category` parameter for the handful of
+        // action kinds genuinely shared across categories (MoveArmy/PlayCard/SplitGarrisonArmy —
+        // see AiTurnController's own class comment on why those three alone are category-agnostic).
+        // Null only for AiDecision.None — Pass never represents work done under any one category,
+        // so AiTurnController's own log lines simply omit the tag for it.
+        public AiTaskCategory? Category;
         // SplitGarrisonArmy only — the garrison members SplitGarrisonArmyRoutine moves into
         // MergeTarget (see GarrisonReorgTask.FindGarrisonOverflow).
         public IReadOnlyList<UnitData> UnitsToMove;
         // ConsolidateUnits only — see GarrisonReorgTask.FindReorgMove.
         public GarrisonReorgTask.ConsolidationMove ConsolidationMove;
+        // ConsolidateSwap only — see GarrisonReorgTask.FindReorgSwap.
+        public GarrisonReorgTask.SwapMove SwapMove;
         // DetachCollector only — see AiEconomyPlanner.FindCollectorDetachPlan. CollectorUnit
         // stays in ExistingArmy (Source) either way; MergeTarget null means DetachCollector
         // Routine creates a fresh army at Source's own hex instead (only ever proposed when
@@ -54,12 +70,16 @@ namespace Game.Ai
         // destination — see GarrisonReorgTask.FindGarrisonOverflowDestination.
         public UnitData CollectorUnit;
         public ArmyData MergeTarget;
-        // PlayCard only, Hero role — non-null means ExistingArmy is a FULL plain army
-        // (AiManagementPlanner.FindPlacement's own last-resort tier picked it anyway): the
-        // project owner's own "должен уметь выкладывать карты героев прямо в готовую армию"
-        // spec. PlayCardRoutine evicts this member to the garrison FIRST, opening the room the
-        // hero card then deploys into, in the same action — see AiManagementPlanner.CardPlacement.
-        public UnitData EvictUnit;
+        // SplitGarrisonArmy (Economy hero-detach only, see AiEconomyPlanner.TryStartEconomyCandidates'
+        // own GarrisonHero branch) — where/what the split-off hero should build, once her new army
+        // actually exists. SplitGarrisonArmyRoutine registers her BuildFacility task itself the
+        // moment that happens, instead of leaving a window where the fresh, task-less, hero-led army
+        // sits fully "available" for Aggression/Defence's own recruiters to poach before Economy's
+        // own next step ever gets to claim her (project owner's own 2026-08-21 report — exactly this
+        // race let a raid force grab a hero mid-detach, before she ever took a single step toward the
+        // build site).
+        public HexCoord? EconomyBuildHex;
+        public ResourceType? EconomyResourceType;
         // Set whenever this decision advances/starts a persistent AiTask (every MoveArmy
         // decision under Разведка/Экономика, and every BuildFacility decision) — null for
         // PlayCard/ReserveArmy/DrawCard/Pass, which never persist one (see AiTaskKind's own
@@ -79,28 +99,28 @@ namespace Game.Ai
         // step lose.
         public AiTask PreemptedTask;
 
-        public static AiDecision Move(ArmyData army, HexCoord hex, string reason, AiTask task, float score) => new AiDecision
+        public static AiDecision Move(ArmyData army, HexCoord hex, string reason, AiTask task, float score, AiTaskCategory category) => new AiDecision
         {
-            Kind = AiActionKind.MoveArmy, ExistingArmy = army, TargetHex = hex, Reason = reason, Task = task, Score = score,
+            Kind = AiActionKind.MoveArmy, ExistingArmy = army, TargetHex = hex, Reason = reason, Task = task, Score = score, Category = category,
         };
 
-        public static AiDecision Move(ArmyData army, AiScoutPlanner.ScoutTarget target, AiTask task, float score) =>
-            Move(army, target.Hex, target.Reason, task, score);
+        public static AiDecision Move(ArmyData army, AiScoutPlanner.ScoutTarget target, AiTask task, float score, AiTaskCategory category) =>
+            Move(army, target.Hex, target.Reason, task, score, category);
 
-        public static AiDecision Move(ArmyData army, RaidWeakerArmyTask.RaidTarget target, AiTask task, float score) =>
-            Move(army, target.Hex, target.Reason, task, score);
+        public static AiDecision Move(ArmyData army, RaidWeakerArmyTask.RaidTarget target, AiTask task, float score, AiTaskCategory category) =>
+            Move(army, target.Hex, target.Reason, task, score, category);
 
         public static AiDecision BuildFacility(AiTask task, float score) => new AiDecision
         {
-            Kind = AiActionKind.BuildFacility, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score,
-            Reason = $"задача «Экономика»: строит объект добычи {task.ResourceType} на ({task.TargetHex.Q},{task.TargetHex.R})",
+            Kind = AiActionKind.BuildFacility, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score, Category = task.Category,
+            Reason = $"builds a {task.ResourceType} extraction facility at ({task.TargetHex.Q},{task.TargetHex.R})",
         };
 
         // Менеджмент · Починка юнита — see AiManagementPlanner.AdvanceRepairTask/RepairUnitRoutine.
         public static AiDecision RepairUnit(AiTask task, float score) => new AiDecision
         {
-            Kind = AiActionKind.RepairUnit, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score,
-            Reason = $"задача «Экономика»: чинит {task.TargetUnit.Name} в {task.Army.Name} на ({task.TargetHex.Q},{task.TargetHex.R})",
+            Kind = AiActionKind.RepairUnit, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score, Category = task.Category,
+            Reason = $"repairs {task.TargetUnit.Name} in \"{task.Army.Name}\" at ({task.TargetHex.Q},{task.TargetHex.R})",
         };
 
         // Экономика · Задача 1's own visible stand-down — see EconomyWaitScore's own comment.
@@ -110,7 +130,7 @@ namespace Game.Ai
         public static AiDecision Wait(AiTask task, string reason) => new AiDecision
         {
             Kind = AiActionKind.Wait, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task,
-            Score = AiConfig.Current.economyWaitScore, Reason = reason,
+            Score = AiConfig.economyWaitScore, Reason = reason, Category = task.Category,
         };
 
         // Экономика · Задача 2's own prerequisite step — see AiEconomyPlanner.
@@ -121,11 +141,11 @@ namespace Game.Ai
         public static AiDecision DetachCollector(AiEconomyPlanner.CollectorDetachPlan plan, ResourceType type, float score) => new AiDecision
         {
             Kind = AiActionKind.DetachCollector, ExistingArmy = plan.Source, CollectorUnit = plan.Unit,
-            MergeTarget = plan.MergeTarget, TargetHex = plan.Source.Hex, Score = score,
+            MergeTarget = plan.MergeTarget, TargetHex = plan.Source.Hex, Score = score, Category = AiTaskCategory.Economy,
             Reason = plan.MergeTarget != null
-                ? $"задача «Экономика»: выделяет {plan.Unit.Name} из {plan.Source.Name} для добычи {type} — "
-                    + $"остальной состав переходит в {plan.MergeTarget.Name}"
-                : $"задача «Экономика»: выделяет {plan.Unit.Name} из {plan.Source.Name} для добычи {type} — новая армия в гарнизоне",
+                ? $"detaches {plan.Unit.Name} from \"{plan.Source.Name}\" to collect {type} — "
+                    + $"the rest of the group moves into \"{plan.MergeTarget.Name}\""
+                : $"detaches {plan.Unit.Name} from \"{plan.Source.Name}\" to collect {type} — new army at the garrison",
         };
 
         // Разведка · сборка Recce-состава, шаг 1 — see AiScoutPlanner's own
@@ -135,8 +155,8 @@ namespace Game.Ai
         // body, those are unrelated bookkeeping.
         public static AiDecision RequestReconArmy(float score) => new AiDecision
         {
-            Kind = AiActionKind.SpawnReconArmy, Score = score,
-            Reason = "задача «Разведка»: нет свободной пустой армии под Recce-состав — запрашивает новую",
+            Kind = AiActionKind.SpawnReconArmy, Score = score, Category = AiTaskCategory.Reconnaissance,
+            Reason = "no free empty army for a Recce composition — requesting a new one",
         };
 
         // Разведка · сборка Recce-состава, шаг 2b — a Recce-tagged unit/hero already deployed
@@ -146,8 +166,8 @@ namespace Game.Ai
         public static AiDecision AssembleRecceScout(AiScoutPlanner.BuriedRecceUnit buried, ArmyData emptyArmy, float score) => new AiDecision
         {
             Kind = AiActionKind.AssembleRecceScout, ExistingArmy = buried.Source, CollectorUnit = buried.Unit,
-            MergeTarget = emptyArmy, TargetHex = emptyArmy.Hex, Score = score,
-            Reason = $"задача «Разведка»: {buried.Unit.Name} — уже с Recce, но не соло — переводит в {emptyArmy.Name}",
+            MergeTarget = emptyArmy, TargetHex = emptyArmy.Hex, Score = score, Category = AiTaskCategory.Reconnaissance,
+            Reason = $"{buried.Unit.Name} already carries Recce but isn't solo — transferring into \"{emptyArmy.Name}\"",
         };
 
         // Агрессия · сборка состава с нуля, шаг 1 — same shape as RequestReconArmy, own
@@ -155,8 +175,19 @@ namespace Game.Ai
         // spawn.
         public static AiDecision RequestRaidArmy(float score) => new AiDecision
         {
-            Kind = AiActionKind.RequestRaidArmy, Score = score,
-            Reason = "задача «Агрессия»: нет свободной пустой армии под сборку — запрашивает новую",
+            Kind = AiActionKind.RequestRaidArmy, Score = score, Category = AiTaskCategory.Aggression,
+            Reason = "no free empty army to assemble into — requesting a new one",
+        };
+
+        // Оборона · сборка состава с нуля, шаг 1 — same shape as RequestRaidArmy, own
+        // AiActionKind/log so debug output doesn't say "задача «Агрессия»" for an Оборона spawn.
+        // `homeHex` (carried via the shared TargetHex field) — which of the player's own garrisoned
+        // hexes to spawn the new empty army at; RequestDefendArmyRoutine reads it back out, since
+        // that routine (unlike most others) doesn't otherwise receive the AiDecision itself.
+        public static AiDecision RequestDefendArmy(HexCoord homeHex, float score) => new AiDecision
+        {
+            Kind = AiActionKind.RequestDefendArmy, TargetHex = homeHex, Score = score, Category = AiTaskCategory.Defence,
+            Reason = "no free empty army to assemble into — requesting a new one",
         };
 
         // Агрессия · сборка состава с нуля, шаг 2 — one recruit (hero or non-hero unit,
@@ -168,8 +199,32 @@ namespace Game.Ai
         public static AiDecision AssembleRaidForce(ArmyData source, UnitData unit, ArmyData formingArmy, AiTask task, float score) => new AiDecision
         {
             Kind = AiActionKind.AssembleRaidForce, ExistingArmy = source, CollectorUnit = unit,
-            MergeTarget = formingArmy, TargetHex = formingArmy.Hex, Task = task, Score = score,
-            Reason = $"задача «Агрессия»: {unit.Name} присоединяется к {formingArmy.Name}",
+            MergeTarget = formingArmy, TargetHex = formingArmy.Hex, Task = task, Score = score, Category = task.Category,
+            Reason = $"{unit.Name} joins \"{formingArmy.Name}\"",
+        };
+
+        // Оборона · same one-recruit-at-a-time assembly as AssembleRaidForce above (identical
+        // execution — see AiTurnController's own dispatch, both kinds route to
+        // AiAggressionPlanner.AssembleRaidForceRoutine), just its own AiActionKind/log so debug
+        // output never says "AssembleRaidForce" for an Оборона composition — same reasoning as
+        // RequestDefendArmy's own split from RequestRaidArmy above.
+        public static AiDecision ActiveDefenceForce(ArmyData source, UnitData unit, ArmyData formingArmy, AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.ActiveDefenceForce, ExistingArmy = source, CollectorUnit = unit,
+            MergeTarget = formingArmy, TargetHex = formingArmy.Hex, Task = task, Score = score, Category = task.Category,
+            Reason = $"{unit.Name} joins \"{formingArmy.Name}\"",
+        };
+
+        // Оборона · full-but-insufficient defence force gets a direct 1-for-1 upgrade instead of
+        // stalling — see AiDefencePlanner.TryStrengthenCandidate's own comment. Reuses
+        // GarrisonReorgTask.SwapMove/ArmyActions.SwapMembers, same no-free-slot-needed technique
+        // ConsolidateSwap/ReinforceSwap already rely on — own AiActionKind/log so debug output
+        // doesn't read as a Menedzhment or Агрессия move.
+        public static AiDecision StrengthenDefenceForce(GarrisonReorgTask.SwapMove move, AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.StrengthenDefenceForce, ExistingArmy = move.ArmyA, TargetHex = move.ArmyA.Hex,
+            SwapMove = move, Task = task, Score = score, Category = task.Category,
+            Reason = move.Reason,
         };
 
         // Агрессия · подкрепление раненой армии, шаг 1 — see AiAggressionPlanner.
@@ -179,8 +234,8 @@ namespace Game.Ai
         public static AiDecision DispatchReinforcement(ArmyData garrison, UnitData recruit, AiTask task, float score) => new AiDecision
         {
             Kind = AiActionKind.DispatchReinforcement, ExistingArmy = garrison, CollectorUnit = recruit,
-            TargetHex = task.TargetArmy.Hex, Task = task, Score = score,
-            Reason = $"задача «Агрессия»: {recruit.Name} отправляется подкреплением к {task.TargetArmy.Name}",
+            TargetHex = task.TargetArmy.Hex, Task = task, Score = score, Category = task.Category,
+            Reason = $"{recruit.Name} is dispatched as reinforcement to \"{task.TargetArmy.Name}\"",
         };
 
         // Агрессия · подкрепление раненой армии, шаг 2 — courier has arrived at task.TargetHex
@@ -188,31 +243,42 @@ namespace Game.Ai
         // actual composition swap this triggers.
         public static AiDecision ReinforceSwap(AiTask task, float score) => new AiDecision
         {
-            Kind = AiActionKind.ReinforceSwap, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score,
-            Reason = $"задача «Агрессия»: {task.Army.Name} на месте — забирает раненых из {task.TargetArmy.Name}",
+            Kind = AiActionKind.ReinforceSwap, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score, Category = task.Category,
+            Reason = $"\"{task.Army.Name}\" has arrived — picking up the wounded from \"{task.TargetArmy.Name}\"",
         };
 
+        // Агрессия · Задача 2 — the army has arrived at task.TargetHex; see
+        // AiAggressionPlanner.BuildBaseRoutine for the actual card play this triggers.
+        public static AiDecision BuildBase(AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.BuildBase, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score, Category = task.Category,
+            Reason = $"\"{task.Army.Name}\" has arrived — founds a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
+        };
+
+        // `category` — Менеджмент's own TryPlayCardCandidates and Разведка's own
+        // TryStartReconAssemblyCandidatesFor both build this same AiActionKind.PlayCard, for
+        // disjoint card sets (Recce cards never reach Менеджмент's own candidates any more — see
+        // TryPlayCardCandidates' own comment) — an explicit parameter here rather than inferring
+        // it from `role` still keeps that genuinely up to the caller.
         public static AiDecision PlayCard(ArmyData existing, CardData card, AiManagementPlanner.CardRole role, float score,
-            UnitData evictUnit = null) => new AiDecision
+            AiTaskCategory category) => new AiDecision
         {
             Kind = AiActionKind.PlayCard,
             ExistingArmy = existing,
             Card = card,
-            EvictUnit = evictUnit,
             Score = score,
-            Reason = evictUnit != null
-                ? $"освобождает место в {existing.Name} (выводит {evictUnit.Name} в гарнизон) под героя {card.Definition.displayName}"
-                : existing != null
-                    ? $"пополняет {existing.Name} картой {card.Definition.displayName}{RoleLabel(role)}"
-                    : $"новая армия под карту {card.Definition.displayName}{RoleLabel(role)}",
+            Category = category,
+            Reason = existing != null
+                ? $"reinforces \"{existing.Name}\" with card {card.Definition.displayName}{RoleLabel(role)}"
+                : $"new army for card {card.Definition.displayName}{RoleLabel(role)}",
         };
 
         private static string RoleLabel(AiManagementPlanner.CardRole role)
         {
             switch (role)
             {
-                case AiManagementPlanner.CardRole.Recce: return " (Recce, соло)";
-                case AiManagementPlanner.CardRole.Hero: return " (герой)";
+                case AiManagementPlanner.CardRole.Recce: return " (Recce, solo)";
+                case AiManagementPlanner.CardRole.Hero: return " (hero)";
                 default: return "";
             }
         }
@@ -223,9 +289,13 @@ namespace Game.Ai
         // Экономика · Задача 1's own hero-detach prep step (see AiEconomyPlanner.
         // TryStartEconomyCandidates and AiEconomyPlanner.FindNearestHeroAnywhere) — same "pull
         // specific unit(s) out of garrison into a fresh/existing army" primitive either way, just
-        // a different `reason` for why.
-        public static AiDecision SplitGarrison(ArmyData garrison, IReadOnlyList<UnitData> unitsToMove, ArmyData destination, float score,
-            string reason = null) => new AiDecision
+        // a different `reason` for why — `category` defaults to Management (the common case) and
+        // that Economy call site passes AiTaskCategory.Economy explicitly. `score` defaults to 0f
+        // — the Management call site (AiManagementPlanner.TryGarrisonSplitCandidate) never competes
+        // in arbitration any more (see AiTurnController.RunGarrisonReorgPhase's own comment) and
+        // just omits it, while the Economy call site still passes its own real, competing score.
+        public static AiDecision SplitGarrison(ArmyData garrison, IReadOnlyList<UnitData> unitsToMove, ArmyData destination, float score = 0f,
+            string reason = null, AiTaskCategory category = AiTaskCategory.Management) => new AiDecision
         {
             Kind = AiActionKind.SplitGarrisonArmy,
             ExistingArmy = garrison,
@@ -233,46 +303,62 @@ namespace Game.Ai
             UnitsToMove = unitsToMove,
             MergeTarget = destination,
             Score = score,
+            Category = category,
             Reason = reason ?? (destination != null
-                ? $"задача «Менеджмент»: гарнизон полон — переводит {unitsToMove.Count} юнит(ов) в {destination.Name}"
-                : $"задача «Менеджмент»: гарнизон полон — выделяет новую армию ({unitsToMove.Count} юнит(ов))"),
+                ? $"garrison is full — moving {unitsToMove.Count} unit(s) into \"{destination.Name}\""
+                : $"garrison is full — splitting off a new army ({unitsToMove.Count} unit(s))"),
         };
 
-        // Менеджмент · передача юнитов между армиями в базе — see
-        // GarrisonReorgTask.FindReorgMove.
-        public static AiDecision Consolidate(GarrisonReorgTask.ConsolidationMove move, float score) => new AiDecision
+        // Менеджмент · передача юнитов между армиями в базе — see GarrisonReorgTask.FindReorgMove.
+        // No score parameter (removed 2026-08-20 along with AiConfig.managementGarrisonBalanceScore)
+        // — this never competes in arbitration any more, see AiTurnController.RunGarrisonReorgPhase.
+        // Reason comes straight from the move itself (2026-08-20) — GarrisonReorgTask now has four
+        // tiers or more that can produce a ConsolidationMove (hero-capacity-expansion prep,
+        // lone-army fold into garrison OR another field army, garrison/army strength balance, and
+        // composition balance), each with its own wording, so re-deriving a reason here from just
+        // Source/Target.IsGarrison stopped being able to tell them apart.
+        public static AiDecision Consolidate(GarrisonReorgTask.ConsolidationMove move) => new AiDecision
         {
             Kind = AiActionKind.ConsolidateUnits,
             ExistingArmy = move.Source,
             TargetHex = move.Source.Hex,
             ConsolidationMove = move,
-            Score = score,
-            // "одиночка" is only actually true for the fold/pair/rebalance tiers (Source really
-            // is a lone/settled FIELD army) — the two garrison-pull tiers (FindHeroEscortFrom
-            // Garrison/FindPlainArmyReinforcement/FindHeroPromotion) move stock straight OUT of
-            // the garrison stockpile instead, which used to get mislabeled "одиночка" too and
-            // read as if the unit had somehow been a standalone army the whole time (this is
-            // exactly what made diagnosing the project owner's own "Bastion Guard" report harder
-            // than it needed to be — see GarrisonReorgTask's own tier comments).
-            Reason = move.Target.IsGarrison
-                ? $"задача «Менеджмент»: {move.Unit.Name} — одиночка, передаётся в гарнизон"
-                : move.Source.IsGarrison
-                    ? $"задача «Менеджмент»: {move.Unit.Name} выходит из гарнизона в {move.Target.Name}"
-                    : $"задача «Менеджмент»: {move.Unit.Name} — одиночка, объединяется с {move.Target.Name}",
+            Category = AiTaskCategory.Management,
+            Reason = move.Reason,
         };
 
-        public static AiDecision Reserve(int currentSpare, float score) => new AiDecision
+        // Менеджмент · обмен юнитов между армиями в базе — see GarrisonReorgTask.FindReorgSwap.
+        // Only ever tried once FindReorgMove itself comes up empty this same call (see
+        // AiManagementPlanner.TryConsolidationCandidate) — a plain move covers everything a swap
+        // could, whenever a plain move is actually possible at all.
+        public static AiDecision Swap(GarrisonReorgTask.SwapMove move) => new AiDecision
+        {
+            Kind = AiActionKind.ConsolidateSwap,
+            ExistingArmy = move.ArmyA,
+            TargetHex = move.ArmyA.Hex,
+            SwapMove = move,
+            Category = AiTaskCategory.Management,
+            Reason = move.Reason,
+        };
+
+        // `homeHex` (carried via the shared TargetHex field, same convention as RequestDefendArmy
+        // above) — which of the player's own garrisoned hexes to spawn the reserve army at;
+        // ReserveArmyRoutine reads it back out since it doesn't otherwise receive the AiDecision.
+        public static AiDecision Reserve(HexCoord homeHex, int currentSpare, float score) => new AiDecision
         {
             Kind = AiActionKind.ReserveArmy,
+            TargetHex = homeHex,
             Score = score,
-            Reason = $"задача «Менеджмент»: резервная армия про запас ({currentSpare + 1}/{AiConfig.Current.maxSpareArmies})",
+            Category = AiTaskCategory.Management,
+            Reason = $"spare reserve army ({currentSpare + 1}/{AiConfig.maxSpareArmies})",
         };
 
         public static AiDecision Draw(float score) => new AiDecision
         {
             Kind = AiActionKind.DrawCard,
             Score = score,
-            Reason = "задача «Менеджмент»: рука разыграна или недоступна по AP/ресурсам — остаточный добор",
+            Category = AiTaskCategory.Management,
+            Reason = "hand is played out",
         };
 
         public static AiDecision None(string reason) => new AiDecision { Kind = AiActionKind.Pass, Reason = reason };

@@ -63,8 +63,10 @@ namespace Game.UI
                 : $"{army.Name} retreats from the battle.";
             string message = $"{detail}\n{DescribeNextAction(survivingArmy)}";
 
+            // Same auto-close-if-no-human as FinishBattleEnd (BattleScreenUI.Combat.cs) — a
+            // retreat resolved between two AI-owned armies has nobody there to click Ok either.
             if (outcomePopup != null)
-                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged);
+                outcomePopup.Show(title, message, OnBattleOutcomeAcknowledged, autoCloseNoHuman: _localArmy == null);
             else
                 OnBattleOutcomeAcknowledged();
         }

@@ -22,9 +22,9 @@ namespace Game.UI
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text roundTitleText;
-        // Only one faction is fully set up in this project right now (see BattleScreenUI's own
-        // identical `catalog` field) — both logos come from the same sprite regardless of which
-        // side it's showing, same as everywhere else that needs one.
+        // Resolved per-owner by the caller (BattleScreenUI.ResolveCatalog) and passed in as two
+        // separate sprites (see Show) — a Neutral-owned side shows CardCatalog_Neutral's own
+        // logo instead of whichever faction the other side happens to be.
         [SerializeField] private Image attackerLogo;
         [SerializeField] private Image defenderLogo;
         [SerializeField] private TMP_Text attackerNameText;
@@ -59,7 +59,8 @@ namespace Game.UI
         // (buried behind this very popup, or timed out before the player gets back to it, per
         // the user's own report), whereas this popup is something the player has to look at and
         // dismiss before the grace round plays out, guaranteeing they see it in time to matter.
-        public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender, Sprite factionLogo,
+        public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender,
+            Sprite attackerFactionLogo, Sprite defenderFactionLogo,
             bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null)
         {
             _onStartRound = onStartRound;
@@ -87,13 +88,13 @@ namespace Game.UI
 
             if (attackerLogo != null)
             {
-                attackerLogo.sprite = factionLogo;
-                attackerLogo.gameObject.SetActive(factionLogo != null);
+                attackerLogo.sprite = attackerFactionLogo;
+                attackerLogo.gameObject.SetActive(attackerFactionLogo != null);
             }
             if (defenderLogo != null)
             {
-                defenderLogo.sprite = factionLogo;
-                defenderLogo.gameObject.SetActive(factionLogo != null);
+                defenderLogo.sprite = defenderFactionLogo;
+                defenderLogo.gameObject.SetActive(defenderFactionLogo != null);
             }
             if (attackerNameText != null)
                 attackerNameText.text = attacker != null ? attacker.Name : string.Empty;

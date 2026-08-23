@@ -20,8 +20,10 @@ namespace Game.Ai
     // расходится волной, не бросается на самый дальний хекс.
     //
     // Композиция — ровно одна: 1 герой (Recce) · 1 юнит (Recce) (IsEligibleComposition delegates
-    // to AiArmyRoles.IsScoutCapable — hero-vs-unit doesn't matter, only "exactly one Recce
-    // member" does). The lone-hero-without-Recce composition that used to also run Задача 1 is
+    // to AiArmyRoles.IsSoloRecce — hero-vs-unit doesn't matter, only "the army is a single Recce
+    // member, alone" does; a Recce member riding along inside a bigger combat army does NOT
+    // qualify — that army is just too AP-expensive to spend on scouting, see IsSoloRecce's own
+    // comment). The lone-hero-without-Recce composition that used to also run Задача 1 is
     // gone from here — see AiArmyRoles.IsSoloHeroAwaitingEscort's own comment (that role now just
     // walks home to wait for an escort); the hero+2-3-units composition moved to its own Агрессия
     // category (RaidWeakerArmyTask), which itself later stopped using a fixed composition at all.
@@ -35,13 +37,13 @@ namespace Game.Ai
     // null) — единственное условие завершения, снимает задачу AiTurnController.TryContinueVisitTask.
     public static class VisitHexTask
     {
-        public static bool IsEligibleComposition(ArmyData army) => AiArmyRoles.IsScoutCapable(army);
+        public static bool IsEligibleComposition(ArmyData army) => AiArmyRoles.IsSoloRecce(army);
 
         // Известная НЕ-нейтральная армия (AiMapMemory — честная память, не живое зрение) в
         // радиусе scoutFleeRadius от текущего хекса `army` → отступление в гарнизон на один ход
         // вместо обычной цели FindTarget. Нет отдельной проверки "своя армия достаточно сильна,
-        // можно не бежать": единственная композиция, годная для Задачи 1 (IsScoutCapable — ровно
-        // один Recce-член), по построению никогда не пересекается с
+        // можно не бежать": единственная композиция, годная для Задачи 1 (IsSoloRecce — ровно
+        // один член, и он Recce), по построению никогда не пересекается с
         // AiArmyRoles.IsMakeshiftScoutCapable (та требует ОТСУТСТВИЯ Recce), так что эта
         // композиция никогда не "достаточно сильна" в боевом смысле — она просто всегда бежит.
         // `task` == null для ещё не начатой задачи — всегда свободна бежать. FledLastTurn не даёт
@@ -60,7 +62,7 @@ namespace Game.Ai
 
             bool anyThreat = false;
             foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.Current.scoutFleeRadius))
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
             {
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue; // neutrals never trigger flight — see this class's own comment
@@ -78,8 +80,8 @@ namespace Game.Ai
             if (task != null)
                 task.FledLastTurn = true;
             HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
-            return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.Current.scoutFleeBonus,
-                "рядом известная вражеская армия — уходит в гарнизон на один ход");
+            return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.scoutFleeBonus,
+                "a known enemy army is nearby — retreats to the garrison for one turn");
         }
 
         // Best unvisited, not-known-occupied hex on the map. Null if nothing qualifies. The scan
@@ -89,10 +91,12 @@ namespace Game.Ai
         //
         // Условия "+" к скору — ближе к текущей позиции армии (scoutProximityWeight) и чем больше
         // непосещённых соседей открывает (freshNeighborWeight).
-        // Условия "-" к скору — чем дальше от цитадели (citadelDistancePenalty, чтобы охват рос
+        // Условия "-" к скору — чем дальше от цитадели (visitTargetCitadelWeight, чтобы охват рос
         // кольцом вокруг дома, а не убегал в произвольную сторону). Хекс с известной вражеской/
         // нейтральной армией не штрафуется — он исключается из кандидатов целиком (см. класса
-        // "Поведение" выше).
+        // "Поведение" выше). Этот скор — чисто внутренний выбор ЦЕЛИ (какой хекс предпочесть среди
+        // кандидатов), в кросс-категорийный AiDecision.Score не попадает — см. AiScoutPlanner's own
+        // TryContinueVisitTask/TryStartVisitCandidates.
         public static AiScoutPlanner.ScoutTarget? FindTarget(PlayerSetupData actor, ArmyData army, HexMap map)
         {
             if (actor == null || army == null || map == null)
@@ -164,7 +168,7 @@ namespace Game.Ai
                 return null;
 
             if (citadelHex.HasValue && wavefrontDistance.HasValue
-                && HexGridMath.Distance(citadelHex.Value, candidate) > wavefrontDistance.Value + AiConfig.Current.visitRingBand)
+                && HexGridMath.Distance(citadelHex.Value, candidate) > wavefrontDistance.Value + AiConfig.visitRingBand)
             {
                 return null;
             }
@@ -176,20 +180,75 @@ namespace Game.Ai
             if (visible && BattleInitiator.FindEnemyAt(candidate, actor) != null)
                 return null;
 
+            // Same non-neutral filter as TryFlee, checked preemptively here instead of only
+            // reactively once the scout has already arrived: a candidate within scoutFleeRadius
+            // of a known (memory, not necessarily currently visible) non-neutral sighting would
+            // just have TryFlee retreat it again next turn, burning AP getting there for nothing
+            // — see the user's own report of a scout walking up to a hex next to an enemy
+            // citadel it already knew about, only to immediately retreat.
+            foreach (AiMapMemory.KnownEnemySighting sighting in
+                     AiMapMemory.KnownEnemySightingsNear(actor, new[] { candidate }, AiConfig.scoutFleeRadius))
+            {
+                if (sighting.Owner != null && sighting.Owner.IsNeutral)
+                    continue;
+                return null;
+            }
+
             int distanceFromScout = HexGridMath.Distance(army.Hex, candidate);
-            float score = -distanceFromScout * AiConfig.Current.scoutProximityWeight;
+            float score = -distanceFromScout * AiConfig.scoutProximityWeight;
 
             int freshNeighbors = 0;
             foreach (HexCoord neighbor in HexGridMath.Neighbors(candidate))
                 if (map.TryGetTerrainAt(neighbor, out _) && !VisionSystem.IsVisited(actor, neighbor))
                     freshNeighbors++;
-            score += freshNeighbors * AiConfig.Current.freshNeighborWeight;
+            score += freshNeighbors * AiConfig.freshNeighborWeight;
 
             if (citadelHex.HasValue)
-                score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.Current.citadelDistancePenalty;
+                score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.visitTargetCitadelWeight;
 
             return new AiScoutPlanner.ScoutTarget(candidate, score,
-                $"{distanceFromScout} хексов, открывает {freshNeighbors} соседних непосещённых");
+                $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)");
+        }
+
+        // This composition never fights (see this class's own "Поведение" comment), so it must
+        // never be routed blind onto a hex this player's own memory already knows holds an army
+        // (enemy or neutral) — the ordinary move order (HexSelectionController.Movement.
+        // IssueMoveOrder) only avoids a CURRENTLY VISIBLE enemy, which says nothing about a
+        // sighting recorded earlier and no longer in sight, several hexes along the route to a
+        // distant wavefront target. 2026-08-21 fix (project owner's own report): a scout/scout-hero
+        // walking the FULL multi-hex path straight to a far wavefront target used to cross a
+        // remembered-but-not-currently-visible hex unchecked, occasionally landing right on top of
+        // a neutral army neither the target-selection scoring nor the ordinary vision-only
+        // move-order pipeline had any way to see coming.
+        //
+        // 2026-08-22 correction (project owner's own report — the first pass over-corrected): the
+        // very first version of this blocked EVERY not-yet-visited hex outright, `targetHex` itself
+        // the one exemption — modeled on AiEconomyPlanner.FindNextVisitedStep's own solo-hero rule.
+        // That's wrong for this task specifically: VisitHexTask's whole purpose is walking INTO
+        // fog nobody's ever seen (that's how new ground gets discovered at all), and its own target
+        // is routinely several hexes past the visited frontier (see freshNeighborWeight — a
+        // richer, farther hex often outscores an adjacent one). Blocking every hex on the way there
+        // made a fresh scout's very first move (and most later ones) fail outright — no known
+        // threat anywhere, just ordinary unseen ground the path had to cross — which is exactly the
+        // stuck-at-the-garrison-forever bug this was traced back to. The actual risk this method
+        // exists to guard against is a REMEMBERED army sitting on the path, not fog itself, so only
+        // that is blocked now (AiMapMemory.KnownEnemySightingAt — honest, fog-of-war-respecting,
+        // covers enemy AND neutral alike, same source RaidWeakerArmyTask/TryFlee already trust for
+        // "is anything known to be here").
+        //
+        // `targetHex` stays exempted regardless (even if memory flags it) — the caller
+        // (VisitHexTask.FindTarget) already refuses to ever pick a destination with a known
+        // sighting on or near it; this is purely about hexes along the WAY there. Null if no such
+        // route exists yet — the caller treats that as "nothing to do this step", same as any
+        // other unaffordable/blocked move candidate, not a reason to give up on `targetHex` itself.
+        public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex)
+        {
+            System.Func<HexCoord, bool> blockHex = hex => !hex.Equals(targetHex)
+                && AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue;
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex, blockHex: blockHex);
+            if (path == null || path.Hexes.Count < 2)
+                return null;
+            return path.Hexes[1];
         }
 
         // Mirrors HexSelectionController.Movement.IssueMoveOrder's own first-step check (same

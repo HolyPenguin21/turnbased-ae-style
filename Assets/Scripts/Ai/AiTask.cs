@@ -22,6 +22,7 @@ namespace Game.Ai
         Economy,
         Management,
         Aggression,
+        Defence,
     }
 
     // One concrete subtask type per the AI architecture doc's "название, состав армии, цель,
@@ -45,6 +46,36 @@ namespace Game.Ai
         RaidWeakerArmy, // Агрессия · Задача 1 — see RaidWeakerArmyTask
         RaidReinforce, // Агрессия — critically wounded field army waits for a courier instead of
                         // marching home itself, see AiAggressionPlanner.TryRaidRegroupCandidates
+        BuildBase, // Агрессия · Задача 2 — found an additional base toward the known enemy
+                    // citadels (2026-08-21, project owner's own spec) — see BuildBaseTask's own
+                    // class comment for target selection, AiAggressionPlanner.
+                    // TryStartBuildBaseCandidates/TryContinueBuildBaseTask for trigger/composition/
+                    // continuation/cancel.
+        DefendCitadel, // Оборона — full redesign 2026-08-21 (project owner's own spec), triggers/
+                        // composition retuned 2026-08-22: ONE task/army cycling through three
+                        // Posture values (see AiDefencePosture) instead of a single reactive "attack
+                        // the threat" shape — Patrol (triggers on CheatEstimateRaiderThreat, fixed
+                        // composition), Active (triggers on any known sighting within
+                        // AiConfig.defenceReactionRadius of a Base hex, dynamic 60/40-vs-that-army
+                        // composition — see AiConfig.defenceActiveWinChance), Turtle (a known threat
+                        // is inside AiConfig.siegeRadius of the citadel and beats us — see
+                        // AiDefencePlanner.IsUnderSiege, a live per-player predicate ALSO read by
+                        // AiAggressionPlanner to force-recall active raids, not a fourth task kind
+                        // of its own). See AiDefencePlanner's own class comment for the full
+                        // trigger/composition breakdown. Split out of Агрессия 2026-08-20 (was
+                        // AiTask.DefendingCitadel, a flag bolted onto RaidWeakerArmy) into its own
+                        // first-class category; this redesign keeps that same single Kind.
+    }
+
+    // DefendCitadel-only — which of the three behaviors this turn's continuation resolves to,
+    // recomputed fresh every call (same "непрерывная переоценка" principle as Retreating below),
+    // never stored as anything more durable than "what applies THIS step" — see
+    // AiDefencePlanner.TryContinueDefenceTask for the actual decision tree.
+    public enum AiDefencePosture
+    {
+        Patrol,
+        Active,
+        Turtle,
     }
 
     public static class AiTaskCatalog
@@ -61,7 +92,10 @@ namespace Game.Ai
                 // RepairUnit falls through to the default Management case below.
                 case AiTaskKind.RaidWeakerArmy:
                 case AiTaskKind.RaidReinforce:
+                case AiTaskKind.BuildBase:
                     return AiTaskCategory.Aggression;
+                case AiTaskKind.DefendCitadel:
+                    return AiTaskCategory.Defence;
                 default:
                     return AiTaskCategory.Management;
             }
@@ -79,6 +113,23 @@ namespace Game.Ai
         public AiTaskKind Kind;
         public ArmyData Army;
         public HexCoord TargetHex;
+
+        // DefendCitadel only for now — which of this player's own garrisoned hexes (the starting
+        // citadel, or a later-founded Base, see AiTurnController.OwnGarrisonHexes/
+        // NearestOwnGarrisonHex) this task patrols around/turtles back to. Set once at task creation
+        // by TryStartDefenceCandidatesFor's own per-home loop (see AiDefencePlanner.
+        // TryStartDefenceCandidates) and never recomputed afterward — a task started at one base
+        // stays anchored there even if a closer base were founded later, same "committed, not
+        // re-shopped every step" principle TargetHex itself already follows for RaidWeakerArmy.
+        // RaidWeakerArmy/RaidReinforce deliberately don't use this field at all, even though their
+        // own retreat/regroup now also targets the nearest own base (2026-08-21) — that case
+        // recomputes AiTurnController.NearestOwnGarrisonHex fresh every call instead of storing it
+        // here (see AiAggressionPlanner.TryContinueRaidTask's own homeHex), the project owner's own
+        // call: a fleeing raid should always head for whichever base is genuinely closest RIGHT NOW,
+        // not whichever one it happened to start near — the opposite stability tradeoff from
+        // DefendCitadel's own patrol above. Every task kind besides DefendCitadel just carries the
+        // default(HexCoord) it's never read.
+        public HexCoord HomeHex;
 
         // BuildFacility/ResourcesScrap: which resource the facility/collector yields.
         public ResourceType? ResourceType;
@@ -111,28 +162,46 @@ namespace Game.Ai
         // RaidWeakerArmy doesn't use it either — see Retreating below, a different, one-way shape.
         public bool FledLastTurn;
 
-        // RaidWeakerArmy only (see RaidWeakerArmyTask's own "Поведение" comment) — unlike
-        // FledLastTurn's resumable one-turn detour, this is a ONE-WAY commitment: once true (an
-        // outmatched threat, a target that stopped being known, or a dead-end assembly — see
-        // AiTurnController.TryContinueRaidTask), every future continuation walks straight to the
-        // garrison and NEVER resumes the original target, until it arrives and the task simply
-        // ends there (freeing the army for a fresh raid task later, on the usual footing).
+        // RaidWeakerArmy and DefendCitadel (2026-08-21 — Оборона's own local retreat, see
+        // AiDefencePlanner.BuildPostureDecision, reuses this exact shape rather than inventing a
+        // second one). Unlike FledLastTurn's resumable one-turn detour, this is a ONE-WAY
+        // commitment: once true (an outmatched threat, a target that stopped being known, a
+        // dead-end assembly, or — DefendCitadel only — a locally outmatched encounter or a
+        // critically wounded army standing down), every future continuation walks straight to the
+        // garrison and NEVER resumes the original target/patrol cycle, until it arrives and the
+        // task simply ends there (freeing the army — a fresh task, RaidWeakerArmy or DefendCitadel
+        // alike, can claim it again later on the usual footing). DefendCitadel's own Turtle posture
+        // (see IsUnderSiege) explicitly clears this on entry — its own march-home already
+        // supersedes a local retreat in progress.
         public bool Retreating;
 
-        // RaidWeakerArmy only — set when TryContinueRaidTask's own threat check finds a real
-        // enemy army near the garrison WHILE task.Army is already standing on it (nothing to
-        // retreat to — see that method's own comment; the project owner's own "Bastion Guard"
-        // report, 2026-08-17, was this exact case producing a move-to-self no-op that stranded
-        // the task instead). TargetHex becomes the threat's own hex rather than the usual
-        // neutral/event/building pool. Exempts this task from AiConfig.maxConcurrentRaid (see
-        // AiAggressionPlanner.TryRaidAssembleCandidates) and unlocks the stronger recruitment
-        // tier that will pull an army off an ACTIVE task elsewhere, not just an idle one (see
-        // AiAggressionPlanner.TryCitadelDefensePreemptCandidates) — defending the player's own
-        // base outranks routine work. Temporary home for this reaction: per the project owner's
-        // own call, this conceptually belongs in a proper Оборона/Border-Defense AiTaskCategory
-        // once one exists (AI_ARCHITECTURE.html's own roadmap already earmarks it), not bolted
-        // onto Агрессия forever — bolted on for now rather than building that category speculatively.
-        public bool DefendingCitadel;
+        // DefendCitadel only — which of Patrol/Active/Turtle this task is currently reading as
+        // (see AiDefencePosture's own comment). Purely descriptive/for logging between calls —
+        // TryContinueDefenceTask recomputes it fresh every step rather than trusting the stored
+        // value to decide anything.
+        public AiDefencePosture Posture;
+
+        // DefendCitadel · Patrol only — this player's own extraction-facility hexes (within
+        // AiConfig.patrolRadius of the citadel) already visited this patrol cycle. Cleared
+        // whenever a fresh Patrol cycle starts (task creation, or converting back from
+        // Active/Turtle into Patrol with nothing left over from before). Empty/all-covered means
+        // "nothing left to patrol" — see AiDefencePlanner.FindPatrolTarget.
+        public HashSet<HexCoord> PatrolVisited;
+
+        // RaidWeakerArmy and DefendCitadel only — true from task creation until the composition
+        // read as strong enough against whatever this task is being sized against (RaidWeakerArmy: a
+        // raid target's defense, via RaidWeakerArmyTask.IsReady; DefendCitadel: Patrol's own fixed
+        // member-count target or Active's dynamic WorthIt win-chance vs a sighted army, per
+        // AiDefencePlanner's own IsComposedReady), false from that point on. Set every step by
+        // TryRaidAssembleCandidates/TryStartDefenceCandidates — same
+        // "recomputed fresh, never trusted stale" rule Posture above already follows — so it's
+        // never more than one step out of date. GarrisonReorgTask reads this to decide whether a
+        // task-claimed army sitting at the garrison hex is still being built (safe to keep folding
+        // members into the garrison between recruits) or already a finished force just waiting on
+        // AP to depart (must NOT be pulled apart) — see GarrisonReorgTask.FindAssemblingArmyFoldMove's
+        // own comment. Nothing else reads this; it exists purely so GarrisonReorgTask (which has no
+        // idea how any one task category scores its own readiness) doesn't need to re-derive it.
+        public bool StillAssembling;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

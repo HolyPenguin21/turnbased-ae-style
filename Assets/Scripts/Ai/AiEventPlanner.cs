@@ -18,9 +18,13 @@ namespace Game.Ai
     // guard's card-stat Defense AND Attack now feed WorthIt.Score (see that class's own comment)
     // — a guard tough enough to grind through but that would also chew up `mover` doing it no
     // longer reads the same as an easy clear. WorthIt.CanDamageAll's coverage check also runs
-    // here per guard card type (not per copy — identical cards make identical DefenderProfiles,
-    // no point repeating one), since a card's own CardDefinition already carries everything that
-    // check needs (defenseRating, grantedAbilities) with no live UnitData required.
+    // here per guard card COPY (2026-08-22 — was per card type, "identical cards make identical
+    // DefenderProfiles"; now repeated by count instead, same fix as AiMapMemory's own event-guard
+    // remembering — WorthIt.IsWorthIt's full-roster Monte Carlo needs one real combatant/HP-pool
+    // per physical copy to actually play a "3 Grunts" guard out as three separate units, not just
+    // check coverage against one), since a card's own CardDefinition already carries everything
+    // that needs (defenseRating, attack, hitPoints, initiative, grantedAbilities) with no live
+    // UnitData required.
     public static class AiEventPlanner
     {
         public static bool ShouldExplore(ArmyData mover, HexEventRegistry.Entry entry)
@@ -31,8 +35,9 @@ namespace Game.Ai
             var guardMembers = entry.ResolvedGuardMembers.Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
             float guardDefense = guardMembers.Sum(g => g.card.defenseRating * g.count);
             float guardAttack = guardMembers.Sum(g => g.card.attack * g.count);
-            var guardDefenders = guardMembers.Select(g => new WorthIt.DefenderProfile(g.card.defenseRating,
-                g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor))).ToList();
+            var guardDefenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
+                g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor), g.card.unitTypeTags,
+                g.card.attack, g.card.hitPoints, g.card.initiative), g.count)).ToList();
             return WorthIt.IsWorthIt(mover, guardDefense, guardAttack, guardDefenders);
         }
     }

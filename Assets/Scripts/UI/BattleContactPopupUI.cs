@@ -34,10 +34,12 @@ namespace Game.UI
         [SerializeField] private Button fightButton;
         [SerializeField] private TMP_Text fightButtonLabel;
         [SerializeField] private Button delayButton;
-        // Only one faction is fully set up in this project right now (see CardHandUI/
-        // ArmyViewerModalUI's own single `catalog` field) — every column's logo comes from here
-        // regardless of which side it's showing, same as everywhere else that needs one.
-        [SerializeField] private FactionCardCatalog catalog;
+        // Resolved per-army via ResolveCatalog(army.Owner) — same StartingDeckCatalog.GetCatalog
+        // per-owner pattern ArmyViewerModalUI already uses, so a neutral defender (Faction.Neutral,
+        // see CitadelSetupController's own _neutralPlayer) gets CardCatalog_Neutral's own logo
+        // instead of whichever single faction used to sit in this field regardless of army (see
+        // the user's own report: a neutral defender's logo wasn't showing up here).
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         // The outer flanking columns — whichever owner appears FIRST among participants gets
         // leftArmyList, the next DISTINCT owner gets rightArmyList (see Populate). Hidden
         // entirely if there aren't two distinct owners to show.
@@ -62,6 +64,13 @@ namespace Game.UI
         private bool _hiddenForSideListModal;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+
+        // Owner is never null for a real army (see PlayerSetupData/CitadelSetupController's own
+        // _neutralPlayer — even a neutral army has a real owner profile, just Faction.Neutral) —
+        // this only returns null when startingDeckCatalog has no catalog registered for that
+        // faction, same fallback ArmyViewerModalUI.ResolveCatalog uses.
+        private FactionCardCatalog ResolveCatalog(PlayerSetupData owner) =>
+            owner != null && startingDeckCatalog != null ? startingDeckCatalog.GetCatalog(owner.Faction) : null;
 
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked). Only
@@ -186,7 +195,7 @@ namespace Game.UI
                     }
 
                     BattleParticipantColumnUI column = Instantiate(columnPrefab, columnContainer);
-                    column.Setup(army, catalog, isDefender, terrainDefMod, buildingDefMod);
+                    column.Setup(army, ResolveCatalog(army.Owner), isDefender, terrainDefMod, buildingDefMod);
                     _columns.Add(column);
                 }
 

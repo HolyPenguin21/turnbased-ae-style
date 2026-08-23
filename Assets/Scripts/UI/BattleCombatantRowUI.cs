@@ -59,11 +59,11 @@ namespace Game.UI
                 logoImage.sprite = factionLogo;
                 logoImage.gameObject.SetActive(factionLogo != null);
             }
-            // Only one faction's art exists in this project right now (see factionLogo — the
-            // SAME sprite is passed for both rows regardless of actual owner, per BattleScreenUI's
-            // own identical `catalog` comment), and unit type names collide across sides too (an
-            // enemy Light Infantry looks and reads identically to the player's own) — the owner's
-            // own colour is what tells the two rows apart (see PlayerColorPalette); the debug
+            // factionLogo is resolved per-owner by the caller (BattleAttackPopupUI.Begin/
+            // BeginCaptureKill, ultimately BattleScreenUI.ResolveCatalog) — this row just shows
+            // whatever it's handed. Unit type names still collide across sides though (an enemy
+            // Light Infantry looks and reads identically to the player's own) — the owner's own
+            // colour is what tells the two rows apart (see PlayerColorPalette); the debug
             // (You)/(Enemy) suffix this used to add on top of that has been dropped per the
             // user's own request.
             if (nameText != null)

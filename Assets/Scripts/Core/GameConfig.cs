@@ -219,6 +219,14 @@ namespace Game.Core
         [Header("Citadel Setup Step")]
         // How far from the map edge a player's random starting hex can land.
         public int maxEdgeDistance = 1;
+        // Hex distance a candidate starting hex must keep from every "City ruins" terrain hex
+        // (see CitadelSetupController.CityRuinsTerrainName) — a starting hex closer than this
+        // gets dropped from the eligible pool entirely, same as a Mountains/off-map hex.
+        public int minCityRuinsDistance = 2;
+        // Hex distance (from the map's own 4 offset corners) inside which a candidate is
+        // rejected even though it's within maxEdgeDistance of an edge — keeps starting hexes
+        // off the corner tiles specifically, not just off the edge band in general.
+        public int cornerExclusionRadius = 1;
 
         [Header("Hex Highlight Styles")]
         // Noise/glow tunables for HexShaderHighlight/HexClusterHighlight (see

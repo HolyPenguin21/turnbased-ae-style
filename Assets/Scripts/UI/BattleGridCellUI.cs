@@ -150,7 +150,10 @@ namespace Game.UI
             else
             {
                 slot1 = unit.Attack;
-                slot2 = unit.Defense;
+                // Terrain + Base-building defense bonus, folded in so this badge always matches
+                // what the unit would actually roll with right now (see
+                // BattleScreenUI.GetDisplayedDefenseBonus's own comment).
+                slot2 = unit.Defense + (_screen != null ? _screen.GetDisplayedDefenseBonus(unit) : 0);
                 slot5 = unit.Range;
             }
 

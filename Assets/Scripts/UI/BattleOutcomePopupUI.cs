@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -22,8 +23,15 @@ namespace Game.UI
         // FinishBattleEnd/BattleScreenUI.Retreat.cs's ResolveRetreat, the only two callers.
         [SerializeField] private TMP_Text messageDetailText;
         [SerializeField] private Button okButton;
+        // 2026-08-21: was a hard-coded 1s (see AutoCloseAfterDelay) — per the user's own report,
+        // that read as firing almost the instant the popup opened, not giving a spectating human
+        // enough time to actually read messageDetailText's own multi-line breakdown before it
+        // dismissed itself. Exposed here instead of just bumped in code so it can be retuned from
+        // the Inspector without a recompile, same as BattleAttackPopupUI's own aiResultCloseDelay.
+        [SerializeField] private float autoCloseDelay = 2.5f;
 
         private Action _onOk;
+        private Coroutine _autoCloseRoutine;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -41,7 +49,11 @@ namespace Game.UI
                 OnOkClicked();
         }
 
-        public void Show(string title, string message, Action onOk)
+        // autoCloseNoHuman: per the user's own request — an AI-vs-AI (or AI-vs-neutrals/event
+        // guard) battle has nobody at the keyboard to press Ok, so this outcome would otherwise
+        // sit on screen forever while the AI's turn stalls behind it. Callers pass their own
+        // `_localArmy == null` check (no human participated in this battle) for this.
+        public void Show(string title, string message, Action onOk, bool autoCloseNoHuman = false)
         {
             _onOk = onOk;
             if (panelRoot != null)
@@ -53,6 +65,18 @@ namespace Game.UI
                 messageText.text = title;
             if (messageDetailText != null)
                 messageDetailText.text = message;
+
+            if (_autoCloseRoutine != null)
+                StopCoroutine(_autoCloseRoutine);
+            _autoCloseRoutine = autoCloseNoHuman ? StartCoroutine(AutoCloseAfterDelay()) : null;
+        }
+
+        private IEnumerator AutoCloseAfterDelay()
+        {
+            if (autoCloseDelay > 0f)
+                yield return new WaitForSeconds(autoCloseDelay);
+            _autoCloseRoutine = null;
+            OnOkClicked();
         }
 
         private void OnOkClicked()
@@ -65,6 +89,11 @@ namespace Game.UI
 
         public void Hide()
         {
+            if (_autoCloseRoutine != null)
+            {
+                StopCoroutine(_autoCloseRoutine);
+                _autoCloseRoutine = null;
+            }
             if (panelRoot != null)
                 panelRoot.SetActive(false);
         }

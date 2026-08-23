@@ -54,10 +54,12 @@ namespace Game.UI
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private GameConfig gameConfig;
-        // Only one faction is fully set up in this project right now (see BattleContactPopupUI's
-        // own identical `catalog` field) — every turn-order icon's logo comes from here
-        // regardless of whose unit it is, same as everywhere else that needs one.
-        [SerializeField] private FactionCardCatalog catalog;
+        // Resolved per-owner via ResolveCatalog(owner) — same StartingDeckCatalog.GetCatalog
+        // pattern ArmyViewerModalUI/BattleContactPopupUI already use, so a Neutral-owned unit's
+        // turn-order icon (and the round-start/attack-popup logos below) shows CardCatalog_
+        // Neutral's own logo instead of whichever single faction used to sit in this field
+        // regardless of whose unit it actually was.
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         // Cleared the instant a battle opens (see Show) — the hex/army info panels underneath
         // mean nothing once combat starts, and would otherwise linger stale behind this screen.
         [SerializeField] private HexSelectionController hexSelectionController;
@@ -221,6 +223,15 @@ namespace Game.UI
         // Read by BattleGridCellUI for the acting-unit ring (UIRaggedGlowUI) — settings live in
         // GameConfig rather than baked into the prefab, per the user's own spec.
         public HexHighlightStyle ActingHighlightStyle => gameConfig != null ? gameConfig.battleActingUnitHighlightStyle : null;
+
+        // Owner is never null for a real army/unit (see PlayerSetupData/CitadelSetupController's
+        // own _neutralPlayer — even a neutral side has a real owner profile, just Faction.Neutral)
+        // — this only returns null when startingDeckCatalog has no catalog registered for that
+        // faction, same fallback ArmyViewerModalUI.ResolveCatalog/BattleContactPopupUI.
+        // ResolveCatalog use. Shared by this file (turn-order icons, round-start popup) and
+        // BattleScreenUI.Combat.cs (attack/Capture-Kill popups) via `partial`.
+        private FactionCardCatalog ResolveCatalog(PlayerSetupData owner) =>
+            owner != null && startingDeckCatalog != null ? startingDeckCatalog.GetCatalog(owner.Faction) : null;
 
         private void Awake()
         {
@@ -403,7 +414,8 @@ namespace Game.UI
             // effectively inert) — nothing in it (roster preview, retreat warning) is actionable
             // by anyone if no one here is human.
             if (roundStartPopup != null && _localArmy != null)
-                roundStartPopup.Show(_round, _grid, _attacker, _defender, catalog != null ? catalog.logo : null,
+                roundStartPopup.Show(_round, _grid, _attacker, _defender,
+                    ResolveCatalog(_attacker?.Owner)?.logo, ResolveCatalog(_defender?.Owner)?.logo,
                     canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name);
             else
                 OnStartRoundClicked();
@@ -553,7 +565,7 @@ namespace Game.UI
                     UnitData queued = _turnOrder[i];
                     Color ownerColor = queued.Owner != null ? PlayerColorPalette.Colors[queued.Owner.ColorIndex] : Color.white;
                     BattleTurnOrderIconUI icon = Instantiate(turnQueueIconPrefab, turnQueueContainer);
-                    icon.Setup(queued, catalog != null ? catalog.logo : null, ownerColor, i == _turnIndex);
+                    icon.Setup(queued, ResolveCatalog(queued.Owner)?.logo, ownerColor, i == _turnIndex);
                     _queueIcons.Add(icon);
                 }
 

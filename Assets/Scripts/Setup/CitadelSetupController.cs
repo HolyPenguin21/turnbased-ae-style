@@ -8,6 +8,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Styles;
+using Game.Terrain;
 using Game.Turns;
 using Game.UI;
 using Game.Units;
@@ -345,19 +346,68 @@ namespace Game.Setup
 
         private List<HexCoord> GetEdgeEligibleHexes()
         {
+            List<HexCoord> cityRuinsHexes = GetCityRuinsHexes();
+            List<HexCoord> corners = GetMapCorners();
+
             var result = new List<HexCoord>();
             for (int row = 0; row < map.Height; row++)
             {
                 for (int col = 0; col < map.Width; col++)
                 {
                     int edgeDistance = Mathf.Min(Mathf.Min(col, map.Width - 1 - col), Mathf.Min(row, map.Height - 1 - row));
+                    if (edgeDistance > gameConfig.maxEdgeDistance)
+                        continue;
+
                     HexCoord coord = HexCoord.FromOffset(col, row);
                     // A candidate must actually exist on the map — otherwise its selectable
                     // neighbourhood would have a hole in the middle, which the boundary tracer
                     // below can't draw as a single closed outline.
-                    if (edgeDistance <= gameConfig.maxEdgeDistance && IsSelectable(coord))
-                        result.Add(coord);
+                    if (!IsSelectable(coord))
+                        continue;
+
+                    // Off the corner tiles specifically (project owner's own spec, 2026-08-22 —
+                    // "не прям в угловых участках карты"), and kept at least
+                    // gameConfig.minCityRuinsDistance hexes from every "City ruins" hex so a
+                    // fresh citadel never opens the game already standing next to a garrisoned
+                    // outpost.
+                    if (corners.Any(corner => HexGridMath.Distance(coord, corner) <= gameConfig.cornerExclusionRadius))
+                        continue;
+                    if (cityRuinsHexes.Any(ruin => HexGridMath.Distance(coord, ruin) < gameConfig.minCityRuinsDistance))
+                        continue;
+
+                    result.Add(coord);
                 }
+            }
+            return result;
+        }
+
+        // The map's own 4 offset-grid corners, converted to axial — anchor points for
+        // cornerExclusionRadius above. Doesn't check IsSelectable: a corner missing from the
+        // map entirely still works fine as a pure distance anchor for its neighbours.
+        private List<HexCoord> GetMapCorners()
+        {
+            return new List<HexCoord>
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(map.Width - 1, 0),
+                HexCoord.FromOffset(0, map.Height - 1),
+                HexCoord.FromOffset(map.Width - 1, map.Height - 1),
+            };
+        }
+
+        // Every hex whose terrain is "City ruins" — same name/lookup convention as
+        // GenerateCityRuinsGarrisons (CitadelSetupController.MapContent.cs) uses for the
+        // post-placement garrison pass. Terrain is already fully painted on `map` by the time
+        // this setup step runs, so it's safe to read here even though the garrisons themselves
+        // don't spawn until FinishAllPlacements, well after starting hexes are assigned.
+        private List<HexCoord> GetCityRuinsHexes()
+        {
+            var result = new List<HexCoord>();
+            foreach (HexCoord hex in map.AllCoords)
+            {
+                if (map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) &&
+                    string.Equals(terrain.terrainName, CityRuinsTerrainName, System.StringComparison.OrdinalIgnoreCase))
+                    result.Add(hex);
             }
             return result;
         }
@@ -491,10 +541,13 @@ namespace Game.Setup
 
             // Post-generation content passes (see CitadelSetupController.MapContent.cs) — run
             // only now, once every citadel hex is finalized, so they can steer clear of them.
-            // Order matches the user's own spec: resources, then neutral armies, then the two
-            // not-yet-implemented hooks for random events/special hexes.
+            // Order matches the user's own spec: resources, then neutral armies, then City ruins
+            // garrisons (must run before events so those hexes register as guaranteed event
+            // targets — see GenerateCityRuinsGarrisons's own comment), then random events, then
+            // the not-yet-implemented special-hexes hook.
             GenerateResources();
             GenerateNeutralArmies();
+            GenerateCityRuinsGarrisons();
             GenerateRandomEvents();
             GenerateSpecialHexes();
 

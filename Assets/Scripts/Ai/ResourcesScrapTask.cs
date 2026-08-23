@@ -46,6 +46,6 @@ namespace Game.Ai
         }
 
         public static bool HasEnemyThreat(PlayerSetupData player, HexCoord targetHex) =>
-            AiMapMemory.HasKnownEnemyWithin(player, targetHex, AiConfig.Current.economySafetyRadius);
+            AiMapMemory.HasKnownEnemyWithin(player, targetHex, AiConfig.economySafetyRadius);
     }
 }

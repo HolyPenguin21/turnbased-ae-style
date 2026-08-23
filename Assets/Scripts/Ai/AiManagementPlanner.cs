@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -14,24 +14,29 @@ namespace Game.Ai
     // Level-1 category for Менеджмент (AiTaskCategory.Management) — shared primitives (card
     // placement via FindPlacement, the Reserve/Draw fallback alternation) plus the candidate-
     // gathering orchestration AiTurnController.Decide calls into each step (TryPlayCardCandidates/
-    // TryGarrisonSplitCandidate/TryConsolidationCandidate/GatherFallbackCandidates), same role
-    // AiScoutPlanner/AiEconomyPlanner/AiAggressionPlanner play for their own categories, plus this
-    // category's own execution routines (ReserveArmyRoutine/DrawCardRoutine/
-    // SplitGarrisonArmyRoutine/ConsolidateUnitsRoutine — see AiTurnController's own class comment
-    // on the execution split). The garrison/army reorg logic itself is its own task class — see
-    // GarrisonReorgTask's own class comment for why. The "solo hero with nothing to visit walks
+    // GatherFallbackCandidates), same role AiScoutPlanner/AiEconomyPlanner/AiAggressionPlanner play
+    // for their own categories, plus this category's own execution routines (ReserveArmyRoutine/
+    // DrawCardRoutine/SplitGarrisonArmyRoutine/ConsolidateUnitsRoutine — see AiTurnController's own
+    // class comment on the execution split). TryGarrisonSplitCandidate/TryConsolidationCandidate are
+    // the odd ones out here (2026-08-20) — NOT called from Decide's own per-step loop any more, only
+    // from AiTurnController.RunGarrisonReorgPhase, once, after that whole loop is done (see that
+    // method's own comment for why). The garrison/army reorg logic itself is its own task class —
+    // see GarrisonReorgTask's own class comment for why. The "solo hero with nothing to visit walks
     // home" fallback lives on AiScoutPlanner.TryReturnHomeCandidates instead — that one is really
     // AiArmyRoles.IsSoloHeroAwaitingEscort's own other half, a Разведка concern, not a
     // card/army-bookkeeping one.
     public static class AiManagementPlanner
     {
-        // What a hand card is FOR, as far as card placement cares — see AiArmyRoles's own class
-        // comment for the three army shapes these map to.
+        // What a hand card is FOR, as far as scoring/alternation cares — see AiArmyRoles's own
+        // class comment for the three army shapes these map to. Recce is still its own role for
+        // that purpose (RoleOf/NotifyCardRolePlayed), even though FindPlacement below no longer
+        // ever sees a Recce card at all (AiScoutPlanner places those itself — see FindPlacement's
+        // own comment).
         public enum CardRole
         {
-            Recce, // solo Recce party — unit or hero, always a fresh empty army
-            Hero, // non-Recce hero — garrison, else a reserve army, else founds a fresh one
-            Unit, // plain non-Recce unit — hero escort, else garrison, else a reserve army
+            Recce, // solo Recce party — placed by AiScoutPlanner, never by FindPlacement
+            Hero, // non-Recce hero — garrison first, else an army (see FindPlacement)
+            Unit, // plain non-Recce unit — garrison first, else an army (see FindPlacement)
         }
 
         // ---- Разыгрывание карты из руки ----
@@ -40,16 +45,52 @@ namespace Game.Ai
         {
             // null => no existing army has room; caller spawns a fresh one instead.
             public readonly ArmyData ExistingArmy;
-            // Hero role only — non-null means ExistingArmy is a FULL plain army FindPlacement
-            // picked anyway (see its own last-resort tier's comment): PlayCardRoutine evicts
-            // this member to the garrison BEFORE deploying the card, opening the room the hero
-            // needs, both in the one same action.
-            public readonly UnitData EvictUnit;
-            public CardPlacement(ArmyData existingArmy, UnitData evictUnit = null)
+            public CardPlacement(ArmyData existingArmy)
             {
                 ExistingArmy = existingArmy;
-                EvictUnit = evictUnit;
             }
+        }
+
+        // ---- Многобазовая маршрутизация (2026-08-21) ----
+
+        // Every one of this player's own garrisoned hexes, busiest first — "busy" meaning the
+        // nearest KNOWN (AiMapMemory, fog-of-war honest) non-neutral sighting within
+        // AiConfig.managementActivityRadius, weighted by both proximity and strength. Deliberately
+        // NOT the raw-ArmyData cheat AiDefencePlanner.CheatEstimateRaiderThreat/
+        // DynamicPatrolUrgencyScore use for Оборона's own proactive patrol sizing — Менеджмент's
+        // own routing only reacts to what this player has actually scouted (project owner's own
+        // "известных врагов" call). Ties (including "nothing known anywhere") favor the citadel,
+        // same tie-break direction Агрессия/Оборона's own hard citadel priority already uses.
+        internal static IEnumerable<HexCoord> OwnGarrisonHexesByActivity(PlayerSetupData player)
+        {
+            HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+            return AiTurnController.OwnGarrisonHexes(player)
+                .OrderByDescending(h => ActivityScore(player, h))
+                .ThenBy(h => h.Equals(citadelHex) ? 0 : 1);
+        }
+
+        internal static HexCoord MostActiveOwnGarrisonHex(PlayerSetupData player)
+        {
+            HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+            return OwnGarrisonHexesByActivity(player).DefaultIfEmpty(citadelHex).First();
+        }
+
+        private static float ActivityScore(PlayerSetupData player, HexCoord homeHex)
+        {
+            float best = 0f;
+            foreach (AiMapMemory.KnownEnemySighting sighting in
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { homeHex }, AiConfig.managementActivityRadius))
+            {
+                if (sighting.Owner == null || sighting.Owner.IsNeutral)
+                    continue;
+                int distance = HexGridMath.Distance(homeHex, sighting.Hex);
+                float proximity = 1f - (float)distance / AiConfig.managementActivityRadius;
+                float strength = sighting.DefenseSum + sighting.AttackSum;
+                float score = proximity * strength;
+                if (score > best)
+                    best = score;
+            }
+            return best;
         }
 
         // Checked BEFORE the caller proposes a candidate, not after (see the project owner's own
@@ -59,30 +100,35 @@ namespace Game.Ai
         // between retries, so it never would have succeeded). Null if `card` can't be placed
         // anywhere right now.
         //
-        // Recce always founds its own fresh empty army (AiArmyRoles.IsEmptyDeployableArmy) — the
-        // one composition deliberately kept solo forever (see that method's own comment). Unit
-        // and Hero now share the SAME fallback chain instead of Hero always founding its own
-        // army: an existing hero escort with room (Unit only — a second hero never joins one it
-        // didn't lead itself), then the garrison (while it has more than
-        // AiConfig.garrisonReservedSlots free), then an existing plain reserve army
-        // (AiArmyRoles.IsPlainReserveArmy — a Hero card landing on one of these is exactly how it
-        // becomes hero-led), and only once none of those has room does a fresh army get spawned.
-        // The project owner's own spec: "один герой на армию — такого быть не должно вообще, если
-        // такого не требует задача" — a solo hero should be the rare last resort, not the default.
+        // Hero and Unit cards both follow the exact same rule now (2026-08-19, project owner's
+        // own call — "не нужно тут это разделение, карты юнитов как и карты героев мы ложим в
+        // гарнизон, другая задача менеджера занимается управлением карт, PlayCard только
+        // разыгрывает карту"): garrison first, while it has more than AiConfig.garrisonReserved
+        // Slots free — growing armies OUT of garrison stock (hero escorts, plain-army top-up) is
+        // GarrisonReorgTask's own job on a LATER step, not this method's. Only once the garrison
+        // has no room does this fall back to an army — an existing plain reserve army
+        // (AiArmyRoles.IsPlainReserveArmy) if one has room, else a fresh one. Recce cards never
+        // reach this method at all any more — AiScoutPlanner places its own Recce cards directly
+        // (see that class's own TryStartReconAssemblyCandidatesFor), so this is Hero/Unit only.
         //
-        // `canSupportAnotherHeroArmy` — GarrisonReorgTask.CanSupportAnotherHeroArmy's own answer
-        // for this player, computed once by the caller (AiTurnController) and passed in rather
-        // than called from here, so this shared card-placement primitive doesn't reach UP into a
-        // task class (GarrisonReorgTask already depends on THIS class the other way, via
-        // HasGarrisonDepositRoom — keeping it one-directional). Irrelevant for Unit/Recce roles;
-        // for Hero, false means founding/taking over yet another hero-led army would spread
-        // combat strength thinner than AiConfig.minArmyStrengthShare allows — the card is only
-        // ever offered the garrison itself then (bypassing the normal reserved-slot headroom, a
-        // hero only takes one slot and benching it here IS the point), never a fresh/plain-reserve
-        // army, and simply waits if even that has no room (the project owner's own "лучше держать
-        // несколько героев в гарнизоне, чем плодить слабые армии" spec).
-        public static CardPlacement? FindPlacement(PlayerSetupData player, PlayerRoot root, CardData card, CardRole role,
-            bool canSupportAnotherHeroArmy = true)
+        // Unit-only extra tier (2026-08-22, project owner's own call): once the plain-reserve
+        // fallback above also comes up empty, a Unit card can still top up an existing hero-led
+        // combat army with room (AiArmyRoles.IsHeroLedCombatArmy) — a raid/defence army already
+        // hero-led but still short a body, same "grows toward a small but survivable fighting
+        // force" intent that army shape's own comment describes. A Hero card never gets this tier
+        // — IsHeroLedCombatArmy is deliberately excluded from a second hero, unchanged. Without
+        // this, a Unit card could only ever reach a hero-led army indirectly through garrison
+        // stock (RaidWeakerArmyTask.FindRecruitAt) — this method's own fallback used to dead-end
+        // at a fresh, redundant army instead whenever the Garrison itself had no deposit room, the
+        // same "spins up a duplicate instead of reusing what's already forming" pattern already
+        // fixed once for Агрессия's own hero recruit (see AiAggressionPlanner.TryHeroCardForRaid).
+        //
+        // Multi-base (2026-08-21) — tries every one of this player's own garrisons, busiest first
+        // (see OwnGarrisonHexesByActivity), not just "the" garrison: a card routes toward whichever
+        // base currently has more real enemy activity nearby, project owner's own "разыгрывает
+        // карты в ту базу где сейчас большая активность" call, falling through to the next-busiest
+        // garrison only if the busiest one genuinely has no room right now.
+        public static CardPlacement? FindPlacement(PlayerSetupData player, PlayerRoot root, CardData card)
         {
             CardDefinition definition = card.Definition;
             int deployApCost = ArmyActions.EffectiveDeployApCost(definition);
@@ -92,61 +138,25 @@ namespace Game.Ai
             if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
                 return null;
 
-            ArmyData existing = null;
-            if (role == CardRole.Recce)
+            foreach (HexCoord homeHex in OwnGarrisonHexesByActivity(player))
             {
-                existing = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && IsAtRequiredBuilding(a, player, definition));
-            }
-            else if (role == CardRole.Hero && !canSupportAnotherHeroArmy)
-            {
-                ArmyData garrisonBench = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => a.IsGarrison && a.HasRoom && IsAtRequiredBuilding(a, player, definition));
-                return garrisonBench != null ? new CardPlacement(garrisonBench) : (CardPlacement?)null;
-            }
-            else
-            {
-                if (role == CardRole.Unit)
-                    existing = ArmyRegistry.AllForOwner(player)
-                        .FirstOrDefault(a => AiArmyRoles.IsHeroLedCombatArmy(a) && a.HasRoom && IsAtRequiredBuilding(a, player, definition));
-
-                if (existing == null)
-                    existing = ArmyRegistry.AllForOwner(player)
-                        .FirstOrDefault(a => a.IsGarrison && HasGarrisonDepositRoom(a) && IsAtRequiredBuilding(a, player, definition));
-
-                if (existing == null)
-                    existing = ArmyRegistry.AllForOwner(player)
-                        .FirstOrDefault(a => AiArmyRoles.IsPlainReserveArmy(a) && IsAtRequiredBuilding(a, player, definition));
-
-                // Hero-only last resort before founding a fresh army: a FULL plain-army-shaped
-                // stockpile (IsPlainReserveArmy above already skipped it — that check requires
-                // HasRoom) still deserves a hero over spinning up yet another empty one. Evicts
-                // its own weakest member back to the garrison first — same reasoning as
-                // GarrisonReorgTask.FindHeroPromotionMakeRoom, just reached from card-placement
-                // time instead of waiting for a LATER Decide() step's reorg tier to notice (the
-                // project owner's own "должен уметь выкладывать карты героев прямо в готовую
-                // армию" spec). Requires the garrison to actually have headroom to receive the
-                // evictee AND be affordable — otherwise this card simply finds no placement here
-                // either, same as every other tier above.
-                if (existing == null && role == CardRole.Hero)
-                {
-                    ArmyData evictTarget = ArmyRegistry.AllForOwner(player).FirstOrDefault(a =>
-                        a != null && !a.IsGarrison && !a.IsPrison && !a.HasRecce && !a.HasRoom
-                        && a.Members.Count(m => m.IsHero) == 0 && IsAtRequiredBuilding(a, player, definition));
-                    if (evictTarget != null)
-                    {
-                        ArmyData garrisonArmy = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison);
-                        UnitData evictUnit = evictTarget.Members.OrderBy(m => m.Defense).ThenBy(m => m.Attack).FirstOrDefault();
-                        bool canAffordEvict = evictUnit != null && garrisonArmy != null && HasGarrisonDepositRoom(garrisonArmy)
-                            && (!garrisonArmy.HasActivatedThisTurn || root.CanSpendActionPoints(evictUnit.ActivationApCost));
-                        if (canAffordEvict)
-                            return new CardPlacement(evictTarget, evictUnit);
-                    }
-                }
+                ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(homeHex));
+                if (garrison != null && HasGarrisonDepositRoom(garrison) && IsAtRequiredBuilding(garrison, player, definition))
+                    return new CardPlacement(garrison);
             }
 
-            if (existing != null)
-                return new CardPlacement(existing);
+            ArmyData existingReserve = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => AiArmyRoles.IsPlainReserveArmy(a) && IsAtRequiredBuilding(a, player, definition));
+            if (existingReserve != null)
+                return new CardPlacement(existingReserve);
+
+            if (definition.cardType == CardType.Unit)
+            {
+                ArmyData heroLedWithRoom = ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => AiArmyRoles.IsHeroLedCombatArmy(a) && a.HasRoom && IsAtRequiredBuilding(a, player, definition));
+                if (heroLedWithRoom != null)
+                    return new CardPlacement(heroLedWithRoom);
+            }
 
             return root.ActionPoints >= ArmyActions.CreateArmyApCost + deployApCost
                 ? new CardPlacement(null)
@@ -156,15 +166,21 @@ namespace Game.Ai
         // Garrison keeps at least AiConfig.garrisonReservedSlots open at all times as far as
         // ordinary card deposits are concerned — see AiConfig.garrisonReservedSlots's own comment
         // for why this is a stricter gate than the raw HasRoom the overflow-eviction side
-        // (GarrisonReorgTask.FindGarrisonOverflow) still uses. Public — GarrisonReorgTask's own
-        // lone-army-fold tier needs the identical headroom check (see its own comment on why).
+        // (GarrisonReorgTask.FindGarrisonOverflow) still uses. GarrisonReorgTask's own lone-army-
+        // fold tier used to share this same check, but doesn't any more (2026-08-20, project
+        // owner's own call — see that tier's own comment): a solo unit/hero standing exposed
+        // outside the garrison is exactly the case this buffer shouldn't block, so that tier now
+        // reads raw HasRoom instead. Left public regardless — no reason to force this back to
+        // private over that.
         public static bool HasGarrisonDepositRoom(ArmyData garrison) =>
-            garrison != null && garrison.Capacity - garrison.Members.Count > AiConfig.Current.garrisonReservedSlots;
+            garrison != null && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
 
         // Same rule CardHandUI.IsValidDropTarget enforces for a human's drag-drop — a Unit/Hero
         // card can only join an army sitting on a hex with one of the player's own buildings that
-        // grants definition.requiredBuildingAbility (Barracks, in practice).
-        private static bool IsAtRequiredBuilding(ArmyData army, PlayerSetupData player, CardDefinition definition)
+        // grants definition.requiredBuildingAbility (Barracks, in practice). Internal, not
+        // private — AiScoutPlanner's own Recce placement (see its own TryStartReconAssembly
+        // CandidatesFor) needs the identical check and shouldn't have to duplicate it.
+        internal static bool IsAtRequiredBuilding(ArmyData army, PlayerSetupData player, CardDefinition definition)
         {
             if (string.IsNullOrEmpty(definition.requiredBuildingAbility))
                 return false;
@@ -198,11 +214,11 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, CardRole> LastPlayedCardRole = new Dictionary<PlayerSetupData, CardRole>();
 
         // Alternation state for TryPlayCardCandidates's own cardRoleAlternationDamping (see that
-        // field's own comment) — Recce never participates (it already has its own separate
-        // scoring path via reconHandDemandActive), so callers only ever pass Hero or Unit here.
-        // No stored-state default needed the way FallbackKind's IsPreferred has one: absent from
-        // the dictionary simply means "nothing of this role has been played yet this game",
-        // which correctly cools down neither role.
+        // field's own comment) — Recce never participates (AiScoutPlanner scores/places it
+        // entirely on its own, see FindPlacement's own comment), so callers only ever pass Hero
+        // or Unit here. No stored-state default needed the way FallbackKind's IsPreferred has
+        // one: absent from the dictionary simply means "nothing of this role has been played yet
+        // this game", which correctly cools down neither role.
         public static bool IsCardRoleCoolingDown(PlayerSetupData player, CardRole role) =>
             LastPlayedCardRole.TryGetValue(player, out CardRole last) && last == role;
 
@@ -256,91 +272,232 @@ namespace Game.Ai
 
         // ---- Cards / reserve / draw / base upkeep (Менеджмент's own "мелкие" steps) ----
 
-        // One candidate per affordable Unit/Hero/Recce card in hand — Base/Facility cards are
-        // skipped entirely, same as before (see AiTurnController.Decide's own class comment,
-        // point 4). Every card gets its own role read straight off IsRecceCard/cardType (not just
-        // the first Recce card found in hand, unlike the old fixed-tier version) — a second Recce
-        // card in hand now correctly gets routed as a solo Recce party too, instead of falling
-        // through to plain Unit/Hero placement rules. Placement itself (who has room, whether it's
-        // even affordable) lives in FindPlacement — this only assigns the Score and builds the
-        // AiDecision.
+        // One candidate per affordable Hero/Unit card in hand — Base/Facility cards are skipped
+        // entirely, same as before (see AiTurnController.Decide's own class comment, point 4).
+        // Recce cards are skipped too, always (2026-08-19, project owner's own call — "тут никто
+        // не гонится, ScoutPlanner выполняет свою задачу, PlayCard выполняет свою"): a Recce card
+        // is placed and scored entirely by AiScoutPlanner.TryStartReconAssemblyCandidatesFor now,
+        // never proposed here at all, so the two categories no longer compete for the same card.
+        // Removing a Recce card from hand still lowers hand.Hand's own count for the next step's
+        // unplayedUnitCards/unplayedHeroCards read below, regardless of which category played it
+        // — that's just hand.Hand.Count, nothing here has to special-case who did the playing
+        // (this is the "ScoutPlanner разыгрывая карту влияет на скор PlayCard-задачи" cross-effect
+        // the project owner flagged — it already falls out of the shared hand for free, and the
+        // same will hold the day AiAggressionPlanner ever grows its own direct card-hand pipeline
+        // the way Разведка has).
         //
-        // `reconHandDemandActive` — true when Разведка already has a SpawnReconArmy/
-        // AssembleRecceScout candidate this same step (computed by AiTurnController.Decide off
-        // its own AiScoutPlanner.TryStartReconAssemblyCandidates call, BEFORE this one runs — see
-        // its own call site comment), i.e. it's already mid-pursuit of a matching Recce card from
-        // THIS hand. Two effects while active, both from the project owner's own 2026-08-17
-        // reports (Recce cards losing out first to a Unit backlog, then again to a Hero backlog
-        // even after the first fix):
-        //  1) Damps (reconHandDemandBacklogDamping) the Unit/Hero backlog terms below — the
-        //     backlog's whole point is forcing urgency for a card that would otherwise never get
-        //     played, and that's simply not true right now for the Recce card Разведка is already
-        //     chasing.
-        //  2) Bumps a Recce card's OWN score up to match Разведка's own valuation of this exact
-        //     situation (reconBaseWeight + reconRequestCardPenalty — the same number
-        //     TryStartReconAssemblyCandidatesFor would score this identical card at if an empty
-        //     army already existed) instead of Менеджмент's own flat playRecceCardBonus. Damping
-        //     alone caps the Unit/Hero side but never actually raises Recce's own number, so a
-        //     large enough backlog still eventually out-scores it — this closes that gap for good
-        //     rather than chasing it with ever-larger damping.
+        // Placement (who has room, whether it's even affordable) lives in FindPlacement — this
+        // only assigns the Score and builds the AiDecision.
         //
-        // Independently of both of the above, a role that just had a card of its own played also
-        // gets cardRoleAlternationDamping applied (IsCardRoleCoolingDown — see that method's own
-        // comment) — the project owner's own 2026-08-17 follow-up: without this, whichever of
-        // Hero/Unit had the taller backlog pile kept winning every single step, so the AI played
-        // out its ENTIRE hand of heroes before touching a single unit (or vice versa) instead of
-        // alternating.
-        public static List<AiDecision> TryPlayCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            bool reconHandDemandActive = false)
+        // Hero and Unit share one score formula (2026-08-19 — playHeroCardBonus removed, project
+        // owner's own call: "убираем playHeroCardBonus, альтернейшен закроет необходимость в
+        // героях"): managementBaseWeight plus a backlog term scaled by that role's own SHARE of
+        // the unplayed Hero+Unit pool (cardRoleBacklogShareWeight — see that constant's own
+        // comment for why this reads as a bounded share, not a raw per-card count, since
+        // 2026-08-21), damped by cardRoleAlternationDamping (IsCardRoleCoolingDown) for whichever
+        // role just had a card played, so the AI alternates Hero/Unit turn to turn instead of
+        // exhausting one role's entire backlog before touching the other (the project owner's own
+        // 2026-08-17 report). Every affordable Hero card gets its own candidate, exactly as before.
+        //
+        // Unit cards are handled differently (2026-08-19, project owner's own explicit check —
+        // "надеюсь это внутренний скоринг этой задачи и он не влияет на скоринг между остальными
+        // задачами": confirmed, and the first version of this DIDN'T honor that — UnitComposition
+        // FitBonus used to be added straight into the externally-competing Score, the exact
+        // "internal ranking leaking into the cross-category arbiter" mistake VisitHexTask.
+        // FindTarget's own Score and BuildFacilityTask.RankHex both go out of their way to avoid,
+        // see their own comments). Fixed the same way those two already solve it: an internal-
+        // only pre-pass picks ONE preferred Unit card among every currently-placeable one in hand
+        // (UnitCompositionFitBonus is the ranking key, never seen outside this method), and ONLY
+        // that single winner becomes a candidate — scored on the exact same plain
+        // managementBaseWeight+backlog formula every other Unit card would have gotten, with zero
+        // trace of the fit bonus in it. Every other Unit card this step simply isn't proposed at
+        // all; it gets its own look once this one's played (or fails to place) and hand/roster are
+        // re-read fresh next step — see this method's own re-invocation every Decide() call, which
+        // is also what keeps RosterShape from ever going stale between one played card and the next.
+        public static List<AiDecision> TryPlayCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand)
         {
             var results = new List<AiDecision>();
             if (hand == null)
                 return results;
 
-            // Computed once per step, not per card — GarrisonReorgTask.CanSupportAnotherHeroArmy's
-            // own answer doesn't change while this loop just reads state (see FindPlacement's own
-            // comment on why this is passed in rather than looked up from here directly).
-            bool canSupportAnotherHeroArmy = GarrisonReorgTask.CanSupportAnotherHeroArmy(player);
-
-            // Plain Unit cards (Recce/Hero excluded — those already have their own growth path
-            // via reconAssembleBonus/reconRequestCardPenalty and generally get played anyway, see
-            // the project owner's own "won't deploy units" report) otherwise sit at a permanent
-            // flat managementBaseWeight forever, tied with — and routinely losing the tie-break
-            // to — RequestRaidArmy/SpawnReconArmy's own flat 50 (first-found wins ties, see
-            // AiTurnController.Decide's own comment). The backlog itself is the pressure valve:
-            // the more Unit cards pile up unplayed, the more urgent playing ANY of them becomes,
-            // so this grows with hand size rather than being a fixed bump — see
-            // unitCardBacklogWeight's own comment.
             int unplayedUnitCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c)
                 && c.Definition.cardType == CardType.Unit);
-            // Same pressure-valve idea, for non-Recce Hero cards, own separate pile/count — see
-            // playHeroCardBonus's own comment for why the per-card weight is shared with Unit's
-            // rather than its own steeper constant.
             int unplayedHeroCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c)
                 && c.Definition.cardType == CardType.Hero);
-            float backlogDamping = reconHandDemandActive ? AiConfig.Current.reconHandDemandBacklogDamping : 1f;
-            float recceScore = reconHandDemandActive
-                ? AiConfig.Current.reconBaseWeight + AiConfig.Current.reconRequestCardPenalty
-                : AiConfig.Current.managementBaseWeight + AiConfig.Current.playRecceCardBonus;
-            float heroAlternationDamping = IsCardRoleCoolingDown(player, CardRole.Hero) ? AiConfig.Current.cardRoleAlternationDamping : 1f;
-            float unitAlternationDamping = IsCardRoleCoolingDown(player, CardRole.Unit) ? AiConfig.Current.cardRoleAlternationDamping : 1f;
+            // Share of the unplayed Hero+Unit pool, not a raw count (2026-08-21 fix — see
+            // AiConfig.cardRoleBacklogShareWeight's own comment for why a raw count structurally
+            // favored Unit, the deck's more numerous role, regardless of how long Hero cards sat
+            // unplayed). The two shares always sum to 1; 0 unplayed total means neither role has
+            // anything to be urgent about.
+            int totalRoleCards = unplayedUnitCards + unplayedHeroCards;
+            float heroShare = totalRoleCards > 0 ? (float)unplayedHeroCards / totalRoleCards : 0f;
+            float unitShare = totalRoleCards > 0 ? (float)unplayedUnitCards / totalRoleCards : 0f;
+            float heroAlternationDamping = IsCardRoleCoolingDown(player, CardRole.Hero) ? AiConfig.cardRoleAlternationDamping : 1f;
+            float unitAlternationDamping = IsCardRoleCoolingDown(player, CardRole.Unit) ? AiConfig.cardRoleAlternationDamping : 1f;
+            // Same formula every Hero/every Unit candidate this step actually scores at (see this
+            // method's own comment) — computed once here, up front, so both sides of the
+            // alternation can be logged on EVERY PlayCard candidate this step produces, not just
+            // whichever role happened to win (project owner's own 2026-08-19 debug-visibility ask).
+            float heroScore = AiConfig.managementBaseWeight
+                + heroAlternationDamping * AiConfig.cardRoleBacklogShareWeight * heroShare;
+            float unitScore = AiConfig.managementBaseWeight
+                + unitAlternationDamping * AiConfig.cardRoleBacklogShareWeight * unitShare;
+            string roleBalance = $" [Hero/Unit alternation: hero={heroScore:0.0} (backlog={unplayedHeroCards}"
+                + (heroAlternationDamping < 1f ? ", cooling down" : "") + $"), unit={unitScore:0.0} (backlog={unplayedUnitCards}"
+                + (unitAlternationDamping < 1f ? ", cooling down" : "") + ")]";
 
             foreach (CardData card in hand.Hand)
             {
-                if (!IsUnitOrHeroCard(card))
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Hero)
+                    continue; // Recce is AiScoutPlanner's own; Unit cards are the pre-pass below
+                CardPlacement? heroPlacement = FindPlacement(player, root, card);
+                if (heroPlacement.HasValue)
+                {
+                    AiDecision decision = AiDecision.PlayCard(heroPlacement.Value.ExistingArmy, card, CardRole.Hero, heroScore, AiTaskCategory.Management);
+                    decision.Reason += roleBalance;
+                    results.Add(decision);
+                }
+            }
+
+            // Internal-only pre-pass — see this method's own comment. RosterShape is recomputed
+            // fresh every call (every Decide() step), so it always reflects whatever the LAST
+            // played card actually did to the roster, never a stale snapshot from earlier this turn.
+            RosterShape roster = RosterShape.For(player);
+            CardData bestUnitCard = null;
+            CardPlacement? bestUnitPlacement = null;
+            float bestUnitFit = float.NegativeInfinity;
+            foreach (CardData card in hand.Hand)
+            {
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Unit)
                     continue;
-                CardRole role = RoleOf(card);
-                float score = role == CardRole.Recce ? recceScore
-                    : AiConfig.Current.managementBaseWeight
-                        + (role == CardRole.Hero
-                            ? heroAlternationDamping * (AiConfig.Current.playHeroCardBonus
-                                + AiConfig.Current.unitCardBacklogWeight * backlogDamping * Mathf.Max(0, unplayedHeroCards - 1))
-                            : unitAlternationDamping * AiConfig.Current.unitCardBacklogWeight * backlogDamping * Mathf.Max(0, unplayedUnitCards - 1));
-                CardPlacement? placement = FindPlacement(player, root, card, role, canSupportAnotherHeroArmy);
-                if (placement.HasValue)
-                    results.Add(AiDecision.PlayCard(placement.Value.ExistingArmy, card, role, score, placement.Value.EvictUnit));
+                CardPlacement? placement = FindPlacement(player, root, card);
+                if (!placement.HasValue)
+                    continue;
+                float fit = UnitCompositionFitBonus(player, card.Definition, roster);
+                if (bestUnitCard == null || fit > bestUnitFit) // first-found wins ties, same rule as everywhere else in this codebase
+                {
+                    bestUnitCard = card;
+                    bestUnitPlacement = placement;
+                    bestUnitFit = fit;
+                }
+            }
+            if (bestUnitCard != null)
+            {
+                AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, unitScore, AiTaskCategory.Management);
+                decision.Reason += roleBalance;
+                results.Add(decision);
             }
             return results;
+        }
+
+        // Snapshot of the player's own current non-hero unit roster — garrison AND every field
+        // army combined (2026-08-19, project owner's own call: "смотрим на составы всех армий
+        // игрока-ИИ", this player's own, never an opponent's — see UnitCompositionFitBonus's own
+        // criterion 7 for the one honest exception, read through AiMapMemory instead of this
+        // struct). This class doesn't decide which army a Unit card ends up in — FindPlacement
+        // already always tries the garrison first (see its own comment) — so there's no "which
+        // army's composition" question here, only "what does the player's stock as a whole look
+        // like".
+        private readonly struct RosterShape
+        {
+            public readonly float AvgDefense;
+            public readonly float AvgAttack;
+            public readonly int MeleeCount;
+            public readonly int RangedCount;
+            public readonly int AbilityHeavyCount;
+            public readonly int SimpleCount;
+
+            private RosterShape(float avgDefense, float avgAttack, int meleeCount, int rangedCount, int abilityHeavyCount, int simpleCount)
+            {
+                AvgDefense = avgDefense;
+                AvgAttack = avgAttack;
+                MeleeCount = meleeCount;
+                RangedCount = rangedCount;
+                AbilityHeavyCount = abilityHeavyCount;
+                SimpleCount = simpleCount;
+            }
+
+            public static RosterShape For(PlayerSetupData player)
+            {
+                List<UnitData> roster = ArmyRegistry.AllForOwner(player).SelectMany(a => a.Members).Where(m => !m.IsHero).ToList();
+                if (roster.Count == 0)
+                    return new RosterShape(0f, 0f, 0, 0, 0, 0);
+                return new RosterShape(
+                    (float)roster.Average(m => m.Defense),
+                    (float)roster.Average(m => m.Attack),
+                    roster.Count(m => m.Range <= 1),
+                    roster.Count(m => m.Range > 1),
+                    roster.Count(m => m.Abilities.Count > 0),
+                    roster.Count(m => m.Abilities.Count == 0));
+            }
+        }
+
+        // Composition-gap scoring for a Unit card, on top of TryPlayCardCandidates' own backlog
+        // term (2026-08-19, project owner's own spec) — a flat AiConfig.unitCompositionGapBonus
+        // per gap this specific card actually addresses, summed (real scoring, not a first-match
+        // branch chain — several gaps can be true at once, and a card closing more than one of
+        // them should outscore one closing only one):
+        //  1/2) Defense/Attack imbalance — if the roster hits softer than it takes hits
+        //       (AvgDefense < AvgAttack), a card tankier than that average helps; the mirror case
+        //       (AvgAttack < AvgDefense) rewards a card that hits harder than average instead.
+        //       Mutually exclusive by construction — the roster can't be both at once.
+        //  3/4) Melee/ranged imbalance — Range <= 1 must stand in the Front row to attack at all
+        //       (see UnitData.Range's own comment), so a roster with more melee than ranged wants
+        //       a ranged card and vice versa. Also mutually exclusive by construction.
+        //  5)   Too many ability-heavy units already (Abilities.Count > 0) — a plain card with no
+        //       granted abilities evens that back out.
+        //  6)   A critically wounded member (RaidWeakerArmyTask.IsCriticallyWounded's own ≤50%HP
+        //       threshold) of an active raid force this card shares a type shape with (TypeTag
+        //       overlap or same melee/ranged class) — that member already contributes little to the
+        //       task's own WorthIt.IsReady read (its low HP has it die early in the simulated fight,
+        //       see IsReady's own comment), so a like-for-like replacement is exactly the
+        //       "force shortage" the project owner asked to watch for.
+        //  7)   Counter-tech — Hyperkinetic once AiMapMemory.KnownEnemyTypeTagCount reports a
+        //       real, actually-scouted Armored sighting; Pyrokinetic the same way for Bio. Honest
+        //       by construction — that count is never anything but an observed sighting.
+        private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster)
+        {
+            float bonus = 0f;
+
+            if (roster.AvgDefense < roster.AvgAttack && definition.defenseRating > roster.AvgDefense)
+                bonus += AiConfig.unitCompositionGapBonus;
+            else if (roster.AvgAttack < roster.AvgDefense && definition.attack > roster.AvgAttack)
+                bonus += AiConfig.unitCompositionGapBonus;
+
+            if (roster.MeleeCount > roster.RangedCount && definition.range > 1)
+                bonus += AiConfig.unitCompositionGapBonus;
+            else if (roster.RangedCount > roster.MeleeCount && definition.range <= 1)
+                bonus += AiConfig.unitCompositionGapBonus;
+
+            if (roster.AbilityHeavyCount > roster.SimpleCount
+                && (definition.grantedAbilities == null || definition.grantedAbilities.Count == 0))
+                bonus += AiConfig.unitCompositionGapBonus;
+
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player))
+            {
+                if (task.Kind != AiTaskKind.RaidWeakerArmy || task.Retreating || task.Army == null
+                    || !RaidWeakerArmyTask.IsCriticallyWounded(task.Army))
+                    continue;
+                bool matchesWounded = task.Army.Members.Any(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2
+                    && (m.TypeTags.Overlaps(definition.unitTypeTags) || (m.Range <= 1) == (definition.range <= 1)));
+                if (matchesWounded)
+                {
+                    bonus += AiConfig.unitCompositionGapBonus;
+                    break; // one matching wounded army is enough — don't stack per additional one
+                }
+            }
+
+            if (definition.grantedAbilities != null)
+            {
+                if (definition.grantedAbilities.Contains(UnitAbilities.Hyperkinetic)
+                    && AiMapMemory.KnownEnemyTypeTagCount(player, UnitTypeTag.Armored) > 0)
+                    bonus += AiConfig.unitCompositionGapBonus;
+                if (definition.grantedAbilities.Contains(UnitAbilities.Pyrokinetic)
+                    && AiMapMemory.KnownEnemyTypeTagCount(player, UnitTypeTag.Bio) > 0)
+                    bonus += AiConfig.unitCompositionGapBonus;
+            }
+
+            return bonus;
         }
 
         // ---- Менеджмент · Починка юнита ----
@@ -411,13 +568,13 @@ namespace Game.Ai
             int apCost = UnitRepair.ApCost(task.TargetUnit);
             ResourceCost cost = UnitRepair.ResourceCost(task.TargetUnit);
             if (!root.CanSpendActionPoints(apCost) || !cost.CanAfford(root))
-                return AiDecision.Wait(task, $"задача «Менеджмент»: {task.Army.Name} копит на починку {task.TargetUnit.Name}");
+                return AiDecision.Wait(task, $"\"{task.Army.Name}\" is saving up to repair {task.TargetUnit.Name}");
 
             if (WouldBlockAffordableCard(root, hand, apCost, cost))
-                return AiDecision.Wait(task, $"задача «Менеджмент»: чинить {task.TargetUnit.Name} подождёт — "
-                    + "иначе не хватит на более дорогую карту в руке");
+                return AiDecision.Wait(task, $"repairing {task.TargetUnit.Name} can wait — "
+                    + "otherwise a pricier card in hand would go unaffordable");
 
-            return AiDecision.RepairUnit(task, AiConfig.Current.repairUnitBaseWeight);
+            return AiDecision.RepairUnit(task, AiConfig.repairUnitBaseWeight);
         }
 
         // The project owner's own dynamic-priority call: repair is cheap and should usually go
@@ -479,16 +636,27 @@ namespace Game.Ai
                 GarrisonReorgTask.FindGarrisonOverflowDestination(player, garrison.Hex, overflow[0]);
             if (!destination.HasValue)
                 return null;
-            return AiDecision.SplitGarrison(garrison, overflow, destination.Value.ExistingArmy, AiConfig.Current.managementGarrisonBalanceScore);
+            return AiDecision.SplitGarrison(garrison, overflow, destination.Value.ExistingArmy);
         }
 
         // Менеджмент · передача юнитов между армиями в базе — see
-        // GarrisonReorgTask.FindReorgMove's own comment for scope/exclusions.
+        // GarrisonReorgTask.FindReorgMove's own comment for scope/exclusions. Falls back to
+        // GarrisonReorgTask.FindReorgSwap (2026-08-20) only once a plain move finds nothing this
+        // same call — a swap is strictly a last resort for when nobody involved has a free slot,
+        // never a substitute for a plain move that's actually available.
         public static AiDecision TryConsolidationCandidate(PlayerSetupData player, ArmyData garrison, AiTurnContext ctx)
         {
-            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+            // `garrison`'s OWN hex, not AiTurnController.GarrisonHexFor(player) — that always
+            // resolves to the citadel specifically now (see its own comment), which silently
+            // consolidated against the citadel hex even when `garrison` was a later-founded base's
+            // own garrison (bug introduced 2026-08-21 alongside multi-base support, caught before
+            // it ever shipped: RunGarrisonReorgPhase now calls this once per garrison).
+            HexCoord garrisonHex = garrison.Hex;
             GarrisonReorgTask.ConsolidationMove? move = GarrisonReorgTask.FindReorgMove(player, garrisonHex, garrison, ctx);
-            return move.HasValue ? AiDecision.Consolidate(move.Value, AiConfig.Current.managementGarrisonBalanceScore) : null;
+            if (move.HasValue)
+                return AiDecision.Consolidate(move.Value);
+            GarrisonReorgTask.SwapMove? swap = GarrisonReorgTask.FindReorgSwap(player, garrisonHex, garrison, ctx);
+            return swap.HasValue ? AiDecision.Swap(swap.Value) : null;
         }
 
         // Менеджмент's own leftover-AP fallbacks — a spare reserve army (up to maxSpareArmies) and
@@ -501,27 +669,37 @@ namespace Game.Ai
             var results = new List<AiDecision>();
             int spareArmies = ArmyRegistry.AllForOwner(player).Count(a => !a.IsGarrison && !a.IsPrison && a.Members.Count == 0);
             bool reservePreferred = IsPreferred(player, FallbackKind.ReserveArmy);
-            if (spareArmies < AiConfig.Current.maxSpareArmies && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
-                results.Add(AiDecision.Reserve(spareArmies, reservePreferred
-                    ? AiConfig.Current.managementFallbackHighScore : AiConfig.Current.managementFallbackLowScore));
+            if (spareArmies < AiConfig.maxSpareArmies && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
+                results.Add(AiDecision.Reserve(MostActiveOwnGarrisonHex(player), spareArmies, reservePreferred
+                    ? AiConfig.managementFallbackHighScore : AiConfig.managementFallbackLowScore));
 
             if (hand != null && hand.HasCardsLeftToDraw && root.CanSpendActionPoints(ctx.DrawApCost))
                 results.Add(AiDecision.Draw(reservePreferred
-                    ? AiConfig.Current.managementFallbackLowScore : AiConfig.Current.managementFallbackHighScore));
+                    ? AiConfig.managementFallbackLowScore : AiConfig.managementFallbackHighScore));
             return results;
         }
 
         // ---- Execution ----
 
-        public static IEnumerator ReserveArmyRoutine(PlayerSetupData player, AiTurnContext ctx)
+        // `homeHex` — which of the player's own garrisoned hexes to spawn at (see
+        // GatherFallbackCandidates, the only caller that ever proposes this decision), carried
+        // through AiDecision.TargetHex since this routine doesn't otherwise receive the decision.
+        public static IEnumerator ReserveArmyRoutine(PlayerSetupData player, AiTurnContext ctx, HexCoord homeHex)
         {
-            HexCoord hex = AiTurnController.GarrisonHexFor(player);
+            HexCoord hex = homeHex;
             yield return AiTurnController.PanTo(ctx, hex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             ArmyData army = ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
             AiDebugLog.Write(army != null
-                ? $"[AI] {player.Nickname}: создаёт резервную армию {army.Name} про запас."
-                : $"[AI] {player.Nickname}: не хватило AP на резервную армию.");
+                ? $"[AI] {player.Nickname}: creates spare reserve army \"{army.Name}\".{delta}"
+                : $"[AI] {player.Nickname}: not enough AP for a reserve army.");
             // Flips which of Reserve/Draw is preferred next time, regardless of success — see
             // NotifyFallbackUsed's own comment.
             NotifyFallbackUsed(player, FallbackKind.ReserveArmy);
@@ -535,11 +713,17 @@ namespace Game.Ai
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
             if (root != null && hand != null && root.CanSpendActionPoints(ctx.DrawApCost))
             {
+                int ap0 = root.ActionPoints;
+                int human0 = root.GetResource(ResourceType.Human);
+                int energy0 = root.GetResource(ResourceType.Energy);
+                int materials0 = root.GetResource(ResourceType.Materials);
+                int tech0 = root.GetResource(ResourceType.Tech);
                 CardData card = hand.DrawOne();
                 if (card != null)
                 {
                     root.SpendActionPoints(ctx.DrawApCost);
-                    AiDebugLog.Write($"[AI] {player.Nickname}: берёт карту — {card.Definition.displayName}.");
+                    string delta = AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: draws a card — {card.Definition.displayName}.{delta}");
                 }
             }
             NotifyFallbackUsed(player, FallbackKind.DrawCard);
@@ -556,6 +740,13 @@ namespace Game.Ai
             ArmyData garrison = decision.ExistingArmy;
             yield return AiTurnController.PanTo(ctx, decision.TargetHex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+
             // decision.MergeTarget is the destination GarrisonReorgTask.FindGarrisonOverflow
             // Destination already picked (hero escort or an existing reserve army) — only spawn a
             // fresh one when it left that null (no such destination existed, but still under the
@@ -567,7 +758,7 @@ namespace Game.Ai
                 destination = ArmyActions.CreateArmy(player, decision.TargetHex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
                 if (destination == null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: не хватило AP на новую армию для перегруженного гарнизона.");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: not enough AP for a new army for the overflowing garrison.");
                     yield break;
                 }
 
@@ -579,9 +770,9 @@ namespace Game.Ai
                 if (promotedHero != null)
                 {
                     if (ArmyActions.TransferMember(promotedHero, garrison, destination, ctx.HexSelection, out string heroFailReason))
-                        AiDebugLog.Write($"[AI] {player.Nickname}: {promotedHero.Name} снимается со скамейки в гарнизоне и возглавляет новую армию {destination.Name}.");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: {promotedHero.Name} steps off the garrison bench to lead new army \"{destination.Name}\".");
                     else
-                        AiDebugLog.Write($"[AI] {player.Nickname}: не смог поставить {promotedHero.Name} во главе {destination.Name} — {heroFailReason}");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: couldn't put {promotedHero.Name} in charge of \"{destination.Name}\" — {heroFailReason}");
                 }
             }
 
@@ -593,11 +784,38 @@ namespace Game.Ai
                 if (ArmyActions.TransferMember(unit, garrison, destination, ctx.HexSelection, out string failReason))
                     moved++;
                 else
-                    AiDebugLog.Write($"[AI] {player.Nickname}: не смог перевести {unit.Name} из гарнизона — {failReason}");
+                    AiDebugLog.Write($"[AI] {player.Nickname}: couldn't transfer {unit.Name} out of the garrison — {failReason}");
             }
-            AiDebugLog.Write($"[AI] {player.Nickname}: гарнизон был полон — {moved} юнит(ов) переведены в {destination.Name}.");
+            string splitDelta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+            AiDebugLog.Write($"[AI] {player.Nickname}: garrison was full — {moved} unit(s) moved into \"{destination.Name}\".{splitDelta}");
 
-            if (ctx.ArmyViewerModal != null)
+            // Экономика's own hero-detach case (see AiDecision.EconomyBuildHex's own comment) —
+            // register the BuildFacility task right here, the moment "destination" is actually a
+            // real hero-led army, so the very next Decide() call's own "claim every army already
+            // committed to a persistent task" sweep (AiTurnController.Decide) protects her from
+            // Aggression/Defence's own recruiters immediately, instead of leaving her "available"
+            // until Economy's own separate next-step rediscovery (FindNearestHeroAnywhere) gets
+            // around to claiming her the normal way. IsHeroLed re-check covers the (rare, multi-hero
+            // garrison) case where the transfer above didn't actually land a hero in her — nothing
+            // to build with otherwise.
+            if (decision.EconomyBuildHex.HasValue && AiArmyRoles.IsHeroLed(destination))
+            {
+                AiTaskRegistry.Add(player, new AiTask
+                {
+                    Kind = AiTaskKind.BuildFacility,
+                    Army = destination,
+                    TargetHex = decision.EconomyBuildHex.Value,
+                    ResourceType = decision.EconomyResourceType,
+                });
+                // Same "starts Economy task" wording Commit's own generic task-registration path
+                // logs for every OTHER BuildFacility task — this one registers directly instead
+                // (see this branch's own comment above) so it needs its own line, or a log audit
+                // would see the hero detach but never see the resulting task actually start.
+                AiDebugLog.Write($"[AI] {player.Nickname}: starts Economy task — \"{destination.Name}\" heads out "
+                    + $"to build {decision.EconomyResourceType} at ({decision.EconomyBuildHex.Value.Q},{decision.EconomyBuildHex.Value.R}).");
+            }
+
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(destination);
             yield return AiTurnController.WaitStep(ctx);
         }
@@ -609,10 +827,17 @@ namespace Game.Ai
             GarrisonReorgTask.ConsolidationMove move = decision.ConsolidationMove;
             yield return AiTurnController.PanTo(ctx, move.Source.Hex);
 
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             bool moved = ArmyActions.TransferMember(move.Unit, move.Source, move.Target, ctx.HexSelection, out string failReason);
             if (moved)
             {
-                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.");
+                string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{delta}");
                 ctx.HexSelection?.DeleteArmyIfEmptied(move.Source);
                 // Feeds FindReorgMove's own oscillation guard (see AiTurnContext.WouldRevisitArmy's
                 // own comment) — only a move that actually landed counts as "visited", same as
@@ -622,11 +847,45 @@ namespace Game.Ai
             }
             else
             {
-                AiDebugLog.Write($"[AI] {player.Nickname}: не смог объединить {move.Unit.Name} — {failReason}");
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't merge {move.Unit.Name} — {failReason}");
             }
 
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(move.Target);
+            yield return AiTurnController.WaitStep(ctx);
+        }
+
+        // Менеджмент · обмен юнитов между армиями в базе — see GarrisonReorgTask.FindReorgSwap and
+        // TryConsolidationCandidate. Only ever reached once a plain ConsolidateUnits move already
+        // came up empty this same call — see AiDecision.Swap's own comment.
+        public static IEnumerator ConsolidateSwapRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            GarrisonReorgTask.SwapMove move = decision.SwapMove;
+            yield return AiTurnController.PanTo(ctx, move.ArmyA.Hex);
+
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+            bool swapped = ArmyActions.SwapMembers(move.UnitA, move.ArmyA, move.UnitB, move.ArmyB, ctx.HexSelection, out string failReason);
+            if (swapped)
+            {
+                string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Reason}.{delta}");
+                // Same oscillation guard every other reorg move here feeds — both units, both
+                // directions, so neither leg of this exact trade can undo itself later this turn.
+                ctx.RecordArmyVisit(move.UnitA, move.ArmyA, move.ArmyB);
+                ctx.RecordArmyVisit(move.UnitB, move.ArmyB, move.ArmyA);
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't swap {move.UnitA.Name} for {move.UnitB.Name} — {failReason}");
+            }
+
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
+                ctx.ArmyViewerModal.ShowReadOnly(move.ArmyB);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -645,19 +904,27 @@ namespace Game.Ai
             }
 
             yield return AiTurnController.PanTo(ctx, army.Hex);
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return AiTurnController.WaitStep(ctx);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             if (UnitRepair.TryRepair(task.TargetUnit, army.Hex, root, out string failReason))
-                AiDebugLog.Write($"[AI] {player.Nickname}: {army.Name} починил {task.TargetUnit.Name} на "
-                    + $"({army.Hex.Q},{army.Hex.R}) — задача «Менеджмент» завершена.");
+            {
+                string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" repaired {task.TargetUnit.Name} at "
+                    + $"({army.Hex.Q},{army.Hex.R}) — Management task complete.{delta}");
+            }
             else
-                AiDebugLog.Write($"[AI] {player.Nickname}: не смог починить {task.TargetUnit.Name} — {failReason}.");
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't repair {task.TargetUnit.Name} — {failReason}.");
             AiTaskRegistry.Remove(player, task);
 
-            if (ctx.ArmyViewerModal != null)
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }

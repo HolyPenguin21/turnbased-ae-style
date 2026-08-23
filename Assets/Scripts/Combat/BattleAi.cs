@@ -45,10 +45,39 @@ namespace Game.Combat
         // Both candidate shapes get played forward with the exact same grid-honest SimulateRounds
         // AssessRetreat already relies on, against a hypothetical enemy layout — since the
         // enemy's own real column choices are unknowable, that hypothetical uses the same plain
-        // Range-forced shape (PlaceRangeSplit) for both candidates, so the comparison is only
-        // ever about OUR OWN column choice, never about guessing theirs. No literal stat
-        // thresholds are hardcoded anywhere here; whichever shape actually comes out ahead in the
+        // Range-forced shape (PlaceRangeSplit) for both candidates. No literal stat thresholds
+        // are hardcoded anywhere here; whichever shape actually comes out ahead in the
         // simulation wins.
+        //
+        // Two independent axes get searched, not just column choice: `centerOut` (see above) and
+        // `frontMeleeCount` — how many of our own melee actually hold the front line versus fall
+        // back into the back row alongside the ranged members (see PlaceTankAnchoredSplit's own
+        // comment on why that's legal: nothing about the grid stops a melee unit from starting in
+        // the back row, ArrangeArmy just never used to consider it). A melee unit held back
+        // forfeits its own round-1 attack — nothing forces the AI to only ever field its full
+        // melee line, per the user's own report that two spare 4/2s in a 3-unit melee line had no
+        // way to get protected behind the one unit already anchoring the front. Every
+        // (frontMeleeCount, centerOut) combination gets simulated exactly like the old
+        // centerOut-only search; this is deliberately NOT a fixed rule like "only ever keep one
+        // melee up front" — whichever combination's simulated 3-round outcome scores best wins,
+        // even if that means the full melee line stays up front because holding anyone back
+        // scored no better.
+        //
+        // Tie-break order when scores are within ScoreTieTolerance of each other (see that
+        // constant's own comment — NOT bit-exact equality): (1) prefer MORE melee up front —
+        // retreating a unit is only worth it when the simulation shows an actual benefit, never as
+        // a zero-benefit default; (2) prefer centerOut — per the user's own call, a melee-only
+        // front line usually plays out near-identically regardless of which column each member
+        // occupies, so without this the center anchor the user expects (and the hero hiding
+        // behind it, since heroColumn always follows frontOrder[0]) would almost never win.
+        //
+        // enemyLoss/ownLoss are each a Mathf.Clamp01 fraction of that side's own total army HP, so
+        // score itself always lands in [-1, 1] — 0.015 reads as "differs by under 1.5% of either
+        // side's own total HP pool over the full 3-round simulation", small enough that it's noise
+        // from exactly which column a unit stands in rather than a real tactical edge (see
+        // ArrangeArmy's own tie-break comment below for why that noise exists at all).
+        private const float ScoreTieTolerance = 0.015f;
+
         public static void ArrangeArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow, ArmyData enemyArmy,
             AbilityMagnitudes magnitudes)
         {
@@ -59,13 +88,16 @@ namespace Game.Combat
                 if (grid.TryFindPosition(member, out int row, out int col))
                     grid.Set(row, col, null);
 
+            int meleeCount = CountMelee(army);
+
             if (enemyArmy == null)
             {
                 // No opposing roster to weigh candidates against (shouldn't happen in a real
-                // battle, kept only as a safe fallback) — tank-anchored/left-packed is still a
-                // strictly sound default over plain army-list order even with zero information
-                // about the enemy, so skip straight to it without any simulation to score against.
-                PlaceTankAnchoredSplit(grid, army, frontRow, backRow, centerOut: false, enemyArmy: null);
+                // battle, kept only as a safe fallback) — tank-anchored/left-packed with the full
+                // melee line up front is still a strictly sound default over plain army-list
+                // order even with zero information about the enemy, so skip straight to it
+                // without any simulation to score against.
+                PlaceTankAnchoredSplit(grid, army, frontRow, backRow, centerOut: false, enemyArmy: null, frontMeleeCount: meleeCount);
                 return;
             }
 
@@ -79,27 +111,64 @@ namespace Game.Combat
             bool[] centerOutCandidates = { false, true };
             float bestScore = float.NegativeInfinity;
             bool bestCenterOut = false;
+            int bestFrontMeleeCount = meleeCount;
 
-            foreach (bool centerOut in centerOutCandidates)
+            int minFrontMeleeCount = meleeCount > 0 ? 1 : 0; // at least one melee anchors the front whenever there is one to anchor with
+            for (int frontMeleeCount = minFrontMeleeCount; frontMeleeCount <= meleeCount; frontMeleeCount++)
             {
-                var trial = new BattleGrid();
-                PlaceTankAnchoredSplit(trial, army, frontRow, backRow, centerOut, enemyArmy);
-                PlaceRangeSplit(trial, enemyArmy, enemyFrontRow, enemyBackRow);
-
-                SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3, magnitudes);
-
-                float ownLoss = ownTotalHp > 0f ? Mathf.Clamp01((ownTotalHp - outcome.OwnHpRemaining) / ownTotalHp) : 1f;
-                float enemyLoss = enemyTotalHp > 0f ? Mathf.Clamp01((enemyTotalHp - outcome.EnemyHpRemaining) / enemyTotalHp) : 1f;
-                float score = enemyLoss - ownLoss;
-
-                if (score > bestScore)
+                foreach (bool centerOut in centerOutCandidates)
                 {
-                    bestScore = score;
-                    bestCenterOut = centerOut;
+                    var trial = new BattleGrid();
+                    PlaceTankAnchoredSplit(trial, army, frontRow, backRow, centerOut, enemyArmy, frontMeleeCount);
+                    PlaceRangeSplit(trial, enemyArmy, enemyFrontRow, enemyBackRow);
+
+                    SimulationOutcome outcome = SimulateRounds(trial, army, enemyArmy, 3, magnitudes);
+
+                    float ownLoss = ownTotalHp > 0f ? Mathf.Clamp01((ownTotalHp - outcome.OwnHpRemaining) / ownTotalHp) : 1f;
+                    float enemyLoss = enemyTotalHp > 0f ? Mathf.Clamp01((enemyTotalHp - outcome.EnemyHpRemaining) / enemyTotalHp) : 1f;
+                    float score = enemyLoss - ownLoss;
+
+                    // Tie-break was originally gated on score == bestScore (exact float equality)
+                    // — per the user's own report, the melee line essentially never actually landed
+                    // centered in practice, because BattleTargetSelector's own reachability/targeting
+                    // read is column-position-dependent (see its own comment), so two otherwise-
+                    // equivalent formations differing only by which column the front line sits in
+                    // almost never simulate to a bit-exact tie; whichever the search happened to try
+                    // first (centerOut: false, frontMeleeCount at its lowest) then just won outright
+                    // on a razor-thin, tactically meaningless score difference every single time,
+                    // silently defeating the "prefer more melee up front, prefer centered" intent
+                    // this whole search exists for. ScoreTieTolerance treats any difference this
+                    // small as no real difference at all — small enough that a genuine tactical edge
+                    // (a formation that actually trades hits differently) still wins outright, large
+                    // enough to swallow the column-position noise that isn't a real edge.
+                    bool withinTolerance = score > bestScore - ScoreTieTolerance;
+                    bool preferredOnTie = withinTolerance
+                        && (frontMeleeCount > bestFrontMeleeCount
+                            || (frontMeleeCount == bestFrontMeleeCount && centerOut && !bestCenterOut));
+                    if (score > bestScore || preferredOnTie)
+                    {
+                        bestCenterOut = centerOut;
+                        bestFrontMeleeCount = frontMeleeCount;
+                    }
+                    // Tracked independently of which candidate actually got selected above, so the
+                    // tolerance window always anchors to the TRUE best score seen so far — never
+                    // drifting downward step by step as successive near-ties each get accepted.
+                    if (score > bestScore)
+                        bestScore = score;
                 }
             }
 
-            PlaceTankAnchoredSplit(grid, army, frontRow, backRow, bestCenterOut, enemyArmy);
+            PlaceTankAnchoredSplit(grid, army, frontRow, backRow, bestCenterOut, enemyArmy, bestFrontMeleeCount);
+        }
+
+        // Non-hero, Range<=2 members only — see PlaceTankAnchoredSplit's own melee/ranged split.
+        private static int CountMelee(ArmyData army)
+        {
+            int count = 0;
+            foreach (UnitData member in army.Members)
+                if (!member.IsHero && member.Range <= 2)
+                    count++;
+            return count;
         }
 
         // Rough "how good a soak is this unit" score — Defense+HP is the base survivability, but
@@ -157,13 +226,14 @@ namespace Game.Combat
             return enemyMaxRange >= closestEnemyReachToOurBack;
         }
 
-        // Tank-anchored shape: melee sorted tankiest-first into `frontOrder` (so the tankiest
-        // lands on whichever column that order visits first), hero moved to stand directly behind
-        // that same column instead of the fixed BattleGrid.HeroColumn, ranged filling the back
-        // row (tankiest-first for column order, but only if BackRowExposed says the back row
-        // isn't actually safe this round — same call the old logic made; see further down for
-        // what happens when ranged doesn't all fit). If there's no melee member to anchor on, the
-        // hero just falls back to BattleGrid.HeroColumn.
+        // Tank-anchored shape: melee sorted tankiest-first, the top `frontMeleeCount` of them go
+        // into `frontOrder` (so the tankiest lands on whichever column that order visits first),
+        // hero moved to stand directly behind that same column instead of the fixed
+        // BattleGrid.HeroColumn. Whichever melee DON'T make the front cut fall back into the same
+        // back-row pool as the ranged members (see below) — see ArrangeArmy's own comment for why
+        // that's a legal formation the search now considers, not just a leftover-overflow
+        // accident. If there's no melee member to anchor on, the hero just falls back to
+        // BattleGrid.HeroColumn.
         //
         // The front/back split itself is Range <= 2, not <= 1 — per the user's own report, a
         // Range-2 unit placed in the BACK row can't reach anything on round 1 at all (front row
@@ -172,8 +242,10 @@ namespace Game.Combat
         // instead of anchoring the front line it was tough enough to hold. Range 2 still reaches
         // the enemy front row perfectly well FROM this army's own front row, so it now competes
         // for a front column by TankScore exactly like a true melee (Range 1) member; only
-        // Range >= 3 (genuinely usable from the back row without moving first) still goes back.
-        private static void PlaceTankAnchoredSplit(BattleGrid grid, ArmyData army, int frontRow, int backRow, bool centerOut, ArmyData enemyArmy)
+        // Range >= 3 (genuinely usable from the back row without moving first) still goes back —
+        // unless ArrangeArmy's own search decided to hold it back deliberately (frontMeleeCount).
+        private static void PlaceTankAnchoredSplit(BattleGrid grid, ArmyData army, int frontRow, int backRow, bool centerOut, ArmyData enemyArmy,
+            int frontMeleeCount)
         {
             UnitData hero = null;
             var melee = new List<UnitData>();
@@ -186,12 +258,16 @@ namespace Game.Combat
             }
             melee.Sort((a, b) => TankScore(b).CompareTo(TankScore(a)));
 
+            int meleeToFront = Mathf.Clamp(frontMeleeCount, 0, melee.Count);
+            List<UnitData> frontMelee = melee.GetRange(0, meleeToFront);
+            List<UnitData> heldBackMelee = melee.GetRange(meleeToFront, melee.Count - meleeToFront);
+
             List<int> frontOrder = ColumnFillOrder(centerOut);
-            int heroColumn = melee.Count > 0 ? frontOrder[0] : BattleGrid.HeroColumn;
+            int heroColumn = frontMelee.Count > 0 ? frontOrder[0] : BattleGrid.HeroColumn;
 
             int frontIndex = 0;
             var overflow = new List<UnitData>();
-            foreach (UnitData member in melee)
+            foreach (UnitData member in frontMelee)
             {
                 if (frontIndex < frontOrder.Count) grid.Set(frontRow, frontOrder[frontIndex++], member);
                 else overflow.Add(member);
@@ -204,26 +280,30 @@ namespace Game.Combat
             for (int c = 0; c < BattleGrid.Columns; c++)
                 if (c != heroColumn) backColumns.Add(c);
 
-            // A roster can field more ranged members than the back row has room for (a
-            // high-CommandRating hero fielding a mostly-ranged army — see ArmyData.Capacity).
-            // Whoever doesn't fit gets pushed into `overflow` below and ends up exposed in the
-            // FRONT row, so it needs to be the TANKIEST of the bunch, not whoever a plain
-            // tankiest-first fill happens to leave over (that used to bump the squishiest ranged
-            // unit to the front instead of the toughest — see the user's own report). Protecting
-            // the weakest ones in the back row first, then letting the tankiest remainder
-            // overflow, fixes that regardless of which side is arranging.
-            List<UnitData> rangedForBack = ranged;
-            if (ranged.Count > backColumns.Count)
+            // A roster can field more ranged-plus-held-back members than the back row has room
+            // for (a high-CommandRating hero fielding a mostly-ranged army — see
+            // ArmyData.Capacity — or ArrangeArmy's own search choosing to hold back more melee
+            // than the back row can fit). Whoever doesn't fit gets pushed into `overflow` below
+            // and ends up exposed in the FRONT row, so it needs to be the TANKIEST of the bunch,
+            // not whoever a plain tankiest-first fill happens to leave over (that used to bump
+            // the squishiest ranged unit to the front instead of the toughest — see the user's
+            // own report). Protecting the weakest ones in the back row first, then letting the
+            // tankiest remainder overflow, fixes that regardless of which side is arranging —
+            // held-back melee compete for that same protection by TankScore exactly like ranged.
+            var backPool = new List<UnitData>(ranged);
+            backPool.AddRange(heldBackMelee);
+            List<UnitData> forBack = backPool;
+            if (backPool.Count > backColumns.Count)
             {
-                ranged.Sort((a, b) => TankScore(a).CompareTo(TankScore(b)));
-                rangedForBack = ranged.GetRange(0, backColumns.Count);
-                overflow.AddRange(ranged.GetRange(backColumns.Count, ranged.Count - backColumns.Count));
+                backPool.Sort((a, b) => TankScore(a).CompareTo(TankScore(b)));
+                forBack = backPool.GetRange(0, backColumns.Count);
+                overflow.AddRange(backPool.GetRange(backColumns.Count, backPool.Count - backColumns.Count));
             }
             if (BackRowExposed(frontRow, backRow, enemyArmy))
-                rangedForBack.Sort((a, b) => TankScore(b).CompareTo(TankScore(a)));
+                forBack.Sort((a, b) => TankScore(b).CompareTo(TankScore(a)));
 
             int backIndex = 0;
-            foreach (UnitData member in rangedForBack)
+            foreach (UnitData member in forBack)
                 grid.Set(backRow, backColumns[backIndex++], member);
 
             foreach (UnitData member in overflow)

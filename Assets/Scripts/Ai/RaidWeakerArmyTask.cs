@@ -34,9 +34,9 @@ namespace Game.Ai
     //   1) уже есть подходящая ПРОСТАИВАЮЩАЯ армия целиком (FindReadyIdleArmy) — используется как
     //      есть, без сборки.
     //   2) иначе — сборка: обязателен герой (см. NeedsHero), плюс не-геройские юниты подтягиваются
-    //      по одному из гарнизона и из любых других простаивающих армий на карте (см.
-    //      MaxPossibleAttack — простаивающие армии НЕ на хексе гарнизона сначала должны туда
-    //      дойти, это отдельный "recall"-кандидат оркестратора, не эта задача).
+    //      по одному из гарнизона и из любых других простаивающих армий на карте (простаивающие
+    //      армии НЕ на хексе гарнизона сначала должны туда дойти, это отдельный "recall"-кандидат
+    //      оркестратора, не эта задача).
     //
     // Поведение:
     //   - Атакует и по ПАМЯТИ, не только по видимости — цель выбирается из AiMapMemory, хекс не
@@ -50,9 +50,11 @@ namespace Game.Ai
     //     ход (raidCounterAttackBonus), после чего обычная переоценка на следующий ход сама решит,
     //     возвращаться ли к нейтралу/эвенту.
     //   - До maxConcurrentRaid задач одновременно (без изменений).
-    //   - "Больше некого бить" — если для выбранной цели даже теоретический потолок силы
-    //     (MaxPossibleAttack) её не берёт, это тупик: задача отменяется, армия идёт домой
-    //     переукомплектовываться (тот же путь, что и при угрозе сильнее нас).
+    //   - Нет отдельного дедлайн-чека "больше некого бить" (MaxPossibleAttack/
+    //     CanEventuallyDamageToughest, удалены 2026-08-22, project owner's own call): армия просто
+    //     собирается, пока не станет равной нужному коэффициенту, либо пока рекрутов взять
+    //     неоткуда (FindRecruitAt возвращает null) — тот же естественный стоп, который раньше
+    //     давал этот отдельный чек, только на шаг позже.
     public static class RaidWeakerArmyTask
     {
         public readonly struct RaidTarget
@@ -83,12 +85,26 @@ namespace Game.Ai
             public readonly float Defense;
             public readonly float Attack;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
+            // The hex's own terrain/Base-building contribution already folded into Defense above
+            // (see WorthIt.HexDefenseBonus) — kept separately too so a per-unit CanDamage read
+            // (each DefenderProfile's own raw stat, no hex bonus baked in) can apply the SAME
+            // bonus every real defender fighting here would actually get (2026-08-20 fix, project
+            // owner's own report — see WorthIt.CanDamage's own comment).
+            public readonly float HexBonus;
+            // Whichever source RequiredStrengthAt's own max() picked — the sighted army's own
+            // ArmyData.Name, or the Hex Event guard's own GuardArmyName (see AiMapMemory.
+            // GuardStrength's own comment). Null for an undefended hex, same as Defenders. Display
+            // only — never read by any WorthIt comparison.
+            public readonly string Name;
 
-            public ThreatStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders)
+            public ThreatStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders, float hexBonus,
+                string name = null)
             {
                 Defense = defense;
                 Attack = attack;
                 Defenders = defenders;
+                HexBonus = hexBonus;
+                Name = name;
             }
         }
 
@@ -111,44 +127,54 @@ namespace Game.Ai
             float eventDefense = guard.HasValue ? guard.Value.Defense : 0f;
             float eventAttack = guard.HasValue ? guard.Value.Attack : 0f;
             bool eventIsStronger = eventDefense > armyDefense;
-            float defense = System.Math.Max(armyDefense, eventDefense) + WorthIt.HexDefenseBonus(hex, map);
+            float hexBonus = WorthIt.HexDefenseBonus(hex, map);
+            float defense = System.Math.Max(armyDefense, eventDefense) + hexBonus;
             float attack = eventIsStronger ? eventAttack : armyAttack;
             IReadOnlyList<WorthIt.DefenderProfile> defenders = eventIsStronger
                 ? (guard?.Defenders)
                 : (sighting?.Defenders);
-            return new ThreatStrength(defense, attack, defenders);
+            string name = eventIsStronger ? guard?.Name : sighting?.Name;
+            return new ThreatStrength(defense, attack, defenders, hexBonus, name);
         }
 
-        // Half-HP-or-worse non-hero members contribute zero Attack to this task's own worth-it
-        // read — the project owner's own call: a unit that wounded won't survive to land a hit is
-        // dead weight for THIS purpose specifically, even though it's still a real, recruitable
-        // army member everywhere else (FindReadyIdleArmy/FindRecruitAt don't filter by HP at all
-        // any more — see their own comments). WorthIt.AttackSum itself stays untouched; this
-        // discount is scoped to Агрессия's own readiness math only, not the shared class other
-        // planners/estimates also read.
-        private static float EffectiveAttackSum(ArmyData army) =>
-            army?.Members.Where(m => !m.IsHero && m.HitPointsCurrent > m.HitPointsMax / 2).Sum(m => m.Attack) ?? 0f;
-
         // Trigger for the post-combat regroup tier (see AiAggressionPlanner.TryRaidRegroupCandidates)
-        // — same ≤50% threshold EffectiveAttackSum discounts to zero, kept as one shared predicate
-        // so the two can never drift apart.
+        // — a standalone ≤50%-HP predicate now (2026-08-22, project owner's own call: "нужно
+        // использовать worth it" — the old EffectiveAttackSum/EffectiveAttackerProfiles zero-Attack
+        // override this used to share a threshold with is gone, see IsReady's own comment below for
+        // why; this predicate no longer describes an existing readiness-math discount, it's purely
+        // "should this force stop and heal" now).
         public static bool IsCriticallyWounded(ArmyData army) =>
             army != null && army.Members.Any(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2);
 
         public static bool IsReady(ArmyData army, ThreatStrength threat) =>
-            IsReady(army, threat.Defense, threat.Attack, threat.Defenders);
+            IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
-        // Own copy of WorthIt.Score/IsWorthIt's two-sided net-edge formula, substituting
-        // EffectiveAttackSum for WorthIt.AttackSum on the attacker side — see that method's own
-        // comment for why this isn't just a call into WorthIt.IsWorthIt any more. Defense side and
-        // CanDamageAll are untouched (only Attack contribution is what "won't survive to swing"
-        // discounts).
+        // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
+        // comparison on the map goes through WorthIt, no second copy of the same math anywhere
+        // else). Used to build its own per-unit snapshot here with a manual "wounded unit reads
+        // zero Attack" override before handing it to WinChance — removed 2026-08-22 (project owner's
+        // own follow-up call, "уже нет, нужно использовать worth it"): now that WinChance plays a
+        // full round-by-round Monte Carlo battle against real per-unit HP (see WorthIt.cs's own
+        // "Full round-by-round Monte Carlo" section), a wounded unit already contributes less on its
+        // own — it dies (and stops attacking) earlier in a simulated fight than a healthy one would,
+        // the same way a real player's wounded unit would. Manually zeroing its Attack ahead of time
+        // on top of that double-counted the same penalty and could make IsReady read a wounded-but-
+        // still-useful army as hopeless when the real sim would actually favor it. `army`'s own live
+        // roster is never behind fog of war, so this just calls the plain ArmyData overload of
+        // WinChance (WorthIt.cs — builds its snapshot via FromLiveUnit, real Attack AND real
+        // HitPointsCurrent, no discount). Falls back to the aggregate-sum path only when `defenders`
+        // carries no real per-unit roster at all (see WorthIt.MeetsWinChance's own comment for why
+        // that's now the rare case, not the default one). Defense side and CanDamageAll are
+        // untouched. `hexBonus` — see WorthIt.CanDamage's own comment; defaults to 0f for a caller
+        // with no hex to check against (source-compatible with every call site before this
+        // parameter existed).
         public static bool IsReady(ArmyData army, float threatDefense, float threatAttack,
-            IReadOnlyCollection<WorthIt.DefenderProfile> defenders)
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
         {
-            float ourEdge = EffectiveAttackSum(army) - threatDefense;
-            float theirEdge = threatAttack - WorthIt.DefenseSum(army);
-            return ourEdge - theirEdge > 0f && WorthIt.CanDamageAll(army, defenders);
+            float chance = defenders != null && defenders.Count > 0
+                ? WorthIt.WinChance(army, defenders, hexBonus)
+                : WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), threatAttack, threatDefense);
+            return chance > 0.5f && WorthIt.CanDamageAll(army, defenders, hexBonus);
         }
 
         // Whether `hex` is still a legitimate target at all — a known neutral sighting, a known
@@ -171,8 +197,8 @@ namespace Game.Ai
         // citadel-distance penalty (visitRingBand/freshNeighborWeight are NOT reused here — no
         // wavefront restriction at all, see this class's own "Цель" comment: the whole known map
         // is fair game, not a frontier band). Never filters by whether `army` could currently WIN
-        // — that's the caller's own job (IsReady/MaxPossibleAttack decide whether to pursue or
-        // treat as a dead end), this only ranks candidates by proximity/opportunity.
+        // — that's the caller's own job (IsReady decides whether to pursue), this only ranks
+        // candidates by proximity/opportunity.
         //
         // `excludeHexes` — hexes an already-active Агрессия task (this player's own, whether still
         // assembling or already travelling) is targeting right now. AiTurnController.
@@ -207,7 +233,7 @@ namespace Game.Ai
                 float score = ProximityScore(army, candidate, citadelHex);
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(candidate, required,
-                        score, $"известная цель на ({candidate.Q},{candidate.R}), нужна сила {required.Defense:0}");
+                        score, $"known target at ({candidate.Q},{candidate.R}), needs strength {required.Defense:0}");
             }
 
             // Раздел 5 — временный "рейд экономики", см. этого класса собственный class comment.
@@ -221,14 +247,17 @@ namespace Game.Ai
                     continue; // "known" — тот же принцип видимости с памятью, что и всюду
 
                 ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
+                // No dedicated bonus any more (raidBuildingUndefendedBonus/GuardedWeakerBonus
+                // removed 2026-08-19, project owner's own call) — scored on ProximityScore alone,
+                // same as any neutral/event target; raidCounterAttackBonus already covers "attack a
+                // known target we're stronger than" when one sits near the raiding army itself.
                 bool guarded = AiMapMemory.KnownEnemySightingAt(actor, building.Hex).HasValue;
-                float bonus = guarded ? AiConfig.Current.raidBuildingGuardedWeakerBonus : AiConfig.Current.raidBuildingUndefendedBonus;
-                float score = ProximityScore(army, building.Hex, citadelHex) + bonus;
+                float score = ProximityScore(army, building.Hex, citadelHex);
 
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(building.Hex, required, score,
-                        guarded ? $"вражеская постройка на ({building.Hex.Q},{building.Hex.R}), охрана слабее"
-                                : $"вражеская постройка на ({building.Hex.Q},{building.Hex.R}) без охраны");
+                        guarded ? $"enemy building at ({building.Hex.Q},{building.Hex.R}), guard is weaker"
+                                : $"enemy building at ({building.Hex.Q},{building.Hex.R}), unguarded");
             }
 
             return best;
@@ -263,60 +292,73 @@ namespace Game.Ai
 
         // Условия "+" к скору — ближе к текущей позиции армии (scoutProximityWeight, тот же
         // общий вес, что и у Разведки).
-        // Условия "-" к скору — дальше от цитадели (citadelDistancePenalty, тот же общий вес).
+        // Условия "-" к скору — дальше от цитадели свыше citadelPenaltyFreeRadius хексов
+        // (citadelDistancePenaltyPerHex — та же кросс-категорийная формула, что и у
+        // BuildFacilityTask.ScoreHex, project owner's own 2026-08-19 rebalance: "влияет на все
+        // задачи 1 уровня").
         private static float ProximityScore(ArmyData army, HexCoord candidate, HexCoord? citadelHex)
         {
-            float score = -HexGridMath.Distance(army.Hex, candidate) * AiConfig.Current.scoutProximityWeight;
+            float score = -HexGridMath.Distance(army.Hex, candidate) * AiConfig.scoutProximityWeight;
             if (citadelHex.HasValue)
-                score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.Current.citadelDistancePenalty;
+            {
+                int distance = HexGridMath.Distance(citadelHex.Value, candidate);
+                int overage = System.Math.Max(0, distance - AiConfig.citadelPenaltyFreeRadius);
+                score -= overage * AiConfig.citadelDistancePenaltyPerHex;
+            }
             return score;
         }
 
-        // NOT the same formula FindTarget itself scores candidates with, despite sharing
-        // ProximityScore's own mover-distance term — AiTurnController.TryContinueRaidTask's own
-        // re-score each continuation, for ONE already-committed hex, deliberately drops the
-        // citadel-distance penalty FindTarget still applies (passing citadelHex: null below). That
-        // penalty exists to prefer a nearer-to-home target when CHOOSING among several candidates;
-        // once a raid is already underway toward task.TargetHex, applying it again every single
-        // step only starves exactly the campaign that most needs its own AP to finish covering
-        // that distance — see AiTurnController's own AiConfig.raidCommittedBonus comment for the
-        // full report (a committed raid army losing arbitration to routine Разведка movement,
-        // AiDebug.log 2026-08-16).
-        public static float ScoreForContinuation(PlayerSetupData actor, ArmyData army, HexCoord hex) =>
-            ProximityScore(army, hex, citadelHex: null);
-
-        // Условие "+" к скору (raidReadyArmyBonus, applied by the caller) — a whole existing idle
-        // army (ANY composition, doesn't need to be hero-led) that already clears IsReady's own
-        // ≤50%-HP-discounted worth-it read against `threat`. Strongest-first so a smaller army is
-        // left free for other work when a bigger one would already do. No separate HP filter here
-        // any more — IsReady's own EffectiveAttackSum discount already keeps a critically wounded
-        // army from clearing a real target on its own; a lightly wounded one (>50% HP) is fully
-        // eligible, same as a healthy one.
+        // A whole existing idle army (doesn't need to be hero-led) that already clears IsReady's
+        // own worth-it read against `threat`. Strongest-first so a smaller army is left free for
+        // other work when a bigger one would already do. No separate HP filter here — IsReady's own
+        // real-HP full-battle simulation already discounts a critically wounded army on its own
+        // (see IsReady's own comment: a wounded unit dies, and stops attacking, earlier in the sim
+        // than a healthy one would), no need for a second, cruder gate on top of it.
+        // A lone Recce scout or an escort-less lone hero are excluded even when IsReady would
+        // otherwise pass (2026-08-21, project owner's own report — a solo scout was picking fights
+        // with neutrals): both compositions exist specifically to stay out of combat (see
+        // AiArmyRoles.IsSoloRecce/IsSoloHeroAwaitingEscort's own comments), so a weak-enough target
+        // clearing the raw IsReady math must never actually commit them to a fight. Shared by
+        // AiDefencePlanner too (same method) — a fragile solo shouldn't get drafted as a defender
+        // either.
         public static ArmyData FindReadyIdleArmy(PlayerSetupData player, ThreatStrength threat, AiResourcePool pool)
         {
             return pool.AvailableArmies()
-                .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count > 0 && IsReady(a, threat))
+                .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count > 0
+                    && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
+                    && IsReady(a, threat))
                 .OrderByDescending(a => WorthIt.AttackSum(a))
                 .FirstOrDefault();
         }
 
         public static bool NeedsHero(ArmyData army) => !AiArmyRoles.IsHeroLed(army);
 
-        // Theoretical ceiling if EVERY currently-idle non-hero unit the player owns (garrison
-        // included) eventually joined `army` — the "больше некого бить" dead-end gate (see this
-        // class's own "Поведение" comment). Deliberately rough: ignores Capacity, doesn't check
-        // whether merging that many units is even reachable in practice — good enough to tell
-        // "truly hopeless" apart from "just needs more turns of assembling."
-        public static float MaxPossibleAttack(PlayerSetupData player, ArmyData excludeArmy, AiResourcePool pool)
+        // Opportunistic pre-attack top-up (2026-08-20 fix, project owner's own report: the AI used
+        // to send two separate combat armies sitting on the exact same hex to attack one after
+        // another instead of combining them first — a hero-led raid/defense force that's already
+        // strong enough alone (FindReadyIdleArmy) never checked whether a co-located sibling army
+        // could just be folded in for a stronger single strike). Garrison itself is deliberately
+        // excluded — this only cannibalizes an otherwise-idle FIELD army bystander, never dips into
+        // home-defense stock the way the real assembly pipeline (FindRecruitAt) is allowed to for a
+        // composition that still actually NEEDS the help. One unit per call, same "one recruit per
+        // step, re-evaluate fresh" shape every other assembly/consolidation move in this codebase
+        // already follows (AssembleRaidForce/ConsolidateUnits) — see AiTurnController.Decide's own
+        // class comment on why nothing here ever moves more than one member at once.
+        public static UnitData FindCoLocatedMergeRecruit(ArmyData readyArmy, AiResourcePool pool, out ArmyData source)
         {
-            float total = WorthIt.AttackSum(excludeArmy);
-            foreach (ArmyData army in pool.AvailableArmies())
+            source = null;
+            foreach (ArmyData candidate in pool.AvailableArmies())
             {
-                if (army == excludeArmy || army.IsPrison)
+                if (candidate == readyArmy || candidate.IsGarrison || candidate.IsPrison || !candidate.Hex.Equals(readyArmy.Hex))
                     continue;
-                total += army.Members.Where(m => !m.IsHero).Sum(m => m.Attack);
+                UnitData unit = candidate.Members.FirstOrDefault(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce));
+                if (unit != null)
+                {
+                    source = candidate;
+                    return unit;
+                }
             }
-            return total;
+            return null;
         }
 
         // Next recruit sitting at `hex` (garrison or any other idle army already parked there)
@@ -324,18 +366,18 @@ namespace Game.Ai
         // otherwise the strongest available non-hero unit, same "converge fastest" reasoning
         // FindReadyIdleArmy's own ordering uses. `source` is which army it's currently sitting in
         // (needed by the caller to actually issue the same-hex ArmyActions.TransferMember). No HP
-        // filter — a lightly wounded unit (>50% HP) still fights fine; IsReady's own
-        // EffectiveAttackSum discount is what keeps a critically wounded composition from reading
-        // as ready, not a recruiting-time ban.
+        // filter — IsReady's own real-HP full-battle simulation is what keeps a critically wounded
+        // composition from reading as ready (see IsReady's own comment), not a recruiting-time ban.
         //
-        // Recce-tagged units are never offered as recruits — every other planner keeps a Recce
-        // member solo forever on purpose (see AiScoutPlanner.FindBuriedRecceUnit's own comment,
-        // GarrisonReorgTask.IsLoneArmyAtBase's own !HasRecce exclusion). Without this exclusion, a
-        // Recce unit sitting solo at the garrison hex (exactly what AiScoutPlanner keeps it there
-        // for) reads as ordinary raid fodder here, and AiScoutPlanner.AssembleRecceScoutRoutine
-        // pulls it right back out the moment it lands buried in a raid army — an endless
-        // recruit/reclaim ping-pong between Агрессия and Разведка that burned a whole turn's step
-        // budget without either task ever finishing (see AiDebug.log 2026-08-17, turn 8).
+        // Recce-tagged units are never offered as recruits — this exclusion is this method's own,
+        // independent of GarrisonReorgTask (which dropped its OWN Recce carve-out 2026-08-20, see
+        // that class's own class comment point 1.2 — a solo Recce can now get folded into garrison
+        // by consolidation the same as any other lone army). Without THIS exclusion, a Recce unit
+        // sitting solo at the garrison hex (exactly what AiScoutPlanner keeps it there for) reads
+        // as ordinary raid fodder here, and AiScoutPlanner.AssembleRecceScoutRoutine pulls it right
+        // back out the moment it lands buried in a raid army — an endless recruit/reclaim ping-pong
+        // between Агрессия and Разведка that burned a whole turn's step budget without either task
+        // ever finishing (see AiDebug.log 2026-08-17, turn 8).
         public static UnitData FindRecruitAt(PlayerSetupData player, HexCoord hex, ArmyData army, AiResourcePool pool, out ArmyData source)
         {
             source = null;
@@ -351,6 +393,16 @@ namespace Game.Ai
                 {
                     if (unit.IsHero != wantHero || unit.HasAbility(UnitAbilities.Recce))
                         continue;
+                    // Would pulling `unit` out leave `candidate` (often the Garrison) unable to
+                    // hold its own remaining roster? A hero can be the only thing propping the
+                    // Garrison's capacity above its base — see ArmyData.CanLeaveWithoutOvercrowding's
+                    // own comment. Checked here, not just at execution time, so this method never
+                    // proposes a recruit ArmyActions.TransferMember is guaranteed to reject —
+                    // without this, TryRaidAssembleCandidates re-offers the exact same doomed
+                    // recruit every step for the rest of the turn, since nothing about the roster
+                    // changes between retries (project owner's own report, 2026-08-22).
+                    if (!candidate.CanLeaveWithoutOvercrowding(unit))
+                        continue;
                     if (wantHero || unit.Attack > bestAttack)
                     {
                         best = unit;
@@ -364,35 +416,71 @@ namespace Game.Ai
             return best;
         }
 
-        // TryRaidRegroupCandidates' own courier pick — always non-hero (a hero has no business
-        // being spent as a logistics run to fetch a wounded army home), otherwise the same "any
-        // idle army sitting at `hex`" scan FindRecruitAt uses, just without the wantHero branch.
-        // Same Recce exclusion as FindRecruitAt above and for the same reason — ReinforceSwapRoutine
-        // folds this pick permanently into the wounded army, which would strip a scout composition
-        // exactly as durably as recruiting it into a raid force would.
-        public static UnitData FindNonHeroRecruitAt(HexCoord hex, AiResourcePool pool, ArmyData excludeArmy)
+        // TryRaidRegroupCandidates' own courier pick (and TryContinueRaidTask's in-flight
+        // reinforcement branch) — always non-hero (a hero has no business being spent as a
+        // logistics run to fetch a wounded army home), otherwise the same "any idle army sitting
+        // at `hex`" scan FindRecruitAt uses, just without the wantHero branch. Same Recce exclusion
+        // as FindRecruitAt above and for the same reason — ReinforceSwapRoutine folds this pick
+        // permanently into the wounded army, which would strip a scout composition exactly as
+        // durably as recruiting it into a raid force would.
+        //
+        // `preferTypeMatchFor` — the wounded army this recruit is headed to replace someone in, if
+        // known (both current callers pass their own `army`). When given, a candidate whose
+        // TypeTags overlaps one of that army's own non-hero members' wins immediately over a
+        // same-hex candidate found earlier that doesn't (same "does this unit's own type fit the
+        // gap" read AiManagementPlanner.UnitCompositionFitBonus already uses for card placement,
+        // just applied to a courier pick instead) — a Ranged replacement for a fallen Ranged unit,
+        // not whichever body happened to be sitting there first. Falls back to the first available
+        // candidate regardless of type if nothing matches (or `preferTypeMatchFor` is null) — same
+        // behavior as before this parameter existed.
+        public static UnitData FindNonHeroRecruitAt(HexCoord hex, AiResourcePool pool, ArmyData excludeArmy,
+            ArmyData preferTypeMatchFor = null)
         {
+            HashSet<UnitTypeTag> preferredTypes = preferTypeMatchFor != null
+                ? new HashSet<UnitTypeTag>(preferTypeMatchFor.Members.Where(m => !m.IsHero).SelectMany(m => m.TypeTags))
+                : null;
+
+            UnitData fallback = null;
             foreach (ArmyData candidate in pool.AvailableArmies())
             {
                 if (candidate == excludeArmy || candidate.IsPrison || !candidate.Hex.Equals(hex))
                     continue;
-                UnitData unit = candidate.Members.FirstOrDefault(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce));
-                if (unit != null)
-                    return unit;
+                foreach (UnitData unit in candidate.Members)
+                {
+                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                        continue;
+                    if (preferredTypes != null && preferredTypes.Count > 0 && unit.TypeTags.Overlaps(preferredTypes))
+                        return unit;
+                    fallback ??= unit;
+                }
             }
-            return null;
+            return fallback;
         }
 
         // Known non-neutral army within raidThreatRadius of `hex` — the threat-reaction trigger
         // (see this class's own "Поведение" comment). Neutrals never trigger this (they're this
         // task's own PREY, not a threat to react to).
+        //
+        // Returns the STRONGEST such sighting (by DefenseSum — the same axis RequiredStrengthAt
+        // itself ranks by), not just the first one found (2026-08-20 fix, project owner's own
+        // report). With two enemy armies both within radius, the old first-found behavior could
+        // read IsReady against the weaker one, decide "we beat it", and counter-attack — while a
+        // second, stronger army sat right there unaccounted for the whole time. Every caller
+        // (TryContinueRaidTask's own counter-attack/retreat branch, AiDefencePlanner's citadel
+        // threat detection) already treats "beats NearbyThreat" as "safe to engage nearby", so
+        // making this the worst case in range makes that read honest.
         public static AiMapMemory.KnownEnemySighting? NearbyThreat(PlayerSetupData player, HexCoord hex)
         {
+            AiMapMemory.KnownEnemySighting? strongest = null;
             foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { hex }, AiConfig.Current.raidThreatRadius))
-                if (sighting.Owner != null && !sighting.Owner.IsNeutral)
-                    return sighting;
-            return null;
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { hex }, AiConfig.raidThreatRadius))
+            {
+                if (sighting.Owner == null || sighting.Owner.IsNeutral)
+                    continue;
+                if (!strongest.HasValue || sighting.DefenseSum > strongest.Value.DefenseSum)
+                    strongest = sighting;
+            }
+            return strongest;
         }
     }
 }
