@@ -149,6 +149,22 @@ namespace Game.Ai
         public static bool IsReady(ArmyData army, ThreatStrength threat) =>
             IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
+        // Full-roster win chance when known, aggregate-sum fallback otherwise — extracted out of
+        // IsReady below (2026-08-23, project owner's own call) so FindTarget's own ranking can read
+        // the SAME honest win-chance number IsReady itself decides readiness against, rather than
+        // ranking candidates by raw required.Defense (which says nothing about how strong `army` —
+        // or the garrison it'll be assembled from — actually is right now).
+        private static float WinChanceAgainst(ArmyData army, float threatDefense, float threatAttack,
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus)
+        {
+            return defenders != null && defenders.Count > 0
+                ? WorthIt.WinChance(army, defenders, hexBonus)
+                : WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), threatAttack, threatDefense);
+        }
+
+        private static float WinChanceAgainst(ArmyData army, ThreatStrength threat) =>
+            WinChanceAgainst(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
+
         // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
         // comparison on the map goes through WorthIt, no second copy of the same math anywhere
         // else). Used to build its own per-unit snapshot here with a manual "wounded unit reads
@@ -171,9 +187,7 @@ namespace Game.Ai
         public static bool IsReady(ArmyData army, float threatDefense, float threatAttack,
             IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
         {
-            float chance = defenders != null && defenders.Count > 0
-                ? WorthIt.WinChance(army, defenders, hexBonus)
-                : WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), threatAttack, threatDefense);
+            float chance = WinChanceAgainst(army, threatDefense, threatAttack, defenders, hexBonus);
             return chance > 0.5f && WorthIt.CanDamageAll(army, defenders, hexBonus);
         }
 
@@ -196,9 +210,14 @@ namespace Game.Ai
         // Best known neutral/event/(temporary) enemy-building hex — proximity to `army` plus
         // citadel-distance penalty (visitRingBand/freshNeighborWeight are NOT reused here — no
         // wavefront restriction at all, see this class's own "Цель" comment: the whole known map
-        // is fair game, not a frontier band). Never filters by whether `army` could currently WIN
-        // — that's the caller's own job (IsReady decides whether to pursue), this only ranks
-        // candidates by proximity/opportunity.
+        // is fair game, not a frontier band), PLUS (2026-08-23, project owner's own call) how good
+        // a fight this actually is for `army` right now (ProximityScore's own WinChanceAgainst
+        // term) — raw required.Defense alone said nothing about how strong `army` (or the garrison
+        // it'll be assembled from) actually is, so an expensive-but-close target used to outrank a
+        // cheap-but-slightly-farther one purely on distance. Never FILTERS by whether `army` could
+        // currently win, though — that's still IsReady's own job (a low win chance only lowers this
+        // candidate's rank, it doesn't disqualify it outright; the best-known target still wins
+        // ranking even if nothing beats it yet).
         //
         // `excludeHexes` — hexes an already-active Агрессия task (this player's own, whether still
         // assembling or already travelling) is targeting right now. AiTurnController.
@@ -230,7 +249,7 @@ namespace Game.Ai
                 if (excludeHexes != null && excludeHexes.Contains(candidate))
                     continue;
                 ThreatStrength required = RequiredStrengthAt(actor, candidate, map);
-                float score = ProximityScore(army, candidate, citadelHex);
+                float score = ProximityScore(army, candidate, citadelHex, required);
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(candidate, required,
                         score, $"known target at ({candidate.Q},{candidate.R}), needs strength {required.Defense:0}");
@@ -252,7 +271,7 @@ namespace Game.Ai
                 // same as any neutral/event target; raidCounterAttackBonus already covers "attack a
                 // known target we're stronger than" when one sits near the raiding army itself.
                 bool guarded = AiMapMemory.KnownEnemySightingAt(actor, building.Hex).HasValue;
-                float score = ProximityScore(army, building.Hex, citadelHex);
+                float score = ProximityScore(army, building.Hex, citadelHex, required);
 
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(building.Hex, required, score,
@@ -291,12 +310,15 @@ namespace Game.Ai
         }
 
         // Условия "+" к скору — ближе к текущей позиции армии (scoutProximityWeight, тот же
-        // общий вес, что и у Разведки).
+        // общий вес, что и у Разведки); выше win chance против `threat` (raidWinChanceRankWeight,
+        // см. WinChanceAgainst выше — 2026-08-23, project owner's own call: цель, которую `army`
+        // прямо сейчас может уверенно взять, должна перевешивать чуть более близкую, но требующую
+        // долгой сборки/недостижимую вообще).
         // Условия "-" к скору — дальше от цитадели свыше citadelPenaltyFreeRadius хексов
         // (citadelDistancePenaltyPerHex — та же кросс-категорийная формула, что и у
         // BuildFacilityTask.ScoreHex, project owner's own 2026-08-19 rebalance: "влияет на все
         // задачи 1 уровня").
-        private static float ProximityScore(ArmyData army, HexCoord candidate, HexCoord? citadelHex)
+        private static float ProximityScore(ArmyData army, HexCoord candidate, HexCoord? citadelHex, ThreatStrength threat)
         {
             float score = -HexGridMath.Distance(army.Hex, candidate) * AiConfig.scoutProximityWeight;
             if (citadelHex.HasValue)
@@ -305,6 +327,7 @@ namespace Game.Ai
                 int overage = System.Math.Max(0, distance - AiConfig.citadelPenaltyFreeRadius);
                 score -= overage * AiConfig.citadelDistancePenaltyPerHex;
             }
+            score += WinChanceAgainst(army, threat) * AiConfig.raidWinChanceRankWeight;
             return score;
         }
 

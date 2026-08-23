@@ -139,6 +139,23 @@ namespace Game.Ai
             return best;
         }
 
+        // See FindCollectorDetachPlan below — Source is the (still multi-member) army Unit is
+        // currently sitting in, MergeTarget is where its escort goes once Unit is pulled out (null
+        // means "spin up a fresh army instead", see AiDecision.DetachCollector's own comment).
+        public readonly struct CollectorDetachPlan
+        {
+            public readonly ArmyData Source;
+            public readonly UnitData Unit;
+            public readonly ArmyData MergeTarget;
+
+            public CollectorDetachPlan(ArmyData source, UnitData unit, ArmyData mergeTarget)
+            {
+                Source = source;
+                Unit = unit;
+                MergeTarget = mergeTarget;
+            }
+        }
+
         // Экономика · Задача 2's own prerequisite step whenever no ready solo collector exists yet
         // (see FindNearestSoloCollector) — the project owner's own two ways to end up with an army
         // holding just the collector: two of the player's own armies already share the GARRISON
@@ -250,7 +267,7 @@ namespace Game.Ai
                 ResourceType? candidateType = DominantResourceType(candidate);
                 if (candidateType == null)
                     continue;
-                float rank = BuildFacilityTask.RankHex(player, root, candidate, candidateType.Value);
+                float rank = BuildFacilityTask.RankHex(player, root, candidate, candidateType.Value, ctx.Map);
                 if (bestHex == null || rank > bestRank)
                 {
                     bestHex = candidate;
@@ -333,7 +350,14 @@ namespace Game.Ai
                 return results; // cap reached and this hero has no BuildFacility task to redirect — would be a brand-new slot
             }
 
-            var task = new AiTask { Kind = AiTaskKind.BuildFacility, Army = hero, TargetHex = hex, ResourceType = resourceType };
+            var task = new AiTask
+            {
+                Kind = AiTaskKind.BuildFacility,
+                Army = hero,
+                TargetHex = hex,
+                ResourceType = resourceType,
+                StartedWithNoIncome = !BuildFacilityTask.HasIncomeSource(player, resourceType),
+            };
             AiDecision decision = AdvanceEconomyTask(player, root, ctx, task);
             // decision.Task null means AdvanceEconomyTask's own threat-reaction fired instead of
             // actually starting anything (see its own "known enemy too strong" flee branch) — this
@@ -482,6 +506,28 @@ namespace Game.Ai
                 float score = AiConfig.economyBaseWeight
                     + BuildFacilityTask.ScoreHex(player, root, task.TargetHex, task.ResourceType.Value);
                 return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
+            }
+
+            // Arrived — one more validity check before spending anything: if this build was ever
+            // only justified by "no income source at all" (task.StartedWithNoIncome, see AiTask's
+            // own comment) and some OTHER building has since started producing task.ResourceType (a
+            // card played elsewhere, a second BuildFacility task finishing first, etc. — however
+            // many turns this trip took), the original deficit is already closed and finishing this
+            // one would just be a redundant duplicate. Deliberately NOT re-derived from the current
+            // scarcity value alone — a build that always had income but was justified purely by a
+            // low stockpile (StartedWithNoIncome false) must NOT be cancelled here just because
+            // HasIncomeSource is (and always was) true. Cancels and frees the hero instead — same
+            // release+remove shape every other hard-cancel branch above uses (project owner's own
+            // 2026-08-23 call).
+            if (task.StartedWithNoIncome && BuildFacilityTask.HasIncomeSource(player, task.ResourceType.Value))
+            {
+                if (AiTaskRegistry.TasksFor(player).Contains(task))
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {task.ResourceType} now has an "
+                        + "income source elsewhere, deficit already closed, Economy task at "
+                        + $"({task.TargetHex.Q},{task.TargetHex.R}) cancelled.");
+                AiResourceReservation.Release(task);
+                AiTaskRegistry.Remove(player, task);
+                return null;
             }
 
             if (definition == null)

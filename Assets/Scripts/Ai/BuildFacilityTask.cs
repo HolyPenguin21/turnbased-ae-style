@@ -71,10 +71,40 @@ namespace Game.Ai
         // Внутренний выбор — какой из известных свободных ресурсных хексов строить первым
         // (project owner's own 2026-08-19 call). Используется ТОЛЬКО AiEconomyPlanner.
         // TryStartEconomyCandidates' own pre-pass, чтобы выбрать один хекс до генерации кандидата
-        // — сам этот скор никогда не попадает в AiDecision.Score.
-        public static float RankHex(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType)
+        // — сам этот скор никогда не попадает в AiDecision.Score. HeroTravelCostScore (2026-08-23,
+        // project owner's own call) is this method's own third internal-only term, same "stays out
+        // of ScoreHex" treatment as the other two — CitadelDistanceScore alone never accounted for
+        // how far the actually-nearest hero itself has to travel, only for the target hex's own
+        // distance from the citadel.
+        public static float RankHex(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType,
+            HexMap map)
         {
-            return ScarcityBonus(player, root, resourceType) + CitadelDistanceScore(player, hex);
+            return ScarcityBonus(player, root, resourceType) + CitadelDistanceScore(player, hex)
+                + HeroTravelCostScore(player, hex, map);
+        }
+
+        // Real terrain-weighted movement cost (HexPathfinder.FindPath.TotalCost) from whichever
+        // hero FindActor would actually pick for `hex` — not the cheap HexGridMath.Distance every
+        // other RankHex distance term in this codebase uses (see ResourcesScrapTask.
+        // DistanceFromNearestCollector/RaidWeakerArmyTask.ProximityScore's own comments on that
+        // convention) — the project owner's own choice here, since sending the wrong hero is
+        // expensive enough (several real turns of travel) to warrant the extra accuracy over the
+        // usual "good enough to compare two options" approximation. Zero when no hero exists
+        // anywhere yet, or no route is currently known — same "no penalty, not a disqualifier"
+        // fallback CitadelDistanceScore's own missing-citadel case already uses; a genuinely
+        // unreachable/heroless hex simply never produces a usable FindActor pick later anyway.
+        private static float HeroTravelCostScore(PlayerSetupData player, HexCoord hex, HexMap map)
+        {
+            if (map == null)
+                return 0f;
+            AiEconomyPlanner.NearestHeroPick pick = FindActor(player, hex);
+            HexCoord? moverHex = pick.Army != null ? pick.Army.Hex : pick.Garrison?.Hex;
+            if (moverHex == null)
+                return 0f;
+            HexPath path = HexPathfinder.FindPath(map, moverHex.Value, hex);
+            if (path == null)
+                return 0f;
+            return -path.TotalCost * AiConfig.buildHeroTravelCostWeight;
         }
 
         // Дефицит считается по ИНКАМУ в первую очередь, по текущему запасу — только во вторую
@@ -106,7 +136,10 @@ namespace Game.Ai
         // CollectResourceIncome); юнит-сборщик без facility (см. ResourcesScrapTask) сюда
         // намеренно не входит — это отдельный, более гибкий/временный источник, а не то, ради чего
         // существует именно Задача 1 (построить постоянную добычу).
-        private static bool HasIncomeSource(PlayerSetupData player, ResourceType type) =>
+        // Public — also read directly by AiEconomyPlanner when a BuildFacility task is created
+        // (AiTask.StartedWithNoIncome) and re-checked once the hero arrives (see AdvanceEconomyTask's
+        // own arrival cancel).
+        public static bool HasIncomeSource(PlayerSetupData player, ResourceType type) =>
             BuildingRegistry.AllBuildings().Any(b => b.Owner == player && b.CollectedAmount(type) > 0);
 
         private static float CitadelDistanceScore(PlayerSetupData player, HexCoord hex)

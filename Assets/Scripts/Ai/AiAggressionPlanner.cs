@@ -299,15 +299,18 @@ namespace Game.Ai
             HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
 
             // Every hex an active (non-retreating) Агрессия task is already targeting, ready or
-            // still assembling alike — collected here so the "start a new one" tier below never
-            // hands a second, independent army the SAME target a first one already committed to
-            // (see RaidWeakerArmyTask.FindTarget's own comment on the excludeHexes it takes).
-            var activeTargets = new HashSet<HexCoord>();
+            // still assembling alike — collected UP FRONT (not inside the loop below) so a task's
+            // own re-target check further down sees every OTHER task's claim regardless of
+            // iteration order, and can still exclude only ITS OWN current hex rather than being
+            // artificially blocked from re-confirming it (see AiTask.StillAssembling's own comment
+            // for why the "start a new one" tier below also needs this same full set).
+            List<AiTask> assemblingOrTravelling = AiTaskRegistry.TasksFor(player)
+                .Where(t => t.Kind == AiTaskKind.RaidWeakerArmy && !t.Retreating).ToList();
+            var activeTargets = new HashSet<HexCoord>(assemblingOrTravelling.Select(t => t.TargetHex));
 
             // Continue every already-registered, not-yet-ready task.
-            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.RaidWeakerArmy && !t.Retreating).ToList())
+            foreach (AiTask task in assemblingOrTravelling)
             {
-                activeTargets.Add(task.TargetHex);
                 if (task.Army == null || !task.Army.Hex.Equals(garrisonHex))
                     continue; // travelling or retreating — TryContinueRaidTask's own turn, not this tier's
                 RaidWeakerArmyTask.ThreatStrength required = RaidWeakerArmyTask.RequiredStrengthAt(player, task.TargetHex, ctx.Map);
@@ -317,6 +320,35 @@ namespace Game.Ai
                     continue; // ready — TryContinueRaidTask picks it up from here
                 }
                 task.StillAssembling = true;
+
+                // Re-check available targets every step while still assembling AT THE GARRISON
+                // (2026-08-23, project owner's own call: "нужно почаще перепроверять доступные
+                // цели") — free to do here specifically because nothing has been spent toward the
+                // old target yet: the army hasn't moved an inch, so every recruit gathered so far is
+                // exactly as useful against a new target as the old one. Once travelling (task.Army
+                // no longer at garrisonHex) or ready, this tier doesn't run at all any more, so the
+                // target freezes again exactly as before — re-shopping only ever makes sense while
+                // the trip itself hasn't started costing anything. Excludes every OTHER active
+                // task's hex but not this task's own, so FindTarget can freely re-pick the same hex
+                // right back (the common case — nothing changed) without being forced off it.
+                var otherTargets = new HashSet<HexCoord>(activeTargets);
+                otherTargets.Remove(task.TargetHex);
+                RaidWeakerArmyTask.RaidTarget? retarget = RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargets);
+                if (retarget.HasValue && !retarget.Value.Hex.Equals(task.TargetHex))
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — retargets Agression raid from "
+                        + $"({task.TargetHex.Q},{task.TargetHex.R}) to ({retarget.Value.Hex.Q},{retarget.Value.Hex.R}), "
+                        + "a better prospect for the force gathered so far.");
+                    activeTargets.Remove(task.TargetHex);
+                    task.TargetHex = retarget.Value.Hex;
+                    activeTargets.Add(task.TargetHex);
+                    required = retarget.Value.Threat;
+                    if (RaidWeakerArmyTask.IsReady(task.Army, required))
+                    {
+                        task.StillAssembling = false;
+                        continue; // the new target is already within reach — no need to recruit further
+                    }
+                }
 
                 // No separate dead-end pre-check any more (2026-08-22, project owner's own call —
                 // "армия будет собираться пока не станет равной необходимому кэфициенту, либо

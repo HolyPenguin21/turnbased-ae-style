@@ -302,6 +302,20 @@ namespace Game.Ai
             if (pool.AvailableArmies().Any(a => AiArmyRoles.IsSoloRecce(a) && a.Members.Any(m => m.IsHero == wantHero)))
                 return results;
 
+            // Or does a matching Recce carrier already exist somewhere ELSE — claimed by another
+            // task entirely (Экономика's own preemption path, see AiEconomyPlanner.FindNearestHero's
+            // own "нужно брать ближайшего героя... его текущее задание можно отложить" call)? Scans
+            // the FULL roster, not just pool.AvailableArmies() — that hero is still "ours", just
+            // busy for however many turns the other task legitimately needs it, and falls straight
+            // back into pool.AvailableArmies() (picked up by TryStartVisitCandidates above, same
+            // IsSoloRecce shape) the moment that task lets go — no separate bookkeeping needed here.
+            // Checks composition/ability only, not WHICH task holds it, so this survives any current
+            // or future preemption source without a repeat fix — project owner's own report: without
+            // this, Разведка used to spawn a full replacement Recce EVERY turn a hero spent away
+            // building, however many turns that took.
+            if (ArmyRegistry.AllForOwner(player).Any(a => AiArmyRoles.IsSoloRecce(a) && a.Members.Any(m => m.IsHero == wantHero)))
+                return results;
+
             // Scoped to this player's own garrisoned (Barracks) hexes only — a player can have
             // several bases (see AiTurnController.OwnGarrisonHexes), and an empty shell sitting on
             // ANY of them is just as reusable as one at the starting citadel; SpawnReconArmyRoutine

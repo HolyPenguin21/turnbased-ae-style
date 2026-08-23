@@ -152,6 +152,18 @@ namespace Game.Ai
         // precise diagnosis; see AiEconomyPlanner.MaxBuildAttempts.
         public int BuildAttempts;
 
+        // BuildFacility only — true if ResourceType had NO income source anywhere at task creation
+        // (see BuildFacilityTask.HasIncomeSource), i.e. this build was ever only justified by
+        // BuildFacilityTask.ScarcityBonus's own buildNoIncomeBonus branch, not merely "already
+        // produced somewhere, just low in stock". Re-checked once the hero actually arrives (see
+        // AiEconomyPlanner.AdvanceEconomyTask's own arrival cancel) — if some OTHER source of this
+        // same type came online during the (possibly multi-turn) trip, the original justification is
+        // gone and the build is now redundant, so the task cancels and frees the hero instead of
+        // finishing a build nobody needs any more. Deliberately NOT re-derived from scratch at
+        // arrival (current HasIncomeSource alone can't tell "always had income, just scarce" apart
+        // from "started with none, gained one since") — this flag is what actually changed.
+        public bool StartedWithNoIncome;
+
         public string Reason;
 
         // VisitHex only (see VisitHexTask.TryFlee) — a ONE-TURN, resumable retreat: set whenever a

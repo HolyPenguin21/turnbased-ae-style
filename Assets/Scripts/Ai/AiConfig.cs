@@ -149,6 +149,16 @@ namespace Game.Ai
         // 2026-08-20, project owner's own call — dropped from 2: only one raid campaign running
         // at a time, tune back up later depending on how this plays.
         public const int maxConcurrentRaid = 1;
+        // RaidWeakerArmyTask.FindTarget's own internal-only ranking term (2026-08-23, project
+        // owner's own call, same "never leaks into the cross-category score" treatment
+        // scoutProximityWeight/buildHeroTravelCostWeight already get) — added on top of
+        // ProximityScore's own distance terms, weighted by WinChanceAgainst(army, threat) (0..1,
+        // the SAME honest win chance IsReady itself decides readiness against). Without this, a
+        // strong-but-close target could outrank a weak-but-slightly-farther one purely on
+        // proximity, even though the weak one needs little to no further assembly and the strong
+        // one might never actually finish gathering enough force. Roughly "a full 0%→100% win-
+        // chance swing is worth about 6 hexes of proximity" at this default — tune independently.
+        public const float raidWinChanceRankWeight = 30f;
         // raidReadyArmyBonus removed 2026-08-20 (project owner's own call) — a target already
         // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path", no
         // assembly needed) now scores the same flat aggressionBaseWeight as any other ready
@@ -487,6 +497,14 @@ namespace Game.Ai
         // stockpile term entirely rather than adding to it (project owner's own call, 2026-08-17:
         // deficit must be judged by income first, current stock only second).
         public const float buildNoIncomeBonus = 100f;
+        // buildHeroTravelCostWeight — BuildFacilityTask.RankHex's own hero-movement term
+        // (2026-08-23, project owner's own call): degrades a candidate hex by the REAL terrain-
+        // weighted move cost (HexPathfinder.FindPath.TotalCost, not plain hex distance — see
+        // HeroTravelCostScore's own comment) of whichever hero FindActor would actually send there.
+        // Same order of magnitude as citadelDistancePenaltyPerHex since a path hex typically costs
+        // ~1 (Mathf.Max(1, terrain.moveCost)) — tune independently if terrain costs in this project
+        // ever skew much higher than that.
+        public const float buildHeroTravelCostWeight = 5f;
 
         // ---- Экономика — Задача 2 (ResourcesScrap) ----
         // Added on top of economyBaseWeight — scrapping via a unit's own CollectX ability costs no
