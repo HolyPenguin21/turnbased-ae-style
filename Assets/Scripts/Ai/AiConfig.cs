@@ -27,6 +27,19 @@ namespace Game.Ai
         // still settles in well under this many steps, same as before.
         public const int maxStepsPerTurn = 40;
 
+        // ---- AiMapMemory — память о вражеских армиях ----
+        // 2026-08-23 (project owner's own call): an enemy-army sighting (AiMapMemory.
+        // EnemySightings — NOT the resource-hex/event-guard stores, both of which stay
+        // permanent-until-corrected on purpose, see AiMapMemory's own class comment) used to
+        // linger forever once observed, corrected only by actually re-observing that exact hex
+        // again. That let every "avoidance" reader (VisitHexTask.TryFlee/ScoreCandidate/
+        // FindNextSafeStep, RaidWeakerArmyTask, AiDefencePlanner, ...) keep routing around or
+        // fleeing a hex the enemy may have vacated many turns ago. A sighting now expires
+        // enemySightingMemoryTurns turns after it was last (re)observed — see
+        // AiMapMemory.OnTurnStarted, called once at the very top of each AI player's own
+        // AiTurnController.RunTurn, before that turn's Decide loop ever reads memory.
+        public const int enemySightingMemoryTurns = 2;
+
         // ---- Task Arbiter — Category Base Weights ----
         // Every candidate action a turn could take gets a Score in this same shared space, and
         // the single highest-scoring one wins the step (see AiTurnController.Decide). Tuned so
@@ -43,7 +56,8 @@ namespace Game.Ai
         public const float managementBaseWeight = 50f;
 
         // ---- Разведка — Задача 1 (Посещение хекса) ----
-        public const int maxConcurrentVisitHex = 3;
+        // 2026-08-23 (project owner's own call): 3 → 2 — fewer scouts wandering at once.
+        public const int maxConcurrentVisitHex = 2;
         // How far past the map's own nearest still-unvisited hex (measured from the citadel) a
         // Задача 1 candidate is still allowed to be, so visiting sweeps outward from the citadel
         // "as a wave" rather than beelining for whatever's farthest. Агрессия no longer shares
@@ -74,15 +88,19 @@ namespace Game.Ai
 
         // ---- Разведка — приоритет передвижения по ходам ----
         // From this turn on, a Recce army's own routine MoveArmy score (Задача 1/2 only — see
-        // AiTurnController.ReconMoveWeight, the sole reader) starts tapering off instead of
+        // AiScoutPlanner.ReconMoveWeight, the sole reader) starts tapering off instead of
         // staying flat at reconBaseWeight forever. Early game, scouting SHOULD win the arbiter
-        // over everything else — there's nothing else worth doing with a fresh map. Assembly/
-        // request candidates (SpawnReconArmy/AssembleRecceScout/RequestReconArmy) are untouched —
-        // the AI should keep building its scout pipeline even once actually walking it around
-        // stops being the AP priority.
+        // over everything else — there's nothing else worth doing with a fresh map.
+        // 2026-08-23 (project owner's own call): assembly/request candidates (SpawnReconArmy/
+        // AssembleRecceScout/PlayCard-Recce) now read off this same taper too — building the
+        // scout pipeline shouldn't stay a flat, undecayed priority once actual scouting itself
+        // has already faded well past it. TryFlee's own score is the one exception (see
+        // scoutFleeBonus below) — a scout fleeing a real threat must not lose urgency just
+        // because the turn counter has moved on.
         public const int reconPriorityDecayStartTurn = 5;
         // Flat reduction per turn past reconPriorityDecayStartTurn, subtracted from
-        // reconBaseWeight only for a MoveArmy candidate — never below reconPriorityDecayFloor.
+        // reconBaseWeight for a MoveArmy/assembly/request candidate — never below
+        // reconPriorityDecayFloor.
         public const float reconPriorityDecayPerTurn = 5f;
         // A scouting move should still beat outright idleness (managementFallbackHighScore/Low)
         // even once fully decayed — this floor sits comfortably above those.
@@ -387,10 +405,14 @@ namespace Game.Ai
         // Retuned 2026-08-20 (was 120, before that 50) — 120 pushed the total flee score to
         // ~210-220 (reconBaseWeight + this, minus AggressionSuppressionPenalty if a raid is
         // active), badly out of scale with the rest of the arbiter; 25 keeps the nominal total at
-        // ReconMoveWeight(100) + 25 = 125 — still reliably above every routine candidate (still
+        // reconBaseWeight(100) + 25 = 125 — still reliably above every routine candidate (still
         // above scoutFleeRadius's own trigger radius reasoning: a scout under threat must win
         // arbitration over everything else the same step, just not by triple the score of
         // anything it's actually competing against).
+        // 2026-08-23 (project owner's own call): a flee candidate's base stays the plain,
+        // undecayed reconBaseWeight even past reconPriorityDecayStartTurn — unlike routine
+        // MoveArmy/assembly candidates (see reconPriorityDecayPerTurn above), fleeing a real
+        // threat shouldn't get weaker just because the turn counter has moved on.
         public const float scoutFleeBonus = 25f;
 
         // ---- Экономика — Задача 1 (Постройка facility) ----
@@ -493,8 +515,12 @@ namespace Game.Ai
         // Same value as AiConfig.defenceReactionRadius today, own constant since the two measure
         // different things and may need to diverge later.
         public const int managementActivityRadius = 5;
-        // "не надо их плодить каждый ход, одной-двух армий про запас должно хватить".
-        public const int maxSpareArmies = 2;
+        // "не надо их плодить каждый ход, одной армии про запас должно хватить" (2026-08-23,
+        // project owner's own call — down from 2: the fallback-created spare kept ending up as
+        // one more empty shell alongside whatever FindPlacement's own fallback tier had already
+        // spun up for a card with nowhere else to go, so one spare reserve army now covers both
+        // needs instead of two separate ones).
+        public const int maxSpareArmies = 1;
         // Garrison stops accepting fresh PlayCard deposits (Unit or Hero card alike) once only
         // THIS many slots remain open — "если в гарнизоне уже заканчивается место (остаётся один
         // слот), юниты перераспределяются в резервную армию" (the project owner's own spec). Card
@@ -524,8 +550,10 @@ namespace Game.Ai
         // owner's own call — "ScoutPlanner должен сам решить куда положить своего скаута,
         // менеджеру об этом знать не обязательно") — AiScoutPlanner.
         // TryStartReconAssemblyCandidatesFor fetches and places its own matching Recce card
-        // directly, at plain reconBaseWeight, without ever competing against this file's own
-        // managementBaseWeight. Менеджмент's own backlog pressure below is Unit/Hero only.
+        // directly, at AiScoutPlanner.ReconMoveWeight (reconBaseWeight, decayed past
+        // reconPriorityDecayStartTurn same as every other Разведка candidate — see that field's
+        // own comment), without ever competing against this file's own managementBaseWeight.
+        // Менеджмент's own backlog pressure below is Unit/Hero only.
         //
         // Scaled by a role's own SHARE of the unplayed Unit+Hero pool (unplayedThisRole /
         // (unplayedHero + unplayedUnit), 2026-08-21 fix, project owner's own report — a growing

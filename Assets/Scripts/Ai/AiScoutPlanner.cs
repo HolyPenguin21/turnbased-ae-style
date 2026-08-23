@@ -92,14 +92,20 @@ namespace Game.Ai
             return null;
         }
 
-        // Задача 1's own MoveArmy weight — reconBaseWeight tapering off past
-        // AiConfig.reconPriorityDecayStartTurn (see that field's own comment). Only ever called at
-        // the point reconBaseWeight would otherwise be added to a target's own Score — the two
-        // MoveArmy sites below (TryContinueVisitTask/TryStartVisitCandidates).
-        // SpawnReconArmy/AssembleRecceScout/RequestReconArmy keep reading
-        // AiConfig.reconBaseWeight directly, untouched by this taper.
-        private static float ReconMoveWeight(AiTurnContext ctx)
+        // Разведка's own shared base weight — reconBaseWeight tapering off past
+        // AiConfig.reconPriorityDecayStartTurn (see that field's own comment). Covers every
+        // Разведка candidate now: the two MoveArmy sites below (TryContinueVisitTask/
+        // TryStartVisitCandidates) AND the assembly/request sites
+        // (TryStartReconAssemblyCandidatesFor's own SpawnReconArmy/AssembleRecceScout/PlayCard) —
+        // 2026-08-23, project owner's own call: keeping the pipeline candidates flat while the
+        // move candidates decayed just meant the AI kept assembling scouts it had already lost
+        // interest in walking around.
+        // TryFlee's own score is the one exception — see the two MoveArmy call sites, which pass
+        // isFlee: true to skip the taper entirely for that candidate.
+        private static float ReconMoveWeight(AiTurnContext ctx, bool isFlee = false)
         {
+            if (isFlee)
+                return AiConfig.reconBaseWeight;
             int turnsPast = ctx.TurnNumber - AiConfig.reconPriorityDecayStartTurn;
             if (turnsPast <= 0)
                 return AiConfig.reconBaseWeight;
@@ -155,7 +161,7 @@ namespace Game.Ai
             if (nextStep == null)
                 return null; // fully boxed in by fog for now — target stays valid, re-tried next step
 
-            float score = ReconMoveWeight(ctx) - AggressionSuppressionPenalty(player)
+            float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue) - AggressionSuppressionPenalty(player)
                 + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
             var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
             return AiDecision.Move(task.Army, stepTarget, task, score, AiTaskCategory.Reconnaissance);
@@ -199,7 +205,7 @@ namespace Game.Ai
                     Kind = AiTaskKind.VisitHex, Army = army, TargetHex = target.Value.Hex, Reason = target.Value.Reason,
                     FledLastTurn = fleeTarget.HasValue,
                 };
-                float score = ReconMoveWeight(ctx) - AggressionSuppressionPenalty(player)
+                float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue) - AggressionSuppressionPenalty(player)
                     + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
                 var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
                 results.Add(AiDecision.Move(army, stepTarget, task, score, AiTaskCategory.Reconnaissance));
@@ -337,7 +343,7 @@ namespace Game.Ai
                     CardDefinition definition = recceCard.Definition;
                     int totalApCost = ArmyActions.CreateArmyApCost + ArmyActions.EffectiveDeployApCost(definition);
                     if (root.ActionPoints >= totalApCost && AiResourceReservation.CanAfford(root, player, definition.resourceCost))
-                        results.Add(AiDecision.RequestReconArmy(AiConfig.reconBaseWeight + AiConfig.reconRequestArmyPenalty));
+                        results.Add(AiDecision.RequestReconArmy(ReconMoveWeight(ctx) + AiConfig.reconRequestArmyPenalty));
                 }
                 return results;
             }
@@ -345,7 +351,7 @@ namespace Game.Ai
             BuriedRecceUnit? buried = FindBuriedRecceUnit(player, wantHero, emptyArmy.Hex);
             if (buried.HasValue && !ctx.WouldRevisitArmy(buried.Value.Unit, emptyArmy))
             {
-                results.Add(AiDecision.AssembleRecceScout(buried.Value, emptyArmy, AiConfig.reconBaseWeight + AiConfig.reconAssemblePenalty));
+                results.Add(AiDecision.AssembleRecceScout(buried.Value, emptyArmy, ReconMoveWeight(ctx) + AiConfig.reconAssemblePenalty));
                 return results;
             }
 
@@ -363,7 +369,7 @@ namespace Game.Ai
                 return results;
 
             results.Add(AiDecision.PlayCard(emptyArmy, card, AiManagementPlanner.CardRole.Recce,
-                AiConfig.reconBaseWeight, AiTaskCategory.Reconnaissance));
+                ReconMoveWeight(ctx), AiTaskCategory.Reconnaissance));
             return results;
         }
 

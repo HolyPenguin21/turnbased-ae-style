@@ -54,13 +54,17 @@ namespace Game.Ai
         // ---- Многобазовая маршрутизация (2026-08-21) ----
 
         // Every one of this player's own garrisoned hexes, busiest first — "busy" meaning the
-        // nearest KNOWN (AiMapMemory, fog-of-war honest) non-neutral sighting within
-        // AiConfig.managementActivityRadius, weighted by both proximity and strength. Deliberately
-        // NOT the raw-ArmyData cheat AiDefencePlanner.CheatEstimateRaiderThreat/
-        // DynamicPatrolUrgencyScore use for Оборона's own proactive patrol sizing — Менеджмент's
-        // own routing only reacts to what this player has actually scouted (project owner's own
-        // "известных врагов" call). Ties (including "nothing known anywhere") favor the citadel,
-        // same tie-break direction Агрессия/Оборона's own hard citadel priority already uses.
+        // TOTAL KNOWN (AiMapMemory, fog-of-war honest) non-neutral threat within
+        // AiConfig.managementActivityRadius, each sighting weighted by proximity and strength and
+        // then summed (2026-08-23, project owner's own call — was the single strongest sighting's
+        // own score, which routed reinforcements the same whether one raider or five sat nearby;
+        // "куда направлять пополнение" cares about the base's total threat load, not just its
+        // scariest single visitor). Deliberately NOT the raw-ArmyData cheat AiDefencePlanner.
+        // CheatEstimateRaiderThreat/DynamicPatrolUrgencyScore use for Оборона's own proactive
+        // patrol sizing — Менеджмент's own routing only reacts to what this player has actually
+        // scouted (project owner's own "известных врагов" call). Ties (including "nothing known
+        // anywhere") favor the citadel, same tie-break direction Агрессия/Оборона's own hard
+        // citadel priority already uses.
         internal static IEnumerable<HexCoord> OwnGarrisonHexesByActivity(PlayerSetupData player)
         {
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
@@ -77,7 +81,7 @@ namespace Game.Ai
 
         private static float ActivityScore(PlayerSetupData player, HexCoord homeHex)
         {
-            float best = 0f;
+            float total = 0f;
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { homeHex }, AiConfig.managementActivityRadius))
             {
@@ -86,11 +90,9 @@ namespace Game.Ai
                 int distance = HexGridMath.Distance(homeHex, sighting.Hex);
                 float proximity = 1f - (float)distance / AiConfig.managementActivityRadius;
                 float strength = sighting.DefenseSum + sighting.AttackSum;
-                float score = proximity * strength;
-                if (score > best)
-                    best = score;
+                total += proximity * strength;
             }
-            return best;
+            return total;
         }
 
         // Checked BEFORE the caller proposes a candidate, not after (see the project owner's own
@@ -366,6 +368,7 @@ namespace Game.Ai
             CardData bestUnitCard = null;
             CardPlacement? bestUnitPlacement = null;
             float bestUnitFit = float.NegativeInfinity;
+            float bestUnitValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
                 if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Unit)
@@ -374,11 +377,15 @@ namespace Game.Ai
                 if (!placement.HasValue)
                     continue;
                 float fit = UnitCompositionFitBonus(player, card.Definition, roster);
-                if (bestUnitCard == null || fit > bestUnitFit) // first-found wins ties, same rule as everywhere else in this codebase
+                float value = CardCombatValue(card.Definition);
+                // FitBonus is a sum of flat gate bonuses, so exact ties are common; break them by
+                // raw combat value instead of falling back to hand order.
+                if (bestUnitCard == null || fit > bestUnitFit || (fit == bestUnitFit && value > bestUnitValue))
                 {
                     bestUnitCard = card;
                     bestUnitPlacement = placement;
                     bestUnitFit = fit;
+                    bestUnitValue = value;
                 }
             }
             if (bestUnitCard != null)
@@ -498,6 +505,17 @@ namespace Game.Ai
             }
 
             return bonus;
+        }
+
+        // Raw combat value of a Unit card, used only to break exact UnitCompositionFitBonus ties
+        // (that bonus is a sum of flat gate values, so ties are common) — not a scoring term in
+        // its own right. Attack/Defense weighted 1:1, HP and Initiative scaled down (0.25/0.5) so
+        // they nudge the tie-break without swamping Attack/Defense given this project's card stat
+        // ranges (HP up to ~12 vs. Attack/Defense up to ~6).
+        private static float CardCombatValue(CardDefinition definition)
+        {
+            return definition.attack + definition.defenseRating
+                + definition.hitPoints * 0.25f + definition.initiative * 0.5f;
         }
 
         // ---- Менеджмент · Починка юнита ----

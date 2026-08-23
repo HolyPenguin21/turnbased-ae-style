@@ -41,6 +41,12 @@ namespace Game.Ai
             public float DefenseSum;
             public float AttackSum;
             public List<WorthIt.DefenderProfile> Defenders;
+            // The global turn (see _currentTurn/OnTurnStarted below) this sighting was last
+            // actually (re)observed — drives expiry in ExpireStaleSightings. Stamped, not left at
+            // its default, even for a sighting recorded before the very first OnTurnStarted call
+            // (initial army placement) — that default (0) is exactly right, since turn numbering
+            // itself starts at 1 (see GameTurnController.TurnNumber).
+            public int SeenTurn;
         }
 
         public readonly struct KnownEnemySighting
@@ -108,6 +114,12 @@ namespace Game.Ai
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>>();
 
         private static bool _subscribed;
+        // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
+        // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
+        // EnemySighting.SeenTurn (see that field's own comment). Not a live reference, just a
+        // plain int updated once per AI player's own turn, same shape as AiTurnContext.TurnNumber
+        // itself.
+        private static int _currentTurn;
 
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
         // (see CitadelSetupController, which calls this alongside VisionSystem.Clear/Configure).
@@ -129,6 +141,34 @@ namespace Game.Ai
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
             KnownEventGuards.Clear();
+            _currentTurn = 0;
+        }
+
+        // Called once, right at the top of AiTurnController.RunTurn, before that turn's own
+        // Decide loop ever reads memory — stamps _currentTurn for every EnemySighting recorded
+        // from this point on (OnVisibilityChanged below) AND expires `actor`'s own enemy-army
+        // sightings last (re)observed more than AiConfig.enemySightingMemoryTurns turns ago (see
+        // that field's own comment — resource hexes/event guards are NOT touched here, both stay
+        // permanent-until-corrected). Scoped to `actor` alone rather than sweeping every player's
+        // memory at once — this only ever needs to be accurate for the player whose own Decide
+        // loop is about to read it; every other player's memory gets swept the same way at the
+        // top of their own next RunTurn instead.
+        public static void OnTurnStarted(PlayerSetupData actor, int turnNumber)
+        {
+            _currentTurn = turnNumber;
+            if (actor == null || !EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+                return;
+
+            List<HexCoord> stale = null;
+            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
+            {
+                if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
+                    (stale ?? (stale = new List<HexCoord>())).Add(kv.Key);
+            }
+            if (stale == null)
+                return;
+            foreach (HexCoord hex in stale)
+                sightings.Remove(hex);
         }
 
         private static void OnVisibilityChanged(PlayerSetupData player)
@@ -180,6 +220,7 @@ namespace Game.Ai
                         // only what it looked like fully healed.
                         Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
                             m.TypeTags.ToList(), m.Attack, m.HitPointsMax, m.Initiative)).ToList(),
+                        SeenTurn = _currentTurn,
                     };
                 }
                 else

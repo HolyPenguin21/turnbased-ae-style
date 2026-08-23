@@ -230,6 +230,11 @@ namespace Game.Ai
                 yield break;
             }
 
+            // Right before anything this turn can read AiMapMemory — expires this player's own
+            // stale enemy-army sightings (see AiMapMemory.OnTurnStarted's own comment) so Decide's
+            // whole loop below, not just some of it, sees the same freshly-expired memory.
+            AiMapMemory.OnTurnStarted(player, ctx.TurnNumber);
+
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
             int startArmies = ArmyRegistry.AllForOwner(player).Count(a => !a.IsGarrison && !a.IsPrison);
             int startHuman = root.GetResource(ResourceType.Human);
