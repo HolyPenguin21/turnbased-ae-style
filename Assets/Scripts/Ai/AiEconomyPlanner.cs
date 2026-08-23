@@ -54,11 +54,13 @@ namespace Game.Ai
         // Экономика · Задача 1's own preemption path (see this method's own class comment above,
         // and TryStartEconomyCandidates' own PreemptedTask handling) may still reach into a hero
         // currently on routine Разведка — "его текущее задание можно отложить" — but NOT into an
-        // active Агрессия campaign (2026-08-23, project owner's own call: "BuildFacility запрещено
-        // preempt'ить активные Raid и BuildBase; разрешён preempt Recon"). Both RaidWeakerArmy and
-        // BuildBase represent real committed military investment — an assembling/travelling raid
-        // force, a base under active construction — that a routine facility build must never be
-        // allowed to interrupt, unlike a scout that simply resumes VisitHex once un-preempted.
+        // active Агрессия campaign or Оборона's own citadel task (2026-08-23, project owner's own
+        // call: "BuildFacility запрещено preempt'ить активные Raid, BuildBase и DefendCitadel;
+        // разрешён preempt Recon"). RaidWeakerArmy/BuildBase represent real committed military
+        // investment — an assembling/travelling raid force, a base under active construction — and
+        // DefendCitadel's own hero-led defender is the one actually holding the capital; none of the
+        // three must ever be interrupted by a routine facility build, unlike a scout that simply
+        // resumes VisitHex once un-preempted.
         // Checked centrally here (both FindNearestHero's own caller AND BuildFacilityTask.RankHex's
         // internal HeroTravelCostScore route through this same method) rather than only at
         // TryStartEconomyCandidates' own PreemptedTask assignment, so a protected hero never even
@@ -67,7 +69,8 @@ namespace Game.Ai
         private static bool IsProtectedFromEconomyPreemption(PlayerSetupData player, ArmyData army)
         {
             AiTask task = AiTaskRegistry.TaskFor(player, army);
-            return task != null && (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.BuildBase);
+            return task != null && (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.BuildBase
+                || task.Kind == AiTaskKind.DefendCitadel);
         }
 
         // FindNearestHero's own blind spot — AiArmyRoles.IsHeroLed always excludes IsGarrison, so

@@ -410,6 +410,21 @@ namespace Game.Ai
                 // here so a stale local-retreat flag never silently resumes once the siege lifts.
                 task.Retreating = false;
                 task.Posture = AiDefencePosture.Turtle;
+
+                // A real siege outranks Economy's own resource commitment too (2026-08-23, project
+                // owner's own call) — releases whatever any still-unfinished BuildFacility task has
+                // claimed (see AiResourceReservation's own class comment) so THIS SAME Decide() step's
+                // later Management card-play (AiManagementPlanner.FindPlacement's own
+                // AiResourceReservation.CanAfford, which reads the live ledger) can spend it on the
+                // citadel's defence instead — Decide's own candidate order already runs Economy's
+                // AdvanceEconomyTask (TopUp) before this method and Менеджмент's TryPlayCardCandidates
+                // after it, so releasing here is what actually opens the window. Not a permanent loss
+                // to Economy — AdvanceEconomyTask's own TopUp simply re-claims whatever's still free
+                // the next time that task gets a step, same as if nothing here ever spent it.
+                foreach (AiTask facilityTask in AiTaskRegistry.TasksFor(player))
+                    if (facilityTask.Kind == AiTaskKind.BuildFacility)
+                        AiResourceReservation.Release(facilityTask);
+
                 if (task.Army.Hex.Equals(citadelHex))
                     return null; // home, recruiting — TryStartDefenceCandidates' own loop handles it
 
