@@ -775,8 +775,11 @@ namespace Game.Ai
         // GarrisonReorgTask.CollapseTemporaryAssemblyRoutine's own per-unit trace (2026-08-23,
         // project owner's own "внутри можно оставить verbose debug-флаг" ask) — off by default so a
         // collapse logs its one summary line only; flip to true to also see each individual
-        // ArmyActions.TransferMember call it made along the way.
-        public const bool verboseGarrisonReorgLogging = false;
+        // ArmyActions.TransferMember call it made along the way. `static readonly`, not `const` —
+        // a `const false` gets folded in by the compiler as a compile-time constant, and the
+        // per-unit logging it guards then reads as statically unreachable (CS0162) rather than a
+        // real runtime toggle.
+        public static readonly bool verboseGarrisonReorgLogging = false;
         // Leftover-AP fallbacks (Reserve army / draw a card) — whichever AiManagementPlanner.
         // IsPreferred says is due next gets High, the other gets Low, so the two alternate turn by
         // turn.
