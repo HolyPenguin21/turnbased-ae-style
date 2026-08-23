@@ -239,7 +239,7 @@ namespace Game.Ai
         // Trigger gate — see BuildBaseTask's own class comment for the full trigger/condition list;
         // this is just the turn-number floor, checked fresh every step like every other trigger
         // here (project owner's own call — not a one-time "unlocked at turn 10" latch).
-        public const int buildBaseMinTurn = 10;
+        public const int buildBaseMinTurn = 7;
         // At most one base-building campaign running at once — same reasoning as maxConcurrentRaid.
         public const int maxConcurrentBuildBase = 1;
         // "Агрессивная армия примерно равна силе активных армий противника" — the composing

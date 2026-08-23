@@ -222,21 +222,26 @@ namespace Game.Ai
         // task and nothing left nearby to visit, walk it back to the garrison instead of leaving
         // it wherever it happened to stop — that's where AiManagementPlanner.TryPlayCardCandidates'
         // own Unit-role routing will actually find it the next time an escort card is affordable.
-        // A no-op once it's already there.
+        // A no-op once it's already there. Targets the nearest own garrison (starting citadel or
+        // any later-founded Base with Barracks — see AiTurnController.NearestOwnGarrisonHex), not
+        // always the citadel — unlike SpawnReconArmyRoutine's own spawn point, a solo hero already
+        // out scouting should walk home to whichever base is actually closest to it.
         public static List<AiDecision> TryReturnHomeCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
-            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (!AiArmyRoles.IsSoloHeroAwaitingEscort(army) || army.CurrentMovement <= 0 || army.Controller == null
-                    || stuckScouts.Contains(army) || army.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, army) != null)
+                    || stuckScouts.Contains(army) || AiTaskRegistry.TaskFor(player, army) != null)
+                    continue;
+                HexCoord garrisonHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
+                if (army.Hex.Equals(garrisonHex))
                     continue;
                 if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     continue;
                 var target = new ScoutTarget(garrisonHex, 0f,
-                    "nothing nearby to visit — returns to the citadel to wait for an escort");
+                    "nothing nearby to visit — returns to the nearest garrison to wait for an escort");
                 results.Add(AiDecision.Move(army, target, null, AiConfig.managementReturnHomeScore, AiTaskCategory.Reconnaissance));
             }
             return results;
