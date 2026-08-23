@@ -148,7 +148,7 @@ namespace Game.Ai
             // fleeTarget carries a real cross-category score of its own (scoutFleeBonus) that must
             // still reach the final decision; FindTarget's own Score does NOT — see AiConfig.
             // scoutProximityWeight's own comment for why that stays a purely internal ranking term.
-            ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, task.Army, task);
+            ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, task.Army, task, ctx.TurnNumber);
             ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, task.Army, ctx.Map);
             if (!target.HasValue)
             {
@@ -188,11 +188,11 @@ namespace Game.Ai
                 if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     continue;
 
-                // No task exists yet to carry FledLastTurn — always free to flee on first
+                // No task exists yet to carry FledOnTurn — always free to flee on first
                 // encounter, then stamp the flag onto the freshly created task below so the very
                 // next continuation call (see TryContinueVisitTask) already honours the one-turn
                 // cap.
-                ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, army, null);
+                ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, army, null, ctx.TurnNumber);
                 ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, army, ctx.Map);
                 if (!target.HasValue)
                     continue;
@@ -207,7 +207,7 @@ namespace Game.Ai
                 var task = new AiTask
                 {
                     Kind = AiTaskKind.VisitHex, Army = army, TargetHex = target.Value.Hex, Reason = target.Value.Reason,
-                    FledLastTurn = fleeTarget.HasValue,
+                    FledOnTurn = fleeTarget.HasValue ? ctx.TurnNumber : -1,
                 };
                 float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
                     - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))

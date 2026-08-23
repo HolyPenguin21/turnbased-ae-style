@@ -46,18 +46,22 @@ namespace Game.Ai
         // один член, и он Recce), по построению никогда не пересекается с
         // AiArmyRoles.IsMakeshiftScoutCapable (та требует ОТСУТСТВИЯ Recce), так что эта
         // композиция никогда не "достаточно сильна" в боевом смысле — она просто всегда бежит.
-        // `task` == null для ещё не начатой задачи — всегда свободна бежать. FledLastTurn не даёт
-        // бежать два хода подряд (см. AiTask.FledLastTurn) — "бежал → возобновил → бежал" вместо
-        // бесконечного отступления, пока угроза не исчезнет из памяти.
-        public static AiScoutPlanner.ScoutTarget? TryFlee(PlayerSetupData player, ArmyData army, AiTask task)
+        // `task` == null для ещё не начатой задачи — всегда свободна бежать. `currentTurn` gates
+        // AiTask.FledOnTurn (see its own comment) — while this task already fled THIS turn, every
+        // further call keeps heading for the garrison (covers both more flee steps still needed
+        // AND "already home, hold until next turn") instead of falling through to routine
+        // FindTarget, whether or not the original threat is still in range THIS call.
+        public static AiScoutPlanner.ScoutTarget? TryFlee(PlayerSetupData player, ArmyData army, AiTask task, int currentTurn)
         {
             if (army == null)
                 return null;
 
-            if (task != null && task.FledLastTurn)
+            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+
+            if (task != null && task.FledOnTurn == currentTurn)
             {
-                task.FledLastTurn = false;
-                return null;
+                return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.scoutFleeBonus,
+                    "already retreating this turn — continues to the garrison");
             }
 
             bool anyThreat = false;
@@ -71,15 +75,10 @@ namespace Game.Ai
                 break;
             }
             if (!anyThreat)
-            {
-                if (task != null)
-                    task.FledLastTurn = false;
                 return null;
-            }
 
             if (task != null)
-                task.FledLastTurn = true;
-            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+                task.FledOnTurn = currentTurn;
             return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.scoutFleeBonus,
                 "a known enemy army is nearby — retreats to the garrison for one turn");
         }
@@ -245,10 +244,12 @@ namespace Game.Ai
         {
             System.Func<HexCoord, bool> blockHex = hex => !hex.Equals(targetHex)
                 && AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue;
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex, blockHex: blockHex);
-            if (path == null || path.Hexes.Count < 2)
-                return null;
-            return path.Hexes[1];
+            // Routed through the shared AiTurnController.FindAffordableStep (2026-08-23 fix) —
+            // this method's own path (blocked around known sightings) can differ from
+            // IsFirstStepAffordable's own unblocked one below, so THIS is the path that actually
+            // needs its first step checked against army.CurrentMovement; checking only the other
+            // one let a real move order through that the movement system then rejected outright.
+            return AiTurnController.FindAffordableStep(map, army, targetHex, blockHex);
         }
 
         // Mirrors HexSelectionController.Movement.IssueMoveOrder's own first-step check (same
@@ -260,12 +261,7 @@ namespace Game.Ai
         {
             if (destination.Equals(army.Hex))
                 return true;
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination);
-            if (path == null || path.Hexes.Count < 2)
-                return false;
-            map.TryGetTerrainAt(path.Hexes[1], out TerrainTypeEntry firstStepEntry);
-            int firstStepCost = firstStepEntry != null ? Mathf.Max(1, firstStepEntry.moveCost) : 1;
-            return army.CurrentMovement >= firstStepCost;
+            return AiTurnController.FindAffordableStep(map, army, destination) != null;
         }
 
         // Shortest citadel distance among every still-unvisited on-map hex — the current

@@ -208,10 +208,15 @@ namespace Game.UI
         // trigger as ResourceBarUI/the end-turn button. The panel starts inactive in the
         // scene, so Awake (and so the starting-hand population above) doesn't run until this
         // actually activates it. Also the counterpart to Hide() below — reshown once
-        // BattleScreenUI closes.
+        // BattleScreenUI closes. Relayout(animated: false) covers any card added by
+        // GrantEventReward/GrantCard while a guard-fight battle screen kept the hand hidden —
+        // AddCard's own Relayout call ran with the GameObject inactive, so its
+        // StartCoroutine(AnimateTo(...)) (CardUI.Retarget) never actually placed the card; this
+        // reactivation is the first point the coroutine can run at all.
         public void Show()
         {
             gameObject.SetActive(true);
+            Relayout(animated: false);
         }
 
         // Called by BattleScreenUI while a battle is open — the hand means nothing behind the

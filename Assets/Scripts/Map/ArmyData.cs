@@ -17,6 +17,15 @@ namespace Game.Map
     // needing a separate "unassigned pile" data structure of its own.
     public class ArmyData
     {
+        // Stable identity across the army's whole lifetime, independent of Hex — a move only ever
+        // updates Hex on this SAME instance (see ArmyRegistry.MoveArmy), never recreates the object,
+        // so this Id is safe for another player's own memory of it to key on. Added 2026-08-23
+        // (project owner's own call) so AiMapMemory can recognize "same physical army, new
+        // position" and update its sighting of it in place instead of leaving a stale record
+        // behind under the army's old hex — see AiMapMemory.EnemySighting's own comment for the
+        // bug this fixes.
+        private static int _nextId;
+        public readonly int Id = _nextId++;
         public string Name;
         public HexCoord Hex;
         public PlayerSetupData Owner;

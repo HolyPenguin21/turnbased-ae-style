@@ -361,6 +361,17 @@ namespace Game.Ai
             AiTask existingTask = AiTaskRegistry.TaskFor(player, hero);
             if (existingTask != null && existingTask.Kind == AiTaskKind.BuildFacility)
             {
+                // Same target hex as the task this hero already holds → never a real redirect,
+                // whatever isScarcer would say — `hex` should already be excluded by
+                // `alreadyTargeted` above for exactly this reason, but this is the one place a
+                // same-hex "swap" would actually do damage (see Commit's own self-preemption
+                // guard for why), so it's re-checked directly here too rather than trusting that
+                // upstream exclusion alone. 2026-08-23 fix (project owner's own report): a hero
+                // ended up pulled off its own in-progress BuildFacility task and immediately
+                // reassigned a brand-new one at the SAME hex, resetting BuildAttempts/
+                // StartedWithNoIncome/reservation state for no actual gain.
+                if (hex.Equals(existingTask.TargetHex))
+                    return results;
                 bool isScarcer = existingTask.ResourceType.HasValue
                     && root.GetResource(resourceType) < root.GetResource(existingTask.ResourceType.Value);
                 if (!isScarcer)
@@ -603,10 +614,11 @@ namespace Game.Ai
             System.Func<HexCoord, bool> blockHex = BuildFacilityTask.IsSolo(army)
                 ? hex => !hex.Equals(targetHex) && !VisionSystem.IsVisited(army.Owner, hex)
                 : (System.Func<HexCoord, bool>)null;
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex, blockHex: blockHex);
-            if (path == null || path.Hexes.Count < 2)
-                return null;
-            return path.Hexes[1];
+            // Routed through the shared AiTurnController.FindAffordableStep (2026-08-23 fix) —
+            // this method used to hand back a next step with no movement-cost check at all, so a
+            // hero with too little movement left for the next terrain hex still got a real
+            // MoveArmy order, which the movement system then rejected outright.
+            return AiTurnController.FindAffordableStep(map, army, targetHex, blockHex);
         }
 
         // Экономика · Задача 1's own "nothing left to build" fallback — a hero-led army with no

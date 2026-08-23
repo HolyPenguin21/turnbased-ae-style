@@ -35,6 +35,17 @@ namespace Game.Ai
     {
         private class EnemySighting
         {
+            // The physical army's own stable ArmyData.Id — this is now the dictionary key in
+            // EnemySightings below (2026-08-23, project owner's own call), so a moved army's
+            // sighting is updated IN PLACE under this same Id rather than left behind as an orphan
+            // record under its old Hex while a second, independent entry accumulates at its new
+            // Hex. Also carried here (not just as the dictionary key) so every read site can still
+            // get back to it without a reverse lookup.
+            public int ArmyId;
+            // No longer the dictionary key (see ArmyId above) — now just this sighting's own last-
+            // observed position, read the same way everywhere a caller needs "where was this
+            // recorded".
+            public HexCoord Hex;
             public PlayerSetupData Owner;
             public string Name;
             public int MemberCount;
@@ -102,8 +113,16 @@ namespace Game.Ai
         // actually been seen, same honesty rule as everything else here.
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, ResourceType>> KnownResourceHexes =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, ResourceType>>();
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, EnemySighting>> EnemySightings =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, EnemySighting>>();
+        // Keyed by ArmyData.Id, NOT HexCoord (changed 2026-08-23, project owner's own call — see
+        // EnemySighting.ArmyId's own comment): a hex-keyed store left a moved army's old-hex
+        // sighting orphaned forever (until its own turns-based expiry) alongside a second, fresher
+        // entry at its new hex, and AiDefencePlanner's Active branch had no reason to prefer the
+        // fresher one, so it could march the defender to a stale last-seen position even while the
+        // same army sat plainly visible somewhere else. Keying by the army's own stable identity
+        // means the SAME dictionary slot gets overwritten on every re-sighting, move included, so
+        // there's only ever one live record per physical army.
+        private static readonly Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>> EnemySightings =
+            new Dictionary<PlayerSetupData, Dictionary<int, EnemySighting>>();
         // HexCoord -> guard's own card-stat strength, for every Hex Event this player has ever
         // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
         // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
@@ -156,19 +175,19 @@ namespace Game.Ai
         public static void OnTurnStarted(PlayerSetupData actor, int turnNumber)
         {
             _currentTurn = turnNumber;
-            if (actor == null || !EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (actor == null || !EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 return;
 
-            List<HexCoord> stale = null;
-            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
+            List<int> stale = null;
+            foreach (KeyValuePair<int, EnemySighting> kv in sightings)
             {
                 if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
-                    (stale ?? (stale = new List<HexCoord>())).Add(kv.Key);
+                    (stale ?? (stale = new List<int>())).Add(kv.Key);
             }
             if (stale == null)
                 return;
-            foreach (HexCoord hex in stale)
-                sightings.Remove(hex);
+            foreach (int armyId in stale)
+                sightings.Remove(armyId);
         }
 
         private static void OnVisibilityChanged(PlayerSetupData player)
@@ -181,9 +200,9 @@ namespace Game.Ai
                 resources = new Dictionary<HexCoord, ResourceType>();
                 KnownResourceHexes[player] = resources;
             }
-            if (!EnemySightings.TryGetValue(player, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (!EnemySightings.TryGetValue(player, out Dictionary<int, EnemySighting> sightings))
             {
-                sightings = new Dictionary<HexCoord, EnemySighting>();
+                sightings = new Dictionary<int, EnemySighting>();
                 EnemySightings[player] = sightings;
             }
             if (!KnownEventGuards.TryGetValue(player, out Dictionary<HexCoord, GuardStrength> eventGuards))
@@ -202,8 +221,13 @@ namespace Game.Ai
                 if (enemy != null)
                 {
                     List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero).ToList();
-                    sightings[hex] = new EnemySighting
+                    // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
+                    // same army was last recorded at a DIFFERENT hex, this overwrites that record in
+                    // place instead of leaving it behind as an orphan under its old Hex.
+                    sightings[enemy.Id] = new EnemySighting
                     {
+                        ArmyId = enemy.Id,
+                        Hex = hex,
                         Owner = enemy.Owner,
                         Name = enemy.Name,
                         MemberCount = enemy.Members.Count,
@@ -227,8 +251,23 @@ namespace Game.Ai
                 {
                     // Freshly observed and empty now — corrects any stale sighting rather than
                     // leaving it to linger (see the class's own "исправляет только новое
-                    // наблюдение" comment).
-                    sightings.Remove(hex);
+                    // наблюдение" comment). Covers the army-actually-died case; an army that merely
+                    // MOVED away already got its own sightings[] slot overwritten in place above
+                    // once its new hex was processed (same loop, order-independent — see
+                    // EnemySightings' own comment), so there's nothing left here to find in that
+                    // case. Scans by Hex rather than a key lookup since the dictionary is keyed by
+                    // ArmyId now, not HexCoord.
+                    int? staleArmyId = null;
+                    foreach (KeyValuePair<int, EnemySighting> kv in sightings)
+                    {
+                        if (kv.Value.Hex.Equals(hex))
+                        {
+                            staleArmyId = kv.Key;
+                            break;
+                        }
+                    }
+                    if (staleArmyId.HasValue)
+                        sightings.Remove(staleArmyId.Value);
                 }
 
                 HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
@@ -281,8 +320,8 @@ namespace Game.Ai
 
         public static bool HasKnownEnemyWithin(PlayerSetupData actor, HexCoord center, int radius)
         {
-            return EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings)
-                && sightings.Keys.Any(hex => HexGridMath.Distance(center, hex) <= radius);
+            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
+                && sightings.Values.Any(s => HexGridMath.Distance(center, s.Hex) <= radius);
         }
 
         // Same read as HasKnownEnemyWithin, narrowed to sightings whose owner is neutral —
@@ -291,9 +330,9 @@ namespace Game.Ai
         // any known hostile army the way HasKnownEnemyWithin itself does.
         public static bool HasKnownNeutralWithin(PlayerSetupData actor, HexCoord center, int radius)
         {
-            return EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings)
-                && sightings.Any(kv => kv.Value.Owner != null && kv.Value.Owner.IsNeutral
-                    && HexGridMath.Distance(center, kv.Key) <= radius);
+            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
+                && sightings.Values.Any(s => s.Owner != null && s.Owner.IsNeutral
+                    && HexGridMath.Distance(center, s.Hex) <= radius);
         }
 
         // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
@@ -301,12 +340,12 @@ namespace Game.Ai
         // comment), it just scores every known target by raw distance from the citadel.
         public static IEnumerable<KnownEnemySighting> AllKnownNeutralSightings(PlayerSetupData actor)
         {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 yield break;
-            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
-                if (kv.Value.Owner != null && kv.Value.Owner.IsNeutral)
-                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.Name, kv.Value.MemberCount, kv.Value.DefenseSum,
-                        kv.Value.AttackSum, kv.Value.Defenders);
+            foreach (EnemySighting sighting in sightings.Values)
+                if (sighting.Owner != null && sighting.Owner.IsNeutral)
+                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
+                        sighting.AttackSum, sighting.Defenders);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -316,43 +355,51 @@ namespace Game.Ai
         // filter.
         public static IEnumerable<KnownEnemySighting> AllKnownEnemySightings(PlayerSetupData actor)
         {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 yield break;
-            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
-                if (kv.Value.Owner != null && !kv.Value.Owner.IsNeutral)
-                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.Name, kv.Value.MemberCount, kv.Value.DefenseSum,
-                        kv.Value.AttackSum, kv.Value.Defenders);
+            foreach (EnemySighting sighting in sightings.Values)
+                if (sighting.Owner != null && !sighting.Owner.IsNeutral)
+                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
+                        sighting.AttackSum, sighting.Defenders);
         }
 
         public static IEnumerable<KnownEnemySighting> KnownEnemySightingsNear(PlayerSetupData actor,
             IReadOnlyList<HexCoord> ownHexes, int radius)
         {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 yield break;
 
-            foreach (KeyValuePair<HexCoord, EnemySighting> kv in sightings)
-                if (ownHexes.Any(own => HexGridMath.Distance(own, kv.Key) <= radius))
-                    yield return new KnownEnemySighting(kv.Key, kv.Value.Owner, kv.Value.Name, kv.Value.MemberCount, kv.Value.DefenseSum,
-                        kv.Value.AttackSum, kv.Value.Defenders);
+            foreach (EnemySighting sighting in sightings.Values)
+                if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
+                    yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
+                        sighting.AttackSum, sighting.Defenders);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
-        // RequiredStrengthAt/IsStillValidTarget need exactly this hex, not a radius scan.
+        // RequiredStrengthAt/IsStillValidTarget need exactly this hex, not a radius scan. Scans by
+        // sighting.Hex rather than a dictionary key lookup since EnemySightings is keyed by ArmyId
+        // now, not HexCoord (see that dictionary's own comment) — at most one live sighting can
+        // ever have a given Hex at a time (each write overwrites its army's own single slot), so
+        // the first match is the only match.
         public static KnownEnemySighting? KnownEnemySightingAt(PlayerSetupData actor, HexCoord hex)
         {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings)
-                || !sightings.TryGetValue(hex, out EnemySighting sighting))
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 return null;
-            return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                sighting.AttackSum, sighting.Defenders);
+            foreach (EnemySighting sighting in sightings.Values)
+                if (sighting.Hex.Equals(hex))
+                    return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
+                        sighting.AttackSum, sighting.Defenders);
+            return null;
         }
 
         public static float KnownGarrisonDefenseAt(PlayerSetupData actor, HexCoord hex)
         {
-            return EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings)
-                && sightings.TryGetValue(hex, out EnemySighting sighting)
-                ? sighting.DefenseSum
-                : 0f;
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
+                return 0f;
+            foreach (EnemySighting sighting in sightings.Values)
+                if (sighting.Hex.Equals(hex))
+                    return sighting.DefenseSum;
+            return 0f;
         }
 
         // Null = no known active guarded event at this hex (never seen one, or it's since been
@@ -397,7 +444,7 @@ namespace Game.Ai
         // DefenseSum/AttackSum already are, never the true enemy roster.
         public static int KnownEnemyTypeTagCount(PlayerSetupData actor, UnitTypeTag tag)
         {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<HexCoord, EnemySighting> sightings))
+            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 return 0;
             int count = 0;
             foreach (EnemySighting sighting in sightings.Values)
