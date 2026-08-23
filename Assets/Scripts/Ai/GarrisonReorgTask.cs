@@ -494,11 +494,38 @@ namespace Game.Ai
                 .Concat(source.Members.Where(m => m.IsHero))
                 .ToList();
 
-            // Atomicity gate — EVERY member has to individually clear both checks, AND the garrison
-            // has to have literal room for the whole headcount, or this proposes nothing at all this
-            // call (see this method's own class comment on why a partial collapse defeats the point).
-            if (members.Any(m => !CanAffordTransferInto(garrison, m) || ctx.WouldRevisitArmy(m, garrison)))
+            // Atomicity gate — EVERY member has to individually clear the oscillation guard, the
+            // WHOLE batch's AP cost has to fit the garrison's CURRENT pool simulated cumulatively,
+            // AND the garrison has to have literal room for the whole headcount, or this proposes
+            // nothing at all this call (see this method's own class comment on why a partial
+            // collapse defeats the point).
+            //
+            // Deliberately NOT CanAffordTransferInto here (2026-08-23 correction) — that checks
+            // each unit's AP cost independently against the SAME starting pool, which is fine for
+            // every other tier here (they only ever move ONE unit), but wrong for a whole-roster
+            // batch: two 2-AP units could each individually pass against a 3-AP pool even though
+            // the batch actually needs 4. Simulated explicitly below instead, so the ACTUAL
+            // sequential ArmyActions.TransferMember calls in CollapseTemporaryAssemblyRoutine can
+            // never run out of AP partway through and leave a partial collapse behind. Only
+            // matters at all when garrison.HasActivatedThisTurn is true — nothing in this codebase
+            // ever issues the garrison a move order (every mover is gated on !a.IsGarrison), so
+            // that's never actually true in practice, but this method doesn't get to assume that;
+            // it checks it properly instead.
+            if (members.Any(m => ctx.WouldRevisitArmy(m, garrison)))
                 return null;
+            if (garrison.HasActivatedThisTurn)
+            {
+                PlayerRoot targetRoot = PlayerRootRegistry.FindFor(garrison.Owner);
+                if (targetRoot == null)
+                    return null;
+                int apBudget = targetRoot.ActionPoints;
+                foreach (UnitData m in members)
+                {
+                    if (apBudget < m.ActivationApCost)
+                        return null;
+                    apBudget -= m.ActivationApCost;
+                }
+            }
             if (garrison.Capacity - garrison.Members.Count < members.Count)
                 return null;
 
