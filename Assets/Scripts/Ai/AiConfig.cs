@@ -424,21 +424,33 @@ namespace Game.Ai
         // patrolScoutDangerRadius, now removed — "если враг в радиусе 8 хексов, то нужен патруль и
         // всё", a scout included).
         public const int patrolDangerRadius = 8;
-        // 1.3 — Turtle's own march-to/hold-at-citadel score. Same tier as defenceActiveScore (was
-        // separately flat-100 before the 2026-08-21 retune above) — a sortie out of Turtle IS a
-        // conversion into Active (see AiDefencePlanner's own class comment), so the two should never
-        // be allowed to drift apart again the way defenceActiveScore alone almost did.
-        public const float defenceTurtleScore = defenceActiveScore;
+        // 1.3 — Turtle's own march-to/hold-at-citadel score. Used to be pinned exactly to
+        // defenceActiveScore (a sortie out of Turtle IS a conversion into Active, see
+        // AiDefencePlanner's own class comment) — split into its own value 2026-08-23 (project
+        // owner's own top-of-arbiter ladder spec, full arbiter documented top-to-bottom): Turtle now
+        // sits at the very top of the whole arbiter (130, "Citadel emergency"), one tier above
+        // defenceActiveScore's own 120 ("tactical combat/execute") — the citadel actually massing
+        // under an active siege must outrank ordinary tactical engagement, not merely tie it.
+        public const float defenceTurtleScore = 130f;
         // AiDefencePlanner's own preempt tier — gated on IsUnderSiege (Turtle only, per the project
         // owner's own call: outside an active siege there's no urgent need to strip another
         // category's task for the citadel's sake). Retuned 2026-08-21 alongside defenceActiveScore
         // for the same reason (simulation report: a flat 100 tied routine Recon/Aggression work and
         // lost outright to Economy(110) — an "emergency reinforcement" must not be a coin flip
-        // against ordinary turns). Also reused as-is by AiAggressionPlanner's own siege-forced raid
-        // recall (see TryContinueRaidTask) — the project owner's own call to keep both "siege demands
-        // this army NOW" reactions on the same urgent tier, rather than a third near-duplicate
-        // constant.
-        public const float defencePreemptScore = 120f;
+        // against ordinary turns). 120 → 130 (2026-08-23, project owner's own top-of-arbiter ladder
+        // spec) — pinned to the same top "Citadel emergency" tier as defenceTurtleScore now that the
+        // two have split apart, since an emergency field-army recall is exactly as urgent as Turtle's
+        // own march-home. Also reused as-is by AiAggressionPlanner's own siege-forced raid recall
+        // (see TryContinueRaidTask) — the project owner's own call to keep both "siege demands this
+        // army NOW" reactions on the same urgent tier, rather than a third near-duplicate constant.
+        public const float defencePreemptScore = 130f;
+        // 1.2's own local retreat (AiDefencePlanner.ContinueLocalRetreat) — used to share
+        // defenceActiveScore(120) with Active intercept/Local patrol attack (see that method's own
+        // former comment). Split into its own value 2026-08-23 (project owner's own top-of-arbiter
+        // ladder spec, explicit call): a patrol falling back to safety reads as urgent as a scout
+        // fleeing a real threat (scoutFleeBonus's own 125 tier, "Scout Flee"), not merely as urgent
+        // as ordinary tactical engagement — pinned to that same 125 tier instead of 120.
+        public const float defenceRetreatScore = 125f;
 
         // ---- Разведка — реакция на угрозу (Задача 1) ----
         // A known enemy army within this many hexes of a scout's own current hex reroutes it

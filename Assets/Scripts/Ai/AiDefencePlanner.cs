@@ -22,10 +22,15 @@ namespace Game.Ai
     // "непрерывная переоценка" principle every other task in this codebase already follows:
     //
     //   Patrol — TRIGGER: CheatEstimateRaiderThreat finds a real scout/raider-shaped enemy army
-    //   within AiConfig.defenceReactionRadius(5) of one of this player's own base hexes (see
+    //   within AiConfig.defenceReactionRadius(5) of THIS task's own home hex specifically (see
     //   PatrolThreatPresent) — nothing at all found means Оборона does not start or grow a task on
     //   this home this step, full stop (2026-08-22 — before this, Patrol started unconditionally,
     //   the project owner's own "оркестратор не должен был получить задачи от защиты" report).
+    //   Per-home since 2026-08-23 (project owner's own report) — used to pool every base's own
+    //   territory into one shared cheat-scan, so a scout near a second base could make the
+    //   citadel's own task start/grow a patrol against a threat nowhere near the citadel at all
+    //   (same fix, same reasoning, as DynamicPatrolUrgencyScore's own `guardedHexes` below and
+    //   FindActiveThreatSighting's own filter-before-rank fix — see those methods' own comments).
     //   COMPOSITION: fixed, not threat-sized any more — AiConfig.defencePatrolMinUnits(2) non-hero
     //   members, hero optional (see PatrolCompositionReady). Once ready, visits this player's own
     //   extraction-facility hexes within AiConfig.patrolRadius, looking for enemy scouts/weak
@@ -47,7 +52,13 @@ namespace Game.Ai
     //   nobody there, no special detection needed — "видим или встречаемся = сражение" (a real
     //   engagement only ever comes from actually seeing or reaching the enemy, never from memory alone
     //   re-targeting the chase), same shape RaidWeakerArmyTask's own "attacks by memory" already
-    //   follows (see FindActiveThreatSighting).
+    //   follows (see FindActiveThreatSighting). 2026-08-23 fix (project owner's own report):
+    //   FindActiveThreatSighting used to rank EVERY sighting near ANY base by strength first and
+    //   only THEN check the homeHex/chase-abandon-radius filter — with two bases far enough apart,
+    //   a strong sighting near a sibling base could win that global ranking and then fail the
+    //   filter, returning null outright even though a weaker sighting genuinely near THIS home
+    //   existed and should have triggered Active on its own. The homeHex filter now applies BEFORE
+    //   ranking by strength, so a real in-range threat is never masked by a stronger irrelevant one.
     //   COMPOSITION: dynamic against THIS SPECIFIC sighted army — WorthIt.MeetsWinChance must clear
     //   AiConfig.defenceActiveWinChance(0.6, i.e. 60/40 — equal armies read as exactly 0.5) before
     //   the task actually moves to intercept; short of that it keeps assembling AT HOME (never sets
@@ -177,6 +188,16 @@ namespace Game.Ai
         //
         // Null covers "no base yet", "nothing sighted nearby", and "too far from home to chase"
         // alike; callers treat all three the same way (fall through to Patrol).
+        //
+        // 2026-08-23 fix (project owner's own report): used to call StrongestSightingNear across
+        // ALL of `baseHexes` first — picking the single globally-strongest sighting near ANY base —
+        // and only THEN check whether that one sighting was within defenceChaseAbandonRadius of
+        // THIS home. With two bases far enough apart that no sighting can be near both at once, a
+        // strong sighting near a DIFFERENT base would win that global "strongest" pick and then fail
+        // the homeHex distance check, returning null outright — even when a weaker sighting genuinely
+        // near THIS home (and so well within range) existed and would have triggered Active on its
+        // own. The homeHex filter now applies BEFORE ranking by strength, so a real, in-range threat
+        // for this specific home is never masked by a stronger but irrelevant one near a sibling base.
         private static AiMapMemory.KnownEnemySighting? FindActiveThreatSighting(PlayerSetupData player, HexCoord homeHex)
         {
             List<HexCoord> baseHexes = BuildingRegistry.AllBuildings()
@@ -185,13 +206,17 @@ namespace Game.Ai
             if (baseHexes.Count == 0)
                 return null;
 
-            AiMapMemory.KnownEnemySighting? sighting = StrongestSightingNear(player, baseHexes, AiConfig.defenceReactionRadius);
-            if (!sighting.HasValue)
-                return null;
-
-            return HexGridMath.Distance(homeHex, sighting.Value.Hex) <= AiConfig.defenceChaseAbandonRadius
-                ? sighting
-                : (AiMapMemory.KnownEnemySighting?)null;
+            AiMapMemory.KnownEnemySighting? strongest = null;
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.KnownEnemySightingsNear(player, baseHexes, AiConfig.defenceReactionRadius))
+            {
+                if (sighting.Owner == null || sighting.Owner.IsNeutral)
+                    continue;
+                if (HexGridMath.Distance(homeHex, sighting.Hex) > AiConfig.defenceChaseAbandonRadius)
+                    continue; // near a DIFFERENT base, too far from THIS home to be its own threat
+                if (!strongest.HasValue || sighting.DefenseSum > strongest.Value.DefenseSum)
+                    strongest = sighting;
+            }
+            return strongest;
         }
 
         // Whether `army` is currently strong enough to actually intercept `sighting` — Active's own
@@ -209,12 +234,13 @@ namespace Game.Ai
 
         // Patrol's own TRIGGER (2026-08-22, project owner's own spec — "тригерится только если чит
         // проверка сработала") — CheatEstimateRaiderThreat found an actual scout/raider-shaped enemy
-        // army within its own scan (defenceReactionRadius of a base). Presence only; the returned
+        // army within its own scan (defenceReactionRadius of `homeHex`). Presence only; the returned
         // Defense/Attack sums themselves no longer size anything (Patrol's own composition target is
-        // now fixed — see PatrolCompositionReady).
-        private static bool PatrolThreatPresent(PlayerSetupData player)
+        // now fixed — see PatrolCompositionReady). Per-home since 2026-08-23 (see
+        // CheatEstimateRaiderThreat's own comment for why) — `homeHex` threads straight through.
+        private static bool PatrolThreatPresent(PlayerSetupData player, HexCoord homeHex)
         {
-            RaidWeakerArmyTask.ThreatStrength threat = CheatEstimateRaiderThreat(player);
+            RaidWeakerArmyTask.ThreatStrength threat = CheatEstimateRaiderThreat(player, homeHex);
             return threat.Defense > 0f || threat.Attack > 0f;
         }
 
@@ -231,8 +257,8 @@ namespace Game.Ai
         // AiMapMemory's fog-of-war-honest sightings. Scans every other player's own small/scout-
         // shaped armies (member count within AiArmyRoles' own makeshiftScoutMinMembers ceiling —
         // roughly "a hero + 2" or smaller, never a real main force) currently within
-        // AiConfig.defenceReactionRadius of ANY of this player's own base hexes, and returns the
-        // strongest one found, as a ThreatStrength Patrol's own composition can be sized against.
+        // AiConfig.defenceReactionRadius of `homeHex`, and returns the strongest one found, as a
+        // ThreatStrength Patrol's own composition can be sized against.
         // How strong the DefendCitadel task's own composition should be right now IS this call,
         // directly — no separate blended "real sighting near a base" branch any more (2026-08-22,
         // project owner's own call): this cheat now reads live data scoped to the same radius the
@@ -245,12 +271,15 @@ namespace Game.Ai
         // the enemy fields anywhere on the whole map. Recomputed on every new patrol assembly
         // (never cached) — accounts for the enemy strengthening, or simply moving into or out of
         // range, over the course of the match.
-        private static RaidWeakerArmyTask.ThreatStrength CheatEstimateRaiderThreat(PlayerSetupData player)
+        // Scoped to a single `homeHex` since 2026-08-23 (project owner's own report) — used to scan
+        // ALL of this player's own base hexes at once regardless of which home's task was asking, so
+        // a scout sitting near Base2 could make PatrolThreatPresent read true for the Citadel's own
+        // task too, starting/growing a Citadel patrol against a threat that isn't actually anywhere
+        // near the Citadel at all. Each home's task now only ever cheats-scans its own neighborhood,
+        // matching this class's own "каждая база обходит свою территорию" principle that
+        // FindPatrolTarget already follows for the honest (non-cheat) side of Patrol.
+        private static RaidWeakerArmyTask.ThreatStrength CheatEstimateRaiderThreat(PlayerSetupData player, HexCoord homeHex)
         {
-            List<HexCoord> baseHexes = BuildingRegistry.AllBuildings()
-                .Where(b => b.Owner == player && b.HasAbility(UnitAbilities.Base))
-                .Select(b => b.Hex).ToList();
-
             float bestDefense = 0f;
             float bestAttack = 0f;
             List<WorthIt.DefenderProfile> bestDefenders = null;
@@ -264,8 +293,8 @@ namespace Game.Ai
                     if (army.IsGarrison || army.IsPrison || army.Members.Count == 0
                         || army.Members.Count > AiConfig.makeshiftScoutMinMembers)
                         continue; // only scout/raid-shaped compositions, never the enemy's whole main force
-                    if (!baseHexes.Any(h => HexGridMath.Distance(h, army.Hex) <= AiConfig.defenceReactionRadius))
-                        continue; // not currently anywhere near one of our own bases
+                    if (HexGridMath.Distance(homeHex, army.Hex) > AiConfig.defenceReactionRadius)
+                        continue; // not currently near THIS home specifically
 
                     float defense = WorthIt.DefenseSum(army);
                     float attack = WorthIt.AttackSum(army);
@@ -302,10 +331,19 @@ namespace Game.Ai
         // (something real is right on top of one) — deliberately never reaches defenceActiveScore's
         // own tier, which stays reserved for an ACTUALLY-CONFIRMED engagement (BuildPostureDecision's
         // own Active/Turtle branches, all gated on a real AiMapMemory sighting, never this cheat).
-        private static float DynamicPatrolUrgencyScore(PlayerSetupData player)
+        // Scoped to a single `homeHex` since 2026-08-23 (project owner's own report, same fix as
+        // CheatEstimateRaiderThreat's own — see that method's own comment) — used to pool EVERY base
+        // hex plus EVERY patrol-facility hex this player owns into one shared `guardedHexes` set
+        // regardless of which home's task was asking, so an enemy sitting near Base2's own facilities
+        // could hand the Citadel's own assembling task an urgency score driven entirely by a threat
+        // nowhere near the Citadel. `guardedHexes` is now just `homeHex` itself plus this home's own
+        // patrol facilities (patrolRadius of `homeHex`, the same scope FindPatrolTarget already
+        // patrols for this exact home) — never a sibling base's own territory.
+        private static float DynamicPatrolUrgencyScore(PlayerSetupData player, HexCoord homeHex)
         {
             List<HexCoord> guardedHexes = BuildingRegistry.AllBuildings()
-                .Where(b => b.Owner == player && (b.HasAbility(UnitAbilities.Base) || IsOwnPatrolFacilityHex(player, b.Hex)))
+                .Where(b => b.Owner == player && (b.Hex.Equals(homeHex)
+                    || (IsOwnPatrolFacilityHex(player, b.Hex) && HexGridMath.Distance(homeHex, b.Hex) <= AiConfig.patrolRadius)))
                 .Select(b => b.Hex).ToList();
             if (guardedHexes.Count == 0)
                 return AiConfig.defencePatrolScoreFloor;
@@ -500,15 +538,17 @@ namespace Game.Ai
         // fresh (or, once it's idle at base for AiManagementPlanner's own repair pipeline to find,
         // healed) patrol force takes over from there, per the project owner's own "потенциально
         // новая армия патруля(или починеная)" spec — this method itself never spins one back up.
-        // Scored at defenceActiveScore, NOT defencePatrolScore — 2026-08-21 fix (own re-test
+        // Scored at defenceRetreatScore, NOT defencePatrolScore — 2026-08-21 fix (own re-test
         // finding, cross-category calibration pass): a wounded/outmatched army getting to safety is
         // an urgent reaction, not routine background movement, same "1.1 vs Аgрессия's own retreat"
         // shape (aggressionBaseWeight=100 for Агрессия's own outmatched-threat retreat is already
         // the floor for "urgent enough to leave the routine 90-100 tie zone" — see AiConfig's own
         // comment on defenceActiveScore/defencePreemptScore for why routine-tier ties silently lose
-        // arbitration order in AiTurnController.Decide). Attack (the other half of this same local
-        // encounter, see BuildPostureDecision) already used this same score — keeping retreat on the
-        // lower Patrol tier meant fleeing a threat was scored BELOW engaging one, backwards.
+        // arbitration order in AiTurnController.Decide). Used to share defenceActiveScore(120) with
+        // the attack half of this same local encounter (see BuildPostureDecision) — split into its
+        // own defenceRetreatScore(125) 2026-08-23 (project owner's own top-of-arbiter ladder spec):
+        // falling back to safety now reads as urgent as Разведка's own scoutFleeBonus tier, one rung
+        // above ordinary tactical engagement, not merely tied with it.
         private static AiDecision ContinueLocalRetreat(PlayerSetupData player, AiTurnContext ctx, AiTask task, HexCoord homeHex)
         {
             task.Posture = AiDefencePosture.Patrol;
@@ -522,7 +562,7 @@ namespace Game.Ai
             HexCoord? nextStep = AiTurnController.FindPathStepAvoidingZone(ctx.Map, task.Army, homeHex, avoidHex, 0);
             return nextStep.HasValue
                 ? AiDecision.Move(task.Army, nextStep.Value, "patrol — falls back to base",
-                    task, AiConfig.defenceActiveScore, AiTaskCategory.Defence)
+                    task, AiConfig.defenceRetreatScore, AiTaskCategory.Defence)
                 : null; // boxed in avoiding the threat — wait rather than walk into it
         }
 
@@ -666,7 +706,7 @@ namespace Game.Ai
             var results = new List<AiDecision>();
 
             AiMapMemory.KnownEnemySighting? activeSighting = FindActiveThreatSighting(player, homeHex);
-            if (!activeSighting.HasValue && !PatrolThreatPresent(player))
+            if (!activeSighting.HasValue && !PatrolThreatPresent(player, homeHex))
                 return results; // nothing triggers Оборона on this home right now
 
             bool IsComposedReady(ArmyData army) => activeSighting.HasValue
@@ -676,7 +716,7 @@ namespace Game.Ai
             // Recruiting/growing the force is buildup, not a confirmed engagement — scored off
             // DynamicPatrolUrgencyScore (see that method's own comment), NOT defenceActiveScore,
             // which stays reserved for BuildPostureDecision's own real-sighting-gated branches.
-            float assemblyScore = DynamicPatrolUrgencyScore(player);
+            float assemblyScore = DynamicPatrolUrgencyScore(player, homeHex);
 
             AiTask existing = AiTaskRegistry.TasksFor(player).FirstOrDefault(t => t.Kind == AiTaskKind.DefendCitadel && t.HomeHex.Equals(homeHex));
             if (existing != null)
@@ -862,7 +902,7 @@ namespace Game.Ai
             if (reference == null)
                 return results;
 
-            RaidWeakerArmyTask.ThreatStrength required = CheatEstimateRaiderThreat(player);
+            RaidWeakerArmyTask.ThreatStrength required = CheatEstimateRaiderThreat(player, citadelHexForPreempt);
             if (RaidWeakerArmyTask.IsReady(reference, required))
                 return results; // already strong enough — normal continuation (or the garrison itself) handles the rest
 
