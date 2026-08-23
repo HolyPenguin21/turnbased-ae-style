@@ -688,6 +688,16 @@ namespace Game.Ai
         // small relative to cardRoleBacklogShareWeight the way a cross-category term would — it
         // only ever has to be able to tell two Unit cards apart from each other.
         public const float unitCompositionGapBonus = 15f;
+        // AiManagementPlanner.TaskNeedBonus's own Defence-vs-Raid weighting (2026-08-23, project
+        // owner's own spec — generalizes the old Raid-only "closes the assembling task's own
+        // CanDamageAll gap" criterion into one shared read across every still-recruiting combat
+        // task, Raid and Defence today). Both start from the same flat unitCompositionGapBonus tier
+        // — this multiplies ONLY Defence's own share, and ONLY once a real, currently-known threat
+        // (AiDefencePlanner.CurrentActiveThreat) is actually driving that assembly, never for
+        // routine headcount buildup with nothing sighted yet (see DefenceNeedBonus's own comment) —
+        // "приоритет Defence должен быть выше Raid, если есть реальная угроза базе". Internal
+        // ranking key only, same scope as unitCompositionGapBonus itself.
+        public const float defenceNeedBonusMultiplier = 2f;
         // managementGarrisonBalanceScore removed 2026-08-20 (project owner's own call: "задача
         // бесплатная, поэтому ей не с кем конкурировать") — garrison-overflow split and lone-army
         // consolidation are no longer AiDecision.Score-bearing candidates in Decide's own per-step

@@ -219,6 +219,15 @@ namespace Game.Ai
             return strongest;
         }
 
+        // Read-only accessor for AiManagementPlanner's own card-selection Defence-need bonus
+        // (2026-08-23, project owner's own "generalize RaidNeedBonus into TaskNeedBonus" spec) —
+        // exposes the exact same sighting FindActiveThreatSighting/BuildPostureDecision already act
+        // on for THIS home, so Менеджмент's own Unit-card pre-pass can never disagree with what
+        // Defence itself is actually reacting to (null the same "nothing sighted, or Patrol's own
+        // fixed headcount target instead" case every other caller of FindActiveThreatSighting reads).
+        public static AiMapMemory.KnownEnemySighting? CurrentActiveThreat(PlayerSetupData player, HexCoord homeHex) =>
+            FindActiveThreatSighting(player, homeHex);
+
         // Whether `army` is currently strong enough to actually intercept `sighting` — Active's own
         // COMPOSITION gate (AiConfig.defenceActiveWinChance, 60/40 dynamic against this specific
         // known army), routed through WorthIt.MeetsWinChance directly per this class's own "only
@@ -818,6 +827,15 @@ namespace Game.Ai
         // same spatial scope FindRecruitAt itself already uses (no cross-map courier trip, this is
         // an instant 1-for-1 trade). A genuine upgrade only — skipped outright if nothing found
         // beats the member it would replace, so this can never thrash a roster back and forth.
+        //
+        // HP-aware since 2026-08-23 (project owner's own report — bring Defence's own recruit pick
+        // in line with RaidWeakerArmyTask.FindRecruitAt's own rule) — same two-pass shape: a
+        // critically wounded candidate (IsCriticallyWounded's own ≤50%HP threshold) is only ever
+        // offered here once nothing healthy beats `weakest`'s own power. Without this, a half-dead
+        // unit that merely had the higher raw Defense+Attack stat could get pulled straight into the
+        // defense force ahead of a healthy, otherwise-equal-or-better one — same "wounded stat
+        // looks strong on paper but dies early in the real fight" gap FindRecruitAt's own comment
+        // already documents for Raid.
         private static AiDecision TryStrengthenCandidate(PlayerSetupData player, ArmyData army, AiTask task,
             AiResourcePool pool, AiTurnContext ctx, HexCoord homeHex, float score)
         {
@@ -826,25 +844,10 @@ namespace Game.Ai
             if (weakest == null)
                 return null;
 
-            ArmyData bestSource = null;
-            UnitData best = null;
-            float bestPower = weakest.Defense + weakest.Attack;
-            foreach (ArmyData candidate in pool.AvailableArmies())
-            {
-                if (candidate == army || candidate.IsPrison || !candidate.Hex.Equals(homeHex))
-                    continue;
-                foreach (UnitData unit in candidate.Members)
-                {
-                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
-                        continue;
-                    float power = unit.Defense + unit.Attack;
-                    if (power <= bestPower)
-                        continue;
-                    bestPower = power;
-                    bestSource = candidate;
-                    best = unit;
-                }
-            }
+            float weakestPower = weakest.Defense + weakest.Attack;
+            UnitData best = FindStrengthenCandidate(army, homeHex, weakestPower, pool, allowCriticallyWounded: false, out ArmyData bestSource);
+            if (best == null)
+                best = FindStrengthenCandidate(army, homeHex, weakestPower, pool, allowCriticallyWounded: true, out bestSource);
             if (best == null || bestSource == null)
                 return null;
             if (!CanAffordSwapInto(army, best) || !CanAffordSwapInto(bestSource, weakest))
@@ -855,6 +858,37 @@ namespace Game.Ai
             var move = new GarrisonReorgTask.SwapMove(army, weakest, bestSource, best,
                 $"\"{army.Name}\" swaps in {best.Name} for {weakest.Name} — still not strong enough for its target, no free slot to just recruit");
             return AiDecision.StrengthenDefenceForce(move, task, score);
+        }
+
+        // TryStrengthenCandidate's own single-candidate scan, split out so the HP-preference/
+        // fallback shape can be one loop called twice (see that method's own comment) instead of
+        // duplicated inline — same "healthy-first, wounded-only-if-nothing-else" two-pass FindRecruitAt
+        // already establishes, `bestPower` seeded from `weakest`'s own power so only a genuine
+        // upgrade is ever returned.
+        private static UnitData FindStrengthenCandidate(ArmyData army, HexCoord homeHex, float bestPower, AiResourcePool pool,
+            bool allowCriticallyWounded, out ArmyData source)
+        {
+            source = null;
+            UnitData best = null;
+            foreach (ArmyData candidate in pool.AvailableArmies())
+            {
+                if (candidate == army || candidate.IsPrison || !candidate.Hex.Equals(homeHex))
+                    continue;
+                foreach (UnitData unit in candidate.Members)
+                {
+                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                        continue;
+                    if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
+                        continue;
+                    float power = unit.Defense + unit.Attack;
+                    if (power <= bestPower)
+                        continue;
+                    bestPower = power;
+                    source = candidate;
+                    best = unit;
+                }
+            }
+            return best;
         }
 
         // Same "already-activated armies pay for what joins them" pre-check GarrisonReorgTask.

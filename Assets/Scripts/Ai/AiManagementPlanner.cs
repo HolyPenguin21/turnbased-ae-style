@@ -462,20 +462,22 @@ namespace Game.Ai
         //  7)   Counter-tech — Hyperkinetic once AiMapMemory.KnownEnemyTypeTagCount reports a
         //       real, actually-scouted Armored sighting; Pyrokinetic the same way for Bio. Honest
         //       by construction — that count is never anything but an observed sighting.
-        //  8)   Closes a StillAssembling raid's own CanDamageAll gap against its ACTUAL target
-        //       (2026-08-23, project owner's own report) — narrower than criterion 7 above:
-        //       criterion 7 only ever fires for the two hard-coded Hyperkinetic/Pyrokinetic
-        //       counters, and reads AiMapMemory globally (any known Armored/Bio anywhere), not
-        //       specifically what the assembling raid itself is stuck on. This one asks the real
-        //       question directly — would THIS card cover a defender at the raid's own TargetHex
-        //       that nobody currently in `task.Army` can already damage (WorthIt.CanDamage, the
-        //       same coverage math RaidWeakerArmyTask.IsReady's own CanDamageAll gate uses) —
-        //       so a plain stat/type gap the roster-wide heuristics above have no gate for (e.g. a
-        //       melee-heavy roster already "balanced" by criteria 3/4 but still short the one
-        //       ranged unit that can actually reach a specific defender) still gets recognized,
-        //       not just the two named counter-tech abilities. Only ever checked against a task
-        //       that's still recruiting (StillAssembling, not Retreating) — a raid already moving
-        //       out doesn't recruit through the hand any more (see FindRecruitAt's own scope).
+        //  8)   TaskNeedBonus — closes a StillAssembling combat task's own gap against its ACTUAL
+        //       target/threat (2026-08-23, project owner's own spec, generalizing what used to be
+        //       a Raid-only criterion into one shared read across every still-recruiting combat
+        //       task — Raid and Defence today, "позднее другие подобные задачи" per the project
+        //       owner's own note). Narrower than criterion 7 above: criterion 7 only ever fires for
+        //       the two hard-coded Hyperkinetic/Pyrokinetic counters, and reads AiMapMemory
+        //       globally (any known Armored/Bio anywhere), not specifically what a given task is
+        //       stuck on. This one asks the real question directly — would THIS card cover a
+        //       defender at the task's own actual target/threat that nobody currently in its army
+        //       can already damage (WorthIt.CanDamage, the same coverage math RaidWeakerArmyTask.
+        //       IsReady's own CanDamageAll gate uses) — so a plain stat/type gap the roster-wide
+        //       heuristics above have no gate for still gets recognized. Defence's own share of
+        //       this outweighs Raid's whenever a REAL threat (a known Active sighting) is actually
+        //       driving that assembly — see TaskNeedBonus's own comment for the full split. Only
+        //       ever checked against a task that's still recruiting (StillAssembling, not
+        //       Retreating) — a task already moving out doesn't recruit through the hand any more.
         private static float UnitCompositionFitBonus(PlayerSetupData player, CardDefinition definition, RosterShape roster, HexMap map)
         {
             float bonus = 0f;
@@ -518,25 +520,87 @@ namespace Game.Ai
                     bonus += AiConfig.unitCompositionGapBonus;
             }
 
+            bonus += TaskNeedBonus(player, definition, map);
+
+            return bonus;
+        }
+
+        // Criterion 8's own implementation (2026-08-23, project owner's own spec — "TaskNeedBonus
+        // который смотрит на незавершённые боевые compositions: assembling Raid; assembling
+        // Defence; позднее другие подобные задачи") — generalizes what used to be a Raid-only
+        // "closes the assembling task's own CanDamageAll gap" check into ONE shared read, so a
+        // future third combat-assembly task only ever needs its own case added here, nothing else
+        // in this file. Not a sum of RaidNeedBonus + DefenceNeedBonus — the STRONGER of the two,
+        // deliberately (project owner's own explicit priority call: "приоритет Defence должен быть
+        // выше Raid, если есть реальная угроза базе"). A max, not an early-return-on-first-match,
+        // is what actually enforces that: DefenceNeedBonus already scores higher than Raid's own
+        // flat tier whenever a real threat drives it (see that method's own comment), so whichever
+        // task's own need is genuinely bigger this step always wins, with no hand-coded "check
+        // Defence before Raid" ordering to keep in sync as more task kinds get added later.
+        private static float TaskNeedBonus(PlayerSetupData player, CardDefinition definition, HexMap map)
+        {
+            return System.Math.Max(RaidNeedBonus(player, definition, map), DefenceNeedBonus(player, definition, map));
+        }
+
+        // Raid's own share of TaskNeedBonus — unchanged in substance from the pre-2026-08-23
+        // criterion 8 this was split out of, just its own named method now. Flat
+        // unitCompositionGapBonus, same tier every other criterion in UnitCompositionFitBonus uses.
+        private static float RaidNeedBonus(PlayerSetupData player, CardDefinition definition, HexMap map)
+        {
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
                 if (task.Kind != AiTaskKind.RaidWeakerArmy || !task.StillAssembling || task.Retreating || task.Army == null)
                     continue;
                 RaidWeakerArmyTask.ThreatStrength required = RaidWeakerArmyTask.RequiredStrengthAt(player, task.TargetHex, map);
                 if (ClosesDamageGap(definition, task.Army, required.Defenders, required.HexBonus))
-                {
-                    bonus += AiConfig.unitCompositionGapBonus;
-                    break; // one matching StillAssembling raid is enough — don't stack per additional one
-                }
+                    return AiConfig.unitCompositionGapBonus; // one matching StillAssembling raid is enough
             }
-
-            return bonus;
+            return 0f;
         }
 
-        // Would `definition` cover a defender at a StillAssembling raid's own target that nobody
+        // Defence's own share of TaskNeedBonus (2026-08-23, new) — mirrors RaidNeedBonus's own
+        // "closes the gap against the task's real target" check, but Defence has TWO distinct
+        // assembling shapes (see AiDefencePlanner's own class comment): Patrol's fixed headcount
+        // target (nothing specific sighted yet — AiDefencePlanner.CurrentActiveThreat returns null)
+        // vs Active's dynamic composition against a SPECIFIC known sighting. The headcount case has
+        // no "defender to cover" to check against — any Unit card fills a genuinely open slot, so
+        // it scores Raid's own flat tier, same routine-buildup weight. The sighted case runs the
+        // exact same ClosesDamageGap coverage check RaidNeedBonus does, but against the sighting's
+        // OWN Defenders — and scores AiConfig.defenceNeedBonusMultiplier times higher, because a
+        // real, currently-known threat to a base outranks routine raid buildup on its own terms
+        // (the project owner's own explicit priority call — see TaskNeedBonus's own comment).
+        // Takes the MAX across every DefendCitadel task, not the first match — unlike Raid
+        // (maxConcurrentRaid caps it at one, so "first" and "best" always coincide), Defence can
+        // have up to AiConfig.maxConcurrentDefend(2) tasks assembling at once (citadel + a second
+        // base); returning on the first one found in registry order could report a routine Patrol
+        // headcount gap for one base while a genuinely under-threat Active assembly on the other sits
+        // unseen right behind it — exactly the priority inversion this bonus exists to prevent.
+        private static float DefenceNeedBonus(PlayerSetupData player, CardDefinition definition, HexMap map)
+        {
+            float best = 0f;
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player))
+            {
+                if (task.Kind != AiTaskKind.DefendCitadel || !task.StillAssembling || task.Retreating || task.Army == null)
+                    continue;
+
+                AiMapMemory.KnownEnemySighting? threat = AiDefencePlanner.CurrentActiveThreat(player, task.HomeHex);
+                if (!threat.HasValue)
+                {
+                    best = System.Math.Max(best, AiConfig.unitCompositionGapBonus); // Patrol's own headcount gap — routine buildup
+                    continue;
+                }
+
+                float hexBonus = WorthIt.HexDefenseBonus(threat.Value.Hex, map);
+                if (ClosesDamageGap(definition, task.Army, threat.Value.Defenders, hexBonus))
+                    best = System.Math.Max(best, AiConfig.unitCompositionGapBonus * AiConfig.defenceNeedBonusMultiplier); // a REAL threat is driving this
+            }
+            return best;
+        }
+
+        // Would `definition` cover a defender at a StillAssembling task's own target that nobody
         // currently in `army` can already damage? See UnitCompositionFitBonus's own criterion 8
-        // comment for why this reads the raid's ACTUAL target instead of the roster-wide gap
-        // heuristics above. Routes through WorthIt.CanDamage — the exact same per-unit coverage
+        // comment (TaskNeedBonus) for why this reads the task's ACTUAL target/threat instead of the
+        // roster-wide gap heuristics above. Routes through WorthIt.CanDamage — the exact same per-unit coverage
         // check RaidWeakerArmyTask.IsReady's own CanDamageAll gate uses — so this can never
         // disagree with what actually decides the raid ready to fight.
         private static bool ClosesDamageGap(CardDefinition definition, ArmyData army,
