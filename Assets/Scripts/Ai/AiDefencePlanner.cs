@@ -394,10 +394,21 @@ namespace Game.Ai
         // but never touches AiTaskRegistry except for the one genuine end-of-life case (Patrol cycle
         // complete, home, nothing left) — every other "no decision this step" return leaves the task
         // exactly as registered, for TryStartDefenceCandidates' own recruit loop to keep working on.
-        private static AiDecision BuildPostureDecision(PlayerSetupData player, AiTurnContext ctx, AiTask task)
+        private static AiDecision BuildPostureDecision(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
             HexCoord homeHex = task.HomeHex;
+
+            // Feasibility gate (2026-08-23 fix, project owner's own report — Sable's patrol
+            // proposed a 3-AP move with only 2 AP left): this whole method's every real branch
+            // below either returns null (nothing to do this step) or a MoveArmy decision — never
+            // anything else — so one gate here, ahead of every branch, covers the ActivationApCost
+            // half of AiTurnController.CanIssueMoveNow for the whole function at once, instead of
+            // duplicating it at each of the half-dozen return points below. The movement-point half
+            // still needs checking per-branch, against whichever specific destination that branch
+            // actually picks — see each branch's own CanIssueMoveNow call further down.
+            if (task.Army.CurrentMovement <= 0 || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
+                return null;
 
             // Turtle only ever applies to the citadel's own task (2026-08-21, project owner's own
             // call) — a later-founded base deliberately gets no siege-level escalation of its own,
@@ -456,6 +467,13 @@ namespace Game.Ai
             AiMapMemory.KnownEnemySighting? active = FindActiveThreatSighting(player, homeHex);
             if (active.HasValue && MeetsActiveComposition(task.Army, active.Value, ctx.Map))
             {
+                // First-step movement cost, not covered by this method's own top-of-function AP
+                // gate (see that gate's own comment) — if the very next hex toward the threat costs
+                // more than CurrentMovement, wait rather than fall through into the unrelated
+                // Patrol logic below, which would otherwise silently demote this task off Active
+                // for the step.
+                if (!AiTurnController.FindAffordableStep(ctx.Map, task.Army, active.Value.Hex).HasValue)
+                    return null;
                 task.Posture = AiDefencePosture.Active;
                 task.TargetHex = active.Value.Hex;
                 return AiDecision.Move(task.Army, active.Value.Hex,
@@ -518,6 +536,10 @@ namespace Game.Ai
                 float hexBonus = WorthIt.HexDefenseBonus(nearby.Value.Hex, ctx.Map);
                 if (RaidWeakerArmyTask.IsReady(task.Army, nearby.Value.DefenseSum + hexBonus, nearby.Value.AttackSum, nearby.Value.Defenders, hexBonus))
                 {
+                    // Same first-step-cost gap as the Active branch above — wait rather than fall
+                    // through into Patrol below (or wrongly retreat from a fight we can actually win).
+                    if (!AiTurnController.FindAffordableStep(ctx.Map, task.Army, nearby.Value.Hex).HasValue)
+                        return null;
                     task.Posture = AiDefencePosture.Active;
                     task.TargetHex = nearby.Value.Hex;
                     return AiDecision.Move(task.Army, nearby.Value.Hex,
@@ -546,10 +568,14 @@ namespace Game.Ai
                     AiTaskRegistry.Remove(player, task); // cycle complete, home, nothing left — free the army
                     return null;
                 }
+                if (!AiTurnController.FindAffordableStep(ctx.Map, task.Army, homeHex).HasValue)
+                    return null;
                 return AiDecision.Move(task.Army, homeHex, "patrol — nothing left to cover, returns to base",
                     task, AiConfig.defencePatrolScore, AiTaskCategory.Defence);
             }
 
+            if (!AiTurnController.FindAffordableStep(ctx.Map, task.Army, target.Value).HasValue)
+                return null;
             task.TargetHex = target.Value;
             return AiDecision.Move(task.Army, target.Value, "patrol — visits an extraction facility",
                 task, AiConfig.defencePatrolScore, AiTaskCategory.Defence);
@@ -689,7 +715,7 @@ namespace Game.Ai
             if (task.Army.CurrentMovement <= 0 || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
                 return null;
 
-            return BuildPostureDecision(player, ctx, task);
+            return BuildPostureDecision(player, root, ctx, task);
         }
 
         // Both "start a brand new Оборона force" and "recruit/patch the next member into an already-
@@ -804,9 +830,12 @@ namespace Game.Ai
                     return results;
                 }
 
-                AiDecision first = BuildPostureDecision(player, ctx, readyTask);
-                results.Add(first ?? AiDecision.Move(readyDefender, homeHex, "citadel defense — reports to the garrison",
-                    readyTask, AiConfig.defencePatrolScore, AiTaskCategory.Defence));
+                AiDecision first = BuildPostureDecision(player, root, ctx, readyTask);
+                if (first != null)
+                    results.Add(first);
+                else if (AiTurnController.CanIssueMoveNow(root, readyDefender, ctx.Map, homeHex))
+                    results.Add(AiDecision.Move(readyDefender, homeHex, "citadel defense — reports to the garrison",
+                        readyTask, AiConfig.defencePatrolScore, AiTaskCategory.Defence));
                 return results;
             }
 
@@ -1041,7 +1070,7 @@ namespace Game.Ai
                     || (existingTask.Kind == AiTaskKind.RaidWeakerArmy
                         && RaidWeakerArmyTask.IsReady(army, RaidWeakerArmyTask.RequiredStrengthAt(player, existingTask.TargetHex, ctx.Map)))))
                     continue;
-                if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
 
                 var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f, "citadel under siege — recalled to defend");

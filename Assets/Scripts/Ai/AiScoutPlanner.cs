@@ -238,7 +238,7 @@ namespace Game.Ai
                 HexCoord garrisonHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
                 if (army.Hex.Equals(garrisonHex))
                     continue;
-                if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
                 var target = new ScoutTarget(garrisonHex, 0f,
                     "nothing nearby to visit — returns to the nearest garrison to wait for an escort");

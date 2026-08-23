@@ -303,6 +303,7 @@ namespace Game.Ai
                 + $"energy={startEnergy}→{root.GetResource(ResourceType.Energy)}, "
                 + $"materials={startMaterials}→{root.GetResource(ResourceType.Materials)}, "
                 + $"tech={startTech}→{root.GetResource(ResourceType.Tech)} — actions: {actionsSummary} ===");
+            AiDebugLog.Write(BuildArmyBreakdownLog(player, ctx.TurnNumber));
             onDone?.Invoke();
         }
 
@@ -393,7 +394,7 @@ namespace Game.Ai
             {
                 if (stuckScouts.Contains(task.Army))
                     continue;
-                AiDecision decision = AiEconomyPlanner.AdvanceResourcesScrapTask(player, root, task);
+                AiDecision decision = AiEconomyPlanner.AdvanceResourcesScrapTask(player, root, ctx, task);
                 if (decision != null)
                     candidates.Add(decision);
             }
@@ -429,14 +430,14 @@ namespace Game.Ai
             }
 
             candidates.AddRange(AiScoutPlanner.TryReturnHomeCandidates(player, root, ctx, stuckScouts));
-            candidates.AddRange(AiEconomyPlanner.TryEconomyReturnHomeCandidates(player, root, stuckScouts));
+            candidates.AddRange(AiEconomyPlanner.TryEconomyReturnHomeCandidates(player, root, ctx, stuckScouts));
             candidates.AddRange(AiEconomyPlanner.TryStartEconomyCandidates(player, root, ctx, stuckScouts, pool));
-            candidates.AddRange(AiEconomyPlanner.TryStartResourcesScrapCandidates(player, root, pool));
+            candidates.AddRange(AiEconomyPlanner.TryStartResourcesScrapCandidates(player, root, ctx, pool));
             candidates.AddRange(AiEconomyPlanner.TryStartCollectorDetachCandidates(player, root, pool));
             candidates.AddRange(AiScoutPlanner.TryStartVisitCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidAssembleCandidates(player, root, ctx, hand, pool));
             candidates.AddRange(AiAggressionPlanner.TryRaidRecallCandidates(player, root, ctx, pool, stuckScouts));
-            candidates.AddRange(AiAggressionPlanner.TryRaidReturnHomeCandidates(player, root, pool, stuckScouts));
+            candidates.AddRange(AiAggressionPlanner.TryRaidReturnHomeCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidRegroupCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryStartBuildBaseCandidates(player, root, ctx, hand, pool));
             candidates.AddRange(AiDefencePlanner.TryStartDefenceCandidates(player, root, ctx, pool));
@@ -733,7 +734,9 @@ namespace Game.Ai
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             HexCoord before = army.Hex;
-            ctx.HexSelection?.IssueMoveOrder(army.Controller, destination);
+            MoveOrderResult moveResult = ctx.HexSelection != null
+                ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination)
+                : MoveOrderResult.CannotMove;
             if (army.Controller != null)
                 yield return new WaitUntil(() => !army.Controller.IsMoving);
 
@@ -751,9 +754,17 @@ namespace Game.Ai
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
 
+            // Diagnostic fix (2026-08-24, project owner's own report): this used to print one
+            // catch-all "no path, no movement left, or a fight blocked the way" line regardless of
+            // which of IssueMoveOrder's own guard clauses actually rejected the order — moveResult
+            // (see HexSelectionController.Movement.MoveOrderResult) now names the exact one. A move
+            // that reached a DIFFERENT hex than `destination` but still isn't `before` is partial
+            // progress (ran out of shared movement points, a mid-path Hex Event, vision-revealed
+            // contact, etc.) — never itself a failure, so it stays on the "arrived" branch exactly
+            // as before; only "made zero progress at all" gets the reason tag.
             string moveDelta = root != null ? ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
             AiDebugLog.Write(army.Hex.Equals(before)
-                ? $"[AI] {player.Nickname}: \"{army.Name}\" couldn't reach its target (no path, no movement left, or a fight blocked the way) — stayed at ({army.Hex.Q}, {army.Hex.R})."
+                ? $"[AI] {player.Nickname}: \"{army.Name}\" made no progress toward its target — reason={moveResult} — stayed at ({army.Hex.Q}, {army.Hex.R})."
                 : $"[AI] {player.Nickname}: \"{army.Name}\" arrived at ({army.Hex.Q}, {army.Hex.R}).{moveDelta}");
 
             yield return WaitStep(ctx);
@@ -945,6 +956,57 @@ namespace Game.Ai
             map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
             int cost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
             return army.CurrentMovement >= cost ? step : (HexCoord?)null;
+        }
+
+        // Shared MoveArmy candidate-feasibility gate (2026-08-23, project owner's own report):
+        // a candidate used to get proposed the moment ANY category planner had a destination in
+        // mind, with no check that the mover could actually pay for it right now — two independent
+        // real cases, same missing gate: Halden's ReinforceSwap left "Swarm" at 0 AP and the very
+        // next Decide() still proposed MoveArmy for it (AiAggressionPlanner.TryRaidAssembleCandidates'
+        // own FindReadyIdleArmy branch had no feasibility check at all), and Sable's Defence patrol
+        // proposed a 3-AP move while 2 AP remained. IssueMoveOrder (see HexSelectionController.
+        // Movement.cs) then silently rejected the order either way, wasting the whole step. Folds
+        // together the two things IssueMoveOrder itself independently enforces before it ever
+        // accepts an order: FindAffordableStep's own movement-point/path check for the FIRST step
+        // only (never the whole route — a multi-turn journey is fine, a step this Decide() call
+        // can't even begin is not), plus the one-time ActivationApCost an army not yet activated
+        // this turn also has to afford out of the shared AP pool. Every category's candidate sites
+        // now route through this one helper instead of each growing its own copy of either check —
+        // since both conditions are things execution already independently requires, a candidate
+        // this rejects would always have failed at IssueMoveOrder anyway, so gating it here only
+        // ever removes a doomed candidate from arbitration, never a viable one.
+        internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination) =>
+            root != null && army != null && FindAffordableStep(map, army, destination).HasValue
+                && (army.HasActivatedThisTurn || root.CanSpendActionPoints(army.ActivationApCost));
+
+        // Problem 4 (2026-08-24, project owner's own report): a raw armies=X→Y count in the
+        // turn-ends line can't tell fragmentation (a growing pile of small leftover armies) apart
+        // from healthy growth (a few well-formed ones) — Halden went 4→7→10 armies over two turns
+        // with no way to see WHAT those were. Diagnostic-only instrumentation: breaks the same
+        // non-garrison/non-prison count the turn-ends line already reports down by which Level-1
+        // task category currently owns each army (AiTaskRegistry.TaskFor's own Category, "untasked"
+        // for an idle army with no active task at all — see AiTask.cs's own AiTaskCategory comment)
+        // and by roster size. Never touches scoring or creation limits — read-only over whatever
+        // RunTurn already produced this turn.
+        private static string BuildArmyBreakdownLog(PlayerSetupData player, int turnNumber)
+        {
+            List<ArmyData> armies = ArmyRegistry.AllForOwner(player).Where(a => !a.IsGarrison && !a.IsPrison).ToList();
+            int totalUnits = armies.Sum(a => a.Members.Count);
+            float avgUnitsPerArmy = armies.Count > 0 ? (float)totalUnits / armies.Count : 0f;
+
+            string categoryBreakdown = armies.Count > 0
+                ? string.Join(", ", armies
+                    .GroupBy(a => AiTaskRegistry.TaskFor(player, a)?.Category)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => $"{(g.Key.HasValue ? g.Key.Value.ToString() : "untasked")}={g.Count()}"))
+                : "none";
+
+            int emptyArmies = armies.Count(a => a.Members.Count == 0);
+            int soloArmies = armies.Count(a => a.Members.Count == 1);
+            int multiArmies = armies.Count(a => a.Members.Count >= 2);
+
+            return $"[AI] {player.Nickname}: army breakdown (turn {turnNumber}) — armies={armies.Count} ({categoryBreakdown}), "
+                + $"units={totalUnits}, avgUnitsPerArmy={avgUnitsPerArmy:0.0}, roster size: 0={emptyArmies}, 1={soloArmies}, 2+={multiArmies}";
         }
 
         // Trailer for an action's own log line — "what did this actually cost", read as a

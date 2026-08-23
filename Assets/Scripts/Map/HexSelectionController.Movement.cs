@@ -17,6 +17,29 @@ using UnityEngine.InputSystem;
 
 namespace Game.Map
 {
+    // IssueMoveOrder's own precise outcome (2026-08-24, project owner's own report: AiTurnController.
+    // MoveArmyRoutine used to have no way to tell WHY an order produced no movement — "no path, no
+    // movement left, or a fight blocked the way" was a guess covering five genuinely different
+    // guard clauses inside IssueMoveOrder below). Started means the order was accepted and the
+    // move coroutine is under way — NOT that the army necessarily reaches `destination`; a partial
+    // stop (out of shared move points, vision-revealed contact, etc.) is still Started, and is
+    // never itself an error (see MoveArmyRoutine's own Hex-changed check for that outcome).
+    // Every other value means IssueMoveOrder rejected the order outright, before the army ever
+    // took a single step — one value per guard clause, in the same order they're checked.
+    public enum MoveOrderResult
+    {
+        Started,
+        AlreadyMoving,
+        CannotMove,
+        LockedInCombat,
+        NoMovementLeft,
+        AlreadyAtDestination,
+        NoPath,
+        InsufficientStepMovement,
+        NoOwnerRoot,
+        InsufficientActionPoints,
+    }
+
     // Move preview (hover) and move order (right-click) half of HexSelectionController — split
     // out purely for file size, same reasoning as HexSelectionController.Factory.cs's own
     // comment. Shares _selectedArmy/_pathArrow/_lastPreviewedHover and the layout helpers
@@ -243,10 +266,10 @@ namespace Game.Map
         // reading _selectedArmy. Used by Game.Ai.AiTurnController so an AI-controlled army's
         // move looks and behaves exactly like a human's, with no separate/duplicated movement
         // logic anywhere.
-        public void IssueMoveOrder(ArmyController controller, HexCoord destination)
+        public MoveOrderResult IssueMoveOrder(ArmyController controller, HexCoord destination)
         {
             if (controller == null || controller.IsMoving)
-                return;
+                return MoveOrderResult.AlreadyMoving;
 
             // The garrison specifically can never move at all (it's anchored to its Barracks
             // building, not a mobile force) — assign units to a real army first (see the
@@ -255,7 +278,7 @@ namespace Game.Map
             if (army == null || army.IsGarrison)
             {
                 NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
-                return;
+                return MoveOrderResult.CannotMove;
             }
 
             // An army sharing its hex with a combat-capable enemy army can't just walk away —
@@ -265,19 +288,19 @@ namespace Game.Map
             if (BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
             {
                 NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
-                return;
+                return MoveOrderResult.LockedInCombat;
             }
             if (army.CurrentMovement <= 0)
             {
                 NotifyMoveBlocked(army, $"{army.Name} has no movement points left this turn.");
-                return;
+                return MoveOrderResult.NoMovementLeft;
             }
             if (destination.Equals(army.Hex))
-                return;
+                return MoveOrderResult.AlreadyAtDestination;
 
             HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army));
             if (path == null)
-                return;
+                return MoveOrderResult.NoPath;
 
             // "Initiating Battle" (see Game.Combat.BattleInitiator) — moving onto a hex with a
             // combat-capable enemy army starts a fight there instead of continuing past it, even
@@ -297,12 +320,12 @@ namespace Game.Map
             {
                 NotifyMoveBlocked(army,
                     $"Not enough movement points to enter that hex ({firstStepCost} needed, {army.CurrentMovement} left).");
-                return;
+                return MoveOrderResult.InsufficientStepMovement;
             }
 
             PlayerRoot ownerRoot = PlayerRootRegistry.FindFor(army.Owner);
             if (ownerRoot == null)
-                return;
+                return MoveOrderResult.NoOwnerRoot;
 
             // AP (ArmyData.ActivationApCost — the sum of every member's own ActivationApCost,
             // so a bigger army costs more to get moving) is only spent the first time this
@@ -312,7 +335,7 @@ namespace Game.Map
             if (needsActivation && !ownerRoot.CanSpendActionPoints(army.ActivationApCost))
             {
                 NotifyMoveBlocked(army, $"Not enough action points to move {army.Name} ({army.ActivationApCost} AP needed).");
-                return;
+                return MoveOrderResult.InsufficientActionPoints;
             }
             if (needsActivation)
             {
@@ -507,6 +530,7 @@ namespace Game.Map
 
             HidePathPreview();
             _lastPreviewedHover = null;
+            return MoveOrderResult.Started;
         }
     }
 }

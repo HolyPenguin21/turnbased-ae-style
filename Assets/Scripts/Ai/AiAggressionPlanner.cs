@@ -166,6 +166,8 @@ namespace Game.Ai
                         task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
                 }
 
+                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, threat.Value.Hex))
+                    return null;
                 task.TargetHex = threat.Value.Hex;
                 return AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army",
                     task, AiConfig.aggressionBaseWeight + AiConfig.raidCounterAttackBonus, AiTaskCategory.Aggression);
@@ -217,7 +219,7 @@ namespace Game.Ai
                     AiConfig.raidReinforceDispatchScore);
             }
 
-            if (task.Army.CurrentMovement <= 0 || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
+            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
                 return null;
 
             // No raidCommittedBonus top-up any more (removed 2026-08-19) — Разведка's own
@@ -284,19 +286,41 @@ namespace Game.Ai
             bool winChanceOk = ourChance > 0.5f;
             bool coverageOk = WorthIt.CanDamageAll(army, enemyDefenders, required.HexBonus);
             string readyDiag;
+            bool actuallyReady;
             if (!winChanceOk && !coverageOk)
+            {
                 readyDiag = $"winChance {ourChance:P0} <= 50% AND composition can't cover every defender";
+                actuallyReady = false;
+            }
             else if (!winChanceOk)
+            {
                 readyDiag = $"winChance {ourChance:P0} <= 50%";
+                actuallyReady = false;
+            }
             else
             {
                 var uncovered = enemyDefenders?.Where(d => !army.Members.Where(m => !m.IsHero)
                     .Any(u => WorthIt.CanDamage(u.Attack, d, required.HexBonus))).ToList();
-                readyDiag = uncovered != null && uncovered.Count > 0
-                    ? $"winChance {ourChance:P0} OK but composition FAIL — {uncovered.Count} defender(s) nothing in the roster can damage: "
-                        + string.Join(", ", uncovered.Select(d => $"{d.Attack:0.#}/{d.Defense:0.#}/{d.HitPoints:0.#}"))
-                    : "ready"; // shouldn't be reachable — this method is only called once IsReady already said false
+                actuallyReady = uncovered == null || uncovered.Count == 0;
+                readyDiag = actuallyReady
+                    ? "ready"
+                    : $"winChance {ourChance:P0} OK but composition FAIL — {uncovered.Count} defender(s) nothing in the roster can damage: "
+                        + string.Join(", ", uncovered.Select(d => $"{d.Attack:0.#}/{d.Defense:0.#}/{d.HitPoints:0.#}"));
             }
+
+            // Log-vs-verdict mismatch fix (2026-08-24, project owner's own report): WorthIt.WinChance
+            // runs a fresh Monte Carlo simulation every call (see its own "Full round-by-round Monte
+            // Carlo" section), so THIS method's own re-roll above can land on a different result than
+            // the IsReady() roll that decided to call this method at all — a real case, "55% win
+            // chance ... ready, waits for reinforcement" logged in the very same line. Not a lifecycle
+            // bug (the actual decision loop re-rolls fresh next step regardless and attacks the moment
+            // ITS OWN roll says ready) — purely this log contradicting itself. `actuallyReady` (this
+            // call's own roll) decides the WORDING here, independent of whatever IsReady() decided a
+            // moment ago; never both "ready" and "waits for reinforcement" in the same line again.
+            if (actuallyReady)
+                return $"[AI] {player.Nickname}: \"{army.Name}\" ({army.Members.Count} units: {ourList} = {ourChance:P0} win chance) "
+                    + $"vs {enemyName} ({enemyDefenders?.Count ?? 0} units: {enemyList} = {enemyChance:P0} win chance) "
+                    + $"— ready to strike, winChance {ourChance:P0}, coverage OK.";
 
             return $"[AI] {player.Nickname}: \"{army.Name}\" ({army.Members.Count} units: {ourList} = {ourChance:P0} win chance) "
                 + $"— not enough force vs {enemyName} ({enemyDefenders?.Count ?? 0} units: {enemyList} = {enemyChance:P0} win chance) "
@@ -441,6 +465,16 @@ namespace Game.Ai
                 // to commit to) — never added to the cross-category score any more (2026-08-20,
                 // project owner's own call), same "внутренний скоринг" treatment Разведка's own
                 // scoutProximityWeight already gets.
+                //
+                // Feasibility check (2026-08-23 fix, project owner's own report): FindReadyIdleArmy
+                // only ever tests combat readiness (see RaidWeakerArmyTask.IsReady), never whether
+                // `readyArmy` can actually afford the trip THIS step — a real case, Halden's
+                // "Swarm" freshly freed up by a ReinforceSwap at 0 AP, kept getting proposed here
+                // and rejected outright at IssueMoveOrder. `readyArmy` isn't lost by skipping it
+                // here — it stays exactly as ready next step, ArmyRegistry never forgets it, so no
+                // task/registration is needed to remember the attempt.
+                if (!AiTurnController.CanIssueMoveNow(root, readyArmy, ctx.Map, target.Value.Hex))
+                    return results;
                 results.Add(AiDecision.Move(readyArmy, target.Value, readyTask,
                     AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression));
                 return results;
@@ -563,9 +597,9 @@ namespace Game.Ai
             foreach (ArmyData army in pool.AvailableArmies())
             {
                 if (army.IsGarrison || army.IsPrison || army.Hex.Equals(garrisonHex)
-                    || army.CurrentMovement <= 0 || army.Controller == null || stuckScouts.Contains(army))
+                    || army.Controller == null || stuckScouts.Contains(army))
                     continue;
-                if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
 
                 var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f, "returns to the garrison to assemble the force");
@@ -592,7 +626,7 @@ namespace Game.Ai
         // army is a normal raid participant. This gate is only for a raid army left jobless once
         // its own target is gone (the project owner's own report, 2026-08-16: it just sat there
         // forever instead).
-        public static List<AiDecision> TryRaidReturnHomeCandidates(PlayerSetupData player, PlayerRoot root,
+        public static List<AiDecision> TryRaidReturnHomeCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiResourcePool pool, HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
@@ -608,13 +642,13 @@ namespace Game.Ai
             foreach (ArmyData army in pool.AvailableArmies())
             {
                 if (army.IsGarrison || army.IsPrison || AiTurnController.OwnGarrisonHexes(player).Contains(army.Hex)
-                    || army.CurrentMovement <= 0 || army.Controller == null || stuckScouts.Contains(army)
+                    || army.Controller == null || stuckScouts.Contains(army)
                     || AiArmyRoles.IsSoloRecce(army) || !BattleInitiator.IsCombatCapable(army))
-                    continue;
-                if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     continue;
 
                 HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
+                    continue;
                 var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "nothing left to raid — returns to base");
                 results.Add(AiDecision.Move(army, target, null, AiConfig.raidRecallScore, AiTaskCategory.Aggression));
             }
@@ -671,7 +705,7 @@ namespace Game.Ai
 
                 if (goHome)
                 {
-                    if (army.CurrentMovement <= 0 || (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost)))
+                    if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
                         continue;
                     var homeTarget = new AiScoutPlanner.ScoutTarget(homeHex, 0f,
                         "critically wounded — returns to base to repair");
@@ -737,7 +771,7 @@ namespace Game.Ai
 
             if (!task.Army.Hex.Equals(task.TargetHex))
             {
-                if (task.Army.CurrentMovement <= 0 || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
+                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
                     return null;
                 var moveTarget = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
                     $"reinforcement heads to \"{task.TargetArmy.Name}\"");
@@ -1023,6 +1057,15 @@ namespace Game.Ai
             if (!targetHex.HasValue)
                 return results;
 
+            // The generic army.CurrentMovement<=0/AP check above only ever caught "can't move
+            // AT ALL this step" — never "the specific first hex toward THIS targetHex costs more
+            // than CurrentMovement" (see AiTurnController.CanIssueMoveNow's own comment on the
+            // FindAffordableStep gap this closes). Re-checked here, now that targetHex is actually
+            // known, rather than folded into the early filter above — that one still runs first and
+            // cheaply, before the real (pricier) FindTargetHex search above even happens.
+            if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, targetHex.Value))
+                return results;
+
             var task = new AiTask { Kind = AiTaskKind.BuildBase, Army = army, TargetHex = targetHex.Value };
             AiDecision decision = AiDecision.Move(army, targetHex.Value,
                 $"heads out to found a new base at ({targetHex.Value.Q},{targetHex.Value.R})",
@@ -1168,8 +1211,10 @@ namespace Game.Ai
                 float threatHexBonus = WorthIt.HexDefenseBonus(threat.Value.Hex, ctx.Map);
                 float threatDefense = threat.Value.DefenseSum + threatHexBonus;
                 if (RaidWeakerArmyTask.IsReady(task.Army, threatDefense, threat.Value.AttackSum, threat.Value.Defenders, threatHexBonus))
-                    return AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army on the way to found the new base",
-                        task, AiConfig.aggressionBaseWeight + AiConfig.raidCounterAttackBonus, AiTaskCategory.Aggression);
+                    return AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, threat.Value.Hex)
+                        ? AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army on the way to found the new base",
+                            task, AiConfig.aggressionBaseWeight + AiConfig.raidCounterAttackBonus, AiTaskCategory.Aggression)
+                        : null;
 
                 AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
@@ -1192,8 +1237,10 @@ namespace Game.Ai
                 AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
-                return AiDecision.Move(task.Army, task.TargetHex, $"heads to found a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
-                    task, AiConfig.aggressionBaseWeight + AiConfig.buildBaseTravelBonus, AiTaskCategory.Aggression);
+                return AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex)
+                    ? AiDecision.Move(task.Army, task.TargetHex, $"heads to found a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
+                        task, AiConfig.aggressionBaseWeight + AiConfig.buildBaseTravelBonus, AiTaskCategory.Aggression)
+                    : null;
 
             // Arrived — re-validate the hex is still actually buildable (something else may have
             // claimed it since it was picked) before proposing the execution step at all.

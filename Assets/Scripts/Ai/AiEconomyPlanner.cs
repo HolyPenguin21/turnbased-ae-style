@@ -511,8 +511,7 @@ namespace Game.Ai
                     AiTaskRegistry.Remove(player, task);
 
                     HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
-                    if (task.Army.Hex.Equals(garrisonHex) || task.Army.CurrentMovement <= 0
-                        || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
+                    if (task.Army.Hex.Equals(garrisonHex) || !AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, garrisonHex))
                         return null;
                     var fleeTarget = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
                         "a known enemy army is too strong — retreats to the citadel");
@@ -521,7 +520,7 @@ namespace Game.Ai
 
                 if (HexGridMath.Distance(task.Army.Hex, enemyThreat.Value.Hex) <= task.Army.CurrentMovement)
                 {
-                    if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
+                    if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, enemyThreat.Value.Hex))
                         return null;
                     return AiDecision.Move(task.Army, enemyThreat.Value.Hex,
                         $"\"{task.Army.Name}\" attacks a known weaker army at ({enemyThreat.Value.Hex.Q},{enemyThreat.Value.Hex.R}) "
@@ -666,7 +665,7 @@ namespace Game.Ai
         // own call) — an idle hero with nothing left to build doesn't need an inflated priority to
         // walk home, just the same flat economyWaitScore floor an arrived-but-still-saving task
         // already uses.
-        public static List<AiDecision> TryEconomyReturnHomeCandidates(PlayerSetupData player, PlayerRoot root,
+        public static List<AiDecision> TryEconomyReturnHomeCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
@@ -676,10 +675,10 @@ namespace Game.Ai
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
-                if (!BuildFacilityTask.IsEligibleComposition(army) || army.CurrentMovement <= 0 || army.Controller == null
+                if (!BuildFacilityTask.IsEligibleComposition(army) || army.Controller == null
                     || stuckScouts.Contains(army) || army.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, army) != null)
                     continue;
-                if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
                 var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
                     "nothing left to build — returns to the citadel");
@@ -707,7 +706,7 @@ namespace Game.Ai
         // candidate, all tied on the exact same ScoreHex (IncomeBehindBonus alone carries no
         // hex-specific term) — arbitration between them silently fell back to registry
         // enumeration order rather than any real preference.
-        public static List<AiDecision> TryStartResourcesScrapCandidates(PlayerSetupData player, PlayerRoot root, AiResourcePool pool)
+        public static List<AiDecision> TryStartResourcesScrapCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
             var alreadyTargeted = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
@@ -739,7 +738,7 @@ namespace Game.Ai
             HexCoord targetHex = bestHex.Value;
             ResourceType type = bestType.Value;
             ArmyData collector = ResourcesScrapTask.FindActor(player, targetHex, type, pool);
-            if (collector == null || collector.CurrentMovement <= 0)
+            if (collector == null || !AiTurnController.CanIssueMoveNow(root, collector, ctx.Map, targetHex))
                 return results;
 
             var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = targetHex, ResourceType = type };
@@ -822,7 +821,7 @@ namespace Game.Ai
         // eventually gets built on this exact hex — "добыча продолжается пока там не будет
         // построена добывающая facility" — at which point the collector is simply freed to be
         // picked up by whatever candidate wants it next.
-        public static AiDecision AdvanceResourcesScrapTask(PlayerSetupData player, PlayerRoot root, AiTask task)
+        public static AiDecision AdvanceResourcesScrapTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army))
             {
@@ -848,9 +847,7 @@ namespace Game.Ai
 
             if (!task.Army.Hex.Equals(task.TargetHex))
             {
-                if (task.Army.CurrentMovement <= 0)
-                    return null;
-                if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
+                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
                     return null;
                 var target = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
                     $"\"{task.Army.Name}\" goes to collect {task.ResourceType} at "
