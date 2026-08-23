@@ -494,11 +494,14 @@ namespace Game.Ai
         // now (project owner's own 2026-08-19 rebalance: 20 → 5, was winning arbitration too
         // reliably).
         public const float resourceScrapBaseWeightBonus = 5f;
-        // Detach-prerequisite penalty (see ResourceScrapDetachScore/AiEconomyPlanner.
-        // TryStartCollectorDetachCandidates) — subtracted whenever the collector unit sits inside
-        // an army that's already mid another active task, so that army doesn't abandon real work
-        // just to ferry the collector out for a detach (project owner's own 2026-08-19 call).
-        public const float resourceScrapDetachOnTaskPenalty = 20f;
+        // Задача 2's own INTERNAL hex-ranking term (project owner's own 2026-08-23 call, same
+        // "which hex first, never leak into the cross-category score" split BuildFacilityTask.
+        // RankHex already uses — see ResourcesScrapTask.RankHex) — degrades a candidate hex the
+        // further its nearest available collector actually has to walk. Reuses
+        // buildScarcityWeight's own sibling term (BuildFacilityTask.ScarcityBonus) for the
+        // deficit half instead of a separate constant, since it's the exact same "income first,
+        // stockpile second" formula either task's RankHex plugs a resourceType into.
+        public const float resourceScrapDistancePenaltyPerHex = 1f;
         // Never start, and never continue, a ResourcesScrap task while a known enemy army sits
         // within this many hexes of the target. Shared with Задача 1's own enemy-threat check
         // (BuildFacilityTask.HasEnemyThreat) — one "how close is too close for Economy" number for
@@ -665,8 +668,8 @@ namespace Game.Ai
         // Экономика · Задача 2's own detach-prerequisite score — same tier as the actual
         // ResourcesScrap walk/collect score itself now (project owner's own 2026-08-19 call: no
         // longer pinned to managementReorgScore), so a detach never loses arbitration to routine
-        // garrison housekeeping. resourceScrapDetachOnTaskPenalty is applied by the caller, not
-        // baked in here — see TryStartCollectorDetachCandidates.
+        // garrison housekeeping. No on-active-task penalty any more (2026-08-23) — an active-task
+        // source is now excluded from FindCollectorDetachPlan entirely, never just deprioritized.
         public static float ResourceScrapDetachScore => ResourceScrapBaseWeight;
     }
 }

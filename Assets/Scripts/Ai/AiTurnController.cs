@@ -430,7 +430,7 @@ namespace Game.Ai
             candidates.AddRange(AiScoutPlanner.TryReturnHomeCandidates(player, root, ctx, stuckScouts));
             candidates.AddRange(AiEconomyPlanner.TryEconomyReturnHomeCandidates(player, root, stuckScouts));
             candidates.AddRange(AiEconomyPlanner.TryStartEconomyCandidates(player, root, ctx, stuckScouts, pool));
-            candidates.AddRange(AiEconomyPlanner.TryStartResourcesScrapCandidates(player, pool));
+            candidates.AddRange(AiEconomyPlanner.TryStartResourcesScrapCandidates(player, root, pool));
             candidates.AddRange(AiEconomyPlanner.TryStartCollectorDetachCandidates(player, root, pool));
             candidates.AddRange(AiScoutPlanner.TryStartVisitCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidAssembleCandidates(player, root, ctx, hand, pool));

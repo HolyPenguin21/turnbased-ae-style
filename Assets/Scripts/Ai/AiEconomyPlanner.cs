@@ -141,34 +141,31 @@ namespace Game.Ai
 
         // Экономика · Задача 2's own prerequisite step whenever no ready solo collector exists yet
         // (see FindNearestSoloCollector) — the project owner's own two ways to end up with an army
-        // holding just the collector: two of the player's own armies already share a hex and
-        // "reform" so the collector's escort moves OUT into the other one (MergeTarget != null,
-        // Source itself becomes the solo army — nothing new spawns), or Source is sitting at the
-        // player's own base/garrison hex and the collector alone splits OUT into a freshly created
-        // army instead (MergeTarget == null — same shape as AiManagementPlanner.
-        // FindGarrisonOverflow's own split, just for one specific unit rather than the overflow
-        // tail). `pool` so a source mid-Разведка/Экономика this step is never touched.
-        public readonly struct CollectorDetachPlan
-        {
-            public readonly ArmyData Source;
-            public readonly UnitData Unit;
-            public readonly ArmyData MergeTarget;
-
-            public CollectorDetachPlan(ArmyData source, UnitData unit, ArmyData mergeTarget)
-            {
-                Source = source;
-                Unit = unit;
-                MergeTarget = mergeTarget;
-            }
-        }
-
+        // holding just the collector: two of the player's own armies already share the GARRISON
+        // hex and "reform" so the collector's escort moves OUT into the other one (MergeTarget !=
+        // null, Source itself becomes the solo army — nothing new spawns), or the collector alone
+        // splits OUT into a freshly created army instead (MergeTarget == null — same shape as
+        // AiManagementPlanner.FindGarrisonOverflow's own split, just for one specific unit rather
+        // than the overflow tail). `pool` so a source mid-Разведка/Экономика this step is never
+        // touched.
+        //
+        // Restricted to `source.Hex.Equals(garrisonHex)` (project owner's own 2026-08-23 call) —
+        // this used to scan EVERY hex where two of the player's own armies happened to share
+        // ground, which meant a real, active field army (mid-raid, mid-scout, anywhere at all)
+        // could get its own collector yanked out from under it the instant it merged with another
+        // friendly army for any reason. A collector only ever gets detached from inside the actual
+        // barracks/garrison hex now, same "hex with Barracks" concept AiTurnController.
+        // GarrisonHexFor already names. Combined with the AiTaskRegistry.TaskFor exclusion below
+        // (an active army is never even a CANDIDATE source, not just deprioritized — see
+        // TryStartCollectorDetachCandidates' own comment on why the old penalty-only approach
+        // wasn't enough), an army genuinely off doing something stays untouchable either way.
         public static CollectorDetachPlan? FindCollectorDetachPlan(PlayerSetupData player, ResourceType type,
             HexCoord garrisonHex, AiResourcePool pool)
         {
             string ability = UnitAbilities.CollectAbilityFor(type);
             foreach (ArmyData source in pool.AvailableArmies())
             {
-                if (source.IsPrison)
+                if (source.IsPrison || !source.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, source) != null)
                     continue;
                 UnitData unit = source.Members.FirstOrDefault(m => m.HasAbility(ability));
                 if (unit == null || source.Members.Count == 1)
@@ -176,12 +173,11 @@ namespace Game.Ai
 
                 int escortCount = source.Members.Count - 1;
                 ArmyData mergeTarget = ArmyRegistry.AllForOwner(player).FirstOrDefault(a =>
-                    a != source && !a.IsPrison && a.Hex.Equals(source.Hex) && a.Capacity - a.Members.Count >= escortCount);
+                    a != source && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Capacity - a.Members.Count >= escortCount);
                 if (mergeTarget != null)
                     return new CollectorDetachPlan(source, unit, mergeTarget);
 
-                if (source.Hex.Equals(garrisonHex))
-                    return new CollectorDetachPlan(source, unit, null);
+                return new CollectorDetachPlan(source, unit, null);
             }
             return null;
         }
@@ -445,14 +441,21 @@ namespace Game.Ai
                 && (int)task.ResourceType.Value < ctx.GameConfig.extractionFacilityCards.Length
                 ? ctx.GameConfig.extractionFacilityCards[(int)task.ResourceType.Value]
                 : null;
-            // Reservation now waits until the hero is within one turn's movement of the target
-            // hex (arriving this turn or already there) — topping up from the very first step of
-            // a multi-turn walk locked card play out of that resource type for however long the
-            // trip took (AiResourceReservation.CanAfford feeds FindPlacement's own affordability
-            // check — see the project owner's own 2026-08-19 report). Supersedes the earlier "по
-            // мере поступления ресурсов, пока герой ещё идёт" spec.
-            bool withinOneTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.MaxMovement;
-            if (definition != null && withinOneTurn)
+            // Reservation starts once this turn's OWN movement budget guarantees arrival THIS
+            // turn (distance <= MaxMovement — arriving this turn or already there), not a turn (or
+            // more) earlier while still genuinely mid-walk (project owner's own 2026-08-19 call,
+            // reaffirmed 2026-08-23 after briefly trying "wait until actually arrived" and walking
+            // it back — see git history). Starting any earlier locked card play out of that
+            // resource type for however long the whole multi-turn trip took; starting any later
+            // (only once Army.Hex.Equals(TargetHex) is already true) left the stockpile fully
+            // exposed to every OTHER AI spend for the entire final approach, right up to the one
+            // turn we can actually GUARANTEE arrival — under-reserving exactly when it matters
+            // most. `freeNow` inside TopUp only ever reads root's REAL current balance (already
+            // credited by GameTurnController.CollectResourceIncome, which always runs before any
+            // AI decision this turn) — never a projected/average income rate — so nothing reserved
+            // here is ever theoretical, only whatever's guaranteed already in hand right now.
+            bool willArriveThisTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.MaxMovement;
+            if (definition != null && willArriveThisTurn)
                 AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
@@ -578,13 +581,25 @@ namespace Game.Ai
         // AdvanceResourcesScrapTask's own comment on why the two tasks coexist on purpose).
         // ResourceScrapBaseWeight alone (no readiness bonus like BuildFacilityReadyBonus) since
         // there's no separate "arrived, now commit" step — arriving IS the whole task.
-        public static List<AiDecision> TryStartResourcesScrapCandidates(PlayerSetupData player, AiResourcePool pool)
+        //
+        // Internal-only pre-pass (project owner's own 2026-08-23 call, same "which hex first"
+        // split BuildFacilityTask.RankHex already uses for Задача 1 — see ResourcesScrapTask.
+        // RankHex's own comment) — picks exactly one (hex, resourceType) winner by distance from
+        // the nearest available collector plus resourceType scarcity; only that one hex is tried
+        // for an actual actor/candidate below. Previously every matching hex got its own
+        // candidate, all tied on the exact same ScoreHex (IncomeBehindBonus alone carries no
+        // hex-specific term) — arbitration between them silently fell back to registry
+        // enumeration order rather than any real preference.
+        public static List<AiDecision> TryStartResourcesScrapCandidates(PlayerSetupData player, PlayerRoot root, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
             var alreadyTargeted = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
                 .Where(t => t.Kind == AiTaskKind.ResourcesScrap)
                 .Select(t => t.TargetHex));
 
+            HexCoord? bestHex = null;
+            ResourceType? bestType = null;
+            float bestRank = float.NegativeInfinity;
             foreach (HexCoord hex in HexResourceBonusRegistry.AllBonusHexes())
             {
                 if (!AiMapMemory.IsResourceHexKnown(player, hex) || alreadyTargeted.Contains(hex))
@@ -593,25 +608,44 @@ namespace Game.Ai
                 if (resourceType == null || ResourcesScrapTask.HasExtractionFacility(hex, resourceType.Value))
                     continue;
 
-                ArmyData collector = ResourcesScrapTask.FindActor(player, hex, resourceType.Value, pool);
-                if (collector == null || collector.CurrentMovement <= 0)
-                    continue;
-
-                var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = hex, ResourceType = resourceType };
-                var target = new AiScoutPlanner.ScoutTarget(hex, 0f,
-                    $"\"{collector.Name}\" goes to collect {resourceType} at ({hex.Q},{hex.R}) without building");
-                float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
-                results.Add(AiDecision.Move(collector, target, task, score, AiTaskCategory.Economy));
+                float rank = ResourcesScrapTask.RankHex(player, root, hex, resourceType.Value, pool);
+                if (bestHex == null || rank > bestRank)
+                {
+                    bestHex = hex;
+                    bestType = resourceType;
+                    bestRank = rank;
+                }
             }
+            if (bestHex == null)
+                return results;
+
+            HexCoord targetHex = bestHex.Value;
+            ResourceType type = bestType.Value;
+            ArmyData collector = ResourcesScrapTask.FindActor(player, targetHex, type, pool);
+            if (collector == null || collector.CurrentMovement <= 0)
+                return results;
+
+            var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = targetHex, ResourceType = type };
+            var target = new AiScoutPlanner.ScoutTarget(targetHex, 0f,
+                $"\"{collector.Name}\" goes to collect {type} at ({targetHex.Q},{targetHex.R}) without building");
+            float score = AiConfig.ResourceScrapBaseWeight + ResourcesScrapTask.ScoreHex(player);
+            results.Add(AiDecision.Move(collector, target, task, score, AiTaskCategory.Economy));
             return results;
         }
 
         // Экономика · Задача 2's own prep step — only offered once TryStartResourcesScrapCandidates
         // itself finds no ready solo collector for a given hex's type, so the two tiers never both
         // fire for the same hex the same step. See FindCollectorDetachPlan for the two ways this
-        // can resolve; a fresh-army plan additionally needs CreateArmyApCost checked here (the
-        // planner itself is pure/AP-agnostic, same "checked before proposing" rule every other
-        // candidate in this file follows).
+        // can resolve (now hard-restricted to the garrison hex, and to sources with no active task
+        // at all — an army genuinely off doing something is never even offered as a source any
+        // more, not just deprioritized, project owner's own 2026-08-23 call); a fresh-army plan
+        // additionally needs CreateArmyApCost checked here (the planner itself is pure/AP-agnostic,
+        // same "checked before proposing" rule every other candidate in this file follows).
+        //
+        // Same internal-ranking pre-pass as TryStartResourcesScrapCandidates above (project
+        // owner's own 2026-08-23 call) — picks one (hex, resourceType) winner via
+        // ResourcesScrapTask.RankHex before ever looking for a plan, rather than trying every
+        // matching hex in registry order.
         public static List<AiDecision> TryStartCollectorDetachCandidates(PlayerSetupData player, PlayerRoot root, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
@@ -620,6 +654,9 @@ namespace Game.Ai
                 .Select(t => t.TargetHex));
             HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
 
+            HexCoord? bestHex = null;
+            ResourceType? bestType = null;
+            float bestRank = float.NegativeInfinity;
             foreach (HexCoord hex in HexResourceBonusRegistry.AllBonusHexes())
             {
                 if (!AiMapMemory.IsResourceHexKnown(player, hex) || alreadyTargeted.Contains(hex))
@@ -630,20 +667,24 @@ namespace Game.Ai
                 if (ResourcesScrapTask.FindActor(player, hex, resourceType.Value, pool) != null)
                     continue; // already have one ready to walk — nothing to detach
 
-                CollectorDetachPlan? plan = FindCollectorDetachPlan(player, resourceType.Value, garrisonHex, pool);
-                if (plan == null)
-                    continue;
-                if (plan.Value.MergeTarget == null && !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
-                    continue;
-
-                // The collector's own source army shouldn't drop real, already-in-progress work
-                // just to get ferried out for a detach — see AiConfig.resourceScrapDetachOnTaskPenalty's
-                // own comment (project owner's own 2026-08-19 call).
-                bool sourceOnActiveTask = AiTaskRegistry.TaskFor(player, plan.Value.Source) != null;
-                float score = AiConfig.ResourceScrapDetachScore
-                    - (sourceOnActiveTask ? AiConfig.resourceScrapDetachOnTaskPenalty : 0f);
-                results.Add(AiDecision.DetachCollector(plan.Value, resourceType.Value, score));
+                float rank = ResourcesScrapTask.RankHex(player, root, hex, resourceType.Value, pool);
+                if (bestHex == null || rank > bestRank)
+                {
+                    bestHex = hex;
+                    bestType = resourceType;
+                    bestRank = rank;
+                }
             }
+            if (bestHex == null)
+                return results;
+
+            CollectorDetachPlan? plan = FindCollectorDetachPlan(player, bestType.Value, garrisonHex, pool);
+            if (plan == null)
+                return results;
+            if (plan.Value.MergeTarget == null && !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
+                return results;
+
+            results.Add(AiDecision.DetachCollector(plan.Value, bestType.Value, AiConfig.ResourceScrapDetachScore));
             return results;
         }
 

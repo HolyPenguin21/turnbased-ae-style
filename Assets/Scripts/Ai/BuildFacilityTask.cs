@@ -87,7 +87,12 @@ namespace Game.Ai
         // Только когда добыча уже идёт откуда-то (см. HasIncomeSource), в дело идёт прежняя
         // "строим то, чего меньше всего в закромах" эвристика (buildScarcityWeight) — та же, что
         // Разведка · Задача 2 использует для WantedResourceType.
-        private static float ScarcityBonus(PlayerSetupData player, PlayerRoot root, ResourceType type)
+        //
+        // Internal (never reaches AiDecision.Score — see this method's own callers), but shared
+        // across Задача 1 AND Задача 2 (ResourcesScrapTask.RankHex calls this directly rather than
+        // reinventing the same income-first/stockpile-second formula for its own resourceType
+        // deficit term — project owner's own 2026-08-23 call).
+        public static float ScarcityBonus(PlayerSetupData player, PlayerRoot root, ResourceType type)
         {
             if (root == null)
                 return 0f;
