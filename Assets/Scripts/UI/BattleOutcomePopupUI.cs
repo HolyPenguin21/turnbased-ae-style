@@ -23,12 +23,6 @@ namespace Game.UI
         // FinishBattleEnd/BattleScreenUI.Retreat.cs's ResolveRetreat, the only two callers.
         [SerializeField] private TMP_Text messageDetailText;
         [SerializeField] private Button okButton;
-        // 2026-08-21: was a hard-coded 1s (see AutoCloseAfterDelay) — per the user's own report,
-        // that read as firing almost the instant the popup opened, not giving a spectating human
-        // enough time to actually read messageDetailText's own multi-line breakdown before it
-        // dismissed itself. Exposed here instead of just bumped in code so it can be retuned from
-        // the Inspector without a recompile, same as BattleAttackPopupUI's own aiResultCloseDelay.
-        [SerializeField] private float autoCloseDelay = 2.5f;
 
         private Action _onOk;
         private Coroutine _autoCloseRoutine;
@@ -52,7 +46,10 @@ namespace Game.UI
         // autoCloseNoHuman: per the user's own request — an AI-vs-AI (or AI-vs-neutrals/event
         // guard) battle has nobody at the keyboard to press Ok, so this outcome would otherwise
         // sit on screen forever while the AI's turn stalls behind it. Callers pass their own
-        // `_localArmy == null` check (no human participated in this battle) for this.
+        // `_localArmy == null` check (no human participated in this battle) for this. Closes on
+        // the very next frame rather than pausing to be readable (2026-08-24, superseding the
+        // 2026-08-21 spectator-pacing delay this used to carry) — the user's own call was that
+        // speed now matters more than a spectator getting to read this screen.
         public void Show(string title, string message, Action onOk, bool autoCloseNoHuman = false)
         {
             _onOk = onOk;
@@ -73,8 +70,10 @@ namespace Game.UI
 
         private IEnumerator AutoCloseAfterDelay()
         {
-            if (autoCloseDelay > 0f)
-                yield return new WaitForSeconds(autoCloseDelay);
+            // A single frame, not a real pause — still async (so Show()'s own caller finishes
+            // unwinding first) but no longer paced for a spectator to read (see this field group's
+            // own comment above).
+            yield return null;
             _autoCloseRoutine = null;
             OnOkClicked();
         }

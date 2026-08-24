@@ -603,7 +603,13 @@ namespace Game.UI
         // methods the human's own clicks already use (see BattleAi.ChooseAction's own comment).
         private IEnumerator AutoActAfterDelay(UnitData actor)
         {
-            yield return new WaitForSeconds(aiAutoPassDelay);
+            // No pacing beat at all when this whole battle has no human participant (_localArmy
+            // == null — AI vs. AI or AI vs. neutral, see the class comment's own Show() note) —
+            // per the user's own request (2026-08-24) to stop stalling a purely AI/neutral fight
+            // for spectator readability. A human-vs-AI battle keeps the beat unchanged: it's still
+            // that human's own opponent "thinking" on-screen.
+            if (_localArmy != null && aiAutoPassDelay > 0f)
+                yield return new WaitForSeconds(aiAutoPassDelay);
             _aiAutoPassRoutine = null;
             if (_grid == null || actor == null || actor != _currentActingUnit)
                 yield break;

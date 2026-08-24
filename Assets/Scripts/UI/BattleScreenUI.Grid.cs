@@ -153,7 +153,11 @@ namespace Game.UI
             BattleGridCellUI fromCell = FindCell(fromRow, fromCol);
             BattleGridCellUI toCell = FindCell(toRow, toCol);
             GridLayoutGroup layoutGroup = gridContainer != null ? gridContainer.GetComponent<GridLayoutGroup>() : null;
-            if (fromCell != null && toCell != null)
+            // No human participant in this battle at all (_localArmy == null — AI vs. AI or AI vs.
+            // neutral) skips the slide entirely and swaps straight to the grid update below, per
+            // the user's own request (2026-08-24) to stop pacing a purely AI/neutral fight for
+            // spectator readability. A human-vs-AI battle still animates the AI's own moves.
+            if (_localArmy != null && fromCell != null && toCell != null)
             {
                 if (layoutGroup != null)
                     layoutGroup.enabled = false;

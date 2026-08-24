@@ -336,7 +336,11 @@ namespace Game.UI
         // visual pacing, same reasoning as aiAcceptDelay.
         private IEnumerator AutoRollIfNoHuman()
         {
-            if (aiRollDelay > 0f)
+            // No pacing beat at all when neither side is human (see NoHumanInvolved) — only the
+            // IsAutorollEnabled human-opted-in case still waits aiRollDelay, per the user's own
+            // request (2026-08-24) to stop stalling a purely AI/neutral fight just to be readable
+            // to a spectator; aiRollDelay itself is untouched for that still-human case.
+            if (!NoHumanInvolved && aiRollDelay > 0f)
                 yield return new WaitForSeconds(aiRollDelay);
             if (_phase == Phase.NotRolled)
                 OnRollClicked();
@@ -352,7 +356,10 @@ namespace Game.UI
         // also clicks Ok around the same time.
         private IEnumerator AutoCloseResultIfNoHuman()
         {
-            if (aiResultCloseDelay > 0f)
+            // Same NoHumanInvolved carve-out as AutoRollIfNoHuman above (2026-08-24) — only the
+            // IsAutoCloseResultEnabled human-opted-in case still gets the readable aiResultCloseDelay
+            // pause; a battle with nobody human in it at all resolves instantly instead.
+            if (!NoHumanInvolved && aiResultCloseDelay > 0f)
                 yield return new WaitForSeconds(aiResultCloseDelay);
             if (_phase == Phase.Resolved && !_okAlreadyHandled)
                 OnOkClicked();
@@ -494,7 +501,12 @@ namespace Game.UI
             bool defenderAnimDone = defenderRow == null;
             attackerRow?.SetDice(_attackerDice, onComplete: () => attackerAnimDone = true);
             defenderRow?.SetDice(_defenderDice, onComplete: () => defenderAnimDone = true);
-            yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
+            // Nobody human is watching this roll land (see NoHumanInvolved) — don't gate the duel
+            // on the flip animation actually finishing, per the user's own request (2026-08-24) to
+            // stop pacing an AI-vs-AI/AI-vs-neutral fight for a spectator's benefit. SetDice already
+            // ran above so _attackerDice/_defenderDice are the real values either way.
+            if (!NoHumanInvolved)
+                yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
             FireRollThought();
             yield return RunDuel();
@@ -550,8 +562,9 @@ namespace Game.UI
                 // Neither side has any Fate left to spend, so there's no Spend-or-Accept turn for
                 // anyone to take — but resolving with zero pause right after the dice land reads as
                 // the roll being skipped entirely. Same beat as RunHumanTurn/RunAiTurn's own
-                // auto-decline (aiAcceptDelay) so this case doesn't feel instant/broken.
-                if (aiAcceptDelay > 0f)
+                // auto-decline (aiAcceptDelay) so this case doesn't feel instant/broken — except
+                // when nobody human is in this fight at all (2026-08-24), where instant IS the goal.
+                if (!NoHumanInvolved && aiAcceptDelay > 0f)
                     yield return new WaitForSeconds(aiAcceptDelay);
                 yield break;
             }
@@ -687,7 +700,9 @@ namespace Game.UI
                     $"-> shouldSpend={shouldSpend}");
                 if (!shouldSpend)
                 {
-                    if (aiAcceptDelay > 0f)
+                    // Skipped entirely for a battle with no human in it at all (2026-08-24) — same
+                    // NoHumanInvolved carve-out as RunDuel's own no-Fate-to-spend beat above.
+                    if (!NoHumanInvolved && aiAcceptDelay > 0f)
                         yield return new WaitForSeconds(aiAcceptDelay);
                     break;
                 }
@@ -717,7 +732,10 @@ namespace Game.UI
                 // Wait for this reroll's own flip animation to land before deciding whether to
                 // keep going — matches RunHumanTurn's own reroll gate (see _rerollAnimDone's own
                 // comment): the AI shouldn't react to a die that isn't visibly done spinning yet.
-                yield return new WaitUntil(() => _rerollAnimDone);
+                // Skipped when nobody human is in this fight (2026-08-24) — same reasoning as
+                // RunRollAndDuel's own initial-roll anim gate.
+                if (!NoHumanInvolved)
+                    yield return new WaitUntil(() => _rerollAnimDone);
 
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
                 // just came back a miss again — this side is done trying Fate for the rest of
@@ -930,6 +948,8 @@ namespace Game.UI
                 outcome = CaptureKillOutcome.Killed;
 
             _captureKillOutcome = outcome;
+            BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
+                $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");
             ShowCaptureKillResult(outcome);
         }
 
