@@ -147,6 +147,21 @@ namespace Game.UI
         // here since roll math only cares about the total; the two components are only split out
         // for BattleCombatantRowUI's own dice-count breakdown text).
         private int _defenderBonusDice;
+        // GroundCombat only — the ACTUAL dice-pool sizes the roll uses, resolved once in Begin
+        // (attackerPoolSize/defenderPoolSize ?? the plain Attack/Defense+bonus default) and read
+        // back by RunRollAndDuel instead of recomputing from _attacker.Attack/_defender.Defense
+        // directly. Must stay in lockstep with what attackerRow/defenderRow.SetDicePoolSize was
+        // just told to DISPLAY in Begin — see the bug this fixed: a hero defender's displayed
+        // pool is its FateMax (defenderPoolSize, see BeginAttack's own "target hero" comment),
+        // but the roll used to always fall back to _defender.Defense regardless, which is 0 for
+        // every hero card (attack/defenseRating are both 0 in the hero cards' own data — heroes
+        // fight via Fate, not a Defense stat). Rolling 0 dice for the defender meant no dice
+        // slots at all for that side and a duel forced to whatever the attacker alone rolled,
+        // even though the row up top still correctly showed "Dice: {FateMax}" (the project
+        // owner's own report: "у героя не крутятся кубики... количество кубиков написано, но
+        // визуально их нет").
+        private int _attackerDicePoolSize;
+        private int _defenderDicePoolSize;
         // CaptureKill mode only — the hunter's computed dice-pool size (see BeginCaptureKill;
         // there's no per-unit Attack stat to roll against, unlike Ground Combat) and how many
         // dice the target hero rolls (their Fate stat, per the manual: "the target hero receives
@@ -271,10 +286,13 @@ namespace Game.UI
             if (titleText != null)
                 titleText.text = "GROUND COMBAT";
 
+            _attackerDicePoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
+            _defenderDicePoolSize = defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice);
+
             attackerRow?.Setup(attacker, attackerHero, attackerLogo);
             defenderRow?.Setup(defender, defenderHero, defenderLogo);
-            attackerRow?.SetDicePoolSize(attackerPoolSize ?? (attacker?.Attack ?? 0));
-            defenderRow?.SetDicePoolSize(defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice),
+            attackerRow?.SetDicePoolSize(_attackerDicePoolSize);
+            defenderRow?.SetDicePoolSize(_defenderDicePoolSize,
                 defenderTerrainBonus, defenderConstructionBonus, defender?.Defense ?? 0);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
@@ -447,10 +465,19 @@ namespace Game.UI
             }
             else
             {
-                result = ChallengeResolver.Resolve(_attacker.Attack, _defender.Defense + _defenderBonusDice);
+                // _attackerDicePoolSize/_defenderDicePoolSize (set in Begin), NOT
+                // _attacker.Attack/_defender.Defense directly — a targeted hero's pool is its
+                // FateMax (see BeginAttack's defenderPoolSize), which must roll exactly as many
+                // dice as the row above already displayed.
+                result = ChallengeResolver.Resolve(_attackerDicePoolSize, _defenderDicePoolSize);
             }
             _attackerDice = result.AttackerDice;
             _defenderDice = result.DefenderDice;
+
+            BattleDebugLog.Write($"[RollDiag] {_kind}: {_attacker?.Name} ({_attacker?.Owner?.Nickname}) " +
+                $"vs {_defender?.Name} ({_defender?.Owner?.Nickname}) -> " +
+                $"attacker={BattleDebugLog.DiceString(_attackerDice)} ({result.AttackerSuccesses} hits), " +
+                $"defender={BattleDebugLog.DiceString(_defenderDice)} ({result.DefenderSuccesses} hits), rawDamage={result.Damage}");
 
             bool attackerAnimating = attackerRow != null;
             bool defenderAnimating = defenderRow != null;
@@ -639,6 +666,11 @@ namespace Game.UI
                     _attackerDice, _defenderDice, hero.Fate, isDefenderTurn,
                     _attacker, _defender, Magnitudes,
                     isRetreating, defendingUnitHp, _kind == ChallengeKind.CaptureKill);
+                BattleDebugLog.Write($"[FateDuelDiag] {(isDefenderTurn ? "defender" : "attacker")} " +
+                    $"{(isDefenderTurn ? _defender?.Name : _attacker?.Name)} (hero {hero?.Name}, fate={hero?.Fate ?? 0}, " +
+                    $"isRetreating={isRetreating}, defendingUnitHp={defendingUnitHp}): " +
+                    $"attacker={BattleDebugLog.DiceString(_attackerDice)} defender={BattleDebugLog.DiceString(_defenderDice)} " +
+                    $"-> shouldSpend={shouldSpend}");
                 if (!shouldSpend)
                 {
                     if (aiAcceptDelay > 0f)
@@ -653,6 +685,9 @@ namespace Game.UI
                     break;
                 hero.Fate--;
                 spentThisTurn = true;
+                BattleDebugLog.Write($"[FateDuelDiag] {(isDefenderTurn ? "defender" : "attacker")} {hero.Name} spent Fate " +
+                    $"(remaining={hero.Fate}), rerolled slot {rerolledIndex} -> " +
+                    $"{(isDefenderTurn ? _defenderDice : _attackerDice)[rerolledIndex]}");
 
                 bool animating = isDefenderTurn ? defenderRow != null : attackerRow != null;
                 if (isDefenderTurn)
@@ -724,6 +759,8 @@ namespace Game.UI
             defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimating = false);
             defenderRow?.OnFateSpent();
             _humanSpent = true;
+            BattleDebugLog.Write($"[FateDuelDiag] defender {_defenderHero.Name} (human) spent Fate " +
+                $"(remaining={_defenderHero.Fate}), rerolled slot {rerolledIndex} -> {_defenderDice[rerolledIndex]}");
         }
 
         private void OnAttackerSpend()
@@ -740,6 +777,8 @@ namespace Game.UI
             attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimating = false);
             attackerRow?.OnFateSpent();
             _humanSpent = true;
+            BattleDebugLog.Write($"[FateDuelDiag] attacker {_attackerHero.Name} (human) spent Fate " +
+                $"(remaining={_attackerHero.Fate}), rerolled slot {rerolledIndex} -> {_attackerDice[rerolledIndex]}");
         }
 
         private static bool HasMiss(bool[] dice)
@@ -825,6 +864,10 @@ namespace Game.UI
 
             _resultDamage = damage;
             _resultDied = died;
+            BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} -> {_defender?.Name}: " +
+                $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) wasHit={wasHit} " +
+                $"finalDamage={damage} appliedAbilities=[{(appliedAbilities != null ? string.Join(",", appliedAbilities) : string.Empty)}] " +
+                $"defenderHpAfter={_defender.HitPointsCurrent}/{_defender.HitPointsMax} died={died}");
             ShowResult(damage, died, wasHit, appliedAbilities);
         }
 

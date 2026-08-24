@@ -142,17 +142,17 @@ namespace Game.Combat
             {
                 if (candidate.Owner == actor.Owner)
                 {
-                    Debug.Log($"[TargetDiag] skip {candidate.Name}: same owner as actor {actor.Name}");
+                    BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: same owner as actor {actor.Name}");
                     continue;
                 }
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                 {
-                    Debug.Log($"[TargetDiag] skip {candidate.Name}: not found on grid");
+                    BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: not found on grid");
                     continue;
                 }
                 if (!BattleGrid.IsInRange(actorRow, actorCol, candRow, candCol, actor.Range))
                 {
-                    Debug.Log($"[TargetDiag] skip {candidate.Name}: out of range " +
+                    BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: out of range " +
                         $"(actor=({actorRow},{actorCol}) range={actor.Range}, target=({candRow},{candCol}))");
                     continue;
                 }
@@ -161,7 +161,7 @@ namespace Game.Combat
                 TryScoreTarget(actor, candidate, candidate.HitPointsCurrent, magnitudes, notYetActed,
                     out float score, out int damage, out AiThoughtCategory reason);
 
-                Debug.Log($"[TargetDiag] candidate {candidate.Name}: hp={candidate.HitPointsCurrent} " +
+                BattleDebugLog.Write($"[TargetDiag] candidate {candidate.Name}: hp={candidate.HitPointsCurrent} " +
                     $"defense={candidate.Defense} ceramicArmor={candidate.HasAbility(UnitAbilities.CeramicArmor)} " +
                     $"actorAttack={actor.Attack} damage={damage} score={score} reason={reason} notYetActed={notYetActed}");
 
@@ -181,7 +181,7 @@ namespace Game.Combat
                 return false;
             }
 
-            Debug.Log($"[TargetDiag] actor {actor.Name} (attack={actor.Attack}) chose {bestTarget.Name} score={bestScore}");
+            BattleDebugLog.Write($"[TargetDiag] actor {actor.Name} (attack={actor.Attack}) chose {bestTarget.Name} score={bestScore}");
             action = new BattleAi.AiAction { Kind = BattleAi.AiActionKind.Attack, Target = bestTarget, Row = bestRow, Col = bestCol, Reason = bestReason };
             return true;
         }

@@ -158,6 +158,8 @@ namespace Game.Combat
                 }
             }
 
+            BattleDebugLog.Write($"[ArrangeDiag] army \"{army.Name}\": " +
+                $"meleeCount={meleeCount} -> chosen centerOut={bestCenterOut} frontMeleeCount={bestFrontMeleeCount} bestScore={bestScore}");
             PlaceTankAnchoredSplit(grid, army, frontRow, backRow, bestCenterOut, enemyArmy, bestFrontMeleeCount);
         }
 
@@ -432,6 +434,9 @@ namespace Game.Combat
             // comment for why the two directions need different bars.
             bool favorableForAdvance = !shouldRetreat
                 && twoRoundMargin < -AdvanceMarginFraction && threeRoundMargin < -AdvanceMarginFraction;
+            BattleDebugLog.Write($"[RetreatDiag] army \"{aiArmy?.Name}\" (hp={ownHp}) vs \"{enemyArmy?.Name}\" (hp={enemyHp}): " +
+                $"2-round margin={twoRoundMargin:F3} 3-round margin={threeRoundMargin:F3} " +
+                $"-> shouldRetreat={shouldRetreat} favorableForAdvance={favorableForAdvance}");
             return new RetreatAssessment { ShouldRetreat = shouldRetreat, IsCitadelDefense = false, FavorableForAdvance = favorableForAdvance };
         }
 
@@ -642,18 +647,18 @@ namespace Game.Combat
                 return attackAction;
             }
 
-            Debug.Log($"[MoveDiag] actor {actor.Name} at ({actorRow},{actorCol}): no attack target in range, evaluating a move");
+            BattleDebugLog.Write($"[MoveDiag] actor {actor.Name} at ({actorRow},{actorCol}): no attack target in range, evaluating a move");
 
             bool alreadyExposed = IsExposedToEnemy(grid, actorRow, actorCol, actor);
             (int row, int col)? bestStep = FindBestAdvanceStep(grid, ownArmy, enemyArmy, actor, actorRow, actorCol, magnitudes);
             (int row, int col)? step = bestStep ?? FindStepToward(grid, actor, actorRow, actorCol);
-            Debug.Log($"[MoveDiag] actor {actor.Name}: FindBestAdvanceStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
+            BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: FindBestAdvanceStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
                 $"finalStep={(step.HasValue ? step.Value.ToString() : "null")} (fallback used: {!bestStep.HasValue})");
 
             if (step == null)
             {
                 waitStreak[actor] = 0;
-                Debug.Log($"[MoveDiag] actor {actor.Name}: no legal step at all -> Pass");
+                BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: no legal step at all -> Pass");
                 return passAction;
             }
 
@@ -669,7 +674,7 @@ namespace Game.Combat
             // advance.
             bool isMelee = actor.Range <= 2;
 
-            Debug.Log($"[MoveDiag] actor {actor.Name}: alreadyExposed={alreadyExposed} stepExposes={stepExposes} " +
+            BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: alreadyExposed={alreadyExposed} stepExposes={stepExposes} " +
                 $"waitStreak={streak} forceAdvance={forceAdvance} favorableFight={favorableFight} isMelee={isMelee} " +
                 $"-> {((isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight) ? "MOVE" : "WAIT")} to {step.Value}");
 
@@ -810,7 +815,7 @@ namespace Game.Combat
                 int immediateDistance = NearestEnemyManhattanDistance(liveGrid, actor, candRow, candCol);
                 if (isMelee && immediateDistance > curDistanceToNearest)
                 {
-                    Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                    BattleDebugLog.Write($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
                         $"SKIPPED — retreat step (immediateDistance={immediateDistance} > curDistanceToNearest={curDistanceToNearest})");
                     continue;
                 }
@@ -833,7 +838,7 @@ namespace Game.Combat
 
                 if (!isMelee && hp[actor] <= 0f)
                 {
-                    Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                    BattleDebugLog.Write($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
                         $"SKIPPED — projected dead (hp<=0) before its own next turn from there");
                     continue; // didn't survive to get a real turn from here — not a real candidate
                 }
@@ -851,7 +856,7 @@ namespace Game.Combat
                     // matters (a melee actor accepts dying here per isMelee's own comment above).
                     if (!isMelee && hp[actor] <= 0f)
                     {
-                        Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
+                        BattleDebugLog.Write($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}): candidate ({candRow},{candCol}) " +
                             $"SKIPPED — projected dead (hp<=0) during its own acting round from there");
                         continue;
                     }
@@ -862,7 +867,7 @@ namespace Game.Combat
                         : immediateDistance;
                 }
 
-                Debug.Log($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}, distToNearest={curDistanceToNearest}): " +
+                BattleDebugLog.Write($"[AdvanceDiag] actor {actor.Name} at ({actorRow},{actorCol}, distToNearest={curDistanceToNearest}): " +
                     $"candidate ({candRow},{candCol}) projectedDamageDealt={damage} distToNearestAfter={distance} " +
                     $"(closer={distance < curDistanceToNearest}, farther={distance > curDistanceToNearest}) survivedHp={hp[actor]}");
 
@@ -877,7 +882,7 @@ namespace Game.Combat
                 }
             }
 
-            Debug.Log($"[AdvanceDiag] actor {actor.Name}: chosen bestStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
+            BattleDebugLog.Write($"[AdvanceDiag] actor {actor.Name}: chosen bestStep={(bestStep.HasValue ? bestStep.Value.ToString() : "null")} " +
                 $"bestDamage={bestDamage} bestDistance={bestDistance}");
             return bestStep;
         }

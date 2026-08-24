@@ -283,6 +283,8 @@ namespace Game.UI
             _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
 
+            BattleDebugLog.BeginBattle(_attacker?.Name ?? "?", _defender?.Name ?? "?", hex.ToString());
+
             // Hero Fate is deliberately NOT touched here — it refills per-battle, but as soon as
             // the PREVIOUS battle actually ends (see OnBattleOutcomeAcknowledged), not here. A
             // chained second fight on the same hex shows its own BattleContactPopupUI before this
@@ -397,6 +399,7 @@ namespace Game.UI
         // round (not just the first) — see the class comment.
         private void BeginRound()
         {
+            BattleDebugLog.BeginRound(_round);
             ConsiderAiRetreat();
 
             // Garrisons can never retreat (per the manual); a battle with no local human side
