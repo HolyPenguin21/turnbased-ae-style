@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Cards;
 using Game.Combat;
@@ -74,7 +75,7 @@ namespace Game.Map
         // that class only ever CHOOSES a move, this method is what actually changes the
         // building), so it covers AI, human, and any future capture path alike with exactly one
         // line per event.
-        public static void CaptureOrDestroy(BuildingData building, PlayerSetupData newOwner)
+        public static void CaptureOrDestroy(BuildingData building, PlayerSetupData newOwner, HexSelectionController hexSelection)
         {
             if (building == null)
                 return;
@@ -84,6 +85,15 @@ namespace Game.Map
                 building.Owner = newOwner;
                 if (building.Visual != null)
                     building.Visual.SetColor(newOwner != null ? PlayerColorPalette.Colors[newOwner.ColorIndex] : Color.white);
+                // 2026-08-24 fix (project owner's own report — see EnsureGarrisonForBuilding's own
+                // comment): a capture used to leave the previous owner's own empty garrison shell
+                // behind, unclaimed by the new owner, so every multi-base AI/UI lookup keyed off
+                // ArmyData.Owner (AiTurnController.OwnGarrisonArmies and everything built on it)
+                // never saw this base as garrisoned at all for its NEW owner. Runs before the
+                // vision recomputes below so both sides' vision already reflects the corrected
+                // garrison ownership.
+                if (newOwner != null)
+                    EnsureGarrisonForBuilding(building, hexSelection);
                 // Both sides of the handover lose/gain vision from this specific building —
                 // Unregister/Register (the Destroy branch below) already cover that on their
                 // own, but a capture never calls either, so both recomputes are done explicitly
@@ -112,7 +122,7 @@ namespace Game.Map
         // included — same IsEngageable check Contact uses) changes hands/gets destroyed the
         // moment `mover` arrives, no fight to trigger since there was never anyone there to put
         // one up. No-op for a building `mover` already owns, or a hex with no building at all.
-        public static void CaptureOrDestroyIfUndefended(HexCoord hex, PlayerSetupData mover)
+        public static void CaptureOrDestroyIfUndefended(HexCoord hex, PlayerSetupData mover, HexSelectionController hexSelection)
         {
             BuildingData building = FindAt(hex);
             if (building == null || building.Owner == null || building.Owner == mover)
@@ -120,7 +130,58 @@ namespace Game.Map
             foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
                 if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident))
                     return;
-            CaptureOrDestroy(building, mover);
+            CaptureOrDestroy(building, mover, hexSelection);
+        }
+
+        // Shared by CaptureOrDestroy (a Base changing hands) and HexSelectionController.Factory's
+        // own SpawnBuilding (a fresh Base built with Barracks) — the invariant every multi-base
+        // AI/UI lookup already assumes (AiTurnController.OwnGarrisonArmies/OwnGarrisonHexes and
+        // everything built on them, ArmyViewerModalUI, ...): a Barracks-tagged Base has EXACTLY one
+        // IsGarrison army, owned by whoever currently owns the building. No-op for a building with
+        // no Barracks ability at all (a bare resource site never gets a garrison of its own).
+        //
+        // Repurposes whatever IsGarrison army is already sitting on the hex (2026-08-24, project
+        // owner's own spec — "передать его новому владельцу", not destroy+recreate) rather than
+        // tearing it down and building a fresh one — its ArmyController/marker/Id all survive
+        // untouched, and no HexSelectionController reference is even needed for that path. Only
+        // registers a brand-new ArmyData (which DOES need one, to create its map marker) when none
+        // exists on the hex at all yet — the first-founding case SpawnBuilding itself covers.
+        internal static void EnsureGarrisonForBuilding(BuildingData building, HexSelectionController hexSelection)
+        {
+            if (building == null || building.Owner == null || !building.HasAbility(UnitAbilities.Barracks))
+                return;
+
+            ArmyData garrison = ArmyRegistry.AllAt(building.Hex).FirstOrDefault(a => a.IsGarrison);
+            if (garrison == null)
+            {
+                garrison = new ArmyData { Name = "Garrison", Hex = building.Hex, Owner = building.Owner, IsGarrison = true };
+                ArmyRegistry.Register(garrison);
+                hexSelection?.CreateArmyMarker(garrison);
+                return;
+            }
+
+            if (garrison.Owner == building.Owner)
+                return; // already this owner's own garrison — nothing to do
+
+            if (garrison.Members.Count > 0)
+            {
+                // Should be unreachable — CaptureOrDestroy only ever fires once every defending
+                // army on the hex (garrison included) is already empty, whether through combat
+                // resolution or CaptureOrDestroyIfUndefended's own IsEngageable check. Logged, not
+                // silently overwritten, so a real invariant break surfaces instead of quietly
+                // stealing the previous owner's still-fielded troops.
+                AiDebugLog.Write($"[BUILDING] invariant violation — captured base at ({building.Hex.Q},{building.Hex.R}) "
+                    + $"still has a non-empty garrison \"{garrison.Name}\" ({garrison.Members.Count} member(s)) owned by "
+                    + $"{(garrison.Owner != null ? garrison.Owner.Nickname : "nobody")}.");
+                return;
+            }
+
+            PlayerSetupData previousGarrisonOwner = garrison.Owner;
+            garrison.Owner = building.Owner;
+            if (garrison.Controller != null && garrison.Controller.Visual != null)
+                garrison.Controller.Visual.SetColor(PlayerColorPalette.Colors[building.Owner.ColorIndex]);
+            AiDebugLog.Write($"[BUILDING] Base \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) garrison transferred: "
+                + $"{(previousGarrisonOwner != null ? previousGarrisonOwner.Nickname : "nobody")} → {building.Owner.Nickname}, members=0.");
         }
     }
 }

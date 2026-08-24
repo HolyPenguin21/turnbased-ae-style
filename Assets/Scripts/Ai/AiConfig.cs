@@ -328,20 +328,65 @@ namespace Game.Ai
         // now sits on the same "немедленное завершение" rung as every other category's own execute/
         // counter-attack reaction, not one rung below it.
         public const float buildBaseExecuteScore = aggressionBaseWeight + 20f;
-        // How far forward BuildBaseTask.FindTargetHex aims from the player's own citadel along the
-        // bisector direction. 2026-08-21 retune (project owner's own call): 4, paired with
-        // buildBaseMinDistanceFromExistingBase below also dropping to 3 so the aim point still
-        // clears that exclusion boundary with a hex or two of neighbor-refinement room to spare —
-        // see that constant's own comment for why the two must move together.
-        public const float buildBaseForwardDistanceHexes = 4f;
-        // Target hex legality — never within this many hexes of an existing own Base-tagged
-        // building (a player can found several bases; this just keeps them spread out rather than
-        // clustered) — the starting citadel itself counts (see buildBaseForwardDistanceHexes's own
-        // comment). 2026-08-21 retune (project owner's own call): 5 → 3, alongside
-        // buildBaseForwardDistanceHexes's own 6 → 4 — the two must stay in the same relative
-        // order (forward distance clear of this exclusion radius) or FindTargetHex's aim point
-        // lands inside its own no-build zone and every candidate near it gets rejected.
-        public const int buildBaseMinDistanceFromExistingBase = 3;
+        // 2026-08-24 rewrite (project owner's own report): BuildBaseTask.FindTargetHex used to
+        // project a single world-space "aim point" a fixed number of hexes out and only ever
+        // scored that hex's own immediate neighbors — the old buildBaseForwardDistanceHexes(4)
+        // plus a world-units-per-hex approximation that only held exactly along one grid
+        // direction, so the REAL HexGridMath.Distance from the citadel could land well past 4 in
+        // other directions (project owner's own log read: a base landed 6 hexes out this way),
+        // and any good hex outside that seven-hex neighbor patch was never even considered.
+        // FindTargetHex now sweeps every legal hex on the whole map instead (see HexMap.AllCoords)
+        // and ranks each one honestly by real hex distance from whichever of the player's own
+        // Base-tagged buildings is NEAREST to that specific candidate (not always the starting
+        // citadel — see IsLegalHex's own nearestOwnBase out param) — a second, third, etc. base
+        // naturally chains outward from whichever base is actually closest, rather than every one
+        // re-measuring from the original citadel. buildBasePreferredDistance is the sweet spot
+        // ScoreCandidateHex's own distance term aims for; buildBaseMinDistanceFromExistingBase/
+        // buildBaseMaxDistanceFromExistingBase are the hard legality floor/ceiling around it.
+        public const int buildBasePreferredDistance = 3;
+        // Target hex legality floor — a candidate strictly closer than this to whichever of the
+        // player's own Base-tagged buildings is nearest to it is illegal (too cramped, would
+        // overlap that base's own useful radius) — the starting citadel itself always counts as
+        // one of those buildings. 2026-08-24 (project owner's own spec, alongside the
+        // buildBaseMaxDistanceFromExistingBase ceiling below): previously a single "never within 3"
+        // constant made the EFFECTIVE minimum legal distance 4 (distance<=3 was illegal) with no
+        // ceiling at all; now min/max are both explicit and inclusive (distance must be >= min and
+        // <= max), matching the project owner's own "допустимый диапазон 2–4" spec directly rather
+        // than through an off-by-one exclusive floor.
+        public const int buildBaseMinDistanceFromExistingBase = 2;
+        // Target hex legality ceiling — see buildBaseMinDistanceFromExistingBase's own comment.
+        // Paired with buildBasePreferredDistance(3) landing safely inside [min, max].
+        public const int buildBaseMaxDistanceFromExistingBase = 4;
+        // ScoreCandidateHex's own per-hex-of-deviation penalty from buildBasePreferredDistance —
+        // keeps the internal ranking centered on the sweet spot even though every candidate in
+        // [buildBaseMinDistanceFromExistingBase, buildBaseMaxDistanceFromExistingBase] is legal.
+        public const float buildBaseDistanceWeight = 8f;
+        // ScoreCandidateHex's own SOFT directional term (2026-08-24 rewrite, project owner's own
+        // spec point 2: "вектор должен давать дополнительный score... но не должен делать боковой
+        // ресурсный хекс нелегальным") — a dot product between the unit vector from the candidate's
+        // own nearest-own-base anchor toward the candidate, and that same anchor's own bisector
+        // direction toward every known enemy citadel (same bisector math FindTargetHex's own old
+        // aim-point version used, just no longer the sole determinant of WHICH hexes get scored at
+        // all). Ranges roughly [-1, 1] before this weight, so a hex built exactly backward from the
+        // enemy loses this much, and one built exactly toward them gains it — never enough on its
+        // own to outweigh a strong defense/resource read on a good lateral hex (buildBaseResource
+        // TypeWeight/buildBaseResourceSiteMergeBonus/buildBaseDefenseBonusWeight's own scale).
+        public const float buildBaseForwardAlignmentWeight = 15f;
+        // ScoreCandidateHex's own economic-awareness term (2026-08-24 rewrite, project owner's own
+        // spec point 3) — a flat bonus for a candidate this player already knows carries a resource
+        // bonus (AiMapMemory.IsResourceHexKnown — "видел, не обязательно посетил", same honest
+        // fog-of-war rule BuildFacilityTask/ResourcesScrapTask's own hex picks already use) but
+        // hasn't been built on at all yet. Deliberately flat, not scaled by the hex's own actual
+        // yield amount — this codebase's AiMapMemory only ever remembers a hex's DOMINANT resource
+        // TYPE (see AiEconomyPlanner.DominantResourceType's own comment: "a hex only ever carries
+        // one meaningful bonus in practice"), never a magnitude, so there's no honestly-known
+        // amount to weight this by without reading the hidden ResourceYields directly (a cheat this
+        // class explicitly avoids elsewhere — see HasThreateningEnemyNear's own comment on the one
+        // deliberate exception it takes). A hex that already has a mergeable resource SITE built on
+        // it keeps using buildBaseResourceSiteMergeBonus instead (strictly better — it preserves a
+        // real standing Facility, not just a known bonus), so the two never both apply to the same
+        // candidate.
+        public const float buildBaseResourceTypeWeight = 15f;
         // Both the target-selection pre-filter (BuildBaseTask.FindTargetHex skips a hex with a
         // threatening known non-neutral sighting this close) and the cancel condition once a task
         // is actually under way (a known enemy sighted within this radius of the target, that could
@@ -523,6 +568,32 @@ namespace Game.Ai
         // 90 Patrol can lose arbitration to Economy/Recon/Aggression on essentially every busy
         // step — left as-is pending the project owner's own call on whether that's acceptable.
         public const float defencePatrolScore = 90f;
+        // SecureBase (2026-08-24, project owner's own spec) — a fresh/captured/weakened second
+        // base's own initial-defence task, ranked above routine Patrol(90) — an unsecured base is
+        // more urgent than ordinary background coverage — but below the real-threat tier
+        // (defenceActiveScore/defenceActiveAssemblyScore 120, defenceTurtleScore/
+        // defencePreemptScore 130) — a base with nobody actually attacking it yet still loses
+        // arbitration to an army already fighting for its life. secureBaseTravelScore covers both
+        // the courier's own dispatch (SecureBaseTask picks a donor + unit) and its travel toward
+        // the target base; secureBaseDeliverScore is the "arrived, hand it over" step, one tier
+        // up — same "travel vs. arrived/execute" split every other multi-step task in this codebase
+        // already uses (see e.g. buildBaseTravelBonus/buildBaseExecuteScore).
+        public const float secureBaseTravelScore = 100f;
+        public const float secureBaseDeliverScore = 110f;
+        // AiArmyRoles.IsBaseGarrisonSecure's own floor — a non-citadel base's own garrison counts
+        // as genuinely secure once it holds at least this many combat-capable NON-HERO members
+        // (a hero may sit alongside them, but never substitutes for this headcount — see that
+        // method's own comment). Shared by SecureBaseTask's own trigger/completion, card-placement
+        // routing (AiManagementPlanner.GarrisonHexesForPlacement), and the donor guard
+        // (AiArmyRoles.CanSpareGarrisonMember) — one number, one place, per the project owner's
+        // own "IsBaseGarrisonSecure нужен как минимум четырём механизмам" call.
+        public const int secureBaseMinNonHeroUnits = 2;
+        // How many SecureBase tasks may be registered across this player's own bases at once —
+        // same "don't let one Level-1 category spread itself across every base at once" intent
+        // every other maxConcurrentX cap in this codebase already enforces (MaxConcurrentVisitHex/
+        // MaxConcurrentRaid/maxConcurrentDefend). A brand-new base's own SecureBase task usually
+        // resolves in one or two courier trips, so this stays a tight cap rather than a soft one.
+        public const int maxConcurrentSecureBase = 1;
         // Patrol's own dynamic floor (2026-08-21, project owner's own "option 2" call) — the score
         // an assembling/growing Defence force gets when AiDefencePlanner.DynamicPatrolUrgencyScore
         // finds nothing worth reacting to anywhere near a base or facility hex. Deliberately below

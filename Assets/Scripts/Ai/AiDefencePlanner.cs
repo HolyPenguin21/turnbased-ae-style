@@ -701,6 +701,73 @@ namespace Game.Ai
             return recon.Members[0];
         }
 
+        // ---- SecureBase orchestration (2026-08-24, project owner's own spec) ----
+        //
+        // Thin on purpose — every content decision (trigger, donor/composition pick, phase
+        // lifecycle, cancel/complete) lives on SecureBaseTask itself (see its own class comment);
+        // this planner only scans for which bases need the task, keeps one task per base (never a
+        // duplicate), and forwards whatever AiDecision SecureBaseTask builds to the Arbiter.
+
+        // One AiTask per base needing it, capped at AiConfig.maxConcurrentSecureBase registered at
+        // once (same "don't let one category spread across every base" intent every other
+        // maxConcurrentX cap in this codebase already enforces). Deliberately does NOT register a
+        // task for a base with no donor available yet — same "only ever create the task alongside
+        // its own first real dispatch" convention AiAggressionPlanner.TryRaidRegroupCandidates
+        // already follows for RaidReinforce (see that method's own comment) — AiTurnController.
+        // Commit is what actually adds decision.Task to the registry, and only if this candidate
+        // wins arbitration, so a task built here that never wins simply evaporates, no cleanup
+        // needed.
+        public static List<AiDecision> TryStartSecureBaseCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            var results = new List<AiDecision>();
+            if (AiTaskRegistry.CountActive(player, AiTaskKind.SecureBase) >= AiConfig.maxConcurrentSecureBase)
+                return results;
+
+            var alreadyTasked = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
+                .Where(t => t.Kind == AiTaskKind.SecureBase).Select(t => t.HomeHex));
+
+            foreach (HexCoord hex in SecureBaseTask.NeedsSecuring(player))
+            {
+                if (alreadyTasked.Contains(hex))
+                    continue;
+
+                var task = new AiTask { Kind = AiTaskKind.SecureBase, HomeHex = hex, TargetHex = hex };
+                AiDecision decision = SecureBaseTask.BuildDecision(player, root, ctx, task);
+                if (decision == null)
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({hex.Q},{hex.R}) needs "
+                        + $"{SecureBaseTask.RequiredDefenders(player, hex)} defender(s) but no donor is available right now.");
+                    continue; // no task registered — retried fresh next step, see this method's own comment
+                }
+                results.Add(decision);
+                break; // one new SecureBase dispatch per step — see maxConcurrentSecureBase's own comment
+            }
+            return results;
+        }
+
+        // Advances an ALREADY-registered SecureBase task — cancel/complete are checked here (the
+        // registry lifecycle is this planner's own job), the actual phase decision is
+        // SecureBaseTask.BuildDecision's job (shared with TryStartSecureBaseCandidates above, same
+        // split TryContinueDefenceTask/TryStartDefenceCandidates already follow for
+        // BuildPostureDecision).
+        public static AiDecision TryContinueSecureBaseTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
+        {
+            if (SecureBaseTask.ShouldCancel(player, task))
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({task.HomeHex.Q},{task.HomeHex.R}) "
+                    + "is no longer ours, task cancelled.");
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+            if (SecureBaseTask.IsComplete(player, task, out string reason))
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — {reason}");
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+            return SecureBaseTask.BuildDecision(player, root, ctx, task);
+        }
+
         // ---- Orchestration (AiTurnController.Decide's own candidate sources) ----
 
         // Advances an ALREADY-committed DefendCitadel task — validity/AP/movement gate here, the

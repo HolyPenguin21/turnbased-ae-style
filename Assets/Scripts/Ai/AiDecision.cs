@@ -37,6 +37,8 @@ namespace Game.Ai
         StrengthenDefenceForce,
         BuildBase,
         SeedNewBaseGarrison,
+        DispatchBaseReinforcement,
+        DepositReinforcement,
         Wait,
         Pass,
     }
@@ -275,6 +277,30 @@ namespace Game.Ai
         public static AiDecision SeedNewBaseGarrison(GarrisonReorgTask.ConsolidationMove move, AiTask task, float score) => new AiDecision
         {
             Kind = AiActionKind.SeedNewBaseGarrison, ExistingArmy = move.Source, TargetHex = move.Target.Hex,
+            ConsolidationMove = move, Task = task, Score = score, Category = task.Category,
+            Reason = move.Reason,
+        };
+
+        // Оборона · SecureBase, шаг 1 — see SecureBaseTask.BuildDecision/AiOperations.
+        // DispatchBaseReinforcementRoutine. Same shape as DispatchReinforcement above (own
+        // AiActionKind/log purely so debug output says "SecureBase", not "Агрессия") — `source` is
+        // the DONOR garrison (nearest own base with a spareable non-hero, per
+        // SecureBaseTask.FindReinforcementSource), task.Army is left null here until the routine
+        // actually spawns the courier.
+        public static AiDecision DispatchBaseReinforcement(ArmyData source, UnitData recruit, AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.DispatchBaseReinforcement, ExistingArmy = source, CollectorUnit = recruit,
+            TargetHex = task.HomeHex, Task = task, Score = score, Category = task.Category,
+            Reason = $"{recruit.Name} is dispatched from \"{source.Name}\" to secure the base at ({task.HomeHex.Q},{task.HomeHex.R})",
+        };
+
+        // Оборона · SecureBase, шаг 2 — courier has arrived at task.HomeHex; see
+        // AiOperations.DepositReinforcementRoutine for the actual transfer into the base's own
+        // garrison this triggers. Reuses GarrisonReorgTask.ConsolidationMove's own shape, same
+        // reasoning as SeedNewBaseGarrison above.
+        public static AiDecision DepositReinforcement(GarrisonReorgTask.ConsolidationMove move, AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.DepositReinforcement, ExistingArmy = move.Source, TargetHex = move.Target.Hex,
             ConsolidationMove = move, Task = task, Score = score, Category = task.Category,
             Reason = move.Reason,
         };

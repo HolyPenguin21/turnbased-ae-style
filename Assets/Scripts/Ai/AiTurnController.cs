@@ -357,8 +357,11 @@ namespace Game.Ai
         // cycling through Patrol/Active/Turtle postures every re-evaluation, starting even with no
         // threat in sight at all now) plus its own preempt step (AiDefencePlanner.
         // TryDefencePreemptCandidates — pulls a field army off an ACTIVE task to reinforce the
-        // citadel, now gated on IsUnderSiege) — each still respects its own cap
-        // (MaxConcurrentVisitHex/MaxConcurrentRaid/maxConcurrentDefend) before generating any
+        // citadel, now gated on IsUnderSiege) plus its own SecureBase tier (AiDefencePlanner.
+        // TryStartSecureBaseCandidates, 2026-08-24 — a separate persistent task per non-citadel base
+        // whose own garrison isn't AiArmyRoles.IsBaseGarrisonSecure yet; see SecureBaseTask's own
+        // class comment for the full trigger/lifecycle) — each still respects its own cap
+        // (MaxConcurrentVisitHex/MaxConcurrentRaid/maxConcurrentDefend/maxConcurrentSecureBase) before generating any
         // candidate at all.
         // 4) Менеджмент's own base upkeep — Починка юнита (continuation + TryStartRepairCandidates
         // — owned here rather than Экономика because it needs the exact same hand read
@@ -442,6 +445,14 @@ namespace Game.Ai
                 if (decision != null)
                     candidates.Add(decision);
             }
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.SecureBase).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiDefencePlanner.TryContinueSecureBaseTask(player, root, ctx, task);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
             foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.ReturnForConsolidation).ToList())
             {
                 if (stuckScouts.Contains(task.Army))
@@ -462,6 +473,7 @@ namespace Game.Ai
             candidates.AddRange(AiAggressionPlanner.TryRaidReturnHomeCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidRegroupCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryStartBuildBaseCandidates(player, root, ctx, hand, pool));
+            candidates.AddRange(AiDefencePlanner.TryStartSecureBaseCandidates(player, root, ctx));
             candidates.AddRange(AiDefencePlanner.TryStartDefenceCandidates(player, root, ctx, pool));
             candidates.AddRange(AiDefencePlanner.TryDefencePreemptCandidates(player, root, ctx));
             candidates.AddRange(AiScoutPlanner.TryStartReconAssemblyCandidates(player, root, ctx, hand, pool));
@@ -852,6 +864,12 @@ namespace Game.Ai
                 case AiActionKind.ReinforceSwap:
                     yield return AiAggressionPlanner.ReinforceSwapRoutine(player, decision, ctx);
                     break;
+                case AiActionKind.DispatchBaseReinforcement:
+                    yield return AiOperations.DispatchBaseReinforcementRoutine(player, decision, ctx);
+                    break;
+                case AiActionKind.DepositReinforcement:
+                    yield return AiOperations.DepositReinforcementRoutine(player, decision, ctx);
+                    break;
                 case AiActionKind.Wait:
                     yield return WaitStep(ctx);
                     break;
@@ -972,7 +990,8 @@ namespace Game.Ai
                 // merely-proposed candidate.
                 AiManagementPlanner.NotifyCardRolePlayed(player, AiManagementPlanner.RoleOf(decision.Card));
                 string delta = ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
-                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Card.Definition.displayName} joins \"{targetArmy.Name}\" — {decision.Reason}.{delta}");
+                AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Card.Definition.displayName} joins \"{targetArmy.Name}\" "
+                    + $"at ({targetArmy.Hex.Q},{targetArmy.Hex.R}) — {decision.Reason}.{delta}");
             }
             else
             {

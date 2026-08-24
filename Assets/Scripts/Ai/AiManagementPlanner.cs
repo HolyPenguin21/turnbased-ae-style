@@ -87,12 +87,18 @@ namespace Game.Ai
         // scoring.
         // 2026-08-24 P1 follow-up (project owner's own spec) — a plain Unit card additionally
         // jumps any OTHER (non-citadel) garrison ahead of the ordinary activity ranking whenever
-        // that base's own garrison is weak (empty, or hero-only — see IsWeakSecondaryGarrison's
-        // own comment), so the hero AiAggressionPlanner.AdvanceGarrisonSeed left minding a fresh
-        // base alone gets relieved by the very next Unit card instead of staying pinned there
-        // indefinitely once seeding itself has already timed out (see FindGarrisonSeedUnit's own
-        // "no unit to spare" fallback). Hero cards deliberately never get this nudge — stacking a
-        // second hero into that same slot is never the fix a hero-only garrison needs; ordinary
+        // that base's own garrison isn't secure yet (see AiArmyRoles.IsBaseGarrisonSecure's own
+        // comment — empty, hero-only, or simply short of the secureBaseMinNonHeroUnits floor), so
+        // the hero AiAggressionPlanner.AdvanceGarrisonSeed left minding a fresh base alone gets
+        // relieved by the very next Unit card instead of staying pinned there indefinitely once
+        // seeding itself has already timed out (see FindGarrisonSeedUnit's own "no unit to spare"
+        // fallback). 2026-08-24 SecureBase follow-up (same spec) — this nudge used to stop applying
+        // the moment a garrison held any single non-hero member at all (IsWeakSecondaryGarrison's
+        // own old bare-presence check); now it keeps steering Unit cards there until the garrison
+        // actually clears the same secure floor SecureBaseTask itself works toward, so cards and
+        // SecureBase's own courier deliveries both drain the same real gap instead of the card side
+        // declaring victory one unit early. Hero cards deliberately never get this nudge — stacking
+        // a second hero into that same slot is never the fix an insecure garrison needs; ordinary
         // AiArmyRoles.IsHeroLed placement rules already keep a second hero card away from a
         // hero-led destination on their own. AwaitingGarrisonSeed's own existing top priority
         // stays strictly above this — applied AFTER (LINQ OrderBy is stable, so the LAST call
@@ -105,7 +111,7 @@ namespace Game.Ai
             if (cardType == CardType.Unit)
             {
                 HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
-                order = order.OrderByDescending(h => !h.Equals(citadelHex) && IsWeakSecondaryGarrison(player, h) ? 1 : 0);
+                order = order.OrderByDescending(h => !h.Equals(citadelHex) && !AiArmyRoles.IsBaseGarrisonSecure(player, h) ? 1 : 0);
             }
 
             HexCoord? awaitingSeedHex = AiTaskRegistry.TasksFor(player)
@@ -114,16 +120,6 @@ namespace Game.Ai
                 order = order.OrderByDescending(h => h.Equals(awaitingSeedHex.Value) ? 1 : 0);
 
             return order;
-        }
-
-        // A garrison that's empty, or holds only its hero — see AiArmyRoles.CanSpareGarrisonMember's
-        // own comment for why a lone hero can end up minding a fresh base's garrison, and
-        // GarrisonHexesForPlacement's own comment for why a plain Unit card is steered toward
-        // relieving it.
-        private static bool IsWeakSecondaryGarrison(PlayerSetupData player, HexCoord hex)
-        {
-            ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
-            return garrison != null && (garrison.Members.Count == 0 || garrison.Members.All(m => m.IsHero));
         }
 
         internal static HexCoord MostActiveOwnGarrisonHex(PlayerSetupData player)

@@ -426,7 +426,7 @@ namespace Game.UI
             BuildingData building = BuildingRegistry.FindAt(loserArmy.Hex);
             if (building == null || building.Owner != loserArmy.Owner)
                 return;
-            BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner);
+            BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner, hexSelectionController);
         }
 
         private static void RevertBerserkStacks(ArmyData army)

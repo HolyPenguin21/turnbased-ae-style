@@ -131,17 +131,24 @@ namespace Game.Ai
             return IsHeroLedCombatArmy(army) && army.Members.Count == 1;
         }
 
-        // Guards a second-base garrison's last defender from ever being pulled out as a Raid/
-        // Defence/reorg donor (project owner's own report: a fresh base's garrison could get
-        // seeded, then immediately stripped back to 0 by ordinary recruitment, leaving an
+        // Guards a second-base garrison's own defenders from ever being pulled below secure by a
+        // Raid/Defence/reorg donor pull (project owner's own report: a fresh base's garrison could
+        // get seeded, then immediately stripped back down by ordinary recruitment, leaving an
         // "unguarded enemy building" the AI itself created). Citadel-only exempt on purpose — its
         // own emergency defence (see AiDefencePlanner.TryDefencePreemptCandidates) already has the
-        // right to strip anything, and this guard must never fight that. The code below is
-        // deliberately NOT a narrower "the hero specifically can't leave" rule — Members.Count > 1
-        // blocks taking the LAST member regardless of who it is, hero included: a lone hero
-        // garrisoning a base post-BuildBase stays put exactly like a lone plain unit would, until
-        // AiManagementPlanner's own placement priority (see FindPlacement) routes a replacement in
-        // — only THEN does the guard's headcount-of-2 stop applying and let the hero move on.
+        // right to strip anything, and this guard must never fight that.
+        //
+        // 2026-08-24 tightened (project owner's own SecureBase spec) from the original bare
+        // "Members.Count > 1" (never take the literal last body) to the real secure floor —
+        // IsBaseGarrisonSecure's own secureBaseMinNonHeroUnits headcount: taking a NON-hero from a
+        // non-citadel garrison is only allowed if it would still have that many non-hero members
+        // left afterward, so recruitment can never pull an already-secure second base back down
+        // below secure, and can never touch an already-fragile one at all (remaining count would
+        // fall below the floor). A hero leaving is still governed by the old coarser "don't take
+        // the literal last body" rule — heroes never count toward the secure headcount either way
+        // (see IsBaseGarrisonSecure's own comment), so a lone hero minding a fresh base's garrison
+        // stays put exactly like before, until AiManagementPlanner's own placement priority (see
+        // GarrisonHexesForPlacement) routes a real replacement in.
         public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit)
         {
             if (player == null || source == null || unit == null)
@@ -154,7 +161,31 @@ namespace Game.Ai
             if (source.Hex.Equals(citadelHex))
                 return true;
 
-            return source.Members.Count > 1;
+            if (unit.IsHero)
+                return source.Members.Count > 1;
+
+            int remainingNonHero = source.Members.Count(m => !m.IsHero) - 1;
+            return remainingNonHero >= AiConfig.secureBaseMinNonHeroUnits;
+        }
+
+        // A non-citadel base's own garrison counts as genuinely secure once it holds at least
+        // AiConfig.secureBaseMinNonHeroUnits combat-capable NON-HERO members — a hero may sit
+        // alongside them (SecureBaseTask never turns one away), but never substitutes for this
+        // headcount (project owner's own spec: "hero может дополнять защиту, но не заменяет этот
+        // минимум" — a single hero-only garrison, exactly the state AiAggressionPlanner's own
+        // AdvanceGarrisonSeed can leave behind once its own builder army runs out of non-hero
+        // members to spare, is NOT secure). Shared by (at least) four mechanisms per the project
+        // owner's own call: SecureBaseTask's own trigger/completion, card-placement routing
+        // (AiManagementPlanner.GarrisonHexesForPlacement), the donor guard right above
+        // (CanSpareGarrisonMember), and GarrisonReorgTask's own balance/composition tiers, which all
+        // read AiArmyRoles.CanSpareGarrisonMember already — one predicate, one place. False (never
+        // secure) if this player has no garrison at all on `hex` yet.
+        public static bool IsBaseGarrisonSecure(PlayerSetupData player, HexCoord hex)
+        {
+            if (player == null)
+                return false;
+            ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
+            return garrison != null && garrison.Members.Count(m => !m.IsHero) >= AiConfig.secureBaseMinNonHeroUnits;
         }
     }
 }

@@ -389,7 +389,7 @@ namespace Game.Map
                     // on the same hex as someone else's army. Shared with BattleScreenUI.Retreat.
                     // cs's PerformRetreat, which needs the exact same check for a retreat landing
                     // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
-                    BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner);
+                    BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this);
 
                     // movingArmy's own marker was last positioned by MoveAlong's resolveOffset
                     // call for actualHex, which ran BEFORE the destroy above — if that undefended

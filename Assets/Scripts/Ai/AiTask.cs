@@ -66,6 +66,14 @@ namespace Game.Ai
                         // AiTask.DefendingCitadel, a flag bolted onto RaidWeakerArmy) into its own
                         // first-class category; this redesign keeps that same single Kind.
 
+        SecureBase, // Оборона · initial-defence for a fresh/captured/weakened second base — see
+                    // SecureBaseTask's own class comment for trigger/lifecycle and
+                    // AiDefencePlanner.TryStartSecureBaseCandidates/TryContinueSecureBaseTask for
+                    // orchestration. Distinct from DefendCitadel (which never starts without an
+                    // actual known/estimated threat nearby — see that Kind's own comment) — this
+                    // one reacts to the GARRISON'S OWN roster, not the enemy, and completes the
+                    // moment AiArmyRoles.IsBaseGarrisonSecure says the base can stand on its own.
+
         // Менеджмент — a single stranded, untasked lone field army (GarrisonReorgTask.
         // FindStrandedWeakArmies) walking itself home to the nearest own garrison hex so the
         // existing IdleBalance lone-army-fold tier (FindLoneArmyFoldMove) can pick it up once it
@@ -114,6 +122,7 @@ namespace Game.Ai
                 case AiTaskKind.BuildBase:
                     return AiTaskCategory.Aggression;
                 case AiTaskKind.DefendCitadel:
+                case AiTaskKind.SecureBase:
                     return AiTaskCategory.Defence;
                 default:
                     return AiTaskCategory.Management;
@@ -133,13 +142,21 @@ namespace Game.Ai
         public ArmyData Army;
         public HexCoord TargetHex;
 
-        // DefendCitadel only for now — which of this player's own garrisoned hexes (the starting
-        // citadel, or a later-founded Base, see AiTurnController.OwnGarrisonHexes/
-        // NearestOwnGarrisonHex) this task patrols around/turtles back to. Set once at task creation
-        // by TryStartDefenceCandidatesFor's own per-home loop (see AiDefencePlanner.
-        // TryStartDefenceCandidates) and never recomputed afterward — a task started at one base
-        // stays anchored there even if a closer base were founded later, same "committed, not
-        // re-shopped every step" principle TargetHex itself already follows for RaidWeakerArmy.
+        // DefendCitadel — which of this player's own garrisoned hexes (the starting citadel, or a
+        // later-founded Base, see AiTurnController.OwnGarrisonHexes/NearestOwnGarrisonHex) this task
+        // patrols around/turtles back to. Set once at task creation by TryStartDefenceCandidatesFor's
+        // own per-home loop (see AiDefencePlanner.TryStartDefenceCandidates) and never recomputed
+        // afterward — a task started at one base stays anchored there even if a closer base were
+        // founded later, same "committed, not re-shopped every step" principle TargetHex itself
+        // already follows for RaidWeakerArmy.
+        //
+        // SecureBase (2026-08-24) — reuses this exact same field for the same purpose: the base
+        // hex this task is securing, set once at creation (AiDefencePlanner.
+        // TryStartSecureBaseCandidates) and never recomputed. TargetHex, separately, is the
+        // courier's own current travel destination (always equal to HomeHex here — SecureBase never
+        // has a moving target the way DefendCitadel's Active posture does), kept distinct purely so
+        // SecureBaseTask's own travel-phase check reads the same "Army.Hex vs TargetHex" shape every
+        // other travel-stage task in this codebase already uses.
         // RaidWeakerArmy/RaidReinforce deliberately don't use this field at all, even though their
         // own retreat/regroup now also targets the nearest own base (2026-08-21) — that case
         // recomputes AiTurnController.NearestOwnGarrisonHex fresh every call instead of storing it

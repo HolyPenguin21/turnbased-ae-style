@@ -349,7 +349,13 @@ namespace Game.Ai
             AiTask task = AiTaskRegistry.TaskFor(player, army);
             if (task == null)
                 return false;
-            if (task.Kind == AiTaskKind.RaidWeakerArmy)
+            // SecureBase's own courier (2026-08-24) — same reasoning as RaidWeakerArmy below: a
+            // courier sitting at its destination base hex, cargo not yet handed over, is a lone
+            // army "at base" by IsLoneArmyAtBase's own reading and would otherwise be a legal
+            // ordinary reorg fold target — that would silently swallow SecureBase's own bookkeeping
+            // (task.Army) without actually delivering the cargo into the RIGHT army if it landed on
+            // some other field army at the hex instead of the garrison itself.
+            if (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.SecureBase)
                 return true;
             return task.Kind == AiTaskKind.DefendCitadel
                 && (task.Posture == AiDefencePosture.Active || task.Posture == AiDefencePosture.Turtle);

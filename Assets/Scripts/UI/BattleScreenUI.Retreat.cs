@@ -118,7 +118,7 @@ namespace Game.UI
                 // while the building it's about to destroy still counts as "hasBuilding", leaving
                 // it stranded beside a marker that's gone a moment later (see HexSelectionController
                 // .Movement.cs's own identical ordering fix for the same bug on an ordinary move).
-                BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner);
+                BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner, hexSelectionController);
                 hexSelectionController?.RestackArmiesOn(destination, null);
 
                 // Per the user's own spec: landing on a hex held by an engageable hostile army

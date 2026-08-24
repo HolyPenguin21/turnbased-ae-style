@@ -155,14 +155,10 @@ namespace Game.Map
 
             // Same rule as the auto-placed citadel (see CitadelSetupController.CreateGarrison):
             // a Barracks-tagged building needs its own garrison to receive Unit/Hero cards
-            // deployed from hand — not every Base card grants Barracks, so this only fires when
-            // the card's own grantedAbilities actually include it.
-            if (building.HasAbility(UnitAbilities.Barracks))
-            {
-                var garrison = new ArmyData { Name = "Garrison", Hex = hex, Owner = owner, IsGarrison = true };
-                ArmyRegistry.Register(garrison);
-                CreateArmyMarker(garrison);
-            }
+            // deployed from hand — not every Base card grants Barracks, so BuildingRegistry.
+            // EnsureGarrisonForBuilding (shared with the capture path — see its own comment)
+            // no-ops unless the card's own grantedAbilities actually include it.
+            BuildingRegistry.EnsureGarrisonForBuilding(building, this);
 
             // A "Concord Citadel" card played from hand is otherwise identical to the starting
             // citadel (same abilities, same stats) but per the user's own spec does NOT get the
