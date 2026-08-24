@@ -659,6 +659,24 @@ namespace Game.Ai
             HashSet<HexCoord> ownGarrisonHexes = new HashSet<HexCoord>(OwnGarrisonHexes(player));
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player).ToList())
             {
+                // P3 fix (2026-08-24, project owner's own log audit): an army whose roster was wiped
+                // out in combat (rather than drained down to 0 by ConsolidateUnitsRoutine/etc.) can
+                // still carry a stale AiTask referencing it — that task can never do anything useful
+                // with zero members, but IsDisposableEmptyArmy treats "has a task" as "still in use"
+                // and leaves it alone forever (see that method's own comment), so the shell survives
+                // every ordinary cleanup pass as a permanent orphan. Invalidate the stale task FIRST,
+                // then let the normal reserve/surplus/field policy below handle the now-task-less
+                // shell exactly like any other empty army.
+                if (army.Members.Count == 0)
+                {
+                    AiTask staleTask = AiTaskRegistry.TaskFor(player, army);
+                    if (staleTask != null)
+                    {
+                        AiTaskRegistry.Remove(player, staleTask);
+                        AiDebugLog.Write($"[AI] {player.Nickname}: removes stale {staleTask.Kind} task from empty army \"{army.Name}\".");
+                    }
+                }
+
                 if (!GarrisonReorgTask.IsDisposableEmptyArmy(player, army))
                     continue;
                 string name = army.Name;

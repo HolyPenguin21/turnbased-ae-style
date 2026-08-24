@@ -938,11 +938,12 @@ namespace Game.Ai
         // acting" rule this file follows everywhere else:
         //   - not IsGarrison/IsPrison, empty, task-less, has a live Controller (IsDisposableEmptyArmy
         //     itself)
-        //   - no active AiTask references it — every ArmyData-typed field AiTask.cs carries is
-        //     either `.Army` or `.TargetArmy`, both already covered by AiTaskRegistry.TaskFor's own
-        //     lookup inside IsDisposableEmptyArmy; AiResourceReservation.cs never stores an ArmyData
-        //     reference at all (only per-AiTask resource claims), so there's nothing else in this
-        //     codebase left to check
+        //   - no active AiTask directly owns it — AiTaskRegistry.TaskFor's own lookup inside
+        //     IsDisposableEmptyArmy only ever matches a task's `.Army` field, NOT `.TargetArmy` (e.g.
+        //     a RaidReinforce courier task's target); an empty army referenced only via TargetArmy
+        //     can still slip through here. Not a gap this narrow fix closes — see
+        //     AiTurnController.RunEmptyArmyCleanup's own stale-`.Army`-task invalidation for the case
+        //     that fix actually targets.
         //   - strictly beyond the maxSpareArmies reserve, via the exact same DisposableEmptyArmies
         //     ordering/Skip IsDisposableEmptyArmy itself already uses, so the two can never disagree
         //     about which specific instances count as "the kept reserve"
