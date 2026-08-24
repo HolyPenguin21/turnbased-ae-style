@@ -352,7 +352,7 @@ namespace Game.UI
             if (!moreForThisArmy && heroArmy != null && heroArmy.Members.Count > 0
                 && !BattleInitiator.IsCombatCapable(heroArmy) && attackPopup != null)
             {
-                PerformRetreat(heroArmy, out bool destroyed);
+                PerformRetreat(heroArmy, hunterArmy, out bool destroyed);
                 string message = destroyed
                     ? (_localArmy == heroArmy ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
                     : (_localArmy == heroArmy ? "Your army retreats." : "The enemy retreats.");

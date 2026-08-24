@@ -576,6 +576,21 @@ namespace Game.Ai
 
             if (!AiTurnController.FindAffordableStep(ctx.Map, task.Army, target.Value).HasValue)
                 return null;
+
+            // AP-cost guard (2026-08-24, project owner's own root-cause report — see
+            // AiConfig.defencePatrolMaxApFraction's own comment): this is the routine,
+            // no-known-threat branch specifically — every urgent case above (Active intercept,
+            // local encounter, wounded retreat, Turtle) already returned its own decision earlier
+            // in this method and never reaches here, so this guard can never delay a real reaction,
+            // only an ordinary background facility visit. Skipped entirely once the army already
+            // activated this turn (ActivationApCost is a one-time-per-turn charge — nothing left to
+            // guard against for a second move the same turn).
+            if (!task.Army.HasActivatedThisTurn
+                && task.Army.ActivationApCost > root.ActionPoints * AiConfig.defencePatrolMaxApFraction)
+            {
+                return null; // too costly for a low-priority visit this step — stays near home instead
+            }
+
             task.TargetHex = target.Value;
             return AiDecision.Move(task.Army, target.Value, "patrol — visits an extraction facility",
                 task, AiConfig.defencePatrolScore, AiTaskCategory.Defence);

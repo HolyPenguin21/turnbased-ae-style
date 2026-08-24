@@ -62,7 +62,7 @@ namespace Game.UI
             RevertBerserkStacks(army);
             RevertBerserkStacks(survivingArmy);
 
-            PerformRetreat(army, out bool destroyed);
+            PerformRetreat(army, survivingArmy, out bool destroyed);
             string title = destroyed
                 ? (_localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
                 : (_localArmy == army ? "Your army retreats." : "The enemy retreats.");
@@ -84,10 +84,27 @@ namespace Game.UI
         // after its hero evades a Capture Kill Challenge (see BattleScreenUI.Combat.cs's
         // HandleCaptureKillOutcome — same algorithm, per the user's own spec: "по тем же
         // правилам что и отступление из боя"). `destroyed` (out) tells the caller which of the
-        // two happened, since each has its own message/next-step to show.
-        private void PerformRetreat(ArmyData army, out bool destroyed)
+        // two happened, since each has its own message/next-step to show. `survivingArmy` is
+        // whichever army is still standing on `battleHex` once this one leaves (the caller
+        // already knows this — ResolveRetreat's own `survivingArmy`, HandleCaptureKillOutcome's
+        // own `hunterArmy`) — needed below for the own-base-garrison handover.
+        private void PerformRetreat(ArmyData army, ArmyData survivingArmy, out bool destroyed)
         {
             HexCoord battleHex = army.Hex;
+
+            // 2026-08-24 fix (project owner's own root-cause report): captured BEFORE anything
+            // below moves `army` or clears its IsGarrison flag. A retreating GARRISON defending
+            // its OWN base is the one case a retreat must also hand the base itself to the winner
+            // — see the two blocks below (IsGarrison clear, CaptureOrDestroy) for why each is
+            // needed; without both, the old owner keeps the Base's AP bonus forever (the garrison
+            // "physically" left but ownership never changed) AND the fled army keeps masquerading
+            // as a garrison at wherever it lands (see AiTurnController.OwnGarrisonHexes — any
+            // IsGarrison army counts, regardless of what's actually on its hex — which is what
+            // sent SecureBaseTask chasing a "base" at the garrison's retreat destination instead
+            // of the real one).
+            BuildingData defendedBuilding = BuildingRegistry.FindAt(battleHex);
+            bool retreatingFromOwnBase = army.IsGarrison && defendedBuilding != null && defendedBuilding.IsBase
+                && defendedBuilding.Owner == army.Owner;
 
             // The tactical _grid (see BattleGrid) holds its own UnitData references per cell,
             // entirely separate from ArmyData.Members — relocating or clearing Members below
@@ -107,8 +124,32 @@ namespace Game.UI
             destroyed = !relocated;
             if (relocated)
             {
+                // Cleared BEFORE MoveArmy — see this method's own class comment above. Without
+                // this, army.IsGarrison stays true after landing on `destination`, an ordinary
+                // field hex that isn't this (or any) base, so it keeps counting toward
+                // AiTurnController.OwnGarrisonHexes forever.
+                if (retreatingFromOwnBase)
+                    army.IsGarrison = false;
+
                 ArmyRegistry.MoveArmy(army, destination);
                 hexSelectionController?.RestackArmiesOn(battleHex, null);
+
+                // Per the user's own spec: a garrison retreating off its OWN base hands the base
+                // to whoever's left standing there — same "nobody of the old owner left to defend
+                // it" rule CaptureOrDestroyIfUndefended already applies to an ordinary undefended
+                // walk-in, just reached here via combat+retreat instead. Skipped if another
+                // engageable army of the old owner is still holding the hex (a second defender),
+                // or if survivingArmy itself didn't actually end up there (e.g. it also retreated,
+                // or was destroyed outright — "both sides gone" is simply not a capture).
+                if (retreatingFromOwnBase && survivingArmy != null && survivingArmy.Owner != null
+                    && survivingArmy.Owner != defendedBuilding.Owner && survivingArmy.Hex.Equals(battleHex)
+                    && BattleInitiator.IsEngageable(survivingArmy))
+                {
+                    bool otherDefenderRemains = ArmyRegistry.AllAt(battleHex)
+                        .Any(resident => resident.Owner == defendedBuilding.Owner && BattleInitiator.IsEngageable(resident));
+                    if (!otherDefenderRemains)
+                        BuildingRegistry.CaptureOrDestroy(defendedBuilding, survivingArmy.Owner, hexSelectionController);
+                }
 
                 // Per the user's own spec: an undefended enemy extraction facility on the
                 // destination hex doesn't survive the retreating army walking onto it, same rule

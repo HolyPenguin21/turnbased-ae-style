@@ -132,16 +132,30 @@ namespace Game.Ai
                 ? NearestUnvisitedDistance(actor, map, citadelHex.Value)
                 : null;
 
-            AiScoutPlanner.ScoutTarget? best = null;
+            // Frontier (opens ≥1 fresh neighbor) always wins over cleanup (opens none) — a cleanup
+            // candidate is only ever the actual pick once no frontier candidate exists anywhere on
+            // the map this step (see AiConfig.visitCleanupScore's own comment on why this matters:
+            // without the split, a zero-value hole in the coverage could outscore — or simply get
+            // picked ahead of — genuine unexplored frontier just because it happened to be closer).
+            AiScoutPlanner.ScoutTarget? bestFrontier = null;
+            AiScoutPlanner.ScoutTarget? bestCleanup = null;
             foreach (HexCoord candidate in map.AllCoords)
             {
                 AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, candidate, citadelHex, wavefrontDistance, excludedTargets);
                 if (!scored.HasValue)
                     continue;
-                if (best != null && !(scored.Value.Score > best.Value.Score))
-                    continue;
-                best = scored;
+                if (scored.Value.IsCleanup)
+                {
+                    if (bestCleanup == null || scored.Value.Score > bestCleanup.Value.Score)
+                        bestCleanup = scored;
+                }
+                else
+                {
+                    if (bestFrontier == null || scored.Value.Score > bestFrontier.Value.Score)
+                        bestFrontier = scored;
+                }
             }
+            AiScoutPlanner.ScoutTarget? best = bestFrontier ?? bestCleanup;
             if (best == null)
                 return null;
 
@@ -156,7 +170,8 @@ namespace Game.Ai
             if (IsFirstStepAffordable(map, army, best.Value.Hex))
                 return best;
 
-            AiScoutPlanner.ScoutTarget? affordableNeighbor = null;
+            AiScoutPlanner.ScoutTarget? affordableFrontier = null;
+            AiScoutPlanner.ScoutTarget? affordableCleanup = null;
             foreach (HexCoord neighbor in HexGridMath.Neighbors(army.Hex))
             {
                 if (!map.TryGetTerrainAt(neighbor, out TerrainTypeEntry entry)
@@ -167,15 +182,23 @@ namespace Game.Ai
                 AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, neighbor, citadelHex, wavefrontDistance, excludedTargets);
                 if (!scored.HasValue)
                     continue;
-                if (affordableNeighbor != null && !(scored.Value.Score > affordableNeighbor.Value.Score))
-                    continue;
-                affordableNeighbor = scored;
+                if (scored.Value.IsCleanup)
+                {
+                    if (affordableCleanup == null || scored.Value.Score > affordableCleanup.Value.Score)
+                        affordableCleanup = scored;
+                }
+                else
+                {
+                    if (affordableFrontier == null || scored.Value.Score > affordableFrontier.Value.Score)
+                        affordableFrontier = scored;
+                }
             }
             // Nothing affordable even among direct neighbors — the army genuinely can't use its
             // remaining movement this turn, so fall back to the original (unaffordable) pick;
             // AiTurnController's own "stuck" handling takes it from there, same as before this
-            // affordability check existed.
-            return affordableNeighbor ?? best;
+            // affordability check existed. Same frontier-over-cleanup preference as the full scan
+            // above.
+            return affordableFrontier ?? affordableCleanup ?? best;
         }
 
         // Shared scoring/filtering for a single candidate hex — used both for the full-map scan
@@ -243,11 +266,20 @@ namespace Game.Ai
                     freshNeighbors++;
             score += freshNeighbors * AiConfig.freshNeighborWeight;
 
+            // A candidate that opens nothing new is only ever worth visiting as a nearby cleanup —
+            // see FindTarget's own frontier/cleanup split and AiConfig.visitCleanupMaxDistance's own
+            // comment. Excluded outright once too far from the SCOUT (not the citadel) for that to
+            // be worthwhile — a distant single-hex gap just waits for the wavefront to reach it
+            // naturally instead of pulling a scout across the map for zero real gain.
+            bool isCleanup = freshNeighbors == 0;
+            if (isCleanup && distanceFromScout > AiConfig.visitCleanupMaxDistance)
+                return null;
+
             if (citadelHex.HasValue)
                 score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.visitTargetCitadelWeight;
 
             return new AiScoutPlanner.ScoutTarget(candidate, score,
-                $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)");
+                $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)", isCleanup);
         }
 
         // This composition never fights (see this class's own "Поведение" comment), so it must

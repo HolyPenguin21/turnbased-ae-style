@@ -129,6 +129,23 @@ namespace Game.Ai
         // comment above for why this never reaches the cross-category score) — separate from
         // citadelDistancePenaltyPerHex below, which IS cross-category for Экономика/Агрессия.
         public const float visitTargetCitadelWeight = 2f;
+        // Cleanup fallback (2026-08-24, project owner's own root-cause report): VisitHexTask.
+        // FindTarget now splits candidates into frontier (freshNeighbors > 0) and cleanup
+        // (freshNeighbors == 0), preferring frontier whenever one exists — a cleanup target only
+        // ever gets picked once no frontier candidate is left anywhere on the map this step. This
+        // score REPLACES ReconMoveWeight's own reconBaseWeight contribution for a cleanup move
+        // (not stacked on top of it) — kept low so a cleanup hop never outbids a real frontier move
+        // on some OTHER army's own candidate this same step, and stays clearly below every routine
+        // Оборона/Агрессия/Экономика candidate too, matching the doc's "cleanup ниже обычного
+        // Recon" call.
+        public const float visitCleanupScore = 20f;
+        // How many hexes from the scout's OWN current position (not the citadel) a cleanup
+        // candidate may still be — keeps a zero-value single-hex gap from dragging a scout
+        // halfway across the map for one hole in the frontier; a farther leftover hex just waits
+        // for the wavefront to reach it naturally, or for a later solo cleanup pass once it's
+        // actually close. Deliberately much tighter than visitRingBand (which bounds frontier
+        // candidates by CITADEL distance, not scout distance).
+        public const int visitCleanupMaxDistance = 2;
         // While Агрессия has an active RaidWeakerArmy task (any — a real committed raid force
         // matters more than another routine scouting hop), subtracted from VisitHex's own flat
         // reconBaseWeight contribution to the arbiter (project owner's own 2026-08-19 rebalance —
@@ -609,6 +626,19 @@ namespace Game.Ai
         // 90 Patrol can lose arbitration to Economy/Recon/Aggression on essentially every busy
         // step — left as-is pending the project owner's own call on whether that's acceptable.
         public const float defencePatrolScore = 90f;
+        // 1.2's own AP-cost guard (2026-08-24, project owner's own root-cause report): a
+        // DefendCitadel army that grew large fighting off a real Active threat doesn't shrink back
+        // down once that threat clears — same task, same (now big) army converts straight back to
+        // Patrol, per this class's own header comment. A big army's ActivationApCost (sum of every
+        // member's own cost) is fully justified for an actual intercept/siege reaction, but not for
+        // this branch alone — the ROUTINE "nothing known nearby, just visit the next facility on the
+        // cycle" move (BuildPostureDecision's own final `target != null` case). Gated on the
+        // FRACTION of currently available root.ActionPoints this one activation would consume, not
+        // on the army's own size — a big army is exactly as free to intercept/chase/turtle as
+        // always (those branches never read this), it's only the low-value background visit that
+        // waits for a cheaper turn instead of nearly emptying the AP pool for a facility nobody's
+        // threatening.
+        public const float defencePatrolMaxApFraction = 0.5f;
         // SecureBase (2026-08-24, project owner's own spec) — a fresh/captured/weakened second
         // base's own initial-defence task, ranked above routine Patrol(90) — an unsecured base is
         // more urgent than ordinary background coverage — but below the real-threat tier

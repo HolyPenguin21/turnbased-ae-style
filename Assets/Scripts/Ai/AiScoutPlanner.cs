@@ -32,12 +32,19 @@ namespace Game.Ai
             public readonly HexCoord Hex;
             public readonly float Score;
             public readonly string Reason;
+            // VisitHexTask.ScoreCandidate's own frontier/cleanup split (2026-08-24) — true only for
+            // a candidate with zero fresh (unvisited) neighbors, picked ONLY as a fallback once no
+            // real frontier candidate is left this step. Every other ScoutTarget source (TryFlee,
+            // TryReturnHomeCandidates) leaves this false — cleanup is a VisitHexTask.FindTarget-only
+            // concept.
+            public readonly bool IsCleanup;
 
-            public ScoutTarget(HexCoord hex, float score, string reason)
+            public ScoutTarget(HexCoord hex, float score, string reason, bool isCleanup = false)
             {
                 Hex = hex;
                 Score = score;
                 Reason = reason;
+                IsCleanup = isCleanup;
             }
         }
 
@@ -207,7 +214,16 @@ namespace Game.Ai
                 return null;
             }
 
-            float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
+            // A cleanup target (VisitHexTask.FindTarget's own frontier/cleanup split — opens zero
+            // fresh neighbors, only ever picked once no real frontier candidate is left) replaces
+            // the usual ReconMoveWeight contribution with AiConfig.visitCleanupScore outright,
+            // rather than stacking on top of it — see that field's own comment.
+            float baseWeight = fleeTarget.HasValue
+                ? ReconMoveWeight(ctx, isFlee: true)
+                : target.Value.IsCleanup
+                    ? AiConfig.visitCleanupScore
+                    : ReconMoveWeight(ctx);
+            float score = baseWeight
                 - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                 + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
             var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
@@ -262,7 +278,13 @@ namespace Game.Ai
                     // a brand-new task hasn't stalled yet, so its clock starts now, not "ages ago".
                     VisitLastProgressTurn = ctx.TurnNumber,
                 };
-                float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
+                // Same cleanup-replaces-frontier-weight rule as TryContinueVisitTask above.
+                float baseWeight = fleeTarget.HasValue
+                    ? ReconMoveWeight(ctx, isFlee: true)
+                    : target.Value.IsCleanup
+                        ? AiConfig.visitCleanupScore
+                        : ReconMoveWeight(ctx);
+                float score = baseWeight
                     - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                     + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
                 var stepTarget = new ScoutTarget(nextStep.Value, target.Value.Score, target.Value.Reason);
