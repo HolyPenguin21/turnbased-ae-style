@@ -136,10 +136,12 @@ namespace Game.Ai
         // seeded, then immediately stripped back to 0 by ordinary recruitment, leaving an
         // "unguarded enemy building" the AI itself created). Citadel-only exempt on purpose — its
         // own emergency defence (see AiDefencePlanner.TryDefencePreemptCandidates) already has the
-        // right to strip anything, and this guard must never fight that. Not a "hero can't leave"
-        // rule — a lone hero garrisoning a base post-BuildBase is just as spare-able as any other
-        // sole member once nothing would replace it; AiManagementPlanner's own placement priority
-        // (see FindPlacement) is what actually gets a replacement in before the hero moves on.
+        // right to strip anything, and this guard must never fight that. The code below is
+        // deliberately NOT a narrower "the hero specifically can't leave" rule — Members.Count > 1
+        // blocks taking the LAST member regardless of who it is, hero included: a lone hero
+        // garrisoning a base post-BuildBase stays put exactly like a lone plain unit would, until
+        // AiManagementPlanner's own placement priority (see FindPlacement) routes a replacement in
+        // — only THEN does the guard's headcount-of-2 stop applying and let the hero move on.
         public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit)
         {
             if (player == null || source == null || unit == null)

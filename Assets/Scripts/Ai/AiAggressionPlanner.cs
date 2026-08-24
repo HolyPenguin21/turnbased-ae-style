@@ -196,7 +196,7 @@ namespace Game.Ai
                 // pool.AvailableArmies() for that method to find on its own. Uses homeHex (nearest
                 // own base), not citadelHex — 2026-08-21, project owner's own call: a courier can
                 // just as well come from a closer forward base as from the citadel.
-                UnitData recruit = RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, task.Army, out ArmyData recruitSource, task.Army);
+                UnitData recruit = RaidWeakerArmyTask.FindNonHeroRecruitAt(player, homeHex, pool, task.Army, out ArmyData recruitSource, task.Army);
                 bool canDispatch = recruit != null && recruitSource != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
                 bool goHome = !canDispatch;
                 if (!goHome)
@@ -774,7 +774,7 @@ namespace Game.Ai
                 RaidWeakerArmyTask.RaidTarget? target = RaidWeakerArmyTask.FindTarget(player, army, ctx.Map);
                 ArmyData recruitSource = null;
                 UnitData recruit = target.HasValue
-                    ? RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, army, out recruitSource, army)
+                    ? RaidWeakerArmyTask.FindNonHeroRecruitAt(player, homeHex, pool, army, out recruitSource, army)
                     : null;
                 bool canDispatch = recruit != null && recruitSource != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
 

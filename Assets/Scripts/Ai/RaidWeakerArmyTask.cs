@@ -522,7 +522,7 @@ namespace Game.Ai
         // not whichever body happened to be sitting there first. Falls back to the first available
         // candidate regardless of type if nothing matches (or `preferTypeMatchFor` is null) — same
         // behavior as before this parameter existed.
-        public static UnitData FindNonHeroRecruitAt(HexCoord hex, AiResourcePool pool, ArmyData excludeArmy,
+        public static UnitData FindNonHeroRecruitAt(PlayerSetupData player, HexCoord hex, AiResourcePool pool, ArmyData excludeArmy,
             out ArmyData source, ArmyData preferTypeMatchFor = null)
         {
             HashSet<UnitTypeTag> preferredTypes = preferTypeMatchFor != null
@@ -538,6 +538,13 @@ namespace Game.Ai
                 foreach (UnitData unit in candidate.Members)
                 {
                     if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                        continue;
+                    // Same last-garrison-defender guard every other donor lookup in this codebase
+                    // already applies (2026-08-24 follow-up, project owner's own report) — this
+                    // courier pick used to be the one path left that could still strip a second
+                    // base's sole remaining defender, since `hex` here is "nearest own base",
+                    // which is routinely that same fresh base once it exists.
+                    if (!AiArmyRoles.CanSpareGarrisonMember(player, candidate, unit))
                         continue;
                     if (preferredTypes != null && preferredTypes.Count > 0 && unit.TypeTags.Overlaps(preferredTypes))
                     {
