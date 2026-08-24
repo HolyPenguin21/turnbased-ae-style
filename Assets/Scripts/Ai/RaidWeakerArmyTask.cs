@@ -331,6 +331,21 @@ namespace Game.Ai
             return score;
         }
 
+        // Same ProximityScore FindTarget's own scan already computes, exposed for a caller that
+        // needs to score ONE specific already-known hex (2026-08-24, project owner's own report —
+        // AiAggressionPlanner.TryRaidAssembleCandidates' own retarget hysteresis needs the CURRENT
+        // TargetHex scored the same honest way a candidate replacing it gets scored, rather than
+        // switching on any marginal edge at all) without a second copy of the formula. `threat` —
+        // the caller already has this from its own RequiredStrengthAt read, no need to fetch it
+        // again here.
+        public static float ScoreTarget(PlayerSetupData actor, ArmyData army, HexCoord hex, ThreatStrength threat)
+        {
+            HexCoord? citadelHex = actor.CitadelHexQ.HasValue && actor.CitadelHexR.HasValue
+                ? new HexCoord(actor.CitadelHexQ.Value, actor.CitadelHexR.Value)
+                : (HexCoord?)null;
+            return ProximityScore(army, hex, citadelHex, threat);
+        }
+
         // A whole existing idle army (doesn't need to be hero-led) that already clears IsReady's
         // own worth-it read against `threat`. Strongest-first so a smaller army is left free for
         // other work when a bigger one would already do. No separate HP filter here — IsReady's own
@@ -476,13 +491,14 @@ namespace Game.Ai
         // candidate regardless of type if nothing matches (or `preferTypeMatchFor` is null) — same
         // behavior as before this parameter existed.
         public static UnitData FindNonHeroRecruitAt(HexCoord hex, AiResourcePool pool, ArmyData excludeArmy,
-            ArmyData preferTypeMatchFor = null)
+            out ArmyData source, ArmyData preferTypeMatchFor = null)
         {
             HashSet<UnitTypeTag> preferredTypes = preferTypeMatchFor != null
                 ? new HashSet<UnitTypeTag>(preferTypeMatchFor.Members.Where(m => !m.IsHero).SelectMany(m => m.TypeTags))
                 : null;
 
             UnitData fallback = null;
+            ArmyData fallbackSource = null;
             foreach (ArmyData candidate in pool.AvailableArmies())
             {
                 if (candidate == excludeArmy || candidate.IsPrison || !candidate.Hex.Equals(hex))
@@ -492,10 +508,18 @@ namespace Game.Ai
                     if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
                         continue;
                     if (preferredTypes != null && preferredTypes.Count > 0 && unit.TypeTags.Overlaps(preferredTypes))
+                    {
+                        source = candidate;
                         return unit;
-                    fallback ??= unit;
+                    }
+                    if (fallback == null)
+                    {
+                        fallback = unit;
+                        fallbackSource = candidate;
+                    }
                 }
             }
+            source = fallbackSource;
             return fallback;
         }
 

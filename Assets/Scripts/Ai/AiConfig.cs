@@ -188,6 +188,19 @@ namespace Game.Ai
         // one might never actually finish gathering enough force. Roughly "a full 0%→100% win-
         // chance swing is worth about 6 hexes of proximity" at this default — tune independently.
         public const float raidWinChanceRankWeight = 30f;
+        // Retarget hysteresis (2026-08-24, project owner's own report) —
+        // AiAggressionPlanner.TryRaidAssembleCandidates' own StillAssembling retarget check no
+        // longer switches off the CURRENT TargetHex just because ANY other known target scores
+        // marginally higher this exact step (RaidWeakerArmyTask.ScoreTarget re-ranks the old hex
+        // the same honest way FindTarget's own scan ranks every candidate) — the new target has to
+        // beat it by MORE than this, or win outright via a readiness transition or the old target
+        // going invalid (see that method's own comment for the full override list). 5f mirrors
+        // scoutProximityWeight's own per-hex weight — a new target has to be worth roughly one full
+        // hex of proximity better than the old one, not just noise, before the force gathered so
+        // far toward the old one gets abandoned. Only matters while StillAssembling — once the army
+        // starts travelling this whole retarget check doesn't run at all any more (see that
+        // method's own comment), so nothing changes mid-route.
+        public const float raidRetargetMinImprovement = 5f;
         // raidReadyArmyBonus removed 2026-08-20 (project owner's own call) — a target already
         // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path", no
         // assembly needed) now scores the same flat aggressionBaseWeight as any other ready
@@ -717,6 +730,24 @@ namespace Game.Ai
         // empty (Partial, not full suppression — if the OTHER role has nothing left in hand at
         // all, this role still has to keep winning, just at this same discount).
         public const float cardRoleAlternationDamping = 0.1f;
+        // Absolute deployment backlog pressure (2026-08-24, project owner's own report: cardRole
+        // BacklogShareWeight above reads only a role's own SHARE of the unplayed Hero+Unit pool,
+        // which is capped at 1.0 by construction — a hand holding 1 Unit card and a hand holding
+        // 10 both score the exact same managementBaseWeight+cardRoleBacklogShareWeight ceiling
+        // whenever nothing of the OTHER role is in hand, so a real pile-up of ready-to-play cards
+        // never pushed PlayCard any higher than a single lonely one would, and kept losing every
+        // step to routine Recon/Patrol scores well above it). This is a SEPARATE additive term on
+        // top of that share-based score — the total unplayed Hero+Unit count in hand, past a small
+        // soft cushion (managementBacklogSoftLimit) so an ordinary 1-3 card hand isn't pressured at
+        // all, capped hard (managementDeploymentScoreCap) well below every real emergency tier
+        // (Raid assembly/attack, Active Defence, Turtle — see their own constants) so a deep
+        // backlog can out-rank routine Recon/Patrol without ever preempting an actual emergency.
+        // Self-limiting by construction: playing a card lowers the backlog count, which lowers this
+        // same bonus next step — no new persistent state, no runaway score.
+        public const int managementBacklogSoftLimit = 3;
+        public const float managementBacklogPerCardBonus = 5f;
+        public const float managementBacklogBonusCap = 40f;
+        public const float managementDeploymentScoreCap = 95f;
         // Unit card composition-fit — see AiManagementPlanner.UnitCompositionFitBonus's own
         // comment for the full list of gaps this checks (Defense/Attack imbalance, melee/ranged
         // imbalance, too many ability-heavy units, a critically wounded raid-force member of a

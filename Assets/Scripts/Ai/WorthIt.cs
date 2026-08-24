@@ -81,16 +81,71 @@ namespace Game.Ai
         // a hot path later without a reason to.
         private const int MonteCarloTrials = 100;
 
+        // Deterministic per-matchup seed (2026-08-24 fix, project owner's own report) — built ONLY
+        // from the raw numeric stats that describe the matchup itself (Attack/Defense/HP/
+        // Initiative/hex bonus), never from GetHashCode() of a string or object (not guaranteed
+        // stable call-to-call, see .NET's own documented caveat). The SAME matchup — same army
+        // composition, same HP, same enemy, same hex — therefore always seeds the SAME
+        // System.Random and always plays out the SAME MonteCarloTrials trials, so a caller that
+        // asks WinChance the same question twice in a row (e.g. this class's own log-vs-verdict
+        // double read) gets the same answer both times. A real change to any input (a unit takes
+        // damage, the roster changes, a different enemy, a different hex) changes the seed and
+        // rolls a fresh set of trials. Deliberately its OWN System.Random per call, never
+        // UnityEngine.Random — this evaluation is read-only strategic bookkeeping, not a real game
+        // event, and must never consume (or be affected by) the same global RNG stream the actual
+        // game systems roll real, game-affecting outcomes from.
+        private static int BuildSeed(params float[] values)
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (float v in values)
+                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(v);
+                return hash;
+            }
+        }
+
+        private static int BuildRosterSeed(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus)
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + System.BitConverter.SingleToInt32Bits(hexDefenseBonus);
+                foreach (DefenderProfile p in attackerUnits)
+                    hash = AccumulateProfileHash(hash, p);
+                hash = hash * 31 + 12345; // separates the two rosters — an empty attacker side must
+                                           // never hash the same as an empty enemy side
+                foreach (DefenderProfile p in enemyUnits)
+                    hash = AccumulateProfileHash(hash, p);
+                return hash;
+            }
+        }
+
+        private static int AccumulateProfileHash(int hash, DefenderProfile p)
+        {
+            unchecked
+            {
+                hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.Attack);
+                hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.Defense);
+                hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.HitPoints);
+                hash = hash * 31 + p.Initiative;
+                hash = hash * 31 + (p.HasCeramicArmor ? 1 : 0);
+                return hash;
+            }
+        }
+
         // One die-pool's worth of successes, same 50/50-per-die mechanic the real battle actually
         // rolls with (ChallengeResolver.RollDice — half the faces are a miss, same odds). `diceCount`
         // is always an aggregate Attack/Defense sum, already integer-valued in practice —
-        // RoundToInt only guards against float drift from summing.
-        private static int RollSuccesses(float diceCount)
+        // RoundToInt only guards against float drift from summing. `rng` — this evaluation's own
+        // local System.Random (see BuildSeed's own comment), never UnityEngine.Random.
+        private static int RollSuccesses(float diceCount, System.Random rng)
         {
             int count = Mathf.Max(0, Mathf.RoundToInt(diceCount));
             int successes = 0;
             for (int i = 0; i < count; i++)
-                if (Random.value < 0.5f)
+                if (rng.NextDouble() < 0.5)
                     successes++;
             return successes;
         }
@@ -102,10 +157,11 @@ namespace Game.Ai
         // multi-round HP-depletion fight — the map only ever knows the OTHER side as an aggregate
         // sum (no composition, no HP, no positions — see this class's own top comment), so there's
         // no per-unit HP here to actually deplete round over round the way a real battle would.
-        private static float SimulateExchangeMargin(float ourAttack, float ourDefense, float enemyAttack, float enemyDefense)
+        private static float SimulateExchangeMargin(float ourAttack, float ourDefense, float enemyAttack, float enemyDefense,
+            System.Random rng)
         {
-            int ourDamage = Mathf.Max(0, RollSuccesses(ourAttack) - RollSuccesses(enemyDefense));
-            int enemyDamage = Mathf.Max(0, RollSuccesses(enemyAttack) - RollSuccesses(ourDefense));
+            int ourDamage = Mathf.Max(0, RollSuccesses(ourAttack, rng) - RollSuccesses(enemyDefense, rng));
+            int enemyDamage = Mathf.Max(0, RollSuccesses(enemyAttack, rng) - RollSuccesses(ourDefense, rng));
             return ourDamage - enemyDamage;
         }
 
@@ -119,9 +175,10 @@ namespace Game.Ai
         {
             float ourAttack = AttackSum(attacker);
             float ourDefense = DefenseSum(attacker);
+            var rng = new System.Random(BuildSeed(ourAttack, ourDefense, enemyAttack, enemyDefense));
             float total = 0f;
             for (int i = 0; i < MonteCarloTrials; i++)
-                total += SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense);
+                total += SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense, rng);
             return total / MonteCarloTrials;
         }
 
@@ -147,10 +204,11 @@ namespace Game.Ai
         // include any hex bonus, same convention Score above already uses.
         public static float WinChance(float ourAttack, float ourDefense, float enemyAttack, float enemyDefense)
         {
+            var rng = new System.Random(BuildSeed(ourAttack, ourDefense, enemyAttack, enemyDefense));
             int wins = 0, ties = 0;
             for (int i = 0; i < MonteCarloTrials; i++)
             {
-                float margin = SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense);
+                float margin = SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense, rng);
                 if (margin > 0f) wins++;
                 else if (margin == 0f) ties++;
             }
@@ -219,7 +277,7 @@ namespace Game.Ai
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
         // wiped the attackers), or 0 (mutual wipe, or neither side finished the other off in time —
         // same "draw" reading SimulateExchangeMargin's own tie already used).
-        private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders)
+        private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders, System.Random rng)
         {
             for (int round = 0; round < MaxSimulatedRounds && AnyAlive(attackers) && AnyAlive(defenders); round++)
             {
@@ -232,7 +290,7 @@ namespace Game.Ai
                 // way), then a stable sort descending — matches the real turn-order rule exactly.
                 for (int i = order.Count - 1; i > 0; i--)
                 {
-                    int j = Mathf.Min(i, Mathf.FloorToInt(Random.value * (i + 1)));
+                    int j = rng.Next(i + 1);
                     (order[i], order[j]) = (order[j], order[i]);
                 }
                 order.Sort((a, b) =>
@@ -257,10 +315,10 @@ namespace Game.Ai
                     if (livingTargets.Count == 0)
                         break; // this side just ran out of targets mid-round — battle's over
 
-                    int targetIndex = livingTargets[Mathf.Min(livingTargets.Count - 1, Mathf.FloorToInt(Random.value * livingTargets.Count))];
+                    int targetIndex = livingTargets[rng.Next(livingTargets.Count)];
                     BattleUnit target = enemyList[targetIndex];
 
-                    int damage = Mathf.Max(0, RollSuccesses(actor.Attack) - RollSuccesses(target.Defense));
+                    int damage = Mathf.Max(0, RollSuccesses(actor.Attack, rng) - RollSuccesses(target.Defense, rng));
                     if (target.HasCeramicArmor)
                         damage = Mathf.Max(0, damage - AbilityMagnitudes.Default.CeramicArmorReduction);
                     target.Hp -= damage;
@@ -289,10 +347,11 @@ namespace Game.Ai
             if (attackerUnits == null || attackerUnits.Count == 0)
                 return 0f;
 
+            var rng = new System.Random(BuildRosterSeed(attackerUnits, enemyUnits, hexDefenseBonus));
             int wins = 0, draws = 0;
             for (int i = 0; i < MonteCarloTrials; i++)
             {
-                int result = SimulateOneBattle(ToBattleUnits(attackerUnits), ToBattleUnits(enemyUnits, hexDefenseBonus));
+                int result = SimulateOneBattle(ToBattleUnits(attackerUnits), ToBattleUnits(enemyUnits, hexDefenseBonus), rng);
                 if (result > 0) wins++;
                 else if (result == 0) draws++;
             }

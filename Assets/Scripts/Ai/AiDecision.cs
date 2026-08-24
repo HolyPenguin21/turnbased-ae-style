@@ -233,10 +233,15 @@ namespace Game.Ai
         // Агрессия · подкрепление раненой армии, шаг 1 — see AiAggressionPlanner.
         // TryRaidRegroupCandidates/DispatchReinforcementRoutine. task.TargetArmy is already known
         // (the wounded army being rescued); task.Army is deliberately left null here — the routine
-        // fills it in once the courier army actually exists.
-        public static AiDecision DispatchReinforcement(ArmyData garrison, UnitData recruit, AiTask task, float score) => new AiDecision
+        // fills it in once the courier army actually exists. `source` — the army `recruit` is
+        // actually a member of right now (RaidWeakerArmyTask.FindNonHeroRecruitAt's own out
+        // param), NOT necessarily the nearest garrison (2026-08-24 P0 fix, project owner's own
+        // report: recruit and source used to be picked independently — same home hex, but not
+        // guaranteed the same army object — so DispatchReinforcementRoutine's own TransferMember
+        // could reject a recruit that wasn't actually a member of the army passed here).
+        public static AiDecision DispatchReinforcement(ArmyData source, UnitData recruit, AiTask task, float score) => new AiDecision
         {
-            Kind = AiActionKind.DispatchReinforcement, ExistingArmy = garrison, CollectorUnit = recruit,
+            Kind = AiActionKind.DispatchReinforcement, ExistingArmy = source, CollectorUnit = recruit,
             TargetHex = task.TargetArmy.Hex, Task = task, Score = score, Category = task.Category,
             Reason = $"{recruit.Name} is dispatched as reinforcement to \"{task.TargetArmy.Name}\"",
         };

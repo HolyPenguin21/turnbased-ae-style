@@ -669,19 +669,24 @@ namespace Game.Ai
             HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
-            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
             if (BuildFacilityTask.HasAnythingToBuild(player))
                 return results;
 
+            // Multi-base-aware since 2026-08-24 (project owner's own report) — per-army nearest own
+            // base, not always the starting citadel (same reasoning as VisitHexTask.TryFlee/
+            // AiAggressionPlanner's own raid-retreat helpers); already-at-ANY-own-base counts as
+            // home too, not just the citadel specifically.
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (!BuildFacilityTask.IsEligibleComposition(army) || army.Controller == null
-                    || stuckScouts.Contains(army) || army.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, army) != null)
+                    || stuckScouts.Contains(army) || AiTurnController.OwnGarrisonHexes(player).Contains(army.Hex)
+                    || AiTaskRegistry.TaskFor(player, army) != null)
                     continue;
-                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
+                HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
+                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
                     continue;
-                var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
-                    "nothing left to build — returns to the citadel");
+                var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f,
+                    "nothing left to build — returns to nearest base");
                 results.Add(AiDecision.Move(army, target, null, AiConfig.economyWaitScore, AiTaskCategory.Economy));
             }
             return results;

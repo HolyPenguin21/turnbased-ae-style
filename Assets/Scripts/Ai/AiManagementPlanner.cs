@@ -344,6 +344,17 @@ namespace Game.Ai
                 + heroAlternationDamping * AiConfig.cardRoleBacklogShareWeight * heroShare;
             float unitScore = AiConfig.managementBaseWeight
                 + unitAlternationDamping * AiConfig.cardRoleBacklogShareWeight * unitShare;
+
+            // Absolute deployment pressure on top of the share-based score above (2026-08-24,
+            // project owner's own report — see AiConfig.managementBacklogSoftLimit's own comment):
+            // a deep total Hero+Unit backlog pushes BOTH roles' scores up together, independent of
+            // how that backlog happens to split between the two roles. Never lowers either score
+            // (a small/empty backlog contributes zero) and never crosses managementDeploymentScoreCap.
+            float backlogPressure = Mathf.Min(AiConfig.managementBacklogBonusCap,
+                Mathf.Max(0, totalRoleCards - AiConfig.managementBacklogSoftLimit) * AiConfig.managementBacklogPerCardBonus);
+            heroScore = ApplyDeploymentPressure(heroScore, backlogPressure);
+            unitScore = ApplyDeploymentPressure(unitScore, backlogPressure);
+
             string roleBalance = $" [Hero/Unit alternation: hero={heroScore:0.0} (backlog={unplayedHeroCards}"
                 + (heroAlternationDamping < 1f ? ", cooling down" : "") + $"), unit={unitScore:0.0} (backlog={unplayedUnitCards}"
                 + (unitAlternationDamping < 1f ? ", cooling down" : "") + ")]";
@@ -395,6 +406,17 @@ namespace Game.Ai
                 results.Add(decision);
             }
             return results;
+        }
+
+        // AiConfig.managementBacklogBonusCap's own comment — adds `pressure` without ever crossing
+        // managementDeploymentScoreCap. A `score` already at or above the cap (shouldn't happen
+        // today, since heroScore/unitScore never reach it on the share term alone, but kept honest
+        // for whatever future term might) is left untouched rather than pulled down.
+        private static float ApplyDeploymentPressure(float score, float pressure)
+        {
+            if (score >= AiConfig.managementDeploymentScoreCap)
+                return score;
+            return Mathf.Min(AiConfig.managementDeploymentScoreCap, score + pressure);
         }
 
         // Snapshot of the player's own current non-hero unit roster — garrison AND every field

@@ -196,8 +196,8 @@ namespace Game.Ai
                 // pool.AvailableArmies() for that method to find on its own. Uses homeHex (nearest
                 // own base), not citadelHex — 2026-08-21, project owner's own call: a courier can
                 // just as well come from a closer forward base as from the citadel.
-                UnitData recruit = RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, task.Army, task.Army);
-                bool canDispatch = recruit != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
+                UnitData recruit = RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, task.Army, out ArmyData recruitSource, task.Army);
+                bool canDispatch = recruit != null && recruitSource != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
                 bool goHome = !canDispatch;
                 if (!goHome)
                 {
@@ -215,7 +215,7 @@ namespace Game.Ai
                 }
 
                 var reinforceTask = new AiTask { Kind = AiTaskKind.RaidReinforce, TargetArmy = task.Army, TargetHex = task.Army.Hex };
-                return AiDecision.DispatchReinforcement(AiTurnController.NearestOwnGarrisonArmy(player, task.Army.Hex), recruit, reinforceTask,
+                return AiDecision.DispatchReinforcement(recruitSource, recruit, reinforceTask,
                     AiConfig.raidReinforceDispatchScore);
             }
 
@@ -387,17 +387,35 @@ namespace Game.Ai
                 RaidWeakerArmyTask.RaidTarget? retarget = RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargets);
                 if (retarget.HasValue && !retarget.Value.Hex.Equals(task.TargetHex))
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — retargets Agression raid from "
-                        + $"({task.TargetHex.Q},{task.TargetHex.R}) to ({retarget.Value.Hex.Q},{retarget.Value.Hex.R}), "
-                        + "a better prospect for the force gathered so far.");
-                    activeTargets.Remove(task.TargetHex);
-                    task.TargetHex = retarget.Value.Hex;
-                    activeTargets.Add(task.TargetHex);
-                    required = retarget.Value.Threat;
-                    if (RaidWeakerArmyTask.IsReady(task.Army, required))
+                    // Retarget hysteresis (2026-08-24, project owner's own report — see AiConfig.
+                    // raidRetargetMinImprovement's own comment). `required` at this point is always
+                    // the CURRENT target's threat, and this whole loop iteration already skipped
+                    // above (the `continue` right after computing it) the moment IsReady(task.Army,
+                    // required) was true — so the old target is always "not ready" here, there's no
+                    // "already ready, don't downgrade" case to protect against; a new target that's
+                    // ready right now still always deserves to win outright.
+                    bool currentStillValid = RaidWeakerArmyTask.IsStillValidTarget(player, task.TargetHex);
+                    bool newReady = RaidWeakerArmyTask.IsReady(task.Army, retarget.Value.Threat);
+                    float currentScore = currentStillValid
+                        ? RaidWeakerArmyTask.ScoreTarget(player, task.Army, task.TargetHex, required)
+                        : float.NegativeInfinity;
+                    bool shouldSwitch = !currentStillValid || newReady
+                        || retarget.Value.Score > currentScore + AiConfig.raidRetargetMinImprovement;
+
+                    if (shouldSwitch)
                     {
-                        task.StillAssembling = false;
-                        continue; // the new target is already within reach — no need to recruit further
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — retargets Agression raid from "
+                            + $"({task.TargetHex.Q},{task.TargetHex.R}) to ({retarget.Value.Hex.Q},{retarget.Value.Hex.R}), "
+                            + "a better prospect for the force gathered so far.");
+                        activeTargets.Remove(task.TargetHex);
+                        task.TargetHex = retarget.Value.Hex;
+                        activeTargets.Add(task.TargetHex);
+                        required = retarget.Value.Threat;
+                        if (newReady)
+                        {
+                            task.StillAssembling = false;
+                            continue; // the new target is already within reach — no need to recruit further
+                        }
                     }
                 }
 
@@ -690,8 +708,11 @@ namespace Game.Ai
 
                 HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
                 RaidWeakerArmyTask.RaidTarget? target = RaidWeakerArmyTask.FindTarget(player, army, ctx.Map);
-                UnitData recruit = target.HasValue ? RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, army, army) : null;
-                bool canDispatch = recruit != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
+                ArmyData recruitSource = null;
+                UnitData recruit = target.HasValue
+                    ? RaidWeakerArmyTask.FindNonHeroRecruitAt(homeHex, pool, army, out recruitSource, army)
+                    : null;
+                bool canDispatch = recruit != null && recruitSource != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
 
                 bool goHome = !target.HasValue || !canDispatch;
                 if (!goHome)
@@ -714,7 +735,7 @@ namespace Game.Ai
                 else
                 {
                     var reinforceTask = new AiTask { Kind = AiTaskKind.RaidReinforce, TargetArmy = army, TargetHex = army.Hex };
-                    results.Add(AiDecision.DispatchReinforcement(AiTurnController.NearestOwnGarrisonArmy(player, army.Hex), recruit, reinforceTask,
+                    results.Add(AiDecision.DispatchReinforcement(recruitSource, recruit, reinforceTask,
                         AiConfig.raidReinforceDispatchScore));
                 }
             }
@@ -864,9 +885,9 @@ namespace Game.Ai
         // safe (nothing reads task.Army between registration and this routine actually running).
         public static IEnumerator DispatchReinforcementRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
         {
-            ArmyData garrison = decision.ExistingArmy;
+            ArmyData source = decision.ExistingArmy;
             UnitData recruit = decision.CollectorUnit;
-            yield return AiTurnController.PanTo(ctx, garrison.Hex);
+            yield return AiTurnController.PanTo(ctx, source.Hex);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             int ap0 = root != null ? root.ActionPoints : 0;
@@ -875,7 +896,7 @@ namespace Game.Ai
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
 
-            ArmyData courier = ArmyActions.CreateArmy(player, garrison.Hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            ArmyData courier = ArmyActions.CreateArmy(player, source.Hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
             if (courier == null)
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: not enough AP for a courier for \"{decision.Task.TargetArmy.Name}\".");
@@ -883,7 +904,7 @@ namespace Game.Ai
                 yield break;
             }
 
-            if (ArmyActions.TransferMember(recruit, garrison, courier, ctx.HexSelection, out string failReason))
+            if (ArmyActions.TransferMember(recruit, source, courier, ctx.HexSelection, out string failReason))
             {
                 decision.Task.Army = courier;
                 string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
@@ -893,6 +914,11 @@ namespace Game.Ai
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't dispatch the courier — {failReason}");
                 AiTaskRegistry.Remove(player, decision.Task);
+                // The courier was already created above but never got its recruit — never leave an
+                // empty shell army behind just because the transfer itself was rejected (2026-08-24
+                // P0 fix, project owner's own report: this exact rejection path used to grow the
+                // army count by one empty army every time it fired).
+                ctx.HexSelection?.DeleteArmyIfEmptied(courier);
             }
 
             yield return AiTurnController.WaitStep(ctx);

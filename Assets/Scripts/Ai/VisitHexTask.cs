@@ -56,13 +56,27 @@ namespace Game.Ai
             if (army == null)
                 return null;
 
-            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
-
             if (task != null && task.FledOnTurn == currentTurn)
             {
-                return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.scoutFleeBonus,
+                // Keep heading for whatever base this flee already committed to earlier this same
+                // turn — task.TargetHex was stamped with that exact hex the moment this flee
+                // started (both TryContinueVisitTask and TryStartVisitCandidates set
+                // task.TargetHex = target.Value.Hex right after calling TryFlee, so it's already
+                // sitting there by the time a later call this turn reaches this branch). NOT
+                // recomputed fresh here (2026-08-24 fix, multi-base awareness, project owner's own
+                // report) — re-deriving the nearest base from army.Hex on every call could ping-
+                // pong a scout between two now-equidistant bases mid-route as its own position
+                // moves toward one of them.
+                return new AiScoutPlanner.ScoutTarget(task.TargetHex, AiConfig.scoutFleeBonus,
                     "already retreating this turn — continues to the garrison");
             }
+
+            // Multi-base-aware since 2026-08-24 (project owner's own report) — the nearest of this
+            // player's own garrisoned hexes to the scout's CURRENT position, not always the
+            // starting citadel (see AiTurnController.NearestOwnGarrisonHex's own comment); a scout
+            // fleeing near a later-founded base has no reason to trek all the way back to the
+            // citadel instead.
+            HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
 
             bool anyThreat = false;
             foreach (AiMapMemory.KnownEnemySighting sighting in
@@ -79,8 +93,8 @@ namespace Game.Ai
 
             if (task != null)
                 task.FledOnTurn = currentTurn;
-            return new AiScoutPlanner.ScoutTarget(garrisonHex, AiConfig.scoutFleeBonus,
-                "a known enemy army is nearby — retreats to the garrison for one turn");
+            return new AiScoutPlanner.ScoutTarget(homeHex, AiConfig.scoutFleeBonus,
+                "a known enemy army is nearby — retreats to the nearest base for one turn");
         }
 
         // Best unvisited, not-known-occupied hex on the map. Null if nothing qualifies. The scan
