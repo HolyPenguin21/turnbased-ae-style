@@ -34,16 +34,35 @@ namespace Game.UI
             SpawnSlots(diceCount);
         }
 
-        public void ShowRoll(DiceRollResult roll)
+        // onComplete (optional): fired once every slot in this row has finished flipping
+        // (immediately, if there's nothing to animate) — TurnOrderPopupUI waits on this across
+        // every row before revealing rank/enabling Continue, so nobody sees the outcome before
+        // the dice actually land (per the user's own request, 2026-08-24).
+        public void ShowRoll(DiceRollResult roll, System.Action onComplete = null)
         {
             if (roll == null)
+            {
+                onComplete?.Invoke();
                 return;
+            }
 
             // index/count so the whole row's dice land one after another but the ROW as a whole
             // still finishes in DiceSlotUI's fixed GroupDuration regardless of dice count.
             int count = Mathf.Min(_diceSlots.Count, roll.Dice.Length);
+            if (count == 0)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+            int pending = count;
+            void SlotDone()
+            {
+                pending--;
+                if (pending == 0)
+                    onComplete?.Invoke();
+            }
             for (int i = 0; i < count; i++)
-                _diceSlots[i].PlayRoll(roll.Dice[i], i, count);
+                _diceSlots[i].PlayRoll(roll.Dice[i], i, count, SlotDone);
         }
 
         public void ShowRank(int rank)

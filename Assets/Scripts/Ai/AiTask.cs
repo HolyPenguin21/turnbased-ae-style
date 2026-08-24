@@ -257,6 +257,28 @@ namespace Game.Ai
         // nothing ever reads it there.
         public int AssemblyProgressTurn = -1;
 
+        // BuildBase only (Feature 2, 2026-08-24, project owner's own report — "captured/built bases
+        // sitting undefended and getting flagged 'unguarded'"): true from the moment the building
+        // itself finishes constructing (BuildBaseRoutine) until either a garrison-seed transfer
+        // actually lands (AiAggressionPlanner.AdvanceGarrisonSeed) or GarrisonSeedWaitTurns times
+        // out. Before this fix BuildBaseRoutine released/removed the task the INSTANT the building
+        // existed, so the builder army was immediately free for Raid/Defence to reclaim, leaving a
+        // brand-new empty Garrison — exactly the "enemy building ... unguarded" opportunity
+        // RaidWeakerArmyTask.FindTarget's own Section 5 already looks for, just now pointed back at
+        // US. See AiAggressionPlanner.TryContinueBuildBaseTask's own AwaitingGarrisonSeed branch.
+        public bool AwaitingGarrisonSeed;
+
+        // BuildBase · AwaitingGarrisonSeed's own stale-task escape hatch (same shape as
+        // BuildBaseWaitTurns above, own counter since the two phases are never active at the same
+        // time) — consecutive steps this task has sat in AwaitingGarrisonSeed unable to actually
+        // seed the garrison (builder army is hero-only, or every non-hero member would leave the
+        // hero alone and exposed — see AiAggressionPlanner.FindGarrisonSeedUnit). Once this exceeds
+        // AiConfig.garrisonSeedMaxWaitTurns the task simply completes anyway rather than holding the
+        // builder army hostage forever — AiManagementPlanner.FindPlacement's own temporary priority
+        // nudge (see OwnGarrisonHexesByActivity's call site there) is left to eventually route a
+        // card/reinforcement to this same garrison on its own timetable instead.
+        public int GarrisonSeedWaitTurns;
+
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }
 

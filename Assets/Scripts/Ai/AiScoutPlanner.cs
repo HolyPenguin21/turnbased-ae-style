@@ -421,11 +421,17 @@ namespace Game.Ai
             int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
-            ArmyData army = ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            // Feature 4A (2026-08-24) — same disposable-empty-shell reuse AiAggressionPlanner.
+            // RequestRaidArmyRoutine's own comment describes, applied here too (see
+            // GarrisonReorgTask.FindDisposableEmptyArmyAt's own comment).
+            ArmyData reused = GarrisonReorgTask.FindDisposableEmptyArmyAt(player, hex);
+            ArmyData army = reused ?? ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
             string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
-            AiDebugLog.Write(army != null
-                ? $"[AI] {player.Nickname}: Reconnaissance task — creates empty army \"{army.Name}\" for a Recce composition.{delta}"
-                : $"[AI] {player.Nickname}: Reconnaissance task — not enough AP for a new army for a Recce composition.");
+            AiDebugLog.Write(reused != null
+                ? $"[AI] {player.Nickname}: Reconnaissance task — reuses empty army \"{reused.Name}\" for a Recce composition instead of spending AP on a new one."
+                : army != null
+                    ? $"[AI] {player.Nickname}: Reconnaissance task — creates empty army \"{army.Name}\" for a Recce composition.{delta}"
+                    : $"[AI] {player.Nickname}: Reconnaissance task — not enough AP for a new army for a Recce composition.");
 
             yield return AiTurnController.WaitStep(ctx);
         }

@@ -289,7 +289,7 @@ namespace Game.Ai
                 ResourceType? candidateType = DominantResourceType(candidate);
                 if (candidateType == null)
                     continue;
-                float rank = BuildFacilityTask.RankHex(player, root, candidate, candidateType.Value, ctx.Map);
+                float rank = BuildFacilityTask.RankHex(player, root, candidate, candidateType.Value, ctx.Map, pool.Hand);
                 if (bestHex == null || rank > bestRank)
                 {
                     bestHex = candidate;

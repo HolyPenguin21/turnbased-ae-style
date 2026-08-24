@@ -31,7 +31,8 @@ namespace Game.UI
         [SerializeField] private RectTransform handContainer;
         [SerializeField] private CardUI cardPrefab;
         [SerializeField] private Button drawButton;
-        // "Cards" on the first line, the remaining draw-pile count on the second — see Update.
+        // "Cards" on the first line, the remaining draw-pile count on the second — see
+        // RefreshDeckCountText/SetDeckCountText.
         [SerializeField] private TMP_Text deckCountText;
         [SerializeField] private Button scrollLeftButton;
         [SerializeField] private Button scrollRightButton;
@@ -277,8 +278,19 @@ namespace Game.UI
         {
             if (deckCountText == null || _remainingDeck.Count == _lastDisplayedDeckCount)
                 return;
-            _lastDisplayedDeckCount = _remainingDeck.Count;
-            deckCountText.text = $"Cards\n{_remainingDeck.Count}";
+            SetDeckCountText(_remainingDeck.Count);
+        }
+
+        // Unconditional write, unlike RefreshDeckCountText's own no-op-if-unchanged guard —
+        // used wherever the count needs to switch to a DIFFERENT player's number (see
+        // ShowAiHandDebug/HideAiHandDebug), where the guard can't tell "already correct" apart
+        // from "just happens to coincide with the last player's own count".
+        private void SetDeckCountText(int count)
+        {
+            if (deckCountText == null)
+                return;
+            _lastDisplayedDeckCount = count;
+            deckCountText.text = $"Cards\n{count}";
         }
 
         private void RefreshDrawButtonInteractable()
@@ -319,6 +331,12 @@ namespace Game.UI
                 card.gameObject.SetActive(false);
             _showingDebugHand = true;
 
+            // The deck counter switches to THIS player's own remaining-deck count too —
+            // otherwise it stays frozen on whichever player's turn last actually wrote it (the
+            // user's own report: the deck count doesn't update, including when the turn passes
+            // to a different AI player while this debug view is following it).
+            SetDeckCountText(hand?.RemainingDeckCount ?? 0);
+
             if (hand == null)
                 return;
 
@@ -354,6 +372,9 @@ namespace Game.UI
                 Destroy(card.gameObject);
             _debugCards.Clear();
 
+            // Force the counter back to the human's own real count — ShowAiHandDebug may have
+            // just overwritten it with an AI player's number.
+            SetDeckCountText(_remainingDeck.Count);
             Relayout(animated: false);
         }
 

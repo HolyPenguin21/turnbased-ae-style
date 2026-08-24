@@ -81,6 +81,7 @@ MonoBehaviour:
     - CollectEnergy
     - CollectMaterials
     - CollectTech
+    - ApBonus
     resourceYield:
       human: 0
       energy: 0
@@ -140,7 +141,8 @@ MonoBehaviour:
     hitPoints: 7
     initiative: 2
     unitTypeTags: 
-    grantedAbilities: []
+    grantedAbilities:
+    - ApBonus
     resourceYield:
       human: 0
       energy: 0

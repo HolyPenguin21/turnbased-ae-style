@@ -536,7 +536,8 @@ namespace Game.Ai
                 pool.ClaimArmy(decision.ExistingArmy);
                 if (decision.Task.Kind == AiTaskKind.BuildFacility)
                     AiDebugLog.Write($"[AI] {player.Nickname}: starts Economy task — \"{decision.ExistingArmy.Name}\" heads out "
-                        + $"to build {decision.Task.ResourceType} at ({decision.Task.TargetHex.Q},{decision.Task.TargetHex.R}).");
+                        + $"to build {decision.Task.ResourceType} at ({decision.Task.TargetHex.Q},{decision.Task.TargetHex.R})."
+                        + HandDemandLogSuffix(player, decision.Task.ResourceType, pool.Root, pool.Hand));
             }
         }
 
@@ -612,6 +613,78 @@ namespace Game.Ai
                         break;
                     }
                 }
+            }
+
+            // Feature 4 (2026-08-24, project owner's own report — turn-30 log showed many field
+            // armies at roster size 0 or 1, inflating the army count without adding real strength)
+            // — two new stages, run AFTER the existing Collapse→Overflow→IdleBalance per-garrison
+            // drain above (unchanged, still runs first — see GarrisonReorgTask's own class comment
+            // for that three-way priority). Stage A (empty shells) before Stage B (stranded
+            // singles) — same "capacity/cleanup concerns before composition ones" ordering the
+            // existing three-way priority already follows.
+            RunEmptyArmyCleanup(player, ctx);
+            yield return RunStrandedArmyRecovery(player, ctx, actionCounts);
+        }
+
+        // Feature 4A (2026-08-24) — sweeps every GarrisonReorgTask.IsDisposableEmptyArmy shell still
+        // standing once the ordinary per-garrison drain above is done. Reuse (RequestRaidArmy/
+        // RequestDefendArmy/SpawnReconArmy/DispatchReinforcement all now check GarrisonReorgTask.
+        // FindDisposableEmptyArmyAt BEFORE spending AP on a fresh ArmyActions.CreateArmy — see each
+        // of those routines' own comment) already happened, if it was going to, earlier THIS SAME
+        // TURN's main Decide() loop — nothing left here reuses anything, it only disposes of
+        // whatever's still surplus. Synchronous (no yield) — nothing here issues a move/spends AP,
+        // just registry bookkeeping, same as HexRosterSignature's own read-only helper below.
+        private static void RunEmptyArmyCleanup(PlayerSetupData player, AiTurnContext ctx)
+        {
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player).ToList())
+            {
+                if (!GarrisonReorgTask.IsDisposableEmptyArmy(player, army))
+                    continue;
+                string name = army.Name;
+                // Same disposal primitive every other "empty shell, nobody left inside" case in this
+                // codebase already uses (see e.g. AiAggressionPlanner.AssembleRaidForceRoutine/
+                // DispatchReinforcementRoutine's own DeleteArmyIfEmptied calls) — deliberately still
+                // refuses to tear one down sitting exactly on its own owner's Barracks hex (see that
+                // method's own comment), which is fine here too: a shell parked right at a garrison
+                // hex is free, instant reuse fodder for the very next RequestRaidArmy/
+                // RequestDefendArmy/SpawnReconArmy/DispatchReinforcement that needs one there — the
+                // ones actually worth cleaning up are the ones stranded away from any base, and
+                // those DO get torn down here.
+                ctx.HexSelection?.DeleteArmyIfEmptied(army);
+                if (army.Controller == null)
+                    AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn cleanup — disposed of empty, task-less army \"{name}\".");
+            }
+        }
+
+        // Feature 4B (2026-08-24) — see GarrisonReorgTask.FindStrandedWeakArmies' own comment. Only
+        // ever ASSIGNS a "return for consolidation" MoveArmy decision — actual movement still costs
+        // AP/movement points and happens over normal subsequent turn steps via the SAME
+        // MoveArmyRoutine every other travel decision in this codebase already uses (see
+        // PerformDecision's own switch), never teleported or forced within this one phase. Reuses
+        // AiScoutPlanner.ScoutTarget purely as a plain (hex, reason) carrier the same way every
+        // other "walk home, no persistent task" candidate in this codebase already does
+        // (TryRaidReturnHomeCandidates/TryRaidRecallCandidates/AiScoutPlanner.TryReturnHomeCandidates)
+        // — once it actually arrives at a garrison hex, GarrisonReorgTask.FindReorgMove's own
+        // EXISTING lone-army-fold tier (already running earlier this same phase, see the
+        // per-garrison loop above) picks it up automatically on a LATER turn — no new consolidation
+        // logic needed here at all, per the project owner's own spec.
+        private static IEnumerator RunStrandedArmyRecovery(PlayerSetupData player, AiTurnContext ctx, Dictionary<AiActionKind, int> actionCounts)
+        {
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            if (root == null)
+                yield break;
+
+            foreach (ArmyData army in GarrisonReorgTask.FindStrandedWeakArmies(player).ToList())
+            {
+                HexCoord homeHex = NearestOwnGarrisonHex(player, army.Hex);
+                if (!CanIssueMoveNow(root, army, ctx.Map, homeHex))
+                    continue;
+                var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "stranded alone in the field — returns for consolidation");
+                AiDecision decision = AiDecision.Move(army, target, null, 0f, AiTaskCategory.Management);
+                AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn reorg — {decision.Kind} ({decision.Category}) — {decision.Reason}.");
+                actionCounts.TryGetValue(decision.Kind, out int count);
+                actionCounts[decision.Kind] = count + 1;
+                yield return PerformDecision(player, decision, ctx);
             }
         }
 
@@ -690,6 +763,9 @@ namespace Game.Ai
                     break;
                 case AiActionKind.BuildBase:
                     yield return AiAggressionPlanner.BuildBaseRoutine(player, decision, ctx);
+                    break;
+                case AiActionKind.SeedNewBaseGarrison:
+                    yield return AiAggressionPlanner.SeedNewBaseGarrisonRoutine(player, decision, ctx);
                     break;
                 case AiActionKind.StrengthenDefenceForce:
                     yield return AiDefencePlanner.StrengthenDefenceForceRoutine(player, decision, ctx);
@@ -1010,8 +1086,62 @@ namespace Game.Ai
             int soloArmies = armies.Count(a => a.Members.Count == 1);
             int multiArmies = armies.Count(a => a.Members.Count >= 2);
 
+            // Feature 4's own extension (2026-08-24, project owner's own ask) — the plain
+            // "0=X, 1=Y, 2+=Z" breakdown above already existed (Problem 4, 2026-08-24) but couldn't
+            // tell a HEALTHY 0/1-roster army (a deliberately kept spare, a Recce riding solo by
+            // design) apart from the genuinely wasteful kind Feature 4A/4B exist to clean up/recover
+            // — this splits each of those two buckets further, reusing the exact same predicates
+            // Feature 4A/4B's own sweeps already read (GarrisonReorgTask.IsDisposableEmptyArmy/
+            // FindStrandedWeakArmies) so this log can never disagree with what those two stages
+            // actually did/will do this same phase.
+            //
+            // 0 members: "reserved" — within GatherFallbackCandidates' own maxSpareArmies buffer,
+            // task-less (the deliberately kept reserve, see IsDisposableEmptyArmy's own comment);
+            // "reusable" — task-less and beyond that buffer (IsDisposableEmptyArmy true — exactly
+            // what RunEmptyArmyCleanup just tried to hand out for reuse or dispose of); "orphaned" —
+            // everything else at 0 members (e.g. still task-claimed but its roster emptied out from
+            // under it — IsDisposableEmptyArmy deliberately leaves a task-owned shell alone).
+            int emptyReusable = armies.Count(a => GarrisonReorgTask.IsDisposableEmptyArmy(player, a));
+            int emptyReserved = armies.Count(a => a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
+                - emptyReusable;
+            int emptyOrphaned = emptyArmies - emptyReserved - emptyReusable;
+
+            // 1 member: "tasked" — an active AiTask owns it (a courier, a raid/defence recruit still
+            // solo, a scout mid-VisitHex, ...); "solo-recce" — task-less and AiArmyRoles.IsSoloRecce
+            // (left alone by design, see FindStrandedWeakArmies' own comment); "returning" —
+            // task-less, not Recce, and exactly what GarrisonReorgTask.FindStrandedWeakArmies itself
+            // would flag (RunStrandedArmyRecovery just gave these a move-home decision this same
+            // phase, if AP allowed); "orphaned" — the rare remainder (e.g. already sitting AT a
+            // garrison hex, task-less, non-Recce — IdleBalance's own lone-army-fold tier earlier this
+            // same phase should ordinarily have already folded these in before this log even runs).
+            var strandedThisTurn = new HashSet<ArmyData>(GarrisonReorgTask.FindStrandedWeakArmies(player));
+            int soloTasked = armies.Count(a => a.Members.Count == 1 && AiTaskRegistry.TaskFor(player, a) != null);
+            int soloRecce = armies.Count(a => a.Members.Count == 1 && AiTaskRegistry.TaskFor(player, a) == null && AiArmyRoles.IsSoloRecce(a));
+            int soloReturning = armies.Count(a => strandedThisTurn.Contains(a));
+            int soloOrphaned = soloArmies - soloTasked - soloRecce - soloReturning;
+
             return $"[AI] {player.Nickname}: army breakdown (turn {turnNumber}) — armies={armies.Count} ({categoryBreakdown}), "
-                + $"units={totalUnits}, avgUnitsPerArmy={avgUnitsPerArmy:0.0}, roster size: 0={emptyArmies}, 1={soloArmies}, 2+={multiArmies}";
+                + $"units={totalUnits}, avgUnitsPerArmy={avgUnitsPerArmy:0.0}, roster size: 0={emptyArmies} "
+                + $"(reserved={emptyReserved}, reusable={emptyReusable}, orphaned={emptyOrphaned}), 1={soloArmies} "
+                + $"(tasked={soloTasked}, solo-recce={soloRecce}, returning={soloReturning}, orphaned={soloOrphaned}), 2+={multiArmies}";
+        }
+
+        // Feature 1's own diagnostic (2026-08-24) — BuildFacilityTask.RankHex has no reason string
+        // of its own to append "hand demand +N" onto (it's a pure internal ranking float, unlike
+        // RaidWeakerArmyTask.FindTarget's own candidates, which already build one) — the nearest
+        // place a log reader would actually look to see WHY a given resourceType got picked is this
+        // "starts Economy task" line itself (also used by AiManagementPlanner.
+        // SplitGarrisonArmyRoutine's own matching hero-detach log), so that's where this appends
+        // instead. Reads the exact same AiManagementPlanner.ComputeHandResourceDemand signal
+        // RankHex's own HandDemandBonus already folded into the ranking that picked this hex — never
+        // recomputes anything new, just makes the existing internal signal visible in the log.
+        internal static string HandDemandLogSuffix(PlayerSetupData player, ResourceType? resourceType, PlayerRoot root, AiHandData hand)
+        {
+            if (!resourceType.HasValue || root == null)
+                return "";
+            Dictionary<ResourceType, float> demand = AiManagementPlanner.ComputeHandResourceDemand(player, root, hand);
+            float amount = demand.TryGetValue(resourceType.Value, out float d) ? d : 0f;
+            return amount > 0f ? $" (hand demand +{amount:0})" : "";
         }
 
         // Trailer for an action's own log line — "what did this actually cost", read as a

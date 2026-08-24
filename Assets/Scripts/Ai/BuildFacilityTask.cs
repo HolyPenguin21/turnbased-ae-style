@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.Economy;
 using Game.HexGrid;
@@ -86,12 +87,32 @@ namespace Game.Ai
         // project owner's own call) is this method's own third internal-only term, same "stays out
         // of ScoreHex" treatment as the other two — CitadelDistanceScore alone never accounted for
         // how far the actually-nearest hero itself has to travel, only for the target hex's own
-        // distance from the citadel.
+        // distance from the citadel. HandDemandBonus (Feature 1, 2026-08-24) is a fourth — see its
+        // own comment. `hand` — AiEconomyPlanner.TryStartEconomyCandidates already has this for free
+        // via its own AiResourcePool.Hand, no new parameter threading needed at that call site.
         public static float RankHex(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType,
-            HexMap map)
+            HexMap map, AiHandData hand)
         {
             return ScarcityBonus(player, root, resourceType) + CitadelDistanceScore(player, hex)
-                + HeroTravelCostScore(player, hex, map);
+                + HeroTravelCostScore(player, hex, map) + HandDemandBonus(player, root, resourceType, hand);
+        }
+
+        // Feature 1's own hex-ranking term (2026-08-24, project owner's own report — see
+        // AiManagementPlanner.ComputeHandResourceDemand's own comment for the full "why"). Only ever
+        // nudges toward whichever resourceType the CURRENT hand's own unplayed Unit/Hero backlog
+        // needs most among the four — a candidate hex whose own resourceType ISN'T the hand's single
+        // biggest bottleneck right now gets no bonus at all, so this never spreads a flat bonus
+        // across every hex regardless of type. Weighted by AiConfig.handDemandRankWeight, same
+        // internal-only scoping (never reaches ScoreHex/AiDecision.Score) every other term here has.
+        private static float HandDemandBonus(PlayerSetupData player, PlayerRoot root, ResourceType resourceType, AiHandData hand)
+        {
+            if (hand == null)
+                return 0f;
+            Dictionary<ResourceType, float> demand = AiManagementPlanner.ComputeHandResourceDemand(player, root, hand);
+            float highest = demand.Values.DefaultIfEmpty(0f).Max();
+            if (highest <= 0f || demand[resourceType] < highest)
+                return 0f; // this hex's own resourceType isn't the hand's own top bottleneck right now
+            return demand[resourceType] * AiConfig.handDemandRankWeight;
         }
 
         // Real terrain-weighted movement cost (HexPathfinder.FindPath.TotalCost) from whichever

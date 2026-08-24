@@ -248,6 +248,25 @@ namespace Game.Ai
         // standalone 200) — above raidAssembleBonus's own 110, below raidCounterAttackBonus's 120.
         public const float raidReinforceDispatchScore = aggressionBaseWeight + 15f;
 
+        // ---- Агрессия — capture-step opportunity nudge (Feature 3, 2026-08-24) ----
+        // RaidWeakerArmyTask.FindCaptureStepDestination's own detour budget (project owner's own
+        // report: the opportunity-capture mechanism itself already works — RaidWeakerArmyTask.
+        // FindTarget's own Section 5 already logs "enemy building at (...), unguarded, score 100"
+        // and an army does start moving toward one once it wins FindTarget's own ranking outright —
+        // the actual gap is that an army ALREADY travelling toward some OTHER destination never
+        // deviates for a DIFFERENT such opportunity it happens to pass close by, since FindTarget
+        // only ever gets consulted when picking a brand-new target, not mid-route). How many EXTRA
+        // hexes of travel (via the candidate building vs. straight to the real destination) an
+        // in-progress Aggression movement may spend detouring onto one before the closer real
+        // destination wins instead. Internal-only, same "never leaks into the cross-category
+        // AiDecision.Score" scoping raidWinChanceRankWeight/buildHeroTravelCostWeight already get in
+        // this file — only ever picks THIS STEP's own actual move destination among otherwise-equal
+        // in-progress-movement candidates, never the task's own long-term TargetHex/HomeHex (see
+        // AiAggressionPlanner's own call sites for where it's applied, and its own explicit
+        // exclusions for Scout retreat/citadel emergency/ReinforceSwap courier/BuildBase-BuildFacility
+        // travel — none of those may get side-tracked by this).
+        public const int captureStepDetourTolerance = 2;
+
         // ---- Агрессия — Задача 2 (Постройка дополнительной базы) ----
         // Trigger gate — see BuildBaseTask's own class comment for the full trigger/condition list;
         // this is just the turn-number floor, checked fresh every step like every other trigger
@@ -332,6 +351,14 @@ namespace Game.Ai
         // placeholder, same as every other freshly-added BuildBase tunable — flagged for the
         // project owner's own tuning later.
         public const int buildBaseMaxWaitTurns = 5;
+        // See AiTask.GarrisonSeedWaitTurns's own comment (Feature 2, 2026-08-24) — how many
+        // consecutive steps the AwaitingGarrisonSeed phase may sit unable to spare a non-hero unit
+        // for the new garrison before giving up and completing the task anyway. Deliberately short
+        // relative to buildBaseMaxWaitTurns — unlike that wait (saving up AP/resources, which
+        // genuinely improves with more turns), a hero-only builder army isn't going to grow a
+        // spare non-hero member just by waiting longer, so there's nothing to gain from a long
+        // timeout here.
+        public const int garrisonSeedMaxWaitTurns = 2;
 
         // ---- Оборона (Patrol / Active / Turtle) ----
         // Full redesign 2026-08-21 (project owner's own spec) — ONE persistent DefendCitadel task/
@@ -611,6 +638,22 @@ namespace Game.Ai
         // stockpile term entirely rather than adding to it (project owner's own call, 2026-08-17:
         // deficit must be judged by income first, current stock only second).
         public const float buildNoIncomeBonus = 100f;
+        // ---- Экономика — Задача 1 · спрос руки на ресурс (Feature 1, 2026-08-24) ----
+        // AiManagementPlanner.ComputeHandResourceDemand's own per-card cap (project owner's own
+        // report: Thane ending turns with 8 unplayable Unit/Hero cards while Economy kept building
+        // whatever local hex ranked best, never once asking what the unplayed HAND actually needed)
+        // — caps each individual card's own contribution to a resourceType's total demand so ten
+        // copies of one expensive card can't produce an unbounded weight; the deficit itself is
+        // still read fresh per card (deficit = cardCost - AiResourceReservation.Available), this
+        // only bounds how much ONE card may add to the running sum.
+        public const float handDemandPerCardCap = 4f;
+        // BuildFacilityTask.RankHex's own hand-demand term (see HandDemandBonus's own comment) —
+        // internal hex-ranking weight only, same "never leaks into ScoreHex/AiDecision.Score"
+        // scoping every other RankHex term in this file already documents. Applied only to whichever
+        // resourceType currently carries the HAND's own single highest demand, never split across
+        // several at once for the same hex.
+        public const float handDemandRankWeight = 2f;
+
         // buildHeroTravelCostWeight — BuildFacilityTask.RankHex's own hero-movement term
         // (2026-08-23, project owner's own call): degrades a candidate hex by the REAL terrain-
         // weighted move cost (HexPathfinder.FindPath.TotalCost, not plain hex distance — see

@@ -551,6 +551,63 @@ namespace Game.Ai
             return fallback;
         }
 
+        // Feature 3 (2026-08-24, project owner's own report) — the opportunity-capture mechanism
+        // itself already exists (see FindTarget's own Section 5 "unguarded"/"guard is weaker" case
+        // above) and already gets an army moving toward such a target as its own real TargetHex once
+        // it wins FindTarget's ranking outright. The gap this method closes is narrower: an army
+        // ALREADY travelling toward some OTHER destination (its own real raid target, or simply
+        // walking home) that happens to pass close by a DIFFERENT known unguarded/beatable enemy
+        // building doesn't currently deviate for it at all — FindTarget only ever gets consulted
+        // when picking a brand-new target, never mid-route.
+        //
+        // Purely an internal "which hex does THIS STEP's move actually aim at" nudge (same "never
+        // leaks into AiDecision.Score" scoping ProximityScore/WinChanceAgainst already keep to
+        // themselves in this class) — the task's own real TargetHex/HomeHex is left completely
+        // untouched; only the destination THIS ONE MoveArmy decision passes to IssueMoveOrder
+        // changes, so a later step's fresh re-evaluation can freely pick a different detour (or none
+        // at all) without the task ever having "forgotten" its actual goal.
+        //
+        // A candidate building qualifies the same way FindTarget's own Section 5 does — actually
+        // enemy-owned, not neutral, not the starting citadel, and "known" via the same visited-hex
+        // memory (VisionSystem.IsVisited) — AND either confirmed undefended (ThreatStrength.
+        // IsUndefended) or already beatable by `army` right now (IsReady, the same readiness math
+        // every other real engagement decision in this class already trusts). Only a detour that
+        // doesn't add more than AiConfig.captureStepDetourTolerance extra hexes over the direct
+        // route wins; otherwise the real destination stays this step's own target, unchanged — and
+        // the building sitting exactly ON `realDestination` itself is skipped (nothing to "detour"
+        // toward, ordinary continuation already covers it).
+        internal static HexCoord? FindCaptureStepDestination(PlayerSetupData actor, ArmyData army, HexCoord realDestination, HexMap map)
+        {
+            if (actor == null || army == null || map == null || realDestination.Equals(army.Hex))
+                return null;
+
+            int direct = HexGridMath.Distance(army.Hex, realDestination);
+            HexCoord? best = null;
+            int bestExtra = int.MaxValue;
+
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
+                    continue;
+                if (building.Hex.Equals(realDestination))
+                    continue;
+                if (!VisionSystem.IsVisited(actor, building.Hex))
+                    continue;
+
+                ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
+                if (!required.IsUndefended && !IsReady(army, required))
+                    continue; // not a confirmed-safe or currently-winnable capture — not worth deviating for
+
+                int viaDetour = HexGridMath.Distance(army.Hex, building.Hex) + HexGridMath.Distance(building.Hex, realDestination);
+                int extra = viaDetour - direct;
+                if (extra < 0 || extra > AiConfig.captureStepDetourTolerance || extra >= bestExtra)
+                    continue;
+                bestExtra = extra;
+                best = building.Hex;
+            }
+            return best;
+        }
+
         // Known non-neutral army within raidThreatRadius of `hex` — the threat-reaction trigger
         // (see this class's own "Поведение" comment). Neutrals never trigger this (they're this
         // task's own PREY, not a threat to react to).

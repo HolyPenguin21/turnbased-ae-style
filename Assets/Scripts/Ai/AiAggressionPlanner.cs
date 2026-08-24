@@ -229,7 +229,24 @@ namespace Game.Ai
             // call) — internal to target SELECTION only now, same as target.Value.Score at
             // assembly time (see TryRaidAssembleCandidates); ordinary continuation is a flat
             // aggressionBaseWeight regardless of how far the target sits.
-            return AiDecision.Move(task.Army, task.TargetHex, $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})",
+            //
+            // Feature 3 (2026-08-24) — capture-step nudge, see RaidWeakerArmyTask.
+            // FindCaptureStepDestination's own comment: this ordinary continuation may detour onto a
+            // DIFFERENT known unguarded/beatable enemy building it happens to pass close by, without
+            // ever changing task.TargetHex itself — a later step's fresh continuation re-targets the
+            // real destination the normal way (or re-detours again if another opportunity is still
+            // closer). Deliberately only wired into this ordinary branch — the counter-attack/retreat
+            // branches above already pick their own destination for their own reasons and must not be
+            // second-guessed here.
+            HexCoord moveDestination = task.TargetHex;
+            string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
+            HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, task.Army, task.TargetHex, ctx.Map);
+            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, captureStep.Value))
+            {
+                moveDestination = captureStep.Value;
+                moveReason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way";
+            }
+            return AiDecision.Move(task.Army, moveDestination, moveReason,
                 task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
         }
 
@@ -617,10 +634,23 @@ namespace Game.Ai
                 if (army.IsGarrison || army.IsPrison || army.Hex.Equals(garrisonHex)
                     || army.Controller == null || stuckScouts.Contains(army))
                     continue;
-                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
+                // Feature 3 (2026-08-24) — same capture-step nudge TryContinueRaidTask's own ordinary
+                // continuation gets (see RaidWeakerArmyTask.FindCaptureStepDestination's own comment):
+                // an untasked army walking home to assemble may as well grab a known unguarded/
+                // beatable enemy building it happens to pass close by first, without changing where
+                // it's actually headed (still the garrison) for next step's own fresh re-evaluation.
+                HexCoord destination = garrisonHex;
+                string reason = "returns to the garrison to assemble the force";
+                HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, army, garrisonHex, ctx.Map);
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value))
+                {
+                    destination = captureStep.Value;
+                    reason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way home";
+                }
+                else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
 
-                var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f, "returns to the garrison to assemble the force");
+                var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
                 results.Add(AiDecision.Move(army, target, null, AiConfig.raidRecallScore, AiTaskCategory.Aggression));
             }
             return results;
@@ -665,9 +695,24 @@ namespace Game.Ai
                     continue;
 
                 HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
-                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
+
+                // Feature 3 (2026-08-24) — same capture-step nudge as TryRaidRecallCandidates above;
+                // this is Feature 3's own "untasked/returning combat army" case too — a jobless raid
+                // army heading home may as well grab a known unguarded/beatable enemy building it
+                // passes close by first (see RaidWeakerArmyTask.FindCaptureStepDestination's own
+                // comment), without changing where it's actually headed for next step's own re-eval.
+                HexCoord destination = homeHex;
+                string reason = "nothing left to raid — returns to base";
+                HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, army, homeHex, ctx.Map);
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value))
+                {
+                    destination = captureStep.Value;
+                    reason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way home";
+                }
+                else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
                     continue;
-                var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "nothing left to raid — returns to base");
+
+                var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
                 results.Add(AiDecision.Move(army, target, null, AiConfig.raidRecallScore, AiTaskCategory.Aggression));
             }
             return results;
@@ -906,11 +951,18 @@ namespace Game.Ai
             int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
-            ArmyData army = ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            // Feature 4A (2026-08-24) — reuse a disposable empty shell already sitting here before
+            // spending AP on a brand-new one (see GarrisonReorgTask.FindDisposableEmptyArmyAt's own
+            // comment) — same AP-avoidance intent as everywhere else in this codebase that already
+            // prefers reusing an existing empty army over creating one from scratch.
+            ArmyData reused = GarrisonReorgTask.FindDisposableEmptyArmyAt(player, hex);
+            ArmyData army = reused ?? ArmyActions.CreateArmy(player, hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
             string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
-            AiDebugLog.Write(army != null
-                ? $"[AI] {player.Nickname}: Aggression task — creates empty army \"{army.Name}\" to assemble a raid force.{delta}"
-                : $"[AI] {player.Nickname}: Aggression task — not enough AP for a new army to assemble into.");
+            AiDebugLog.Write(reused != null
+                ? $"[AI] {player.Nickname}: Aggression task — reuses empty army \"{reused.Name}\" to assemble a raid force instead of spending AP on a new one."
+                : army != null
+                    ? $"[AI] {player.Nickname}: Aggression task — creates empty army \"{army.Name}\" to assemble a raid force.{delta}"
+                    : $"[AI] {player.Nickname}: Aggression task — not enough AP for a new army to assemble into.");
 
             yield return AiTurnController.WaitStep(ctx);
         }
@@ -986,13 +1038,19 @@ namespace Game.Ai
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
 
-            ArmyData courier = ArmyActions.CreateArmy(player, source.Hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
+            // Feature 4A (2026-08-24) — same disposable-empty-shell reuse RequestRaidArmyRoutine's
+            // own comment describes, applied to the courier here too.
+            ArmyData reusedCourier = GarrisonReorgTask.FindDisposableEmptyArmyAt(player, source.Hex);
+            ArmyData courier = reusedCourier ?? ArmyActions.CreateArmy(player, source.Hex, ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection);
             if (courier == null)
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: not enough AP for a courier for \"{decision.Task.TargetArmy.Name}\".");
                 AiTaskRegistry.Remove(player, decision.Task);
                 yield break;
             }
+            if (reusedCourier != null)
+                AiDebugLog.Write($"[AI] {player.Nickname}: reuses empty army \"{reusedCourier.Name}\" as the courier for "
+                    + $"\"{decision.Task.TargetArmy.Name}\" instead of spending AP on a new one.");
 
             if (ArmyActions.TransferMember(recruit, source, courier, ctx.HexSelection, out string failReason))
             {
@@ -1317,6 +1375,14 @@ namespace Game.Ai
                 return null;
             }
 
+            // Feature 2 (2026-08-24) — the building itself is already up; see
+            // AiTask.AwaitingGarrisonSeed's own comment. Checked before the siege/threat/travel logic
+            // below, none of which applies any more once the army has actually arrived and built —
+            // AdvanceGarrisonSeed has its own, narrower siege bail-out instead (free the army for
+            // Оборона immediately rather than finish seeding first).
+            if (task.AwaitingGarrisonSeed)
+                return AdvanceGarrisonSeed(player, root, ctx, task);
+
             if (AiDefencePlanner.IsUnderSiege(player, ctx))
             {
                 AiResourceReservation.Release(task);
@@ -1482,14 +1548,169 @@ namespace Game.Ai
 
             hand.Hand.Remove(card);
             string delta = AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
-            AiDebugLog.Write(building != null
-                ? $"[AI] {player.Nickname}: \"{army.Name}\" founds a new base at ({task.TargetHex.Q},{task.TargetHex.R}) — Aggression task complete.{delta}"
-                : $"[AI] {player.Nickname}: \"{army.Name}\" couldn't found the new base — spawn failed.{delta}");
             AiResourceReservation.Release(task);
-            AiTaskRegistry.Remove(player, task);
+            if (building != null)
+            {
+                // Feature 2 (2026-08-24, project owner's own report — see AiTask.AwaitingGarrisonSeed's
+                // own comment): the task deliberately does NOT complete here any more, even though the
+                // building itself is now up. The instant hand-off to "task complete, army free" this
+                // used to do left a brand-new empty Garrison for exactly one step — long enough for
+                // Raid/Defence to reclaim the builder army and for the enemy's own opportunity-capture
+                // scan (RaidWeakerArmyTask.FindTarget's own "unguarded" case) to flag it right back.
+                // TryContinueBuildBaseTask's own AwaitingGarrisonSeed branch drives the actual seed
+                // transfer (or the stale-task timeout) from here on.
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" founds a new base at "
+                    + $"({task.TargetHex.Q},{task.TargetHex.R}) — building complete, seeding its garrison next.{delta}");
+                task.AwaitingGarrisonSeed = true;
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" couldn't found the new base — spawn failed.{delta}");
+                AiTaskRegistry.Remove(player, task);
+            }
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.ShowReadOnly(army);
+            yield return AiTurnController.WaitStep(ctx);
+        }
+
+        // Feature 2's own continuation for the AwaitingGarrisonSeed phase (see
+        // AiTask.AwaitingGarrisonSeed's own comment) — runs once per step (from
+        // TryContinueBuildBaseTask's own branch above) until either a seed transfer actually lands,
+        // or GarrisonSeedWaitTurns' own stale-task escape hatch fires. Under siege, the army is freed
+        // immediately rather than finishing the seed first (2026-08-24, same priority
+        // AiDefencePlanner.TryDefencePreemptCandidates already gives a genuine citadel emergency over
+        // everything else in this codebase) — a still-hero-led combat army standing right next to a
+        // fresh base is exactly the kind of body Оборона would want back regardless of whether the
+        // garrison itself ends up seeded this turn or the next.
+        private static AiDecision AdvanceGarrisonSeed(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
+        {
+            if (AiDefencePlanner.IsUnderSiege(player, ctx))
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — citadel under siege, "
+                    + "new-base garrison seeding abandoned, army freed.");
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+
+            ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(task.TargetHex));
+            if (garrison == null)
+            {
+                // The building/garrison itself never actually materialized (or was lost since) —
+                // nothing left here to seed.
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+            if (garrison.Members.Count > 0)
+            {
+                // Something already reached this garrison on its own — a card routed here by
+                // AiManagementPlanner.FindPlacement's own temporary priority nudge, a reinforcement,
+                // or an earlier seed transfer that landed. Either way the "unguarded" gap this whole
+                // phase exists to close is already shut.
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — new base garrison at "
+                    + $"({task.TargetHex.Q},{task.TargetHex.R}) is no longer empty, BuildBase task complete.");
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+
+            UnitData seed = FindGarrisonSeedUnit(task.Army);
+            if (seed == null)
+            {
+                // Builder army is hero-only, or every remaining non-hero member is the hero's own
+                // last escort (see FindGarrisonSeedUnit's own comment) — don't hold the army hostage
+                // forever; hand off to the reservation-routing nudge (AiManagementPlanner.
+                // FindPlacement/OwnGarrisonHexesByActivity) instead and time out on our own clock.
+                task.GarrisonSeedWaitTurns++;
+                if (task.GarrisonSeedWaitTurns > AiConfig.garrisonSeedMaxWaitTurns)
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — no unit to spare for the new "
+                        + $"garrison at ({task.TargetHex.Q},{task.TargetHex.R}) after {task.GarrisonSeedWaitTurns} turn(s), "
+                        + "leaves it to the next card/reinforcement instead, BuildBase task complete.");
+                    AiTaskRegistry.Remove(player, task);
+                }
+                return null;
+            }
+
+            if (!GarrisonReorgTask.CanAffordTransferInto(garrison, seed))
+                return null; // AP-short this step — retried next step, same army/unit, nothing else changed
+
+            var move = new GarrisonReorgTask.ConsolidationMove(task.Army, seed, garrison,
+                $"\"{task.Army.Name}\" leaves {seed.Name} to seed the new garrison at ({task.TargetHex.Q},{task.TargetHex.R})");
+            return AiDecision.SeedNewBaseGarrison(move, task, AiConfig.buildBaseExecuteScore);
+        }
+
+        // Feature 2's own candidate pick (2026-08-24) — see AiTask.AwaitingGarrisonSeed's own
+        // comment. Preference order matches the project owner's own spec: never the hero; not a
+        // Recce unit (Recce operates solo by design — see AiScoutPlanner/AiManagementPlanner.
+        // IsRecceCard's own identification elsewhere — stripping it into a garrison defeats its
+        // whole purpose); not critically wounded (RaidWeakerArmyTask.IsCriticallyWounded is
+        // ArmyData-scoped, not the per-unit read this pick needs, so the same ≤50%HP threshold is
+        // applied directly per candidate instead — see UnitCompositionFitBonus's own criterion 6 for
+        // the identical threshold used the same way elsewhere in this codebase); lowest strategic
+        // value to the builder army itself (Defense+Attack ascending); a defensive/ranged unit
+        // preferred on a tie (Range > 1 — cheap insurance sitting behind the new base's own defense
+        // bonus, same intuition GarrisonReorgTask.FindHexBalanceMove's own 2.1.3 exception already
+        // uses for "which unit stays behind"). Never strips a hero-led builder army down to the hero
+        // standing alone — leaving exactly the hero's last non-hero escort behind would immediately
+        // re-trigger AiArmyRoles.IsSoloHeroAwaitingEscort next step, the same "hero alone and exposed"
+        // outcome AiScoutPlanner's own return-home fallback already exists to avoid, not something
+        // this pick should ever cause on purpose.
+        private static UnitData FindGarrisonSeedUnit(ArmyData builderArmy)
+        {
+            if (builderArmy == null)
+                return null;
+            List<UnitData> nonHero = builderArmy.Members.Where(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce)).ToList();
+            if (nonHero.Count == 0)
+                return null;
+
+            bool heroLed = builderArmy.Members.Any(m => m.IsHero);
+            if (heroLed && nonHero.Count == 1)
+                return null; // would leave the hero's own last escort behind — never worth it
+
+            List<UnitData> healthy = nonHero.Where(m => m.HitPointsCurrent > m.HitPointsMax / 2).ToList();
+            List<UnitData> pool = healthy.Count > 0 ? healthy : nonHero; // no healthy candidate — a wounded one still beats an undefended base
+
+            return pool.OrderBy(m => m.Defense + m.Attack).ThenByDescending(m => m.Range > 1 ? 1 : 0).First();
+        }
+
+        // Feature 2's own execution step (2026-08-24) — see AiTask.AwaitingGarrisonSeed's own
+        // comment and AdvanceGarrisonSeed above. Mirrors AiManagementPlanner.ConsolidateUnitsRoutine's
+        // own single-transfer shape (same ArmyActions.TransferMember call, same failure handling,
+        // same oscillation-guard bookkeeping) — not a call INTO that routine directly since this one
+        // also has to close the BuildBase task out once the transfer lands, which
+        // ConsolidateUnitsRoutine has no notion of a task to do.
+        public static IEnumerator SeedNewBaseGarrisonRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            GarrisonReorgTask.ConsolidationMove move = decision.ConsolidationMove;
+            AiTask task = decision.Task;
+            yield return AiTurnController.PanTo(ctx, move.Source.Hex);
+
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            int ap0 = root != null ? root.ActionPoints : 0;
+            int human0 = root != null ? root.GetResource(ResourceType.Human) : 0;
+            int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
+            int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
+            int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+
+            bool moved = ArmyActions.TransferMember(move.Unit, move.Source, move.Target, ctx.HexSelection, out string failReason);
+            if (moved)
+            {
+                string delta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
+                AiDebugLog.Write($"[AI] {player.Nickname}: new base garrison seeded with {move.Unit.Name} — {decision.Reason}, "
+                    + $"BuildBase task complete.{delta}");
+                ctx.RecordArmyVisit(move.Unit, move.Source, move.Target);
+                if (task != null)
+                    AiTaskRegistry.Remove(player, task);
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't seed the new garrison with {move.Unit.Name} — {failReason}");
+                // Task left registered — AdvanceGarrisonSeed retries fresh next step (same builder
+                // army, same pick, unless something about the roster changed meanwhile).
+            }
+
+            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
+                ctx.ArmyViewerModal.ShowReadOnly(move.Target);
             yield return AiTurnController.WaitStep(ctx);
         }
     }

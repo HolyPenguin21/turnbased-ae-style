@@ -36,6 +36,7 @@ namespace Game.Ai
         ActiveDefenceForce,
         StrengthenDefenceForce,
         BuildBase,
+        SeedNewBaseGarrison,
         Wait,
         Pass,
     }
@@ -261,6 +262,21 @@ namespace Game.Ai
         {
             Kind = AiActionKind.BuildBase, ExistingArmy = task.Army, TargetHex = task.TargetHex, Task = task, Score = score, Category = task.Category,
             Reason = $"\"{task.Army.Name}\" has arrived — founds a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
+        };
+
+        // Агрессия · Задача 2's own AwaitingGarrisonSeed phase (Feature 2, 2026-08-24) — see
+        // AiTask.AwaitingGarrisonSeed's own comment and AiAggressionPlanner.AdvanceGarrisonSeed.
+        // Reuses GarrisonReorgTask.ConsolidationMove's own shape (Source/Unit/Target/Reason) rather
+        // than inventing a new struct — this is exactly the same "move one unit from army A into
+        // army B" primitive ConsolidateUnitsRoutine already executes, just triggered from Агрессия's
+        // own task continuation instead of GarrisonReorgTask's end-of-turn drain, so it needs its
+        // own AiActionKind/execution routine to also close the BuildBase task out once the transfer
+        // lands (ConsolidateUnitsRoutine itself has no notion of a task to close).
+        public static AiDecision SeedNewBaseGarrison(GarrisonReorgTask.ConsolidationMove move, AiTask task, float score) => new AiDecision
+        {
+            Kind = AiActionKind.SeedNewBaseGarrison, ExistingArmy = move.Source, TargetHex = move.Target.Hex,
+            ConsolidationMove = move, Task = task, Score = score, Category = task.Category,
+            Reason = move.Reason,
         };
 
         // `category` — Менеджмент's own TryPlayCardCandidates and Разведка's own

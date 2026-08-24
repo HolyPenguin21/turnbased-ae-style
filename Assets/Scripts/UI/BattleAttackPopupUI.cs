@@ -23,11 +23,11 @@ namespace Game.UI
     // final. If NEITHER side has any Fate to spend at all, the whole duel phase is skipped and
     // the result shows immediately off the raw roll. A side with no hero, no Fate, or no miss
     // left to reroll on ITS OWN turn auto-declines after a short delay instead of forcing a human
-    // to click Accept on a turn with nothing to decide (see RunHumanTurn/RunAiTurn). A roll's
-    // outcome (success counts, who gets to Spend/Accept next, the eventual Resolve) is decided
-    // and shown the instant the dice are rolled — the duel/turn flow never waits on the flip
-    // animation to visibly land (per the user's own request, 2026-08-24); the dice strip just
-    // plays its spin independently alongside whatever happens next.
+    // to click Accept on a turn with nothing to decide (see RunHumanTurn/RunAiTurn). Every roll's
+    // outcome (success counts, who gets to Spend/Accept next) is only shown/opened once that
+    // roll's own flip animation has actually landed — the initial roll via RunRollAndDuel's own
+    // wait, and every later Fate-spend reroll inside the duel via RunHumanTurn/RunAiTurn's own
+    // wait on _rerollAnimDone (both per the user's own request, 2026-08-24).
     //
     // Result state: attacker's own art (standing in for the original's cinematic "scan" insert),
     // a text summary, and the target's outcome with a DESTROYED stamp if it died.
@@ -116,6 +116,14 @@ namespace Game.UI
         // `yield return RunTurn(...)` returns, since a coroutine can't hand back an ordinary
         // return value.
         private bool _turnSpent;
+        // Set false right before a Fate-spend reroll's SetDice call, true once that die's own
+        // flip animation lands (or immediately if the row is missing — nothing to wait for).
+        // Both RunHumanTurn and RunAiTurn wait on this before re-opening Spend/Accept (human) or
+        // re-evaluating whether to keep spending (AI) — every reroll is gated the same way the
+        // very first roll is (see RunRollAndDuel), not just that first one (per the user's own
+        // follow-up request, 2026-08-24: there had been confusing-looking cases from Spend
+        // re-opening while the just-rerolled die was still visibly mid-flip).
+        private bool _rerollAnimDone;
 
         // Which win condition Resolve() applies once both sides have accepted — every Challenge
         // in the manual (Ground Combat, Capture Kill, and eventually Retreat/Assassination/
@@ -447,9 +455,9 @@ namespace Game.UI
         }
 
         // Rolls, reveals both rows, then runs the Fate duel (see RunDuel) and resolves once it's
-        // actually over — the dice strips' own flip animation plays independently and is never
-        // awaited (per the user's own request, 2026-08-24: the roll's result is already decided
-        // the moment the dice are rolled, so nothing downstream should pause for the spin).
+        // actually over — waits for both rows' own flip animation to actually land before opening
+        // the duel (per the user's own request, 2026-08-24: Spend/Accept shouldn't become
+        // available, and an AI shouldn't react, before the dice are visibly done spinning).
         private IEnumerator RunRollAndDuel()
         {
             ChallengeResult result;
@@ -476,8 +484,17 @@ namespace Game.UI
                 $"attacker={BattleDebugLog.DiceString(_attackerDice)} ({result.AttackerSuccesses} hits), " +
                 $"defender={BattleDebugLog.DiceString(_defenderDice)} ({result.DefenderSuccesses} hits), rawDamage={result.Damage}");
 
-            attackerRow?.SetDice(_attackerDice);
-            defenderRow?.SetDice(_defenderDice);
+            // Wait for the initial roll's own flip animation to actually land before anything
+            // downstream happens — the success counts, the Fate duel, and Spend/Accept becoming
+            // interactable all used to fire the instant the dice were rolled, which let a human
+            // click Spend (or an AI decide) while the strip was still visibly mid-flip (per the
+            // user's own request, 2026-08-24). Every later Fate-spend reroll inside the duel gets
+            // the same treatment via RunHumanTurn/RunAiTurn's own wait on _rerollAnimDone.
+            bool attackerAnimDone = attackerRow == null;
+            bool defenderAnimDone = defenderRow == null;
+            attackerRow?.SetDice(_attackerDice, onComplete: () => attackerAnimDone = true);
+            defenderRow?.SetDice(_defenderDice, onComplete: () => defenderAnimDone = true);
+            yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
             FireRollThought();
             yield return RunDuel();
@@ -630,10 +647,13 @@ namespace Game.UI
                 if (_humanDeclined)
                     break;
 
+                // Wait for the reroll's own flip animation to land before offering Spend-or-
+                // Accept again — otherwise the next Spend became available while the die just
+                // spent on was still visibly mid-flip (see _rerollAnimDone's own comment).
+                yield return new WaitUntil(() => _rerollAnimDone);
+
                 spentThisTurn = true;
-                // Loop back immediately — same side, same turn, offered Spend-or-Accept again
-                // against the now-updated dice; the reroll's own flip animation plays
-                // independently and doesn't gate this (per the user's own request, 2026-08-24).
+                // Same side, same turn, offered Spend-or-Accept again against the now-landed dice.
             }
             _turnSpent = spentThisTurn;
         }
@@ -683,16 +703,21 @@ namespace Game.UI
                     $"(remaining={hero.Fate}), rerolled slot {rerolledIndex} -> " +
                     $"{(isDefenderTurn ? _defenderDice : _attackerDice)[rerolledIndex]}");
 
+                _rerollAnimDone = isDefenderTurn ? defenderRow == null : attackerRow == null;
                 if (isDefenderTurn)
                 {
-                    defenderRow?.SetDice(_defenderDice, rerolledIndex);
+                    defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimDone = true);
                     defenderRow?.OnFateSpent();
                 }
                 else
                 {
-                    attackerRow?.SetDice(_attackerDice, rerolledIndex);
+                    attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimDone = true);
                     attackerRow?.OnFateSpent();
                 }
+                // Wait for this reroll's own flip animation to land before deciding whether to
+                // keep going — matches RunHumanTurn's own reroll gate (see _rerollAnimDone's own
+                // comment): the AI shouldn't react to a die that isn't visibly done spinning yet.
+                yield return new WaitUntil(() => _rerollAnimDone);
 
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
                 // just came back a miss again — this side is done trying Fate for the rest of
@@ -747,7 +772,8 @@ namespace Game.UI
             defenderRow?.SetSpendInteractable(false);
             if (acceptButton != null)
                 acceptButton.interactable = false;
-            defenderRow?.SetDice(_defenderDice, rerolledIndex);
+            _rerollAnimDone = defenderRow == null;
+            defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimDone = true);
             defenderRow?.OnFateSpent();
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] defender {_defenderHero.Name} (human) spent Fate " +
@@ -764,7 +790,8 @@ namespace Game.UI
             attackerRow?.SetSpendInteractable(false);
             if (acceptButton != null)
                 acceptButton.interactable = false;
-            attackerRow?.SetDice(_attackerDice, rerolledIndex);
+            _rerollAnimDone = attackerRow == null;
+            attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimDone = true);
             attackerRow?.OnFateSpent();
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] attacker {_attackerHero.Name} (human) spent Fate " +

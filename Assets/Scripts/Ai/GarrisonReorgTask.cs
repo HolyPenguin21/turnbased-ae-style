@@ -861,10 +861,94 @@ namespace Game.Ai
                 ?? FindHexBalanceMove(player, garrisonHex, garrison, ctx);
         }
 
+        // ---- Feature 4A — disposable/reusable empty army shells (2026-08-24) ----
+        // Project owner's own report: turn-30 logs showed many field armies with roster size 0 —
+        // empty shells that persist after ConsolidateUnitsRoutine/AssembleRaidForceRoutine/etc.
+        // emptied them, inflating the army count for nothing (and, since several of these routines'
+        // own DeleteArmyIfEmptied call refuses to tear one down sitting exactly on its own owner's
+        // Barracks hex — see that method's own comment — a shell parked right at a garrison hex
+        // never actually goes away that way at all).
+
+        // An empty, task-less field army that isn't part of the small reserve buffer
+        // AiManagementPlanner.GatherFallbackCandidates already deliberately keeps around (its own
+        // spareArmies count, capped at AiConfig.maxSpareArmies — see that method's own comment) —
+        // "surplus beyond the reserve buffer", not a flat "any empty army is disposable" rule,
+        // deliberately: disposing of ALL of them would fight GatherFallbackCandidates' own logic,
+        // which relies on up to maxSpareArmies of these existing so it doesn't keep re-spending AP
+        // recreating the exact same buffer turn after turn. Ordered by Name for a stable,
+        // deterministic pick of which specific instances count as "the kept reserve" —
+        // ArmyRegistry's own enumeration order isn't guaranteed stable call to call.
+        public static bool IsDisposableEmptyArmy(PlayerSetupData player, ArmyData army)
+        {
+            if (army == null || army.IsGarrison || army.IsPrison || army.Members.Count != 0 || army.Controller == null)
+                return false;
+            if (AiTaskRegistry.TaskFor(player, army) != null)
+                return false;
+            return DisposableEmptyArmies(player).Contains(army);
+        }
+
+        private static IEnumerable<ArmyData> DisposableEmptyArmies(PlayerSetupData player)
+        {
+            return ArmyRegistry.AllForOwner(player)
+                .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
+                .OrderBy(a => a.Name)
+                .Skip(AiConfig.maxSpareArmies);
+        }
+
+        // Feature 4A's own reuse half — see IsDisposableEmptyArmy's own comment. `hex` is wherever
+        // the caller was about to spend ArmyActions.CreateArmy's own AP on a brand-new one (see
+        // AiAggressionPlanner.RequestRaidArmyRoutine/DispatchReinforcementRoutine, AiDefencePlanner.
+        // RequestDefendArmyRoutine, AiScoutPlanner.SpawnReconArmyRoutine — all four now check this
+        // FIRST). Null means no disposable shell exists there right now — callers fall back to
+        // their own ordinary CreateArmy call, unchanged.
+        public static ArmyData FindDisposableEmptyArmyAt(PlayerSetupData player, HexCoord hex) =>
+            DisposableEmptyArmies(player).FirstOrDefault(a => a.Hex.Equals(hex));
+
+        // ---- Feature 4B — застрявшие одиночные полевые армии (2026-08-24) ----
+        // Project owner's own report: the same turn-30 log showed many field armies with roster
+        // size 1 — lone units stranded in the field, untasked, never folded into any garrison
+        // (IdleBalance's own lone-army-fold tier, FindLoneArmyFoldMove above, only ever looks AT a
+        // garrison hex — see IsLoneArmyAtBase's own comment — so a lone unit standing anywhere else
+        // is simply invisible to it).
+        //
+        // An untasked (AiTaskRegistry.TaskFor == null — the closest concept this codebase has to
+        // "no task or reservation", since a reservation is an AiTask-scoped accounting claim, not an
+        // ArmyData-scoped one — see AiResourceReservation's own class comment) field army — not the
+        // garrison/prison, and not already sitting on ANY of the player's own garrison hexes (see
+        // AiTurnController.OwnGarrisonHexes) — with exactly one member. Two deliberate exclusions,
+        // both because they already have their own dedicated handling elsewhere and this method must
+        // not duplicate or fight it (project owner's own spec):
+        //   - A solo Recce unit (AiArmyRoles.IsSoloRecce) — Recce operates solo BY DESIGN (see
+        //     AiScoutPlanner's own class comment); walking it "home for consolidation" would undo the
+        //     exact composition AiScoutPlanner deliberately keeps it in.
+        //   - A hero awaiting escort (AiArmyRoles.IsSoloHeroAwaitingEscort) — already has its own
+        //     return-home handling, AiScoutPlanner.TryReturnHomeCandidates (see
+        //     AiManagementPlanner's own class comment: "The 'solo hero with nothing to visit walks
+        //     home' fallback lives on AiScoutPlanner.TryReturnHomeCandidates instead"); this method
+        //     would just be a slower, less specific duplicate of that same walk for this exact shape.
+        //
+        // Returns every matching army in one pass (not just one) — unlike most other Find* methods
+        // in this file, there's no atomicity/ordering concern here (each stranded army gets its own
+        // independent "walk home" move, see AiTurnController.RunStrandedArmyRecovery), so a single
+        // sweep avoids recomputing this same scan once per candidate the way a one-at-a-time
+        // "propose, re-evaluate fresh" shape would.
+        public static IEnumerable<ArmyData> FindStrandedWeakArmies(PlayerSetupData player)
+        {
+            var ownGarrisonHexes = new HashSet<HexCoord>(AiTurnController.OwnGarrisonHexes(player));
+            return ArmyRegistry.AllForOwner(player)
+                .Where(a => !a.IsGarrison && !a.IsPrison && a.Controller != null && a.Members.Count == 1
+                    && !ownGarrisonHexes.Contains(a.Hex)
+                    && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
+                    && AiTaskRegistry.TaskFor(player, a) == null);
+        }
+
         // Pre-checks the exact same AP-affordability ArmyActions.TransferMember will itself
         // enforce, so an unaffordable move is never proposed as a candidate in the first place
         // (same "checked before proposing" rule AiManagementPlanner.FindPlacement follows).
-        private static bool CanAffordTransferInto(ArmyData target, UnitData unit)
+        // Internal, not private (2026-08-24, Feature 2) — AiAggressionPlanner.AdvanceGarrisonSeed
+        // needs the exact same affordability read for its own single-unit transfer into a brand-new
+        // base's garrison, rather than duplicating this check a second time.
+        internal static bool CanAffordTransferInto(ArmyData target, UnitData unit)
         {
             if (!target.HasActivatedThisTurn)
                 return true;

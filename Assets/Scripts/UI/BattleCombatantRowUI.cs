@@ -148,11 +148,12 @@ namespace Game.UI
         // though a real reroll happened (see the user's own report). Forces that one slot to
         // replay regardless of whether its value actually changed.
         // onComplete (optional): fired once every slot THIS call touched has finished flipping
-        // (immediately, if none needed to animate). BattleAttackPopupUI no longer waits on this
-        // before advancing the duel — the roll result is already decided the instant the dice
-        // are rolled, so Accept/Spend and the next duel turn proceed immediately rather than
-        // pausing for the flip to visibly land (per the user's own request, 2026-08-24) — but the
-        // hook is kept in case a future caller still wants to know when a strip settles.
+        // (immediately, if none needed to animate) — same moment the success count itself is
+        // revealed (see ShowResults above). BattleAttackPopupUI waits on this both for the
+        // initial roll (RunRollAndDuel, before opening the Fate duel/enabling Spend) and for
+        // every later Fate-spend reroll (RunHumanTurn/RunAiTurn's own _rerollAnimDone wait), so
+        // nothing becomes available to click, and no side reacts, before the dice have actually
+        // landed (per the user's own request, 2026-08-24).
         public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
         {
             if (dice == null)
@@ -188,17 +189,25 @@ namespace Game.UI
             }
             _lastDice = (bool[])dice.Clone();
 
-            if (successText != null)
+            // Success count is revealed together with the dice landing, not before — showing the
+            // number while the strip is still mid-flip let a player read the outcome ahead of the
+            // animation (per the user's own request, 2026-08-24: results only appear once the roll
+            // animation has actually finished).
+            void ShowResults()
             {
-                int successes = 0;
-                foreach (bool hit in dice)
-                    if (hit) successes++;
-                successText.text = successes.ToString();
+                if (successText != null)
+                {
+                    int successes = 0;
+                    foreach (bool hit in dice)
+                        if (hit) successes++;
+                    successText.text = successes.ToString();
+                }
+                onComplete?.Invoke();
             }
 
             if (toAnimate.Count == 0)
             {
-                onComplete?.Invoke();
+                ShowResults();
                 return;
             }
             int pending = toAnimate.Count;
@@ -206,7 +215,7 @@ namespace Game.UI
             {
                 pending--;
                 if (pending == 0)
-                    onComplete?.Invoke();
+                    ShowResults();
             }
             // index/count (position within THIS call's own toAnimate list, not the whole dice
             // array) so a full first roll lands its dice one after another across the row, and a

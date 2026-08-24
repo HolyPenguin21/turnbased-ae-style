@@ -159,26 +159,49 @@ namespace Game.UI
             List<PlayerSetupData> order = TurnOrderResolver.Resolve(_players, out Dictionary<PlayerSetupData, DiceRollResult> finalRolls);
             _pendingOrder = order;
 
-            foreach (PlayerSetupData player in _players)
-                if (_rowByPlayer.TryGetValue(player, out DiceRowUI row) && finalRolls.TryGetValue(player, out DiceRollResult roll))
-                    row.ShowRoll(roll);
-
-            for (int i = 0; i < order.Count; i++)
-                if (_rowByPlayer.TryGetValue(order[i], out DiceRowUI row))
-                    row.ShowRank(i + 1);
-
             if (rollButton != null)
                 rollButton.gameObject.SetActive(false);
 
-            if (continueButton != null)
+            // Rank and Continue only appear once every row's own flip animation has actually
+            // landed — showing "#1"/etc. (or letting Continue be pressed) while the dice were
+            // still visibly mid-flip used to let a result be read, or an auto-continuing AI act,
+            // before the roll was done spinning (per the user's own request, 2026-08-24).
+            var pendingRolls = new List<(DiceRowUI row, DiceRollResult roll)>();
+            foreach (PlayerSetupData player in _players)
+                if (_rowByPlayer.TryGetValue(player, out DiceRowUI row) && finalRolls.TryGetValue(player, out DiceRollResult roll))
+                    pendingRolls.Add((row, roll));
+
+            void ShowResultsAndAdvance()
             {
-                continueButton.gameObject.SetActive(true);
-                continueButton.onClick.RemoveAllListeners();
-                continueButton.onClick.AddListener(() => Finish(order));
+                for (int i = 0; i < order.Count; i++)
+                    if (_rowByPlayer.TryGetValue(order[i], out DiceRowUI row))
+                        row.ShowRank(i + 1);
+
+                if (continueButton != null)
+                {
+                    continueButton.gameObject.SetActive(true);
+                    continueButton.onClick.RemoveAllListeners();
+                    continueButton.onClick.AddListener(() => Finish(order));
+                }
+
+                if (IsAutoRollEnabled)
+                    StartCoroutine(AutoContinueAfterDelay(order));
             }
 
-            if (IsAutoRollEnabled)
-                StartCoroutine(AutoContinueAfterDelay(order));
+            if (pendingRolls.Count == 0)
+            {
+                ShowResultsAndAdvance();
+                return;
+            }
+            int remaining = pendingRolls.Count;
+            void RowDone()
+            {
+                remaining--;
+                if (remaining == 0)
+                    ShowResultsAndAdvance();
+            }
+            foreach ((DiceRowUI row, DiceRollResult roll) in pendingRolls)
+                row.ShowRoll(roll, RowDone);
         }
 
         // panelRoot's own activeSelf doubles as the "already finished" guard — a manual

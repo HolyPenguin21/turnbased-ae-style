@@ -73,6 +73,28 @@ namespace Game.Ai
                 .ThenBy(h => h.Equals(citadelHex) ? 0 : 1);
         }
 
+        // Feature 2's own small nudge (2026-08-24) — see AiTask.AwaitingGarrisonSeed's own comment.
+        // A base whose own garrison-seed transfer hasn't landed yet (AiAggressionPlanner.
+        // AdvanceGarrisonSeed is still trying, or has already given up and is waiting on exactly
+        // this fallback) jumps to the FRONT of FindPlacement's own garrison-hex order, ahead of
+        // whatever OwnGarrisonHexesByActivity's own real-threat-activity ranking would otherwise
+        // say — a brand-new EMPTY garrison is precisely the "unguarded" opportunity
+        // RaidWeakerArmyTask.FindTarget's own Section 5 looks for, so a card landing there even one
+        // step sooner matters more than the usual busiest-base-first heuristic. A stable secondary
+        // sort on top of OwnGarrisonHexesByActivity's own existing order (LINQ OrderBy/
+        // OrderByDescending is stable) — every OTHER hex keeps its original relative order
+        // untouched, so this is a small, well-scoped reorder, not a rewrite of that method's own
+        // scoring.
+        private static IEnumerable<HexCoord> GarrisonHexesForPlacement(PlayerSetupData player)
+        {
+            HexCoord? awaitingSeedHex = AiTaskRegistry.TasksFor(player)
+                .FirstOrDefault(t => t.Kind == AiTaskKind.BuildBase && t.AwaitingGarrisonSeed)?.TargetHex;
+            IEnumerable<HexCoord> order = OwnGarrisonHexesByActivity(player);
+            return awaitingSeedHex.HasValue
+                ? order.OrderByDescending(h => h.Equals(awaitingSeedHex.Value) ? 1 : 0)
+                : order;
+        }
+
         internal static HexCoord MostActiveOwnGarrisonHex(PlayerSetupData player)
         {
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
@@ -140,7 +162,7 @@ namespace Game.Ai
             if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
                 return null;
 
-            foreach (HexCoord homeHex in OwnGarrisonHexesByActivity(player))
+            foreach (HexCoord homeHex in GarrisonHexesForPlacement(player))
             {
                 ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(homeHex));
                 if (garrison != null && HasGarrisonDepositRoom(garrison) && IsAtRequiredBuilding(garrison, player, definition))
@@ -210,6 +232,65 @@ namespace Game.Ai
         public static CardRole RoleOf(CardData card) => IsRecceCard(card) ? CardRole.Recce
             : card.Definition.cardType == CardType.Hero ? CardRole.Hero
             : CardRole.Unit;
+
+        // ---- Экономика · спрос руки на ресурс (Feature 1, 2026-08-24) ----
+        // Project owner's own root-cause report: Thane ended a turn with 8 unplayable Unit/Hero
+        // cards sitting in hand (energy=67, materials=4) while Economy kept building whichever local
+        // hex ranked best on ScarcityBonus/CitadelDistanceScore alone (see BuildFacilityTask.RankHex)
+        // — nothing in that ranking ever asked "which resource does the unplayed hand actually
+        // need". This is that missing signal: for every unplayed Unit/Hero card in hand (Base/
+        // Facility/Recce excluded — see the skip below, same exclusions TryPlayCardCandidates
+        // already applies to this same hand), deficit(resource) = max(0, cardCost(resource) -
+        // AiResourceReservation.Available(resource)) — Available, never root.GetResource directly,
+        // for the exact reason FindPlacement's own comment gives: must not double-count what an
+        // active BuildFacility/BuildBase task has already claimed toward its own build. Each card's
+        // own contribution is capped at AiConfig.handDemandPerCardCap (see that constant's own
+        // comment) before being summed into the running per-resource total.
+        //
+        // INTERNAL ranking signal only — same "computed fresh, used only to break/bias an internal
+        // choice, never leaks into the cross-category AiDecision.Score" scoping
+        // UnitCompositionFitBonus/RosterShape already keep to themselves in this same file. Wired
+        // into BuildFacilityTask.RankHex as a small bonus toward whichever resourceType currently
+        // carries the hand's own single highest demand (see that method's own HandDemandBonus) —
+        // must never change Economy's own priority relative to Defence/Aggression in the Arbiter.
+        public static Dictionary<ResourceType, float> ComputeHandResourceDemand(PlayerSetupData player, PlayerRoot root, AiHandData hand)
+        {
+            var demand = new Dictionary<ResourceType, float>
+            {
+                [ResourceType.Human] = 0f, [ResourceType.Energy] = 0f, [ResourceType.Materials] = 0f, [ResourceType.Tech] = 0f,
+            };
+            if (hand == null || root == null || player == null)
+                return demand;
+
+            foreach (CardData card in hand.Hand)
+            {
+                // Base/Facility cards never reach IsUnitOrHeroCard at all; Recce is excluded the
+                // same way TryPlayCardCandidates already excludes it from this same hand read (see
+                // that method's own comment — a Recce card competes for AiScoutPlanner's own pipeline,
+                // not this one, and doesn't compete for the resource categories this demand signal
+                // cares about the way an ordinary Unit/Hero card does).
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card))
+                    continue;
+                ResourceCost cost = card.Definition.resourceCost;
+                AddCappedDeficit(demand, ResourceType.Human, cost.human, root, player);
+                AddCappedDeficit(demand, ResourceType.Energy, cost.energy, root, player);
+                AddCappedDeficit(demand, ResourceType.Materials, cost.materials, root, player);
+                AddCappedDeficit(demand, ResourceType.Tech, cost.tech, root, player);
+            }
+            return demand;
+        }
+
+        private static void AddCappedDeficit(Dictionary<ResourceType, float> demand, ResourceType type, int cardCost,
+            PlayerRoot root, PlayerSetupData player)
+        {
+            if (cardCost <= 0)
+                return;
+            int available = AiResourceReservation.Available(root, player, type);
+            int deficit = System.Math.Max(0, cardCost - available);
+            if (deficit <= 0)
+                return;
+            demand[type] += System.Math.Min(deficit, AiConfig.handDemandPerCardCap);
+        }
 
         // ---- Разыгрывание карты — чередование ролей (Hero/Unit) ----
 
@@ -1024,8 +1105,10 @@ namespace Game.Ai
                 // logs for every OTHER BuildFacility task — this one registers directly instead
                 // (see this branch's own comment above) so it needs its own line, or a log audit
                 // would see the hero detach but never see the resulting task actually start.
+                AiHandData handForLog = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
                 AiDebugLog.Write($"[AI] {player.Nickname}: starts Economy task — \"{destination.Name}\" heads out "
-                    + $"to build {decision.EconomyResourceType} at ({decision.EconomyBuildHex.Value.Q},{decision.EconomyBuildHex.Value.R}).");
+                    + $"to build {decision.EconomyResourceType} at ({decision.EconomyBuildHex.Value.Q},{decision.EconomyBuildHex.Value.R})."
+                    + AiTurnController.HandDemandLogSuffix(player, decision.EconomyResourceType, root, handForLog));
             }
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
