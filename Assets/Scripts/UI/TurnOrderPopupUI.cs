@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Game.Core;
 using Game.Map;
@@ -21,12 +22,36 @@ namespace Game.UI
         [SerializeField] private Button continueButton;
         [SerializeField] private InitiativeBuyPanelUI buyPanel;
         [SerializeField] private GameConfig gameConfig;
+        // Player-facing "auto-press Roll/Continue for me" checkbox (AutoRoll_Checkbox, under
+        // TurnOrderPopup) — same principle as BattleAttackPopupUI's own Autoroll_Toggle,
+        // persisted via PlayerPrefs. One toggle gates two delayed auto-presses: Roll once this
+        // popup is shown, then Continue once the roll has produced a winner (see Show/RollAll).
+        [SerializeField] private Toggle autoRollToggle;
+        [SerializeField] private float autoRollDelay = 0.75f;
+        private const string AutoRollPrefKey = "TurnOrderPopup.AutoRollEnabled";
 
         private readonly List<DiceRowUI> _rows = new List<DiceRowUI>();
         private readonly Dictionary<PlayerSetupData, DiceRowUI> _rowByPlayer = new Dictionary<PlayerSetupData, DiceRowUI>();
         private List<PlayerSetupData> _players;
         private List<PlayerSetupData> _pendingOrder;
         private Action<List<PlayerSetupData>> _onResolved;
+
+        private void Awake()
+        {
+            if (autoRollToggle != null)
+            {
+                autoRollToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(AutoRollPrefKey, 0) != 0);
+                autoRollToggle.onValueChanged.AddListener(OnAutoRollToggleChanged);
+            }
+        }
+
+        private static void OnAutoRollToggleChanged(bool isOn)
+        {
+            PlayerPrefs.SetInt(AutoRollPrefKey, isOn ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        private bool IsAutoRollEnabled => autoRollToggle != null && autoRollToggle.isOn;
 
         // Space does whichever of Roll/Continue is currently showing — only one of the two is
         // ever active at once (see Show/RollAll), so no ambiguity about which it means.
@@ -45,6 +70,10 @@ namespace Game.UI
 
         public void Show(List<PlayerSetupData> players, Action<List<PlayerSetupData>> onResolved)
         {
+            // Stops a still-pending auto-Roll/auto-Continue coroutine from a PREVIOUS Show() on
+            // this same (reused) popup instance from firing against the fresh turn set up below.
+            StopAllCoroutines();
+
             _players = players;
             _onResolved = onResolved;
             _pendingOrder = null;
@@ -75,6 +104,25 @@ namespace Game.UI
                 rollButton.onClick.RemoveAllListeners();
                 rollButton.onClick.AddListener(RollAll);
             }
+
+            if (IsAutoRollEnabled)
+                StartCoroutine(AutoRollAfterDelay());
+        }
+
+        private IEnumerator AutoRollAfterDelay()
+        {
+            if (autoRollDelay > 0f)
+                yield return new WaitForSeconds(autoRollDelay);
+            if (rollButton != null && rollButton.gameObject.activeSelf)
+                RollAll();
+        }
+
+        private IEnumerator AutoContinueAfterDelay(List<PlayerSetupData> order)
+        {
+            if (autoRollDelay > 0f)
+                yield return new WaitForSeconds(autoRollDelay);
+            if (continueButton != null && continueButton.gameObject.activeSelf)
+                Finish(order);
         }
 
         // Only the human player buys dice through this panel — AI already bought its dice via
@@ -128,10 +176,20 @@ namespace Game.UI
                 continueButton.onClick.RemoveAllListeners();
                 continueButton.onClick.AddListener(() => Finish(order));
             }
+
+            if (IsAutoRollEnabled)
+                StartCoroutine(AutoContinueAfterDelay(order));
         }
 
+        // panelRoot's own activeSelf doubles as the "already finished" guard — a manual
+        // Continue click and the auto-Continue coroutine (see AutoContinueAfterDelay) can both be
+        // armed at once when the toggle is on, and continueButton itself is never deactivated on
+        // Finish (only panelRoot is), so without this a click just before the 0.75s delay expires
+        // would let the coroutine fire Finish a second time and double-invoke _onResolved.
         private void Finish(List<PlayerSetupData> order)
         {
+            if (panelRoot != null && !panelRoot.activeSelf)
+                return;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             _onResolved?.Invoke(order);

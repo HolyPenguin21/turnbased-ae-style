@@ -44,6 +44,8 @@ MonoBehaviour:
     description: Adds 2 dmg against "Bio" targets
   - tag: ShockAttack
     description: Hit forces target to skip turn
+  - tag: ApBonus
+    description: While in play, grants +2 AP on this player's turn
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1

@@ -766,6 +766,20 @@ namespace Game.Ai
         // small relative to cardRoleBacklogShareWeight the way a cross-category term would — it
         // only ever has to be able to tell two Unit cards apart from each other.
         public const float unitCompositionGapBonus = 15f;
+        // AiManagementPlanner.CardCombatValue's own UnitAbilities.ApBonus term (2026-08-24,
+        // project owner's own report) — without this, a card whose whole point is a flat +2 AP
+        // grant (e.g. a hero with Attack 0/Defense 0 but ApBonus) reads as strictly worse than
+        // any ordinary combat hero on the same raw-stat tie-break, even though it's arguably the
+        // stronger pick strategically. Same "purely an INTERNAL ranking key" scoping as
+        // unitCompositionGapBonus right above (CardCombatValue only ever picks ONE preferred
+        // card among comparable ones in hand — see TryPlayCardCandidates' own Unit pre-pass and
+        // its now-matching Hero pre-pass — the AiDecision.Score actually proposed never carries
+        // this value), so its magnitude only has to out-rank a comparable ordinary card, not stay
+        // small relative to any cross-category weight. Starting modest (not the skill's full
+        // long-run value, which compounds every future turn) per the project owner's own call —
+        // this only needs to break ties among comparable cards in hand, not overhaul the whole
+        // PlayCard arbiter.
+        public const float apBonusCardStrategicValue = 5f;
         // AiManagementPlanner.TaskNeedBonus's own Defence-vs-Raid weighting (2026-08-23, project
         // owner's own spec — generalizes the old Raid-only "closes the assembling task's own
         // CanDamageAll gap" criterion into one shared read across every still-recruiting combat

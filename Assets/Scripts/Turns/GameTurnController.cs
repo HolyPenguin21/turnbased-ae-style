@@ -707,6 +707,7 @@ namespace Game.Turns
 
             AllocateActionPoints(order);
             GrantPrisonBonusActionPoints(order);
+            GrantApBonusActionPoints(order);
             BeginPlayerTurn(0);
         }
 
@@ -718,7 +719,11 @@ namespace Game.Turns
             {
                 PlayerRoot root = PlayerRootRegistry.FindFor(order[i]);
                 if (root != null)
-                    root.ActionPoints = ActionPointsForRank(i, order.Count);
+                {
+                    int rankAp = ActionPointsForRank(i, order.Count);
+                    root.ActionPoints = rankAp;
+                    root.SetLastApFromInitiative(rankAp);
+                }
             }
         }
 
@@ -737,8 +742,54 @@ namespace Game.Turns
                 if (root == null)
                     continue;
                 int prisonerCount = ArmyRegistry.AllForOwner(player).Where(a => a.IsPrison).Sum(a => a.Members.Count);
-                if (prisonerCount > 0)
-                    root.ActionPoints += PrisonBonusActionPointsPerHero * prisonerCount;
+                int bonus = PrisonBonusActionPointsPerHero * prisonerCount;
+                root.SetLastApFromPrisonBonus(bonus);
+                if (bonus > 0)
+                    root.ActionPoints += bonus;
+            }
+        }
+
+        // UnitAbilities.ApBonus (new skill, works on any card type): +2 AP on this player's turn
+        // per carrier actually IN PLAY — a member of one of their own (non-Prison) armies, or a
+        // Base/Facility they own — added on top of AllocateActionPoints's by-rank base, same
+        // "on top" treatment as GrantPrisonBonusActionPoints just above. Prison armies are
+        // skipped for the SAME reason GrantPrisonBonusActionPoints only ever reads them: a
+        // captured hero (TryImprison sets hero.Owner to its CAPTOR) sits in the captor's own
+        // Prison army, not free to act for them — it already earns the captor a separate,
+        // ability-independent prison bonus, it shouldn't also earn them this skill's bonus just
+        // for having originally carried it.
+        private const int ApBonusPerSource = 2;
+
+        private static void GrantApBonusActionPoints(List<PlayerSetupData> order)
+        {
+            foreach (PlayerSetupData player in order)
+            {
+                PlayerRoot root = PlayerRootRegistry.FindFor(player);
+                if (root == null)
+                    continue;
+
+                int sources = 0;
+                foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+                {
+                    if (army.IsPrison)
+                        continue;
+                    sources += army.Members.Count(unit => unit.HasAbility(UnitAbilities.ApBonus));
+                }
+                foreach (BuildingData building in BuildingRegistry.AllBuildings())
+                {
+                    if (building.Owner != player)
+                        continue;
+                    if (building.HasAbility(UnitAbilities.ApBonus))
+                        sources++;
+                    foreach (FacilityData facility in building.FacilitySlots)
+                        if (facility != null && facility.HasAbility(UnitAbilities.ApBonus))
+                            sources++;
+                }
+
+                int bonus = ApBonusPerSource * sources;
+                root.SetLastApFromApBonus(bonus);
+                if (bonus > 0)
+                    root.ActionPoints += bonus;
             }
         }
 

@@ -44,6 +44,21 @@ namespace Game.Map
             }
         }
 
+        // Turn-start AP breakdown — purely diagnostic, never read by any gameplay logic. Set by
+        // GameTurnController.AllocateActionPoints/GrantPrisonBonusActionPoints/
+        // GrantApBonusActionPoints as each is applied (each runs exactly once per player per
+        // turn, so these are plain overwrites, not accumulators — no reset step needed). Lets
+        // AiTurnController's own turn-begins log line show WHY this turn's AP total is what it
+        // is instead of just the opaque final number (project owner's own report, 2026-08-24 —
+        // a UnitAbilities.ApBonus hero's contribution was invisible in the log).
+        public int LastApFromInitiative { get; private set; }
+        public int LastApFromPrisonBonus { get; private set; }
+        public int LastApFromApBonus { get; private set; }
+
+        public void SetLastApFromInitiative(int amount) => LastApFromInitiative = amount;
+        public void SetLastApFromPrisonBonus(int amount) => LastApFromPrisonBonus = amount;
+        public void SetLastApFromApBonus(int amount) => LastApFromApBonus = amount;
+
         public bool CanSpendActionPoints(int amount) => ActionPoints >= amount;
 
         public void SpendActionPoints(int amount)

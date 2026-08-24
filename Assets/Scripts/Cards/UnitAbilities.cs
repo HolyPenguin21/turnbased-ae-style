@@ -65,6 +65,15 @@ namespace Game.Cards
         // project owner's own call.
         public const string Recce = "Recce";
 
+        // "+2 AP on this player's turn" — works on any card type (Unit/Hero/Facility/Base), same
+        // as every ability here, but only while the carrier is actually IN PLAY: a member of one
+        // of this player's own (non-Prison) armies, or a Base/Facility they own, per the project
+        // owner's own spec — a copy of the card still sitting in hand grants nothing. Applied
+        // once per carrier (a hero AND a base both granting it stack), right after the initiative
+        // roll decides this turn's base AP by rank. See GameTurnController.
+        // GrantApBonusActionPoints/ApBonusPerSource.
+        public const string ApBonus = "ApBonus";
+
         // --- Base-card/building abilities (formerly Game.Map.BuildingAbilities) --------------
         // Open-ended, same as every tag above — still only one real building (the citadel) plus
         // hero-built Facilities, and new abilities will keep getting added as buildings do.
@@ -121,7 +130,7 @@ namespace Game.Cards
         // automatically from there on.
         public static readonly string[] All =
         {
-            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce,
+            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce, ApBonus,
             Barracks, Base, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 

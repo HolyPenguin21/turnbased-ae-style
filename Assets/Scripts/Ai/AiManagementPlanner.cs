@@ -299,9 +299,15 @@ namespace Game.Ai
         // 2026-08-21), damped by cardRoleAlternationDamping (IsCardRoleCoolingDown) for whichever
         // role just had a card played, so the AI alternates Hero/Unit turn to turn instead of
         // exhausting one role's entire backlog before touching the other (the project owner's own
-        // 2026-08-17 report). Every affordable Hero card gets its own candidate, exactly as before.
+        // 2026-08-17 report). Only ONE Hero card is ever proposed per step now (2026-08-24 —
+        // see the Hero pre-pass below, added to match the Unit pre-pass's own principle once
+        // UnitAbilities.ApBonus gave Hero cards a reason to actually differ in value from each
+        // other — a flat-statted "Attack 0/Defense 0 + ApBonus" hero used to tie every ordinary
+        // combat hero on the exact same heroScore, so which one got played came down to arbitrary
+        // hand order); every other affordable Hero card gets its own look once this one's played
+        // (or fails to place) and hand is re-read fresh next step, same as Unit cards already do.
         //
-        // Unit cards are handled differently (2026-08-19, project owner's own explicit check —
+        // Unit cards are handled the same way (2026-08-19, project owner's own explicit check —
         // "надеюсь это внутренний скоринг этой задачи и он не влияет на скоринг между остальными
         // задачами": confirmed, and the first version of this DIDN'T honor that — UnitComposition
         // FitBonus used to be added straight into the externally-competing Score, the exact
@@ -316,6 +322,10 @@ namespace Game.Ai
         // all; it gets its own look once this one's played (or fails to place) and hand/roster are
         // re-read fresh next step — see this method's own re-invocation every Decide() call, which
         // is also what keeps RosterShape from ever going stale between one played card and the next.
+        // The Hero pre-pass just below reuses CardCombatValue (not a fresh ranking key of its own)
+        // as ITS internal-only tie-break, same "never seen outside this method" scoping — only its
+        // ranking role is new, the value formula itself was already shared with the Unit pre-pass's
+        // own tie-break (see CardCombatValue's own comment).
         public static List<AiDecision> TryPlayCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             var results = new List<AiDecision>();
@@ -359,17 +369,33 @@ namespace Game.Ai
                 + (heroAlternationDamping < 1f ? ", cooling down" : "") + $"), unit={unitScore:0.0} (backlog={unplayedUnitCards}"
                 + (unitAlternationDamping < 1f ? ", cooling down" : "") + ")]";
 
+            // Internal-only pre-pass — see this method's own class comment. CardCombatValue is
+            // the ranking key (now folding in UnitAbilities.ApBonus — see its own comment), never
+            // seen outside this loop; only the single winner becomes a candidate, at the plain
+            // heroScore, with zero trace of its own value in it.
+            CardData bestHeroCard = null;
+            CardPlacement? bestHeroPlacement = null;
+            float bestHeroValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
                 if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Hero)
                     continue; // Recce is AiScoutPlanner's own; Unit cards are the pre-pass below
                 CardPlacement? heroPlacement = FindPlacement(player, root, card);
-                if (heroPlacement.HasValue)
+                if (!heroPlacement.HasValue)
+                    continue;
+                float value = CardCombatValue(card.Definition);
+                if (bestHeroCard == null || value > bestHeroValue)
                 {
-                    AiDecision decision = AiDecision.PlayCard(heroPlacement.Value.ExistingArmy, card, CardRole.Hero, heroScore, AiTaskCategory.Management);
-                    decision.Reason += roleBalance;
-                    results.Add(decision);
+                    bestHeroCard = card;
+                    bestHeroPlacement = heroPlacement;
+                    bestHeroValue = value;
                 }
+            }
+            if (bestHeroCard != null)
+            {
+                AiDecision decision = AiDecision.PlayCard(bestHeroPlacement.Value.ExistingArmy, bestHeroCard, CardRole.Hero, heroScore, AiTaskCategory.Management);
+                decision.Reason += roleBalance;
+                results.Add(decision);
             }
 
             // Internal-only pre-pass — see this method's own comment. RosterShape is recomputed
@@ -663,8 +689,15 @@ namespace Game.Ai
         // ranges (HP up to ~12 vs. Attack/Defense up to ~6).
         private static float CardCombatValue(CardDefinition definition)
         {
-            return definition.attack + definition.defenseRating
+            float value = definition.attack + definition.defenseRating
                 + definition.hitPoints * 0.25f + definition.initiative * 0.5f;
+            // UnitAbilities.ApBonus (see AiConfig.apBonusCardStrategicValue's own comment) — a
+            // card built around this skill can look worthless by raw stats alone (e.g. Attack 0/
+            // Defense 0) while still being the stronger strategic pick, so it needs its own term
+            // here rather than reading as strictly worse than any ordinary combat card.
+            if (definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.ApBonus))
+                value += AiConfig.apBonusCardStrategicValue;
+            return value;
         }
 
         // ---- Менеджмент · Починка юнита ----

@@ -217,6 +217,8 @@ MonoBehaviour:
     abbreviation: Pyro +2
   - ability: Recce
     abbreviation: Recce
+  - ability: ApBonus
+    abbreviation: AP+2
   - ability: Barracks
     abbreviation: Barracks
   - ability: Base

@@ -97,14 +97,33 @@ namespace Game.Ai
             // only — never read by any WorthIt comparison.
             public readonly string Name;
 
+            // True exactly when NEITHER a physical army sighting NOR a Hex Event guard is known
+            // at this hex at all (see RequiredStrengthAt) — a CONFIRMED zero, not "we don't
+            // happen to have a per-unit roster memorized" (a real sighting/guard with Defenders
+            // null but Defense/Attack > 0 is NOT this — see WinChanceAgainst's own aggregate-sum
+            // fallback for that case). Matters because a hex with literally no known defender
+            // never actually triggers a dice-based fight in this game at all — an undefended
+            // building just changes hands for free the instant a mover arrives (see
+            // BuildingRegistry.CaptureOrDestroyIfUndefended) — so WinChanceAgainst/IsReady treat
+            // it as a certain win regardless of any residual HexBonus/Attack number this struct
+            // still carries (a Base-tagged building's own passive Defense stat, folded into
+            // Defense by RequiredStrengthAt for the DEFENDED case, would never actually get
+            // rolled against with nobody there to fight for it). 2026-08-24 fix (project owner's
+            // own report): the aggregate two-sided Monte Carlo below used to score a genuinely
+            // empty raid-economy building target a flat 50/50 coin flip whenever the raiding
+            // army's own AttackSum happened to be 0 (SimulateExchangeMargin ties every trial when
+            // both sides roll zero dice), reading as "waits for reinforcement against nothing".
+            public readonly bool IsUndefended;
+
             public ThreatStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders, float hexBonus,
-                string name = null)
+                string name = null, bool isUndefended = false)
             {
                 Defense = defense;
                 Attack = attack;
                 Defenders = defenders;
                 HexBonus = hexBonus;
                 Name = name;
+                IsUndefended = isUndefended;
             }
         }
 
@@ -134,7 +153,8 @@ namespace Game.Ai
                 ? (guard?.Defenders)
                 : (sighting?.Defenders);
             string name = eventIsStronger ? guard?.Name : sighting?.Name;
-            return new ThreatStrength(defense, attack, defenders, hexBonus, name);
+            bool isUndefended = !sighting.HasValue && !guard.HasValue;
+            return new ThreatStrength(defense, attack, defenders, hexBonus, name, isUndefended);
         }
 
         // Trigger for the post-combat regroup tier (see AiAggressionPlanner.TryRaidRegroupCandidates)
@@ -146,8 +166,13 @@ namespace Game.Ai
         public static bool IsCriticallyWounded(ArmyData army) =>
             army != null && army.Members.Any(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2);
 
+        // IsUndefended short-circuits to a certain win (see ThreatStrength.IsUndefended's own
+        // comment) rather than falling into the raw-float IsReady overload below — that overload
+        // is also called directly (bypassing ThreatStrength entirely) by AiAggressionPlanner/
+        // AiDefencePlanner's own nearby-threat reactions, which always describe a REAL sighted
+        // enemy army and must never get this "confirmed empty" treatment.
         public static bool IsReady(ArmyData army, ThreatStrength threat) =>
-            IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
+            threat.IsUndefended || IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
         // Full-roster win chance when known, aggregate-sum fallback otherwise — extracted out of
         // IsReady below (2026-08-23, project owner's own call) so FindTarget's own ranking can read
@@ -162,8 +187,11 @@ namespace Game.Ai
                 : WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), threatAttack, threatDefense);
         }
 
+        // Same IsUndefended short-circuit as IsReady above — ProximityScore/ScoreTarget (the only
+        // other callers of this ThreatStrength overload) rank a confirmed-empty target as a sure
+        // thing too, instead of the aggregate fallback's coin-flip reading it as a toss-up.
         private static float WinChanceAgainst(ArmyData army, ThreatStrength threat) =>
-            WinChanceAgainst(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
+            threat.IsUndefended ? 1f : WinChanceAgainst(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
         // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
         // comparison on the map goes through WorthIt, no second copy of the same math anywhere
