@@ -559,6 +559,21 @@ namespace Game.Ai
                 AiTaskRegistry.Remove(player, decision.PreemptedTask);
             }
 
+            // BuildBase claiming a hex a DIFFERENT hero's own BuildFacility task already has —
+            // see AiDecision.PreemptedHexTask's own comment. Same release-then-remove shape as
+            // PreemptedTask right above, just a second independent slot (a BuildBase candidate
+            // redirected off an in-progress Raid can carry both preemptions on one decision).
+            if (decision.PreemptedHexTask != null)
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{decision.PreemptedHexTask.Army.Name}\" pulled off its "
+                    + $"\"{decision.PreemptedHexTask.Kind}\" task — BuildBase claims "
+                    + $"({decision.PreemptedHexTask.TargetHex.Q},{decision.PreemptedHexTask.TargetHex.R}) instead "
+                    + "— the old task is marked unfinished.");
+                if (decision.PreemptedHexTask.Kind == AiTaskKind.BuildFacility)
+                    AiResourceReservation.Release(decision.PreemptedHexTask);
+                AiTaskRegistry.Remove(player, decision.PreemptedHexTask);
+            }
+
             if (decision.Task != null && !AiTaskRegistry.TasksFor(player).Contains(decision.Task))
             {
                 AiTaskRegistry.Add(player, decision.Task);

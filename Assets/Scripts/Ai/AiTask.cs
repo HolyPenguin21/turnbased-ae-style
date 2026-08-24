@@ -204,6 +204,21 @@ namespace Game.Ai
         // project owner's own "не держать шестиюнитную армию десять ходов" report).
         public int BuildBaseWaitStartedTurn = -1;
 
+        // RaidWeakerArmy only (2026-08-24 fix, "новая WorthIt-телеметрия логируется на каждом
+        // шаге движения", project owner's own report) — AiAggressionPlanner.TryContinueRaidTask's
+        // own diagnostic win-chance log used to fire on EVERY call (every movement step of a
+        // multi-step trip, all within the same real turn), so one raid could print 5+ identical
+        // "raid win chance ~89%" lines back to back with nothing actually different between them.
+        // These four together are the snapshot that log line compares itself against — logged
+        // again only once real game turn moves on, OR the target/army composition/threat actually
+        // changed since the last log, never merely because Decide() happened to be called again
+        // this same turn.
+        public int LastBattleEstimateLoggedTurn = -1;
+        public HexCoord LastBattleEstimateTargetHex;
+        public int LastBattleEstimateArmyMemberCount = -1;
+        public float LastBattleEstimateArmyPower = float.NaN;
+        public float LastBattleEstimateThreatDefense = float.NaN;
+
         // BuildFacility only — true if ResourceType had NO income source anywhere at task creation
         // (see BuildFacilityTask.HasIncomeSource), i.e. this build was ever only justified by
         // BuildFacilityTask.ScarcityBonus's own buildNoIncomeBonus branch, not merely "already

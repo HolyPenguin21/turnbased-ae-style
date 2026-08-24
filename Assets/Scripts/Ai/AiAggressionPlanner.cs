@@ -249,11 +249,31 @@ namespace Game.Ai
             // army immediately critically wounded (RaidWeakerArmyTask.IsCriticallyWounded) and
             // straight back to base to repair; observability only for now, nothing gates on these
             // two yet.
-            WorthIt.BattleEstimate estimate = RaidWeakerArmyTask.EstimateAgainst(task.Army, required);
-            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid win chance vs "
-                + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {estimate.WinChance:P0} (min {AiConfig.raidMinimumWinChance:P0}), "
-                + $"expected survivor HP on win {estimate.ExpectedSurvivingHpRatioOnWin:P0}, "
-                + $"critical-after-win chance {estimate.CriticalAfterBattleChance:P0}.");
+            // Logged at most once per task per real game turn — see AiTask.
+            // LastBattleEstimateLoggedTurn's own comment — unless the target, the army's own
+            // composition, or the threat snapshot actually changed since the last log, in which
+            // case it's worth a fresh line even within the same turn (a retarget or a
+            // reinforcement landing mid-turn is real news, not just this method being called
+            // again for the next movement step of the same unchanged trip).
+            float armyPower = WorthIt.AttackSum(task.Army) + WorthIt.DefenseSum(task.Army);
+            bool battleEstimateChanged = task.LastBattleEstimateLoggedTurn != ctx.TurnNumber
+                || !task.LastBattleEstimateTargetHex.Equals(task.TargetHex)
+                || task.LastBattleEstimateArmyMemberCount != task.Army.Members.Count
+                || !Mathf.Approximately(task.LastBattleEstimateArmyPower, armyPower)
+                || !Mathf.Approximately(task.LastBattleEstimateThreatDefense, required.Defense);
+            if (battleEstimateChanged)
+            {
+                WorthIt.BattleEstimate estimate = RaidWeakerArmyTask.EstimateAgainst(task.Army, required);
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid win chance vs "
+                    + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {estimate.WinChance:P0} (min {AiConfig.raidMinimumWinChance:P0}), "
+                    + $"expected survivor HP on win {estimate.ExpectedSurvivingHpRatioOnWin:P0}, "
+                    + $"critical-after-win chance {estimate.CriticalAfterBattleChance:P0}.");
+                task.LastBattleEstimateLoggedTurn = ctx.TurnNumber;
+                task.LastBattleEstimateTargetHex = task.TargetHex;
+                task.LastBattleEstimateArmyMemberCount = task.Army.Members.Count;
+                task.LastBattleEstimateArmyPower = armyPower;
+                task.LastBattleEstimateThreatDefense = required.Defense;
+            }
 
             HexCoord moveDestination = task.TargetHex;
             string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
@@ -1240,11 +1260,12 @@ namespace Game.Ai
 
         // ---- Агрессия · Задача 2 (Постройка дополнительной базы) ----
         // Trigger (all checked fresh every step, per the project owner's own spec, 2026-08-21):
-        // a Base card in hand + a hero-led combat army whose own strength is at least
-        // buildBaseStrengthToleranceRatio of the single strongest REAL enemy army anywhere on the
-        // map (RequiredBuildBaseStrength — a deliberate cheat, see that method's own comment, not
-        // fog-of-war-honest AiMapMemory) + citadel not under siege + turn ≥ buildBaseMinTurn + at
-        // most maxConcurrentBuildBase such tasks already running. Composition — see
+        // a Base card in hand + a hero-led combat army + citadel not under siege + turn ≥
+        // buildBaseMinTurn + at most maxConcurrentBuildBase such tasks already running. No global
+        // relative-strength gate any more (2026-08-24 removal — see AiConfig's own comment where
+        // buildBaseStrengthToleranceRatio used to live): FindBuildBaseArmy now picks the WEAKEST
+        // eligible hero-led combat army rather than requiring one to already be strong, so BuildBase
+        // stops competing with Raid/Defence for the best available force. Composition — see
         // FindBuildBaseArmy: prefers an idle hero-led army, but an
         // army already running an active (non-retreating) RaidWeakerArmy task may also be
         // redirected (the project owner's own explicit "да активный рейд может пойти поставить
@@ -1263,11 +1284,7 @@ namespace Game.Ai
             if (!hand.Hand.Any(c => c.Definition.cardType == CardType.Base))
                 return results;
 
-            float required = RequiredBuildBaseStrength(player);
-            if (required <= 0f)
-                return results; // nothing known about any enemy army yet — no real comparison possible
-
-            ArmyData army = FindBuildBaseArmy(player, pool, required, out AiTask preempted);
+            ArmyData army = FindBuildBaseArmy(player, pool, out AiTask preempted);
             if (army == null)
                 return results;
 
@@ -1290,6 +1307,10 @@ namespace Game.Ai
             if (!targetHex.HasValue)
                 return results;
 
+            AiDebugLog.Write($"[AI] {player.Nickname}: BuildBase actor selected: "
+                + $"strength={WorthIt.AttackSum(army) + WorthIt.DefenseSum(army):0.#}, weakest eligible, "
+                + $"target=({targetHex.Value.Q},{targetHex.Value.R})");
+
             // The generic army.CurrentMovement<=0/AP check above only ever caught "can't move
             // AT ALL this step" — never "the specific first hex toward THIS targetHex costs more
             // than CurrentMovement" (see AiTurnController.CanIssueMoveNow's own comment on the
@@ -1304,50 +1325,33 @@ namespace Game.Ai
                 $"heads out to found a new base at ({targetHex.Value.Q},{targetHex.Value.R})",
                 task, AiConfig.aggressionBaseWeight + AiConfig.buildBaseTravelBonus, AiTaskCategory.Aggression);
             decision.PreemptedTask = preempted;
+
+            // "BuildBase и BuildFacility резервируют один хекс разными армиями" fix (2026-08-24,
+            // project owner's own report) — BuildBase outranks a BuildFacility already headed for
+            // the same hex (see AiDecision.PreemptedHexTask's own comment): the base can itself
+            // absorb the hex's resource bonus once built (BuildBaseTask.CanMergeIntoResourceSite
+            // already lets it merge into an EXISTING facility there — only a still-in-progress
+            // claim on the same hex is the actual conflict this closes), so there's no reason two
+            // separate hero-led armies should ever converge on one target hex to build mutually
+            // exclusive things.
+            decision.PreemptedHexTask = AiTaskRegistry.TasksFor(player)
+                .FirstOrDefault(t => t.Kind == AiTaskKind.BuildFacility && t.TargetHex.Equals(targetHex.Value));
             results.Add(decision);
             return results;
         }
 
-        // "Примерно равна силе активных армий противника" — the single STRONGEST real army found
-        // anywhere on the map among every enemy player, scaled down by buildBaseStrengthToleranceRatio.
-        // Same number regardless of whether 1, 2, or 3+ opponents exist — deliberately NOT a sum
-        // across per-player maxes any more (2026-08-22, project owner's own reversal of the earlier
-        // 2026-08-21 "посмотреть на всех противников" correction).
-        // A deliberate cheat (project owner's own explicit call, 2026-08-22 — "ии-игрок может
-        // читерить в этом случае, не обязательно опираться только на то что он видел") reading real
-        // ArmyData directly across every player, same sanctioned exception
-        // AiDefencePlanner.CheatEstimateRaiderThreat already takes for its own composition sizing —
-        // fixes the earlier honest-AiMapMemory version's own "phantom threat" bug (2026-08-21
-        // simulation report): a sighting recorded once and never refreshed (AiMapMemory only
-        // corrects a hex once it's actually re-observed, see that class's own "видимость с
-        // памятью" comment) could permanently inflate the requirement long after the real threat
-        // was gone. Reading live ArmyData every call has no such staleness — it's always exactly
-        // today's actual strongest enemy army. Excludes garrison/prison/empty armies, same
-        // "field force, not the standing home defence" filter FindBuildBaseArmy already applies to
-        // this player's own candidate armies (see below) — comparing like for like.
-        private static float RequiredBuildBaseStrength(PlayerSetupData player)
-        {
-            float strongest = 0f;
-            foreach (PlayerSetupData other in GameSession.Players ?? Enumerable.Empty<PlayerSetupData>())
-            {
-                if (other == null || other == player || other.IsNeutral)
-                    continue;
-                foreach (ArmyData army in ArmyRegistry.AllForOwner(other))
-                {
-                    if (army.IsGarrison || army.IsPrison || army.Members.Count == 0)
-                        continue;
-                    float strength = WorthIt.AttackSum(army) + WorthIt.DefenseSum(army);
-                    if (strength > strongest)
-                        strongest = strength;
-                }
-            }
-            return strongest * AiConfig.buildBaseStrengthToleranceRatio;
-        }
-
-        // Strongest hero-led combat army meeting `requiredStrength` — first among idle armies
-        // (pool.AvailableArmies(), which already excludes anything claimed by another task this
-        // step), then among armies currently running an active RaidWeakerArmy task (`preempted`
-        // set only for that second group — redirecting one of those means giving up its raid).
+        // Weakest eligible hero-led combat army — first among idle armies (pool.AvailableArmies(),
+        // which already excludes anything claimed by another task this step), then among armies
+        // currently running an active RaidWeakerArmy task (`preempted` set only for that second
+        // group — redirecting one of those means giving up its raid). 2026-08-24 flip (project
+        // owner's own report — "BuildBase всё ещё требует слишком сильную армию"): used to pick
+        // the STRONGEST eligible army above a global relative-strength floor (removed — see
+        // AiConfig's own comment where buildBaseStrengthToleranceRatio used to live); now picks the
+        // WEAKEST one that still clears the composition gates below, so a second base becomes an
+        // investment for a spare/mid army instead of a task that outbids Raid/Defence for the best
+        // one available. Safety isn't lost — BuildBaseTask.FindTargetHex/HasThreateningEnemyNear
+        // still gate the target hex itself via buildBaseMinWinChance, and the per-step feasibility
+        // check right after this call still applies.
         //
         // Task lock (2026-08-23, project owner's own report/spec): only a raid still in
         // task.StillAssembling (still recruiting, composition not yet reading as ready — see
@@ -1360,18 +1364,18 @@ namespace Game.Ai
         // Citadel-emergency logic (AiDefencePlanner.TryDefencePreemptCandidates, IsUnderSiege) may
         // still pull a ready/en-route/engaged raid off its own task — that path is untouched by
         // this filter, it doesn't go through FindBuildBaseArmy at all.
-        private static ArmyData FindBuildBaseArmy(PlayerSetupData player, AiResourcePool pool, float requiredStrength, out AiTask preempted)
+        private static ArmyData FindBuildBaseArmy(PlayerSetupData player, AiResourcePool pool, out AiTask preempted)
         {
             preempted = null;
             ArmyData best = null;
-            float bestStrength = float.NegativeInfinity;
+            float bestStrength = float.PositiveInfinity;
 
             foreach (ArmyData army in pool.AvailableArmies())
             {
                 if (army.IsGarrison || army.IsPrison || !AiArmyRoles.IsHeroLed(army) || !BattleInitiator.IsCombatCapable(army))
                     continue;
                 float strength = WorthIt.AttackSum(army) + WorthIt.DefenseSum(army);
-                if (strength < requiredStrength || strength <= bestStrength)
+                if (strength >= bestStrength)
                     continue;
                 bestStrength = strength;
                 best = army;
@@ -1383,7 +1387,7 @@ namespace Game.Ai
                     || !AiArmyRoles.IsHeroLed(task.Army) || !BattleInitiator.IsCombatCapable(task.Army))
                     continue;
                 float strength = WorthIt.AttackSum(task.Army) + WorthIt.DefenseSum(task.Army);
-                if (strength < requiredStrength || strength <= bestStrength)
+                if (strength >= bestStrength)
                     continue;
                 bestStrength = strength;
                 best = task.Army;

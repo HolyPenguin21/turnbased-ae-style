@@ -249,6 +249,17 @@ namespace Game.Ai
             var alreadyTargeted = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
                 .Where(t => t.Kind == AiTaskKind.BuildFacility)
                 .Select(t => t.TargetHex));
+            // "BuildBase и BuildFacility резервируют один хекс разными армиями" fix (2026-08-24,
+            // project owner's own report) — a hex an active BuildBase task already has as its own
+            // TargetHex is off-limits for a brand-new BuildFacility task too (see
+            // AiAggressionPlanner.TryStartBuildBaseCandidates' own PreemptedHexTask handling for the
+            // reverse direction: BuildBase is free to claim a hex FROM an existing BuildFacility
+            // task, since the base can absorb the hex's resource bonus itself once built). Excluded
+            // from the internal ranking pre-pass below, same as alreadyTargeted, rather than
+            // filtered later — no reason to ever rank a hex that can't actually be started on.
+            alreadyTargeted.UnionWith(AiTaskRegistry.TasksFor(player)
+                .Where(t => t.Kind == AiTaskKind.BuildBase)
+                .Select(t => t.TargetHex));
             // Caps how many BuildFacility tasks run at once (project owner's own 2026-08-19 call —
             // several concurrent builds were each reserving toward a different resource type,
             // between them locking card play out of all four at once). Checked below, not as a
@@ -270,7 +281,9 @@ namespace Game.Ai
             float bestRank = float.NegativeInfinity;
             foreach (HexCoord candidate in HexResourceBonusRegistry.AllBonusHexes())
             {
-                if (!AiMapMemory.IsResourceHexKnown(player, candidate) || BuildingRegistry.FindAt(candidate) != null
+                // Memory-based building check (2026-08-24 fix, section 3.2 — see BuildFacilityTask.
+                // HasAnythingToBuild's own matching comment), not a live BuildingRegistry read.
+                if (!AiMapMemory.IsResourceHexKnown(player, candidate) || AiMapMemory.KnownBuildingAt(player, candidate).HasValue
                     || alreadyTargeted.Contains(candidate))
                     continue;
                 // A known neutral within neutralBuildTriggerRadius rules this hex out as a build
@@ -302,6 +315,17 @@ namespace Game.Ai
 
             HexCoord hex = bestHex.Value;
             ResourceType resourceType = bestResourceType.Value;
+
+            // "экономика не теряет приоритет после насыщения" fix (2026-08-24) — actual per-type
+            // income right alongside the hex this step picked, so a log reader can see exactly
+            // when HasMatureEconomy's own 4-way floor trips (and BuildFacilityTask.TravelScore
+            // starts shaving its penalty off) without re-deriving it by hand.
+            AiDebugLog.Write($"[AI] {player.Nickname}: Economy income — "
+                + $"Human={AiGoalScorer.IncomeFor(player, ResourceType.Human)}, "
+                + $"Energy={AiGoalScorer.IncomeFor(player, ResourceType.Energy)}, "
+                + $"Materials={AiGoalScorer.IncomeFor(player, ResourceType.Materials)}, "
+                + $"Tech={AiGoalScorer.IncomeFor(player, ResourceType.Tech)} "
+                + $"(mature={AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType)}).");
 
             NearestHeroPick pick = BuildFacilityTask.FindActor(player, hex);
             if (pick.GarrisonHero != null)
@@ -726,7 +750,7 @@ namespace Game.Ai
                 if (!AiMapMemory.IsResourceHexKnown(player, hex) || alreadyTargeted.Contains(hex))
                     continue;
                 ResourceType? resourceType = DominantResourceType(hex);
-                if (resourceType == null || ResourcesScrapTask.HasExtractionFacility(hex, resourceType.Value))
+                if (resourceType == null || ResourcesScrapTask.HasExtractionFacility(player, hex, resourceType.Value))
                     continue;
 
                 float rank = ResourcesScrapTask.RankHex(player, root, hex, resourceType.Value, pool);
@@ -789,7 +813,7 @@ namespace Game.Ai
                 if (!AiMapMemory.IsResourceHexKnown(player, hex) || alreadyTargeted.Contains(hex))
                     continue;
                 ResourceType? resourceType = DominantResourceType(hex);
-                if (resourceType == null || ResourcesScrapTask.HasExtractionFacility(hex, resourceType.Value))
+                if (resourceType == null || ResourcesScrapTask.HasExtractionFacility(player, hex, resourceType.Value))
                     continue;
                 if (ResourcesScrapTask.FindActor(player, hex, resourceType.Value, pool) != null)
                     continue; // already have one ready to walk — nothing to detach
@@ -842,7 +866,7 @@ namespace Game.Ai
                 return null;
             }
 
-            if (task.ResourceType.HasValue && ResourcesScrapTask.HasExtractionFacility(task.TargetHex, task.ResourceType.Value))
+            if (task.ResourceType.HasValue && ResourcesScrapTask.HasExtractionFacility(player, task.TargetHex, task.ResourceType.Value))
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — an extraction facility was built at "
                     + $"({task.TargetHex.Q},{task.TargetHex.R}), Economy task (scrapping) complete, unit freed.");

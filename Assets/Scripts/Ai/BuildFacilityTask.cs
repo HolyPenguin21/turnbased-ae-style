@@ -77,8 +77,19 @@ namespace Game.Ai
         // enforced here, at the one place travel score gets assembled, not by constraining
         // ScoreHex/IncomeBehindBonus's own magnitude — see economyTravelScoreCap's own comment for
         // why that's the more robust place for it to live.
-        public static float TravelScore(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType) =>
-            System.Math.Min(AiConfig.economyBaseWeight + ScoreHex(player, root, hex, resourceType), AiConfig.economyTravelScoreCap);
+        //
+        // Mature-economy shave (2026-08-24, "экономика не теряет приоритет после насыщения" fix,
+        // see AiConfig.economyMatureTravelPenalty's own comment) — applied BEFORE the cap, not
+        // after: it's a real reduction of the underlying score, not a second ceiling, so it still
+        // has room to matter even when ScoreHex alone would have landed well under
+        // economyTravelScoreCap already.
+        public static float TravelScore(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType)
+        {
+            float score = AiConfig.economyBaseWeight + ScoreHex(player, root, hex, resourceType);
+            if (AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType))
+                score -= AiConfig.economyMatureTravelPenalty;
+            return System.Math.Min(score, AiConfig.economyTravelScoreCap);
+        }
 
         // Внутренний выбор — какой из известных свободных ресурсных хексов строить первым
         // (project owner's own 2026-08-19 call). Используется ТОЛЬКО AiEconomyPlanner.
@@ -232,11 +243,19 @@ namespace Game.Ai
         // TryEconomyReturnHomeCandidates: любой свободный известный ресурсный хекс без здания
         // где-либо на карте всё ещё считается "есть что строить", даже если сейчас занят другой
         // BuildFacility-задачей — тот хекс просто уже застолблён, не "недоступен навсегда".
+        // Memory-based building check (2026-08-24 fix, section 3.2 — see AiMapMemory.
+        // KnownBuildingAt's own comment), not a live BuildingRegistry read — a hex someone else
+        // quietly built on since this player's own last look at it still reads as "nothing built
+        // there yet" until they actually see it again, same fog-of-war honesty every other
+        // AiMapMemory-backed read here already gets. Harmless either way (worst case: this still
+        // proposes a hex a build attempt there will simply fail on this same step, discovering the
+        // building fresh and correcting memory right then via OnVisibilityChanged) — but honest
+        // about what the AI actually knows rather than reading world-state no scout has reported.
         public static bool HasAnythingToBuild(PlayerSetupData player)
         {
             foreach (HexCoord hex in HexResourceBonusRegistry.AllBonusHexes())
             {
-                if (!AiMapMemory.IsResourceHexKnown(player, hex) || BuildingRegistry.FindAt(hex) != null)
+                if (!AiMapMemory.IsResourceHexKnown(player, hex) || AiMapMemory.KnownBuildingAt(player, hex).HasValue)
                     continue;
                 return true;
             }

@@ -105,6 +105,16 @@ namespace Game.Ai
         // step lose.
         public AiTask PreemptedTask;
 
+        // BuildBase-start candidates only (2026-08-24, "BuildBase и BuildFacility резервируют один
+        // хекс разными армиями" fix, see AiAggressionPlanner.TryStartBuildBaseCandidates) — a
+        // DIFFERENT hero's own BuildFacility task that already claims this same target hex, given
+        // up in favor of BuildBase actually founding a base there instead. Kept as its own field
+        // rather than reusing PreemptedTask (which, on this same candidate, may already carry an
+        // in-progress Raid task belonging to the SAME army being redirected to build) — the two
+        // preemptions are independent and can both apply to one BuildBase candidate at once. Same
+        // "only removed if this candidate wins" rule as PreemptedTask — see AiTurnController.Commit.
+        public AiTask PreemptedHexTask;
+
         public static AiDecision Move(ArmyData army, HexCoord hex, string reason, AiTask task, float score, AiTaskCategory category) => new AiDecision
         {
             Kind = AiActionKind.MoveArmy, ExistingArmy = army, TargetHex = hex, Reason = reason, Task = task, Score = score, Category = category,

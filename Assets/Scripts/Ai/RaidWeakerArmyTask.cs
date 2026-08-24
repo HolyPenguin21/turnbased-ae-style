@@ -266,8 +266,13 @@ namespace Game.Ai
                 return true;
             if (AiMapMemory.KnownEventGuardDefenseAt(actor, hex).HasValue)
                 return true;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner != null && building.Owner != actor && !building.Owner.IsNeutral;
+            // Memory-based, not a live BuildingRegistry read (2026-08-24 fix, "память тумана
+            // войны не соответствует правилам 3.1–3.2", section 3.2 — project owner's own report):
+            // a still-enemy-owned building only counts as a valid target as of this actor's own
+            // LAST look at this hex, not whatever BuildingRegistry says right now regardless of
+            // visibility.
+            AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(actor, hex);
+            return building.HasValue && building.Value.Owner != null && building.Value.Owner != actor && !building.Value.Owner.IsNeutral;
         }
 
         // Best known neutral/event/(temporary) enemy-building hex — proximity to `army` plus
@@ -319,14 +324,15 @@ namespace Game.Ai
             }
 
             // Раздел 5 — временный "рейд экономики", см. этого класса собственный class comment.
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            // Memory-based (2026-08-24 fix, section 3.2 — see AiMapMemory.AllKnownBuildings' own
+            // comment), not a live BuildingRegistry scan — "known" now means "as last actually
+            // observed", not "true right now regardless of visibility".
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
             {
                 if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
                     continue;
                 if (excludeHexes != null && excludeHexes.Contains(building.Hex))
                     continue;
-                if (!VisionSystem.IsVisited(actor, building.Hex))
-                    continue; // "known" — тот же принцип видимости с памятью, что и всюду
 
                 ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
                 // No dedicated bonus any more (raidBuildingUndefendedBonus/GuardedWeakerBonus
@@ -362,13 +368,11 @@ namespace Game.Ai
                 return true;
             if (AiMapMemory.KnownEventGuardHexes(actor).Any())
                 return true;
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
-            {
-                if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
-                    continue;
-                if (VisionSystem.IsVisited(actor, building.Hex))
+            // Memory-based (2026-08-24 fix, section 3.2) — same AllKnownBuildings source
+            // FindTarget itself now scans, see that method's own comment.
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
+                if (building.Owner != null && building.Owner != actor && !building.Owner.IsNeutral && !building.IsStartingCitadel)
                     return true;
-            }
             return false;
         }
 
@@ -643,8 +647,9 @@ namespace Game.Ai
         // fresh, rather than being committed to in a single order.
         //
         // A candidate building qualifies the same way FindTarget's own Section 5 does — actually
-        // enemy-owned, not neutral, not the starting citadel, and "known" via the same visited-hex
-        // memory (VisionSystem.IsVisited) — AND either confirmed undefended (ThreatStrength.
+        // enemy-owned, not neutral, not the starting citadel, and "known" via the same
+        // AiMapMemory.AllKnownBuildings snapshot (2026-08-24 fix, section 3.2 — last actually
+        // observed, not live) — AND either confirmed undefended (ThreatStrength.
         // IsUndefended) or already beatable by `army` right now (IsReady, the same readiness math
         // every other real engagement decision in this class already trusts). Two bonuses decide
         // which reachable next hex wins, both AiConfig-internal only (never leak into
@@ -693,13 +698,13 @@ namespace Game.Ai
             CaptureStepOpportunity? best = null;
             float bestBonus = 0f; // the ordinary next hex toward realDestination is the implicit baseline
 
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            // Memory-based (2026-08-24 fix, section 3.2) — same AllKnownBuildings source
+            // FindTarget/HasAnythingToRaid themselves now scan, see FindTarget's own comment.
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
             {
                 if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
                     continue;
                 if (building.Hex.Equals(realDestination) || building.Hex.Equals(army.Hex))
-                    continue;
-                if (!VisionSystem.IsVisited(actor, building.Hex))
                     continue;
 
                 // required.IsUndefended is a CONFIRMED zero — nobody at all sighted on the

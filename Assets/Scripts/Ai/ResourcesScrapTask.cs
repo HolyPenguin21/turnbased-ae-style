@@ -79,10 +79,16 @@ namespace Game.Ai
             return best == int.MaxValue ? 0f : -best * AiConfig.resourceScrapDistancePenaltyPerHex;
         }
 
-        public static bool HasExtractionFacility(HexCoord hex, ResourceType type)
+        // Memory-based, not a live BuildingRegistry read (2026-08-24 fix, "память тумана войны не
+        // соответствует правилам 3.1–3.2", section 3.2 — project owner's own report): whether a
+        // real extraction facility already covers this hex is only as current as `player`'s own
+        // last look at it — a facility someone else quietly built there since goes on reading as
+        // "not built yet" until this player actually sees the hex again, same honesty every other
+        // AiMapMemory-backed read in this codebase already gets.
+        public static bool HasExtractionFacility(PlayerSetupData player, HexCoord hex, ResourceType type)
         {
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type));
+            AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, hex);
+            return building.HasValue && building.Value.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type));
         }
 
         public static bool HasEnemyThreat(PlayerSetupData player, HexCoord targetHex) =>

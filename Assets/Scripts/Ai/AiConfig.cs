@@ -72,6 +72,18 @@ namespace Game.Ai
         // the point the two combine, not a magnitude constraint on IncomeBehindBonus itself, so the
         // 115 ceiling holds even if that term's own scale changes independently down the line.
         public const float economyTravelScoreCap = 115f;
+        // "экономика не теряет приоритет после насыщения" fix (2026-08-24, project owner's own
+        // report) — once AiGoalScorer.HasMatureEconomy(player, economyMatureIncomePerType) reads
+        // true (every one of the 4 resource types already producing at least this much per turn),
+        // BuildFacilityTask.TravelScore shaves economyMatureTravelPenalty off its own ordinary
+        // travel/dispatch score — never off economyExecuteScore, which stays a flat completion
+        // tier regardless (see that constant's own comment: "NEVER modified by ScoreHex/
+        // IncomeBehindBonus the way ordinary Economy travel still is", same principle here). A
+        // saturated economy still starts/finishes real builds when nothing better competes — this
+        // only stops it from reflexively outranking an ordinary Aggression/Defence/Recon candidate
+        // the moment there's nothing left worth expanding into.
+        public const int economyMatureIncomePerType = 2;
+        public const float economyMatureTravelPenalty = 20f;
         // economyExecuteScore — Экономика's own "немедленное завершение/тактическая реакция" tier,
         // ONE shared value for three genuinely distinct triggers (same "no near-duplicate constant"
         // reasoning AiConfig.defencePreemptScore's own comment already gives for its own reuse):
@@ -315,22 +327,18 @@ namespace Game.Ai
         public const int buildBaseMinTurn = 7;
         // At most one base-building campaign running at once — same reasoning as maxConcurrentRaid.
         public const int maxConcurrentBuildBase = 1;
-        // "Агрессивная армия примерно равна силе активных армий противника" — the composing
-        // army's own (Attack+Defense) must reach at least this SHARE of the single STRONGEST real
-        // enemy army anywhere on the map, among every opponent (AiAggressionPlanner.
-        // RequiredBuildBaseStrength — a deliberate cheat reading live ArmyData, same value whether
-        // there's 1, 2, or 3+ opponents; 2026-08-22, project owner's own call, superseding the
-        // 2026-08-21 "sum of each known enemy player's own honest-memory max" version, which turned
-        // out to have its own bug — a stale AiMapMemory sighting could inflate the requirement
-        // forever, see RequiredBuildBaseStrength's own comment). "Примерно равна", not "beats
-        // outright", so a floor below 1.0 rather than a WorthIt.Beats-style strict comparison.
-        // 2026-08-22 rebalance (project owner's own call): 0.8 → 0.4 — a second base is itself a
-        // strength investment (new production/defense, a forward position), not a reward for
-        // already being strong, so the AI no longer needs to be almost caught up with the single
-        // strongest enemy army before it's allowed to commit to one; being able to field at least
-        // 40% of that army's own combined Attack+Defense is enough of a floor to rule out founding
-        // one with a hero-led army too weak to survive contact at all.
-        public const float buildBaseStrengthToleranceRatio = 0.4f;
+        // 2026-08-24 removal (project owner's own report — "BuildBase всё ещё требует слишком
+        // сильную армию"): the old buildBaseStrengthToleranceRatio global gate (require the
+        // composing army's own Attack+Defense to reach some share of the single strongest real
+        // enemy army anywhere) is gone. It doubly punished a weak/mid army — unable to even START
+        // the task below its floor, and still separately gated by buildBaseMinWinChance/
+        // HasThreateningEnemyNear once under way — and it made BuildBase compete with Raid/Defence
+        // for the STRONGEST eligible army instead of investing a spare one (see
+        // AiAggressionPlanner.FindBuildBaseArmy's own comment: now picks the WEAKEST eligible
+        // hero-led combat army, not the strongest). The remaining gates —
+        // hero-led/combat-capable/composition, citadel not besieged, local target-hex safety
+        // (buildBaseMinWinChance), first-step feasibility, Base card in hand — are enough to rule
+        // out a genuinely suicidal pick without also blocking every merely-average one.
         // Travel score (start-new dispatch AND ordinary in-flight continuation, both in
         // AiAggressionPlanner) — used to be plain aggressionBaseWeight, tied EXACTLY with
         // RaidWeakerArmy's own ordinary travel score. AiTurnController.Decide's own candidate list

@@ -69,30 +69,45 @@ namespace Game.Ai
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // Per-turn income across all 4 resource types, mirroring (in simplified form) what
+        // Per-turn income for a single resource type, mirroring (in simplified form) what
         // GameTurnController.CollectResourceIncome actually pays out each turn — structural
         // income from every owned building (BuildingData.CollectedAmount, same uncapped-by-hex-
         // yield simplification BuildFacilityTask.HasIncomeSource already leans on) plus 1 per
-        // resource type for every unit anywhere on a hex whose bonus actually yields that type and
-        // that carries the matching CollectX ability (a ResourcesScrap collector actually parked
-        // on its hex — see CollectArmyIncomeAt). Deliberately NOT a full re-derivation (no enemy-
-        // contest check, no per-hex remaining-yield cap split across owners) — same "cheat slice"
-        // spirit as this method's own caller, just measuring the right thing (rate, not stock).
-        private static int TotalIncome(PlayerSetupData player)
+        // unit anywhere on a hex whose bonus actually yields this type and that carries the
+        // matching CollectX ability (a ResourcesScrap collector actually parked on its hex — see
+        // CollectArmyIncomeAt). Deliberately NOT a full re-derivation (no enemy-contest check, no
+        // per-hex remaining-yield cap split across owners) — same "cheat slice" spirit as
+        // IncomeBehindBonus, just measuring the right thing (rate, not stock). Split out from the
+        // old TotalIncome (2026-08-24, "экономика не теряет приоритет после насыщения" fix) so
+        // HasMatureEconomy can read each of the 4 types independently rather than only their sum —
+        // a player heavy in one resource and starved in another used to read as "not behind" on
+        // the combined total alone.
+        public static int IncomeFor(PlayerSetupData player, ResourceType type)
         {
-            int total = BuildingRegistry.AllBuildings().Where(b => b.Owner == player)
-                .Sum(b => AllResourceTypes.Sum(t => b.CollectedAmount(t)));
+            int total = BuildingRegistry.AllBuildings().Where(b => b.Owner == player).Sum(b => b.CollectedAmount(type));
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 ResourceYields bonus = HexResourceBonusRegistry.GetBonus(army.Hex);
-                if (bonus == null)
+                if (bonus == null || bonus.Get(type) <= 0)
                     continue;
-                foreach (ResourceType type in AllResourceTypes)
-                    if (bonus.Get(type) > 0)
-                        total += army.Members.Count(u => u.HasAbility(UnitAbilities.CollectAbilityFor(type)));
+                total += army.Members.Count(u => u.HasAbility(UnitAbilities.CollectAbilityFor(type)));
             }
             return total;
         }
+
+        private static int TotalIncome(PlayerSetupData player) => AllResourceTypes.Sum(t => IncomeFor(player, t));
+
+        // "экономика не теряет приоритет после насыщения" fix (2026-08-24, project owner's own
+        // report) — true once EVERY one of the 4 resource types clears `perTypeThreshold` on its
+        // own (not just the combined total — see IncomeFor's own comment), the local signal
+        // BuildFacilityTask.TravelScore/AiEconomyPlanner.TryStartEconomyCandidates use to shave
+        // their own travel-tier score down once Economy has genuinely stopped being urgent, rather
+        // than always starting from the same high base regardless of how saturated the player
+        // already is. Deliberately local/instantaneous (no Strategic Assessment, no memory of past
+        // turns) — the moment any one type dips back below threshold (a facility lost, a collector
+        // pulled off), this flips back on its own next call.
+        public static bool HasMatureEconomy(PlayerSetupData player, int perTypeThreshold) =>
+            AllResourceTypes.All(t => IncomeFor(player, t) >= perTypeThreshold);
     }
 }
