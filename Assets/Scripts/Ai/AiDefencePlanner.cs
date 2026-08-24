@@ -560,7 +560,26 @@ namespace Game.Ai
             // cycle was already under way from its very first call.
             if (IsOwnPatrolFacilityHex(player, task.Army.Hex))
                 task.PatrolVisited.Add(task.Army.Hex);
-            HexCoord? target = FindPatrolTarget(player, task.Army, homeHex, task.PatrolVisited);
+
+            // 2026-08-24 fix (project owner's own log-audit report): two DefendCitadel/Patrol tasks
+            // at DIFFERENT bases used to plan in total isolation from each other — PatrolVisited
+            // lives per-task, so neither army's own cycle ever knew the other existed. On a real
+            // multi-base game this converged to both armies picking the SAME nearest facility turn
+            // after turn (one active-threat coincidence at first, then the routine Patrol geometry
+            // just kept re-syncing on its own afterward) — two armies marching an almost-single-file
+            // column around one shared loop instead of splitting into two coverage areas. Gathered
+            // fresh every call (never cached) so a task that itself just switched away from Patrol
+            // (Active/Turtle/retreating) drops out of the exclusion set the very next evaluation —
+            // see FindPatrolTarget's own comment for how these two sets are actually used.
+            List<AiTask> otherPatrols = AiTaskRegistry.TasksFor(player)
+                .Where(t => t != task && t.Kind == AiTaskKind.DefendCitadel && t.Posture == AiDefencePosture.Patrol)
+                .ToList();
+            var otherPatrolTargets = new HashSet<HexCoord>(otherPatrols.Select(t => t.TargetHex));
+            var otherPatrolVisited = new HashSet<HexCoord>(
+                otherPatrols.SelectMany(t => t.PatrolVisited ?? Enumerable.Empty<HexCoord>()));
+
+            HexCoord? target = FindPatrolTarget(player, task.Army, homeHex, task.PatrolVisited,
+                otherPatrolTargets, otherPatrolVisited, out bool deconflicted);
             if (target == null)
             {
                 if (task.Army.Hex.Equals(homeHex))
@@ -592,7 +611,10 @@ namespace Game.Ai
             }
 
             task.TargetHex = target.Value;
-            return AiDecision.Move(task.Army, target.Value, "patrol — visits an extraction facility",
+            string reason = deconflicted
+                ? $"patrol — visits an extraction facility (deconflicted from another base's patrol around ({homeHex.Q},{homeHex.R}))"
+                : "patrol — visits an extraction facility";
+            return AiDecision.Move(task.Army, target.Value, reason,
                 task, AiConfig.defencePatrolScore, AiTaskCategory.Defence);
         }
 
@@ -655,8 +677,25 @@ namespace Game.Ai
         // currently-visible hexes first (1.2.1's own "держаться видимых хексов, ближе к цитадели"
         // spec) — falling back to the full candidate list only if literally nothing unvisited is
         // visible right now, rather than stalling the patrol forever.
-        private static HexCoord? FindPatrolTarget(PlayerSetupData player, ArmyData army, HexCoord homeHex, HashSet<HexCoord> visited)
+        // 2026-08-24 fix (see the call site's own comment for the root cause): `otherPatrolTargets`/
+        // `otherPatrolVisited` narrow this task's OWN candidate pool away from whatever other
+        // DefendCitadel/Patrol tasks are currently claiming or have already covered, so two bases'
+        // patrols split into separate coverage areas instead of converging on the same loop.
+        // Deliberately local to Patrol only — Active intercept, Turtle, retreat, and SecureBase never
+        // call this method at all, so none of them are affected. Three-pass fallback, never a hard
+        // requirement: (1) full cross-task exclusion (neither another patrol's current TargetHex nor
+        // anything it's already visited this cycle); (2) if that empties the pool, drop the
+        // `visited`-only exclusion but keep dodging the other task's claimed TargetHex — a hex the
+        // other army merely passed through once is fair game again before a hex it's headed for
+        // right now; (3) if STILL empty, ignore cross-task state entirely and fall back to this
+        // task's own ordinary candidate list, so a real coverage-radius squeeze (few facilities, many
+        // patrols) never stalls this army waiting for a hex it doesn't actually need to avoid.
+        // `deconflicted` reports whether pass (1) or (2) actually removed anything from the raw
+        // candidate list — purely for the caller's own diagnostic log, never read for control flow.
+        private static HexCoord? FindPatrolTarget(PlayerSetupData player, ArmyData army, HexCoord homeHex, HashSet<HexCoord> visited,
+            HashSet<HexCoord> otherPatrolTargets, HashSet<HexCoord> otherPatrolVisited, out bool deconflicted)
         {
+            deconflicted = false;
             List<HexCoord> candidates = BuildingRegistry.AllBuildings()
                 .Where(b => IsOwnPatrolFacilityHex(player, b.Hex)
                     && HexGridMath.Distance(homeHex, b.Hex) <= AiConfig.patrolRadius
@@ -666,8 +705,16 @@ namespace Game.Ai
             if (candidates.Count == 0)
                 return null;
 
-            List<HexCoord> visible = army.HasRecce ? candidates : candidates.Where(h => VisionSystem.IsVisible(player, h)).ToList();
-            List<HexCoord> pool = visible.Count > 0 ? visible : candidates;
+            List<HexCoord> fullyDeconflicted = candidates
+                .Where(h => !otherPatrolTargets.Contains(h) && !otherPatrolVisited.Contains(h)).ToList();
+            List<HexCoord> targetOnlyDeconflicted = candidates.Where(h => !otherPatrolTargets.Contains(h)).ToList();
+            List<HexCoord> baseCandidates = fullyDeconflicted.Count > 0 ? fullyDeconflicted
+                : targetOnlyDeconflicted.Count > 0 ? targetOnlyDeconflicted
+                : candidates;
+            deconflicted = baseCandidates.Count < candidates.Count;
+
+            List<HexCoord> visible = army.HasRecce ? baseCandidates : baseCandidates.Where(h => VisionSystem.IsVisible(player, h)).ToList();
+            List<HexCoord> pool = visible.Count > 0 ? visible : baseCandidates;
 
             if (visited.Count == 0)
             {

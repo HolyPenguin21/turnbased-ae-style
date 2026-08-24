@@ -146,6 +146,18 @@ namespace Game.Ai
         // actually close. Deliberately much tighter than visitRingBand (which bounds frontier
         // candidates by CITADEL distance, not scout distance).
         public const int visitCleanupMaxDistance = 2;
+        // Local-frontier radius (2026-08-24, project owner's own root-cause report): a genuine
+        // frontier candidate (freshNeighbors > 0) had NO scout-distance cap at all before this — only
+        // visitCleanupMaxDistance capped the CLEANUP case, and visitRingBand bounds frontier
+        // candidates by CITADEL distance, not by distance from the scout actually making the call.
+        // Two scouts wavefronting the same citadel ring from opposite sides could therefore both see
+        // the SAME far-side frontier candidate as legal and have one of them march clear across the
+        // ring to reach it, instead of covering the unexplored hexes already next to it. FindTarget
+        // now tries this radius first (frontier within visitFrontierLocalRadius of the scout) and
+        // only falls back to the unrestricted full-map frontier scan if nothing qualifies locally —
+        // preserves the outward-wave shape while cutting the long unnecessary marches. Initial value,
+        // not yet checked against a real playtest log (project owner's own note — try 2 or 3 first).
+        public const int visitFrontierLocalRadius = 3;
         // While Агрессия has an active RaidWeakerArmy task (any — a real committed raid force
         // matters more than another routine scouting hop), subtracted from VisitHex's own flat
         // reconBaseWeight contribution to the arbiter (project owner's own 2026-08-19 rebalance —

@@ -137,7 +137,16 @@ namespace Game.Ai
             // the map this step (see AiConfig.visitCleanupScore's own comment on why this matters:
             // without the split, a zero-value hole in the coverage could outscore — or simply get
             // picked ahead of — genuine unexplored frontier just because it happened to be closer).
-            AiScoutPlanner.ScoutTarget? bestFrontier = null;
+            //
+            // Frontier itself is ALSO split local-vs-distant now (2026-08-24 fix, see AiConfig.
+            // visitFrontierLocalRadius's own comment for the root cause) — a frontier candidate
+            // within that radius of THIS scout always wins over one farther away, even if the
+            // farther one scores higher on scoutProximityWeight/freshNeighborWeight alone; only once
+            // no local frontier exists anywhere does the unrestricted best-scoring distant frontier
+            // become the fallback. Cleanup is unaffected — still only ever considered once neither
+            // frontier bucket has anything (see below).
+            AiScoutPlanner.ScoutTarget? bestLocalFrontier = null;
+            AiScoutPlanner.ScoutTarget? bestDistantFrontier = null;
             AiScoutPlanner.ScoutTarget? bestCleanup = null;
             foreach (HexCoord candidate in map.AllCoords)
             {
@@ -148,16 +157,28 @@ namespace Game.Ai
                 {
                     if (bestCleanup == null || scored.Value.Score > bestCleanup.Value.Score)
                         bestCleanup = scored;
+                    continue;
+                }
+                if (HexGridMath.Distance(army.Hex, candidate) <= AiConfig.visitFrontierLocalRadius)
+                {
+                    if (bestLocalFrontier == null || scored.Value.Score > bestLocalFrontier.Value.Score)
+                        bestLocalFrontier = scored;
                 }
                 else
                 {
-                    if (bestFrontier == null || scored.Value.Score > bestFrontier.Value.Score)
-                        bestFrontier = scored;
+                    if (bestDistantFrontier == null || scored.Value.Score > bestDistantFrontier.Value.Score)
+                        bestDistantFrontier = scored;
                 }
             }
-            AiScoutPlanner.ScoutTarget? best = bestFrontier ?? bestCleanup;
+            bool isDistantFallback = bestLocalFrontier == null && bestDistantFrontier != null;
+            AiScoutPlanner.ScoutTarget? best = bestLocalFrontier ?? bestDistantFrontier ?? bestCleanup;
             if (best == null)
                 return null;
+            if (isDistantFallback)
+            {
+                best = new AiScoutPlanner.ScoutTarget(best.Value.Hex, best.Value.Score,
+                    best.Value.Reason + " — distant frontier fallback, nothing unexplored closer", best.Value.IsCleanup);
+            }
 
             // The scan above never checks real move cost, so a nearby-yet-expensive pick (rough
             // terrain right next door) can outright reject the whole move order — see

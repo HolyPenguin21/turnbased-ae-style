@@ -300,50 +300,44 @@ namespace Game.Ai
         // "Одиночка" at the citadel hex — a plain lone unit OR a lone hero, no distinction any more
         // (2026-08-20, point 1/1.2 — the old Recce carve-out is gone; see this class's own class
         // comment for why). Scoped to `garrisonHex` only — an army out in the field mid-task is
-        // never touched by this sweep. No longer excludes a task-claimed army (2026-08-21 fix,
-        // superseded 2026-08-21 follow-up, project owner's own report) — the original worry was a
-        // still-forming DefendCitadel/RaidWeakerArmy army getting folded straight back into the
-        // garrison and "undoing" the recruitment its own planner just did. Turns out that's not
-        // actually destructive: HexSelectionController.DeleteArmyIfEmptied already refuses to tear
-        // down an army left empty on its own owner's Barracks hex (the garrison hex always IS one —
-        // see that method's own comment), so the folded-empty task.Army SURVIVES as a registered
-        // shell instead of being deleted — the task itself stays alive (TryContinueRaidTask/
-        // TryStartDefenceCandidates's own dangling-reference check never trips), and the very next
-        // evaluation just recruits into that same shell again, no CreateArmyApCost repaid. AiTurn
-        // Controller.Decide's own upfront pool.ClaimArmy sweep (see AiResourcePool's own comment)
-        // also already keeps this now-empty shell reserved for its own task, so no OTHER category
-        // can mistake it for a fresh IsEmptyDeployableArmy in the meantime. Net effect: the unit
-        // spends a step folded into the (better-defended, now that BattleInitiator.FindEnemyAt picks
-        // the hex's strongest army) garrison instead of sitting exposed in a still-fragile 1-member
-        // army, then gets pulled back out — a small extra transfer, not a lost turn.
+        // never touched by this sweep. Does NOT itself exclude a task-claimed army (2026-08-21 fix,
+        // superseded 2026-08-21 follow-up) — that exclusion lives one level up, in
+        // IsProtectedTaskArmy, which every caller of this predicate also checks separately before
+        // treating an army as fair fold/balance material. Historically this comment argued folding a
+        // still-forming task army back into garrison was harmless either way, on the theory that
+        // HexSelectionController.DeleteArmyIfEmptied refuses to tear down an empty shell sitting on
+        // its own owner's Barracks hex, so the folded-empty task.Army would simply SURVIVE as a
+        // registered shell for next turn's recruit to reuse. That stopped being true once
+        // AiTurnController.RunEmptyArmyCleanup grew its own stale-task sweep (2026-08-24, see that
+        // method's own comment): it now reads ANY zero-member army still carrying a task — including
+        // one JUST emptied by this exact fold, not only a genuinely combat-wiped one — as an orphan
+        // and deletes the task outright, losing TargetHex/StillAssembling progress instead of
+        // preserving it (project owner's own report — this was the actual root cause of Defence
+        // recruit/fold/delete/re-recruit thrashing on Patrol-postured armies). IsProtectedTaskArmy's
+        // own StillAssembling branch is what actually prevents this now, by refusing to let this
+        // tier's fold move even consider a still-forming DefendCitadel army in the first place,
+        // regardless of posture — see that method's own comment for the full chain.
         private static bool IsLoneArmyAtBase(ArmyData army, HexCoord garrisonHex)
         {
             return army != null && !army.IsGarrison && !army.IsPrison
                 && army.Members.Count == 1 && army.Hex.Equals(garrisonHex);
         }
 
-        // IdleBalance's own no-go list (2026-08-23 redesign, project owner's own spec point 3):
-        // a task-owned RaidWeakerArmy army, or a DefendCitadel army in Active or Turtle posture, is
-        // off-limits to every generic Reorg move/swap here — tier 0's hero-capacity-expansion
-        // source, tier 1's lone-army fold, tier 2's strength/composition balance, and FindReorgSwap
-        // all skip it. Composition ownership for these belongs exclusively to the task's own
-        // planner (AiAggressionPlanner for Raid, AiDefencePlanner.TryStrengthenCandidate for
-        // Active/Turtle Defence) — "не пускать generic balancing внутрь активных специализированных
-        // задач". Deliberately NOT gated on StillAssembling (narrowed FROM that during planning —
-        // the earlier draft only protected a READY army, on the theory that a still-forming one was
-        // already covered by FindCollapseMove; that left a StillAssembling army fully exposed to
-        // this class's own tier 2 composition-evening donor/recipient pool on any drain iteration
-        // FindCollapseMove itself declined, e.g. not enough garrison room yet for the WHOLE roster —
-        // exactly the interference this method exists to prevent, assembling or not). Which
-        // mechanism is ALLOWED to touch the army is decided elsewhere (FindCollapseMove's own
-        // StillAssembling gate, or the task's own planner reading task state directly) — this
-        // method only ever answers "can IdleBalance touch it", never "is it done recruiting".
-        // Patrol-postured DefendCitadel is deliberately NOT in this list (project owner's own call,
-        // 2026-08-23) — it has no standing strategic intent above the ordinary ratio yet (unlike
-        // Turtle, see the old single-posture version of this method), so it stays ordinary
-        // balancing material like any task-less army. RaidReinforce/BuildBase (the other two
-        // Aggression-category Kinds) are likewise NOT protected — only RaidWeakerArmy itself was
-        // ever in scope of the project owner's "Raid" wording here.
+        // IdleBalance's own no-go list (2026-08-23 redesign, project owner's own spec point 3;
+        // narrowed again 2026-08-24, project owner's own report — see the StillAssembling branch
+        // below): a task-owned RaidWeakerArmy army, a DefendCitadel army in Active or Turtle
+        // posture, OR a DefendCitadel army of ANY posture still mid-recruit is off-limits to every
+        // generic Reorg move/swap here — tier 0's hero-capacity-expansion source, tier 1's
+        // lone-army fold, tier 2's strength/composition balance, and FindReorgSwap all skip it.
+        // Composition ownership for these belongs exclusively to the task's own planner
+        // (AiAggressionPlanner for Raid, AiDefencePlanner.TryStrengthenCandidate/
+        // TryStartDefenceCandidates for Defence) — "не пускать generic balancing внутрь активных
+        // специализированных задач". A READY (non-assembling) Patrol army is deliberately still NOT
+        // protected (project owner's own call, 2026-08-23) — once recruiting is done it has no
+        // standing strategic intent above the ordinary ratio (unlike Turtle), so it goes back to
+        // being ordinary balancing material like any task-less army. RaidReinforce/BuildBase (the
+        // other two Aggression-category Kinds) are likewise NOT protected — only RaidWeakerArmy
+        // itself was ever in scope of the project owner's "Raid" wording here.
         private static bool IsProtectedTaskArmy(PlayerSetupData player, ArmyData army)
         {
             AiTask task = AiTaskRegistry.TaskFor(player, army);
@@ -357,8 +351,25 @@ namespace Game.Ai
             // some other field army at the hex instead of the garrison itself.
             if (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.SecureBase)
                 return true;
-            return task.Kind == AiTaskKind.DefendCitadel
-                && (task.Posture == AiDefencePosture.Active || task.Posture == AiDefencePosture.Turtle);
+            if (task.Kind != AiTaskKind.DefendCitadel)
+                return false;
+            // 2026-08-24 fix (project owner's own root-cause report): a Patrol-postured DefendCitadel
+            // task still mid-recruit (StillAssembling) used to fall through to the plain posture
+            // check below and read as unprotected — tier 1's FindLoneArmyFoldMove then happily
+            // folded its single recruit straight back into the garrison as an ordinary lone unit.
+            // That leaves the task's own `.Army` pointing at a now-EMPTY shell, which
+            // AiTurnController.RunEmptyArmyCleanup's own stale-task sweep (see that method's own
+            // comment) reads as a combat-wiped orphan and deletes outright — the task, its
+            // TargetHex, and all recruiting progress gone, not preserved as a registered shell (an
+            // older draft of this file assumed the shell always survives; RunEmptyArmyCleanup's
+            // later stale-task removal made that assumption false). AiDefencePlanner then sees no
+            // task for this base next turn and starts a brand new one from scratch — recruit, fold,
+            // delete, repeat, forever. Checked BEFORE the Active/Turtle posture check, and
+            // independent of posture entirely — a still-forming Patrol army gets exactly the same
+            // shield a still-forming Active one already had.
+            if (task.StillAssembling)
+                return true;
+            return task.Posture == AiDefencePosture.Active || task.Posture == AiDefencePosture.Turtle;
         }
 
         // Average non-hero unit strength (Defense+Attack) — the yardstick tier 1's "which field
@@ -532,10 +543,13 @@ namespace Game.Ai
         //     ever destroyed cross-turn recruiting progress for no offsetting benefit. IsProtectedTaskArmy
         //     (this class's own IdleBalance gate) already shields a StillAssembling Raid army from
         //     every OTHER generic reorg tier unconditionally, Collapse or not — see its own comment.
-        //   - DefendCitadel Patrol posture is EXCLUDED too — it carries no elevated standing intent
-        //     (IsProtectedTaskArmy deliberately doesn't shield it either, same reasoning), so ordinary
-        //     IdleBalance already has full authority over it; a dedicated Collapse pass on top is
-        //     redundant.
+        //   - DefendCitadel Patrol posture is EXCLUDED too, but for a narrower reason than it used to
+        //     be (2026-08-24 update): a still-forming Patrol army now gets shielded from ordinary
+        //     IdleBalance by IsProtectedTaskArmy's own StillAssembling branch same as Active/Turtle —
+        //     it's only a READY (non-assembling) Patrol army that falls back to plain unprotected
+        //     balancing material. Either way a dedicated Collapse pass here would be redundant: a
+        //     still-forming one is IsCollapseEligible-excluded by the Posture check below regardless
+        //     (Collapse only ever admits Active), and a ready one has nothing left to "collapse".
         //   - DefendCitadel Turtle posture is EXCLUDED — a real siege in progress (Turtle only exists
         //     under IsUnderSiege) is exactly the case where an incomplete-but-real extra stack next to
         //     the garrison still has defensive value; folding it away purely because the turn ran out
