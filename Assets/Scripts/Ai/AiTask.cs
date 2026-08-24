@@ -171,16 +171,21 @@ namespace Game.Ai
         // precise diagnosis; see AiEconomyPlanner.MaxBuildAttempts.
         public int BuildAttempts;
 
-        // BuildBase only (2026-08-23, project owner's own report/spec) — consecutive steps this
-        // task has sat AT its own target hex unable to afford the Base card's own AP/resource cost
-        // (see AiAggressionPlanner.TryContinueBuildBaseTask's own Wait branch, which increments
-        // this every time; any other outcome — travelling, executing, or any cancel — never
-        // touches it, so there's no separate reset needed). A hero-led combat army is expensive to
-        // tie up indefinitely on a build the AI can't actually pay for — once this exceeds
-        // AiConfig.buildBaseMaxWaitTurns the task gives up and frees the army rather than holding
-        // it hostage to a plan that's gone stale (the project owner's own "не держать шестиюнитную
-        // армию десять ходов" report).
-        public int BuildBaseWaitTurns;
+        // BuildBase only (2026-08-23, project owner's own report/spec; turn-boundary fix
+        // 2026-08-24 — same bug class as GarrisonSeedStartedTurn below) — the TURN NUMBER
+        // (AiTurnContext.TurnNumber) this task first found itself unable to afford the Base card's
+        // own AP/resource cost, -1 until then. Stamped once, the first time AiAggressionPlanner.
+        // TryContinueBuildBaseTask's own Wait branch is hit; elapsed wait is computed fresh each
+        // check as `ctx.TurnNumber - BuildBaseWaitStartedTurn`, never a plain incrementing counter
+        // — that method runs once per Decide() STEP, not once per real game turn, so a naive
+        // `BuildBaseWaitTurns++` could blow past AiConfig.buildBaseMaxWaitTurns within a single
+        // turn (project owner's own playtest report, 2026-08-24: Grimm/Vashti both hit "stuck
+        // unable to afford" after 5 CONSECUTIVE STEPS in the same turn, not 5 real turns). A
+        // hero-led combat army is expensive to tie up indefinitely on a build the AI can't actually
+        // pay for — once real elapsed turns exceeds AiConfig.buildBaseMaxWaitTurns the task gives up
+        // and frees the army rather than holding it hostage to a plan that's gone stale (the
+        // project owner's own "не держать шестиюнитную армию десять ходов" report).
+        public int BuildBaseWaitStartedTurn = -1;
 
         // BuildFacility only — true if ResourceType had NO income source anywhere at task creation
         // (see BuildFacilityTask.HasIncomeSource), i.e. this build was ever only justified by

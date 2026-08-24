@@ -240,14 +240,31 @@ namespace Game.Ai
             // second-guessed here.
             HexCoord moveDestination = task.TargetHex;
             string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
-            HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, task.Army, task.TargetHex, ctx.Map);
-            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, captureStep.Value))
+            RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
+                RaidWeakerArmyTask.FindCaptureStepDestination(player, task.Army, task.TargetHex, ctx.Map);
+            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, captureStep.Value.NextHex))
             {
-                moveDestination = captureStep.Value;
-                moveReason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way";
+                moveDestination = captureStep.Value.NextHex;
+                moveReason = FormatCaptureStepReason(captureStep.Value, "on the way");
             }
             return AiDecision.Move(task.Army, moveDestination, moveReason,
                 task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
+        }
+
+        // Shared reason text for all three FindCaptureStepDestination call sites (2026-08-24 P2,
+        // project owner's own playtest report) — names the REAL building hex separately from the
+        // next-step hex (an approach step's own next hex is a waypoint, not the building), and only
+        // says "unguarded" for a confirmed-empty opportunity (CaptureStepOpportunity.IsUndefended);
+        // a hero-only defended building is still a legitimate detour target (it's beatable, see
+        // RaidWeakerArmyTask.FindCaptureStepDestination's own comment) but arriving there is a real
+        // contact, not a free capture, so the log says so instead of promising one.
+        private static string FormatCaptureStepReason(RaidWeakerArmyTask.CaptureStepOpportunity opportunity, string trailer)
+        {
+            string building = $"({opportunity.BuildingHex.Q},{opportunity.BuildingHex.R})";
+            string nextStep = $"({opportunity.NextHex.Q},{opportunity.NextHex.R})";
+            return opportunity.IsUndefended
+                ? $"detours toward unguarded enemy building at {building}, next step {nextStep}, {trailer}"
+                : $"detours toward enemy building at {building}, next step {nextStep}, defender is beatable, {trailer}";
         }
 
         // Debug-log detail for Агрессия's own "still assembling" step — the actual unit-by-unit
@@ -641,11 +658,12 @@ namespace Game.Ai
                 // it's actually headed (still the garrison) for next step's own fresh re-evaluation.
                 HexCoord destination = garrisonHex;
                 string reason = "returns to the garrison to assemble the force";
-                HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, army, garrisonHex, ctx.Map);
-                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value))
+                RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
+                    RaidWeakerArmyTask.FindCaptureStepDestination(player, army, garrisonHex, ctx.Map);
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value.NextHex))
                 {
-                    destination = captureStep.Value;
-                    reason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way home";
+                    destination = captureStep.Value.NextHex;
+                    reason = FormatCaptureStepReason(captureStep.Value, "on the way home");
                 }
                 else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
                     continue;
@@ -703,11 +721,12 @@ namespace Game.Ai
                 // comment), without changing where it's actually headed for next step's own re-eval.
                 HexCoord destination = homeHex;
                 string reason = "nothing left to raid — returns to base";
-                HexCoord? captureStep = RaidWeakerArmyTask.FindCaptureStepDestination(player, army, homeHex, ctx.Map);
-                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value))
+                RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
+                    RaidWeakerArmyTask.FindCaptureStepDestination(player, army, homeHex, ctx.Map);
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value.NextHex))
                 {
-                    destination = captureStep.Value;
-                    reason = $"detours to capture an unguarded building at ({captureStep.Value.Q},{captureStep.Value.R}) on the way home";
+                    destination = captureStep.Value.NextHex;
+                    reason = FormatCaptureStepReason(captureStep.Value, "on the way home");
                 }
                 else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
                     continue;
@@ -1464,24 +1483,27 @@ namespace Game.Ai
             bool shortOnAp = !root.CanSpendActionPoints(definition.apCost);
             if (shortOnResources || shortOnAp)
             {
-                // Stale-plan timeout (2026-08-23, project owner's own report/spec) — see
-                // AiTask.BuildBaseWaitTurns's own comment. A hero-led combat army sitting here
-                // forever, unable to ever actually pay for the base while other AI spending keeps
-                // outcompeting it, is a worse outcome than giving up and freeing it back to
-                // Raid/Defence.
-                task.BuildBaseWaitTurns++;
-                if (task.BuildBaseWaitTurns > AiConfig.buildBaseMaxWaitTurns)
+                // Stale-plan timeout (2026-08-23, project owner's own report/spec; turn-boundary fix
+                // 2026-08-24 — see AiTask.BuildBaseWaitStartedTurn's own comment). A hero-led combat
+                // army sitting here forever, unable to ever actually pay for the base while other AI
+                // spending keeps outcompeting it, is a worse outcome than giving up and freeing it
+                // back to Raid/Defence — but the wait must be counted in real game turns, not in how
+                // many times this candidate happens to get re-evaluated within one turn.
+                if (task.BuildBaseWaitStartedTurn < 0)
+                    task.BuildBaseWaitStartedTurn = ctx.TurnNumber;
+                int waitTurns = ctx.TurnNumber - task.BuildBaseWaitStartedTurn;
+                if (waitTurns > AiConfig.buildBaseMaxWaitTurns)
                 {
                     AiResourceReservation.Release(task);
                     AiTaskRegistry.Remove(player, task);
                     AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — stuck unable to afford the new base for "
-                        + $"{task.BuildBaseWaitTurns} turns, base-building task abandoned, army freed.");
+                        + $"{waitTurns} turns, base-building task abandoned, army freed.");
                     return null;
                 }
                 string reason = shortOnResources && shortOnAp
                     ? "saving up resources and short on AP" : shortOnResources ? "saving up resources" : "short on AP";
                 return AiDecision.Wait(task, $"\"{task.Army.Name}\" is on-site, {reason} to found the new base "
-                    + $"at ({task.TargetHex.Q},{task.TargetHex.R}) — waiting ({task.BuildBaseWaitTurns}/{AiConfig.buildBaseMaxWaitTurns})");
+                    + $"at ({task.TargetHex.Q},{task.TargetHex.R}) — waiting ({waitTurns}/{AiConfig.buildBaseMaxWaitTurns} real turns)");
             }
 
             return AiDecision.BuildBase(task, AiConfig.buildBaseExecuteScore);
@@ -1567,6 +1589,18 @@ namespace Game.Ai
                 // itself first flips true — AdvanceGarrisonSeed below computes elapsed turns off
                 // this rather than incrementing a counter once per Decide() step.
                 task.GarrisonSeedStartedTurn = ctx.TurnNumber;
+
+                // Diagnostic only (2026-08-24 P2, project owner's own playtest report) — Grimm's own
+                // new base got an explicit SeedNewBaseGarrison candidate immediately next step, but
+                // Vashti's didn't (garrison filled some other way and AdvanceGarrisonSeed found it
+                // already non-empty next step instead). Logging the state right here, before
+                // AdvanceGarrisonSeed runs at all, tells us on the NEXT report which of the two
+                // actually happened instead of guessing after the fact.
+                ArmyData newGarrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(task.TargetHex));
+                UnitData seedCandidate = FindGarrisonSeedUnit(army);
+                AiDebugLog.Write($"[AI] {player.Nickname}: new base state at ({task.TargetHex.Q},{task.TargetHex.R}) — "
+                    + $"garrison units={newGarrison?.Members.Count ?? -1}, builder non-heroes="
+                    + $"{army.Members.Count(m => !m.IsHero)}, seed candidate={(seedCandidate != null ? seedCandidate.Name : "no")}.");
             }
             else
             {

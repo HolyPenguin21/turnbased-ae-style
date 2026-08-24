@@ -609,7 +609,28 @@ namespace Game.Ai
         //     over going straight to `realDestination`.
         // The building sitting exactly ON `realDestination` or `army.Hex` itself is skipped —
         // nothing to detour toward, ordinary continuation (or arrival) already covers it.
-        internal static HexCoord? FindCaptureStepDestination(PlayerSetupData actor, ArmyData army, HexCoord realDestination, HexMap map)
+        // Return value of FindCaptureStepDestination below — split out (2026-08-24 P2, project
+        // owner's own playtest report) so the caller can log the REAL building hex and the next-
+        // step hex separately (a multi-step detour's early steps aren't the building itself — the
+        // old single-HexCoord return conflated the two, so a log line for an approach step named
+        // ITS OWN next hex as "the building") and so the caller can tell a confirmed-empty capture
+        // apart from a merely-beatable contact (see IsUndefended below) instead of always saying
+        // "unguarded".
+        internal readonly struct CaptureStepOpportunity
+        {
+            public readonly HexCoord NextHex;
+            public readonly HexCoord BuildingHex;
+            public readonly bool IsUndefended;
+
+            public CaptureStepOpportunity(HexCoord nextHex, HexCoord buildingHex, bool isUndefended)
+            {
+                NextHex = nextHex;
+                BuildingHex = buildingHex;
+                IsUndefended = isUndefended;
+            }
+        }
+
+        internal static CaptureStepOpportunity? FindCaptureStepDestination(PlayerSetupData actor, ArmyData army, HexCoord realDestination, HexMap map)
         {
             if (actor == null || army == null || map == null || realDestination.Equals(army.Hex))
                 return null;
@@ -619,7 +640,7 @@ namespace Game.Ai
                 return null; // no real route to the actual destination at all — nothing to bias
             int mainCost = mainPath.TotalCost;
 
-            HexCoord? best = null;
+            CaptureStepOpportunity? best = null;
             float bestBonus = 0f; // the ordinary next hex toward realDestination is the implicit baseline
 
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
@@ -631,6 +652,14 @@ namespace Game.Ai
                 if (!VisionSystem.IsVisited(actor, building.Hex))
                     continue;
 
+                // required.IsUndefended is a CONFIRMED zero — nobody at all sighted on the
+                // building's own hex (see ThreatStrength.IsUndefended's own comment), which is the
+                // only case BuildingRegistry.CaptureOrDestroyIfUndefended actually fires for. A
+                // hero-only defender (BattleInitiator.IsEngageable counts it, so it IS sighted —
+                // IsUndefended is already correctly false for it) is instead only "beatable" via
+                // IsReady's own 0-Defense/0-Attack read — arriving there is a real contact, not a
+                // free capture, so that distinction rides along in the opportunity itself instead of
+                // getting collapsed into a blanket "unguarded" the way the caller's log used to.
                 ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
                 if (!required.IsUndefended && !IsReady(army, required))
                     continue; // not a confirmed-safe or currently-winnable capture — not worth biasing toward
@@ -664,7 +693,7 @@ namespace Game.Ai
                 if (bonus > bestBonus)
                 {
                     bestBonus = bonus;
-                    best = candidateNextHex;
+                    best = new CaptureStepOpportunity(candidateNextHex, building.Hex, required.IsUndefended);
                 }
             }
             return best;

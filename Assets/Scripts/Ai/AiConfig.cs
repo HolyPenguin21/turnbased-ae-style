@@ -365,8 +365,8 @@ namespace Game.Ai
         // RaidWeakerArmyTask.ProximityScore already establish for their own internal hex picks.
         public const float buildBaseDefenseBonusWeight = 10f;
         public const float buildBaseResourceSiteMergeBonus = 20f;
-        // See AiTask.BuildBaseWaitTurns's own comment — consecutive steps the task may sit at its
-        // own target hex genuinely unable to afford the Base card (reservation included) before
+        // See AiTask.BuildBaseWaitStartedTurn's own comment — real elapsed turns the task may sit at
+        // its own target hex genuinely unable to afford the Base card (reservation included) before
         // giving up and freeing the army rather than holding it hostage to a stale plan. First-pass
         // placeholder, same as every other freshly-added BuildBase tunable — flagged for the
         // project owner's own tuning later.
