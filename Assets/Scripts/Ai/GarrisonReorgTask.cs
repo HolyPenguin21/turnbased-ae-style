@@ -397,7 +397,7 @@ namespace Game.Ai
             if (ArmyData.ComputeCapacity(withHero, true) <= garrison.Members.Count)
                 return null; // this hero wouldn't actually buy the garrison any room — not worth lending anything over
 
-            UnitData weakest = garrison.Members.Where(m => !m.IsHero)
+            UnitData weakest = garrison.Members.Where(m => !m.IsHero && AiArmyRoles.CanSpareGarrisonMember(player, garrison, m))
                 .OrderBy(m => m.Defense).ThenBy(m => m.Attack).FirstOrDefault();
             if (weakest == null || !loneHeroArmy.HasRoom || !CanAffordTransferInto(loneHeroArmy, weakest)
                 || ctx.WouldRevisitArmy(weakest, loneHeroArmy))
@@ -638,7 +638,8 @@ namespace Game.Ai
             // goes to a field army instead.
             if (heroCount == 1 && totalNonHero > garrison.Capacity)
             {
-                UnitData strongInGarrison = garrison.Members.Where(m => !m.IsHero && m.Defense > 2 && m.Attack >= 4)
+                UnitData strongInGarrison = garrison.Members.Where(m => !m.IsHero && m.Defense > 2 && m.Attack >= 4
+                        && AiArmyRoles.CanSpareGarrisonMember(player, garrison, m))
                     .OrderByDescending(m => m.Attack).ThenByDescending(m => m.Defense).FirstOrDefault();
                 if (strongInGarrison != null)
                 {
@@ -669,7 +670,7 @@ namespace Game.Ai
             float combinedPower = garrisonPower + armiesPower;
             if (combinedPower > 0f && garrisonPower / combinedPower - AiConfig.garrisonPowerShareTarget > AiConfig.garrisonPowerShareTolerance)
             {
-                UnitData strongest = garrison.Members.Where(m => !m.IsHero)
+                UnitData strongest = garrison.Members.Where(m => !m.IsHero && AiArmyRoles.CanSpareGarrisonMember(player, garrison, m))
                     .OrderByDescending(m => m.Defense).ThenByDescending(m => m.Attack).FirstOrDefault();
                 if (strongest != null)
                 {
@@ -718,7 +719,7 @@ namespace Game.Ai
                 {
                     if (donor == recipient || donor.Members.Count(m => !m.IsHero) <= 1)
                         continue;
-                    UnitData spare = donor.Members.Where(m => !m.IsHero && needs(m))
+                    UnitData spare = donor.Members.Where(m => !m.IsHero && needs(m) && AiArmyRoles.CanSpareGarrisonMember(player, donor, m))
                         .OrderBy(m => m.Defense).ThenBy(m => m.Attack).FirstOrDefault();
                     if (spare == null || !CanAffordTransferInto(recipient, spare) || ctx.WouldRevisitArmy(spare, recipient))
                         continue;
@@ -766,7 +767,8 @@ namespace Game.Ai
             // plain "weak unit into garrison" move can never fire on its own here).
             if (heroCount == 1 && totalNonHero > garrison.Capacity)
             {
-                UnitData strongInGarrison = garrison.Members.Where(m => !m.IsHero && m.Defense > 2 && m.Attack >= 4)
+                UnitData strongInGarrison = garrison.Members.Where(m => !m.IsHero && m.Defense > 2 && m.Attack >= 4
+                        && AiArmyRoles.CanSpareGarrisonMember(player, garrison, m))
                     .OrderByDescending(m => m.Attack).ThenByDescending(m => m.Defense).FirstOrDefault();
                 var weakInField = fieldArmies.SelectMany(a => a.Members.Select(m => (Army: a, Unit: m)))
                     .Where(x => !x.Unit.IsHero && x.Unit.Range == 2 && x.Unit.Defense <= 2 && x.Unit.Attack <= 4)
@@ -787,7 +789,7 @@ namespace Game.Ai
             float combinedPower = garrisonPower + armiesPower;
             if (combinedPower > 0f && garrisonPower / combinedPower - AiConfig.garrisonPowerShareTarget > AiConfig.garrisonPowerShareTolerance)
             {
-                UnitData strongest = garrison.Members.Where(m => !m.IsHero)
+                UnitData strongest = garrison.Members.Where(m => !m.IsHero && AiArmyRoles.CanSpareGarrisonMember(player, garrison, m))
                     .OrderByDescending(m => m.Defense).ThenByDescending(m => m.Attack).FirstOrDefault();
                 if (strongest != null)
                 {
@@ -834,7 +836,7 @@ namespace Game.Ai
                 {
                     if (donor == recipient)
                         continue;
-                    UnitData spare = donor.Members.Where(m => !m.IsHero && needs(m))
+                    UnitData spare = donor.Members.Where(m => !m.IsHero && needs(m) && AiArmyRoles.CanSpareGarrisonMember(player, donor, m))
                         .OrderBy(m => m.Defense).ThenBy(m => m.Attack).FirstOrDefault();
                     if (spare == null || !CanAffordTransferInto(recipient, spare) || !CanAffordTransferInto(donor, giveUp)
                         || ctx.WouldRevisitArmy(spare, recipient) || ctx.WouldRevisitArmy(giveUp, donor))

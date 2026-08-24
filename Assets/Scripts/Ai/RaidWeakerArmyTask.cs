@@ -488,6 +488,10 @@ namespace Game.Ai
                     // changes between retries (project owner's own report, 2026-08-22).
                     if (!candidate.CanLeaveWithoutOvercrowding(unit))
                         continue;
+                    // Never strip a second base's last garrison defender for a raid — see
+                    // AiArmyRoles.CanSpareGarrisonMember's own comment.
+                    if (!AiArmyRoles.CanSpareGarrisonMember(player, candidate, unit))
+                        continue;
                     if (wantHero || unit.Attack > bestAttack)
                     {
                         best = unit;

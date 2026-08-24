@@ -85,14 +85,45 @@ namespace Game.Ai
         // OrderByDescending is stable) — every OTHER hex keeps its original relative order
         // untouched, so this is a small, well-scoped reorder, not a rewrite of that method's own
         // scoring.
-        private static IEnumerable<HexCoord> GarrisonHexesForPlacement(PlayerSetupData player)
+        // 2026-08-24 P1 follow-up (project owner's own spec) — a plain Unit card additionally
+        // jumps any OTHER (non-citadel) garrison ahead of the ordinary activity ranking whenever
+        // that base's own garrison is weak (empty, or hero-only — see IsWeakSecondaryGarrison's
+        // own comment), so the hero AiAggressionPlanner.AdvanceGarrisonSeed left minding a fresh
+        // base alone gets relieved by the very next Unit card instead of staying pinned there
+        // indefinitely once seeding itself has already timed out (see FindGarrisonSeedUnit's own
+        // "no unit to spare" fallback). Hero cards deliberately never get this nudge — stacking a
+        // second hero into that same slot is never the fix a hero-only garrison needs; ordinary
+        // AiArmyRoles.IsHeroLed placement rules already keep a second hero card away from a
+        // hero-led destination on their own. AwaitingGarrisonSeed's own existing top priority
+        // stays strictly above this — applied AFTER (LINQ OrderBy is stable, so the LAST call
+        // wins ties first), same "well-scoped reorder on top of the existing order" shape that
+        // nudge's own comment already established.
+        private static IEnumerable<HexCoord> GarrisonHexesForPlacement(PlayerSetupData player, CardType cardType)
         {
+            IEnumerable<HexCoord> order = OwnGarrisonHexesByActivity(player);
+
+            if (cardType == CardType.Unit)
+            {
+                HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+                order = order.OrderByDescending(h => !h.Equals(citadelHex) && IsWeakSecondaryGarrison(player, h) ? 1 : 0);
+            }
+
             HexCoord? awaitingSeedHex = AiTaskRegistry.TasksFor(player)
                 .FirstOrDefault(t => t.Kind == AiTaskKind.BuildBase && t.AwaitingGarrisonSeed)?.TargetHex;
-            IEnumerable<HexCoord> order = OwnGarrisonHexesByActivity(player);
-            return awaitingSeedHex.HasValue
-                ? order.OrderByDescending(h => h.Equals(awaitingSeedHex.Value) ? 1 : 0)
-                : order;
+            if (awaitingSeedHex.HasValue)
+                order = order.OrderByDescending(h => h.Equals(awaitingSeedHex.Value) ? 1 : 0);
+
+            return order;
+        }
+
+        // A garrison that's empty, or holds only its hero — see AiArmyRoles.CanSpareGarrisonMember's
+        // own comment for why a lone hero can end up minding a fresh base's garrison, and
+        // GarrisonHexesForPlacement's own comment for why a plain Unit card is steered toward
+        // relieving it.
+        private static bool IsWeakSecondaryGarrison(PlayerSetupData player, HexCoord hex)
+        {
+            ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
+            return garrison != null && (garrison.Members.Count == 0 || garrison.Members.All(m => m.IsHero));
         }
 
         internal static HexCoord MostActiveOwnGarrisonHex(PlayerSetupData player)
@@ -162,7 +193,7 @@ namespace Game.Ai
             if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
                 return null;
 
-            foreach (HexCoord homeHex in GarrisonHexesForPlacement(player))
+            foreach (HexCoord homeHex in GarrisonHexesForPlacement(player, definition.cardType))
             {
                 ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(homeHex));
                 if (garrison != null && HasGarrisonDepositRoom(garrison) && IsAtRequiredBuilding(garrison, player, definition))

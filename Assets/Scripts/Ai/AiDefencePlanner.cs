@@ -679,11 +679,12 @@ namespace Game.Ai
         // is still actually using (claimed by AiTurnController.Decide's own upfront sweep) is never
         // offered here — same cross-category safety every other recruit lookup in this codebase
         // already gets for free.
-        private static UnitData FindPatrolRecceCandidate(int turnNumber, HexCoord hex, AiResourcePool pool, out ArmyData source)
+        private static UnitData FindPatrolRecceCandidate(PlayerSetupData player, int turnNumber, HexCoord hex, AiResourcePool pool, out ArmyData source)
         {
             source = null;
             ArmyData atGarrison = pool.AvailableArmies()
-                .FirstOrDefault(a => !a.IsPrison && a.Hex.Equals(hex) && a.Members.Any(m => m.HasAbility(UnitAbilities.Recce)));
+                .FirstOrDefault(a => !a.IsPrison && a.Hex.Equals(hex) && a.Members.Any(m => m.HasAbility(UnitAbilities.Recce)
+                    && AiArmyRoles.CanSpareGarrisonMember(player, a, m)));
             if (atGarrison != null)
             {
                 source = atGarrison;
@@ -785,7 +786,7 @@ namespace Game.Ai
                     existing.StillAssembling = false; // see AiTask.StillAssembling's own comment
                     if (!existing.Army.HasRecce)
                     {
-                        UnitData recce = FindPatrolRecceCandidate(ctx.TurnNumber, homeHex, pool, out ArmyData recceSource);
+                        UnitData recce = FindPatrolRecceCandidate(player, ctx.TurnNumber, homeHex, pool, out ArmyData recceSource);
                         if (recce != null && recceSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(recce, existing.Army)
                             && CanAffordSwapInto(existing.Army, recce))
                             results.Add(AiDecision.ActiveDefenceForce(recceSource, recce, existing.Army, existing, AiConfig.defencePatrolScore));
@@ -897,9 +898,9 @@ namespace Game.Ai
             if (weakest == null)
                 return null;
 
-            UnitData best = FindStrengthenCandidate(army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: false, out ArmyData bestSource);
+            UnitData best = FindStrengthenCandidate(player, army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: false, out ArmyData bestSource);
             if (best == null)
-                best = FindStrengthenCandidate(army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: true, out bestSource);
+                best = FindStrengthenCandidate(player, army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: true, out bestSource);
             if (best == null || bestSource == null)
                 return null;
             if (!CanAffordSwapInto(army, best) || !CanAffordSwapInto(bestSource, weakest))
@@ -933,7 +934,7 @@ namespace Game.Ai
         // hypothetical swap would buy, raw power only as the final tie-break. No `activeSighting`
         // (Patrol posture — nothing to size a win chance against) falls back to the original raw-
         // power heuristic unchanged.
-        private static UnitData FindStrengthenCandidate(ArmyData army, HexCoord homeHex, UnitData weakest, AiResourcePool pool,
+        private static UnitData FindStrengthenCandidate(PlayerSetupData player, ArmyData army, HexCoord homeHex, UnitData weakest, AiResourcePool pool,
             HexMap map, AiMapMemory.KnownEnemySighting? activeSighting, bool allowCriticallyWounded, out ArmyData source)
         {
             source = null;
@@ -951,6 +952,8 @@ namespace Game.Ai
                         if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
                             continue;
                         if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
+                            continue;
+                        if (!AiArmyRoles.CanSpareGarrisonMember(player, candidate, unit))
                             continue;
                         float power = unit.Defense + unit.Attack;
                         if (power <= bestPower)
@@ -985,6 +988,8 @@ namespace Game.Ai
                     if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
                         continue;
                     if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
+                        continue;
+                    if (!AiArmyRoles.CanSpareGarrisonMember(player, candidate, unit))
                         continue;
 
                     List<UnitData> hypothetical = baseRoster.Append(unit).ToList();

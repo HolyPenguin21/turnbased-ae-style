@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 using Game.Cards;
+using Game.HexGrid;
 using Game.Map;
+using Game.Players;
+using Game.Units;
 
 namespace Game.Ai
 {
@@ -126,6 +129,30 @@ namespace Game.Ai
         public static bool IsSoloHeroAwaitingEscort(ArmyData army)
         {
             return IsHeroLedCombatArmy(army) && army.Members.Count == 1;
+        }
+
+        // Guards a second-base garrison's last defender from ever being pulled out as a Raid/
+        // Defence/reorg donor (project owner's own report: a fresh base's garrison could get
+        // seeded, then immediately stripped back to 0 by ordinary recruitment, leaving an
+        // "unguarded enemy building" the AI itself created). Citadel-only exempt on purpose — its
+        // own emergency defence (see AiDefencePlanner.TryDefencePreemptCandidates) already has the
+        // right to strip anything, and this guard must never fight that. Not a "hero can't leave"
+        // rule — a lone hero garrisoning a base post-BuildBase is just as spare-able as any other
+        // sole member once nothing would replace it; AiManagementPlanner's own placement priority
+        // (see FindPlacement) is what actually gets a replacement in before the hero moves on.
+        public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit)
+        {
+            if (player == null || source == null || unit == null)
+                return false;
+
+            if (!source.IsGarrison)
+                return true;
+
+            HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
+            if (source.Hex.Equals(citadelHex))
+                return true;
+
+            return source.Members.Count > 1;
         }
     }
 }
