@@ -560,50 +560,112 @@ namespace Game.Ai
         // building doesn't currently deviate for it at all — FindTarget only ever gets consulted
         // when picking a brand-new target, never mid-route.
         //
-        // Purely an internal "which hex does THIS STEP's move actually aim at" nudge (same "never
-        // leaks into AiDecision.Score" scoping ProximityScore/WinChanceAgainst already keep to
-        // themselves in this class) — the task's own real TargetHex/HomeHex is left completely
-        // untouched; only the destination THIS ONE MoveArmy decision passes to IssueMoveOrder
-        // changes, so a later step's fresh re-evaluation can freely pick a different detour (or none
-        // at all) without the task ever having "forgotten" its actual goal.
+        // Narrowed to a true NEXT-HEX bias, 2026-08-24 P0 fix (project owner's own code-review
+        // report on the first shipped version): that version returned the candidate building's own
+        // hex as a full substitute destination whenever it was within captureStepDetourTolerance
+        // HEXES (raw HexGridMath.Distance) — a real multi-hex route override, since IssueMoveOrder
+        // (see HexSelectionController.Movement.cs) then walks the army's WHOLE movement budget
+        // straight there in one order, and this method gets re-consulted fresh every Decide() step,
+        // so the detour could persist across several turns for as long as the conditions kept
+        // holding — never what the original spec agreed to ("a next-hex weight nudging the CURRENT
+        // movement's next-hex choice, never changing the actual destination"). It also compared raw
+        // hex count, not real AP cost, so a detour that looked cheap geometrically could cost far
+        // more on rough terrain than the tolerance implied.
+        //
+        // Investigated for a true "bias among several legal next hexes" seam inside the movement
+        // pipeline itself first (see HexSelectionController.Movement.cs's own IssueMoveOrder/
+        // HexPathfinder.FindPath): there isn't one — IssueMoveOrder takes only a single final
+        // destination and always walks the single cheapest route HexPathfinder.FindPath finds to
+        // it (Dijkstra over terrain cost, no caller-supplied per-hex bias weighting beyond the
+        // existing avoidHex/blockHex predicates), so there is no way to ask it for "the cheapest
+        // route that ALSO happens to prefer passing through hex X" without either (a) modifying
+        // HexPathfinder itself to accept a bias term — out of scope, shared by every mover in the
+        // game, not an Агрессия-only concern — or (b) doing exactly what every OTHER "next hex
+        // only" decision in this codebase already does (see AiTurnController.FindAffordableStep/
+        // FindPathStepAvoidingZone, used by every retreat/Turtle-march-home step): compute a real
+        // route with HexPathfinder.FindPath ourselves, take ONLY its very next hex, and hand that
+        // single adjacent hex to MoveArmyRoutine as THIS step's own destination — IssueMoveOrder
+        // then just walks that one hex (a trivial 1-hex path) and a later Decide() call
+        // re-evaluates completely fresh, exactly the "next-hex nudge, re-decided every step" shape
+        // the original spec asked for. This method now does (b): it never returns a destination
+        // more than one hex from `army.Hex`, and it never persists a detour across steps — a
+        // building still costs several steps to actually reach, each one re-earning its own bias
+        // fresh, rather than being committed to in a single order.
         //
         // A candidate building qualifies the same way FindTarget's own Section 5 does — actually
         // enemy-owned, not neutral, not the starting citadel, and "known" via the same visited-hex
         // memory (VisionSystem.IsVisited) — AND either confirmed undefended (ThreatStrength.
         // IsUndefended) or already beatable by `army` right now (IsReady, the same readiness math
-        // every other real engagement decision in this class already trusts). Only a detour that
-        // doesn't add more than AiConfig.captureStepDetourTolerance extra hexes over the direct
-        // route wins; otherwise the real destination stays this step's own target, unchanged — and
-        // the building sitting exactly ON `realDestination` itself is skipped (nothing to "detour"
-        // toward, ordinary continuation already covers it).
+        // every other real engagement decision in this class already trusts). Two bonuses decide
+        // which reachable next hex wins, both AiConfig-internal only (never leak into
+        // AiDecision.Score, same scoping ProximityScore/WinChanceAgainst already keep to themselves
+        // in this class):
+        //   - captureStepBonus — the building is literally the very next hex a route to it would
+        //     enter (i.e. it's adjacent enough this step already reaches it) — capturing it costs
+        //     nothing beyond what ordinary movement toward it already would.
+        //   - captureApproachBonus (smaller) — not reachable this step yet, but biasing toward its
+        //     own next-hex-of-travel shortens the route to it, so long as doing so doesn't cost the
+        //     REAL (path-cost, not raw hex-count) main route more than captureStepDetourTolerance
+        //     over going straight to `realDestination`.
+        // The building sitting exactly ON `realDestination` or `army.Hex` itself is skipped —
+        // nothing to detour toward, ordinary continuation (or arrival) already covers it.
         internal static HexCoord? FindCaptureStepDestination(PlayerSetupData actor, ArmyData army, HexCoord realDestination, HexMap map)
         {
             if (actor == null || army == null || map == null || realDestination.Equals(army.Hex))
                 return null;
 
-            int direct = HexGridMath.Distance(army.Hex, realDestination);
+            HexPath mainPath = HexPathfinder.FindPath(map, army.Hex, realDestination);
+            if (mainPath == null || mainPath.Hexes.Count < 2)
+                return null; // no real route to the actual destination at all — nothing to bias
+            int mainCost = mainPath.TotalCost;
+
             HexCoord? best = null;
-            int bestExtra = int.MaxValue;
+            float bestBonus = 0f; // the ordinary next hex toward realDestination is the implicit baseline
 
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
             {
                 if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
                     continue;
-                if (building.Hex.Equals(realDestination))
+                if (building.Hex.Equals(realDestination) || building.Hex.Equals(army.Hex))
                     continue;
                 if (!VisionSystem.IsVisited(actor, building.Hex))
                     continue;
 
                 ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
                 if (!required.IsUndefended && !IsReady(army, required))
-                    continue; // not a confirmed-safe or currently-winnable capture — not worth deviating for
+                    continue; // not a confirmed-safe or currently-winnable capture — not worth biasing toward
 
-                int viaDetour = HexGridMath.Distance(army.Hex, building.Hex) + HexGridMath.Distance(building.Hex, realDestination);
-                int extra = viaDetour - direct;
-                if (extra < 0 || extra > AiConfig.captureStepDetourTolerance || extra >= bestExtra)
+                HexPath toBuilding = HexPathfinder.FindPath(map, army.Hex, building.Hex);
+                if (toBuilding == null || toBuilding.Hexes.Count < 2)
                     continue;
-                bestExtra = extra;
-                best = building.Hex;
+                HexCoord candidateNextHex = toBuilding.Hexes[1];
+
+                float bonus;
+                if (candidateNextHex.Equals(building.Hex))
+                {
+                    bonus = AiConfig.captureStepBonus; // the building itself IS this step's own next hex
+                }
+                else
+                {
+                    // Real detour cost this bias would add to the main route: current hex → the
+                    // biased next hex → on to the real destination from there, compared against the
+                    // main route's own real cost — never raw hex counts (see this method's own
+                    // comment on why the original version's HexGridMath.Distance check was wrong).
+                    HexPath fromCandidate = HexPathfinder.FindPath(map, candidateNextHex, realDestination);
+                    HexPath toCandidate = HexPathfinder.FindPath(map, army.Hex, candidateNextHex);
+                    if (fromCandidate == null || toCandidate == null)
+                        continue;
+                    int detour = (toCandidate.TotalCost + fromCandidate.TotalCost) - mainCost;
+                    if (detour < 0 || detour > AiConfig.captureStepDetourTolerance)
+                        continue;
+                    bonus = AiConfig.captureApproachBonus;
+                }
+
+                if (bonus > bestBonus)
+                {
+                    bestBonus = bonus;
+                    best = candidateNextHex;
+                }
             }
             return best;
         }

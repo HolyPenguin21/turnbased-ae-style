@@ -953,6 +953,56 @@ namespace Game.Ai
             return swap.HasValue ? AiDecision.Swap(swap.Value) : null;
         }
 
+        // ---- Менеджмент · Feature 4B (stranded lone field army) — P0 fix, 2026-08-24 ----
+        // See AiTaskKind.ReturnForConsolidation's own comment for the full story: this task gets
+        // REGISTERED once, at the very end of a previous turn, by AiTurnController.
+        // RunStrandedArmyRecovery (Stage B of its own end-of-turn reorg phase) — this method is
+        // its ordinary per-step CONTINUATION, wired into AiTurnController.Decide's own ROOT
+        // per-task loop exactly like BuildFacility/VisitHex/RaidWeakerArmy/DefendCitadel already
+        // are, so the walk home now competes for AP/step budget on the same honest footing as
+        // everything else instead of being silently skipped whenever the turn had already spent
+        // itself down by the time the old end-of-phase-only sweep got a look.
+        //
+        // HomeHex is recomputed FRESH every call, never trusted from task.TargetHex (same "always
+        // whichever base is genuinely closest RIGHT NOW, not whichever one it happened to start
+        // near" rule AiAggressionPlanner.TryContinueRaidTask's own homeHex already follows for a
+        // fleeing raid) — a later-founded base can end up closer than whichever garrison was
+        // nearest when this task was first registered. task.TargetHex is kept in sync purely for
+        // AiTurnController.LogActiveTasks/BuildArmyBreakdownLog's own benefit (both just read it
+        // for display), never re-read by this method itself.
+        //
+        // Arrival is this task's own completion condition — the moment the army reaches its home
+        // hex, the task is simply removed; GarrisonReorgTask's EXISTING FindLoneArmyFoldMove/
+        // FindReorgMove consolidation pass (already running earlier in the SAME end-of-turn phase
+        // this task was originally born from — see AiTurnController.RunGarrisonReorgPhase) picks
+        // the now-arrived lone unit up automatically on a LATER pass/turn — this method never folds
+        // it in itself, per the project owner's own original spec (no new consolidation logic
+        // needed here at all).
+        public static AiDecision AdvanceReturnForConsolidationTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
+        {
+            if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army))
+            {
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+
+            HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, task.Army.Hex);
+            if (task.Army.Hex.Equals(homeHex))
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — reached ({homeHex.Q},{homeHex.R}), "
+                    + "ReturnForConsolidation task complete.");
+                AiTaskRegistry.Remove(player, task);
+                return null;
+            }
+            task.TargetHex = homeHex;
+
+            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, homeHex))
+                return null;
+
+            var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "stranded alone — returns for consolidation");
+            return AiDecision.Move(task.Army, target, task, AiConfig.returnForConsolidationWeight, AiTaskCategory.Management);
+        }
+
         // Менеджмент's own leftover-AP fallbacks — a spare reserve army (up to maxSpareArmies) and
         // a fresh card draw, trading off turn by turn via IsPreferred/NotifyFallbackUsed (see that
         // pair's own comment). Whichever of the two routines below actually executes calls

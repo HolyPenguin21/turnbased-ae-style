@@ -324,12 +324,18 @@ namespace Game.Ai
         // the owning Level-1 category planner (AiScoutPlanner/AiEconomyPlanner/AiManagementPlanner/
         // AiAggressionPlanner/AiDefencePlanner) rather than deciding anything itself:
         // 1) Continue in-flight AiTask work — one candidate per active task, across
-        // BuildFacility/ResourcesScrap/VisitHex/RaidWeakerArmy/RaidReinforce/DefendCitadel. A task
-        // whose army is in `stuckScouts` (already failed to move this turn) contributes no
-        // candidate, never retried this step. RepairUnit's own continuation is gathered
-        // separately, down in the Менеджмент block below (bullet 4) — it never moves the army at
-        // all (see AiManagementPlanner.AdvanceRepairTask's own comment), so it's grouped with that
-        // category's other candidates instead of this travel-stage loop.
+        // BuildFacility/ResourcesScrap/VisitHex/RaidWeakerArmy/RaidReinforce/DefendCitadel/
+        // ReturnForConsolidation. A task whose army is in `stuckScouts` (already failed to move
+        // this turn) contributes no candidate, never retried this step. RepairUnit's own
+        // continuation is gathered separately, down in the Менеджмент block below (bullet 4) — it
+        // never moves the army at all (see AiManagementPlanner.AdvanceRepairTask's own comment),
+        // so it's grouped with that category's other candidates instead of this travel-stage loop.
+        // ReturnForConsolidation (2026-08-24 P0 fix, see that AiTaskKind's own comment) is the odd
+        // one out here — unlike every other Kind in this loop, it's never STARTED by a "start new"
+        // tier further down; AiTurnController.RunStrandedArmyRecovery registers it directly at the
+        // very end of a PREVIOUS turn (Feature 4B), so this loop only ever continues one already
+        // sitting in the registry, exactly like every other task here does once past its own
+        // start-up step.
         // 2) AiScoutPlanner.TryReturnHomeCandidates — AiArmyRoles.IsSoloHeroAwaitingEscort's own
         // fallback; this composition never gets a Разведка task of its own any more, so it just
         // walks home to wait for an escort. AiEconomyPlanner.TryEconomyReturnHomeCandidates is
@@ -430,6 +436,14 @@ namespace Game.Ai
                 if (stuckScouts.Contains(task.Army))
                     continue;
                 AiDecision decision = AiDefencePlanner.TryContinueDefenceTask(player, root, ctx, task);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.ReturnForConsolidation).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiManagementPlanner.AdvanceReturnForConsolidationTask(player, root, ctx, task);
                 if (decision != null)
                     candidates.Add(decision);
             }
@@ -621,9 +635,12 @@ namespace Game.Ai
             // drain above (unchanged, still runs first — see GarrisonReorgTask's own class comment
             // for that three-way priority). Stage A (empty shells) before Stage B (stranded
             // singles) — same "capacity/cleanup concerns before composition ones" ordering the
-            // existing three-way priority already follows.
+            // existing three-way priority already follows. Stage B only DETECTS/REGISTERS a
+            // persistent task here as of the 2026-08-24 P0 fix — see RunStrandedArmyRecovery's own
+            // comment; the actual walk-home happens on ordinary later turns through
+            // AiManagementPlanner.AdvanceReturnForConsolidationTask instead.
             RunEmptyArmyCleanup(player, ctx);
-            yield return RunStrandedArmyRecovery(player, ctx, actionCounts);
+            RunStrandedArmyRecovery(player);
         }
 
         // Feature 4A (2026-08-24) — sweeps every GarrisonReorgTask.IsDisposableEmptyArmy shell still
@@ -652,39 +669,55 @@ namespace Game.Ai
                 // those DO get torn down here.
                 ctx.HexSelection?.DeleteArmyIfEmptied(army);
                 if (army.Controller == null)
+                {
                     AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn cleanup — disposed of empty, task-less army \"{name}\".");
+                    continue;
+                }
+
+                // P1 fix (2026-08-24, project owner's own code-review report): the call above
+                // refused this one because it's sitting on its own owner's Barracks hex — fine for
+                // an ordinary reuse-buffer shell, but a SURPLUS one (beyond maxSpareArmies) parked
+                // there survived this whole pass forever, so the "at most maxSpareArmies empty
+                // armies at end of turn" invariant never actually held for the base-hex case. See
+                // GarrisonReorgTask.DeleteDisposableArmyAtBase's own comment — same eligibility
+                // guard re-verified fresh, just without that one refusal. Tried second, only once
+                // the ordinary call above has already declined.
+                if (GarrisonReorgTask.DeleteDisposableArmyAtBase(army, player))
+                    AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn cleanup — disposed of surplus empty army "
+                        + $"\"{name}\" parked at its own base (beyond the {AiConfig.maxSpareArmies} spare-army reserve).");
             }
         }
 
-        // Feature 4B (2026-08-24) — see GarrisonReorgTask.FindStrandedWeakArmies' own comment. Only
-        // ever ASSIGNS a "return for consolidation" MoveArmy decision — actual movement still costs
-        // AP/movement points and happens over normal subsequent turn steps via the SAME
-        // MoveArmyRoutine every other travel decision in this codebase already uses (see
-        // PerformDecision's own switch), never teleported or forced within this one phase. Reuses
-        // AiScoutPlanner.ScoutTarget purely as a plain (hex, reason) carrier the same way every
-        // other "walk home, no persistent task" candidate in this codebase already does
-        // (TryRaidReturnHomeCandidates/TryRaidRecallCandidates/AiScoutPlanner.TryReturnHomeCandidates)
-        // — once it actually arrives at a garrison hex, GarrisonReorgTask.FindReorgMove's own
-        // EXISTING lone-army-fold tier (already running earlier this same phase, see the
-        // per-garrison loop above) picks it up automatically on a LATER turn — no new consolidation
-        // logic needed here at all, per the project owner's own spec.
-        private static IEnumerator RunStrandedArmyRecovery(PlayerSetupData player, AiTurnContext ctx, Dictionary<AiActionKind, int> actionCounts)
+        // Feature 4B (2026-08-24) — see GarrisonReorgTask.FindStrandedWeakArmies' own comment. P0
+        // fix, same day (project owner's own code-review report): this used to ALSO try to move
+        // the army right here — the very END of the turn, after the main Decide() loop had
+        // usually already spent nearly all this turn's AP — and simply skipped it with no state
+        // saved when the move couldn't be issued right then, despite a comment claiming it
+        // "continues moving on subsequent turns" (nothing anywhere actually persisted that
+        // intent). Effectively, a stranded army almost never made it home. Now this method only
+        // DETECTS stranded armies and REGISTERS a real AiTaskKind.ReturnForConsolidation task for
+        // each one that doesn't already have one (FindStrandedWeakArmies' own predicate already
+        // excludes any army with an active task, so an army that got one last time this same sweep
+        // ran simply won't be offered again) — no movement is attempted in this phase any more.
+        // AiManagementPlanner.AdvanceReturnForConsolidationTask (wired into AiTurnController.
+        // Decide's own per-step loop, same as every other in-flight task) does the actual walking,
+        // over ordinary subsequent turn steps, with real AP/movement budget and real arbitration
+        // against everything else competing for that step — see that method's own comment. Once it
+        // actually arrives at a garrison hex, GarrisonReorgTask.FindReorgMove's own EXISTING
+        // lone-army-fold tier (already running earlier this same phase, see the per-garrison loop
+        // above) picks it up automatically on a LATER turn — no new consolidation logic needed
+        // here at all, per the project owner's own original spec (unchanged by this fix).
+        // Synchronous (no yield) — like RunEmptyArmyCleanup right above, nothing here issues a
+        // move/spends AP, just registry bookkeeping.
+        private static void RunStrandedArmyRecovery(PlayerSetupData player)
         {
-            PlayerRoot root = PlayerRootRegistry.FindFor(player);
-            if (root == null)
-                yield break;
-
             foreach (ArmyData army in GarrisonReorgTask.FindStrandedWeakArmies(player).ToList())
             {
                 HexCoord homeHex = NearestOwnGarrisonHex(player, army.Hex);
-                if (!CanIssueMoveNow(root, army, ctx.Map, homeHex))
-                    continue;
-                var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "stranded alone in the field — returns for consolidation");
-                AiDecision decision = AiDecision.Move(army, target, null, 0f, AiTaskCategory.Management);
-                AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn reorg — {decision.Kind} ({decision.Category}) — {decision.Reason}.");
-                actionCounts.TryGetValue(decision.Kind, out int count);
-                actionCounts[decision.Kind] = count + 1;
-                yield return PerformDecision(player, decision, ctx);
+                var task = new AiTask { Kind = AiTaskKind.ReturnForConsolidation, Army = army, TargetHex = homeHex };
+                AiTaskRegistry.Add(player, task);
+                AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn reorg — \"{army.Name}\" is stranded alone in "
+                    + $"the field, registers a ReturnForConsolidation task home to ({homeHex.Q},{homeHex.R}).");
             }
         }
 
@@ -1106,18 +1139,25 @@ namespace Game.Ai
                 - emptyReusable;
             int emptyOrphaned = emptyArmies - emptyReserved - emptyReusable;
 
-            // 1 member: "tasked" — an active AiTask owns it (a courier, a raid/defence recruit still
-            // solo, a scout mid-VisitHex, ...); "solo-recce" — task-less and AiArmyRoles.IsSoloRecce
-            // (left alone by design, see FindStrandedWeakArmies' own comment); "returning" —
-            // task-less, not Recce, and exactly what GarrisonReorgTask.FindStrandedWeakArmies itself
-            // would flag (RunStrandedArmyRecovery just gave these a move-home decision this same
-            // phase, if AP allowed); "orphaned" — the rare remainder (e.g. already sitting AT a
-            // garrison hex, task-less, non-Recce — IdleBalance's own lone-army-fold tier earlier this
-            // same phase should ordinarily have already folded these in before this log even runs).
-            var strandedThisTurn = new HashSet<ArmyData>(GarrisonReorgTask.FindStrandedWeakArmies(player));
-            int soloTasked = armies.Count(a => a.Members.Count == 1 && AiTaskRegistry.TaskFor(player, a) != null);
+            // 1 member: "tasked" — an active AiTask OTHER than ReturnForConsolidation owns it (a
+            // courier, a raid/defence recruit still solo, a scout mid-VisitHex, ...); "solo-recce"
+            // — task-less and AiArmyRoles.IsSoloRecce (left alone by design, see
+            // FindStrandedWeakArmies' own comment); "returning" — carries an active
+            // ReturnForConsolidation task (2026-08-24 P0 fix: this used to read
+            // GarrisonReorgTask.FindStrandedWeakArmies directly, back when RunStrandedArmyRecovery
+            // gave these a move-home decision the very same phase this log runs right after — now
+            // that Feature 4B registers a real task instead (see that fix's own comment), a
+            // just-registered stranded army already has one and FindStrandedWeakArmies itself would
+            // report it as gone/tasked, not stranded, by the time this log reads it; reading the
+            // task Kind directly instead keeps this bucket meaningful); "orphaned" — the rare
+            // remainder (e.g. already sitting AT a garrison hex, task-less, non-Recce — IdleBalance's
+            // own lone-army-fold tier earlier this same phase should ordinarily have already folded
+            // these in before this log even runs).
+            int soloTasked = armies.Count(a => a.Members.Count == 1 && AiTaskRegistry.TaskFor(player, a) != null
+                && AiTaskRegistry.TaskFor(player, a).Kind != AiTaskKind.ReturnForConsolidation);
             int soloRecce = armies.Count(a => a.Members.Count == 1 && AiTaskRegistry.TaskFor(player, a) == null && AiArmyRoles.IsSoloRecce(a));
-            int soloReturning = armies.Count(a => strandedThisTurn.Contains(a));
+            int soloReturning = armies.Count(a => a.Members.Count == 1
+                && AiTaskRegistry.TaskFor(player, a)?.Kind == AiTaskKind.ReturnForConsolidation);
             int soloOrphaned = soloArmies - soloTasked - soloRecce - soloReturning;
 
             return $"[AI] {player.Nickname}: army breakdown (turn {turnNumber}) — armies={armies.Count} ({categoryBreakdown}), "

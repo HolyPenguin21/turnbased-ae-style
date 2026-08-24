@@ -904,6 +904,52 @@ namespace Game.Ai
         public static ArmyData FindDisposableEmptyArmyAt(PlayerSetupData player, HexCoord hex) =>
             DisposableEmptyArmies(player).FirstOrDefault(a => a.Hex.Equals(hex));
 
+        // Feature 4A's own base-hex deletion (2026-08-24 P1 fix, project owner's own code-review
+        // report) — HexSelectionController.DeleteArmyIfEmptied (see that method's own comment)
+        // deliberately refuses to tear down an empty shell sitting on its own owner's Barracks
+        // hex, on the theory that a shell parked right at a base is free, instant reuse fodder for
+        // the next RequestRaidArmy/RequestDefendArmy/SpawnReconArmy/DispatchReinforcement that
+        // needs one there. That reasoning only holds up to the maxSpareArmies buffer
+        // IsDisposableEmptyArmy already reserves — a shell SURPLUS beyond that buffer sitting at a
+        // base hex forever means the "at most maxSpareArmies empty armies at end of turn"
+        // invariant AiTurnController.RunEmptyArmyCleanup was supposed to enforce never actually
+        // held for the base-hex case, only the stranded-in-the-field one DeleteArmyIfEmptied
+        // already handled correctly. This is the narrowly-scoped counterpart: allowed to delete an
+        // empty shell EVEN sitting on a base/garrison hex, gated on the exact same
+        // IsDisposableEmptyArmy predicate every other Feature 4A reader already trusts — re-checked
+        // fresh here, not assumed from the caller's own earlier read, same "checked right before
+        // acting" rule this file follows everywhere else:
+        //   - not IsGarrison/IsPrison, empty, task-less, has a live Controller (IsDisposableEmptyArmy
+        //     itself)
+        //   - no active AiTask references it — every ArmyData-typed field AiTask.cs carries is
+        //     either `.Army` or `.TargetArmy`, both already covered by AiTaskRegistry.TaskFor's own
+        //     lookup inside IsDisposableEmptyArmy; AiResourceReservation.cs never stores an ArmyData
+        //     reference at all (only per-AiTask resource claims), so there's nothing else in this
+        //     codebase left to check
+        //   - strictly beyond the maxSpareArmies reserve, via the exact same DisposableEmptyArmies
+        //     ordering/Skip IsDisposableEmptyArmy itself already uses, so the two can never disagree
+        //     about which specific instances count as "the kept reserve"
+        // Same two-step removal DeleteArmyIfEmptied itself performs internally (ArmyRegistry.
+        // Unregister, then tear down the Controller's own marker) — deliberately NOT routed through
+        // that method with some bypass flag: its own `_selectedArmy` deselect bookkeeping is a
+        // human-UI concern (a human can never have another player's own empty AI shell selected in
+        // the first place), so this narrower version skips it rather than pulling a
+        // HexSelectionController reference into this otherwise UI-independent task class just for
+        // that one check.
+        public static bool DeleteDisposableArmyAtBase(ArmyData army, PlayerSetupData player)
+        {
+            if (!IsDisposableEmptyArmy(player, army))
+                return false;
+
+            ArmyRegistry.Unregister(army);
+            if (army.Controller != null)
+            {
+                UnityEngine.Object.Destroy(army.Controller.gameObject);
+                army.Controller = null;
+            }
+            return true;
+        }
+
         // ---- Feature 4B — застрявшие одиночные полевые армии (2026-08-24) ----
         // Project owner's own report: the same turn-30 log showed many field armies with roster
         // size 1 — lone units stranded in the field, untasked, never folded into any garrison

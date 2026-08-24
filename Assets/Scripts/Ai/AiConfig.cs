@@ -248,17 +248,23 @@ namespace Game.Ai
         // standalone 200) — above raidAssembleBonus's own 110, below raidCounterAttackBonus's 120.
         public const float raidReinforceDispatchScore = aggressionBaseWeight + 15f;
 
-        // ---- Агрессия — capture-step opportunity nudge (Feature 3, 2026-08-24) ----
+        // ---- Агрессия — capture-step opportunity nudge (Feature 3, 2026-08-24; narrowed to a
+        // true next-hex bias 2026-08-24 P0 fix, project owner's own code-review report) ----
         // RaidWeakerArmyTask.FindCaptureStepDestination's own detour budget (project owner's own
         // report: the opportunity-capture mechanism itself already works — RaidWeakerArmyTask.
         // FindTarget's own Section 5 already logs "enemy building at (...), unguarded, score 100"
         // and an army does start moving toward one once it wins FindTarget's own ranking outright —
         // the actual gap is that an army ALREADY travelling toward some OTHER destination never
         // deviates for a DIFFERENT such opportunity it happens to pass close by, since FindTarget
-        // only ever gets consulted when picking a brand-new target, not mid-route). How many EXTRA
-        // hexes of travel (via the candidate building vs. straight to the real destination) an
-        // in-progress Aggression movement may spend detouring onto one before the closer real
-        // destination wins instead. Internal-only, same "never leaks into the cross-category
+        // only ever gets consulted when picking a brand-new target, not mid-route). The FIRST
+        // shipped version of this let a whole MoveArmy decision aim its full destination straight
+        // at the candidate building — a real multi-hex, potentially multi-turn route override, not
+        // a next-hex nudge, and it compared raw HexGridMath.Distance instead of real terrain-
+        // weighted cost. Narrowed same-day: this is now the REAL PATH-COST (HexPathfinder.
+        // FindPath.TotalCost, not hex count — see FindCaptureStepDestination's own comment) budget
+        // for how much extra the OVERALL route (current hex → the building's own next-hex-of-travel
+        // → the real destination) may cost over the direct route before the closer real destination
+        // wins outright instead. Internal-only, same "never leaks into the cross-category
         // AiDecision.Score" scoping raidWinChanceRankWeight/buildHeroTravelCostWeight already get in
         // this file — only ever picks THIS STEP's own actual move destination among otherwise-equal
         // in-progress-movement candidates, never the task's own long-term TargetHex/HomeHex (see
@@ -266,6 +272,20 @@ namespace Game.Ai
         // exclusions for Scout retreat/citadel emergency/ReinforceSwap courier/BuildBase-BuildFacility
         // travel — none of those may get side-tracked by this).
         public const int captureStepDetourTolerance = 2;
+        // The two bonuses FindCaptureStepDestination's own next-hex bias actually picks between
+        // (2026-08-24 P0 fix) — internal-only, same scoping as captureStepDetourTolerance above.
+        // captureStepBonus — the reachable next hex of movement toward the real destination is
+        // ALSO, this step, literally adjacent enough that the qualifying building's own hex IS the
+        // next hex a route there would enter — capturing it costs nothing beyond what ordinary
+        // movement already would this step, so this always outranks the smaller approach bonus
+        // below.
+        public const float captureStepBonus = 10f;
+        // captureApproachBonus — the building isn't reachable as THIS step's own next hex yet, but
+        // biasing toward it (within captureStepDetourTolerance's own real-cost budget) meaningfully
+        // shortens the route to it for a later step. Deliberately smaller than captureStepBonus — a
+        // multi-step approach is still just a bias on top of the ordinary route, not a reason to
+        // treat it as urgently as an immediate, free capture.
+        public const float captureApproachBonus = 4f;
 
         // ---- Агрессия — Задача 2 (Постройка дополнительной базы) ----
         // Trigger gate — see BuildBaseTask's own class comment for the full trigger/condition list;
@@ -351,14 +371,36 @@ namespace Game.Ai
         // placeholder, same as every other freshly-added BuildBase tunable — flagged for the
         // project owner's own tuning later.
         public const int buildBaseMaxWaitTurns = 5;
-        // See AiTask.GarrisonSeedWaitTurns's own comment (Feature 2, 2026-08-24) — how many
-        // consecutive steps the AwaitingGarrisonSeed phase may sit unable to spare a non-hero unit
-        // for the new garrison before giving up and completing the task anyway. Deliberately short
-        // relative to buildBaseMaxWaitTurns — unlike that wait (saving up AP/resources, which
-        // genuinely improves with more turns), a hero-only builder army isn't going to grow a
-        // spare non-hero member just by waiting longer, so there's nothing to gain from a long
-        // timeout here.
+        // See AiTask.GarrisonSeedStartedTurn's own comment (Feature 2, 2026-08-24; turn-boundary
+        // P1 fix same day) — how many REAL GAME TURNS the AwaitingGarrisonSeed phase may elapse
+        // unable to spare a non-hero unit for the new garrison before giving up and completing the
+        // task anyway. Deliberately short relative to buildBaseMaxWaitTurns — unlike that wait
+        // (saving up AP/resources, which genuinely improves with more turns), a hero-only builder
+        // army isn't going to grow a spare non-hero member just by waiting longer, so there's
+        // nothing to gain from a long timeout here. While this counts down, AiManagementPlanner.
+        // FindPlacement/GarrisonHexesForPlacement already gives this same garrison hex front-of-
+        // queue priority for ANY freshly played Unit/Hero card the WHOLE time AwaitingGarrisonSeed
+        // is true, not just after this timeout fires — a real routing PREFERENCE (not a hard
+        // reservation), judged sufficient here (2026-08-24 code review) since this codebase has no
+        // separate "reserve a future unit/card" primitive to reach for instead
+        // (AiResourceReservation only ever reserves raw resource POOLS toward a task's own build
+        // cost, never a specific future unit) — building one would be a materially bigger feature
+        // than this timeout fix calls for, so completing on timeout with an empty garrison (left to
+        // that same routing nudge from here on) stays the intended behavior.
         public const int garrisonSeedMaxWaitTurns = 2;
+
+        // ---- Менеджмент — Feature 4B (застрявшие одиночные полевые армии), P0 fix 2026-08-24 ----
+        // AiTaskKind.ReturnForConsolidation's own competing score, now that it's a real persistent
+        // task advanced through AiTurnController.Decide's own arbiter instead of a free end-of-turn
+        // sweep (see that enum value's own comment). Same tier as managementReorgScore (80) — "a
+        // real in-progress task, not idle housekeeping" — comparable to Агрессия's own
+        // raidRecallScore(85) for the identical "isolated idle army walks home" shape, just under
+        // Менеджмент since this army was never Агрессия-task-claimed to begin with. Own named
+        // constant rather than reusing managementReorgScore directly (2026-08-24, same reasoning
+        // AiConfig.defenceActiveAssemblyScore's own comment already gives for not reusing
+        // defenceActiveScore) — an unrelated future retune of one must never silently move the
+        // other.
+        public const float returnForConsolidationWeight = 80f;
 
         // ---- Оборона (Patrol / Active / Turtle) ----
         // Full redesign 2026-08-21 (project owner's own spec) — ONE persistent DefendCitadel task/

@@ -65,6 +65,24 @@ namespace Game.Ai
                         // trigger/composition breakdown. Split out of Агрессия 2026-08-20 (was
                         // AiTask.DefendingCitadel, a flag bolted onto RaidWeakerArmy) into its own
                         // first-class category; this redesign keeps that same single Kind.
+
+        // Менеджмент — a single stranded, untasked lone field army (GarrisonReorgTask.
+        // FindStrandedWeakArmies) walking itself home to the nearest own garrison hex so the
+        // existing IdleBalance lone-army-fold tier (FindLoneArmyFoldMove) can pick it up once it
+        // arrives. 2026-08-24 P0 fix (project owner's own code-review report on Feature 4B, the
+        // original same-day design): the original AiTurnController.RunStrandedArmyRecovery tried
+        // to move the army directly, but only from the very END of the turn, after the main
+        // Decide() loop had usually already spent nearly all of it — and saved no state at all
+        // when the move couldn't be issued right then, despite a comment claiming it "continues
+        // moving on subsequent turns". A stranded army effectively never made it home. Now a REAL
+        // persistent task, the same way every other multi-turn AI activity in this codebase
+        // already works (Raid/Defence/BuildBase/BuildFacility/Recon): registered once by
+        // AiTurnController.RunStrandedArmyRecovery (detection/registration only now, no movement
+        // of its own any more), advanced every ordinary turn by AiManagementPlanner.
+        // AdvanceReturnForConsolidationTask via AiTurnController.Decide's own per-step loop like
+        // any other in-flight task, and removed the moment the army actually reaches its home hex
+        // — see that method's own comment.
+        ReturnForConsolidation,
     }
 
     // DefendCitadel-only — which of the three behaviors this turn's continuation resolves to,
@@ -89,7 +107,8 @@ namespace Game.Ai
                 case AiTaskKind.BuildFacility:
                 case AiTaskKind.ResourcesScrap:
                     return AiTaskCategory.Economy;
-                // RepairUnit falls through to the default Management case below.
+                // RepairUnit and ReturnForConsolidation both fall through to the default
+                // Management case below.
                 case AiTaskKind.RaidWeakerArmy:
                 case AiTaskKind.RaidReinforce:
                 case AiTaskKind.BuildBase:
@@ -260,24 +279,30 @@ namespace Game.Ai
         // BuildBase only (Feature 2, 2026-08-24, project owner's own report — "captured/built bases
         // sitting undefended and getting flagged 'unguarded'"): true from the moment the building
         // itself finishes constructing (BuildBaseRoutine) until either a garrison-seed transfer
-        // actually lands (AiAggressionPlanner.AdvanceGarrisonSeed) or GarrisonSeedWaitTurns times
-        // out. Before this fix BuildBaseRoutine released/removed the task the INSTANT the building
+        // actually lands (AiAggressionPlanner.AdvanceGarrisonSeed) or GarrisonSeedStartedTurn's
+        // own timeout fires. Before this fix BuildBaseRoutine released/removed the task the INSTANT the building
         // existed, so the builder army was immediately free for Raid/Defence to reclaim, leaving a
         // brand-new empty Garrison — exactly the "enemy building ... unguarded" opportunity
         // RaidWeakerArmyTask.FindTarget's own Section 5 already looks for, just now pointed back at
         // US. See AiAggressionPlanner.TryContinueBuildBaseTask's own AwaitingGarrisonSeed branch.
         public bool AwaitingGarrisonSeed;
 
-        // BuildBase · AwaitingGarrisonSeed's own stale-task escape hatch (same shape as
-        // BuildBaseWaitTurns above, own counter since the two phases are never active at the same
-        // time) — consecutive steps this task has sat in AwaitingGarrisonSeed unable to actually
-        // seed the garrison (builder army is hero-only, or every non-hero member would leave the
-        // hero alone and exposed — see AiAggressionPlanner.FindGarrisonSeedUnit). Once this exceeds
-        // AiConfig.garrisonSeedMaxWaitTurns the task simply completes anyway rather than holding the
-        // builder army hostage forever — AiManagementPlanner.FindPlacement's own temporary priority
-        // nudge (see OwnGarrisonHexesByActivity's call site there) is left to eventually route a
-        // card/reinforcement to this same garrison on its own timetable instead.
-        public int GarrisonSeedWaitTurns;
+        // BuildBase · AwaitingGarrisonSeed's own stale-task escape hatch — the TURN NUMBER
+        // (AiTurnContext.TurnNumber) this phase first started (set once, by
+        // AiAggressionPlanner.BuildBaseRoutine, the same call that flips AwaitingGarrisonSeed
+        // true), -1 until then. 2026-08-24 P1 fix (project owner's own code-review report): this
+        // used to be a plain incrementing counter (GarrisonSeedWaitTurns++) bumped every time
+        // AiAggressionPlanner.AdvanceGarrisonSeed ran — but that method is called once per
+        // Decide() STEP, not once per actual game turn, and a single turn can call it many times
+        // as the AI works through its own per-step candidate loop, so garrisonSeedMaxWaitTurns
+        // could time out within ONE turn instead of after that many real turns, defeating the
+        // whole point of the timeout (a new base could end up abandoned with an empty garrison
+        // well before N real turns had actually passed). Elapsed turns are now computed fresh
+        // wherever the timeout is checked, as `ctx.TurnNumber - GarrisonSeedStartedTurn` (see
+        // AdvanceGarrisonSeed) — no separate "did I already count this turn" bookkeeping needed,
+        // the same turn-boundary simplification AiTask.AssemblyProgressTurn already uses for its
+        // own stall clock instead of an incrementing counter.
+        public int GarrisonSeedStartedTurn = -1;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

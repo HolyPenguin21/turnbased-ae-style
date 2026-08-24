@@ -1562,6 +1562,11 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" founds a new base at "
                     + $"({task.TargetHex.Q},{task.TargetHex.R}) — building complete, seeding its garrison next.{delta}");
                 task.AwaitingGarrisonSeed = true;
+                // Turn-boundary timeout fix (2026-08-24 P1) — see AiTask.GarrisonSeedStartedTurn's
+                // own comment. Stamped once, right here, the same moment AwaitingGarrisonSeed
+                // itself first flips true — AdvanceGarrisonSeed below computes elapsed turns off
+                // this rather than incrementing a counter once per Decide() step.
+                task.GarrisonSeedStartedTurn = ctx.TurnNumber;
             }
             else
             {
@@ -1577,7 +1582,7 @@ namespace Game.Ai
         // Feature 2's own continuation for the AwaitingGarrisonSeed phase (see
         // AiTask.AwaitingGarrisonSeed's own comment) — runs once per step (from
         // TryContinueBuildBaseTask's own branch above) until either a seed transfer actually lands,
-        // or GarrisonSeedWaitTurns' own stale-task escape hatch fires. Under siege, the army is freed
+        // or GarrisonSeedStartedTurn's own stale-task escape hatch fires. Under siege, the army is freed
         // immediately rather than finishing the seed first (2026-08-24, same priority
         // AiDefencePlanner.TryDefencePreemptCandidates already gives a genuine citadel emergency over
         // everything else in this codebase) — a still-hero-led combat army standing right next to a
@@ -1620,11 +1625,14 @@ namespace Game.Ai
                 // last escort (see FindGarrisonSeedUnit's own comment) — don't hold the army hostage
                 // forever; hand off to the reservation-routing nudge (AiManagementPlanner.
                 // FindPlacement/OwnGarrisonHexesByActivity) instead and time out on our own clock.
-                task.GarrisonSeedWaitTurns++;
-                if (task.GarrisonSeedWaitTurns > AiConfig.garrisonSeedMaxWaitTurns)
+                // Turn-boundary fix (2026-08-24 P1, project owner's own code-review report) — elapsed
+                // REAL turns, not Decide()-step calls (see AiTask.GarrisonSeedStartedTurn's own
+                // comment for why the old per-call counter could time out within a single turn).
+                int waitedTurns = ctx.TurnNumber - task.GarrisonSeedStartedTurn;
+                if (waitedTurns > AiConfig.garrisonSeedMaxWaitTurns)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — no unit to spare for the new "
-                        + $"garrison at ({task.TargetHex.Q},{task.TargetHex.R}) after {task.GarrisonSeedWaitTurns} turn(s), "
+                        + $"garrison at ({task.TargetHex.Q},{task.TargetHex.R}) after {waitedTurns} turn(s), "
                         + "leaves it to the next card/reinforcement instead, BuildBase task complete.");
                     AiTaskRegistry.Remove(player, task);
                 }
