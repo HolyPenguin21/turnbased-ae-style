@@ -64,9 +64,9 @@ namespace Game.Ai
         // отсутствие добычи (см. RankHex) сюда больше НЕ входит — это внутренний выбор ХЕКСА,
         // не должен утекать в кросс-категорийный скор (project owner's own call, тот же принцип,
         // что у Разведки — see AiConfig.scoutProximityWeight's own comment).
-        public static float ScoreHex(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType)
+        public static float ScoreHex(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType, HexMap map)
         {
-            return AiGoalScorer.IncomeBehindBonus(player) + CitadelDistanceScore(player, hex);
+            return AiGoalScorer.IncomeBehindBonus(player, map) + CitadelDistanceScore(player, hex);
         }
 
         // AiEconomyPlanner's own actual cross-category MoveArmy score while a Задача 1 hero is
@@ -83,10 +83,10 @@ namespace Game.Ai
         // after: it's a real reduction of the underlying score, not a second ceiling, so it still
         // has room to matter even when ScoreHex alone would have landed well under
         // economyTravelScoreCap already.
-        public static float TravelScore(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType)
+        public static float TravelScore(PlayerSetupData player, PlayerRoot root, HexCoord hex, ResourceType resourceType, HexMap map)
         {
-            float score = AiConfig.economyBaseWeight + ScoreHex(player, root, hex, resourceType);
-            if (AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType))
+            float score = AiConfig.economyBaseWeight + ScoreHex(player, root, hex, resourceType, map);
+            if (AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType, map))
                 score -= AiConfig.economyMatureTravelPenalty;
             return System.Math.Min(score, AiConfig.economyTravelScoreCap);
         }

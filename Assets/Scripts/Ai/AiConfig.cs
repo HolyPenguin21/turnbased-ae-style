@@ -906,7 +906,9 @@ namespace Game.Ai
         // this fallback still fires as soon as nothing else wants the hero this step, exactly the
         // "not a real fallback tier" case it exists for.
         public const float managementReturnHomeScore = 104f;
-        // Экономика · Задача 2's own detach-prerequisite base (see ResourceScrapDetachScore) —
+        // Экономика · Задача 2's own detach-prerequisite base (see ResourcesScrapTask.TravelScore,
+        // now called directly at the one AiEconomyPlanner call site instead of through a dedicated
+        // AiConfig score) —
         // garrison-overflow/consolidation no longer read a score at all any more (see
         // AiTurnController.RunGarrisonReorgPhase's own comment). Kept above PlayCard on purpose: an
         // Economy collector detach is a real
@@ -1115,11 +1117,12 @@ namespace Game.Ai
         // Экономика · Задача 2's own base weight — see resourceScrapBaseWeightBonus's own comment.
         public static float ResourceScrapBaseWeight => economyBaseWeight + resourceScrapBaseWeightBonus;
 
-        // Экономика · Задача 2's own detach-prerequisite score — same tier as the actual
-        // ResourcesScrap walk/collect score itself now (project owner's own 2026-08-19 call: no
-        // longer pinned to managementReorgScore), so a detach never loses arbitration to routine
-        // garrison housekeeping. No on-active-task penalty any more (2026-08-23) — an active-task
-        // source is now excluded from FindCollectorDetachPlan entirely, never just deprioritized.
-        public static float ResourceScrapDetachScore => ResourceScrapBaseWeight;
+        // Экономика · Задача 2's own detach-prerequisite score used to live here as a bare
+        // ResourceScrapBaseWeight constant — removed 2026-08-24 (project owner's own follow-up
+        // report, "зрелость экономики применена только к BuildFacility") in favor of calling
+        // ResourcesScrapTask.TravelScore(player) directly at the one call site
+        // (AiEconomyPlanner.TryStartCollectorDetachCandidates), so the detach step shares the same
+        // mature-economy penalty as ordinary Задача 2 travel instead of silently bypassing it
+        // through its own separate, never-penalized constant.
     }
 }

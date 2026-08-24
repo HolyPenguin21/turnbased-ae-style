@@ -38,13 +38,23 @@ namespace Game.Ai
         // call, 2026-08-17) — юнит-сборщик просто идёт куда есть подходящий известный хекс, сколько
         // бы шагов это ни заняло; в отличие от Задачи 1/Разведки/Агрессии, у которых удалённость от
         // цитадели намеренно снижает приоритет, здесь никакого штрафа/обнуления по дальности нет.
-        public static float ScoreHex(PlayerSetupData player) => AiGoalScorer.IncomeBehindBonus(player);
+        public static float ScoreHex(PlayerSetupData player, HexMap map) => AiGoalScorer.IncomeBehindBonus(player, map);
 
         // Same cap treatment as BuildFacilityTask.TravelScore (its own comment covers the "why" —
         // AiConfig.economyTravelScoreCap is enforced at the point ScoreHex actually combines with
-        // the base weight, not by constraining IncomeBehindBonus's own magnitude).
-        public static float TravelScore(PlayerSetupData player) =>
-            System.Math.Min(AiConfig.ResourceScrapBaseWeight + ScoreHex(player), AiConfig.economyTravelScoreCap);
+        // the base weight, not by constraining IncomeBehindBonus's own magnitude). Also shares that
+        // method's own mature-economy shave (2026-08-24 follow-up fix, "зрелость экономики
+        // применена только к BuildFacility", project owner's own report) — Задача 2 is still
+        // ordinary Economy travel, it was just never getting the same penalty its sibling task
+        // already had, so a saturated economy kept reflexively outranking other categories through
+        // this path alone. Also reused by AiEconomyPlanner.TryStartCollectorDetachCandidates for
+        // its own detach-prerequisite score (see that call site's own comment) — one shared
+        // "ordinary Задача 2 priority" number rather than a second, un-penalized constant.
+        public static float TravelScore(PlayerSetupData player, HexMap map) =>
+            System.Math.Min(AiConfig.ResourceScrapBaseWeight + ScoreHex(player, map) - MaturePenalty(player, map), AiConfig.economyTravelScoreCap);
+
+        private static float MaturePenalty(PlayerSetupData player, HexMap map) =>
+            AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType, map) ? AiConfig.economyMatureTravelPenalty : 0f;
 
         // Внутренний выбор — какой из известных свободных ресурсных хексов собирать первым (без
         // постройки), когда несколько подходят одновременно (project owner's own 2026-08-23 call,

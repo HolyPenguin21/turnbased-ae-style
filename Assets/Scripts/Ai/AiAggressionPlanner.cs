@@ -250,11 +250,11 @@ namespace Game.Ai
             // straight back to base to repair; observability only for now, nothing gates on these
             // two yet.
             // Logged at most once per task per real game turn — see AiTask.
-            // LastBattleEstimateLoggedTurn's own comment — unless the target, the army's own
-            // composition, or the threat snapshot actually changed since the last log, in which
-            // case it's worth a fresh line even within the same turn (a retarget or a
-            // reinforcement landing mid-turn is real news, not just this method being called
-            // again for the next movement step of the same unchanged trip).
+            // LastBattleEstimateLoggedTurn's own comment (including its own caveat: this is a
+            // coarse fingerprint, not a full change detector) — unless that fingerprint changed
+            // since the last log, in which case it's worth a fresh line even within the same turn
+            // (a retarget or a reinforcement landing mid-turn is real news, not just this method
+            // being called again for the next movement step of the same unchanged trip).
             float armyPower = WorthIt.AttackSum(task.Army) + WorthIt.DefenseSum(task.Army);
             bool battleEstimateChanged = task.LastBattleEstimateLoggedTurn != ctx.TurnNumber
                 || !task.LastBattleEstimateTargetHex.Equals(task.TargetHex)
@@ -1307,9 +1307,13 @@ namespace Game.Ai
             if (!targetHex.HasValue)
                 return results;
 
-            AiDebugLog.Write($"[AI] {player.Nickname}: BuildBase actor selected: "
-                + $"strength={WorthIt.AttackSum(army) + WorthIt.DefenseSum(army):0.#}, weakest eligible, "
-                + $"target=({targetHex.Value.Q},{targetHex.Value.R})");
+            // No diagnostic log here any more (2026-08-24 follow-up fix, project owner's own
+            // report: "новые диагностические строки снова будут спамить лог") — this method just
+            // GENERATES a candidate, most of which lose Decide's own arbitration and are discarded
+            // (see AiTurnController.Commit's own class comment) — logging here printed a line for
+            // every candidate BUILT, not every one that actually STARTED. AiTurnController.Commit
+            // logs "BuildBase actor selected" instead, exactly once, only for the candidate that
+            // actually wins and gets registered.
 
             // The generic army.CurrentMovement<=0/AP check above only ever caught "can't move
             // AT ALL this step" — never "the specific first hex toward THIS targetHex costs more

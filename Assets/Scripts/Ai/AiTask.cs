@@ -209,10 +209,15 @@ namespace Game.Ai
         // own diagnostic win-chance log used to fire on EVERY call (every movement step of a
         // multi-step trip, all within the same real turn), so one raid could print 5+ identical
         // "raid win chance ~89%" lines back to back with nothing actually different between them.
-        // These four together are the snapshot that log line compares itself against — logged
-        // again only once real game turn moves on, OR the target/army composition/threat actually
-        // changed since the last log, never merely because Decide() happened to be called again
-        // this same turn.
+        // These four together are a COARSE fingerprint the log line compares itself against —
+        // target hex, member count, summed Attack+Defense, and the threat's own Defense — logged
+        // again once real game turn moves on, or once that fingerprint changes. Deliberately not a
+        // complete change detector (2026-08-24 follow-up note, project owner's own report): army
+        // HP, the threat's own Attack, or swapping one unit for a different one with the same
+        // summed power all slip through unnoticed. Harmless for gameplay (the throttle is purely a
+        // log-volume concern, nothing here gates a real decision) — good enough for "once per turn"
+        // as it stands; only worth tightening if a real desync between what's logged and what's
+        // actually happening turns up in practice.
         public int LastBattleEstimateLoggedTurn = -1;
         public HexCoord LastBattleEstimateTargetHex;
         public int LastBattleEstimateArmyMemberCount = -1;

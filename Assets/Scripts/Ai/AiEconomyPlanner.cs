@@ -316,17 +316,6 @@ namespace Game.Ai
             HexCoord hex = bestHex.Value;
             ResourceType resourceType = bestResourceType.Value;
 
-            // "экономика не теряет приоритет после насыщения" fix (2026-08-24) — actual per-type
-            // income right alongside the hex this step picked, so a log reader can see exactly
-            // when HasMatureEconomy's own 4-way floor trips (and BuildFacilityTask.TravelScore
-            // starts shaving its penalty off) without re-deriving it by hand.
-            AiDebugLog.Write($"[AI] {player.Nickname}: Economy income — "
-                + $"Human={AiGoalScorer.IncomeFor(player, ResourceType.Human)}, "
-                + $"Energy={AiGoalScorer.IncomeFor(player, ResourceType.Energy)}, "
-                + $"Materials={AiGoalScorer.IncomeFor(player, ResourceType.Materials)}, "
-                + $"Tech={AiGoalScorer.IncomeFor(player, ResourceType.Tech)} "
-                + $"(mature={AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType)}).");
-
             NearestHeroPick pick = BuildFacilityTask.FindActor(player, hex);
             if (pick.GarrisonHero != null)
             {
@@ -362,7 +351,7 @@ namespace Game.Ai
                     ArmyData reuse = pool.AvailableArmies()
                         .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(pick.Garrison.Hex));
                     AiDecision detach = AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, reuse,
-                        BuildFacilityTask.TravelScore(player, root, hex, resourceType),
+                        BuildFacilityTask.TravelScore(player, root, hex, resourceType, ctx.Map),
                         $"{pick.GarrisonHero.Name} — pulled out of the garrison to lead a build at ({hex.Q},{hex.R})",
                         AiTaskCategory.Economy);
                     detach.EconomyBuildHex = hex;
@@ -596,7 +585,7 @@ namespace Game.Ai
                     return null; // no currently-known safe route yet — wait for more of the map to be scouted
                 var target = new AiScoutPlanner.ScoutTarget(nextStep.Value, 0f,
                     $"carries the hero to build {task.ResourceType}");
-                float score = BuildFacilityTask.TravelScore(player, root, task.TargetHex, task.ResourceType.Value);
+                float score = BuildFacilityTask.TravelScore(player, root, task.TargetHex, task.ResourceType.Value, ctx.Map);
                 return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 
@@ -779,7 +768,7 @@ namespace Game.Ai
             // arrives (AdvanceResourcesScrapTask returns null from then on), so THIS is the one
             // decision that actually needs to win arbitration for it to happen on schedule.
             bool arrivesThisTurn = HexGridMath.Distance(collector.Hex, targetHex) <= collector.CurrentMovement;
-            float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player);
+            float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player, ctx.Map);
             results.Add(AiDecision.Move(collector, target, task, score, AiTaskCategory.Economy));
             return results;
         }
@@ -797,7 +786,7 @@ namespace Game.Ai
         // owner's own 2026-08-23 call) — picks one (hex, resourceType) winner via
         // ResourcesScrapTask.RankHex before ever looking for a plan, rather than trying every
         // matching hex in registry order.
-        public static List<AiDecision> TryStartCollectorDetachCandidates(PlayerSetupData player, PlayerRoot root, AiResourcePool pool)
+        public static List<AiDecision> TryStartCollectorDetachCandidates(PlayerSetupData player, PlayerRoot root, HexMap map, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
             var alreadyTargeted = new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
@@ -835,7 +824,11 @@ namespace Game.Ai
             if (plan.Value.MergeTarget == null && !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
                 return results;
 
-            results.Add(AiDecision.DetachCollector(plan.Value, bestType.Value, AiConfig.ResourceScrapDetachScore));
+            // Same score as ordinary Задача 2 travel (2026-08-24 fix, "зрелость экономики
+            // применена только к BuildFacility") — used to be a bare, never-penalized
+            // AiConfig.ResourceScrapDetachScore constant, so a detach step kept full priority even
+            // once HasMatureEconomy would have shaved ResourcesScrapTask.TravelScore itself down.
+            results.Add(AiDecision.DetachCollector(plan.Value, bestType.Value, ResourcesScrapTask.TravelScore(player, map)));
             return results;
         }
 
@@ -883,7 +876,7 @@ namespace Game.Ai
                         + $"({task.TargetHex.Q},{task.TargetHex.R}) without building");
                 // "Scrap Collect" — see TryStartResourcesScrapCandidates' own matching comment.
                 bool arrivesThisTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.CurrentMovement;
-                float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player);
+                float score = arrivesThisTurn ? AiConfig.economyExecuteScore : ResourcesScrapTask.TravelScore(player, ctx.Map);
                 return AiDecision.Move(task.Army, target, task, score, AiTaskCategory.Economy);
             }
 

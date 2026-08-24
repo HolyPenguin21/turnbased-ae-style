@@ -466,7 +466,7 @@ namespace Game.Ai
             candidates.AddRange(AiEconomyPlanner.TryEconomyReturnHomeCandidates(player, root, ctx, stuckScouts));
             candidates.AddRange(AiEconomyPlanner.TryStartEconomyCandidates(player, root, ctx, stuckScouts, pool));
             candidates.AddRange(AiEconomyPlanner.TryStartResourcesScrapCandidates(player, root, ctx, pool));
-            candidates.AddRange(AiEconomyPlanner.TryStartCollectorDetachCandidates(player, root, pool));
+            candidates.AddRange(AiEconomyPlanner.TryStartCollectorDetachCandidates(player, root, ctx.Map, pool));
             candidates.AddRange(AiScoutPlanner.TryStartVisitCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidAssembleCandidates(player, root, ctx, hand, pool));
             candidates.AddRange(AiAggressionPlanner.TryRaidRecallCandidates(player, root, ctx, pool, stuckScouts));
@@ -503,7 +503,7 @@ namespace Game.Ai
                     : "nothing to do — armies busy, hand/AP has nothing to offer");
             }
 
-            Commit(player, best, pool);
+            Commit(player, best, pool, ctx.Map);
             return best;
         }
 
@@ -512,7 +512,7 @@ namespace Game.Ai
         // references) is simply discarded here, never touching AiTaskRegistry/AiResourcePool at
         // all. Keeps MaxConcurrentVisitHex/MaxConcurrentRaid honest — generating N scored
         // candidates this step must never register more than the ONE that actually wins.
-        private static void Commit(PlayerSetupData player, AiDecision decision, AiResourcePool pool)
+        private static void Commit(PlayerSetupData player, AiDecision decision, AiResourcePool pool, HexMap map)
         {
             // A "preemption" that's actually just this SAME task continuing — same army, same
             // Kind, same TargetHex — is never a real preemption, whatever candidate-generation
@@ -579,9 +579,40 @@ namespace Game.Ai
                 AiTaskRegistry.Add(player, decision.Task);
                 pool.ClaimArmy(decision.ExistingArmy);
                 if (decision.Task.Kind == AiTaskKind.BuildFacility)
+                {
                     AiDebugLog.Write($"[AI] {player.Nickname}: starts Economy task — \"{decision.ExistingArmy.Name}\" heads out "
                         + $"to build {decision.Task.ResourceType} at ({decision.Task.TargetHex.Q},{decision.Task.TargetHex.R})."
                         + HandDemandLogSuffix(player, decision.Task.ResourceType, pool.Root, pool.Hand));
+                    // Moved here from AiEconomyPlanner.TryStartEconomyCandidates' own pre-pass
+                    // (2026-08-24 follow-up fix, "новые диагностические строки снова будут
+                    // спамить лог") — that pre-pass ran every step for every player regardless of
+                    // whether a candidate actually started, so this used to print once per Decide
+                    // CALL, not once per real Economy start. Logged only here, alongside the actual
+                    // task-start line, so a log reader sees the income snapshot right next to the
+                    // decision it explains instead of scattered across every unrelated step.
+                    AiDebugLog.Write($"[AI] {player.Nickname}: Economy income — "
+                        + $"Human={AiGoalScorer.IncomeFor(player, ResourceType.Human, map)}, "
+                        + $"Energy={AiGoalScorer.IncomeFor(player, ResourceType.Energy, map)}, "
+                        + $"Materials={AiGoalScorer.IncomeFor(player, ResourceType.Materials, map)}, "
+                        + $"Tech={AiGoalScorer.IncomeFor(player, ResourceType.Tech, map)} "
+                        + $"(mature={AiGoalScorer.HasMatureEconomy(player, AiConfig.economyMatureIncomePerType, map)}).");
+                }
+                else if (decision.Task.Kind == AiTaskKind.BuildBase)
+                {
+                    // Moved here from AiAggressionPlanner.TryStartBuildBaseCandidates (2026-08-24
+                    // follow-up fix, project owner's own report: "новые диагностические строки
+                    // снова будут спамить лог") — that method only ever GENERATES a candidate, most
+                    // of which lose Decide's own arbitration and never actually start; logging
+                    // there printed once per candidate BUILT, not once per task that actually
+                    // started. This runs exactly once, only for the candidate that wins and gets
+                    // registered here.
+                    float strength = WorthIt.AttackSum(decision.ExistingArmy) + WorthIt.DefenseSum(decision.ExistingArmy);
+                    string preemptedNote = decision.PreemptedTask != null
+                        ? $", preempted its own \"{decision.PreemptedTask.Kind}\" task" : "";
+                    AiDebugLog.Write($"[AI] {player.Nickname}: BuildBase actor selected — \"{decision.ExistingArmy.Name}\" "
+                        + $"(strength={strength:0.#}, weakest eligible) heads to "
+                        + $"({decision.Task.TargetHex.Q},{decision.Task.TargetHex.R}){preemptedNote}.");
+                }
             }
         }
 

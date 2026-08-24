@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Combat;
 using Game.Core;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using Game.Units;
 using UnityEngine;
 
@@ -42,7 +44,7 @@ namespace Game.Ai
         // player sitting on a large one-off resource windfall (an event bonus, a raided stockpile)
         // used to read as "not behind" here even with zero actual production, so Экономика never
         // felt urgent for them despite having no real income at all.
-        public static float IncomeBehindBonus(PlayerSetupData actor)
+        public static float IncomeBehindBonus(PlayerSetupData actor, HexMap map)
         {
             PlayerRoot ownRoot = PlayerRootRegistry.FindFor(actor);
             if (ownRoot == null || GameSession.Players == null)
@@ -50,13 +52,13 @@ namespace Game.Ai
 
             List<int> otherTotals = GameSession.Players
                 .Where(p => p != actor && !p.IsEliminated)
-                .Select(TotalIncome)
+                .Select(p => TotalIncome(p, map))
                 .ToList();
             if (otherTotals.Count == 0)
                 return 0f;
 
             float avgOther = (float)otherTotals.Average();
-            int ownTotal = TotalIncome(actor);
+            int ownTotal = TotalIncome(actor, map);
             if (avgOther <= ownTotal)
                 return 0f;
 
@@ -69,34 +71,83 @@ namespace Game.Ai
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // Per-turn income for a single resource type, mirroring (in simplified form) what
-        // GameTurnController.CollectResourceIncome actually pays out each turn — structural
-        // income from every owned building (BuildingData.CollectedAmount, same uncapped-by-hex-
-        // yield simplification BuildFacilityTask.HasIncomeSource already leans on) plus 1 per
-        // unit anywhere on a hex whose bonus actually yields this type and that carries the
-        // matching CollectX ability (a ResourcesScrap collector actually parked on its hex — see
-        // CollectArmyIncomeAt). Deliberately NOT a full re-derivation (no enemy-contest check, no
-        // per-hex remaining-yield cap split across owners) — same "cheat slice" spirit as
-        // IncomeBehindBonus, just measuring the right thing (rate, not stock). Split out from the
-        // old TotalIncome (2026-08-24, "экономика не теряет приоритет после насыщения" fix) so
-        // HasMatureEconomy can read each of the 4 types independently rather than only their sum —
-        // a player heavy in one resource and starved in another used to read as "not behind" on
-        // the combined total alone.
-        public static int IncomeFor(PlayerSetupData player, ResourceType type)
+        // Per-turn income for a single resource type — an exact mirror of GameTurnController.
+        // CollectResourceIncome/CollectArmyIncomeAt's own per-hex algorithm (2026-08-24 follow-up
+        // fix, "IncomeFor не всегда равен реальному доходу", project owner's own report), not the
+        // earlier simplified version this replaces (uncapped BuildingData.CollectedAmount plus a
+        // flat +1/collector, no yield cap, no building-first priority, no contest check — which
+        // could read a facility/collector as producing more than the hex's own actual yield ever
+        // allows, or credit a collector sharing a hex with an engageable enemy that the real game
+        // would give nothing that turn). Same three-step real algorithm, applied read-only and
+        // filtered to just `player`'s own share instead of crediting every owner:
+        //   1. hexYield = HexResourceCalculator.GetEffectiveYield(terrain, hex bonus) — real yield.
+        //   2. the hex's own building (if any) takes the first cut, capped at both its own
+        //      CollectedAmount(type) and whatever the hex actually yields.
+        //   3. whatever's left goes to armies on the hex with a matching CollectX unit, grouped by
+        //      owner, but ONLY an owner with no engageable enemy also on the hex (BattleInitiator.
+        //      FindEnemyAt) — same "no stealth yet" contest rule the real turn processor enforces.
+        // `map` is required (terrain lookup) — GameSession's own single shared HexMap, not
+        // per-player, so the same instance works for computing any player's own income.
+        public static int IncomeFor(PlayerSetupData player, ResourceType type, HexMap map)
         {
-            int total = BuildingRegistry.AllBuildings().Where(b => b.Owner == player).Sum(b => b.CollectedAmount(type));
+            if (player == null || map == null)
+                return 0;
 
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            string ability = UnitAbilities.CollectAbilityFor(type);
+            var hexes = new HashSet<HexCoord>();
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+                hexes.Add(building.Hex);
+            foreach (HexCoord hex in ArmyRegistry.AllOccupiedHexes())
+                hexes.Add(hex);
+
+            int total = 0;
+            foreach (HexCoord hex in hexes)
             {
-                ResourceYields bonus = HexResourceBonusRegistry.GetBonus(army.Hex);
-                if (bonus == null || bonus.Get(type) <= 0)
+                if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry entry))
                     continue;
-                total += army.Members.Count(u => u.HasAbility(UnitAbilities.CollectAbilityFor(type)));
+
+                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(hex));
+                int hexAmount = hexYield.Get(type);
+                if (hexAmount <= 0)
+                    continue;
+
+                int remaining = hexAmount;
+                BuildingData onHex = BuildingRegistry.FindAt(hex);
+                if (onHex != null && onHex.Owner != null)
+                {
+                    int buildingCollected = Mathf.Min(onHex.CollectedAmount(type), remaining);
+                    if (buildingCollected > 0)
+                    {
+                        if (onHex.Owner == player)
+                            total += buildingCollected;
+                        remaining -= buildingCollected;
+                    }
+                }
+                if (remaining <= 0)
+                    continue;
+
+                foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
+                {
+                    if (remaining <= 0)
+                        break;
+                    PlayerSetupData owner = ownerArmies.Key;
+                    if (owner == null)
+                        continue;
+                    if (BattleInitiator.FindEnemyAt(hex, owner) != null)
+                        continue; // contested — the real turn processor grants nothing here either
+                    int unitCount = ownerArmies.Sum(a => a.Members.Count(u => u.HasAbility(ability)));
+                    if (unitCount <= 0)
+                        continue;
+                    int granted = Mathf.Min(unitCount, remaining);
+                    if (owner == player)
+                        total += granted;
+                    remaining -= granted;
+                }
             }
             return total;
         }
 
-        private static int TotalIncome(PlayerSetupData player) => AllResourceTypes.Sum(t => IncomeFor(player, t));
+        private static int TotalIncome(PlayerSetupData player, HexMap map) => AllResourceTypes.Sum(t => IncomeFor(player, t, map));
 
         // "экономика не теряет приоритет после насыщения" fix (2026-08-24, project owner's own
         // report) — true once EVERY one of the 4 resource types clears `perTypeThreshold` on its
@@ -107,7 +158,7 @@ namespace Game.Ai
         // already is. Deliberately local/instantaneous (no Strategic Assessment, no memory of past
         // turns) — the moment any one type dips back below threshold (a facility lost, a collector
         // pulled off), this flips back on its own next call.
-        public static bool HasMatureEconomy(PlayerSetupData player, int perTypeThreshold) =>
-            AllResourceTypes.All(t => IncomeFor(player, t) >= perTypeThreshold);
+        public static bool HasMatureEconomy(PlayerSetupData player, int perTypeThreshold, HexMap map) =>
+            AllResourceTypes.All(t => IncomeFor(player, t, map) >= perTypeThreshold);
     }
 }
