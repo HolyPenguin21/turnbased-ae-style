@@ -304,7 +304,7 @@ namespace Game.Ai
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(building.Hex, required, score,
                         guarded ? $"enemy building at ({building.Hex.Q},{building.Hex.R}), guard is weaker"
-                                : $"enemy building at ({building.Hex.Q},{building.Hex.R}), unguarded");
+                                : $"enemy building at ({building.Hex.Q},{building.Hex.R}), no known guard");
             }
 
             return best;

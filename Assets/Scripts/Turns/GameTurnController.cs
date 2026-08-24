@@ -769,25 +769,39 @@ namespace Game.Turns
                     continue;
 
                 int sources = 0;
+                List<string> breakdown = new List<string>();
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
                 {
                     if (army.IsPrison)
                         continue;
-                    sources += army.Members.Count(unit => unit.HasAbility(UnitAbilities.ApBonus));
+                    foreach (UnitData unit in army.Members)
+                    {
+                        if (!unit.HasAbility(UnitAbilities.ApBonus))
+                            continue;
+                        sources++;
+                        breakdown.Add($"{unit.Name} +{ApBonusPerSource}");
+                    }
                 }
                 foreach (BuildingData building in BuildingRegistry.AllBuildings())
                 {
                     if (building.Owner != player)
                         continue;
                     if (building.HasAbility(UnitAbilities.ApBonus))
+                    {
                         sources++;
+                        breakdown.Add($"Base at ({building.Hex.Q},{building.Hex.R}) +{ApBonusPerSource}");
+                    }
                     foreach (FacilityData facility in building.FacilitySlots)
                         if (facility != null && facility.HasAbility(UnitAbilities.ApBonus))
+                        {
                             sources++;
+                            breakdown.Add($"{facility.Name} at ({building.Hex.Q},{building.Hex.R}) +{ApBonusPerSource}");
+                        }
                 }
 
                 int bonus = ApBonusPerSource * sources;
                 root.SetLastApFromApBonus(bonus);
+                root.SetLastApBonusSources(string.Join(", ", breakdown));
                 if (bonus > 0)
                     root.ActionPoints += bonus;
             }

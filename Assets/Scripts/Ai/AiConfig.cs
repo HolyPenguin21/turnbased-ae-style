@@ -252,7 +252,7 @@ namespace Game.Ai
         // true next-hex bias 2026-08-24 P0 fix, project owner's own code-review report) ----
         // RaidWeakerArmyTask.FindCaptureStepDestination's own detour budget (project owner's own
         // report: the opportunity-capture mechanism itself already works — RaidWeakerArmyTask.
-        // FindTarget's own Section 5 already logs "enemy building at (...), unguarded, score 100"
+        // FindTarget's own Section 5 already logs "enemy building at (...), no known guard, score 100"
         // and an army does start moving toward one once it wins FindTarget's own ranking outright —
         // the actual gap is that an army ALREADY travelling toward some OTHER destination never
         // deviates for a DIFFERENT such opportunity it happens to pass close by, since FindTarget

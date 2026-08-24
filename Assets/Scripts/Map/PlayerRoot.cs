@@ -55,9 +55,17 @@ namespace Game.Map
         public int LastApFromPrisonBonus { get; private set; }
         public int LastApFromApBonus { get; private set; }
 
+        // Per-source breakdown for LastApFromApBonus (e.g. "Aldric Voss +2, Base at (5,1) +2") —
+        // same purely-diagnostic purpose as the totals above, just naming WHICH carriers made up
+        // the total instead of only the total itself (project owner's own report: with several
+        // ApBonus carriers in play the flat number alone doesn't say which one is missing when a
+        // hero dies or a base is lost). Empty when LastApFromApBonus is 0.
+        public string LastApBonusSources { get; private set; } = string.Empty;
+
         public void SetLastApFromInitiative(int amount) => LastApFromInitiative = amount;
         public void SetLastApFromPrisonBonus(int amount) => LastApFromPrisonBonus = amount;
         public void SetLastApFromApBonus(int amount) => LastApFromApBonus = amount;
+        public void SetLastApBonusSources(string breakdown) => LastApBonusSources = breakdown ?? string.Empty;
 
         public bool CanSpendActionPoints(int amount) => ActionPoints >= amount;
 

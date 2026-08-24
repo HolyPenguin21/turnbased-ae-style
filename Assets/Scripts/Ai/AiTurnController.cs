@@ -242,8 +242,11 @@ namespace Game.Ai
             int startEnergy = root.GetResource(ResourceType.Energy);
             int startMaterials = root.GetResource(ResourceType.Materials);
             int startTech = root.GetResource(ResourceType.Tech);
+            string apBonusSuffix = root.LastApFromApBonus > 0 && !string.IsNullOrEmpty(root.LastApBonusSources)
+                ? $" [{root.LastApBonusSources}]"
+                : string.Empty;
             AiDebugLog.Write($"[AI] === {player.Nickname}'s turn begins (turn {ctx.TurnNumber}) — AP={root.ActionPoints} "
-                + $"(initiative={root.LastApFromInitiative}, prison=+{root.LastApFromPrisonBonus}, AP bonus=+{root.LastApFromApBonus}), "
+                + $"(initiative={root.LastApFromInitiative}, prison=+{root.LastApFromPrisonBonus}, AP bonus=+{root.LastApFromApBonus}{apBonusSuffix}), "
                 + $"armies={startArmies}, human={startHuman}, energy={startEnergy}, materials={startMaterials}, tech={startTech} ===");
             LogHand(player, hand);
             LogActiveTasks(player);
