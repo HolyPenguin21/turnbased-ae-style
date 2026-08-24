@@ -45,7 +45,7 @@ MonoBehaviour:
     - cardKey: The Ashen/AA Rad Hunter
       count: 1
     - cardKey: The Ashen/Scav Carrier
-      count: 1
+      count: 0
     - cardKey: The Ashen/Ash drifter
       count: 1
     - cardKey: The Ashen/Iron Husk
@@ -53,7 +53,7 @@ MonoBehaviour:
     - cardKey: The Ashen/Rad Brute
       count: 2
     - cardKey: The Ashen/Rust Tank
-      count: 1
+      count: 2
     - cardKey: The Ashen/Leviathan
       count: 1
     - cardKey: The Ashen/Grave Engine

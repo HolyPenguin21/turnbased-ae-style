@@ -92,7 +92,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3ecbbdb4336d38d4e98347d7a48eead9, type: 3}
     faction: 4
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -122,7 +122,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 1a648db60e9fdbe42b47964b97fa71e4, type: 3}
     faction: 4
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -152,7 +152,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 68b16f15d508251409ca5ac767d6c3e7, type: 3}
     faction: 4
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -183,7 +183,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 0469a30d682d2f04b96278a9193adbb2, type: 3}
     faction: 4
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -213,7 +213,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: fe7ef4ff3a145d341af27b432029dd4f, type: 3}
     faction: 4
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
