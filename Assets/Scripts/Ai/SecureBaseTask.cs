@@ -188,12 +188,63 @@ namespace Game.Ai
 
             ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(task.HomeHex));
             UnitData cargo = task.Army.Members.FirstOrDefault(m => !m.IsHero) ?? task.Army.Members.FirstOrDefault();
-            if (garrison == null || cargo == null || !GarrisonReorgTask.CanAffordTransferInto(garrison, cargo))
+            if (garrison == null || cargo == null)
+                return null;
+
+            // 2026-08-24 P1 fix (project owner's own report): CanAffordTransferInto below only ever
+            // checks AP, never capacity — a garrison that filled up from some OTHER source (a card,
+            // GarrisonReorgTask) while this courier was already en route used to make this branch
+            // propose the exact same doomed ArmyActions.TransferMember-bound decision every single
+            // step forever (IsComplete's own P0 fix, above, deliberately keeps this task alive while
+            // task.Army != null, so nothing else would ever free it either) — permanently occupying
+            // this player's own maxConcurrentSecureBase slot with a courier that can never unload.
+            if (!garrison.HasRoom)
+                return BuildFullGarrisonFallback(player, root, ctx, task);
+
+            if (!GarrisonReorgTask.CanAffordTransferInto(garrison, cargo))
                 return null;
 
             var move = new GarrisonReorgTask.ConsolidationMove(task.Army, cargo, garrison,
                 $"\"{task.Army.Name}\" delivers {cargo.Name} to secure the garrison at ({task.HomeHex.Q},{task.HomeHex.R})");
             return AiDecision.DepositReinforcement(move, task, AiConfig.secureBaseDeliverScore);
+        }
+
+        // See BuildDecision's own !garrison.HasRoom branch. Redirects the stuck courier to the
+        // nearest OTHER own garrison that genuinely has a free slot right now — same "just repoint
+        // HomeHex/TargetHex, let the existing travel/deposit machinery carry it the rest of the way"
+        // trick RedirectToNearestOwnBase already established for a lost base (2026-08-24 P0 fix,
+        // above), reused here for a full-instead-of-lost one. Two ways this can happen: the base is
+        // already secure (something else filled the last slot first — a harmless race, the courier's
+        // cargo is simply surplus now) or it isn't (a genuine composition anomaly — too many Hero/
+        // Recce members occupying capacity without ever counting toward the non-hero secure floor;
+        // logged as such so it's visible, but left for GarrisonReorgTask's own independent end-of-
+        // turn drain to actually rebalance — this method's only job is getting the courier's cargo
+        // to SOMEWHERE useful, not fixing that composition itself). Recurses into BuildDecision once
+        // with the new HomeHex — safe from runaway recursion since the courier hasn't moved yet, so
+        // that call always lands on the "not yet arrived, travel there" branch, never this same
+        // full-garrison branch again. Null (task left registered, retried next step) only if truly
+        // no own garrison anywhere has room right now.
+        private static AiDecision BuildFullGarrisonFallback(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
+        {
+            HexCoord fullHex = task.HomeHex;
+            string why = IsSecure(player, fullHex) ? "already secure" : "composition anomaly — likely too many Hero/Recce members";
+
+            ArmyData nearestWithRoom = ArmyRegistry.AllForOwner(player)
+                .Where(a => a.IsGarrison && a.HasRoom && !a.Hex.Equals(fullHex))
+                .OrderBy(a => HexGridMath.Distance(a.Hex, task.Army.Hex))
+                .FirstOrDefault();
+            if (nearestWithRoom == null)
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — garrison at ({fullHex.Q},{fullHex.R}) is full "
+                    + $"({why}), no other own garrison has room right now, \"{task.Army.Name}\" waits.");
+                return null;
+            }
+
+            task.HomeHex = nearestWithRoom.Hex;
+            task.TargetHex = task.HomeHex;
+            AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — garrison at ({fullHex.Q},{fullHex.R}) is full "
+                + $"({why}), \"{task.Army.Name}\" redirected to ({task.HomeHex.Q},{task.HomeHex.R}) instead.");
+            return BuildDecision(player, root, ctx, task);
         }
     }
 }
