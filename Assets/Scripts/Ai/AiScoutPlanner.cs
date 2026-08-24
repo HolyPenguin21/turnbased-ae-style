@@ -127,6 +127,18 @@ namespace Game.Ai
 
         // ---- Разведка · Задача 1 (Посещение хекса) ----
 
+        // Deconfliction (2026-08-24, project owner's own log audit): every OTHER active VisitHex
+        // task's own TargetHex, so VisitHexTask.FindTarget never re-picks a hex a different scout
+        // already committed to this same turn (both callers below re-run FindTarget fresh every
+        // step — see TryContinueVisitTask's own comment — so without this two independently-
+        // scored scouts routinely converge on the identical best wavefront hex). `exclude` is the
+        // continuing task itself, never in the result — a task must stay free to re-pick its own
+        // in-progress target.
+        private static HashSet<HexCoord> ClaimedVisitTargets(PlayerSetupData player, AiTask exclude) =>
+            new HashSet<HexCoord>(AiTaskRegistry.TasksFor(player)
+                .Where(t => t.Kind == AiTaskKind.VisitHex && t != exclude)
+                .Select(t => t.TargetHex));
+
         public static AiDecision TryContinueVisitTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army))
@@ -149,7 +161,7 @@ namespace Game.Ai
             // still reach the final decision; FindTarget's own Score does NOT — see AiConfig.
             // scoutProximityWeight's own comment for why that stays a purely internal ranking term.
             ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, task.Army, task, ctx.TurnNumber);
-            ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, task.Army, ctx.Map);
+            ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, task.Army, ctx.Map, ClaimedVisitTargets(player, task));
             if (!target.HasValue)
             {
                 AiTaskRegistry.Remove(player, task);
@@ -181,6 +193,13 @@ namespace Game.Ai
             if (AiTaskRegistry.CountActive(player, AiTaskKind.VisitHex) >= AiConfig.maxConcurrentVisitHex)
                 return results;
 
+            // Every brand-new candidate built in this same loop below still only ever competes
+            // through AiTurnController.Decide's own single-best-of-the-whole-step arbiter (see
+            // that method's own comment) — at most one of them ever actually gets registered as a
+            // real task, so this only needs to exclude ALREADY-registered VisitHex targets, not
+            // targets other candidates in this same loop are about to propose.
+            HashSet<HexCoord> claimedTargets = ClaimedVisitTargets(player, null);
+
             foreach (ArmyData army in pool.AvailableArmies())
             {
                 if (!VisitHexTask.IsEligibleComposition(army) || army.CurrentMovement <= 0 || army.Controller == null || stuckScouts.Contains(army))
@@ -193,7 +212,7 @@ namespace Game.Ai
                 // next continuation call (see TryContinueVisitTask) already honours the one-turn
                 // cap.
                 ScoutTarget? fleeTarget = VisitHexTask.TryFlee(player, army, null, ctx.TurnNumber);
-                ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, army, ctx.Map);
+                ScoutTarget? target = fleeTarget ?? VisitHexTask.FindTarget(player, army, ctx.Map, claimedTargets);
                 if (!target.HasValue)
                     continue;
 

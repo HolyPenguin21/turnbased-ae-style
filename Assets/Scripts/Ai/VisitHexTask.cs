@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -116,7 +118,8 @@ namespace Game.Ai
         // "Поведение" выше). Этот скор — чисто внутренний выбор ЦЕЛИ (какой хекс предпочесть среди
         // кандидатов), в кросс-категорийный AiDecision.Score не попадает — см. AiScoutPlanner's own
         // TryContinueVisitTask/TryStartVisitCandidates.
-        public static AiScoutPlanner.ScoutTarget? FindTarget(PlayerSetupData actor, ArmyData army, HexMap map)
+        public static AiScoutPlanner.ScoutTarget? FindTarget(PlayerSetupData actor, ArmyData army, HexMap map,
+            IReadOnlyCollection<HexCoord> excludedTargets = null)
         {
             if (actor == null || army == null || map == null)
                 return null;
@@ -132,7 +135,7 @@ namespace Game.Ai
             AiScoutPlanner.ScoutTarget? best = null;
             foreach (HexCoord candidate in map.AllCoords)
             {
-                AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, candidate, citadelHex, wavefrontDistance);
+                AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, candidate, citadelHex, wavefrontDistance, excludedTargets);
                 if (!scored.HasValue)
                     continue;
                 if (best != null && !(scored.Value.Score > best.Value.Score))
@@ -161,7 +164,7 @@ namespace Game.Ai
                 {
                     continue;
                 }
-                AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, neighbor, citadelHex, wavefrontDistance);
+                AiScoutPlanner.ScoutTarget? scored = ScoreCandidate(actor, army, map, neighbor, citadelHex, wavefrontDistance, excludedTargets);
                 if (!scored.HasValue)
                     continue;
                 if (affordableNeighbor != null && !(scored.Value.Score > affordableNeighbor.Value.Score))
@@ -179,11 +182,21 @@ namespace Game.Ai
         // above and the neighbor-only affordability fallback, so the two never score a hex
         // differently.
         private static AiScoutPlanner.ScoutTarget? ScoreCandidate(PlayerSetupData actor, ArmyData army, HexMap map,
-            HexCoord candidate, HexCoord? citadelHex, int? wavefrontDistance)
+            HexCoord candidate, HexCoord? citadelHex, int? wavefrontDistance,
+            IReadOnlyCollection<HexCoord> excludedTargets = null)
         {
             if (candidate.Equals(army.Hex))
                 return null;
             if (VisionSystem.IsVisited(actor, candidate))
+                return null;
+            // Deconfliction (2026-08-24, project owner's own log audit): a hex another VisitHex
+            // task already committed to as ITS destination this turn is off the table for this
+            // one — without this, two scouts independently re-run this same scan every step and
+            // land on the identical best-scoring wavefront hex, so the second one to arrive finds
+            // nothing left to discover there (see AiScoutPlanner.TryContinueVisitTask/
+            // TryStartVisitCandidates' own callers for how this set gets built — never includes
+            // THIS task's own current target, only every other active VisitHex task's).
+            if (excludedTargets != null && excludedTargets.Contains(candidate))
                 return null;
 
             if (citadelHex.HasValue && wavefrontDistance.HasValue
