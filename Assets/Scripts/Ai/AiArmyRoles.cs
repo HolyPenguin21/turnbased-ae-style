@@ -134,9 +134,12 @@ namespace Game.Ai
         // Guards a second-base garrison's own defenders from ever being pulled below secure by a
         // Raid/Defence/reorg donor pull (project owner's own report: a fresh base's garrison could
         // get seeded, then immediately stripped back down by ordinary recruitment, leaving an
-        // "unguarded enemy building" the AI itself created). Citadel-only exempt on purpose — its
-        // own emergency defence (see AiDefencePlanner.TryDefencePreemptCandidates) already has the
-        // right to strip anything, and this guard must never fight that.
+        // "unguarded enemy building" the AI itself created). Citadel-only exempt BY DEFAULT on
+        // purpose — its own emergency defence (see AiDefencePlanner.TryDefencePreemptCandidates)
+        // already has the right to strip anything, and every EXISTING caller (RaidWeakerArmyTask's
+        // own recruit picks, GarrisonReorgTask's own balance/composition tiers) already relies on
+        // that same unconditional citadel access — `allowCitadelEmergency` defaults to true so none
+        // of them change behavior from this method's own signature change below.
         //
         // 2026-08-24 tightened (project owner's own SecureBase spec) from the original bare
         // "Members.Count > 1" (never take the literal last body) to the real secure floor —
@@ -149,7 +152,16 @@ namespace Game.Ai
         // (see IsBaseGarrisonSecure's own comment), so a lone hero minding a fresh base's garrison
         // stays put exactly like before, until AiManagementPlanner's own placement priority (see
         // GarrisonHexesForPlacement) routes a real replacement in.
-        public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit)
+        //
+        // `allowCitadelEmergency` (2026-08-24 P0 fix, project owner's own report): SecureBaseTask's
+        // own donor search is the first caller that must NOT get the citadel exemption — unlike an
+        // occasional Raid/Reorg recruit, SecureBase actively loops "find the nearest donor with a
+        // spareable unit" call after call until a base is secure, and the citadel is very often the
+        // nearest one, so leaving it unconditionally exempt could drain it down to zero non-hero
+        // defenders over a few of those trips. Passing false applies the SAME secureCitadelMinNonHeroUnits
+        // floor to the citadel that non-citadel bases already get (kept as its OWN constant, not
+        // reused from secureBaseMinNonHeroUnits, so the two can be tuned independently later).
+        public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit, bool allowCitadelEmergency = true)
         {
             if (player == null || source == null || unit == null)
                 return false;
@@ -158,14 +170,16 @@ namespace Game.Ai
                 return true;
 
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
-            if (source.Hex.Equals(citadelHex))
+            bool isCitadel = source.Hex.Equals(citadelHex);
+            if (isCitadel && allowCitadelEmergency)
                 return true;
 
             if (unit.IsHero)
                 return source.Members.Count > 1;
 
             int remainingNonHero = source.Members.Count(m => !m.IsHero) - 1;
-            return remainingNonHero >= AiConfig.secureBaseMinNonHeroUnits;
+            int floor = isCitadel ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
+            return remainingNonHero >= floor;
         }
 
         // A non-citadel base's own garrison counts as genuinely secure once it holds at least

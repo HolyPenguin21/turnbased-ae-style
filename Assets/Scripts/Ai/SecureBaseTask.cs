@@ -27,11 +27,14 @@ namespace Game.Ai
     // Состав/источник — garrison-to-garrison only (2026-08-24, project owner's own scope call: "не
     // забирать армии и юнитов, уже занятых Raid, Recon, Economy или Defence"). FindReinforcementSource
     // only ever pulls a spare non-hero from another one of this player's own IsGarrison stockpiles
-    // (the citadel included), never from a field army already carrying a task — a garrison ArmyData
-    // is never itself claimed as any task's own Army, so restricting the donor pool to garrisons
-    // alone satisfies that exclusion without needing a separate task-ownership check. Every donor
-    // pull still goes through AiArmyRoles.CanSpareGarrisonMember, so this can never strip the
-    // citadel/another base back below its own secure floor.
+    // (the citadel included as a candidate donor, but never below ITS OWN secure floor — see
+    // below), never from a field army already carrying a task — a garrison ArmyData is never
+    // itself claimed as any task's own Army, so restricting the donor pool to garrisons alone
+    // satisfies that exclusion without needing a separate task-ownership check. Every donor pull
+    // still goes through AiArmyRoles.CanSpareGarrisonMember with allowCitadelEmergency:false (2026-
+    // 08-24 P0 fix — see FindReinforcementSource's own comment), so this can never strip the
+    // citadel/another base back below its own secure floor, unlike the emergency-defence donor
+    // pulls elsewhere in this codebase that deliberately CAN.
     //
     // Жизненный цикл — one courier at a time, phase read straight off AiTask state rather than a
     // separate enum (project owner's own "не добавлять отдельные поля под каждую промежуточную
@@ -67,17 +70,28 @@ namespace Game.Ai
         // The base itself is gone from under this task — captured back, or its Barracks building
         // destroyed outright — nothing left here to secure. Garrison OWNERSHIP specifically (not
         // just presence) is what matters — see AiTurnController.OwnGarrisonHexes, which this same
-        // read backs.
+        // read backs. Callers must check task.Army first (see RedirectToNearestOwnBase's own
+        // comment) — this alone says nothing about whether a courier is still out there needing
+        // somewhere to go.
         public static bool ShouldCancel(PlayerSetupData player, AiTask task) =>
             !ArmyRegistry.AllForOwner(player).Any(a => a.IsGarrison && a.Hex.Equals(task.HomeHex));
 
+        // 2026-08-24 P0 fix (project owner's own report): used to complete the instant
+        // IsBaseGarrisonSecure went true, with NO regard for whether a courier (task.Army) was
+        // still out in the field carrying a live unit — a card landing in the garrison, or a
+        // SECOND SecureBase-adjacent event, could secure the base one step before an already-
+        // dispatched courier finished delivering, and the old version would remove the task right
+        // out from under it, leaving that courier a permanently untasked field army nobody would
+        // ever route home again. Never completes while task.Army != null any more — the in-flight
+        // courier is always let through to actually deliver first (a base ending up with one MORE
+        // defender than strictly required is harmless, never an orphan), and this naturally
+        // re-checks true right after AiOperations.DepositReinforcementRoutine clears task.Army back
+        // to null.
         public static bool IsComplete(PlayerSetupData player, AiTask task, out string reason)
         {
-            if (!IsSecure(player, task.HomeHex))
-            {
-                reason = null;
+            reason = null;
+            if (task.Army != null || !IsSecure(player, task.HomeHex))
                 return false;
-            }
             int nonHero = ArmyRegistry.AllForOwner(player)
                 .Where(a => a.IsGarrison && a.Hex.Equals(task.HomeHex))
                 .SelectMany(a => a.Members).Count(m => !m.IsHero);
@@ -85,11 +99,32 @@ namespace Game.Ai
             return true;
         }
 
-        // Nearest OTHER own garrison (citadel included) that can spare a non-hero without dropping
-        // below its own secure floor (see AiArmyRoles.CanSpareGarrisonMember) — never a Recce unit
-        // (solo-only by design elsewhere in this codebase), lowest strategic value first so this
-        // never bleeds a donor's own best defenders, same ordering FindGarrisonSeedUnit already
-        // uses for the equivalent BuildBase pick.
+        // 2026-08-24 P0 fix (project owner's own report) — ShouldCancel's own OTHER half: the base
+        // is gone but task.Army (a courier, possibly already carrying a live unit) is still out
+        // there. Re-points HomeHex/TargetHex at the nearest STILL-OWNED garrison instead of the
+        // caller simply removing the task and abandoning the courier mid-field with nothing to do
+        // — every other phase (travel/deposit/IsComplete) already reads HomeHex fresh each call, so
+        // redirecting it here is enough for the existing lifecycle to carry the courier the rest of
+        // the way on its own, no second "return home" mechanism needed. AiTurnController.
+        // NearestOwnGarrisonHex always resolves to SOME hex (falls back to the citadel) as long as
+        // this player has any garrison left at all — if even the citadel is gone the game is over
+        // for this player already (BuildingRegistry.BuildingDestroyed's own win-condition hook), so
+        // there's nothing left to redirect toward at that point either.
+        public static void RedirectToNearestOwnBase(PlayerSetupData player, AiTask task)
+        {
+            task.HomeHex = AiTurnController.NearestOwnGarrisonHex(player, task.Army.Hex);
+            task.TargetHex = task.HomeHex;
+        }
+
+        // Nearest OTHER own garrison that can spare a non-hero without dropping below its own
+        // secure floor (see AiArmyRoles.CanSpareGarrisonMember) — never a Recce unit (solo-only by
+        // design elsewhere in this codebase), lowest strategic value first so this never bleeds a
+        // donor's own best defenders, same ordering FindGarrisonSeedUnit already uses for the
+        // equivalent BuildBase pick. allowCitadelEmergency:false (2026-08-24 P0 fix, project
+        // owner's own report) — unlike an occasional Raid/Reorg recruit, this search loops call
+        // after call until a base is secure, and the citadel is very often the nearest donor, so it
+        // must respect the SAME secureCitadelMinNonHeroUnits floor every other base already does
+        // here rather than the method's own default unconditional citadel exemption.
         public static UnitData FindReinforcementSource(PlayerSetupData player, HexCoord targetHex, out ArmyData source)
         {
             source = null;
@@ -98,7 +133,8 @@ namespace Game.Ai
             foreach (ArmyData donor in ArmyRegistry.AllForOwner(player).Where(a => a.IsGarrison && !a.Hex.Equals(targetHex)))
             {
                 UnitData candidate = donor.Members
-                    .Where(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce) && CanSpareSource(player, donor, m))
+                    .Where(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce)
+                        && AiArmyRoles.CanSpareGarrisonMember(player, donor, m, allowCitadelEmergency: false))
                     .OrderBy(m => m.Defense + m.Attack).ThenByDescending(m => m.Range > 1 ? 1 : 0)
                     .FirstOrDefault();
                 if (candidate == null)
@@ -115,9 +151,6 @@ namespace Game.Ai
             return best;
         }
 
-        private static bool CanSpareSource(PlayerSetupData player, ArmyData source, UnitData unit) =>
-            AiArmyRoles.CanSpareGarrisonMember(player, source, unit);
-
         // The one decision this task ever proposes for an already-registered `task` — which of the
         // three lifecycle phases applies right now (see this class's own "Жизненный цикл" comment),
         // read fresh off task.Army every call, never cached. Null whenever nothing can be done this
@@ -128,7 +161,12 @@ namespace Game.Ai
             if (task.Army == null)
             {
                 UnitData recruit = FindReinforcementSource(player, task.HomeHex, out ArmyData source);
-                if (recruit == null || source == null || root == null || !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
+                // 2026-08-24 P1 fix (project owner's own report): used to gate on the raw AP cost
+                // alone, which incorrectly blocked a dispatch even when DispatchBaseReinforcement
+                // Routine was about to find and reuse a free disposable empty shell at the donor's
+                // own hex instead of spending anything — see AiOperations.CanDispatchCourier's own
+                // comment, which mirrors exactly what that routine is about to try.
+                if (recruit == null || source == null || !AiOperations.CanDispatchCourier(player, root, source.Hex))
                     return null;
                 return AiDecision.DispatchBaseReinforcement(source, recruit, task, AiConfig.secureBaseTravelScore);
             }

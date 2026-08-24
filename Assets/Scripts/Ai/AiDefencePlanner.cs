@@ -750,10 +750,27 @@ namespace Game.Ai
         // SecureBaseTask.BuildDecision's job (shared with TryStartSecureBaseCandidates above, same
         // split TryContinueDefenceTask/TryStartDefenceCandidates already follow for
         // BuildPostureDecision).
+        //
+        // 2026-08-24 P0 fix (project owner's own report): a lost base used to just remove the task
+        // outright, even with a courier (task.Army) already dispatched and possibly carrying a live
+        // unit — that courier became a permanently untasked field army nobody would ever route home
+        // again. Now redirects it to the nearest still-owned garrison instead (see SecureBaseTask.
+        // RedirectToNearestOwnBase's own comment) and immediately re-evaluates under its own new
+        // HomeHex this same call, rather than removing the task only for a fresh one to eventually
+        // reinvent the same trip. Only removes outright when there's genuinely no courier to save.
         public static AiDecision TryContinueSecureBaseTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             if (SecureBaseTask.ShouldCancel(player, task))
             {
+                if (task.Army != null)
+                {
+                    HexCoord lostHex = task.HomeHex;
+                    SecureBaseTask.RedirectToNearestOwnBase(player, task);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({lostHex.Q},{lostHex.R}) is no "
+                        + $"longer ours, \"{task.Army.Name}\" redirected to ({task.HomeHex.Q},{task.HomeHex.R}) instead "
+                        + "of being abandoned in the field.");
+                    return SecureBaseTask.BuildDecision(player, root, ctx, task);
+                }
                 AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({task.HomeHex.Q},{task.HomeHex.R}) "
                     + "is no longer ours, task cancelled.");
                 AiTaskRegistry.Remove(player, task);

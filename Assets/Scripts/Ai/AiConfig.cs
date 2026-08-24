@@ -387,6 +387,18 @@ namespace Game.Ai
         // real standing Facility, not just a known bonus), so the two never both apply to the same
         // candidate.
         public const float buildBaseResourceTypeWeight = 15f;
+        // ScoreCandidateHex's own second-type bonus (2026-08-24 P2 fix, project owner's own
+        // report) — on TOP of buildBaseResourceTypeWeight, once a known hex carries 2+ resource
+        // types rather than just 1. Still never reads a hidden YIELD AMOUNT (see
+        // buildBaseResourceTypeWeight's own comment on why that stays off-limits) — only COUNTS how
+        // many of the hex's own resource types are non-zero via HexResourceBonusRegistry.GetBonus,
+        // the same live registry read BuildFacilityTask's own pre-pass already performs once a hex
+        // is confirmed AiMapMemory.IsResourceHexKnown — a hex's own resource TYPE SET is a static,
+        // permanent property (never changes turn to turn), so reading it live for an
+        // already-known hex is exactly as honest as the single-dominant-type read this class
+        // already did before this fix, just not throwing away the "how many" part of that same
+        // already-permitted read.
+        public const float buildBaseMultiResourceBonus = 10f;
         // Both the target-selection pre-filter (BuildBaseTask.FindTargetHex skips a hex with a
         // threatening known non-neutral sighting this close) and the cancel condition once a task
         // is actually under way (a known enemy sighted within this radius of the target, that could
@@ -588,6 +600,23 @@ namespace Game.Ai
         // (AiArmyRoles.CanSpareGarrisonMember) — one number, one place, per the project owner's
         // own "IsBaseGarrisonSecure нужен как минимум четырём механизмам" call.
         public const int secureBaseMinNonHeroUnits = 2;
+        // AiArmyRoles.CanSpareGarrisonMember's own floor for the CITADEL specifically when called
+        // with allowCitadelEmergency:false (2026-08-24 P0 fix, project owner's own report — see
+        // that method's own comment) — SecureBaseTask's own donor search passes false so it can
+        // never drain the citadel down to zero non-hero defenders while topping up a second base.
+        // Same value as secureBaseMinNonHeroUnits today, kept as its own constant per the project
+        // owner's own call so the two can be tuned independently later (the citadel arguably
+        // deserves a higher floor than an ordinary second base once real balancing starts).
+        public const int secureCitadelMinNonHeroUnits = 2;
+        // AiManagementPlanner.TryPlayCardCandidates' own priority bump (2026-08-24 P1 fix, project
+        // owner's own report) — a Unit card FindPlacement is about to route into a non-citadel base
+        // that ISN'T secure yet gets this score instead of the ordinary Hero/Unit alternation score,
+        // so "play the card that's already headed there" always outranks SecureBase's own courier
+        // dispatch (secureBaseTravelScore=100) the way the project owner's own spec requires
+        // ("сначала направлять в незащищённую базу подходящие Unit-карты"). Pinned to the same 110
+        // tier as secureBaseDeliverScore — landing a card is exactly as good as a courier arriving,
+        // whichever happens to be ready first.
+        public const float secureBaseCardPlacementScore = 110f;
         // How many SecureBase tasks may be registered across this player's own bases at once —
         // same "don't let one Level-1 category spread itself across every base at once" intent
         // every other maxConcurrentX cap in this codebase already enforces (MaxConcurrentVisitHex/

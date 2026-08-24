@@ -3,6 +3,7 @@ using System.Linq;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -191,7 +192,8 @@ namespace Game.Ai
         //   bonus if the hex is a KNOWN (AiMapMemory, honest fog-of-war) resource hex with nothing
         //   built on it yet (2026-08-24 addition, project owner's own spec point 3 — a resource hex
         //   used to be worth exactly the same as bare ground unless it already had a mergeable
-        //   site).
+        //   site), "+" AGAIN (buildBaseMultiResourceBonus, 2026-08-24 P2 follow-up) if that same
+        //   known hex carries 2+ resource types rather than just 1 — see CountKnownResourceTypes.
         //   "-" a penalty scaled by how far `distanceFromNearestOwnBase` strays from
         //   buildBasePreferredDistance in EITHER direction — every candidate in [min, max] is
         //   legal, but this keeps the ranking centered on the sweet spot rather than indifferent
@@ -208,7 +210,11 @@ namespace Game.Ai
             if (existing != null && CanMergeIntoResourceSite(existing))
                 score += AiConfig.buildBaseResourceSiteMergeBonus;
             else if (existing == null && AiMapMemory.IsResourceHexKnown(player, candidate))
+            {
                 score += AiConfig.buildBaseResourceTypeWeight;
+                if (CountKnownResourceTypes(candidate) >= 2)
+                    score += AiConfig.buildBaseMultiResourceBonus;
+            }
 
             score -= Mathf.Abs(distanceFromNearestOwnBase - AiConfig.buildBasePreferredDistance) * AiConfig.buildBaseDistanceWeight;
 
@@ -220,6 +226,28 @@ namespace Game.Ai
             }
 
             return score;
+        }
+
+        // ScoreCandidateHex's own multi-type read (2026-08-24 P2 fix, project owner's own report:
+        // "AI не различает один известный ресурс и многоресурсный хекс"). Only ever called on a hex
+        // already confirmed AiMapMemory.IsResourceHexKnown by the caller — a hex's own resource
+        // TYPE SET is a static, permanent property (unlike the per-turn YIELD amount this class
+        // still never reads — see buildBaseResourceTypeWeight's own comment), so counting how many
+        // of the four types are non-zero via the real HexResourceBonusRegistry, gated behind that
+        // same "known" check, is exactly as honest as the single-dominant-type read this class
+        // already performed before this fix (same live-registry-behind-a-fog-of-war-gate pattern
+        // BuildFacilityTask's own pre-pass already establishes for DominantResourceType) — it just
+        // no longer throws away the "how many" part of that same already-permitted read.
+        private static int CountKnownResourceTypes(HexCoord hex)
+        {
+            ResourceYields bonus = HexResourceBonusRegistry.GetBonus(hex);
+            if (bonus == null)
+                return 0;
+            int count = 0;
+            foreach (ResourceType type in (ResourceType[])System.Enum.GetValues(typeof(ResourceType)))
+                if (bonus.Get(type) > 0)
+                    count++;
+            return count;
         }
 
         // Same rule CardHandUI.CanMergeIntoResourceSite already enforces for a human's own drag-drop

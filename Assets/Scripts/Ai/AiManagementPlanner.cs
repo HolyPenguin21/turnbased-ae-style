@@ -535,7 +535,24 @@ namespace Game.Ai
             }
             if (bestUnitCard != null)
             {
-                AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, unitScore, AiTaskCategory.Management);
+                // 2026-08-24 P1 fix (project owner's own SecureBase report): a Unit card
+                // GarrisonHexesForPlacement already steered toward an insecure non-citadel base
+                // (see that method's own nudge) used to still only ever score the ordinary Hero/
+                // Unit alternation score (managementBaseWeight-tier, ~50-65) — well below
+                // AiConfig.secureBaseTravelScore(100), so SecureBase's own courier dispatch almost
+                // always won arbitration first even though a card already headed to the exact same
+                // garrison should win per the project owner's own spec ("сначала направлять в
+                // незащищённую базу подходящие Unit-карты"). Bumped to secureBaseCardPlacementScore
+                // whenever the winning placement genuinely IS that garrison — never a blanket bump
+                // for every Unit card, only the one actually relieving an insecure base.
+                float score = unitScore;
+                ArmyData targetGarrison = bestUnitPlacement.Value.ExistingArmy;
+                if (targetGarrison != null && targetGarrison.IsGarrison
+                    && !targetGarrison.Hex.Equals(AiTurnController.GarrisonHexFor(player))
+                    && !AiArmyRoles.IsBaseGarrisonSecure(player, targetGarrison.Hex))
+                    score = AiConfig.secureBaseCardPlacementScore;
+
+                AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, score, AiTaskCategory.Management);
                 decision.Reason += roleBalance;
                 results.Add(decision);
             }
