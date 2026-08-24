@@ -39,8 +39,11 @@ namespace Game.UI
             if (roll == null)
                 return;
 
-            for (int i = 0; i < _diceSlots.Count && i < roll.Dice.Length; i++)
-                _diceSlots[i].PlayRoll(roll.Dice[i]);
+            // index/count so the whole row's dice land one after another but the ROW as a whole
+            // still finishes in DiceSlotUI's fixed GroupDuration regardless of dice count.
+            int count = Mathf.Min(_diceSlots.Count, roll.Dice.Length);
+            for (int i = 0; i < count; i++)
+                _diceSlots[i].PlayRoll(roll.Dice[i], i, count);
         }
 
         public void ShowRank(int rank)

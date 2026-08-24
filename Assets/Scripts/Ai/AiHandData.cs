@@ -20,6 +20,10 @@ namespace Game.Ai
         private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();
 
         public bool HasCardsLeftToDraw => _remainingDeck.Count > 0;
+        // Cards not yet drawn this game — AiTurnController.LogHand's own turn-begin log line
+        // (2026-08-24, project owner's own ask: surface unused-AP-relevant deck/hand state that
+        // was otherwise invisible outside the Inspector).
+        public int RemainingDeckCount => _remainingDeck.Count;
 
         public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize)
         {

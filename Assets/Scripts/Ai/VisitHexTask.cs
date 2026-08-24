@@ -78,21 +78,27 @@ namespace Game.Ai
             // citadel instead.
             HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
 
-            bool anyThreat = false;
+            HexCoord? threatHex = null;
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
             {
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue; // neutrals never trigger flight — see this class's own comment
 
-                anyThreat = true;
+                threatHex = sighting.Hex;
                 break;
             }
-            if (!anyThreat)
+            if (!threatHex.HasValue)
                 return null;
 
             if (task != null)
                 task.FledOnTurn = currentTurn;
+            // Outlives the triggering sighting itself (see AiMapMemory.ScoutDangerZones' own
+            // comment) — without this, the sighting that JUST caused this retreat goes stale in
+            // enemySightingMemoryTurns(2) turns and this exact spot opens back up to FindTarget
+            // again while the enemy army is most likely still sitting right there.
+            AiMapMemory.MarkScoutDanger(player, threatHex.Value, AiConfig.scoutDangerRadius,
+                currentTurn + AiConfig.scoutDangerCooldownTurns);
             return new AiScoutPlanner.ScoutTarget(homeHex, AiConfig.scoutFleeBonus,
                 "a known enemy army is nearby — retreats to the nearest base for one turn");
         }
@@ -207,6 +213,14 @@ namespace Game.Ai
                 return null;
             }
 
+            // A cooled-down scout-danger zone (see AiMapMemory.ScoutDangerZones' own comment)
+            // keeps excluding this candidate even once the sighting that first flagged it as
+            // dangerous has gone stale — 2026-08-24 fix, project owner's own report: without this,
+            // a scout that fled home cycled straight back out to the exact same still-there enemy
+            // every few turns the moment enemySightingMemoryTurns(2) let the sighting itself expire.
+            if (AiMapMemory.IsScoutDangerous(actor, candidate))
+                return null;
+
             int distanceFromScout = HexGridMath.Distance(army.Hex, candidate);
             float score = -distanceFromScout * AiConfig.scoutProximityWeight;
 
@@ -257,7 +271,7 @@ namespace Game.Ai
         public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex)
         {
             System.Func<HexCoord, bool> blockHex = hex => !hex.Equals(targetHex)
-                && AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue;
+                && (AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue || AiMapMemory.IsScoutDangerous(army.Owner, hex));
             // Routed through the shared AiTurnController.FindAffordableStep (2026-08-23 fix) —
             // this method's own path (blocked around known sightings) can differ from
             // IsFirstStepAffordable's own unblocked one below, so THIS is the path that actually

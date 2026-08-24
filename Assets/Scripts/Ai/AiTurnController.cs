@@ -299,7 +299,11 @@ namespace Game.Ai
             string actionsSummary = actionCounts.Count > 0
                 ? string.Join(", ", actionCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key}×{kv.Value}"))
                 : "no actions";
+            // hand/deck counts added 2026-08-24 (project owner's own ask) right alongside "AP
+            // left=" — a turn that ends with AP still unspent is exactly the case where it also
+            // matters whether that was because the hand/deck had nothing left to spend it on.
             AiDebugLog.Write($"[AI] === {player.Nickname}'s turn ends (turn {ctx.TurnNumber}) — AP left={root.ActionPoints}, "
+                + $"hand={hand?.Hand.Count ?? 0}, deck left={hand?.RemainingDeckCount ?? 0}, "
                 + $"armies={startArmies}→{endArmies}, human={startHuman}→{root.GetResource(ResourceType.Human)}, "
                 + $"energy={startEnergy}→{root.GetResource(ResourceType.Energy)}, "
                 + $"materials={startMaterials}→{root.GetResource(ResourceType.Materials)}, "
@@ -1060,7 +1064,8 @@ namespace Game.Ai
             string cards = hand.Hand.Count > 0
                 ? string.Join(", ", hand.Hand.Select(c => c.Definition != null ? c.Definition.displayName : "?"))
                 : "empty";
-            AiDebugLog.Write($"[AI] {player.Nickname}: checks hand — {cards}.");
+            AiDebugLog.Write($"[AI] {player.Nickname}: checks hand ({hand.Hand.Count} in hand, "
+                + $"{hand.RemainingDeckCount} left in deck) — {cards}.");
         }
 
         // Every persistent AiTask still standing at the start of this turn — the "уровень

@@ -148,10 +148,11 @@ namespace Game.UI
         // though a real reroll happened (see the user's own report). Forces that one slot to
         // replay regardless of whether its value actually changed.
         // onComplete (optional): fired once every slot THIS call touched has finished flipping
-        // (immediately, if none needed to animate) — BattleAttackPopupUI's roll/duel coroutine
-        // awaits this before letting Accept/Spend become clickable again or handing the turn to
-        // the other side (see the user's own report: the Accept button, and the AI's own counter-
-        // spend, used to happen mid-flip or even before the flip was ever seen at all).
+        // (immediately, if none needed to animate). BattleAttackPopupUI no longer waits on this
+        // before advancing the duel — the roll result is already decided the instant the dice
+        // are rolled, so Accept/Spend and the next duel turn proceed immediately rather than
+        // pausing for the flip to visibly land (per the user's own request, 2026-08-24) — but the
+        // hook is kept in case a future caller still wants to know when a strip settles.
         public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
         {
             if (dice == null)
@@ -207,8 +208,15 @@ namespace Game.UI
                 if (pending == 0)
                     onComplete?.Invoke();
             }
-            foreach (int i in toAnimate)
-                _diceSlots[i].PlayRoll(dice[i], SlotDone);
+            // index/count (position within THIS call's own toAnimate list, not the whole dice
+            // array) so a full first roll lands its dice one after another across the row, and a
+            // later single-die Fate reroll still gets DiceSlotUI's full GroupDuration to itself
+            // rather than landing near-instantly as if it were still part of an N-die group.
+            for (int pos = 0; pos < toAnimate.Count; pos++)
+            {
+                int i = toAnimate[pos];
+                _diceSlots[i].PlayRoll(dice[i], pos, toAnimate.Count, SlotDone);
+            }
         }
     }
 }

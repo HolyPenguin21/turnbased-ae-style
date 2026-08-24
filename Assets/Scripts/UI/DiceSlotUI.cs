@@ -20,11 +20,20 @@ namespace Game.UI
         [SerializeField] private Sprite hitSprite;
         [SerializeField] private Sprite missSprite;
 
-        // Half-flip (scale 1->0 or 0->1) duration and how many full flips before landing — six
-        // flips at 0.08s each half is ~1s total, quick enough not to stall the turn-order/battle
-        // flow but long enough to actually read as a roll rather than a flicker.
-        private const int FlipCount = 6;
-        private const float FlipHalfDuration = 0.08f;
+        // Every roll GROUP (one whole DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice call)
+        // takes exactly this long overall, no matter how many dice are in it — individual dice
+        // within the group land one after another (index 0 first, the last index landing at
+        // exactly GroupDuration) rather than all landing together, per the user's own request
+        // (2026-08-24). See the index/count overload of PlayRoll.
+        private const float GroupDuration = 1.5f;
+        // Target half-flip length a die's own share of GroupDuration is divided into whole
+        // flips around (see RollRoutine) — not itself the duration of any single flip, since
+        // that gets stretched/compressed slightly so flipCount flips exactly fill the die's
+        // actual landing time.
+        private const float TargetFlipHalfDuration = 0.08f;
+        // Floor on flips even for a die landing very early in its group, so a fast landing
+        // still reads as a quick spin rather than a bare flicker.
+        private const int MinFlips = 3;
 
         private Coroutine _rollRoutine;
 
@@ -48,12 +57,21 @@ namespace Game.UI
                 image.rectTransform.localScale = Vector3.one;
         }
 
-        // onComplete (optional): fired once the flip settles on its final face — lets a caller
-        // (BattleCombatantRowUI/BattleAttackPopupUI) actually wait for the animation instead of
-        // firing-and-forgetting it, so e.g. the Accept button can stay locked out until every die
-        // this call touched has visibly landed (see the user's own report: Accept was clickable,
-        // and the AI's own reactive reroll could resolve, mid-flip).
+        // onComplete (optional): fired once the flip settles on its final face. A single-die
+        // roll with no group of its own — lands after the full GroupDuration, same as index 0
+        // of a 1-die group.
         public void PlayRoll(bool hit, System.Action onComplete = null)
+        {
+            PlayRoll(hit, 0, 1, onComplete);
+        }
+
+        // index/count: this die's position (0-based) among the `count` dice rolled together in
+        // this same call (see DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice) — dice land one
+        // after another from index 0 to count-1, spaced evenly across GroupDuration, so the
+        // WHOLE group finishes in the same 1.5s regardless of how many dice it contains, rather
+        // than every die spinning for a fixed length and the group as a whole taking longer the
+        // more dice it has (per the user's own request, 2026-08-24).
+        public void PlayRoll(bool hit, int index, int count, System.Action onComplete = null)
         {
             if (!gameObject.activeInHierarchy)
             {
@@ -63,10 +81,11 @@ namespace Game.UI
             }
             if (_rollRoutine != null)
                 StopCoroutine(_rollRoutine);
-            _rollRoutine = StartCoroutine(RollRoutine(hit, onComplete));
+            float landDelay = GroupDuration * (index + 1) / Mathf.Max(1, count);
+            _rollRoutine = StartCoroutine(RollRoutine(hit, landDelay, onComplete));
         }
 
-        private IEnumerator RollRoutine(bool finalHit, System.Action onComplete)
+        private IEnumerator RollRoutine(bool finalHit, float duration, System.Action onComplete)
         {
             if (image == null)
             {
@@ -75,13 +94,18 @@ namespace Game.UI
                 yield break;
             }
             RectTransform rt = image.rectTransform;
-            for (int i = 0; i < FlipCount; i++)
+            // flipCount flips, each half taking halfDuration, exactly fill `duration` — so this
+            // die visibly lands right at its own scheduled point in the group instead of finishing
+            // its flips early/late and sitting idle (or overshooting) before/after.
+            int flipCount = Mathf.Max(MinFlips, Mathf.RoundToInt(duration / (2f * TargetFlipHalfDuration)));
+            float halfDuration = duration / (2f * flipCount);
+            for (int i = 0; i < flipCount; i++)
             {
-                bool isLast = i == FlipCount - 1;
+                bool isLast = i == flipCount - 1;
                 bool faceThisFlip = isLast ? finalHit : Random.value < 0.5f;
-                yield return ScaleX(rt, 1f, 0f, FlipHalfDuration);
+                yield return ScaleX(rt, 1f, 0f, halfDuration);
                 ApplySprite(faceThisFlip);
-                yield return ScaleX(rt, 0f, 1f, FlipHalfDuration);
+                yield return ScaleX(rt, 0f, 1f, halfDuration);
             }
             _rollRoutine = null;
             onComplete?.Invoke();

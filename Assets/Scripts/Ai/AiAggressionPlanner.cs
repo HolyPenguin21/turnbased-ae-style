@@ -799,7 +799,97 @@ namespace Game.Ai
                 return AiDecision.Move(task.Army, moveTarget, task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
             }
 
+            // 2026-08-24 P0 fix (project owner's own report): the courier arriving used to be a
+            // blank cheque straight into ReinforceSwap, regardless of whether either side could
+            // actually AFFORD what ReinforceSwapRoutine was about to attempt — ArmyActions.
+            // SwapMembers/TransferMember only reject per-call once inside the routine, which by
+            // then has already committed to logging "0 wounded swapped out" and unconditionally
+            // deleting the task. Preflight with the exact same pairing BuildReinforceSwapPairs
+            // uses, so this prediction can't drift from what the routine actually attempts. No
+            // wounded left is a legitimate (not starved) reason to still hand off to the routine —
+            // that's ReinforceSwapRoutine's own "just deliver the courier's cargo" path.
+            ReinforceSwapPlan plan = BuildReinforceSwapPlan(task.Army, task.TargetArmy);
+            if (plan.HasWounded && !root.CanSpendActionPoints(plan.ApCost))
+                return null; // AP-starved this turn — task stays put, retried once AP resets
+
             return AiDecision.ReinforceSwap(task, AiConfig.aggressionBaseWeight);
+        }
+
+        // Pure pairing helper shared by BuildReinforceSwapPlan's own AP preflight and
+        // ReinforceSwapRoutine's actual execution, so the two can never disagree about which
+        // recruit replaces which wounded member (2026-08-24, project owner's own report). Mirrors
+        // ReinforceSwapRoutine's original inline loop exactly: each recruit prefers a wounded
+        // member sharing a TypeTags overlap, falling back to the first still-unmatched wounded
+        // member otherwise. Read-only — never mutates either army.
+        private static (List<UnitData> recruitsMatched, List<UnitData> woundedMatched,
+            List<UnitData> unswappedRecruits, List<UnitData> remainingWoundedPool) BuildReinforceSwapPairs(
+            ArmyData courier, ArmyData wounded)
+        {
+            List<UnitData> remainingWounded = wounded.Members.Where(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2).ToList();
+            List<UnitData> recruits = courier.Members.Where(m => !m.IsHero).ToList();
+            var recruitsMatched = new List<UnitData>();
+            var woundedMatched = new List<UnitData>();
+            var unswappedRecruits = new List<UnitData>();
+
+            foreach (UnitData recruit in recruits)
+            {
+                UnitData replaced = remainingWounded.Count > 0
+                    ? (remainingWounded.FirstOrDefault(w => w.TypeTags.Overlaps(recruit.TypeTags)) ?? remainingWounded[0])
+                    : null;
+                if (replaced == null)
+                {
+                    unswappedRecruits.Add(recruit);
+                    continue;
+                }
+                remainingWounded.Remove(replaced);
+                recruitsMatched.Add(recruit);
+                woundedMatched.Add(replaced);
+            }
+
+            return (recruitsMatched, woundedMatched, unswappedRecruits, remainingWounded);
+        }
+
+        // AP cost prediction for the whole ReinforceSwapRoutine run — see ArmyActions.SwapMembers/
+        // TransferMember's own comments for the underlying rule this mirrors: a side only pays
+        // (from the shared PlayerRoot.ActionPoints pool, same pool for both armies since they
+        // share an owner) for what it RECEIVES, and only if that side has already
+        // HasActivatedThisTurn. The extra-evacuation/extra-fold-in tails are bounded by each
+        // army's own HasRoom in the routine, which this preflight doesn't replicate — it costs
+        // the FULL remaining pool on each tail instead, a deliberate upper bound (same "good
+        // enough to compare, not exact" precision AiAggressionPlanner.ApRoundTrip's own comment
+        // already accepts elsewhere): overcounting here only ever makes the AI wait one extra
+        // turn it didn't strictly need to, never lets it start a swap it can't fully pay for.
+        private readonly struct ReinforceSwapPlan
+        {
+            public readonly bool HasWounded;
+            public readonly int ApCost;
+            public ReinforceSwapPlan(bool hasWounded, int apCost)
+            {
+                HasWounded = hasWounded;
+                ApCost = apCost;
+            }
+        }
+
+        private static ReinforceSwapPlan BuildReinforceSwapPlan(ArmyData courier, ArmyData wounded)
+        {
+            bool hasWounded = wounded.Members.Any(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2);
+            (List<UnitData> recruitsMatched, List<UnitData> woundedMatched, List<UnitData> unswappedRecruits,
+                List<UnitData> remainingWoundedPool) = BuildReinforceSwapPairs(courier, wounded);
+
+            int apCost = 0;
+            for (int i = 0; i < recruitsMatched.Count; i++)
+            {
+                if (courier.HasActivatedThisTurn)
+                    apCost += woundedMatched[i].ActivationApCost;
+                if (wounded.HasActivatedThisTurn)
+                    apCost += recruitsMatched[i].ActivationApCost;
+            }
+            if (courier.HasActivatedThisTurn)
+                apCost += remainingWoundedPool.Sum(w => w.ActivationApCost);
+            if (wounded.HasActivatedThisTurn)
+                apCost += unswappedRecruits.Sum(r => r.ActivationApCost);
+
+            return new ReinforceSwapPlan(hasWounded, apCost);
         }
 
         // ---- Execution ----
@@ -954,24 +1044,21 @@ namespace Game.Ai
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
 
-            List<UnitData> remainingWounded = wounded.Members.Where(m => !m.IsHero && m.HitPointsCurrent <= m.HitPointsMax / 2).ToList();
-            List<UnitData> recruits = courier.Members.Where(m => !m.IsHero).ToList();
-            var unswappedRecruits = new List<UnitData>();
+            // Pairing itself comes from the same helper AdvanceReinforceTask's own AP preflight
+            // used to decide this swap was worth issuing in the first place (2026-08-24 fix) — the
+            // routine no longer works out its own pairing separately, so it can never disagree
+            // with the plan that greenlit it.
+            (List<UnitData> recruitsToSwap, List<UnitData> woundedToSwap, List<UnitData> unswappedRecruits,
+                List<UnitData> remainingWounded) = BuildReinforceSwapPairs(courier, wounded);
+            bool hadWoundedToStartWith = woundedToSwap.Count > 0 || remainingWounded.Count > 0;
 
             int swapped = 0;
-            foreach (UnitData recruit in recruits)
+            for (int i = 0; i < recruitsToSwap.Count; i++)
             {
-                UnitData replaced = remainingWounded.Count > 0
-                    ? (remainingWounded.FirstOrDefault(w => w.TypeTags.Overlaps(recruit.TypeTags)) ?? remainingWounded[0])
-                    : null;
-                if (replaced == null)
-                {
-                    unswappedRecruits.Add(recruit);
-                    continue;
-                }
+                UnitData recruit = recruitsToSwap[i];
+                UnitData replaced = woundedToSwap[i];
                 if (ArmyActions.SwapMembers(recruit, courier, replaced, wounded, ctx.HexSelection, out string failReason))
                 {
-                    remainingWounded.Remove(replaced);
                     swapped++;
                 }
                 else
@@ -1024,7 +1111,25 @@ namespace Game.Ai
                 + $"{swapped} wounded swapped out"
                 + (extraEvacuated > 0 ? $", {extraEvacuated} more wounded evacuated" : "")
                 + (extraFolded > 0 ? $", {extraFolded} extra reinforcement(s) folded in" : "") + $".{delta}");
-            AiTaskRegistry.Remove(player, task);
+
+            // 2026-08-24 P0 fix (project owner's own report): AdvanceReinforceTask's own AP
+            // preflight should already keep this from firing on an outright AP-starved rendezvous,
+            // but a genuine total no-op is still possible in principle (every SwapMembers/
+            // TransferMember call above rejected for some OTHER reason, e.g. a capacity edge case)
+            // — the task used to be deleted unconditionally regardless, silently abandoning
+            // wounded units that were never actually rescued. Only close the task out when there
+            // was nothing left to rescue to begin with, or when at least one wounded member
+            // actually got swapped/evacuated home; otherwise leave it for the next Decide pass to
+            // retry against (same courier, same target — nothing about either army changed).
+            if (!hadWoundedToStartWith || swapped > 0 || extraEvacuated > 0)
+            {
+                AiTaskRegistry.Remove(player, task);
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{courier.Name}\" reinforcement swap made no progress at "
+                    + $"\"{wounded.Name}\" — task stays active for a retry.");
+            }
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();

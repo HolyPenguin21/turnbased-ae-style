@@ -378,6 +378,15 @@ namespace Game.Ai
         // moves to intercept rather than keep assembling in place. 0.5 would be a bare coin-flip
         // "technically wins"; 0.6 is the project owner's own explicit margin.
         public const float defenceActiveWinChance = 0.6f;
+        // AiDefencePlanner.TryStrengthenCandidate's own full-but-insufficient upgrade gate
+        // (2026-08-24 fix, project owner's own report: Rust Tank→Scrap Mortar→Rad Brute→Colossus,
+        // four swaps in a row against the same target, each a genuine raw Defense+Attack gain yet
+        // the army never got measurably closer to actually clearing defenceActiveWinChance above).
+        // A candidate swap is only worth issuing if it closes a WorthIt.CanDamageAll coverage gap
+        // outright, or buys at least this much real WinChance against the confirmed sighting —
+        // raw power alone no longer qualifies. Small on purpose: this only needs to rule out
+        // swaps that don't move the needle at all, not demand a huge single-swap leap.
+        public const float defenceSwapMinWinChanceGain = 0.03f;
         // 1.3 (Turtle) — AiDefencePlanner.IsUnderSiege's own trigger radius: a known non-neutral
         // army THIS CLOSE to the citadel, stronger (WorthIt) than the current DefendCitadel task's
         // own army (or the bare garrison if no task exists yet) forces full alarm — mass at the
@@ -508,6 +517,18 @@ namespace Game.Ai
         // MoveArmy/assembly candidates (see reconPriorityDecayPerTurn above), fleeing a real
         // threat shouldn't get weaker just because the turn counter has moved on.
         public const float scoutFleeBonus = 25f;
+
+        // 2026-08-24 fix (project owner's own report): enemySightingMemoryTurns is only 2 turns,
+        // so a scout that flees home and stops observing the threat let that sighting go stale
+        // long before the actual enemy army had moved on — VisitHexTask.FindTarget's own
+        // known-sighting exclusion then had nothing left to exclude, and the scout walked straight
+        // back into the same still-there army every few turns (AiMapMemory.ScoutDangerZones). This
+        // cooldown deliberately outlives enemySightingMemoryTurns so the sector actually stays
+        // closed for a while after a retreat, not just until the sighting itself expires.
+        public const int scoutDangerCooldownTurns = 4;
+        // Same radius as scoutFleeRadius — the zone should cover exactly the area that would
+        // trigger ANOTHER flee if re-entered, no wider.
+        public const int scoutDangerRadius = scoutFleeRadius;
 
         // ---- Экономика — Задача 1 (Постройка facility) ----
         // "1 постройка за раз" — the project owner's own 2026-08-19 call: several concurrent builds

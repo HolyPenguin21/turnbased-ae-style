@@ -23,11 +23,11 @@ namespace Game.UI
     // final. If NEITHER side has any Fate to spend at all, the whole duel phase is skipped and
     // the result shows immediately off the raw roll. A side with no hero, no Fate, or no miss
     // left to reroll on ITS OWN turn auto-declines after a short delay instead of forcing a human
-    // to click Accept on a turn with nothing to decide (see RunHumanTurn/RunAiTurn). Every turn's
-    // own reroll animation is awaited before the NEXT turn (or Resolve) begins, and Accept/Spend
-    // are locked out for that whole window — see the user's own report: the AI's own reactive
-    // reroll used to resolve invisibly in the same frame as the human's own Spend/Accept click,
-    // so a tied roll the player could see with their own eyes still lost right in front of them.
+    // to click Accept on a turn with nothing to decide (see RunHumanTurn/RunAiTurn). A roll's
+    // outcome (success counts, who gets to Spend/Accept next, the eventual Resolve) is decided
+    // and shown the instant the dice are rolled — the duel/turn flow never waits on the flip
+    // animation to visibly land (per the user's own request, 2026-08-24); the dice strip just
+    // plays its spin independently alongside whatever happens next.
     //
     // Result state: attacker's own art (standing in for the original's cinematic "scan" insert),
     // a text summary, and the target's outcome with a DESTROYED stamp if it died.
@@ -112,9 +112,6 @@ namespace Game.UI
         private bool _defenderTurnActive;
         private bool _humanSpent;
         private bool _humanDeclined;
-        // True for the window between a reroll being kicked off (human or AI) and its flip
-        // animation actually landing — see RunTurn/RunHumanTurn/RunAiTurn's own WaitUntil on this.
-        private bool _rerollAnimating;
         // Whatever the turn that just ran (RunTurn) actually did — read by RunDuel right after
         // `yield return RunTurn(...)` returns, since a coroutine can't hand back an ordinary
         // return value.
@@ -268,7 +265,6 @@ namespace Game.UI
             _awaitingHumanDecision = false;
             _humanSpent = false;
             _humanDeclined = false;
-            _rerollAnimating = false;
 
             if (panelRoot != null)
             {
@@ -450,9 +446,10 @@ namespace Game.UI
             StartCoroutine(RunRollAndDuel());
         }
 
-        // Rolls, reveals both rows (awaiting their flip animations — see the user's own report:
-        // Accept used to unlock before the dice had even visibly landed), then runs the Fate duel
-        // (see RunDuel) and only resolves once it's actually over.
+        // Rolls, reveals both rows, then runs the Fate duel (see RunDuel) and resolves once it's
+        // actually over — the dice strips' own flip animation plays independently and is never
+        // awaited (per the user's own request, 2026-08-24: the roll's result is already decided
+        // the moment the dice are rolled, so nothing downstream should pause for the spin).
         private IEnumerator RunRollAndDuel()
         {
             ChallengeResult result;
@@ -479,11 +476,8 @@ namespace Game.UI
                 $"attacker={BattleDebugLog.DiceString(_attackerDice)} ({result.AttackerSuccesses} hits), " +
                 $"defender={BattleDebugLog.DiceString(_defenderDice)} ({result.DefenderSuccesses} hits), rawDamage={result.Damage}");
 
-            bool attackerAnimating = attackerRow != null;
-            bool defenderAnimating = defenderRow != null;
-            attackerRow?.SetDice(_attackerDice, -1, () => attackerAnimating = false);
-            defenderRow?.SetDice(_defenderDice, -1, () => defenderAnimating = false);
-            yield return new WaitUntil(() => !attackerAnimating && !defenderAnimating);
+            attackerRow?.SetDice(_attackerDice);
+            defenderRow?.SetDice(_defenderDice);
 
             FireRollThought();
             yield return RunDuel();
@@ -637,9 +631,9 @@ namespace Game.UI
                     break;
 
                 spentThisTurn = true;
-                yield return new WaitUntil(() => !_rerollAnimating);
-                // Loop back — same side, same turn, offered Spend-or-Accept again against the
-                // now-updated dice.
+                // Loop back immediately — same side, same turn, offered Spend-or-Accept again
+                // against the now-updated dice; the reroll's own flip animation plays
+                // independently and doesn't gate this (per the user's own request, 2026-08-24).
             }
             _turnSpent = spentThisTurn;
         }
@@ -689,18 +683,16 @@ namespace Game.UI
                     $"(remaining={hero.Fate}), rerolled slot {rerolledIndex} -> " +
                     $"{(isDefenderTurn ? _defenderDice : _attackerDice)[rerolledIndex]}");
 
-                bool animating = isDefenderTurn ? defenderRow != null : attackerRow != null;
                 if (isDefenderTurn)
                 {
-                    defenderRow?.SetDice(_defenderDice, rerolledIndex, () => animating = false);
+                    defenderRow?.SetDice(_defenderDice, rerolledIndex);
                     defenderRow?.OnFateSpent();
                 }
                 else
                 {
-                    attackerRow?.SetDice(_attackerDice, rerolledIndex, () => animating = false);
+                    attackerRow?.SetDice(_attackerDice, rerolledIndex);
                     attackerRow?.OnFateSpent();
                 }
-                yield return new WaitUntil(() => !animating);
 
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
                 // just came back a miss again — this side is done trying Fate for the rest of
@@ -755,8 +747,7 @@ namespace Game.UI
             defenderRow?.SetSpendInteractable(false);
             if (acceptButton != null)
                 acceptButton.interactable = false;
-            _rerollAnimating = true;
-            defenderRow?.SetDice(_defenderDice, rerolledIndex, () => _rerollAnimating = false);
+            defenderRow?.SetDice(_defenderDice, rerolledIndex);
             defenderRow?.OnFateSpent();
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] defender {_defenderHero.Name} (human) spent Fate " +
@@ -773,8 +764,7 @@ namespace Game.UI
             attackerRow?.SetSpendInteractable(false);
             if (acceptButton != null)
                 acceptButton.interactable = false;
-            _rerollAnimating = true;
-            attackerRow?.SetDice(_attackerDice, rerolledIndex, () => _rerollAnimating = false);
+            attackerRow?.SetDice(_attackerDice, rerolledIndex);
             attackerRow?.OnFateSpent();
             _humanSpent = true;
             BattleDebugLog.Write($"[FateDuelDiag] attacker {_attackerHero.Name} (human) spent Fate " +

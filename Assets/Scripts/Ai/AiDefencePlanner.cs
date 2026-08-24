@@ -807,7 +807,7 @@ namespace Game.Ai
                 // TryStrengthenCandidate's own comment).
                 if (!existing.Army.HasRoom)
                 {
-                    AiDecision strengthen = TryStrengthenCandidate(player, existing.Army, existing, pool, ctx, homeHex, assemblyScore);
+                    AiDecision strengthen = TryStrengthenCandidate(player, existing.Army, existing, pool, ctx, homeHex, assemblyScore, activeSighting);
                     if (strengthen != null)
                         results.Add(strengthen);
                 }
@@ -890,17 +890,16 @@ namespace Game.Ai
         // looks strong on paper but dies early in the real fight" gap FindRecruitAt's own comment
         // already documents for Raid.
         private static AiDecision TryStrengthenCandidate(PlayerSetupData player, ArmyData army, AiTask task,
-            AiResourcePool pool, AiTurnContext ctx, HexCoord homeHex, float score)
+            AiResourcePool pool, AiTurnContext ctx, HexCoord homeHex, float score, AiMapMemory.KnownEnemySighting? activeSighting)
         {
             UnitData weakest = army.Members.Where(m => !m.IsHero)
                 .OrderBy(m => m.Defense + m.Attack).FirstOrDefault();
             if (weakest == null)
                 return null;
 
-            float weakestPower = weakest.Defense + weakest.Attack;
-            UnitData best = FindStrengthenCandidate(army, homeHex, weakestPower, pool, allowCriticallyWounded: false, out ArmyData bestSource);
+            UnitData best = FindStrengthenCandidate(army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: false, out ArmyData bestSource);
             if (best == null)
-                best = FindStrengthenCandidate(army, homeHex, weakestPower, pool, allowCriticallyWounded: true, out bestSource);
+                best = FindStrengthenCandidate(army, homeHex, weakest, pool, ctx.Map, activeSighting, allowCriticallyWounded: true, out bestSource);
             if (best == null || bestSource == null)
                 return null;
             if (!CanAffordSwapInto(army, best) || !CanAffordSwapInto(bestSource, weakest))
@@ -916,13 +915,60 @@ namespace Game.Ai
         // TryStrengthenCandidate's own single-candidate scan, split out so the HP-preference/
         // fallback shape can be one loop called twice (see that method's own comment) instead of
         // duplicated inline — same "healthy-first, wounded-only-if-nothing-else" two-pass FindRecruitAt
-        // already establishes, `bestPower` seeded from `weakest`'s own power so only a genuine
-        // upgrade is ever returned.
-        private static UnitData FindStrengthenCandidate(ArmyData army, HexCoord homeHex, float bestPower, AiResourcePool pool,
-            bool allowCriticallyWounded, out ArmyData source)
+        // already establishes.
+        //
+        // 2026-08-24 fix (project owner's own report): with a confirmed `activeSighting`, ranking
+        // used to be the raw Defense+Attack sum — every swap the log showed (Rust Tank→Scrap
+        // Mortar→Rad Brute→Colossus) was a genuine power gain, yet the army never got closer to
+        // actually clearing MeetsActiveComposition's own WorthIt.MeetsWinChance gate. Now ranked by
+        // the SAME ingredients that gate: WorthIt.CanDamageAll coverage first (closing a false→true
+        // gap always wins, a true→false regression is never accepted), then the real WinChance a
+        // hypothetical swap would buy, raw power only as the final tie-break. No `activeSighting`
+        // (Patrol posture — nothing to size a win chance against) falls back to the original raw-
+        // power heuristic unchanged.
+        private static UnitData FindStrengthenCandidate(ArmyData army, HexCoord homeHex, UnitData weakest, AiResourcePool pool,
+            HexMap map, AiMapMemory.KnownEnemySighting? activeSighting, bool allowCriticallyWounded, out ArmyData source)
         {
             source = null;
             UnitData best = null;
+
+            if (!activeSighting.HasValue)
+            {
+                float bestPower = weakest.Defense + weakest.Attack;
+                foreach (ArmyData candidate in pool.AvailableArmies())
+                {
+                    if (candidate == army || candidate.IsPrison || !candidate.Hex.Equals(homeHex))
+                        continue;
+                    foreach (UnitData unit in candidate.Members)
+                    {
+                        if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                            continue;
+                        if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
+                            continue;
+                        float power = unit.Defense + unit.Attack;
+                        if (power <= bestPower)
+                            continue;
+                        bestPower = power;
+                        source = candidate;
+                        best = unit;
+                    }
+                }
+                return best;
+            }
+
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = activeSighting.Value.Defenders;
+            float hexBonus = WorthIt.HexDefenseBonus(activeSighting.Value.Hex, map);
+            List<UnitData> baseRoster = army.Members.Where(m => !m.IsHero && m != weakest).ToList();
+            IEnumerable<UnitData> currentRoster = army.Members.Where(m => !m.IsHero);
+
+            bool baselineCoverage = WorthIt.CanDamageAll(currentRoster, defenders, hexBonus);
+            float baselineWinChance = EvaluateWinChance(currentRoster, defenders, activeSighting.Value, hexBonus);
+
+            bool bestCoverage = baselineCoverage;
+            float bestWinChance = baselineWinChance;
+            float bestPowerTieBreak = weakest.Defense + weakest.Attack;
+            bool found = false;
+
             foreach (ArmyData candidate in pool.AvailableArmies())
             {
                 if (candidate == army || candidate.IsPrison || !candidate.Hex.Equals(homeHex))
@@ -933,15 +979,69 @@ namespace Game.Ai
                         continue;
                     if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                         continue;
+
+                    List<UnitData> hypothetical = baseRoster.Append(unit).ToList();
+                    bool coverage = WorthIt.CanDamageAll(hypothetical, defenders, hexBonus);
+                    if (baselineCoverage && !coverage)
+                        continue; // never trade away coverage this army already has
+
+                    float winChance = EvaluateWinChance(hypothetical, defenders, activeSighting.Value, hexBonus);
                     float power = unit.Defense + unit.Attack;
-                    if (power <= bestPower)
-                        continue;
-                    bestPower = power;
-                    source = candidate;
-                    best = unit;
+
+                    bool better;
+                    if (coverage != bestCoverage)
+                        better = coverage; // false→true beats every already-found candidate outright
+                    else if (winChance != bestWinChance)
+                        better = winChance > bestWinChance;
+                    else
+                        better = power > bestPowerTieBreak;
+
+                    if (!found || better)
+                    {
+                        found = true;
+                        bestCoverage = coverage;
+                        bestWinChance = winChance;
+                        bestPowerTieBreak = power;
+                        source = candidate;
+                        best = unit;
+                    }
                 }
             }
+
+            if (best == null)
+                return null;
+
+            // Only actually worth the swap if it closes a coverage gap outright, or buys a real
+            // WinChance gain over what this army can already do today — see
+            // AiConfig.defenceSwapMinWinChanceGain's own comment.
+            bool coverageClosed = !baselineCoverage && bestCoverage;
+            bool winChanceImproved = bestWinChance >= baselineWinChance + AiConfig.defenceSwapMinWinChanceGain;
+            if (!coverageClosed && !winChanceImproved)
+            {
+                source = null;
+                return null;
+            }
             return best;
+        }
+
+        // WorthIt.MeetsWinChance's own "full roster if we have per-unit Defenders, aggregate sum
+        // otherwise" branch, reusable against a hypothetical (not-yet-real) roster — WorthIt's own
+        // ArmyData-overload WinChance can't be asked about a swap that hasn't happened yet, so this
+        // builds the same DefenderProfile snapshot FindStrengthenCandidate needs by hand instead.
+        private static float EvaluateWinChance(IEnumerable<UnitData> attackerUnits, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            AiMapMemory.KnownEnemySighting sighting, float hexBonus)
+        {
+            if (defenders != null && defenders.Count > 0)
+            {
+                List<WorthIt.DefenderProfile> attackerProfiles = attackerUnits
+                    .Select(u => new WorthIt.DefenderProfile(u.Defense, u.HasAbility(UnitAbilities.CeramicArmor),
+                        u.TypeTags.ToList(), u.Attack, u.HitPointsCurrent, u.Initiative))
+                    .ToList();
+                return WorthIt.WinChance(attackerProfiles, defenders, hexBonus);
+            }
+            float ourAttack = attackerUnits.Sum(u => u.Attack);
+            float ourDefense = attackerUnits.Sum(u => u.Defense);
+            return WorthIt.WinChance(ourAttack, ourDefense, sighting.AttackSum, sighting.DefenseSum);
         }
 
         // Same "already-activated armies pay for what joins them" pre-check GarrisonReorgTask.

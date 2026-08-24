@@ -132,6 +132,24 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> KnownEventGuards =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>>();
 
+        // A recorded scout retreat (VisitHexTask.TryFlee) — deliberately OUTLIVES the
+        // EnemySighting that triggered it (enemySightingMemoryTurns is only 2 turns; a scout that
+        // retreats home and stops observing the threat lets that sighting go stale well before the
+        // enemy army has actually moved on, so relying on sighting memory alone had the scout walk
+        // straight back into the same still-there army every few turns — project owner's own
+        // 2026-08-24 report). One zone per triggering sighting hex, not per scout — any scout
+        // (this player's own) approaching the same area is turned away, not just the one that first
+        // found it.
+        private class ScoutDangerZone
+        {
+            public HexCoord Center;
+            public int Radius;
+            public int AvoidUntilTurn;
+        }
+
+        private static readonly Dictionary<PlayerSetupData, List<ScoutDangerZone>> ScoutDangerZones =
+            new Dictionary<PlayerSetupData, List<ScoutDangerZone>>();
+
         private static bool _subscribed;
         // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
         // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
@@ -160,6 +178,7 @@ namespace Game.Ai
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
             KnownEventGuards.Clear();
+            ScoutDangerZones.Clear();
             _currentTurn = 0;
         }
 
@@ -175,19 +194,60 @@ namespace Game.Ai
         public static void OnTurnStarted(PlayerSetupData actor, int turnNumber)
         {
             _currentTurn = turnNumber;
-            if (actor == null || !EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
+            if (actor == null)
                 return;
 
-            List<int> stale = null;
-            foreach (KeyValuePair<int, EnemySighting> kv in sightings)
+            if (EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
             {
-                if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
-                    (stale ?? (stale = new List<int>())).Add(kv.Key);
+                List<int> stale = null;
+                foreach (KeyValuePair<int, EnemySighting> kv in sightings)
+                {
+                    if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
+                        (stale ?? (stale = new List<int>())).Add(kv.Key);
+                }
+                if (stale != null)
+                    foreach (int armyId in stale)
+                        sightings.Remove(armyId);
             }
-            if (stale == null)
+
+            if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+                zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn);
+        }
+
+        // Called by VisitHexTask.TryFlee the moment a retreat actually triggers — `center` is the
+        // triggering sighting's own hex (not the fleeing scout's), so the zone sits on the actual
+        // threat regardless of which direction a scout approached it from. Repeated calls for a
+        // center already inside an existing zone just extend that zone's own AvoidUntilTurn rather
+        // than piling up duplicate overlapping entries.
+        public static void MarkScoutDanger(PlayerSetupData actor, HexCoord center, int radius, int avoidUntilTurn)
+        {
+            if (actor == null)
                 return;
-            foreach (int armyId in stale)
-                sightings.Remove(armyId);
+            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+            {
+                zones = new List<ScoutDangerZone>();
+                ScoutDangerZones[actor] = zones;
+            }
+
+            ScoutDangerZone existing = zones.Find(z => z.Center.Equals(center));
+            if (existing != null)
+            {
+                existing.Radius = radius;
+                if (avoidUntilTurn > existing.AvoidUntilTurn)
+                    existing.AvoidUntilTurn = avoidUntilTurn;
+                return;
+            }
+            zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
+        }
+
+        // VisitHexTask's own FindTarget/FindNextSafeStep read this to keep a Recce scout out of a
+        // recently-fled-from area even after the EnemySighting that first triggered the retreat has
+        // gone stale (see ScoutDangerZones' own comment) — cooldown-bounded, not permanent, so the
+        // sector opens back up once AvoidUntilTurn passes (OnTurnStarted purges it above).
+        public static bool IsScoutDangerous(PlayerSetupData actor, HexCoord hex)
+        {
+            return ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
+                && zones.Any(z => HexGridMath.Distance(z.Center, hex) <= z.Radius);
         }
 
         private static void OnVisibilityChanged(PlayerSetupData player)
