@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
@@ -65,6 +66,14 @@ namespace Game.Map
         // only, recoloured to match. Anything else — a bare hero-built extraction facility,
         // which never had a garrison of its own to begin with — has no structure worth
         // capturing, so it's destroyed outright instead, icon and all.
+        //
+        // 2026-08-24 diagnostics (project owner's own report): a real capture used to be
+        // invisible in the AI debug log entirely — only reconstructible after the fact from the
+        // AP Bonus delta between two players' turns. Logged HERE, in this one authoritative
+        // method every capture/destroy path funnels through (never in AiAggressionPlanner —
+        // that class only ever CHOOSES a move, this method is what actually changes the
+        // building), so it covers AI, human, and any future capture path alike with exactly one
+        // line per event.
         public static void CaptureOrDestroy(BuildingData building, PlayerSetupData newOwner)
         {
             if (building == null)
@@ -82,12 +91,17 @@ namespace Game.Map
                 VisionSystem.RecomputeFor(previousOwner);
                 VisionSystem.RecomputeFor(newOwner);
                 VisionSystem.NotifyContentChanged(building.Hex);
+                AiDebugLog.Write($"[BUILDING] Base \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) captured: "
+                    + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} → {(newOwner != null ? newOwner.Nickname : "nobody")}.");
             }
             else
             {
+                PlayerSetupData previousOwner = building.Owner;
                 Unregister(building.Hex);
                 if (building.Visual != null)
                     UnityEngine.Object.Destroy(building.Visual.gameObject);
+                AiDebugLog.Write($"[BUILDING] Facility \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) owned by "
+                    + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} destroyed by {(newOwner != null ? newOwner.Nickname : "nobody")}.");
             }
         }
 
