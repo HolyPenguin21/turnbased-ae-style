@@ -889,12 +889,27 @@ namespace Game.Ai
             return DisposableEmptyArmies(player).Contains(army);
         }
 
+        // 2026-08-24 P2 fix (project owner's own report): used to skip the alphabetically-first
+        // maxSpareArmies empties WHEREVER they happened to sit, which could — and did — pick an
+        // empty army stranded out in the FIELD as "the kept reserve", something
+        // GatherFallbackCandidates/FindDisposableEmptyArmyAt only ever actually reuses at a garrison
+        // hex anyway (see their own comments) and which, unlike a base-hex shell, has no CurrentMovement
+        // left to ever walk home and no ReturnForConsolidation task watching it — a permanent orphan
+        // nothing in this codebase ever cleans up. The reserve now only ever comes from this player's
+        // OWN garrison hexes (never a field army); a field empty is always disposable.
         private static IEnumerable<ArmyData> DisposableEmptyArmies(PlayerSetupData player)
         {
-            return ArmyRegistry.AllForOwner(player)
+            List<ArmyData> empties = ArmyRegistry.AllForOwner(player)
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
+                .ToList();
+
+            var ownGarrisonHexes = new HashSet<HexCoord>(AiTurnController.OwnGarrisonHexes(player));
+            var reserved = new HashSet<ArmyData>(empties
+                .Where(a => ownGarrisonHexes.Contains(a.Hex))
                 .OrderBy(a => a.Name)
-                .Skip(AiConfig.maxSpareArmies);
+                .Take(AiConfig.maxSpareArmies));
+
+            return empties.Where(a => !reserved.Contains(a));
         }
 
         // Feature 4A's own reuse half — see IsDisposableEmptyArmy's own comment. `hex` is wherever

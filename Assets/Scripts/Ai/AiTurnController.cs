@@ -653,11 +653,13 @@ namespace Game.Ai
         // just registry bookkeeping, same as HexRosterSignature's own read-only helper below.
         private static void RunEmptyArmyCleanup(PlayerSetupData player, AiTurnContext ctx)
         {
+            HashSet<HexCoord> ownGarrisonHexes = new HashSet<HexCoord>(OwnGarrisonHexes(player));
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player).ToList())
             {
                 if (!GarrisonReorgTask.IsDisposableEmptyArmy(player, army))
                     continue;
                 string name = army.Name;
+                bool inField = !ownGarrisonHexes.Contains(army.Hex);
                 // Same disposal primitive every other "empty shell, nobody left inside" case in this
                 // codebase already uses (see e.g. AiAggressionPlanner.AssembleRaidForceRoutine/
                 // DispatchReinforcementRoutine's own DeleteArmyIfEmptied calls) — deliberately still
@@ -670,7 +672,18 @@ namespace Game.Ai
                 ctx.HexSelection?.DeleteArmyIfEmptied(army);
                 if (army.Controller == null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: end-of-turn cleanup — disposed of empty, task-less army \"{name}\".");
+                    // 2026-08-24 P2 fix — a field shell (never at any of this player's own garrison
+                    // hexes) gets its own explicit log: unlike a base-hex shell it has zero
+                    // CurrentMovement left to ever walk home on its own and no ReturnForConsolidation
+                    // task watching it (that task only ever registers for a non-empty stranded army —
+                    // see GarrisonReorgTask.FindStrandedWeakArmies), so without this pass it would
+                    // otherwise sit there orphaned forever (project owner's own report — see
+                    // GarrisonReorgTask.DisposableEmptyArmies' own comment for the root cause this
+                    // fixes: the old reserve pick could keep exactly this kind of shell "reserved").
+                    AiDebugLog.Write(inField
+                        ? $"[AI] {player.Nickname}: end-of-turn cleanup — disposed of orphaned empty army \"{name}\" "
+                            + "in the field — it cannot move or return for consolidation."
+                        : $"[AI] {player.Nickname}: end-of-turn cleanup — disposed of empty, task-less army \"{name}\".");
                     continue;
                 }
 
