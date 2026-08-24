@@ -666,12 +666,21 @@ namespace Game.Ai
                 // and leaves it alone forever (see that method's own comment), so the shell survives
                 // every ordinary cleanup pass as a permanent orphan. Invalidate the stale task FIRST,
                 // then let the normal reserve/surplus/field policy below handle the now-task-less
-                // shell exactly like any other empty army.
+                // shell exactly like any other empty army. Releases the task's own resource
+                // reservation FIRST (project owner's own follow-up review) — a stale BuildFacility/
+                // BuildBase task can be sitting on an accumulated AiResourceReservation entry, and
+                // simply dropping it from AiTaskRegistry without a matching Release leaves that
+                // entry alive in AiResourceReservation's own ReservedByTask dictionary until the
+                // next full Clear(): harmless to THIS turn's TotalReservedExcluding reads (a task
+                // no longer in AiTaskRegistry is never iterated there), but a dead key violates the
+                // "a finished task releases its reservation" contract every other completion path in
+                // this codebase already follows.
                 if (army.Members.Count == 0)
                 {
                     AiTask staleTask = AiTaskRegistry.TaskFor(player, army);
                     if (staleTask != null)
                     {
+                        AiResourceReservation.Release(staleTask);
                         AiTaskRegistry.Remove(player, staleTask);
                         AiDebugLog.Write($"[AI] {player.Nickname}: removes stale {staleTask.Kind} task from empty army \"{army.Name}\".");
                     }
