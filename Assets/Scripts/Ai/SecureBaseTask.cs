@@ -222,8 +222,20 @@ namespace Game.Ai
         // to SOMEWHERE useful, not fixing that composition itself). Recurses into BuildDecision once
         // with the new HomeHex — safe from runaway recursion since the courier hasn't moved yet, so
         // that call always lands on the "not yet arrived, travel there" branch, never this same
-        // full-garrison branch again. Null (task left registered, retried next step) only if truly
-        // no own garrison anywhere has room right now.
+        // full-garrison branch again.
+        //
+        // 2026-08-24 P1 follow-up (project owner's own report): if truly NO own garrison anywhere
+        // has room right now, this used to just return null and leave the task registered — every
+        // own garrison sitting exactly AT (not over) capacity, with nothing to trigger
+        // GarrisonReorgTask's own rebalance, could leave it there indefinitely, still occupying this
+        // player's own maxConcurrentSecureBase slot the whole time. Hands the courier off to the
+        // ordinary AiTaskKind.ReturnForConsolidation lifecycle instead (same Army, just a different
+        // Kind — AiTask.Category is a computed property, so it flips to Management automatically) —
+        // AiManagementPlanner.AdvanceReturnForConsolidationTask doesn't require room to "complete"
+        // (arrival alone is enough; GarrisonReorgTask's own later pass folds the now-arrived lone
+        // unit in whenever room actually opens up — see that method's own comment), so this frees
+        // the SecureBase slot immediately and never blocks Defence on a garrison that simply never
+        // frees up a slot this turn.
         private static AiDecision BuildFullGarrisonFallback(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             HexCoord fullHex = task.HomeHex;
@@ -236,8 +248,10 @@ namespace Game.Ai
             if (nearestWithRoom == null)
             {
                 AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — garrison at ({fullHex.Q},{fullHex.R}) is full "
-                    + $"({why}), no other own garrison has room right now, \"{task.Army.Name}\" waits.");
-                return null;
+                    + $"({why}) and no other own garrison has room right now — \"{task.Army.Name}\" hands off to "
+                    + "ordinary ReturnForConsolidation instead of holding the SecureBase slot.");
+                task.Kind = AiTaskKind.ReturnForConsolidation;
+                return AiManagementPlanner.AdvanceReturnForConsolidationTask(player, root, ctx, task);
             }
 
             task.HomeHex = nearestWithRoom.Hex;

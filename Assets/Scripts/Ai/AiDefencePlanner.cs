@@ -717,6 +717,17 @@ namespace Game.Ai
         // Commit is what actually adds decision.Task to the registry, and only if this candidate
         // wins arbitration, so a task built here that never wins simply evaporates, no cleanup
         // needed.
+        // Per-(player, hex) turn number this method last logged its own "no donor available" line
+        // (2026-08-24 P1 log-noise fix, project owner's own report) — a base with genuinely no
+        // spareable donor ANYWHERE stays in this exact state every single Decide() step until
+        // something changes, so without this the identical line would repeat dozens of times a
+        // turn. Not part of AiTask (nothing here is a registered task yet at this point — see this
+        // method's own comment on why a donor-less base never gets one) and not reset anywhere —
+        // stale entries for a since-secured/lost base are harmless dead weight, same tolerance
+        // every other small debug-only lookup table in this codebase already accepts.
+        private static readonly Dictionary<(PlayerSetupData, HexCoord), int> NoDonorLoggedTurn =
+            new Dictionary<(PlayerSetupData, HexCoord), int>();
+
         public static List<AiDecision> TryStartSecureBaseCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             var results = new List<AiDecision>();
@@ -735,8 +746,13 @@ namespace Game.Ai
                 AiDecision decision = SecureBaseTask.BuildDecision(player, root, ctx, task);
                 if (decision == null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({hex.Q},{hex.R}) needs "
-                        + $"{SecureBaseTask.RequiredDefenders(player, hex)} defender(s) but no donor is available right now.");
+                    var key = (player, hex);
+                    if (!NoDonorLoggedTurn.TryGetValue(key, out int lastTurn) || lastTurn != ctx.TurnNumber)
+                    {
+                        NoDonorLoggedTurn[key] = ctx.TurnNumber;
+                        AiDebugLog.Write($"[AI] {player.Nickname}: SecureBase — base at ({hex.Q},{hex.R}) needs "
+                            + $"{SecureBaseTask.RequiredDefenders(player, hex)} defender(s) but no donor is available right now.");
+                    }
                     continue; // no task registered — retried fresh next step, see this method's own comment
                 }
                 results.Add(decision);
