@@ -638,7 +638,10 @@ namespace Game.Ai
         // always (those branches never read this), it's only the low-value background visit that
         // waits for a cheaper turn instead of nearly emptying the AP pool for a facility nobody's
         // threatening.
-        public const float defencePatrolMaxApFraction = 0.5f;
+        // 0.6, not 0.5 (2026-08-24 follow-up, project owner's own calibration against real log
+        // numbers): 9/14≈64% and 9/10=90% should both still get deprioritized, but 8/14≈57% should
+        // NOT — 0.5 was stricter than intended and would have deprioritized that last case too.
+        public const float defencePatrolMaxApFraction = 0.6f;
         // SecureBase (2026-08-24, project owner's own spec) — a fresh/captured/weakened second
         // base's own initial-defence task, ranked above routine Patrol(90) — an unsecured base is
         // more urgent than ordinary background coverage — but below the real-threat tier
