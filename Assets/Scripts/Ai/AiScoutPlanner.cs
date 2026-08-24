@@ -139,6 +139,24 @@ namespace Game.Ai
                 .Where(t => t.Kind == AiTaskKind.VisitHex && t != exclude)
                 .Select(t => t.TargetHex));
 
+        // Stall watchdog (2026-08-24, project owner's own root-cause report) — see AiTask.
+        // VisitLastProgressTurn's own comment. Only ever called from a branch that's ABOUT to
+        // return null for lack of any legal step this call — never short-circuits a call that could
+        // still succeed. Removing the task here (rather than just returning null) is what actually
+        // frees the army: an untasked army is ordinary TryStartVisitCandidates material again next
+        // step, instead of sitting registered against one of only AiConfig.maxConcurrentVisitHex
+        // slots forever with nothing advancing it.
+        private static bool TryDropIfStalled(PlayerSetupData player, AiTurnContext ctx, AiTask task, string reason)
+        {
+            if (ctx.TurnNumber - task.VisitLastProgressTurn < AiConfig.visitHexStallTurns)
+                return false;
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army?.Name}\" VisitHex stalled — no progress for "
+                + $"{ctx.TurnNumber - task.VisitLastProgressTurn} turns ({reason}), last moved turn "
+                + $"{task.VisitLastProgressTurn}, at ({task.Army?.Hex.Q},{task.Army?.Hex.R}), target=({task.TargetHex.Q},{task.TargetHex.R}) — dropping the task.");
+            AiTaskRegistry.Remove(player, task);
+            return true;
+        }
+
         public static AiDecision TryContinueVisitTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army))
@@ -147,9 +165,15 @@ namespace Game.Ai
                 return null;
             }
             if (task.Army.CurrentMovement <= 0)
+            {
+                TryDropIfStalled(player, ctx, task, "no movement left");
                 return null;
+            }
             if (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost))
+            {
+                TryDropIfStalled(player, ctx, task, "can't afford activation");
                 return null;
+            }
 
             // Re-evaluated fresh every call rather than trusting the stored TargetHex — same
             // "непрерывная переоценка" principle the doc's own turn-execution section already
@@ -174,7 +198,14 @@ namespace Game.Ai
             // this is only ever how far THIS step's actual move order reaches toward it.
             HexCoord? nextStep = VisitHexTask.FindNextSafeStep(ctx.Map, task.Army, target.Value.Hex);
             if (nextStep == null)
-                return null; // fully boxed in by fog for now — target stays valid, re-tried next step
+            {
+                // Ordinarily re-tried next step, target still valid — but if this has been true for
+                // AiConfig.visitHexStallTurns turns running (permanently boxed in, or stuck aiming
+                // at a flee/retreat hex it can never actually progress toward), stop occupying a
+                // VisitHex slot over it.
+                TryDropIfStalled(player, ctx, task, "no safe step toward target");
+                return null;
+            }
 
             float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
                 - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
@@ -227,6 +258,9 @@ namespace Game.Ai
                 {
                     Kind = AiTaskKind.VisitHex, Army = army, TargetHex = target.Value.Hex, Reason = target.Value.Reason,
                     FledOnTurn = fleeTarget.HasValue ? ctx.TurnNumber : -1,
+                    // Stamped to THIS turn, not -1 — see AiTask.VisitLastProgressTurn's own comment:
+                    // a brand-new task hasn't stalled yet, so its clock starts now, not "ages ago".
+                    VisitLastProgressTurn = ctx.TurnNumber,
                 };
                 float score = ReconMoveWeight(ctx, isFlee: fleeTarget.HasValue)
                     - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))

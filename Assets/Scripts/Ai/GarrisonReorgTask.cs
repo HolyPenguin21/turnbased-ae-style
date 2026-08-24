@@ -417,10 +417,22 @@ namespace Game.Ai
         // Attack as the tiebreak) — picking whichever lone army happened to enumerate first would
         // risk folding a strong stray back into garrison while a genuinely weak one stays outside,
         // exactly backwards from this whole class's own point.
+        //
+        // Solo Recce excluded (2026-08-24, project owner's own root-cause report) — a freshly
+        // assembled Recce carrier (AiScoutPlanner.AssembleRecceScoutRoutine) is a single member at
+        // the garrison hex for exactly one drain call before it gets its own VisitHex task next
+        // turn, which is also the one call IsProtectedTaskArmy can't yet shield it (no task
+        // registered until TryStartVisitCandidates runs). Without this exclusion this tier read
+        // that gap as an ordinary fragile lone-unit and folded it straight back into the garrison
+        // every single time — create → transfer Recce → fold → RunEmptyArmyCleanup deletes the
+        // shell → repeat next turn, burning ReserveArmy/AssembleRecceScout's own AP for zero net
+        // scouting capacity. AiArmyRoles.IsSoloRecce is the same domain check FindStrandedWeakArmies
+        // already trusts to recognize this composition as an intentional standalone army, not a
+        // name/hex/extra-state special case.
         private static ConsolidationMove? FindLoneArmyFoldMove(PlayerSetupData player, HexCoord garrisonHex, ArmyData garrison, AiTurnContext ctx)
         {
             List<ArmyData> loneArmies = ArmyRegistry.AllForOwner(player)
-                .Where(a => IsLoneArmyAtBase(a, garrisonHex) && !IsProtectedTaskArmy(player, a))
+                .Where(a => IsLoneArmyAtBase(a, garrisonHex) && !AiArmyRoles.IsSoloRecce(a) && !IsProtectedTaskArmy(player, a))
                 .OrderBy(a => a.Members[0].Defense).ThenBy(a => a.Members[0].Attack)
                 .ToList();
 
@@ -736,6 +748,41 @@ namespace Game.Ai
             return null;
         }
 
+        // Composition-swap guard (2026-08-24, project owner's own root-cause report) — a real log
+        // showed FindReorgSwap's own composition branch ping-ponging the same handful of unit
+        // types (Flamer/Medium Infantry/BS Melee/...) between the same 3-4 armies on a hex for
+        // several turns straight: it only ever asked "does this fix the RECIPIENT's imbalance",
+        // never "did giving the donor `giveUp` in exchange for `spare` push the DONOR itself past
+        // ITS OWN threshold" — so each swap could (and did) just relocate the imbalance instead of
+        // resolving it, and the next drain call "fixed" the army it had just broken. Mirrors the
+        // exact melee/ranged/ability-heavy/simple counts the composition branch above already reads
+        // off `recipientUnits`, just summed into one comparable number per army so a proposed trade
+        // can be judged by its NET effect on both sides at once. Asymmetric on the ability axis
+        // (only abilityHeavy-over-simple is penalized) on purpose — matches every existing
+        // composition-imbalance check in this file (FindHexBalanceMove/FindReorgSwap's own `needs`
+        // selection above), which likewise only ever triggers that one direction.
+        private static int CompositionPenalty(IEnumerable<UnitData> units)
+        {
+            List<UnitData> nonHero = units.Where(m => !m.IsHero).ToList();
+            int melee = nonHero.Count(m => m.Range <= 1);
+            int ranged = nonHero.Count(m => m.Range > 1);
+            int abilityHeavy = nonHero.Count(m => m.Abilities.Count > 0);
+            int simple = nonHero.Count(m => m.Abilities.Count == 0);
+            int threshold = AiConfig.compositionImbalanceThreshold;
+            return Math.Max(0, Math.Abs(melee - ranged) - threshold + 1)
+                + Math.Max(0, abilityHeavy - simple - threshold + 1);
+        }
+
+        // Same penalty, evaluated on the hypothetical roster `army` would have after trading
+        // `remove` away for `add` — never mutates `army` itself, just feeds CompositionPenalty a
+        // simulated member list.
+        private static int CompositionPenaltyAfterSwap(ArmyData army, UnitData remove, UnitData add)
+        {
+            List<UnitData> hypothetical = army.Members.Where(m => m != remove).ToList();
+            hypothetical.Add(add);
+            return CompositionPenalty(hypothetical);
+        }
+
         // Last resort, tried only once FindReorgMove itself finds nothing this call (see
         // AiManagementPlanner.TryConsolidationCandidate) — every move FindHexBalanceMove proposes
         // needs a free slot in its destination, so once the garrison AND every field army at this
@@ -847,9 +894,19 @@ namespace Game.Ai
                     if (spare == null || !CanAffordTransferInto(recipient, spare) || !CanAffordTransferInto(donor, giveUp)
                         || ctx.WouldRevisitArmy(spare, recipient) || ctx.WouldRevisitArmy(giveUp, donor))
                         continue;
+
+                    // Net-effect guard — see CompositionPenalty's own comment. A trade that "fixes"
+                    // recipient by pushing donor into (or deeper past) its own imbalance threshold
+                    // is exactly the structural ping-pong this guard exists to stop; only a trade
+                    // that strictly improves the COMBINED penalty of both armies is allowed through.
+                    int before = CompositionPenalty(recipient.Members) + CompositionPenalty(donor.Members);
+                    int after = CompositionPenaltyAfterSwap(recipient, giveUp, spare) + CompositionPenaltyAfterSwap(donor, spare, giveUp);
+                    if (after >= before)
+                        continue;
+
                     return new SwapMove(recipient, giveUp, donor, spare,
                         $"swapping {giveUp.Name} for {spare.Name} with \"{donor.Name}\" — evening out \"{recipient.Name}\"'s "
-                            + "composition, no free slot to just move into");
+                            + $"composition, no free slot to just move into (penalty {before}→{after})");
                 }
             }
             return null;

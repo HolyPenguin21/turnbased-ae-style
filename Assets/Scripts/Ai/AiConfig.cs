@@ -87,6 +87,15 @@ namespace Game.Ai
         // ---- Разведка — Задача 1 (Посещение хекса) ----
         // 2026-08-23 (project owner's own call): 3 → 2 — fewer scouts wandering at once.
         public const int maxConcurrentVisitHex = 2;
+        // Stall watchdog (2026-08-24, project owner's own root-cause report) — how many REAL GAME
+        // TURNS AiTask.VisitLastProgressTurn may sit stale (no hex actually changed, flee or
+        // routine alike) before AiScoutPlanner.TryContinueVisitTask gives up on that task and frees
+        // the army, rather than letting a permanently boxed-in/blocked scout occupy one of only
+        // maxConcurrentVisitHex slots forever. Turn-counted, not call-counted, same "elapsed =
+        // ctx.TurnNumber - lastLandedTurn" shape AiTask.AssemblyProgressTurn/GarrisonSeedStartedTurn
+        // already use, so several no-progress calls inside the SAME turn (movement exhausted, AP
+        // short, fog-boxed) never trip this early.
+        public const int visitHexStallTurns = 2;
         // How far past the map's own nearest still-unvisited hex (measured from the citadel) a
         // Задача 1 candidate is still allowed to be, so visiting sweeps outward from the citadel
         // "as a wave" rather than beelining for whatever's farthest. Агрессия no longer shares

@@ -238,6 +238,21 @@ namespace Game.Ai
         // Retreating below, a different, one-way shape.
         public int FledOnTurn = -1;
 
+        // VisitHex only (2026-08-24, project owner's own root-cause report) — the TURN NUMBER
+        // (AiTurnContext.TurnNumber) this task's own army last actually changed hex, whether via a
+        // routine scouting step or a flee move alike; stamped once at task creation to the CREATION
+        // turn (never -1 — a fresh task hasn't stalled yet, so the watchdog below must not read a
+        // never-set field as "ages ago no progress") and again by AiTurnController.MoveArmyRoutine
+        // every time a VisitHex army's hex actually differs from where it started this step. Read
+        // by AiScoutPlanner.TryContinueVisitTask (AiConfig.visitHexStallTurns) to tell a task truly
+        // stuck — no legal step for several real turns running (fully boxed in by fog, permanently
+        // unaffordable, or a stale flee target it can no longer progress toward) — apart from one
+        // just waiting out this turn's movement/AP budget: same "elapsed = ctx.TurnNumber -
+        // lastLandedTurn" stall-clock shape AssemblyProgressTurn/GarrisonSeedStartedTurn already use
+        // elsewhere in this class, so a handful of no-progress CALLS inside the same turn can never
+        // trip it early — only actual turns passing with nothing moving can.
+        public int VisitLastProgressTurn = -1;
+
         // RaidWeakerArmy and DefendCitadel (2026-08-21 — Оборона's own local retreat, see
         // AiDefencePlanner.BuildPostureDecision, reuses this exact shape rather than inventing a
         // second one). Unlike FledOnTurn's resumable one-turn detour, this is a ONE-WAY

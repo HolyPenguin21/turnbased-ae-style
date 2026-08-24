@@ -942,6 +942,12 @@ namespace Game.Ai
                 ? $"[AI] {player.Nickname}: \"{army.Name}\" made no progress toward its target — reason={moveResult} — stayed at ({army.Hex.Q}, {army.Hex.R})."
                 : $"[AI] {player.Nickname}: \"{army.Name}\" arrived at ({army.Hex.Q}, {army.Hex.R}).{moveDelta}");
 
+            // AiTask.VisitLastProgressTurn's own stall watchdog (2026-08-24) — a real hex change is
+            // "progress" whether it came from routine scouting or a flee step; only actually moving
+            // resets the clock, a no-op order (moveResult != success, army.Hex == before) never does.
+            if (!army.Hex.Equals(before) && decision.Task != null && decision.Task.Kind == AiTaskKind.VisitHex)
+                decision.Task.VisitLastProgressTurn = ctx.TurnNumber;
+
             yield return WaitStep(ctx);
         }
 
@@ -1313,8 +1319,15 @@ namespace Game.Ai
             IReadOnlyList<AiTask> tasks = AiTaskRegistry.TasksFor(player);
             if (tasks.Count == 0)
                 return;
-            string list = string.Join("; ", tasks.Select(t =>
-                $"{t.Kind}({t.Category}):\"{t.Army?.Name ?? "?"}\"→({t.TargetHex.Q},{t.TargetHex.R})"));
+            // VisitHex gets its own extra suffix (2026-08-24, project owner's own ask) — army's
+            // CURRENT hex, FledOnTurn, and Reason, so two scouts sharing the same TargetHex (e.g.
+            // both fleeing to the same nearby garrison — a legitimate shared retreat point, see
+            // VisitHexTask.TryFlee's own comment, not a deconfliction bug) read as visibly distinct
+            // in the log instead of looking like an unexplained duplicate.
+            string list = string.Join("; ", tasks.Select(t => t.Kind == AiTaskKind.VisitHex
+                ? $"{t.Kind}({t.Category}):\"{t.Army?.Name ?? "?"}\"@({t.Army?.Hex.Q},{t.Army?.Hex.R})→({t.TargetHex.Q},{t.TargetHex.R})"
+                    + $" fled={t.FledOnTurn} reason=\"{t.Reason}\""
+                : $"{t.Kind}({t.Category}):\"{t.Army?.Name ?? "?"}\"→({t.TargetHex.Q},{t.TargetHex.R})"));
             AiDebugLog.Write($"[AI] {player.Nickname}: active tasks ({tasks.Count}) — {list}.");
         }
     }
