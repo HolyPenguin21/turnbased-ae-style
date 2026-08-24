@@ -822,6 +822,13 @@ namespace Game.Ai
             // here rather than reading as strictly worse than any ordinary combat card.
             if (definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.ApBonus))
                 value += AiConfig.apBonusCardStrategicValue;
+            // UnitAbilities.RapidReaction (see AiConfig.rapidReactionCardStrategicValue's own
+            // comment) — same reasoning as ApBonus right above: the skill's real value (0 deploy
+            // AP, 0 ActivationApCost once spawned) never shows up in attack/defenseRating/
+            // hitPoints/initiative at all, so without this term a Rapid card only ever won this
+            // internal tie-break by accident, off unrelated stats.
+            if (definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.RapidReaction))
+                value += AiConfig.rapidReactionCardStrategicValue;
             return value;
         }
 

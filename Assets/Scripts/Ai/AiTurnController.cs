@@ -915,6 +915,26 @@ namespace Game.Ai
             if (army.Controller != null)
                 yield return new WaitUntil(() => !army.Controller.IsMoving);
 
+            // Post-move safety net (2026-08-24 P0 fix, project owner's own report — a real
+            // sighting on (6,3): a contact left unresolved by onComplete's own TryBeginBattleAt
+            // call — most commonly DelayedBattleRegistry.IsHexPending being true for an unrelated
+            // pairing already reserved at this same hex — used to just sit there "coexisting"
+            // with nothing showing on screen, so the WaitUntil right below saw !IsBattleActive
+            // immediately and let this army's turn step count as done. The pair then stayed
+            // unresolved (both LockedInCombat, per HexSelectionController's own gate) for however
+            // many player-turns until GameTurnController's end-of-ROUND sweep finally forced it.
+            // Re-asserting TryBeginBattleAt here, now that the reservation that blocked it a
+            // moment ago may have already cleared this same pass, closes that gap without waiting
+            // for the round boundary. A no-op (Pending/NoContact/MoverCannotFight) whenever
+            // onComplete already fully handled it, which is still the overwhelmingly common case.
+            if (ctx.HexSelection != null && army.Controller != null && !ctx.HexSelection.IsBattleActive)
+            {
+                BattleStartResult safetyResult = ctx.HexSelection.TryBeginBattleAt(army.Hex, army);
+                if (safetyResult == BattleStartResult.Started)
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" had unresolved contact at "
+                        + $"({army.Hex.Q}, {army.Hex.R}) after moving — battle started by the post-move safety check.");
+            }
+
             // A contact-triggered fight has already been kicked off synchronously by this point
             // (ArmyController.MoveRoutine runs its own onComplete callback — which is where
             // contact detection and battleScreen.Show() live — before IsMoving above ever flips

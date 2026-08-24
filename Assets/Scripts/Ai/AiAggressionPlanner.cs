@@ -182,7 +182,7 @@ namespace Game.Ai
             }
 
             RaidWeakerArmyTask.ThreatStrength required = RaidWeakerArmyTask.RequiredStrengthAt(player, task.TargetHex, ctx.Map);
-            if (!RaidWeakerArmyTask.IsReady(task.Army, required))
+            if (!RaidWeakerArmyTask.IsReady(task.Army, required, AiConfig.raidMinimumWinChance))
             {
                 if (task.Army.Hex.Equals(citadelHex))
                     return null; // still assembling — TryRaidAssembleCandidates' own turn to act (citadel-scoped)
@@ -238,6 +238,15 @@ namespace Game.Ai
             // closer). Deliberately only wired into this ordinary branch — the counter-attack/retreat
             // branches above already pick their own destination for their own reasons and must not be
             // second-guessed here.
+            // Diagnostic (2026-08-24 P1 fix, project owner's own report — "50% слишком близко к
+            // coin flip") — logs the actual committed win chance right alongside the decision
+            // that acts on it, so a log reader can see real numbers instead of trusting IsReady's
+            // bare pass/fail verdict blind. Only on the ordinary "still going" step, not every
+            // retarget/assembly check above — those already log their own outcome.
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid win chance vs "
+                + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {RaidWeakerArmyTask.WinChanceAgainst(task.Army, required):P0} "
+                + $"(min {AiConfig.raidMinimumWinChance:P0}).");
+
             HexCoord moveDestination = task.TargetHex;
             string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
             RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
@@ -399,7 +408,7 @@ namespace Game.Ai
                 if (task.Army == null || !task.Army.Hex.Equals(garrisonHex))
                     continue; // travelling or retreating — TryContinueRaidTask's own turn, not this tier's
                 RaidWeakerArmyTask.ThreatStrength required = RaidWeakerArmyTask.RequiredStrengthAt(player, task.TargetHex, ctx.Map);
-                if (RaidWeakerArmyTask.IsReady(task.Army, required))
+                if (RaidWeakerArmyTask.IsReady(task.Army, required, AiConfig.raidMinimumWinChance))
                 {
                     task.StillAssembling = false; // see AiTask.StillAssembling's own comment
                     continue; // ready — TryContinueRaidTask picks it up from here
@@ -429,7 +438,7 @@ namespace Game.Ai
                     // "already ready, don't downgrade" case to protect against; a new target that's
                     // ready right now still always deserves to win outright.
                     bool currentStillValid = RaidWeakerArmyTask.IsStillValidTarget(player, task.TargetHex);
-                    bool newReady = RaidWeakerArmyTask.IsReady(task.Army, retarget.Value.Threat);
+                    bool newReady = RaidWeakerArmyTask.IsReady(task.Army, retarget.Value.Threat, AiConfig.raidMinimumWinChance);
                     float currentScore = currentStillValid
                         ? RaidWeakerArmyTask.ScoreTarget(player, task.Army, task.TargetHex, required)
                         : float.NegativeInfinity;
@@ -495,7 +504,7 @@ namespace Game.Ai
             if (!target.HasValue)
                 return results;
 
-            ArmyData readyArmy = RaidWeakerArmyTask.FindReadyIdleArmy(player, target.Value.Threat, pool);
+            ArmyData readyArmy = RaidWeakerArmyTask.FindReadyIdleArmy(player, target.Value.Threat, pool, AiConfig.raidMinimumWinChance);
             if (readyArmy != null)
             {
                 var readyTask = new AiTask { Kind = AiTaskKind.RaidWeakerArmy, Army = readyArmy, TargetHex = target.Value.Hex };
@@ -637,7 +646,8 @@ namespace Game.Ai
         {
             var results = new List<AiDecision>();
             bool anyAssembling = AiTaskRegistry.TasksFor(player).Any(t => t.Kind == AiTaskKind.RaidWeakerArmy && !t.Retreating
-                && t.Army != null && !RaidWeakerArmyTask.IsReady(t.Army, RaidWeakerArmyTask.RequiredStrengthAt(player, t.TargetHex, ctx.Map)));
+                && t.Army != null && !RaidWeakerArmyTask.IsReady(t.Army, RaidWeakerArmyTask.RequiredStrengthAt(player, t.TargetHex, ctx.Map),
+                    AiConfig.raidMinimumWinChance));
             // Broadened 2026-08-20 (project owner's own fix) — an idle army now also drifts home
             // whenever there's ANY raid-worthy target on the map at all, not just once a task has
             // already started assembling. Keeps a spare reserve army from sitting idle while a

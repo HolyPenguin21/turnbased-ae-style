@@ -171,8 +171,11 @@ namespace Game.Ai
         // is also called directly (bypassing ThreatStrength entirely) by AiAggressionPlanner/
         // AiDefencePlanner's own nearby-threat reactions, which always describe a REAL sighted
         // enemy army and must never get this "confirmed empty" treatment.
-        public static bool IsReady(ArmyData army, ThreatStrength threat) =>
-            threat.IsUndefended || IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
+        //
+        // `minWinChance` — see the raw-stats overload below's own comment on why this defaults to
+        // a bare coin-flip and who actually raises it.
+        public static bool IsReady(ArmyData army, ThreatStrength threat, float minWinChance = 0.5f) =>
+            threat.IsUndefended || IsReady(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus, minWinChance);
 
         // Full-roster win chance when known, aggregate-sum fallback otherwise — extracted out of
         // IsReady below (2026-08-23, project owner's own call) so FindTarget's own ranking can read
@@ -189,8 +192,11 @@ namespace Game.Ai
 
         // Same IsUndefended short-circuit as IsReady above — ProximityScore/ScoreTarget (the only
         // other callers of this ThreatStrength overload) rank a confirmed-empty target as a sure
-        // thing too, instead of the aggregate fallback's coin-flip reading it as a toss-up.
-        private static float WinChanceAgainst(ArmyData army, ThreatStrength threat) =>
+        // thing too, instead of the aggregate fallback's coin-flip reading it as a toss-up. Public
+        // since 2026-08-24 (project owner's own report) — AiAggressionPlanner's own "attacks the
+        // target" decision logs this exact number alongside raidMinimumWinChance so a log reader
+        // can see the actual committed odds, not just the pass/fail verdict.
+        public static float WinChanceAgainst(ArmyData army, ThreatStrength threat) =>
             threat.IsUndefended ? 1f : WinChanceAgainst(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
         // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
@@ -212,11 +218,23 @@ namespace Game.Ai
         // untouched. `hexBonus` — see WorthIt.CanDamage's own comment; defaults to 0f for a caller
         // with no hex to check against (source-compatible with every call site before this
         // parameter existed).
+        //
+        // `minWinChance` (2026-08-24 P1 fix, project owner's own report — see AiConfig.
+        // raidMinimumWinChance's own comment) — defaults to a bare >0.5f coin-flip, unchanged for
+        // every caller that doesn't pass its own value: Оборона's reactive intercepts, a raid's
+        // own in-transit counter-attack/BuildBase detour, and every other reaction to a threat
+        // that showed up on its own rather than one this army chose to march on. Only
+        // AiAggressionPlanner's own voluntary-raid call sites (continue/assemble/retarget/recall/
+        // FindReadyIdleArmy — the whole RaidWeakerArmyTask lifecycle for a CHOSEN target) pass
+        // AiConfig.raidMinimumWinChance instead, so "is this raid ready" reads the same higher bar
+        // consistently at every stage of that one task's life — mixing thresholds across its own
+        // stages would have the assembly gate call a force ready that the very next continuation
+        // step immediately calls unready again.
         public static bool IsReady(ArmyData army, float threatDefense, float threatAttack,
-            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f, float minWinChance = 0.5f)
         {
             float chance = WinChanceAgainst(army, threatDefense, threatAttack, defenders, hexBonus);
-            return chance > 0.5f && WorthIt.CanDamageAll(army, defenders, hexBonus);
+            return chance > minWinChance && WorthIt.CanDamageAll(army, defenders, hexBonus);
         }
 
         // Whether `hex` is still a legitimate target at all — a known neutral sighting, a known
@@ -387,12 +405,16 @@ namespace Game.Ai
         // clearing the raw IsReady math must never actually commit them to a fight. Shared by
         // AiDefencePlanner too (same method) — a fragile solo shouldn't get drafted as a defender
         // either.
-        public static ArmyData FindReadyIdleArmy(PlayerSetupData player, ThreatStrength threat, AiResourcePool pool)
+        // `minWinChance` — see IsReady's own raw-stats overload comment; defaults to the same bare
+        // coin-flip so AiDefencePlanner's own defender draft (and every other caller that doesn't
+        // pass its own value) is unaffected. AiAggressionPlanner's own raid-assembly caller passes
+        // AiConfig.raidMinimumWinChance.
+        public static ArmyData FindReadyIdleArmy(PlayerSetupData player, ThreatStrength threat, AiResourcePool pool, float minWinChance = 0.5f)
         {
             return pool.AvailableArmies()
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count > 0
                     && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
-                    && IsReady(a, threat))
+                    && IsReady(a, threat, minWinChance))
                 .OrderByDescending(a => WorthIt.AttackSum(a))
                 .FirstOrDefault();
         }

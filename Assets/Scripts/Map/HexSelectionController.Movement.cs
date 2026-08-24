@@ -40,6 +40,22 @@ namespace Game.Map
         InsufficientActionPoints,
     }
 
+    // TryBeginBattleAt's own outcome (2026-08-24 P0 fix, project owner's own report: a contact
+    // left unresolved by onComplete below — e.g. DelayedBattleRegistry.IsHexPending was true for
+    // an unrelated pairing at the same hex — used to just sit there "coexisting" until
+    // GameTurnController's own end-of-ROUND sweep eventually forced it, which could be several
+    // player-turns away; meanwhile AiTurnController.MoveArmyRoutine's own IsBattleActive wait saw
+    // nothing showing and moved straight on to the army's next decision, even though the hex
+    // still had a real, un-fought enemy on it). Named so a caller can tell "a battle actually
+    // started here" apart from every reason it didn't, instead of a bare bool.
+    public enum BattleStartResult
+    {
+        Started,
+        NoContact,
+        Pending,
+        MoverCannotFight,
+    }
+
     // Move preview (hover) and move order (right-click) half of HexSelectionController — split
     // out purely for file size, same reasoning as HexSelectionController.Factory.cs's own
     // comment. Shares _selectedArmy/_pathArrow/_lastPreviewedHover and the layout helpers
@@ -230,6 +246,61 @@ namespace Game.Map
             return true;
         }
 
+        // Extracted out of TryIssueMoveOrder's own onComplete callback (2026-08-24 P0 fix — see
+        // BattleStartResult's own comment) so the exact same contact-detection/popup-vs-immediate
+        // decision can also be reasserted as a safety net after the fact — by AiTurnController.
+        // MoveArmyRoutine right after a move settles, and (indirectly, unchanged) by
+        // GameTurnController's own end-of-round contested sweep — instead of living only inside
+        // the move-order's own onComplete closure where a missed call site could never resolve
+        // contact at all until the round boundary. Deliberately does NOT touch _selectedHex/
+        // highlight/infoPanel/armyButtonRow — that's move-order-flow UI bookkeeping the callers
+        // below don't share (the AI safety-net call site has no human selection to clear), so it
+        // stays inline in onComplete, gated on this method's own return value instead. Public for
+        // AiTurnController.MoveArmyRoutine's own cross-file call.
+        public BattleStartResult TryBeginBattleAt(HexCoord hex, ArmyData mover)
+        {
+            if (!BattleInitiator.IsCombatCapable(mover))
+                return BattleStartResult.MoverCannotFight;
+            if (DelayedBattleRegistry.IsHexPending(hex))
+                return BattleStartResult.Pending;
+            ArmyData enemy = BattleInitiator.FindEnemyAt(hex, mover.Owner);
+            if (enemy == null)
+                return BattleStartResult.NoContact;
+
+            var participants = new List<ArmyData> { mover, enemy };
+            // A hero-only contact (see BattleInitiator.IsEngageable vs IsCombatCapable) has
+            // nothing for a normal Tactical Battle Module round to do — no acting units on that
+            // side, nothing to click/attack — so it skips the grid entirely and goes straight to
+            // a Capture Kill Challenge sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
+            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy);
+
+            // A human-controlled mover gets the interactive Fight/Delay choice, same as always.
+            // An AI/Neutral mover fights immediately instead of ever choosing Delay — see this
+            // method's own former home (onComplete below) for why deferring never bought the AI
+            // anything and once hung the whole turn loop.
+            if (battleContactPopup != null && mover.Owner != null && mover.Owner.IsHuman)
+            {
+                battleContactPopup.Show(hex, participants,
+                    onFight: () =>
+                    {
+                        if (targetHeroOnly)
+                            battleScreen?.BeginCaptureKillEncounter(mover, enemy, null);
+                        else
+                            battleScreen?.Show(hex, participants, null);
+                    },
+                    onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants }));
+            }
+            else if (targetHeroOnly)
+            {
+                battleScreen?.BeginCaptureKillEncounter(mover, enemy, null);
+            }
+            else
+            {
+                battleScreen?.Show(hex, participants, null);
+            }
+            return BattleStartResult.Started;
+        }
+
         private void HidePathPreview()
         {
             if (_pathArrow != null)
@@ -285,7 +356,17 @@ namespace Game.Map
             // the only way out is retreating from battle (see the manual's Retreat Challenge),
             // which doesn't exist yet, so for now this hex is a dead end until real combat
             // resolution can free it. See Game.Combat.BattleInitiator.
-            if (BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
+            //
+            // Gated on IsCombatCapable(army) — the MOVER, not whatever enemy is sharing the hex
+            // (2026-08-24 P0 fix, project owner's own report: a hero-only army that stumbled onto
+            // an enemy via fog-of-war reveal mid-move never triggers TryBeginBattleAt's own
+            // contact branch either — see MoverCannotFight — so it just finishes its move
+            // "coexisting" with that enemy. Without this gate, the very next order for that same
+            // army hit this exact check and read as permanently LockedInCombat, with no fight to
+            // ever resolve it and no way out — a real Capture Kill Challenge/Retreat skill this
+            // army doesn't have. A hero-only army was never a real combat participant on this hex
+            // to begin with, so it stays free to just walk off).
+            if (BattleInitiator.IsCombatCapable(army) && BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
             {
                 NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
                 return MoveOrderResult.LockedInCombat;
@@ -405,23 +486,11 @@ namespace Game.Map
                     // before the move even started — the army can run out of shared move points
                     // and stop well short of the hex TruncateAtEnemyContact had in mind (e.g. it
                     // takes 2 but only 1 remains), in which case there was never any real contact
-                    // and this must stay silent.
-                    //
-                    // BattleInitiator.IsCombatCapable(army) (the MOVER, not the target) is
-                    // required in addition to FindEnemyAt finding something — a hero-only mover
-                    // can't fight a Ground Combat round OR hunt a Capture Kill Challenge without
-                    // a skill this project doesn't have yet (see BattleAttackPopupUI.
-                    // BeginCaptureKill's own note), so contact simply doesn't trigger anything
-                    // for one; it just finishes its move as if the hex were empty.
-                    //
-                    // DelayedBattleRegistry.IsHexPending additionally guards against re-offering
-                    // a Fight/Delay choice for a target already reserved for a different pending
-                    // battle at this hex (e.g. a different attacking army delayed against it
-                    // earlier this same turn) — per the user's own call, a reserved army can't be
-                    // signed up for a second one. Left unresolved here on purpose; the mover just
-                    // finishes onto the hex and coexists with it for now — GameTurnController's
-                    // own end-of-turn sweep is what eventually forces this pairing too, once the
-                    // earlier one's been drained.
+                    // and this must stay silent. See TryBeginBattleAt's own comment for what
+                    // MoverCannotFight/Pending/NoContact each mean, and — for Pending specifically
+                    // — why leaving that pairing unresolved here is no longer the end of the story
+                    // (AiTurnController.MoveArmyRoutine's own post-move safety check, and
+                    // GameTurnController's end-of-round sweep, both still eventually force it).
                     // Hex Events: a "clean" hex claimed by shouldStopEarly below — resolved here,
                     // AFTER the registry re-keying/RestackArmiesOn(originHex, ...) above, rather
                     // than synchronously inside shouldStopEarly itself (mid-coroutine, before that
@@ -436,11 +505,9 @@ namespace Game.Map
                         return;
                     }
 
-                    ArmyData actualEnemyContact = DelayedBattleRegistry.IsHexPending(actualHex)
-                        ? null
-                        : BattleInitiator.FindEnemyAt(actualHex, army.Owner);
+                    BattleStartResult battleResult = TryBeginBattleAt(actualHex, army);
 
-                    if (actualEnemyContact != null && BattleInitiator.IsCombatCapable(army))
+                    if (battleResult == BattleStartResult.Started)
                     {
                         // Not a full Deselect() (that would also clear _selectedArmy, still
                         // needed below in the general case) — but the ORIGIN hex's own selection
@@ -455,48 +522,6 @@ namespace Game.Map
                         if (infoPanel != null) infoPanel.Hide();
                         if (armyInfoPanel != null) armyInfoPanel.Hide();
                         if (armyButtonRow != null) armyButtonRow.Hide();
-                        var participants = new List<ArmyData> { army, actualEnemyContact };
-
-                        // A hero-only contact (see BattleInitiator.IsEngageable vs
-                        // IsCombatCapable) has nothing for a normal Tactical Battle Module round
-                        // to do — no acting units on that side, nothing to click/attack — so it
-                        // skips the grid entirely and goes straight to a Capture Kill Challenge
-                        // sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-                        bool targetHeroOnly = !BattleInitiator.IsCombatCapable(actualEnemyContact);
-
-                        // A human-controlled mover gets the interactive Fight/Delay choice, same
-                        // as always. An AI/Neutral mover fights immediately instead of ever
-                        // choosing Delay — Delay Attack exists so a player can bring in more of
-                        // their own armies before committing (see BattleContactPopupUI's own class
-                        // comment, the side army lists), and the AI has no logic to actually use
-                        // that reinforcement window yet, so deferring never bought it anything.
-                        // Worse, deferring pushed the fight onto GameTurnController.
-                        // ResolveDelayedBattlesThen's own ShowResolved acknowledgement — a popup
-                        // only a human click can ever satisfy. An AI-vs-Neutral contact deferred
-                        // that way hung the whole turn loop forever at BeginNewTurn, since nobody
-                        // was ever going to click it (the project owner's own report, 2026-08-16:
-                        // turn stuck on "Neutral's turn" after an AI army won a fight that never
-                        // even needed to wait).
-                        if (battleContactPopup != null && army.Owner != null && army.Owner.IsHuman)
-                        {
-                            battleContactPopup.Show(actualHex, participants,
-                                onFight: () =>
-                                {
-                                    if (targetHeroOnly)
-                                        battleScreen?.BeginCaptureKillEncounter(army, actualEnemyContact, null);
-                                    else
-                                        battleScreen?.Show(actualHex, participants, null);
-                                },
-                                onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = actualHex, Participants = participants }));
-                        }
-                        else if (targetHeroOnly)
-                        {
-                            battleScreen?.BeginCaptureKillEncounter(army, actualEnemyContact, null);
-                        }
-                        else
-                        {
-                            battleScreen?.Show(actualHex, participants, null);
-                        }
                     }
                     // Re-arm the hover/pulse animation once the move finishes, if it's still the
                     // active selection (the player may have selected something else meanwhile) —

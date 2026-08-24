@@ -197,6 +197,18 @@ namespace Game.Ai
         // one might never actually finish gathering enough force. Roughly "a full 0%→100% win-
         // chance swing is worth about 6 hexes of proximity" at this default — tune independently.
         public const float raidWinChanceRankWeight = 30f;
+        // RaidWeakerArmyTask.IsReady's own readiness bar for a VOLUNTARY raid specifically
+        // (2026-08-24 P1 fix, project owner's own report — "50% слишком близко к coin flip").
+        // IsReady's own raw-stats/ThreatStrength overloads still default to a bare >0.5f for
+        // every OTHER caller (Оборона's reactive intercepts, a raid's own in-transit counter-
+        // attack, BuildBase's opportunistic detour) — those are reactions to a threat that showed
+        // up on its own, where declining still leaves the army standing right next to it, so a
+        // close-to-even fight is an acceptable gamble. A voluntary Raid CHOOSES to march on a
+        // target and commit AP/turns getting there — the same asymmetry defenceActiveWinChance
+        // already prices in for Оборона's own Active posture (a 60/40 target, not 50/50) — so it
+        // should demand real odds, not a coin flip, before setting out. 0.65 (not defenceActive
+        // WinChance's own 0.6) is the project owner's own starting pick, tune independently.
+        public const float raidMinimumWinChance = 0.65f;
         // Retarget hysteresis (2026-08-24, project owner's own report) —
         // AiAggressionPlanner.TryRaidAssembleCandidates' own StillAssembling retarget check no
         // longer switches off the CURRENT TargetHex just because ANY other known target scores
@@ -995,6 +1007,17 @@ namespace Game.Ai
         // this only needs to break ties among comparable cards in hand, not overhaul the whole
         // PlayCard arbiter.
         public const float apBonusCardStrategicValue = 5f;
+        // AiManagementPlanner.CardCombatValue's own UnitAbilities.RapidReaction term (2026-08-24
+        // P1 fix, project owner's own report) — same "internal ranking key only" scoping as
+        // apBonusCardStrategicValue right above. RapidReaction already grants two real economic
+        // advantages elsewhere in this project — ArmyActions.EffectiveDeployApCost reads it as 0
+        // deploy AP, and HexSelectionController.Factory.cs sets a spawned Rapid unit's own
+        // ActivationApCost to 0 too (cheaper to get the whole army moving every following turn) —
+        // but CardCombatValue never weighed either of those, so a Rapid card with otherwise
+        // middling stats routinely lost the internal tie-break to a plain higher-stat card that
+        // costs strictly more AP to actually use. Sized to match apBonusCardStrategicValue's own
+        // tier — both are one flat AP-economy skill getting the same weight.
+        public const float rapidReactionCardStrategicValue = 5f;
         // AiManagementPlanner.TaskNeedBonus's own Defence-vs-Raid weighting (2026-08-23, project
         // owner's own spec — generalizes the old Raid-only "closes the assembling task's own
         // CanDamageAll gap" criterion into one shared read across every still-recruiting combat
