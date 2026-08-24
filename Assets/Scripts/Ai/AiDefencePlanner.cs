@@ -906,6 +906,13 @@ namespace Game.Ai
                 return null;
             if (ctx.WouldRevisitArmy(best, army) || ctx.WouldRevisitArmy(weakest, bestSource))
                 return null;
+            // Same feasibility check StrengthenDefenceForceRoutine's own ArmyActions.SwapMembers
+            // call re-runs at execution time (project owner's own report: a candidate whose
+            // capacity math didn't actually work kept getting proposed and rejected every single
+            // step, burning the whole turn's maxStepsPerTurn budget on one impossible swap) — run
+            // it here too so an unfittable swap never becomes a decision in the first place.
+            if (!ArmyActions.CanSwapMembers(weakest, army, best, bestSource, out _))
+                return null;
 
             var move = new GarrisonReorgTask.SwapMove(army, weakest, bestSource, best,
                 $"\"{army.Name}\" swaps in {best.Name} for {weakest.Name} — still not strong enough for its target, no free slot to just recruit");

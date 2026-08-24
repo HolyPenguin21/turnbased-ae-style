@@ -177,8 +177,13 @@ namespace Game.Map
         // to add this instead of leaving that a permanent no-op). Capacity is still re-checked on
         // both sides — a swap that drags a hero out (or in) changes that army's own Capacity, so
         // the resulting headcount still needs to actually fit once the trade lands.
-        public static bool SwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
-            HexSelectionController hexSelectionController, out string failReason)
+        // Read-only preflight for SwapMembers — every check it performs before actually moving
+        // anything, with no side effects, so callers deciding WHETHER to propose a swap (see
+        // Game.Ai.AiDefencePlanner.TryStrengthenCandidate) can use the exact same feasibility
+        // rule execution enforces, instead of a swap that looked useful at candidate-generation
+        // time getting rejected here and leaving the AI stuck re-proposing it every turn.
+        public static bool CanSwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
+            out string failReason)
         {
             failReason = null;
             if (unitA == null || armyA == null || unitB == null || armyB == null || armyA == armyB
@@ -218,10 +223,9 @@ namespace Game.Map
 
             // Same "already-activated armies pay for what joins them" rule TransferMember
             // enforces, checked on both directions independently before either one commits.
-            PlayerRoot rootA = null;
             if (armyA.HasActivatedThisTurn)
             {
-                rootA = PlayerRootRegistry.FindFor(armyA.Owner);
+                PlayerRoot rootA = PlayerRootRegistry.FindFor(armyA.Owner);
                 if (rootA == null || !rootA.CanSpendActionPoints(unitB.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
@@ -229,10 +233,9 @@ namespace Game.Map
                     return false;
                 }
             }
-            PlayerRoot rootB = null;
             if (armyB.HasActivatedThisTurn)
             {
-                rootB = PlayerRootRegistry.FindFor(armyB.Owner);
+                PlayerRoot rootB = PlayerRootRegistry.FindFor(armyB.Owner);
                 if (rootB == null || !rootB.CanSpendActionPoints(unitA.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
@@ -240,6 +243,18 @@ namespace Game.Map
                     return false;
                 }
             }
+
+            return true;
+        }
+
+        public static bool SwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
+            HexSelectionController hexSelectionController, out string failReason)
+        {
+            if (!CanSwapMembers(unitA, armyA, unitB, armyB, out failReason))
+                return false;
+
+            PlayerRoot rootA = armyA.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
+            PlayerRoot rootB = armyB.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
 
             armyA.Members.Remove(unitA);
             armyB.Members.Remove(unitB);
