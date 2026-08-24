@@ -240,6 +240,15 @@ namespace Game.Ai
             public bool HasCeramicArmor;
             public int Initiative;
             public float Hp;
+
+            // True max HP the unit entered this simulated battle with — separate from Hp (which
+            // Estimate() below mutates round by round) because CriticalAfterBattleChance needs to
+            // compare a SURVIVOR's final Hp against its own real max, not the (possibly already
+            // wounded) starting Hp of this one simulated fight. For the DefenderProfile-only
+            // conversion below (ToBattleUnits), nothing here knows a real MaxHp distinct from the
+            // remembered/assumed starting HitPoints, so it defaults to the same value as Hp — see
+            // ToAttackerBattleUnits for the one path (our own live roster) that fills in the real one.
+            public float MaxHp;
         }
 
         // Longest a single simulated battle plays before being scored a draw — map-sized rosters
@@ -253,13 +262,40 @@ namespace Game.Ai
             if (profiles == null)
                 return list;
             foreach (DefenderProfile p in profiles)
+            {
+                float hp = Mathf.Max(1f, p.HitPoints);
                 list.Add(new BattleUnit
                 {
                     Attack = p.Attack,
                     Defense = p.Defense + extraDefense,
                     HasCeramicArmor = p.HasCeramicArmor,
                     Initiative = p.Initiative,
-                    Hp = Mathf.Max(1f, p.HitPoints),
+                    Hp = hp,
+                    MaxHp = hp,
+                });
+            }
+            return list;
+        }
+
+        // Attacker BattleUnits built straight off the real ArmyData roster rather than through
+        // DefenderProfile — FromLiveUnit's own comment already explains DefenderProfile.HitPoints
+        // means CURRENT hp for our own side, so it can't also carry the unit's true MaxHp that
+        // Estimate()'s CriticalAfterBattleChance needs. Non-hero only, same convention every other
+        // attacker-side read in this file uses.
+        private static List<BattleUnit> ToAttackerBattleUnits(ArmyData attacker)
+        {
+            var list = new List<BattleUnit>();
+            if (attacker == null)
+                return list;
+            foreach (UnitData m in attacker.Members.Where(u => !u.IsHero))
+                list.Add(new BattleUnit
+                {
+                    Attack = m.Attack,
+                    Defense = m.Defense,
+                    HasCeramicArmor = m.HasAbility(UnitAbilities.CeramicArmor),
+                    Initiative = m.Initiative,
+                    Hp = Mathf.Max(1f, m.HitPointsCurrent),
+                    MaxHp = Mathf.Max(1f, m.HitPointsMax),
                 });
             return list;
         }
@@ -365,10 +401,82 @@ namespace Game.Ai
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative);
 
+        // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
+        // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
+        // a 95% WinChance can still mean the survivors limp home critically wounded, which the old
+        // float couldn't say anything about. WinChance(ArmyData, ...) below is now a thin wrapper
+        // over Estimate() so every existing pass/fail caller is unaffected.
+        public readonly struct BattleEstimate
+        {
+            public readonly float WinChance;
+
+            // Mean fraction of the attacking army's starting HP (sum across all non-hero members)
+            // still standing at the end, averaged only over the trials the attacker actually won —
+            // a losing trial says nothing about "surviving" a win that didn't happen.
+            public readonly float ExpectedSurvivingHpRatioOnWin;
+
+            // Fraction of WON trials where at least one surviving non-hero member ends the battle
+            // at or below half its OWN real MaxHp — the exact predicate
+            // RaidWeakerArmyTask.IsCriticallyWounded already applies to a real post-battle army, so
+            // this number answers "how often does even a WIN immediately trigger that same
+            // return-to-base-to-repair verdict".
+            public readonly float CriticalAfterBattleChance;
+
+            public BattleEstimate(float winChance, float expectedSurvivingHpRatioOnWin, float criticalAfterBattleChance)
+            {
+                WinChance = winChance;
+                ExpectedSurvivingHpRatioOnWin = expectedSurvivingHpRatioOnWin;
+                CriticalAfterBattleChance = criticalAfterBattleChance;
+            }
+        }
+
+        // Same full-roster Monte Carlo WinChance(ArmyData, ...) always ran, just also tracking
+        // what happens to OUR OWN side across the trials it wins (see BattleEstimate's own
+        // comment). Observability only for now (2026-08-24 plan's own explicit scope) — nothing
+        // gates on this yet, callers just log it. Seeded identically to the pre-existing
+        // WinChance(ArmyData, ...) call (same FromLiveUnit-derived profile list feeds
+        // BuildRosterSeed) so this change doesn't shift which battles a given call used to roll.
+        public static BattleEstimate Estimate(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
+            float hexDefenseBonus = 0f)
+        {
+            if (enemyUnits == null || enemyUnits.Count == 0)
+                return new BattleEstimate(1f, 1f, 0f);
+
+            List<BattleUnit> baseline = ToAttackerBattleUnits(attacker);
+            if (baseline.Count == 0)
+                return new BattleEstimate(0f, 0f, 0f);
+
+            var seedProfiles = attacker.Members.Where(m => !m.IsHero).Select(FromLiveUnit).ToList();
+            var rng = new System.Random(BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus));
+            float startHp = baseline.Sum(u => u.Hp);
+
+            int wins = 0, draws = 0, criticalOnWin = 0;
+            float survivingRatioSum = 0f;
+            for (int i = 0; i < MonteCarloTrials; i++)
+            {
+                var attackers = new List<BattleUnit>(baseline);
+                int result = SimulateOneBattle(attackers, ToBattleUnits(enemyUnits, hexDefenseBonus), rng);
+                if (result > 0)
+                {
+                    wins++;
+                    survivingRatioSum += startHp > 0f ? attackers.Sum(u => Mathf.Max(0f, u.Hp)) / startHp : 0f;
+                    if (attackers.Any(u => u.Hp > 0f && u.Hp <= u.MaxHp / 2f))
+                        criticalOnWin++;
+                }
+                else if (result == 0) draws++;
+            }
+
+            float winChance = (wins + draws * 0.5f) / MonteCarloTrials;
+            float survivingRatio = wins > 0 ? survivingRatioSum / wins : 0f;
+            float criticalChance = wins > 0 ? (float)criticalOnWin / wins : 0f;
+            return new BattleEstimate(winChance, survivingRatio, criticalChance);
+        }
+
         // `attacker`'s own live non-hero roster as the same DefenderProfile snapshot shape —
-        // ArmyData convenience overload of the full-roster WinChance above.
+        // ArmyData convenience overload of the full-roster WinChance above. Thin wrapper over
+        // Estimate() (2026-08-24) — every pass/fail caller here keeps working unchanged.
         public static float WinChance(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f) =>
-            WinChance(attacker?.Members.Where(m => !m.IsHero).Select(FromLiveUnit).ToList(), enemyUnits, hexDefenseBonus);
+            Estimate(attacker, enemyUnits, hexDefenseBonus).WinChance;
 
         // Threshold-gated version — also requires CanDamageAll (below), same as every other real
         // readiness check here: raw power alone can overstate a fight where nothing in `attacker`

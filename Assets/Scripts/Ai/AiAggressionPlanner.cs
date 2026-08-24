@@ -243,9 +243,17 @@ namespace Game.Ai
             // that acts on it, so a log reader can see real numbers instead of trusting IsReady's
             // bare pass/fail verdict blind. Only on the ordinary "still going" step, not every
             // retarget/assembly check above — those already log their own outcome.
+            //
+            // Expected survivor HP / critical-after-win chance (2026-08-24 P1 plan, "WorthIt не
+            // оценивает цену победы") — a high WinChance alone can't say whether the win leaves the
+            // army immediately critically wounded (RaidWeakerArmyTask.IsCriticallyWounded) and
+            // straight back to base to repair; observability only for now, nothing gates on these
+            // two yet.
+            WorthIt.BattleEstimate estimate = RaidWeakerArmyTask.EstimateAgainst(task.Army, required);
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid win chance vs "
-                + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {RaidWeakerArmyTask.WinChanceAgainst(task.Army, required):P0} "
-                + $"(min {AiConfig.raidMinimumWinChance:P0}).");
+                + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {estimate.WinChance:P0} (min {AiConfig.raidMinimumWinChance:P0}), "
+                + $"expected survivor HP on win {estimate.ExpectedSurvivingHpRatioOnWin:P0}, "
+                + $"critical-after-win chance {estimate.CriticalAfterBattleChance:P0}.");
 
             HexCoord moveDestination = task.TargetHex;
             string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
@@ -299,7 +307,14 @@ namespace Game.Ai
         // Carlo against real per-unit HP where a per-unit enemy roster is known, aggregate-sum
         // fallback otherwise — see IsReady's own comment for why), so the percentage shown here
         // always matches the verdict it's explaining instead of drifting from it.
-        private static string FormatNotEnoughForceLog(PlayerSetupData player, ArmyData army, RaidWeakerArmyTask.ThreatStrength required)
+        //
+        // minimumWinChance (2026-08-24, project owner's own report): must be the SAME threshold
+        // IsReady() itself was called with (AiConfig.raidMinimumWinChance, currently 0.65) — this
+        // used to hardcode a stale 0.5 here after the real threshold was raised, so a log could
+        // call an army "not enough force" at 55% right next to a min-65% decision, or (worse) mark
+        // an army ready at, say, 60% when the real gate would keep assembling it further.
+        private static string FormatNotEnoughForceLog(PlayerSetupData player, ArmyData army,
+            RaidWeakerArmyTask.ThreatStrength required, float minimumWinChance)
         {
             string ourList = army.Members.Count > 0
                 ? string.Join(", ", army.Members.Select(m => $"{m.Attack}/{m.Defense}/{m.HitPointsCurrent}"))
@@ -317,8 +332,8 @@ namespace Game.Ai
             float enemyChance = 1f - ourChance;
 
             // Readiness diagnostic (2026-08-23, project owner's own report): IsReady is
-            // `winChance > 50% AND CanDamageAll` (see RaidWeakerArmyTask.IsReady) — two
-            // independent gates — but this log used to only ever print winChance, so a high
+            // `winChance >= minimumWinChance AND CanDamageAll` (see RaidWeakerArmyTask.IsReady) —
+            // two independent gates — but this log used to only ever print winChance, so a high
             // winChance next to "not enough force" read as contradictory/misleading when the REAL
             // reason was the coverage gate (some defender none of our units can actually scratch,
             // e.g. heavy Defense/CeramicArmor with nothing in the roster strong enough), not raw
@@ -326,18 +341,18 @@ namespace Game.Ai
             // failed — and, notably, a composition failure the garrison genuinely has nothing left
             // to fix (no counter-unit anywhere) would otherwise wait for a "reinforcement" that can
             // never actually satisfy this task.
-            bool winChanceOk = ourChance > 0.5f;
+            bool winChanceOk = ourChance >= minimumWinChance;
             bool coverageOk = WorthIt.CanDamageAll(army, enemyDefenders, required.HexBonus);
             string readyDiag;
             bool actuallyReady;
             if (!winChanceOk && !coverageOk)
             {
-                readyDiag = $"winChance {ourChance:P0} <= 50% AND composition can't cover every defender";
+                readyDiag = $"winChance {ourChance:P0} < {minimumWinChance:P0} AND composition can't cover every defender";
                 actuallyReady = false;
             }
             else if (!winChanceOk)
             {
-                readyDiag = $"winChance {ourChance:P0} <= 50%";
+                readyDiag = $"winChance {ourChance:P0} < {minimumWinChance:P0}";
                 actuallyReady = false;
             }
             else
@@ -472,7 +487,7 @@ namespace Game.Ai
                 // FindRecruitAt below decide for itself whether there's anyone left to add — a null
                 // result already `continue`s on its own, the same natural stop this pre-check used to
                 // reach a step later anyway.
-                AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required));
+                AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required, AiConfig.raidMinimumWinChance));
 
                 AiDecision heroCardDecision = TryHeroCardForRaid(player, root, hand, task.Army, task,
                     AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus);

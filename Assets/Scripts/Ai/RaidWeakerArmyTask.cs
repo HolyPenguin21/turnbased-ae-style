@@ -199,6 +199,23 @@ namespace Game.Ai
         public static float WinChanceAgainst(ArmyData army, ThreatStrength threat) =>
             threat.IsUndefended ? 1f : WinChanceAgainst(army, threat.Defense, threat.Attack, threat.Defenders, threat.HexBonus);
 
+        // BattleEstimate counterpart to WinChanceAgainst above (2026-08-24 P1 plan, "WorthIt не
+        // оценивает цену победы") — only meaningful with a real per-unit `Defenders` roster
+        // (WorthIt.Estimate needs one to simulate survivor HP); the aggregate-sum fallback has no
+        // per-unit data to estimate a cost-of-victory from, so it reports the same flat WinChance
+        // with the two new fields left at their neutral/optimistic defaults (1f survivor ratio, 0f
+        // critical chance — "unknown" reading the same as "no evidence this is costly", the same
+        // convention IsUndefended's own certain-win short-circuit already uses in this class).
+        public static WorthIt.BattleEstimate EstimateAgainst(ArmyData army, ThreatStrength threat)
+        {
+            if (threat.IsUndefended)
+                return new WorthIt.BattleEstimate(1f, 1f, 0f);
+            if (threat.Defenders != null && threat.Defenders.Count > 0)
+                return WorthIt.Estimate(army, threat.Defenders, threat.HexBonus);
+            float chance = WorthIt.WinChance(WorthIt.AttackSum(army), WorthIt.DefenseSum(army), threat.Attack, threat.Defense);
+            return new WorthIt.BattleEstimate(chance, 1f, 0f);
+        }
+
         // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
         // comparison on the map goes through WorthIt, no second copy of the same math anywhere
         // else). Used to build its own per-unit snapshot here with a manual "wounded unit reads
