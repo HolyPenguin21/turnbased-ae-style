@@ -60,17 +60,25 @@ namespace Game.Map
         // AiTurnController.MoveArmyRoutine's own wait signal — a contact-triggered fight now
         // resolves immediately instead of deferring to end of turn (see Movement.cs's own
         // onComplete comment), but battleScreen.Show() only kicks the whole fight off
-        // asynchronously from there (grid combat rounds, any chained second/third fight on the
-        // same hex, a Hex Event's own guard fight, a Capture Kill Challenge — all still the SAME
-        // battleScreen instance, see BattleScreenUI.Combat.cs's own ResolveHexAfterVictory
-        // chaining, and BattleScreenUI.IsShowing already folds the Capture Kill popup in too).
+        // asynchronously from there (grid combat rounds, a Hex Event's own guard fight, a
+        // Capture Kill Challenge — all still the SAME battleScreen instance, and
+        // BattleScreenUI.IsShowing already folds the Capture Kill popup in too). A chained
+        // second/third fight on the same hex is different: BattleScreenUI.Combat.cs's own
+        // ResolveHexAfterVictory resets/hides battleScreen first and, when the survivor is
+        // human, re-prompts through battleContactPopup instead — so that popup has to be
+        // folded in here too, or this flips false while the player still hasn't answered
+        // Fight/Delay on the next fight (the project owner's own report, 2026-08-24: the
+        // battle-initiation popup for a chained fight glitched and the AI kept playing its
+        // turn in the background).
         // Deliberately narrower than GameTurnController.InputBlocked, which also folds in
         // armyViewerModal — the AI's own MoveArmyRoutine keeps that open (read-only) for the
         // whole duration of its own move, so waiting on InputBlocked here would deadlock against
         // the AI's own debug visualization instead of the battle it's actually meant to wait for
         // (the project owner's own report, 2026-08-16: other AI armies kept acting while a fight
         // was still playing out on screen).
-        public bool IsBattleActive => battleScreen != null && battleScreen.IsShowing;
+        public bool IsBattleActive =>
+            (battleScreen != null && battleScreen.IsShowing) ||
+            (battleContactPopup != null && battleContactPopup.IsShowing);
 
         // The army (if any) currently playing its selected-hover animation and eligible for
         // move orders — tracked so selecting a different hex stops it, instead of leaving it
