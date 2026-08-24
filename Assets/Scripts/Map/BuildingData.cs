@@ -11,8 +11,8 @@ namespace Game.Map
     // Abilities is a small open-ended tag set (see UnitAbilities) rather than a building-type
     // enum, since what a building can do is more naturally a set of tags than a rigid type
     // hierarchy. Doubles as the "Base" runtime record for BaseViewerModalUI (the citadel and any
-    // player-built Base are both just a BuildingData tagged UnitAbilities.Base) — same role
-    // ArmyData plays for armies.
+    // player-built Base are both just a BuildingData with IsBase set) — same role ArmyData plays
+    // for armies.
     public class BuildingData
     {
         public string Name;
@@ -31,15 +31,22 @@ namespace Game.Map
 
         public bool HasAbility(string ability) => Abilities.Contains(ability);
 
+        // True for the auto-placed starting citadel and any player-built Base (from a
+        // CardType.Base card) alike — grants access to BaseViewerModalUI (facility slots,
+        // upgrades, repair). False for a hero-built resource site (see
+        // HexSelectionController.TryBuildExtractionFacility), identified instead by
+        // HasTieredUnlock=false.
+        public bool IsBase;
+
         // Set only by CitadelSetupController — true for the one building whose destruction ends
         // the game for its owner (see GameTurnController's BuildingRegistry.BuildingDestroyed
         // subscription). A later-built "Concord Citadel" card (see HexSelectionController.
-        // SpawnBuilding) produces an otherwise-identical building — same abilities, same hex
-        // resource-bonus stamp — but never carries this flag; only the originally placed one
+        // SpawnBuilding) produces an otherwise-identical building — same IsBase/abilities, same
+        // hex resource-bonus stamp — but never carries this flag; only the originally placed one
         // does. That flag is the sole difference between the two.
         public bool IsStartingCitadel;
 
-        // --- Base stats (only meaningful on a UnitAbilities.Base-tagged building) --------
+        // --- Base stats (only meaningful when IsBase is true) --------
 
         public int Level = 1;
         public int StructurePointsCurrent;

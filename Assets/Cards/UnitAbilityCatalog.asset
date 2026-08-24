@@ -15,8 +15,6 @@ MonoBehaviour:
   knownAbilities:
   - tag: Barracks
     description: Hex can receive Hero/Unit cards deployed from hand
-  - tag: Base
-    description: Building is a defended Base
   - tag: Lab
     description: "Carried by a placed Facility (e.g. Research Facility) \u2014 no
       behavior wired yet"

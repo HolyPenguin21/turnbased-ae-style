@@ -455,12 +455,12 @@ namespace Game.Map
                 ArmyData garrisonForButton = isOwnBarracks ? ArmyRegistry.FindGarrisonAt(coord, owner) : null;
                 infoPanel.SetGarrisonButtonVisible(garrisonForButton != null, () => ShowArmyModal(garrisonForButton));
 
-                // Same idea, for BaseViewerModalUI — any building tagged Base (the citadel
-                // always is, see CitadelSetupController; so is anything built from a
+                // Same idea, for BaseViewerModalUI — any building with IsBase set (the citadel
+                // always has it, see CitadelSetupController; so does anything built from a
                 // CardType.Base card, see SpawnBuilding) OR a hero-built resource site (see
                 // TryBuildExtractionFacility, identified by HasTieredUnlock=false rather than a
                 // separate tag) — both use the exact same modal.
-                bool isOwnBase = isOwn && (buildingHere.HasAbility(UnitAbilities.Base) || !buildingHere.HasTieredUnlock);
+                bool isOwnBase = isOwn && (buildingHere.IsBase || !buildingHere.HasTieredUnlock);
                 BuildingData baseForButton = isOwnBase ? buildingHere : null;
                 infoPanel.SetBaseButtonVisible(baseForButton != null, () => ShowBaseModal(baseForButton));
             }
@@ -845,8 +845,8 @@ namespace Game.Map
         // Whoever owns the building at this hex (citadel or a player-built Base alike) — there's
         // still no territory/zone-of-control system, so "owns this hex" and "owns the building
         // here" are the same question. Delegates to BuildingRegistry rather than only matching
-        // each player's own citadel coordinates, now that UnitAbilities.Base buildings can
-        // exist anywhere a Base card gets played, not just on the starting citadel hex.
+        // each player's own citadel coordinates, now that IsBase buildings can exist anywhere a
+        // Base card gets played, not just on the starting citadel hex.
         private static PlayerSetupData FindOwnerAt(HexCoord coord)
         {
             return BuildingRegistry.FindAt(coord)?.Owner;

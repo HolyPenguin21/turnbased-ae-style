@@ -61,7 +61,7 @@ namespace Game.Map
         // Siege spec — a defending army wiped out completely (see BattleScreenUI.Combat.cs's
         // HandleBuildingOnArmyDefeat) or an enemy simply walking onto a hex nobody defended at
         // all (see HexSelectionController.Movement.cs's own undefended-building check). A
-        // Base-tagged building (a citadel or player-built Base) is CAPTURED intact — ownership
+        // Base building (a citadel or player-built Base) is CAPTURED intact — ownership
         // only, recoloured to match. Anything else — a bare hero-built extraction facility,
         // which never had a garrison of its own to begin with — has no structure worth
         // capturing, so it's destroyed outright instead, icon and all.
@@ -69,7 +69,7 @@ namespace Game.Map
         {
             if (building == null)
                 return;
-            if (building.HasAbility(UnitAbilities.Base))
+            if (building.IsBase)
             {
                 PlayerSetupData previousOwner = building.Owner;
                 building.Owner = newOwner;

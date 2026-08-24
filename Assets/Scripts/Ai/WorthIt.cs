@@ -520,8 +520,8 @@ namespace Game.Ai
 
         // The hex's own contribution alone, no army — terrain.defenseModifier (see
         // TerrainTypeEntry's own comment: added to the defender's dice pool only, in every real
-        // fight) plus a Base-tagged building's own Defense stat if one sits here (see
-        // UnitAbilities.Base — only Base buildings carry this, per BattingScreenUI.Combat.cs's
+        // fight) plus a Base building's own Defense stat if one sits here (see
+        // BuildingData.IsBase — only Base buildings carry this, per BattingScreenUI.Combat.cs's
         // own gate). Needed on its own for a Hex Event's card-stat guard (AiMapMemory.
         // KnownEventGuardDefenseAt) — that guard is never a live ArmyData sitting on the hex until
         // Explore is chosen, so there's no army to hand DefenseAt, only the hex's own bonus to add
@@ -533,7 +533,7 @@ namespace Game.Ai
                 bonus += terrain.defenseModifier;
 
             BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building != null && building.HasAbility(UnitAbilities.Base))
+            if (building != null && building.IsBase)
                 bonus += building.Defense;
 
             return bonus;

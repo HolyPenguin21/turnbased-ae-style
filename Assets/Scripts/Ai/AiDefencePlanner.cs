@@ -201,7 +201,7 @@ namespace Game.Ai
         private static AiMapMemory.KnownEnemySighting? FindActiveThreatSighting(PlayerSetupData player, HexCoord homeHex)
         {
             List<HexCoord> baseHexes = BuildingRegistry.AllBuildings()
-                .Where(b => b.Owner == player && b.HasAbility(UnitAbilities.Base))
+                .Where(b => b.Owner == player && b.IsBase)
                 .Select(b => b.Hex).ToList();
             if (baseHexes.Count == 0)
                 return null;
@@ -623,7 +623,7 @@ namespace Game.Ai
         private static bool IsOwnPatrolFacilityHex(PlayerSetupData player, HexCoord hex)
         {
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && !building.HasAbility(UnitAbilities.Base)
+            return building != null && building.Owner == player && !building.IsBase
                 && AllResourceTypes.Any(t => building.CollectedAmount(t) > 0);
         }
 

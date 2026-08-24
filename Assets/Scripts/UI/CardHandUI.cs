@@ -534,7 +534,7 @@ namespace Game.UI
             if (definition == null || definition.cardType != CardType.Facility)
                 return false;
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && building.HasAbility(UnitAbilities.Base);
+            return building != null && building.Owner == player && building.IsBase;
         }
 
         private bool IsWithinDragBand(float localY)

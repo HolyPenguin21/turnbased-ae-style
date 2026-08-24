@@ -81,10 +81,6 @@ namespace Game.Cards
         // matched against BuildingData.Abilities.
 
         public const string Barracks = "Barracks";
-        // Marks a building as a Base — grants access to BaseViewerModalUI (facility slots,
-        // upgrades, repair). Both the auto-placed starting citadel and any player-built Base
-        // (from a CardType.Base card) carry this tag.
-        public const string Base = "Base";
         // Carried by a placed FacilityData (e.g. Research Facility), not a BuildingData — same
         // open-tag pool, no behavior wired yet.
         public const string Lab = "Lab";
@@ -131,7 +127,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce, ApBonus,
-            Barracks, Base, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
+            Barracks, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 
         // Human-readable form of a tag, derived purely from its own PascalCase spelling (a

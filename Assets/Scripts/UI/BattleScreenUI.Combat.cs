@@ -58,7 +58,7 @@ namespace Game.UI
             // second dice roll against the building itself) — instead, terrain and a Base-tagged
             // building's own Defense fold straight into THIS SAME Ground Combat roll, defender
             // side only. Terrain always applies (every hex has one); the building only counts
-            // when it's Base-tagged (a citadel or player-built Base, see UnitAbilities.Base's
+            // when it's a Base (a citadel or player-built Base, see BuildingData.IsBase's
             // own comment) — a bare hero-built extraction facility has nothing built up worth a
             // defense bonus (see HandleBuildingOnArmyDefeat's own note on why those get destroyed
             // outright instead of captured).
@@ -79,7 +79,7 @@ namespace Game.UI
                 if (map != null && map.TryGetTerrainAt(defenderArmy.Hex, out TerrainTypeEntry terrain))
                     defenderTerrainBonus += terrain.defenseModifier;
                 BuildingData defendingBuilding = BuildingRegistry.FindAt(defenderArmy.Hex);
-                if (defendingBuilding != null && defendingBuilding.HasAbility(UnitAbilities.Base))
+                if (defendingBuilding != null && defendingBuilding.IsBase)
                     defenderConstructionBonus += defendingBuilding.Defense;
             }
 

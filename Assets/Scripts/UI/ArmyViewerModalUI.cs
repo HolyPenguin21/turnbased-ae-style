@@ -666,7 +666,7 @@ namespace Game.UI
                 terrainDefMod = terrain.defenseModifier;
             int buildingDefMod = 0;
             BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
-            if (building != null && building.HasAbility(UnitAbilities.Base))
+            if (building != null && building.IsBase)
                 buildingDefMod = building.Defense;
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +

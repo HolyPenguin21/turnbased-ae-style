@@ -148,7 +148,7 @@ namespace Game.Map
                 Resistance = definition.resistanceRating,
                 Fate = definition.fate,
             };
-            building.Abilities.Add(UnitAbilities.Base);
+            building.IsBase = true;
             foreach (string ability in definition.grantedAbilities)
                 building.Abilities.Add(ability);
             BuildingRegistry.Register(hex, building);

@@ -76,7 +76,6 @@ MonoBehaviour:
     initiative: 0
     unitTypeTags: 
     grantedAbilities:
-    - Base
     - CollectHuman
     - CollectEnergy
     - CollectMaterials

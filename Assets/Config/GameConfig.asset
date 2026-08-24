@@ -221,8 +221,6 @@ MonoBehaviour:
     abbreviation: AP+2
   - ability: Barracks
     abbreviation: Barracks
-  - ability: Base
-    abbreviation: Base
   - ability: Lab
     abbreviation: Lab
   - ability: CollectHuman

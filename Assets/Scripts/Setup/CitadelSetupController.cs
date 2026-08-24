@@ -252,7 +252,7 @@ namespace Game.Setup
                 // BuildingRegistry.BuildingDestroyed).
                 IsStartingCitadel = true,
             };
-            building.Abilities.Add(UnitAbilities.Base);
+            building.IsBase = true;
             // Abilities come from the card itself (Barracks, Citadel, the 4 CollectX — see the
             // catalog) rather than being hardcoded here a second time — a card played later
             // reads the exact same list (see SpawnBuilding), so the two can never drift apart

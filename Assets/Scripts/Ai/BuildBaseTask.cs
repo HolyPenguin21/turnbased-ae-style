@@ -108,7 +108,7 @@ namespace Game.Ai
         {
             foreach (BuildingData existing in BuildingRegistry.AllBuildings())
             {
-                if (existing.Owner != player || !existing.HasAbility(UnitAbilities.Base))
+                if (existing.Owner != player || !existing.IsBase)
                     continue;
                 if (HexGridMath.Distance(candidate, existing.Hex) <= AiConfig.buildBaseMinDistanceFromExistingBase)
                     return false;

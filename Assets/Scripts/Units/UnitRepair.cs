@@ -21,7 +21,7 @@ namespace Game.Units
         public static bool CanRepairAt(HexCoord hex, PlayerSetupData owner)
         {
             BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == owner && building.HasAbility(UnitAbilities.Base);
+            return building != null && building.Owner == owner && building.IsBase;
         }
 
         // Half of what the unit originally cost to play, rounded down per resource independently
