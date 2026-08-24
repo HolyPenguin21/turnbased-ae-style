@@ -222,21 +222,50 @@ namespace Game.Map
             }
 
             // Same "already-activated armies pay for what joins them" rule TransferMember
-            // enforces, checked on both directions independently before either one commits.
-            if (armyA.HasActivatedThisTurn)
+            // enforces — but unlike TransferMember (always two DIFFERENT owners' armies) a swap's
+            // two armies are routinely the SAME AI player's own (e.g. AiDefencePlanner.
+            // TryStrengthenCandidate trading between its own garrison and a field army), so rootA
+            // and rootB can be the identical PlayerRoot. Checked and charged as ONE combined
+            // requirement against that shared pool when they match — two independent
+            // CanSpendActionPoints calls against the SAME starting AP would both pass even when
+            // the pool can't actually cover both costs together (e.g. 3 AP, 2+2 needed), and
+            // PlayerRoot.SpendActionPoints silently no-ops on an overdraft rather than throwing,
+            // so SwapMembers would have gone on to mutate both rosters while only ever actually
+            // paying for one side (project owner's own report).
+            PlayerRoot rootA = armyA.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
+            PlayerRoot rootB = armyB.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
+            if (armyA.HasActivatedThisTurn && rootA == null)
             {
-                PlayerRoot rootA = PlayerRootRegistry.FindFor(armyA.Owner);
-                if (rootA == null || !rootA.CanSpendActionPoints(unitB.ActivationApCost))
+                failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
+                    + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
+                return false;
+            }
+            if (armyB.HasActivatedThisTurn && rootB == null)
+            {
+                failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
+                    + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
+                return false;
+            }
+            if (rootA != null && rootA == rootB)
+            {
+                int combinedCost = (armyA.HasActivatedThisTurn ? unitB.ActivationApCost : 0)
+                    + (armyB.HasActivatedThisTurn ? unitA.ActivationApCost : 0);
+                if (!rootA.CanSpendActionPoints(combinedCost))
+                {
+                    failReason = $"Not enough action points for \"{armyA.Owner.Nickname}\" to swap {unitB.Name} "
+                        + $"and {unitA.Name} between {armyA.Name} and {armyB.Name} ({combinedCost} AP needed).";
+                    return false;
+                }
+            }
+            else
+            {
+                if (armyA.HasActivatedThisTurn && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
                         + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
                     return false;
                 }
-            }
-            if (armyB.HasActivatedThisTurn)
-            {
-                PlayerRoot rootB = PlayerRootRegistry.FindFor(armyB.Owner);
-                if (rootB == null || !rootB.CanSpendActionPoints(unitA.ActivationApCost))
+                if (armyB.HasActivatedThisTurn && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
                         + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
@@ -260,8 +289,20 @@ namespace Game.Map
             armyB.Members.Remove(unitB);
             armyA.AddMemberSorted(unitB);
             armyB.AddMemberSorted(unitA);
-            rootA?.SpendActionPoints(unitB.ActivationApCost);
-            rootB?.SpendActionPoints(unitA.ActivationApCost);
+            // Same-owner combined charge — see CanSwapMembers' own comment. Two separate
+            // SpendActionPoints calls against the SAME root would double-count the pool's
+            // headroom the same way two separate CanSpendActionPoints checks did.
+            if (rootA != null && rootA == rootB)
+            {
+                int combinedCost = (armyA.HasActivatedThisTurn ? unitB.ActivationApCost : 0)
+                    + (armyB.HasActivatedThisTurn ? unitA.ActivationApCost : 0);
+                rootA.SpendActionPoints(combinedCost);
+            }
+            else
+            {
+                rootA?.SpendActionPoints(unitB.ActivationApCost);
+                rootB?.SpendActionPoints(unitA.ActivationApCost);
+            }
 
             hexSelectionController?.RestackArmiesOn(armyA.Hex, null);
             if (!armyB.Hex.Equals(armyA.Hex))
