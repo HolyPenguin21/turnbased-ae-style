@@ -38,9 +38,12 @@ namespace Game.Map
 
         // Fired after RecomputeFor(player) finishes — subscribers (map markers, resource icons,
         // the fog overlay, hex info panel) re-check IsVisible against their own displayed hexes.
-        // Always fires, even if the recomputed set happens to equal the previous one — callers
-        // are cheap idempotent refreshes, not worth diffing here.
+        // Fires only when the viewer's visible/visited state actually changed. World-content
+        // changes on an already-visible hex use VisibleContentChanged below instead, so an army
+        // walking through a large already-revealed area does not rebuild the whole fog/UI stack
+        // once per animation step.
         public static event Action<PlayerSetupData> VisibilityChanged;
+        public static event Action<PlayerSetupData, HexCoord> VisibleContentChanged;
 
         public static PlayerSetupData CurrentViewer { get; set; }
 
@@ -165,6 +168,7 @@ namespace Game.Map
                         fresh.Add(hex);
                 }
 
+            bool visibilityChanged = !Visible.TryGetValue(player, out HashSet<HexCoord> previous) || !previous.SetEquals(fresh);
             Visible[player] = fresh;
 
             if (!Visited.TryGetValue(player, out HashSet<HexCoord> visited))
@@ -172,6 +176,7 @@ namespace Game.Map
                 visited = new HashSet<HexCoord>();
                 Visited[player] = visited;
             }
+            bool visitedChanged = !footprint.IsSubsetOf(visited);
             visited.UnionWith(footprint);
 
             if (!EverSeen.TryGetValue(player, out HashSet<HexCoord> everSeen))
@@ -181,7 +186,8 @@ namespace Game.Map
             }
             everSeen.UnionWith(fresh);
 
-            VisibilityChanged?.Invoke(player);
+            if (visibilityChanged || visitedChanged)
+                VisibilityChanged?.Invoke(player);
         }
 
         public static void RecomputeFor(IEnumerable<PlayerSetupData> players)
@@ -207,7 +213,7 @@ namespace Game.Map
         {
             foreach (KeyValuePair<PlayerSetupData, HashSet<HexCoord>> entry in new List<KeyValuePair<PlayerSetupData, HashSet<HexCoord>>>(Visible))
                 if (entry.Value.Contains(hex))
-                    VisibilityChanged?.Invoke(entry.Key);
+                    VisibleContentChanged?.Invoke(entry.Key, hex);
         }
     }
 }

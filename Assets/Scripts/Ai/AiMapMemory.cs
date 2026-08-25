@@ -214,12 +214,22 @@ namespace Game.Ai
             if (_subscribed)
                 return;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             // The event's own guard just got beaten for real — only a player CURRENTLY watching
             // the hex gets its memory corrected right here; everyone else only learns about it by
             // actually re-observing the hex later (see OnEventConsumed's own comment, 2026-08-24
             // fix).
             HexEventRegistry.EventConsumed += OnEventConsumed;
             _subscribed = true;
+        }
+
+        // Content changed under an already-visible hex (arrival, departure, capture). This is
+        // intentionally separate from a vision-radius change; the existing snapshot routine is
+        // kept as the single source of truth, but no longer runs on every animation step whose
+        // reveal area stayed identical.
+        private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
+        {
+            OnVisibilityChanged(player);
         }
 
         public static void Clear()

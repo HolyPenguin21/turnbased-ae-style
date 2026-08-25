@@ -32,7 +32,8 @@ namespace Game.Map
         // Fetched on demand rather than cached in Awake — this component isn't [ExecuteAlways],
         // so RefreshAll can be called (from HexMapGenerator, which is) before Awake has ever
         // run, e.g. while tuning the map in the editor outside Play mode.
-        private HexMap Map => GetComponent<HexMap>();
+        private HexMap _map;
+        private HexMap Map => _map != null ? _map : (_map = GetComponent<HexMap>());
 
         private void OnEnable()
         {

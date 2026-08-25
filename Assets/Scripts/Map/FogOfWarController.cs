@@ -41,7 +41,8 @@ namespace Game.Map
         private static readonly int NoiseTexScaleId = Shader.PropertyToID("_NoiseTexScale");
         private static readonly int NoiseTexStrengthId = Shader.PropertyToID("_NoiseTexStrength");
 
-        private HexMap Map => GetComponent<HexMap>();
+        private HexMap _map;
+        private HexMap Map => _map != null ? _map : (_map = GetComponent<HexMap>());
 
         private MeshRenderer _overlayRenderer;
         private Material _overlayMaterial;
@@ -221,19 +222,29 @@ namespace Game.Map
 
             PlayerSetupData viewer = VisionSystem.CurrentViewer;
 
+            bool maskChanged = false;
             foreach (HexCoord coord in map.AllCoords)
             {
                 bool visible = VisionSystem.IsVisibleToCurrentViewer(coord);
                 int x = coord.Q - _minQ;
                 int y = coord.R - _minR;
-                _maskPixels[y * _maskWidth + x] = visible ? (byte)255 : (byte)0;
+                int pixelIndex = y * _maskWidth + x;
+                byte value = visible ? (byte)255 : (byte)0;
+                if (_maskPixels[pixelIndex] != value)
+                {
+                    _maskPixels[pixelIndex] = value;
+                    maskChanged = true;
+                }
 
                 if (_labels.TryGetValue(coord, out HexCoordLabel label))
                     label.SetVisited(VisionSystem.IsVisitedByCurrentViewer(coord));
             }
 
-            _mask.SetPixelData(_maskPixels, 0);
-            _mask.Apply(updateMipmaps: false);
+            if (maskChanged)
+            {
+                _mask.SetPixelData(_maskPixels, 0);
+                _mask.Apply(updateMipmaps: false);
+            }
 
             if (_overlayRenderer == null)
                 return;
