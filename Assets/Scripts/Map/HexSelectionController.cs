@@ -51,11 +51,10 @@ namespace Game.Map
         // drains this at the next turn boundary).
         [SerializeField] private BattleContactPopupUI battleContactPopup;
         [SerializeField] private BattleScreenUI battleScreen;
-        // How close (in screen pixels) a click needs to land to a friendly army marker to
-        // count as clicking the marker itself rather than just the hex it's on — see
-        // TryHandleArmyMarkerClick. No Collider on the marker prefab; a screen-space distance
-        // check is simpler than adding one just for this.
-        [SerializeField] private float armyMarkerClickRadius = 30f;
+        // Small usability margin around the marker's real projected SpriteRenderer bounds.
+        // The bounds themselves scale with orthographic zoom (MapObjectVisual.ContainsScreenPoint),
+        // so this never turns into the old fixed 30px invisible collider at long zoom.
+        [SerializeField] private float mapMarkerClickPadding = 3f;
 
         // AiTurnController.MoveArmyRoutine's own wait signal — a contact-triggered fight now
         // resolves immediately instead of deferring to end of turn (see Movement.cs's own
@@ -106,6 +105,8 @@ namespace Game.Map
         }
         private readonly Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>> _rememberedArmyVisuals =
             new Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>>();
+        private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>> _rememberedArmyVisualsByHex =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>>();
 
         private void Reset()
         {
@@ -257,7 +258,10 @@ namespace Game.Map
                 visuals = new Dictionary<int, RememberedArmyVisual>();
                 _rememberedArmyVisuals[viewer] = visuals;
             }
-            if (!visuals.TryGetValue(source.Id, out RememberedArmyVisual remembered) || remembered.Visual == null)
+            bool alreadyRemembered = visuals.TryGetValue(source.Id, out RememberedArmyVisual remembered);
+            if (alreadyRemembered && remembered != null && !remembered.Hex.Equals(hex))
+                RemoveRememberedArmyFromHexIndex(viewer, remembered);
+            if (!alreadyRemembered || remembered == null || remembered.Visual == null)
             {
                 MapObjectVisual visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
                     source.Controller.transform.rotation, transform);
@@ -279,6 +283,37 @@ namespace Game.Map
             remembered.Visual.transform.localScale = source.Controller.transform.localScale;
             remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
             remembered.Visual.SetVisible(false);
+            AddRememberedArmyToHexIndex(viewer, remembered);
+        }
+
+        private void AddRememberedArmyToHexIndex(PlayerSetupData viewer, RememberedArmyVisual remembered)
+        {
+            if (!_rememberedArmyVisualsByHex.TryGetValue(viewer,
+                out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex))
+            {
+                byHex = new Dictionary<HexCoord, List<RememberedArmyVisual>>();
+                _rememberedArmyVisualsByHex[viewer] = byHex;
+            }
+            if (!byHex.TryGetValue(remembered.Hex, out List<RememberedArmyVisual> atHex))
+            {
+                atHex = new List<RememberedArmyVisual>();
+                byHex[remembered.Hex] = atHex;
+            }
+            if (!atHex.Contains(remembered))
+                atHex.Add(remembered);
+        }
+
+        private void RemoveRememberedArmyFromHexIndex(PlayerSetupData viewer, RememberedArmyVisual remembered)
+        {
+            if (!_rememberedArmyVisualsByHex.TryGetValue(viewer,
+                out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex)
+                || !byHex.TryGetValue(remembered.Hex, out List<RememberedArmyVisual> atHex))
+                return;
+            atHex.Remove(remembered);
+            if (atHex.Count == 0)
+                byHex.Remove(remembered.Hex);
+            if (byHex.Count == 0)
+                _rememberedArmyVisualsByHex.Remove(viewer);
         }
 
         private void RemoveUnrememberedArmyVisuals(PlayerSetupData viewer)
@@ -292,6 +327,7 @@ namespace Game.Map
             foreach (int armyId in stale)
             {
                 RememberedArmyVisual remembered = visuals[armyId];
+                RemoveRememberedArmyFromHexIndex(viewer, remembered);
                 visuals.Remove(armyId);
                 if (remembered.Visual != null)
                     Destroy(remembered.Visual.gameObject);
@@ -566,8 +602,13 @@ namespace Game.Map
                 return;
             }
 
-            if (Mouse.current != null && TryHandleArmyMarkerClick(hoverCoord.Value, Mouse.current.position.ReadValue()))
-                return;
+            if (Mouse.current != null)
+            {
+                Vector2 screenPosition = Mouse.current.position.ReadValue();
+                if (TryHandleArmyMarkerClick(hoverCoord.Value, screenPosition)
+                    || TryHandleBuildingMarkerClick(hoverCoord.Value, screenPosition))
+                    return;
+            }
 
             SelectHex(hoverCoord.Value);
         }
@@ -599,7 +640,7 @@ namespace Game.Map
                 if (army.Owner == human && army.Controller != null && army.Controller.Visual != null && army.Controller.Visual.IsVisible)
                 { ownRepresentative = army; break; }
 
-            if (ownRepresentative != null && Vector2.Distance(targetCamera.WorldToScreenPoint(ownRepresentative.Controller.transform.position), screenPosition) <= armyMarkerClickRadius)
+            if (ownRepresentative != null && IsMarkerHit(ownRepresentative.Controller.Visual, screenPosition))
             {
                 BuildingData building = BuildingRegistry.FindAt(hex);
                 bool hasBarracks = building != null && building.Owner == human && building.HasAbility(UnitAbilities.Barracks);
@@ -644,32 +685,68 @@ namespace Game.Map
                 if (army.Owner == human || army.Owner == null || army.Controller == null || army.Controller.Visual == null || !army.Controller.Visual.IsVisible)
                     continue;
 
-                Vector2 markerScreenPos = targetCamera.WorldToScreenPoint(army.Controller.transform.position);
-                if (Vector2.Distance(markerScreenPos, screenPosition) > armyMarkerClickRadius)
+                if (!IsMarkerHit(army.Controller.Visual, screenPosition))
                     continue;
 
                 _selectedHex = hex;
                 armyViewerModal.ShowReadOnly(army);
                 return true;
             }
-            if (_rememberedArmyVisuals.TryGetValue(human, out Dictionary<int, RememberedArmyVisual> rememberedById))
-                foreach (RememberedArmyVisual remembered in rememberedById.Values)
+            if (_rememberedArmyVisualsByHex.TryGetValue(human,
+                out Dictionary<HexCoord, List<RememberedArmyVisual>> rememberedByHex)
+                && rememberedByHex.TryGetValue(hex, out List<RememberedArmyVisual> rememberedAtHex))
+                foreach (RememberedArmyVisual remembered in rememberedAtHex)
                 {
-                    if (!remembered.Hex.Equals(hex) || remembered.Visual == null || !remembered.Visual.IsVisible)
+                    if (remembered.Visual == null || !remembered.Visual.IsVisible)
                         continue;
-                    Vector2 markerScreenPos = targetCamera.WorldToScreenPoint(remembered.Visual.transform.position);
-                    if (Vector2.Distance(markerScreenPos, screenPosition) > armyMarkerClickRadius)
+                    if (!IsMarkerHit(remembered.Visual, screenPosition))
                         continue;
                     _selectedHex = hex;
                     var siblings = new List<ArmyData>();
-                    foreach (RememberedArmyVisual candidate in rememberedById.Values)
-                        if (candidate.Hex.Equals(hex) && candidate.Snapshot != null
-                            && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
+                    foreach (RememberedArmyVisual candidate in rememberedAtHex)
+                        if (candidate.Snapshot != null && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
                             siblings.Add(candidate.Snapshot);
                     armyViewerModal.ShowLastSeen(remembered.Snapshot, siblings);
                     return true;
                 }
             return false;
+        }
+
+        private bool TryHandleBuildingMarkerClick(HexCoord hex, Vector2 screenPosition)
+        {
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building != null && IsMarkerHit(building.Visual, screenPosition))
+            {
+                SelectHex(hex);
+                PlayerSetupData human = turnController != null ? turnController.CurrentPlayer : null;
+                // Citadel/Base and the hero-built extraction Facility share BaseViewerModalUI.
+                // Foreign buildings remain inspectable only through the ordinary hex info,
+                // exactly as before; clicking their visible marker simply selects that hex.
+                if (human != null && building.Owner == human
+                    && (building.IsBase || !building.HasTieredUnlock))
+                    ShowBaseModal(building);
+                return true;
+            }
+
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (viewer != null
+                && _rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> visuals)
+                && visuals.TryGetValue(hex, out MapObjectVisual remembered)
+                && IsMarkerHit(remembered, screenPosition))
+            {
+                // Never open a modal from the live registry for a last-seen building: it may
+                // already have changed or been destroyed behind fog. SelectHex knows to render
+                // only HumanVisualMemory's safe remembered information here.
+                SelectHex(hex);
+                return true;
+            }
+            return false;
+        }
+
+        private bool IsMarkerHit(MapObjectVisual visual, Vector2 screenPosition)
+        {
+            return visual != null
+                && visual.ContainsScreenPoint(targetCamera, screenPosition, mapMarkerClickPadding);
         }
 
         // Shows the highlight ring + info panels for `coord` and selects whatever army (if
