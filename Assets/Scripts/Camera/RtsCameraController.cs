@@ -135,9 +135,11 @@ namespace Game.Cameras
             if (_panRoutine != null)
                 return;
 
-            Vector3 forwardFlat = new Vector3(_forward.x, 0f, _forward.z).normalized;
-            Vector3 rightFlat = new Vector3(forwardFlat.z, 0f, -forwardFlat.x);
             Vector3 panDelta = Vector3.zero;
+            bool needsPlanarInput = _panningEnabled && (Keyboard.current != null || (enableEdgeScroll && Mouse.current != null));
+            Vector3 forwardFlat = needsPlanarInput ? new Vector3(_forward.x, 0f, _forward.z).normalized : Vector3.zero;
+            Vector3 rightFlat = needsPlanarInput ? new Vector3(forwardFlat.z, 0f, -forwardFlat.x) : Vector3.zero;
+            bool positionChanged = false;
 
             // WASD/arrows and edge-scroll read straight off the Keyboard/Mouse singletons, not
             // through the UI event system — a focused text field (e.g. RenameArmyPopupUI's
@@ -187,6 +189,7 @@ namespace Game.Cameras
                     && TryGetGroundPoint(mouse.position.ReadValue(), out Vector3 currentGround))
                 {
                     _groundTarget += _dragAnchorGround - currentGround;
+                    positionChanged = true;
                 }
             }
             else
@@ -198,9 +201,12 @@ namespace Game.Cameras
                 panDelta = Vector3.zero;
 
             if (panDelta.sqrMagnitude > 0f)
+            {
                 _groundTarget += panDelta.normalized * panSpeed * Time.deltaTime;
+                positionChanged = true;
+            }
 
-            if (clampToBounds)
+            if (clampToBounds && positionChanged)
             {
                 _groundTarget.x = Mathf.Clamp(_groundTarget.x, boundsMin.x, boundsMax.x);
                 _groundTarget.z = Mathf.Clamp(_groundTarget.z, boundsMin.y, boundsMax.y);
@@ -220,7 +226,8 @@ namespace Game.Cameras
                 }
             }
 
-            ApplyPosition();
+            if (positionChanged)
+                ApplyPosition();
         }
 
         private void ApplyPosition()

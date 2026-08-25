@@ -136,6 +136,7 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed += OnBaseModalClosed;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
             RefreshAllVisibility();
         }
@@ -153,6 +154,7 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed -= OnBaseModalClosed;
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
+            VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
@@ -192,6 +194,17 @@ namespace Game.Map
                 RefreshAllVisibility();
         }
 
+        // A registry change on a hex which this player can already see must still update its
+        // markers and remembered snapshot, but it must not make an unchanged FOW area look like
+        // a full visibility rebuild to every subscriber.
+        private void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
+        {
+            if (player != null && player.IsHuman)
+                RememberCurrentlyVisibleContent(player);
+            if (player == VisionSystem.CurrentViewer)
+                RefreshAllVisibility();
+        }
+
         private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
         {
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
@@ -200,7 +213,6 @@ namespace Game.Map
                     .FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
                         && BattleInitiator.IsEngageable(army));
                 HumanVisualMemory.ReconcileVisibleHex(viewer, hex, enemies.ConvertAll(army => army.Id));
-                RemoveUnrememberedArmyVisuals(viewer);
                 foreach (ArmyData army in enemies)
                 {
                     HumanVisualMemory.ObserveArmy(viewer, army, hex);
@@ -215,6 +227,7 @@ namespace Game.Map
                 else
                     RemoveRememberedBuildingVisual(viewer, hex);
             }
+            RemoveUnrememberedArmyVisuals(viewer);
         }
 
         private void ObserveMovingArmyStep(ArmyData army, HexCoord from, HexCoord to, bool completed)

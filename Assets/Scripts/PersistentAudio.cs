@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
 
 [RequireComponent(typeof(AudioSource))]
@@ -24,6 +25,7 @@ public class PersistentMusic : MonoBehaviour
 
     private AudioSource audioSource;
     private int lastPlayedIndex = -1;
+    private Coroutine musicRoutine;
 
     void Awake()
     {
@@ -46,20 +48,22 @@ public class PersistentMusic : MonoBehaviour
 
     void Start()
     {
-        // Запускаем первый трек, если объект только создался
+        // Музыка не требует проверки в каждом кадре: следующий трек известен по длительности
+        // текущего. Корутинa просыпается только на границе композиции.
         if (instance == this)
-        {
-            PlayRandomTrack();
-        }
+            musicRoutine = StartCoroutine(PlayMusicRoutine());
     }
 
-    void Update()
+    private IEnumerator PlayMusicRoutine()
     {
-        // Если музыка не играет и список не пуст — значит, трек закончился
-        if (!audioSource.isPlaying && musicTracks.Count > 0)
+        while (instance == this && musicTracks.Count > 0)
         {
             PlayRandomTrack();
+            if (audioSource == null || audioSource.clip == null)
+                yield break;
+            yield return new WaitForSeconds(audioSource.clip.length);
         }
+        musicRoutine = null;
     }
 
     private void PlayRandomTrack()
