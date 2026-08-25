@@ -64,7 +64,8 @@ namespace Game.UI
         // for per-unit card display (see ArmyUnitCardUI.RefreshStatsRow). Every member of
         // _currentArmy shares this same hex, so it's one value for the whole grid, not per-unit.
         public int CurrentArmyDefenseBonus =>
-            _currentArmy != null ? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map)) : 0;
+            _currentArmy?.VisualSnapshotDefenseBonus
+            ?? (_currentArmy != null ? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map)) : 0);
 
         private readonly List<ArmyUnitCardUI> _cards = new List<ArmyUnitCardUI>();
         private ArmyData _currentArmy;
@@ -81,6 +82,9 @@ namespace Game.UI
         // this view — the battle popup's own side columns are the only way to pick which army to
         // inspect there.
         private bool _hideArmySwitcher;
+        // Display-only siblings captured in the same last-seen hex. Unlike a live read-only
+        // view these must never query ArmyRegistry, which may already contain newer hidden data.
+        private IReadOnlyList<ArmyData> _snapshotSiblings;
         private Canvas _canvas;
         // Live drag-reorder state (see BeginReorderPreview/PreviewReorder/TryDropUnit) — a
         // scratch copy of _currentArmy.Members that's live-reordered as the card moves, so the
@@ -173,6 +177,8 @@ namespace Game.UI
         public void Show(ArmyData army)
         {
             _readOnly = false;
+            _hideArmySwitcher = false;
+            _snapshotSiblings = null;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -185,6 +191,17 @@ namespace Game.UI
         public void ShowReadOnly(ArmyData army)
         {
             _readOnly = true;
+            _hideArmySwitcher = false;
+            _snapshotSiblings = null;
+            ActivatePanel();
+            SwitchTo(army);
+        }
+
+        public void ShowLastSeen(ArmyData army, IReadOnlyList<ArmyData> siblings)
+        {
+            _readOnly = true;
+            _hideArmySwitcher = false;
+            _snapshotSiblings = siblings;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -198,6 +215,7 @@ namespace Game.UI
         {
             _readOnly = true;
             _hideArmySwitcher = true;
+            _snapshotSiblings = null;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -240,6 +258,7 @@ namespace Game.UI
             _currentArmy = null;
             _readOnly = false;
             _hideArmySwitcher = false;
+            _snapshotSiblings = null;
             if (wasShowing)
             {
                 Closed?.Invoke();
@@ -633,6 +652,11 @@ namespace Game.UI
                 armyButtonRow.Hide();
                 return;
             }
+            if (_snapshotSiblings != null)
+            {
+                armyButtonRow.Show(_snapshotSiblings, SwitchTo, _currentArmy);
+                return;
+            }
             // Prison goes first, per the user's own spec, and only appears at all once it holds
             // at least one captured hero; Garrison goes second. Everyone else keeps ArmyRegistry's
             // own natural (registration) order, same as before this existed, rather than a full
@@ -707,9 +731,14 @@ namespace Game.UI
             if (map != null && map.TryGetTerrainAt(_currentArmy.Hex, out TerrainTypeEntry terrain))
                 terrainDefMod = terrain.defenseModifier;
             int buildingDefMod = 0;
-            BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
-            if (building != null && building.IsBase)
-                buildingDefMod = building.Defense;
+            if (_currentArmy.VisualSnapshotConstructionDefense.HasValue)
+                buildingDefMod = _currentArmy.VisualSnapshotConstructionDefense.Value;
+            else
+            {
+                BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
+                if (building != null && building.IsBase)
+                    buildingDefMod = building.Defense;
+            }
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
                 $"{fatePoints} Fate Points\nNot Stealth Capable\n" +

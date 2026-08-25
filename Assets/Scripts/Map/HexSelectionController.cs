@@ -98,6 +98,14 @@ namespace Game.Map
         // marker they last observed until that hex enters their vision again.
         private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>> _rememberedBuildingVisuals =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>>();
+        private sealed class RememberedArmyVisual
+        {
+            public HexCoord Hex;
+            public ArmyData Snapshot;
+            public MapObjectVisual Visual;
+        }
+        private readonly Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>> _rememberedArmyVisuals =
+            new Dictionary<PlayerSetupData, Dictionary<int, RememberedArmyVisual>>();
 
         private void Reset()
         {
@@ -146,6 +154,7 @@ namespace Game.Map
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
             SetRememberedBuildingVisualsVisible(false);
+            SetRememberedArmyVisualsVisible(false);
         }
 
         // The map is now (potentially) rendered from a different human's perspective — see
@@ -166,6 +175,7 @@ namespace Game.Map
             if (outgoing != null && outgoing.IsHuman)
             {
                 HumanVisualMemory.EndTurn(outgoing);
+                RemoveUnrememberedArmyVisuals(outgoing);
                 RefreshAllVisibility();
             }
         }
@@ -183,13 +193,18 @@ namespace Game.Map
 
         private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
         {
-            bool isViewersOwnTurn = turnController != null && turnController.CurrentPlayer == viewer;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
             {
-                if (isViewersOwnTurn)
-                    foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                        if (army.Owner != viewer && BattleInitiator.IsEngageable(army))
-                            HumanVisualMemory.ObserveArmy(viewer, army.Id);
+                List<ArmyData> enemies = ArmyRegistry.AllAt(hex)
+                    .FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
+                        && BattleInitiator.IsEngageable(army));
+                HumanVisualMemory.ReconcileVisibleHex(viewer, hex, enemies.ConvertAll(army => army.Id));
+                RemoveUnrememberedArmyVisuals(viewer);
+                foreach (ArmyData army in enemies)
+                {
+                    HumanVisualMemory.ObserveArmy(viewer, army, hex);
+                    UpdateRememberedArmyVisual(viewer, army, hex);
+                }
 
                 BuildingData building = BuildingRegistry.FindAt(hex);
                 bool exists = building != null && building.Visual != null;
@@ -199,6 +214,115 @@ namespace Game.Map
                 else
                     RemoveRememberedBuildingVisual(viewer, hex);
             }
+        }
+
+        private void ObserveMovingArmyStep(ArmyData army, HexCoord from, HexCoord to, bool completed)
+        {
+            if (army == null || GameSession.Players == null)
+                return;
+
+            bool startsInCurrentView = false;
+            foreach (PlayerSetupData viewer in GameSession.Players)
+            {
+                if (viewer == null || !viewer.IsHuman || viewer == army.Owner)
+                    continue;
+                bool observed = VisionSystem.IsVisible(viewer, from) || VisionSystem.IsVisible(viewer, to);
+                if (!observed)
+                    continue;
+                startsInCurrentView |= viewer == VisionSystem.CurrentViewer && VisionSystem.IsVisible(viewer, from);
+                if (!completed)
+                    continue;
+                HumanVisualMemory.ObserveArmy(viewer, army, to);
+                UpdateRememberedArmyVisual(viewer, army, to);
+            }
+
+            if (completed)
+                RefreshAllVisibility();
+            if (army.Controller != null && army.Controller.Visual != null)
+            {
+                if (!completed && startsInCurrentView)
+                    army.Controller.Visual.SetVisible(true);
+                else if (completed)
+                    army.Controller.Visual.SetVisible(VisionSystem.IsVisibleToCurrentViewer(to));
+            }
+        }
+
+        private void UpdateRememberedArmyVisual(PlayerSetupData viewer, ArmyData source, HexCoord hex)
+        {
+            if (source?.Controller?.Visual == null
+                || !HumanVisualMemory.TryGetArmySighting(viewer, source.Id, out HumanVisualMemory.ArmySighting sighting))
+                return;
+            if (!_rememberedArmyVisuals.TryGetValue(viewer, out Dictionary<int, RememberedArmyVisual> visuals))
+            {
+                visuals = new Dictionary<int, RememberedArmyVisual>();
+                _rememberedArmyVisuals[viewer] = visuals;
+            }
+            if (!visuals.TryGetValue(source.Id, out RememberedArmyVisual remembered) || remembered.Visual == null)
+            {
+                MapObjectVisual visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
+                    source.Controller.transform.rotation, transform);
+                visual.name = source.Controller.Visual.name + " (Last Seen)";
+                remembered = new RememberedArmyVisual { Visual = visual };
+                visuals[source.Id] = remembered;
+            }
+            remembered.Hex = hex;
+            remembered.Snapshot = sighting.Army;
+            int terrainDefense = 0;
+            if (map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) && terrain != null)
+                terrainDefense = terrain.defenseModifier;
+            BuildingData observedBuilding = BuildingRegistry.FindAt(hex);
+            int constructionDefense = observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
+            remembered.Snapshot.VisualSnapshotConstructionDefense = constructionDefense;
+            remembered.Snapshot.VisualSnapshotDefenseBonus = terrainDefense + constructionDefense;
+            remembered.Visual.transform.position = source.Controller.transform.position;
+            remembered.Visual.transform.rotation = source.Controller.transform.rotation;
+            remembered.Visual.transform.localScale = source.Controller.transform.localScale;
+            remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
+            remembered.Visual.SetVisible(false);
+        }
+
+        private void RemoveUnrememberedArmyVisuals(PlayerSetupData viewer)
+        {
+            if (!_rememberedArmyVisuals.TryGetValue(viewer, out Dictionary<int, RememberedArmyVisual> visuals))
+                return;
+            var stale = new List<int>();
+            foreach (int armyId in visuals.Keys)
+                if (!HumanVisualMemory.TryGetArmySighting(viewer, armyId, out _))
+                    stale.Add(armyId);
+            foreach (int armyId in stale)
+            {
+                RememberedArmyVisual remembered = visuals[armyId];
+                visuals.Remove(armyId);
+                if (remembered.Visual != null)
+                    Destroy(remembered.Visual.gameObject);
+            }
+        }
+
+        private void RefreshRememberedArmyVisuals()
+        {
+            var shownGroups = new HashSet<(HexCoord hex, PlayerSetupData owner)>();
+            foreach (KeyValuePair<PlayerSetupData, Dictionary<int, RememberedArmyVisual>> entry in _rememberedArmyVisuals)
+            {
+                RemoveUnrememberedArmyVisuals(entry.Key);
+                foreach (RememberedArmyVisual remembered in entry.Value.Values)
+                {
+                    if (remembered.Visual == null)
+                        continue;
+                    bool visible = entry.Key == VisionSystem.CurrentViewer
+                        && !VisionSystem.IsVisible(entry.Key, remembered.Hex)
+                        && remembered.Snapshot != null
+                        && shownGroups.Add((remembered.Hex, remembered.Snapshot.Owner));
+                    remembered.Visual.SetVisible(visible);
+                }
+            }
+        }
+
+        private void SetRememberedArmyVisualsVisible(bool visible)
+        {
+            foreach (Dictionary<int, RememberedArmyVisual> visuals in _rememberedArmyVisuals.Values)
+                foreach (RememberedArmyVisual remembered in visuals.Values)
+                    if (remembered.Visual != null)
+                        remembered.Visual.SetVisible(visible);
         }
 
         private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
@@ -528,6 +652,23 @@ namespace Game.Map
                 armyViewerModal.ShowReadOnly(army);
                 return true;
             }
+            if (_rememberedArmyVisuals.TryGetValue(human, out Dictionary<int, RememberedArmyVisual> rememberedById))
+                foreach (RememberedArmyVisual remembered in rememberedById.Values)
+                {
+                    if (!remembered.Hex.Equals(hex) || remembered.Visual == null || !remembered.Visual.IsVisible)
+                        continue;
+                    Vector2 markerScreenPos = targetCamera.WorldToScreenPoint(remembered.Visual.transform.position);
+                    if (Vector2.Distance(markerScreenPos, screenPosition) > armyMarkerClickRadius)
+                        continue;
+                    _selectedHex = hex;
+                    var siblings = new List<ArmyData>();
+                    foreach (RememberedArmyVisual candidate in rememberedById.Values)
+                        if (candidate.Hex.Equals(hex) && candidate.Snapshot != null
+                            && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
+                            siblings.Add(candidate.Snapshot);
+                    armyViewerModal.ShowLastSeen(remembered.Snapshot, siblings);
+                    return true;
+                }
             return false;
         }
 
@@ -905,10 +1046,9 @@ namespace Game.Map
                 // player's army would — same "remembered once seen" exception the resource row
                 // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
-                bool seenThisHumanTurn = HumanVisualMemory.WasArmySeenThisTurn(VisionSystem.CurrentViewer, army.Id);
                 bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
                     && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex)
-                        || everSeenNeutral || seenThisHumanTurn);
+                        || everSeenNeutral);
                 if (controller.Visual != null)
                 {
                     controller.Visual.SetVisible(visible);
@@ -974,6 +1114,7 @@ namespace Game.Map
                     hexes.Add(hex);
             foreach (HexCoord hex in hexes)
                 RestackArmiesOn(hex, null);
+            RefreshRememberedArmyVisuals();
         }
 
         // HexObjectLayout lays out one slot per distinct owner, not one per army — same-owner

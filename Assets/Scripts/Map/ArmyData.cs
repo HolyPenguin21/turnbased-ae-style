@@ -25,7 +25,16 @@ namespace Game.Map
         // behind under the army's old hex — see AiMapMemory.EnemySighting's own comment for the
         // bug this fixes.
         private static int _nextId;
-        public readonly int Id = _nextId++;
+        public readonly int Id;
+        public ArmyData() : this(assignIdentity: true) { }
+        private ArmyData(bool assignIdentity) => Id = assignIdentity ? _nextId++ : -1;
+        // A last-seen roster is display-only and never enters ArmyRegistry, so it must not burn
+        // a live identity merely because a human observer refreshed the same sighting.
+        internal static ArmyData CreateVisualSnapshot() => new ArmyData(assignIdentity: false);
+        // Populated only on CreateVisualSnapshot instances so the read-only last-seen modal
+        // never consults a building that may have changed later behind fog.
+        public int? VisualSnapshotDefenseBonus;
+        public int? VisualSnapshotConstructionDefense;
         public string Name;
         public HexCoord Hex;
         public PlayerSetupData Owner;

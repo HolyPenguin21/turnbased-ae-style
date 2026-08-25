@@ -547,7 +547,9 @@ namespace Game.Map
                         return true;
                     }
                     return HandleVisionStep(army, hex);
-                });
+                },
+                onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
+                onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true));
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);

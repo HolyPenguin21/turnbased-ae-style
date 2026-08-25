@@ -1,50 +1,144 @@
 using System.Collections.Generic;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Map
 {
     // Player-facing fog memory only. This deliberately does not feed AI decisions; AiMapMemory
-    // remains the sole source for those. Moving enemy armies are remembered only for the rest
-    // of the observing human's current turn, while stationary buildings remain known until the
-    // same hex is observed again and found empty.
+    // remains the sole source for those. A moving enemy is stored as an immutable last-observed
+    // position/roster until the observing human's own next turn ends; stationary buildings
+    // remain known until the same hex is observed again and found empty.
     public static class HumanVisualMemory
     {
-        private static readonly Dictionary<PlayerSetupData, HashSet<int>> ArmiesSeenThisTurn =
-            new Dictionary<PlayerSetupData, HashSet<int>>();
+        public sealed class ArmySighting
+        {
+            public int SourceArmyId { get; }
+            public HexCoord Hex { get; }
+            public ArmyData Army { get; }
+
+            internal ArmySighting(int sourceArmyId, HexCoord hex, ArmyData army)
+            {
+                SourceArmyId = sourceArmyId;
+                Hex = hex;
+                Army = army;
+            }
+        }
+
+        private static readonly Dictionary<PlayerSetupData, Dictionary<int, ArmySighting>> ArmySightings =
+            new Dictionary<PlayerSetupData, Dictionary<int, ArmySighting>>();
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> KnownBuildingHexes =
             new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
         private static readonly HashSet<HexCoord> EmptyHexes = new HashSet<HexCoord>();
 
         public static void Clear()
         {
-            ArmiesSeenThisTurn.Clear();
+            ArmySightings.Clear();
             KnownBuildingHexes.Clear();
         }
 
-        public static void ObserveArmy(PlayerSetupData viewer, int armyId)
+        public static void ObserveArmy(PlayerSetupData viewer, ArmyData army, HexCoord observedHex)
         {
-            if (viewer == null || !viewer.IsHuman)
+            if (viewer == null || !viewer.IsHuman || army == null)
                 return;
-            if (!ArmiesSeenThisTurn.TryGetValue(viewer, out HashSet<int> armies))
+            if (!ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
             {
-                armies = new HashSet<int>();
-                ArmiesSeenThisTurn[viewer] = armies;
+                sightings = new Dictionary<int, ArmySighting>();
+                ArmySightings[viewer] = sightings;
             }
-            armies.Add(armyId);
+            sightings[army.Id] = new ArmySighting(army.Id, observedHex, SnapshotArmy(army, observedHex));
         }
 
-        public static bool WasArmySeenThisTurn(PlayerSetupData viewer, int armyId)
+        public static bool TryGetArmySighting(PlayerSetupData viewer, int armyId, out ArmySighting sighting)
         {
+            sighting = null;
             return viewer != null && viewer.IsHuman
-                && ArmiesSeenThisTurn.TryGetValue(viewer, out HashSet<int> armies)
-                && armies.Contains(armyId);
+                && ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings)
+                && sightings.TryGetValue(armyId, out sighting);
+        }
+
+        public static void ReconcileVisibleHex(PlayerSetupData viewer, HexCoord hex, IEnumerable<int> armyIdsPresent)
+        {
+            if (viewer == null || !viewer.IsHuman
+                || !ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
+                return;
+
+            var present = new HashSet<int>(armyIdsPresent ?? System.Array.Empty<int>());
+            var stale = new List<int>();
+            foreach (KeyValuePair<int, ArmySighting> entry in sightings)
+                if (entry.Value.Hex.Equals(hex) && !present.Contains(entry.Key))
+                    stale.Add(entry.Key);
+            foreach (int armyId in stale)
+                sightings.Remove(armyId);
         }
 
         public static void EndTurn(PlayerSetupData viewer)
         {
             if (viewer != null)
-                ArmiesSeenThisTurn.Remove(viewer);
+                ArmySightings.Remove(viewer);
+        }
+
+        private static ArmyData SnapshotArmy(ArmyData source, HexCoord observedHex)
+        {
+            ArmyData snapshot = ArmyData.CreateVisualSnapshot();
+            snapshot.Name = source.Name;
+            snapshot.Hex = observedHex;
+            snapshot.Owner = source.Owner;
+            snapshot.IsGarrison = source.IsGarrison;
+            snapshot.IsPrison = source.IsPrison;
+            snapshot.HasActivatedThisTurn = source.HasActivatedThisTurn;
+            foreach (UnitData member in source.Members)
+                snapshot.Members.Add(SnapshotUnit(member));
+            return snapshot;
+        }
+
+        private static UnitData SnapshotUnit(UnitData source)
+        {
+            var snapshot = new UnitData
+            {
+                Name = source.Name,
+                Owner = source.Owner,
+                BerserkStacks = source.BerserkStacks,
+                BerserkDefenseLost = source.BerserkDefenseLost,
+                MoveMax = source.MoveMax,
+                MoveCurrent = source.MoveCurrent,
+                ActivationApCost = source.ActivationApCost,
+                ApCost = source.ApCost,
+                OriginalResourceCost = SnapshotResourceCost(source.OriginalResourceCost),
+                IsHero = source.IsHero,
+                CommandRating = source.CommandRating,
+                Fate = source.Fate,
+                FateMax = source.FateMax,
+                Art = source.Art,
+                DetailArt = source.DetailArt,
+                Attack = source.Attack,
+                Defense = source.Defense,
+                Resistance = source.Resistance,
+                Range = source.Range,
+                HitPointsMax = source.HitPointsMax,
+                HitPointsCurrent = source.HitPointsCurrent,
+                Row = source.Row,
+                Initiative = source.Initiative,
+                IsPrisoner = source.IsPrisoner,
+                CapturedFrom = source.CapturedFrom,
+            };
+            foreach (string ability in source.Abilities)
+                snapshot.Abilities.Add(ability);
+            foreach (UnitTypeTag tag in source.TypeTags)
+                snapshot.TypeTags.Add(tag);
+            return snapshot;
+        }
+
+        private static ResourceCost SnapshotResourceCost(ResourceCost source)
+        {
+            return source == null ? null : new ResourceCost
+            {
+                human = source.human,
+                energy = source.energy,
+                materials = source.materials,
+                tech = source.tech,
+            };
         }
 
         public static void ObserveBuilding(PlayerSetupData viewer, HexCoord hex, bool exists)

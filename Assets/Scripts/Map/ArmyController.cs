@@ -138,7 +138,10 @@ namespace Game.Map
         // destination. IsMoving is deliberately NOT checked/set here any more — SettleThen
         // already claims it the moment a move order is committed, so a caller going through that
         // gate first is what makes re-entrancy safe.
-        public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null)
+        public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
+            System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null,
+            System.Action<HexCoord, HexCoord> onStepStarted = null,
+            System.Action<HexCoord, HexCoord> onStepCompleted = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
@@ -148,7 +151,8 @@ namespace Game.Map
 
             _currentHex = Data.Hex;
             ResetTransform(map, resolveOffset(Data.Hex));
-            StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly));
+            StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly,
+                onStepStarted, onStepCompleted));
         }
 
         // shouldStopEarly is called once per hex actually entered (never the origin), AFTER this
@@ -157,7 +161,10 @@ namespace Game.Map
         // caller instead (see HexSelectionController.Movement.cs's own reveal-on-entry check:
         // fog hides what a hex holds until the mover is actually standing on it, so a path
         // computed from the fogged-out start can't already know to stop there on its own).
-        private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset, System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly)
+        private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
+            System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly,
+            System.Action<HexCoord, HexCoord> onStepStarted,
+            System.Action<HexCoord, HexCoord> onStepCompleted)
         {
             List<UnitData> members = Data.Members;
             for (int i = 1; i < path.Count; i++)
@@ -175,10 +182,13 @@ namespace Game.Map
 
                 foreach (UnitData member in members)
                     member.MoveCurrent -= cost;
+                HexCoord previous = _currentHex;
                 _currentHex = next;
+                onStepStarted?.Invoke(previous, next);
 
                 Vector3 targetPosition = map.HexToWorld(next) + resolveOffset(next);
                 yield return StepTo(targetPosition);
+                onStepCompleted?.Invoke(previous, next);
 
                 if (shouldStopEarly != null && shouldStopEarly(next))
                     break;
