@@ -17,8 +17,8 @@
 // the TRUE owning hex for this pixel (its Voronoi cell, correct even at corners), and hexSDF
 // (Inigo Quilez's regular-hexagon distance field) gives the real geometric distance to that
 // hex's boundary — see frag()'s own comment for how the blend against the correct neighbour
-// hex is picked. fbm noise (same hash/valueNoise building blocks as CloudDrift.shader) still
-// roughens the edge on top (_EdgeSoftness, 0 by default in the project's own tuning), and an
+// hex is picked. fbm noise built from hash/valueNoise still roughens the edge on top
+// (_EdgeSoftness, 0 by default in the project's own tuning), and an
 // optional hand-picked detail texture (_NoiseTex, left "white" — a no-op — until the project
 // owner assigns and tunes one) can add further texture over everything.
 Shader "Custom/FogOfWar"
@@ -164,7 +164,7 @@ Shader "Custom/FogOfWar"
                 return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
             }
 
-            // 3-octave fractal sum — same shape-softening role as CloudDrift.shader's own fbm.
+            // 3-octave fractal sum softens the otherwise geometric fog boundary.
             float fbm(float2 p)
             {
                 float total = 0.0;

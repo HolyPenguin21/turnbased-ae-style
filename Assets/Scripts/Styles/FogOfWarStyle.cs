@@ -5,7 +5,7 @@ namespace Game.Styles
 {
     // Every tunable for the strategic map's per-hex content fog (see Game.Map.VisionSystem /
     // Game.Map.FogOfWarController / Custom/FogOfWar.shader) — same shared-in-GameConfig pattern
-    // as CloudStyle/HexHighlightStyle, so it's tuned in one Inspector spot instead of scattered
+    // as HexHighlightStyle, so it's tuned in one Inspector spot instead of scattered
     // [SerializeField]s on the overlay component itself. Two independent features share this one
     // style object since they're both part of the same "hex content visibility" feature: the
     // dimming overlay (gates army/building/resource content) and the coordinate label (permanent
@@ -16,8 +16,8 @@ namespace Game.Styles
     {
         [Header("Fog Overlay")]
         // Tint+alpha applied over a hex's terrain when it's outside the current viewer's vision
-        // (see VisionSystem.CurrentViewer) — alpha-blended over the terrain, not multiplicative
-        // (unlike CloudStyle), since this needs to read as "obscured", not just "shadowed".
+        // (see VisionSystem.CurrentViewer) — alpha-blended over the terrain so this reads as
+        // "obscured" rather than merely darkening the ground underneath.
         public Color color = new Color(0.32f, 0.24f, 0.14f, 0.88235295f);
         // Same draw-order role as HexHighlightStyle.sortingOrder — everything sits flat at Y=0,
         // so this is what keeps the fog quad drawing above the terrain tiles (sortingOrder 0).

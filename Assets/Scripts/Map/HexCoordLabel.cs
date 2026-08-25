@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Game.Map
 {
     // The permanent "you've been here" marker for one hex — a plain "q:r" world-space text,
-    // built entirely at runtime (no prefab; same reasoning as HexShaderHighlight/MapCloudOverlay
-    // building their own mesh/material in Awake instead of needing one hand-authored in the
-    // Editor). Separate from the fog dimming overlay on purpose — per the project owner's own
+    // built entirely at runtime (no prefab; same reasoning as HexShaderHighlight building its
+    // own mesh/material in Awake instead of needing one hand-authored in the Editor). Separate
+    // from the fog dimming overlay on purpose — per the project owner's own
     // call, visiting a hex is remembered forever (this), while its actual content still re-hides
     // the moment current vision leaves (Custom/FogOfWar.shader) — the two never interact.
     public class HexCoordLabel : MonoBehaviour

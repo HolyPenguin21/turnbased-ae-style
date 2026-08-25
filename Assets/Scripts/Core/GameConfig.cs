@@ -291,12 +291,6 @@ namespace Game.Core
         public Color moveArrowMoveColor = new Color(0.15f, 0.75f, 0.25f);
         public Color moveArrowAttackColor = new Color(0.80f, 0.15f, 0.15f);
 
-        [Header("Clouds")]
-        // Drifting cloud-shadow overlay for the strategic map (see Game.Map.MapCloudOverlay /
-        // Custom/CloudDrift.shader) — one shared style, same pattern as every other style block
-        // above, so the look is tuned here rather than as loose fields on the overlay component.
-        public CloudStyle cloudStyle = new CloudStyle();
-
         [Header("Vision / Fog of War")]
         // How many hex steps out an army/building's own hex grants vision — 0 means "only the
         // hex it's standing on". Per the project owner's own spec: armies start at 0 (a future
