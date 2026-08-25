@@ -23,10 +23,11 @@ namespace Game.UI
         // Every roll GROUP (one whole DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice call)
         // takes exactly this long overall, no matter how many dice are in it — individual dice
         // within the group land one after another (index 0 first, the last index landing at
-        // exactly GroupDuration) rather than all landing together, per the user's own request
+        // exactly the requested group duration) rather than all landing together
         // (2026-08-24). See the index/count overload of PlayRoll.
-        private const float GroupDuration = 1.5f;
-        // Target half-flip length a die's own share of GroupDuration is divided into whole
+        public const float FullRollDuration = 1f;
+        public const float FateRerollDuration = 0.5f;
+        // Target half-flip length a die's own share of the total duration is divided into whole
         // flips around (see RollRoutine) — not itself the duration of any single flip, since
         // that gets stretched/compressed slightly so flipCount flips exactly fill the die's
         // actual landing time.
@@ -58,20 +59,25 @@ namespace Game.UI
         }
 
         // onComplete (optional): fired once the flip settles on its final face. A single-die
-        // roll with no group of its own — lands after the full GroupDuration, same as index 0
+        // roll with no group of its own — lands after the full-roll duration, same as index 0
         // of a 1-die group.
         public void PlayRoll(bool hit, System.Action onComplete = null)
         {
-            PlayRoll(hit, 0, 1, onComplete);
+            PlayRoll(hit, 0, 1, FullRollDuration, onComplete);
         }
 
         // index/count: this die's position (0-based) among the `count` dice rolled together in
         // this same call (see DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice) — dice land one
-        // after another from index 0 to count-1, spaced evenly across GroupDuration, so the
-        // WHOLE group finishes in the same 1.5s regardless of how many dice it contains, rather
+        // after another from index 0 to count-1, spaced evenly across the supplied duration, so
+        // the whole group finishes in the same time regardless of how many dice it contains,
         // than every die spinning for a fixed length and the group as a whole taking longer the
         // more dice it has (per the user's own request, 2026-08-24).
         public void PlayRoll(bool hit, int index, int count, System.Action onComplete = null)
+        {
+            PlayRoll(hit, index, count, FullRollDuration, onComplete);
+        }
+
+        public void PlayRoll(bool hit, int index, int count, float groupDuration, System.Action onComplete = null)
         {
             if (!gameObject.activeInHierarchy)
             {
@@ -81,7 +87,7 @@ namespace Game.UI
             }
             if (_rollRoutine != null)
                 StopCoroutine(_rollRoutine);
-            float landDelay = GroupDuration * (index + 1) / Mathf.Max(1, count);
+            float landDelay = Mathf.Max(0f, groupDuration) * (index + 1) / Mathf.Max(1, count);
             _rollRoutine = StartCoroutine(RollRoutine(hit, landDelay, onComplete));
         }
 

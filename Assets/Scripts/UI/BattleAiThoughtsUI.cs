@@ -17,7 +17,7 @@ namespace Game.UI
         // Per the user's own spec — the phrase types in gradually rather than appearing all at
         // once. Counted against minDisplaySeconds, not on top of it (see DisplayLoop), so a
         // phrase's total time on screen doesn't grow just because it types in slower/faster.
-        [SerializeField] private float typeInDuration = 1f;
+        [SerializeField] private float typeInDuration = 0.75f;
 
         private string _pendingText;
         private bool _hasPending;

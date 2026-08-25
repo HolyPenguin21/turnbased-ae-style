@@ -10,9 +10,9 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Phase 1 of every turn: everyone rolls a 5-dice pool, highest score goes first, ties
-    // reroll (see TurnOrderResolver). One DiceRowUI per player, spawned fresh each time this
-    // is shown (a new turn means a fresh roll, not a reused one).
+    // Phase 1 of every turn: everyone rolls 3 base dice plus any purchased bonus dice, highest
+    // score goes first, and tied players visibly reroll until the tie is broken (see
+    // TurnOrderResolver). One DiceRowUI per player is spawned fresh each turn.
     public class TurnOrderPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -28,6 +28,7 @@ namespace Game.UI
         // popup is shown, then Continue once the roll has produced a winner (see Show/RollAll).
         [SerializeField] private Toggle autoRollToggle;
         [SerializeField] private float autoRollDelay = 0.75f;
+        [SerializeField] private float autoContinueDelay = 0.5f;
         private const string AutoRollPrefKey = "TurnOrderPopup.AutoRollEnabled";
 
         private readonly List<DiceRowUI> _rows = new List<DiceRowUI>();
@@ -119,8 +120,8 @@ namespace Game.UI
 
         private IEnumerator AutoContinueAfterDelay(List<PlayerSetupData> order)
         {
-            if (autoRollDelay > 0f)
-                yield return new WaitForSeconds(autoRollDelay);
+            if (autoContinueDelay > 0f)
+                yield return new WaitForSeconds(autoContinueDelay);
             if (continueButton != null && continueButton.gameObject.activeSelf)
                 Finish(order);
         }
@@ -153,61 +154,53 @@ namespace Game.UI
 
         private void RollAll()
         {
+            if (rollButton != null && !rollButton.gameObject.activeSelf)
+                return;
             if (buyPanel != null)
                 buyPanel.Lock();
 
-            List<PlayerSetupData> order = TurnOrderResolver.Resolve(_players, out Dictionary<PlayerSetupData, DiceRollResult> finalRolls);
-            _pendingOrder = order;
+            TurnOrderResolution resolution = TurnOrderResolver.Resolve(_players);
+            _pendingOrder = resolution.Order;
 
             if (rollButton != null)
                 rollButton.gameObject.SetActive(false);
 
-            // Rank and Continue only appear once every row's own flip animation has actually
-            // landed — showing "#1"/etc. (or letting Continue be pressed) while the dice were
-            // still visibly mid-flip used to let a result be read, or an auto-continuing AI act,
-            // before the roll was done spinning (per the user's own request, 2026-08-24).
-            var pendingRolls = new List<(DiceRowUI row, DiceRollResult roll)>();
-            foreach (PlayerSetupData player in _players)
-                if (_rowByPlayer.TryGetValue(player, out DiceRowUI row) && finalRolls.TryGetValue(player, out DiceRollResult roll))
-                    pendingRolls.Add((row, roll));
+            StartCoroutine(AnimateResolution(resolution));
+        }
 
-            void ShowResultsAndAdvance()
+        private IEnumerator AnimateResolution(TurnOrderResolution resolution)
+        {
+            foreach (InitiativeRollRound round in resolution.Rounds)
             {
-                for (int i = 0; i < order.Count; i++)
-                    if (_rowByPlayer.TryGetValue(order[i], out DiceRowUI row))
-                        row.ShowRank(i + 1);
-
-                if (continueButton != null)
-                {
-                    continueButton.gameObject.SetActive(true);
-                    continueButton.onClick.RemoveAllListeners();
-                    continueButton.onClick.AddListener(() => Finish(order));
-                }
-
-                if (IsAutoRollEnabled)
-                    StartCoroutine(AutoContinueAfterDelay(order));
+                int pending = 0;
+                foreach (KeyValuePair<PlayerSetupData, DiceRollResult> entry in round.Rolls)
+                    if (_rowByPlayer.TryGetValue(entry.Key, out DiceRowUI row))
+                    {
+                        pending++;
+                        row.ShowRoll(entry.Value, () => pending--);
+                    }
+                yield return new WaitUntil(() => pending == 0);
             }
 
-            if (pendingRolls.Count == 0)
+            for (int i = 0; i < resolution.Order.Count; i++)
+                if (_rowByPlayer.TryGetValue(resolution.Order[i], out DiceRowUI row))
+                    row.ShowRank(i + 1);
+
+            if (continueButton != null)
             {
-                ShowResultsAndAdvance();
-                return;
+                continueButton.gameObject.SetActive(true);
+                continueButton.onClick.RemoveAllListeners();
+                continueButton.onClick.AddListener(() => Finish(resolution.Order));
             }
-            int remaining = pendingRolls.Count;
-            void RowDone()
-            {
-                remaining--;
-                if (remaining == 0)
-                    ShowResultsAndAdvance();
-            }
-            foreach ((DiceRowUI row, DiceRollResult roll) in pendingRolls)
-                row.ShowRoll(roll, RowDone);
+
+            if (IsAutoRollEnabled)
+                StartCoroutine(AutoContinueAfterDelay(resolution.Order));
         }
 
         // panelRoot's own activeSelf doubles as the "already finished" guard — a manual
         // Continue click and the auto-Continue coroutine (see AutoContinueAfterDelay) can both be
         // armed at once when the toggle is on, and continueButton itself is never deactivated on
-        // Finish (only panelRoot is), so without this a click just before the 0.75s delay expires
+        // Finish (only panelRoot is), so without this a click just before the delay expires
         // would let the coroutine fire Finish a second time and double-invoke _onResolved.
         private void Finish(List<PlayerSetupData> order)
         {

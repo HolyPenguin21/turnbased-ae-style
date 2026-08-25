@@ -63,14 +63,10 @@ namespace Game.UI
         [SerializeField] private float aiRollDelay = 0.5f;
         // How long a resolved result screen (Ground Combat / Capture Kill / a bare Announcement)
         // stays up before auto-acknowledging itself when neither side is human (see
-        // AutoCloseResultIfNoHuman) — same reasoning as aiRollDelay above. 2026-08-21: 0.5 → 1.2
-        // (project owner's own report) — this fires even while a human is just SPECTATING an
-        // AI-vs-AI/AI-vs-neutral fight (e.g. watching the AI's own turn play out), not only in a
-        // truly unattended battle, and 0.5s wasn't enough to actually read the Hit/Miss/damage
-        // line before it dismissed itself. Also now doubles as the delay for
+        // AutoCloseResultIfNoHuman) — same reasoning as aiRollDelay above. Also doubles as the delay for
         // autoCloseResultToggle's own human-opted-in case (see IsAutoCloseResultEnabled) — a
         // human who turned that on still wants a glance at the result, not zero.
-        [SerializeField] private float aiResultCloseDelay = 1.2f;
+        [SerializeField] private float aiResultCloseDelay = 0.5f;
 
         [Header("Result State")]
         [SerializeField] private GameObject resultStateRoot;

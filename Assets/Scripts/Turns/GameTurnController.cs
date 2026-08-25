@@ -35,8 +35,7 @@ namespace Game.Turns
     {
         [SerializeField] private TurnOrderPopupUI turnOrderPopup;
         [SerializeField] private Button endTurnButton;
-        [SerializeField] private float minAiPassDelay = 0.5f;
-        [SerializeField] private float maxAiPassDelay = 0.5f;
+        [SerializeField] private float aiStepDelay = 0.5f;
 
         // Dev-only: when on, the fog overlay follows whichever AI is currently acting instead of
         // staying on the last human's view (see BeginPlayerTurn) — lets the project owner watch
@@ -892,7 +891,7 @@ namespace Game.Turns
                 if (debugFollowAiVision)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
-                    armyViewerModal, cardHand, minAiPassDelay, maxAiPassDelay, gameConfig, TurnNumber, debugShowAiArmyModal);
+                    armyViewerModal, cardHand, aiStepDelay, gameConfig, TurnNumber, debugShowAiArmyModal);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
         }
@@ -929,11 +928,11 @@ namespace Game.Turns
             }
         }
 
-        // Stands in for "the AI/Neutral thought about it and had nothing to do" — a short
-        // random pause before passing, instead of an instant skip, until real decisions exist.
+        // Stands in for "the AI/Neutral thought about it and had nothing to do" — the same short
+        // fixed pacing step used by ordinary strategic AI actions.
         private IEnumerator PassAfterDelay(Action onDone)
         {
-            yield return new WaitForSeconds(UnityEngine.Random.Range(minAiPassDelay, maxAiPassDelay));
+            yield return new WaitForSeconds(aiStepDelay);
             onDone();
         }
 

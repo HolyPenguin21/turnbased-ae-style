@@ -39,8 +39,7 @@ namespace Game.Ai
         public StartingDeckCatalog StartingDeckCatalog;
         public int StartingHandSize;
         public int DrawApCost;
-        public float MinStepDelay = 0.5f;
-        public float MaxStepDelay = 1f;
+        public float StepDelay = 0.5f;
         // Dev-only: gates every ArmyViewerModal.ShowReadOnly/Hide call below (see GameTurnController.
         // debugShowAiArmyModal's own comment) — off by default because the modal popping open/closed
         // on every single AI step (one MoveArmy per step, several steps per turn) reads as constant
@@ -110,7 +109,7 @@ namespace Game.Ai
         public void ClearVisitedArmiesForReorgPhase() => UnitVisitedArmies.Clear();
 
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
-            ArmyViewerModalUI armyViewerModal, CardHandUI humanCardHand, float minStepDelay, float maxStepDelay,
+            ArmyViewerModalUI armyViewerModal, CardHandUI humanCardHand, float stepDelay,
             GameConfig gameConfig, int turnNumber, bool showArmyModal)
         {
             return new AiTurnContext
@@ -123,8 +122,7 @@ namespace Game.Ai
                 StartingDeckCatalog = humanCardHand != null ? humanCardHand.StartingDeckCatalog : null,
                 StartingHandSize = humanCardHand != null ? humanCardHand.StartingHandSize : 0,
                 DrawApCost = humanCardHand != null ? humanCardHand.DrawApCost : 2,
-                MinStepDelay = minStepDelay,
-                MaxStepDelay = maxStepDelay,
+                StepDelay = stepDelay,
                 GameConfig = gameConfig,
                 TurnNumber = turnNumber,
                 ShowArmyModal = showArmyModal,
@@ -1358,7 +1356,7 @@ namespace Game.Ai
 
         internal static IEnumerator WaitStep(AiTurnContext ctx)
         {
-            yield return new WaitForSeconds(UnityEngine.Random.Range(ctx.MinStepDelay, ctx.MaxStepDelay));
+            yield return new WaitForSeconds(ctx.StepDelay);
         }
 
         private static void LogHand(PlayerSetupData player, AiHandData hand)

@@ -219,12 +219,13 @@ namespace Game.UI
             }
             // index/count (position within THIS call's own toAnimate list, not the whole dice
             // array) so a full first roll lands its dice one after another across the row, and a
-            // later single-die Fate reroll still gets DiceSlotUI's full GroupDuration to itself
+            // later single-die Fate reroll still gets the full Fate-reroll duration to itself
             // rather than landing near-instantly as if it were still part of an N-die group.
             for (int pos = 0; pos < toAnimate.Count; pos++)
             {
                 int i = toAnimate[pos];
-                _diceSlots[i].PlayRoll(dice[i], pos, toAnimate.Count, SlotDone);
+                float duration = rerolledIndex >= 0 ? DiceSlotUI.FateRerollDuration : DiceSlotUI.FullRollDuration;
+                _diceSlots[i].PlayRoll(dice[i], pos, toAnimate.Count, duration, SlotDone);
             }
         }
     }

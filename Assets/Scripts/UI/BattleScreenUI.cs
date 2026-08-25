@@ -108,10 +108,10 @@ namespace Game.UI
         [SerializeField] private Transform gridContainer;
         [SerializeField] private BattleGridCellUI gridCellPrefab;
 
-        // Beat before an AI-owned unit's turn actually acts (see AutoActAfterDelay) — purely a
-        // pacing/readability delay, same idea as GameTurnController.PassAfterDelay for the
+        // Beat before an AI-owned unit chooses Move, Attack, or Pass (see AutoActAfterDelay) —
+        // purely a pacing/readability delay, same idea as GameTurnController.PassAfterDelay for the
         // strategic-map turn loop.
-        [SerializeField] private float aiAutoPassDelay = 0.6f;
+        [SerializeField] private float aiActionDelay = 0.5f;
         // Fast but smooth, per the user's own spec — same order of magnitude as
         // ArmyUnitCardUI.slotAnimDuration's own "quick but eased" convention.
         [SerializeField] private float moveAnimDuration = 0.15f;
@@ -582,8 +582,7 @@ namespace Game.UI
 
             // Pass only ever acts for the CURRENT unit — an AI-owned unit's turn isn't the
             // player's to skip by hand. There's no real AI decision-making here yet, so instead
-            // its turn just auto-passes itself after a beat (see AutoPassAfterDelay) rather than
-            // stalling the round forever.
+            // its turn chooses and performs an action after a beat rather than stalling the round.
             bool isHumanTurn = current != null && current.Owner != null && current.Owner.IsHuman;
             if (passButton != null)
                 passButton.interactable = isHumanTurn;
@@ -608,8 +607,8 @@ namespace Game.UI
             // per the user's own request (2026-08-24) to stop stalling a purely AI/neutral fight
             // for spectator readability. A human-vs-AI battle keeps the beat unchanged: it's still
             // that human's own opponent "thinking" on-screen.
-            if (_localArmy != null && aiAutoPassDelay > 0f)
-                yield return new WaitForSeconds(aiAutoPassDelay);
+            if (_localArmy != null && aiActionDelay > 0f)
+                yield return new WaitForSeconds(aiActionDelay);
             _aiAutoPassRoutine = null;
             if (_grid == null || actor == null || actor != _currentActingUnit)
                 yield break;
