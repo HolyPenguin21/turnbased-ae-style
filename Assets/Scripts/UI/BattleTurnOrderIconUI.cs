@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One entry in BattleScreenUI's turn-order strip — that unit's own art plus its owner's
+    // One entry in BattleScreenUI's turn-order strip — that unit's own detail art plus its owner's
     // faction logo to its left, highlighted while it's the one currently up (see
     // BattleScreenUI.RefreshTurnOrder). Mirrors the manual's own "icons on the side of the
     // Battle Viewer Interface display which side is currently taking an action and the order" —
@@ -23,7 +23,11 @@ namespace Game.UI
                 factionLogo.gameObject.SetActive(ownerFactionLogo != null);
             }
             if (artImage != null)
-                artImage.sprite = unit != null ? unit.Art : null;
+            {
+                Sprite unitDetailArt = unit != null ? unit.DetailArt : null;
+                artImage.sprite = unitDetailArt;
+                artImage.gameObject.SetActive(unitDetailArt != null);
+            }
             if (highlightBorder != null)
             {
                 highlightBorder.color = ownerColor;
