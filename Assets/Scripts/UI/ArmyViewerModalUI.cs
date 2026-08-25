@@ -417,6 +417,34 @@ namespace Game.UI
             }
         }
 
+        // A rejected drop snaps the dragged card back in ArmyUnitCardUI.OnEndDrag, but every
+        // OTHER card has already had its home slot changed by RepositionNonDraggedCards. Put
+        // those cards back against the real roster before discarding the scratch order, or the
+        // preview layout survives visually even though no reorder was committed.
+        private void CancelReorderPreview()
+        {
+            if (_currentArmy != null)
+            {
+                for (int i = 0; i < _cards.Count; i++)
+                {
+                    ArmyUnitCardUI c = _cards[i];
+                    if (c == _draggingCard)
+                        continue;
+                    int slot = c.Unit != null ? _currentArmy.Members.IndexOf(c.Unit) : i;
+                    if (slot >= 0)
+                        c.SetSlot(SlotPosition(slot), animated: true);
+                }
+            }
+
+            ClearReorderPreview();
+        }
+
+        private void ClearReorderPreview()
+        {
+            _draggingCard = null;
+            _dragPreviewOrder = null;
+        }
+
         // Inverse of ResolveGridSlotIndex, using the same row-major top-left convention (see
         // the GridLayoutGroup this reads its metrics from: StartCorner UpperLeft, StartAxis
         // Horizontal) — the actual position driver now that every card's LayoutElement is
@@ -454,23 +482,26 @@ namespace Game.UI
         // Called by ArmyUnitCardUI.OnEndDrag. Two things a drop can mean: dropped on another
         // army's button (moves the unit there — checks capacity), or dropped back within the
         // grid itself (commits whatever order PreviewReorder last showed — see
-        // BeginReorderPreview). Returns false (card snaps back to where it was picked up) only
-        // when neither ever applied: the drag never entered this grid in the first place.
+        // BeginReorderPreview). Returns false for every rejected drop (same army, failed
+        // transfer, or outside the grid): CancelReorderPreview restores the other cards, while
+        // ArmyUnitCardUI.OnEndDrag snaps the dragged one back to where it was picked up.
         public bool TryDropUnit(ArmyUnitCardUI card, Vector2 screenPosition)
         {
-            List<UnitData> previewOrder = card == _draggingCard ? _dragPreviewOrder : null;
-            _draggingCard = null;
-            _dragPreviewOrder = null;
-
             if (_currentArmy == null || card == null || card.Unit == null)
+            {
+                CancelReorderPreview();
                 return false;
+            }
 
             ArmyButtonUI targetButton = FindButtonAt(screenPosition);
             if (targetButton != null)
             {
                 ArmyData target = targetButton.Army;
                 if (target == null || target == _currentArmy)
+                {
+                    CancelReorderPreview();
                     return false;
+                }
 
                 // Same rule Game.Ai.AiManagementPlanner-driven moves use (garrison overflow
                 // splits, lone-army consolidation) — pulled into ArmyActions so both this drag-
@@ -479,8 +510,11 @@ namespace Game.UI
                 if (!ArmyActions.TransferMember(card.Unit, _currentArmy, target, hexSelectionController, out string failReason))
                 {
                     turnController?.ShowSpawnHint(failReason);
+                    CancelReorderPreview();
                     return false;
                 }
+
+                ClearReorderPreview();
 
                 // _currentArmy itself may have just lost its last member — actual deletion (see
                 // DeleteArmyIfEmptied) is deferred until this modal closes, not done here, in
@@ -492,9 +526,17 @@ namespace Game.UI
                 return true;
             }
 
-            if (previewOrder == null)
-                return false; // dropped without ever previewing a reorder (e.g. an empty slot) — nothing to commit
+            // A live preview may have been produced earlier in the drag, but it only becomes a
+            // real reorder when the pointer is released inside the grid. Releasing elsewhere
+            // cancels that preview instead of silently committing its last hovered slot.
+            List<UnitData> previewOrder = card == _draggingCard ? _dragPreviewOrder : null;
+            if (previewOrder == null || !ResolveGridSlotIndex(screenPosition).HasValue)
+            {
+                CancelReorderPreview();
+                return false;
+            }
 
+            ClearReorderPreview();
             _currentArmy.Members.Clear();
             _currentArmy.Members.AddRange(previewOrder);
             RefreshGrid();
@@ -529,7 +571,7 @@ namespace Game.UI
             Rect rect = gridRect.rect;
             float x = local.x - rect.xMin;
             float y = rect.yMax - local.y;
-            if (x < 0f || y < 0f || x >= rect.width)
+            if (x < 0f || y < 0f || x >= rect.width || y >= rect.height)
                 return null;
 
             int columns = Mathf.Max(1, grid.constraintCount);
