@@ -217,15 +217,23 @@ Shader "Custom/FogOfWar"
                 // doesn't line up with which neighbour is actually closest once you're that
                 // close to a vertex three hexes share.
                 const float cornerBlend = 0.08;
+                // The angular corner bucket spans all the way from the hex centre to its
+                // vertex. Blending the alternate neighbour from angle alone therefore paints
+                // a long triangular wedge through the cell. Gate that blend by radial
+                // proximity so the alternate neighbour participates only near the actual
+                // shared vertex, while pixels farther inward keep their nearest edge's value.
+                float cornerProximity = smoothstep(_OuterRadius * 0.82, _OuterRadius * 0.98, length(p));
                 if (withinEdge < cornerBlend)
                 {
                     float altFog = sampleHexFog(qr + kNeighborDirs[(edgeIdx + 5) % 6]);
-                    neighborFog = lerp(altFog, neighborFog, withinEdge / cornerBlend);
+                    float leftCornerWeight = (1.0 - withinEdge / cornerBlend) * cornerProximity;
+                    neighborFog = lerp(neighborFog, altFog, leftCornerWeight);
                 }
                 else if (withinEdge > 1.0 - cornerBlend)
                 {
                     float altFog = sampleHexFog(qr + kNeighborDirs[(edgeIdx + 1) % 6]);
-                    neighborFog = lerp(neighborFog, altFog, (withinEdge - (1.0 - cornerBlend)) / cornerBlend);
+                    float rightCornerWeight = ((withinEdge - (1.0 - cornerBlend)) / cornerBlend) * cornerProximity;
+                    neighborFog = lerp(neighborFog, altFog, rightCornerWeight);
                 }
 
                 // True geometric distance to this hex's own boundary (negative inside) — unlike
