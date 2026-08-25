@@ -267,6 +267,13 @@ namespace Game.Map
             if (enemy == null)
                 return BattleStartResult.NoContact;
 
+            // Starting a battle is the attacking army's strategic action for this turn. The
+            // tactical attacker may never get a unit turn at all (for example, the defender
+            // can be eliminated first by another resolution), so BeginAttack's own per-unit
+            // reset is not enough to prevent this mover from receiving a second map order.
+            foreach (UnitData member in mover.Members)
+                member.MoveCurrent = 0;
+
             var participants = new List<ArmyData> { mover, enemy };
             // A hero-only contact (see BattleInitiator.IsEngageable vs IsCombatCapable) has
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
