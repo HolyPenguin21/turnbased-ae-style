@@ -13,6 +13,24 @@ MonoBehaviour:
   m_Name: UnitAbilityCatalog
   m_EditorClassIdentifier: 
   knownAbilities:
+  - tag: CriticalDamage
+    description: Dmg dealt in a successful attack is x2
+  - tag: CeramicArmor
+    description: Dmg received is reduced by a flat amount
+  - tag: Berserk
+    description: 'Each time this unit is hit: +Attack/-Defense'
+  - tag: RapidReaction
+    description: Deploys for 0 AP; costs 0 AP to move as part of an army
+  - tag: ShockAttack
+    description: Hit forces target to skip turn
+  - tag: Hyperkinetic
+    description: Adds 2 dmg against "Armored" targets
+  - tag: Pyrokinetic
+    description: Adds 2 dmg against "Bio" targets
+  - tag: Recce
+    description: Extends this unit's army vision radius
+  - tag: ApBonus
+    description: While in play, grants +2 AP on this player's turn
   - tag: Barracks
     description: Hex can receive Hero/Unit cards deployed from hand
   - tag: Lab
@@ -26,24 +44,6 @@ MonoBehaviour:
     description: Collects Materials resource each turn
   - tag: CollectTech
     description: Collects Tech resource each turn
-  - tag: Recce
-    description: Extends this unit's army vision radius
-  - tag: RapidReaction
-    description: Deploys for 0 AP; costs 0 AP to move as part of an army
-  - tag: CeramicArmor
-    description: Dmg received is reduced by a flat amount
-  - tag: Berserk
-    description: 'Each time this unit is hit: +Attack/-Defense'
-  - tag: CriticalDamage
-    description: Dmg dealt in a successful attack is x2
-  - tag: Hyperkinetic
-    description: Adds 2 dmg against "Armored" targets
-  - tag: Pyrokinetic
-    description: Adds 2 dmg against "Bio" targets
-  - tag: ShockAttack
-    description: Hit forces target to skip turn
-  - tag: ApBonus
-    description: While in play, grants +2 AP on this player's turn
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1

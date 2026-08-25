@@ -14,36 +14,35 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cardCatalogs:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
+  - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   armies:
+  - name: Dune Wanderers
+    members:
+    - cardKey: Neutral/Scav
+      count: 2
   - name: Inhabitants
-    members:
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Slasher
-      count: 1
-  - name: Inhabitants
-    members:
-    - cardKey: Neutral/Scav
-      count: 1
-    - cardKey: Neutral/Brute
-      count: 1
-  - name: Rats
-    members:
-    - cardKey: Neutral/Scav
-      count: 3
-  - name: Desert striders
     members:
     - cardKey: Neutral/Scav
       count: 2
     - cardKey: Neutral/Trapper
       count: 1
-  - name: Nomads
+  - name: The Well-Keepers
+    members:
+    - cardKey: Neutral/Scav
+      count: 3
+  - name: Ridge Patrol
     members:
     - cardKey: Neutral/Scav
       count: 2
-    - cardKey: Neutral/Slasher
+    - cardKey: Neutral/Trapper
+      count: 2
+  - name: 'Scrap-Haulers '
+    members:
+    - cardKey: Neutral/Scav
       count: 1
+    - cardKey: Neutral/Slasher
+      count: 2
   - name: Deserters
     members:
     - cardKey: Neutral/Gunner
@@ -52,23 +51,41 @@ MonoBehaviour:
       count: 1
   - name: Deserters squad
     members:
-    - cardKey: Iron Concord/Light Tank
+    - cardKey: Iron Concord/AA Crawler
       count: 1
     - cardKey: Neutral/Scav
-      count: 3
+      count: 2
     - cardKey: Iron Concord/Flamer
       count: 2
-  - name: Brutes
+  - name: 'Brutes '
     members:
     - cardKey: Neutral/Brute
       count: 2
     - cardKey: Neutral/Scav
       count: 1
-  - name: Desert scrappers
+  - name: Dust-Breathers
     members:
-    - cardKey: Neutral/AA Relic Crawler
+    - cardKey: The Ashen/Dust Runner
       count: 1
     - cardKey: Neutral/Scav
       count: 2
     - cardKey: Neutral/Slasher
       count: 1
+  - name: Cactus-Pickers
+    members:
+    - cardKey: Neutral/Slasher
+      count: 2
+    - cardKey: Neutral/Scav
+      count: 2
+    - cardKey: Neutral/Brute
+      count: 1
+  - name: Wrecker
+    members:
+    - cardKey: Neutral/Wrecker
+      count: 1
+  - name: Sand Fin
+    members:
+    - cardKey: Neutral/AA Relic Crawler
+      count: 1
+    - cardKey: The Ashen/Dust Runner
+      count: 2

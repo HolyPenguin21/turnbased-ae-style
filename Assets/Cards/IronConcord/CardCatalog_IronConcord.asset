@@ -284,7 +284,7 @@ MonoBehaviour:
       materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -369,7 +369,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: bb7ce7e9597b25646a9800c17c6ebdc9, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -430,7 +430,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4b9dfd8f9f12a4242b73fd54ad42173b, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -491,7 +491,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: f6313bed1de65754d9b350fc6f8d6d51, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 0
@@ -522,7 +522,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: e5047807d847ee342b209c8a78223453, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 0
@@ -553,7 +553,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 4fc5885688c762640bbaafb4e3529bad, type: 3}
     faction: 0
     cardType: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 1
       energy: 1
@@ -584,7 +584,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 028a4389a5d69854988fa7d61eb2299e, type: 3}
     faction: 0
     cardType: 1
-    apCost: 3
+    apCost: 4
     resourceCost:
       human: 1
       energy: 2

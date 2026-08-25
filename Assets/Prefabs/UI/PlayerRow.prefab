@@ -1445,6 +1445,7 @@ GameObject:
   - component: {fileID: 7654270742830365754}
   - component: {fileID: 848795939957861376}
   - component: {fileID: 2780469496004652738}
+  - component: {fileID: 2079439839322352870}
   m_Layer: 5
   m_Name: RemoveButton
   m_TagString: Untagged
@@ -1554,6 +1555,19 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &2079439839322352870
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3062190762392501278}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9ada4f6beb13704eb6a61ccad861f45, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UIButtonSound
+  clickSound: {fileID: 8300000, guid: 255be96387c172b48bb578a85e3a1afc, type: 3}
 --- !u!1 &3139465541621125389
 GameObject:
   m_ObjectHideFlags: 0

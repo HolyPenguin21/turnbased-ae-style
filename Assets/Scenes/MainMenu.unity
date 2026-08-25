@@ -207,7 +207,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!82 &257848143
 AudioSource:
   m_ObjectHideFlags: 0
@@ -221,7 +221,7 @@ AudioSource:
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: 949150e7e8531ca469ffd6aafefbcc17, type: 3}
   m_PlayOnAwake: 1
-  m_Volume: 0.05
+  m_Volume: 0.02
   m_Pitch: 1
   Loop: 1
   Mute: 0
@@ -332,6 +332,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 668a4ee2f95223f46bf53fb3facaf9ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PersistentMusic
+  buttonClickSound: {fileID: 8300000, guid: 255be96387c172b48bb578a85e3a1afc, type: 3}
+  musicTracks:
+  - {fileID: 8300000, guid: e392f2725ae44f141b41abe92d5b57bb, type: 3}
+  - {fileID: 8300000, guid: c544430712bdf744c8839d4e86e7965a, type: 3}
+  - {fileID: 8300000, guid: 6e32ec37a0551474fb527c9e6948939c, type: 3}
+  - {fileID: 8300000, guid: 353efaac04d34b345908d61cd5881ce1, type: 3}
 --- !u!1 &301744445
 GameObject:
   m_ObjectHideFlags: 0
@@ -645,6 +651,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 257848145}
+        m_TargetAssemblyTypeName: PersistentMusic, Assembly-CSharp
+        m_MethodName: PlayButtonSound
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &502412742
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -769,6 +787,18 @@ MonoBehaviour:
       - m_Target: {fileID: 1007785363}
         m_TargetAssemblyTypeName: Game.UI.MainMenuController, Assembly-CSharp
         m_MethodName: OnQuitClicked
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 257848145}
+        m_TargetAssemblyTypeName: PersistentMusic, Assembly-CSharp
+        m_MethodName: PlayButtonSound
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1593,6 +1623,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 257848145}
+        m_TargetAssemblyTypeName: PersistentMusic, Assembly-CSharp
+        m_MethodName: PlayButtonSound
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &908576881
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1743,6 +1785,18 @@ MonoBehaviour:
       - m_Target: {fileID: 759005953}
         m_TargetAssemblyTypeName: Game.UI.GameSetupController, Assembly-CSharp
         m_MethodName: OnAddPlayerClicked
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 257848145}
+        m_TargetAssemblyTypeName: PersistentMusic, Assembly-CSharp
+        m_MethodName: PlayButtonSound
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -2108,6 +2162,18 @@ MonoBehaviour:
       - m_Target: {fileID: 759005953}
         m_TargetAssemblyTypeName: Game.UI.GameSetupController, Assembly-CSharp
         m_MethodName: OnBackClicked
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 257848145}
+        m_TargetAssemblyTypeName: PersistentMusic, Assembly-CSharp
+        m_MethodName: PlayButtonSound
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}

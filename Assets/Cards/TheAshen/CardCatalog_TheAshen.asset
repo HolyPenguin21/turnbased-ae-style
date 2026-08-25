@@ -252,7 +252,7 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -264,8 +264,8 @@ MonoBehaviour:
     initiative: 2
     unitTypeTags: 00000000
     grantedAbilities:
-    - ShockAttack
     - Recce
+    - RapidReaction
     resourceYield:
       human: 0
       energy: 0
@@ -284,7 +284,7 @@ MonoBehaviour:
       materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 4
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -369,7 +369,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: a3bd25c8086e1ec46ad654b92346f23f, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -399,7 +399,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: b16ac6f2510ac7445a8264545e3e3abd, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
@@ -489,7 +489,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 16a15e076d001c8499e6a7c1149058d0, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 2
@@ -521,7 +521,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3ea59d657101a8a4ab53926d9e1aeacc, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 1
       energy: 1
@@ -551,7 +551,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5ce8e35ac974f3347a15a5f564224da9, type: 3}
     faction: 4
     cardType: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 1
       energy: 2

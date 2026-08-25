@@ -15,6 +15,7 @@ MonoBehaviour:
   cardCatalogs:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
+  - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   events:
   - name: Oasis outpost
     image: {fileID: 21300000, guid: a8ff5139211963a4ba9c4071e7ad163c, type: 3}
@@ -77,8 +78,8 @@ MonoBehaviour:
     description: 'An abandoned warehouse has been discovered: a decaying structure
       with a rusted sign and a heavy iron door sealed by a massive padlock. The air
       inside smells of dampness, machine oil, and centuries-old dust. Looks like
-      someone is inside: 2 targets.'
-    guardArmyName: Inhabitants
+      someone is inside: 3 targets.'
+    guardArmyName: Scrap-Haulers 3
     rewards:
     - type: 0
       resources:
@@ -98,8 +99,8 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
     description: 'Your group has discovered a massive reinforced concrete bunker
       with a faded "Logistics & Supply" sign, hidden beneath the ruins of an old
-      highway. Looks like someone is inside: 2 targets.'
-    guardArmyName: Inhabitants
+      highway. Looks like someone is inside: 3 targets.'
+    guardArmyName: Deserters 3
     rewards:
     - type: 0
       resources:
@@ -114,7 +115,7 @@ MonoBehaviour:
       constructed from heavy glass and polished steel, now half-buried by the desert
       dunes and perfectly preserving a surreal, frozen moment in time. Looks like
       someone is inside: 3 targets.'
-    guardArmyName: Nomads
+    guardArmyName: Inhabitants 3
     rewards:
     - type: 0
       resources:
@@ -129,7 +130,7 @@ MonoBehaviour:
       with a rusted, half-open roller shutter. Inside, the skeleton of an old pickup
       truck rests on a mechanical lift, frozen in time, providing temporary cover
       for your squad. Looks like someone is inside: 3 targets.'
-    guardArmyName: Desert striders
+    guardArmyName: Scrap-Haulers 3
     rewards:
     - type: 0
       resources:
@@ -151,21 +152,21 @@ MonoBehaviour:
       and sunk halfway into a dry desert lakebed, leaving the gaping missile hatch
       exposed to the sky like a hollow stone well. Looks like someone is inside:
       3 targets.'
-    guardArmyName: Brutes
+    guardArmyName: Brutes 3
     rewards:
     - type: 0
       resources:
         human: 0
         energy: 1
         materials: 1
-        tech: 1
+        tech: 2
       cardKey: 
   - name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: 'Your combat group has halted before a heavily fortified, underground
       research bunker, its entrance disguised as an ordinary sewer treatment substation.
-      Looks like someone is inside: 3 targets. '
-    guardArmyName: Brutes
+      Looks like someone is inside: 1 target. '
+    guardArmyName: Wrecker 1
     rewards:
     - type: 0
       resources:
@@ -215,7 +216,7 @@ MonoBehaviour:
     description: 'You found a blocked mountain tunnel that once served as a major
       trade route, now choked with a massive pile-up of rusted cars, armored transport
       trucks, and collapsed granite boulders. Looks like someone is inside: 2 targets.'
-    guardArmyName: Inhabitants
+    guardArmyName: Dune Wanderers 2
     rewards:
     - type: 0
       resources:
@@ -240,29 +241,30 @@ MonoBehaviour:
       cardKey: 
   - name: Oil refinery
     image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
-    description: You found an abandoned oil refinery shimmering in the desert heat,
+    description: 'You found an abandoned oil refinery shimmering in the desert heat,
       its twisted maze of pipelines, massive storage tanks, and rusted cracking towers
-      surrounded by a sea of black, hardened sludge.
-    guardArmyName: 
+      surrounded by a sea of black, hardened sludge. Looks like someone is there:
+      3 targets.'
+    guardArmyName: Sand Fin 3
     rewards:
     - type: 0
       resources:
         human: 0
         energy: 2
-        materials: 0
+        materials: 1
         tech: 0
       cardKey: 
   - name: "\u0421asino resort"
     image: {fileID: 21300000, guid: e0d33263f0ad6694594ce8ba63bbd50b, type: 3}
-    description: You found a looted casino resort rising from the desert dunes like
+    description: 'You found a looted casino resort rising from the desert dunes like
       a neon-lit ghost town, its massive glass towers shattered and its grand entrance
-      half-buried in the shifting sands.
-    guardArmyName: 
+      half-buried in the shifting sands. Looks like someone is inside: 5 targets.'
+    guardArmyName: Cactus-Pickers 5
     rewards:
     - type: 0
       resources:
-        human: 1
+        human: 2
         energy: 1
-        materials: 1
+        materials: 2
         tech: 1
       cardKey: 

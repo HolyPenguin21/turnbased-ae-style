@@ -1,16 +1,42 @@
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
+[RequireComponent(typeof(AudioSource))]
 public class PersistentMusic : MonoBehaviour
 {
     private static PersistentMusic instance;
 
+    [Header("Звуки интерфейса")]
+    [SerializeField] private AudioClip buttonClickSound;
+
+    // Этот метод мы будем вызывать при нажатии на кнопку
+    public void PlayButtonSound()
+    {
+        if (buttonClickSound != null && audioSource != null)
+        {
+            // PlayOneShot проигрывает звук один раз поверх текущей музыки
+            audioSource.PlayOneShot(buttonClickSound);
+        }
+    }
+
+    [Header("Настройки музыки")]
+    [SerializeField] private List<AudioClip> musicTracks = new List<AudioClip>();
+
+    private AudioSource audioSource;
+    private int lastPlayedIndex = -1;
+
     void Awake()
     {
+        // Логика Одиночки (Singleton)
         if (instance == null)
         {
             instance = this;
             DontDestroyOnLoad(gameObject);
+
+            // Получаем компонент AudioSource
+            audioSource = GetComponent<AudioSource>();
+            // Отключаем loop, так как мы сами управляем треками в Update
+            audioSource.loop = false;
         }
         else
         {
@@ -18,31 +44,48 @@ public class PersistentMusic : MonoBehaviour
         }
     }
 
-    void OnEnable()
+    void Start()
     {
-        // Подписываемся на событие загрузки сцены
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
-
-    void OnDisable()
-    {
-        // Отписываемся от события при уничтожении
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-    }
-
-    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        // Ищем главную камеру в новой сцене
-        Camera mainCamera = Camera.main;
-
-        if (mainCamera != null)
+        // Запускаем первый трек, если объект только создался
+        if (instance == this)
         {
-            // Делаем объект дочерним к камере
-            transform.SetParent(mainCamera.transform);
-
-            // Сбрасываем локальные координаты в ноль
-            transform.localPosition = Vector3.zero;
-            transform.localRotation = Quaternion.identity;
+            PlayRandomTrack();
         }
+    }
+
+    void Update()
+    {
+        // Если музыка не играет и список не пуст — значит, трек закончился
+        if (!audioSource.isPlaying && musicTracks.Count > 0)
+        {
+            PlayRandomTrack();
+        }
+    }
+
+    private void PlayRandomTrack()
+    {
+        if (musicTracks.Count == 0) return;
+
+        // Если в списке всего 1 трек, просто играем его
+        if (musicTracks.Count == 1)
+        {
+            audioSource.clip = musicTracks[0];
+            audioSource.Play();
+            return;
+        }
+
+        int nextIndex;
+
+        // Выбираем случайный индекс, пока он совпадает с предыдущим
+        do
+        {
+            nextIndex = Random.Range(0, musicTracks.Count);
+        }
+        while (nextIndex == lastPlayedIndex);
+
+        // Запоминаем текущий индекс и включаем музыку
+        lastPlayedIndex = nextIndex;
+        audioSource.clip = musicTracks[nextIndex];
+        audioSource.Play();
     }
 }
