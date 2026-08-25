@@ -272,10 +272,24 @@ Shader "Custom/FogOfWar"
                     sampler_NoiseTex,
                     worldXZ * (_NoiseTexScale * 1.73) + crossDrift * 0.8).r;
                 float dustDensity = saturate(detailA * 0.62 + detailB * 0.38);
-                float stormModulation = lerp(0.72, 1.18, dustDensity);
-                fog *= lerp(1.0, stormModulation, _NoiseTexStrength);
+                // The source map deliberately has a narrow, soft grayscale range. Expand it
+                // around its midpoint after the two samples are combined; otherwise their
+                // weighted average compresses the already-small contrast to an imperceptible
+                // 1-2% alpha change even with strength set to 1.
+                float contrastDust = saturate((dustDensity - 0.5) * 4.0 + 0.5);
 
-                return half4(_Color.rgb, fog * _Color.a);
+                float stormAlpha = lerp(0.5, 1.15, contrastDust);
+                fog *= lerp(1.0, stormAlpha, _NoiseTexStrength);
+
+                // Density changes the warm fog tint as well as its opacity, so wind streaks
+                // remain visible over terrain with similar brightness. This colour modulation
+                // is still multiplied by `fog` in the returned alpha: visible cells stay clean.
+                float3 darkDust = _Color.rgb * 0.72;
+                float3 lightDust = saturate(_Color.rgb * 1.35 + float3(0.05, 0.035, 0.015));
+                float3 stormTint = lerp(darkDust, lightDust, contrastDust);
+                float3 finalTint = lerp(_Color.rgb, stormTint, _NoiseTexStrength);
+
+                return half4(finalTint, fog * _Color.a);
             }
             ENDHLSL
         }
