@@ -257,8 +257,23 @@ Shader "Custom/FogOfWar"
                 float edgeFactor = 1.0 - abs(blend * 2.0 - 1.0);
                 fog = saturate(fog + (haze - 0.5) * _EdgeSoftness * edgeFactor);
 
-                float detail = SAMPLE_TEXTURE2D(_NoiseTex, sampler_NoiseTex, worldXZ * _NoiseTexScale + drift * 0.5).r;
-                fog *= lerp(1.0, detail, _NoiseTexStrength);
+                // Two differently-scaled, differently-directed samples keep the repeated dust
+                // texture from reading as one flat image sliding over the board. The density
+                // modulation stays centred close to 1, so terrain remains readable instead of
+                // opening transparent holes in the fog. Since it only multiplies `fog`, fully
+                // visible cells (fog == 0) remain completely clean.
+                float detailA = SAMPLE_TEXTURE2D(
+                    _NoiseTex,
+                    sampler_NoiseTex,
+                    worldXZ * _NoiseTexScale + drift * 0.55).r;
+                float2 crossDrift = float2(-drift.y, drift.x);
+                float detailB = SAMPLE_TEXTURE2D(
+                    _NoiseTex,
+                    sampler_NoiseTex,
+                    worldXZ * (_NoiseTexScale * 1.73) + crossDrift * 0.8).r;
+                float dustDensity = saturate(detailA * 0.62 + detailB * 0.38);
+                float stormModulation = lerp(0.72, 1.18, dustDensity);
+                fog *= lerp(1.0, stormModulation, _NoiseTexStrength);
 
                 return half4(_Color.rgb, fog * _Color.a);
             }

@@ -399,15 +399,15 @@ MonoBehaviour:
   armyVisionRadius: 0
   buildingVisionRadius: 1
   fogOfWarStyle:
-    color: {r: 0.03, g: 0.04, b: 0.07, a: 0.74509805}
+    color: {r: 0.32, g: 0.24, b: 0.14, a: 0.62}
     sortingOrder: 4
-    edgeSoftness: 1
-    edgeSharpness: 0.25
-    edgeNoiseScale: 0.12
-    edgeNoiseSpeed: 0.04
-    detailTexture: {fileID: 0}
-    detailTextureScale: 0.05
-    detailTextureStrength: 0
+    edgeSoftness: 0.45
+    edgeSharpness: 0.65
+    edgeNoiseScale: 0.18
+    edgeNoiseSpeed: 0.055
+    detailTexture: {fileID: 2800000, guid: c40d5e2479d675d0ada8f683f4e22c44, type: 3}
+    detailTextureScale: 0.11
+    detailTextureStrength: 0.38
     coordLabelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     coordLabelFontSize: 2.5
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
