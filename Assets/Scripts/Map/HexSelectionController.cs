@@ -278,10 +278,20 @@ namespace Game.Map
             int constructionDefense = observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
             remembered.Snapshot.VisualSnapshotConstructionDefense = constructionDefense;
             remembered.Snapshot.VisualSnapshotDefenseBonus = terrainDefense + constructionDefense;
-            remembered.Visual.transform.position = source.Controller.transform.position;
+            // A remembered marker must never preserve the live hex layout: an offset in fog
+            // would reveal that another army or building shares this hex. Last-seen content is
+            // intentionally a single, centred marker until vision returns.
+            remembered.Visual.transform.position = map != null
+                ? map.HexToWorld(hex)
+                : source.Controller.transform.position;
             remembered.Visual.transform.rotation = source.Controller.transform.rotation;
             remembered.Visual.transform.localScale = source.Controller.transform.localScale;
             remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
+            FactionCardCatalog ownerCatalog = source.Owner != null && cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(source.Owner.Faction)
+                : null;
+            if (ownerCatalog != null && ownerCatalog.armyIcon != null)
+                remembered.Visual.SetIcon(ownerCatalog.armyIcon);
             remembered.Visual.SetVisible(false);
             AddRememberedArmyToHexIndex(viewer, remembered);
         }
@@ -395,7 +405,9 @@ namespace Game.Map
                 snapshot.name = source.name + " (Last Seen)";
                 visuals[hex] = snapshot;
             }
-            snapshot.transform.position = source.transform.position;
+            // As with army memory above, a fogged remembered building never keeps a corner
+            // layout from its last visible frame: that position would disclose a co-occupant.
+            snapshot.transform.position = map != null ? map.HexToWorld(hex) : source.transform.position;
             snapshot.transform.rotation = source.transform.rotation;
             snapshot.transform.localScale = source.transform.localScale;
             snapshot.CopyAppearanceFrom(source);
