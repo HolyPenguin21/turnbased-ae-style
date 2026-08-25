@@ -468,8 +468,19 @@ namespace Game.Map
             // (see ArmyRegistry.Register/Unregister), so vision never recomputes on its own here.
             VisionSystem.RecomputeFor(turnController?.CurrentPlayer);
 
-            if (_selectedHex.HasValue)
-                SelectHex(_selectedHex.Value, preserveSelection: ShouldPreserveSelectionAfterModalClose(_selectedHex.Value));
+            if (!_selectedHex.HasValue)
+                return;
+
+            HexCoord hex = _selectedHex.Value;
+            ArmyData lastViewedArmy = armyViewerModal != null ? armyViewerModal.LastClosedSelectableArmy : null;
+            if (lastViewedArmy != null && lastViewedArmy.Hex.Equals(hex)
+                && ArmyRegistry.AllAt(hex).Contains(lastViewedArmy))
+            {
+                SelectHex(hex, preserveSelection: true);
+                SelectArmyForOrders(lastViewedArmy);
+                return;
+            }
+            SelectHex(hex, preserveSelection: ShouldPreserveSelectionAfterModalClose(hex));
         }
 
         // False only when the hex has exactly one non-garrison army and it isn't already what's

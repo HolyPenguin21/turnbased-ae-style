@@ -111,6 +111,10 @@ namespace Game.UI
         // the hex (map input, and so the button row's own hex, is locked out the whole time this
         // is open — see HexSelectionController.IsInputAllowed).
         public event Action Closed;
+        // Captured before Hide clears _currentArmy, so HexSelectionController can restore the
+        // exact named army the player last viewed. Garrisons and read-only armies deliberately
+        // leave this null: neither is a move-order selection.
+        public ArmyData LastClosedSelectableArmy { get; private set; }
 
         // Lets GameTurnController react to this modal (or its nested rename popup) opening/
         // closing instead of polling IsShowing/IsRenamePopupShowing every frame (see
@@ -176,6 +180,7 @@ namespace Game.UI
 
         public void Show(ArmyData army)
         {
+            LastClosedSelectableArmy = null;
             _readOnly = false;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
@@ -190,6 +195,7 @@ namespace Game.UI
         // works, since that's just picking which of their armies to look at, not an action.
         public void ShowReadOnly(ArmyData army)
         {
+            LastClosedSelectableArmy = null;
             _readOnly = true;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
@@ -199,6 +205,7 @@ namespace Game.UI
 
         public void ShowLastSeen(ArmyData army, IReadOnlyList<ArmyData> siblings)
         {
+            LastClosedSelectableArmy = null;
             _readOnly = true;
             _hideArmySwitcher = false;
             _snapshotSiblings = siblings;
@@ -213,6 +220,7 @@ namespace Game.UI
         // battle popup's own side list's job, not this modal's.
         public void ShowLocked(ArmyData army)
         {
+            LastClosedSelectableArmy = null;
             _readOnly = true;
             _hideArmySwitcher = true;
             _snapshotSiblings = null;
@@ -238,6 +246,9 @@ namespace Game.UI
         public void Hide()
         {
             bool wasShowing = IsShowing;
+            ArmyData closingArmy = _currentArmy;
+            LastClosedSelectableArmy = !_readOnly && closingArmy != null && !closingArmy.IsGarrison
+                && closingArmy.Members.Count > 0 ? closingArmy : null;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             if (renamePopup != null)

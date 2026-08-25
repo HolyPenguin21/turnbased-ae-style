@@ -340,7 +340,10 @@ namespace Game.UI
                 _arranging = true;
                 _arrangeInteractive = false;
                 if (readyButton != null)
+                {
                     readyButton.gameObject.SetActive(true);
+                    readyButton.interactable = false;
+                }
                 if (passButton != null)
                     passButton.gameObject.SetActive(false);
                 if (roundText != null)
@@ -369,6 +372,8 @@ namespace Game.UI
         private void BeginArrangement()
         {
             _arrangeInteractive = true;
+            if (readyButton != null)
+                readyButton.interactable = true;
             RefreshGrid();
         }
 

@@ -106,6 +106,7 @@ namespace Game.Map
                 ActivationApCost = source.ActivationApCost,
                 ApCost = source.ApCost,
                 OriginalResourceCost = SnapshotResourceCost(source.OriginalResourceCost),
+                RepairResourceCost = SnapshotResourceCost(source.RepairResourceCost),
                 IsHero = source.IsHero,
                 CommandRating = source.CommandRating,
                 Fate = source.Fate,

@@ -58,11 +58,13 @@ namespace Game.Units
 
         // What this unit originally cost to play from hand — carried over from
         // CardDefinition.apCost/resourceCost at spawn time, same as ActivationApCost. Only
-        // consumed by UnitRepair (repair cost is half of this, per resource, rounded down); a
+        // consumed by UnitRepair. RepairResourceCost is rolled once from this full card cost
+        // when the unit enters play, then stays fixed for this exact card instance; a
         // neutral/hex-event spawn carries these too for consistency even though it's never
         // repairable (repair is gated to the player's own Base — see UnitRepair.CanRepairAt).
         public int ApCost;
         public ResourceCost OriginalResourceCost;
+        public ResourceCost RepairResourceCost;
 
         // Whether this unit is a Hero card, and if so, how many army slots it unlocks (see
         // ArmyData.Capacity) — a hero-led army's capacity comes from this instead of the flat
