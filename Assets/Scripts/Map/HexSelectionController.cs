@@ -93,6 +93,11 @@ namespace Game.Map
         // to click the hex again (see OnArmyModalClosed). Also covers TryHandleArmyMarkerClick's
         // shortcut straight into the modal, which never runs SelectHex itself.
         private HexCoord? _selectedHex;
+        // Separate snapshots are required per human viewer: the live building visual may be
+        // recoloured or destroyed while hidden, but each human must keep seeing exactly the
+        // marker they last observed until that hex enters their vision again.
+        private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>> _rememberedBuildingVisuals =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>>();
 
         private void Reset()
         {
@@ -114,6 +119,7 @@ namespace Game.Map
             if (turnController != null)
             {
                 turnController.TurnChanging += Deselect;
+                turnController.TurnChanging += OnTurnChangingForVisualMemory;
                 turnController.TurnStateChanged += OnTurnStateChangedForVisibility;
             }
             if (armyViewerModal != null)
@@ -121,6 +127,8 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed += OnBaseModalClosed;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
+            RefreshAllVisibility();
         }
 
         private void OnDisable()
@@ -128,6 +136,7 @@ namespace Game.Map
             if (turnController != null)
             {
                 turnController.TurnChanging -= Deselect;
+                turnController.TurnChanging -= OnTurnChangingForVisualMemory;
                 turnController.TurnStateChanged -= OnTurnStateChangedForVisibility;
             }
             if (armyViewerModal != null)
@@ -135,21 +144,136 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed -= OnBaseModalClosed;
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
+            BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
+            SetRememberedBuildingVisualsVisible(false);
         }
 
         // The map is now (potentially) rendered from a different human's perspective — see
         // VisionSystem.CurrentViewer, set by GameTurnController whenever CurrentPlayer changes
         // to a human. Every marker's visibility needs re-checking against the new viewer, not
         // just whichever hexes happen to already have a RestackArmiesOn call scheduled.
-        private void OnTurnStateChangedForVisibility() => RefreshAllVisibility();
+        private void OnTurnStateChangedForVisibility()
+        {
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (viewer != null && viewer.IsHuman && turnController != null && turnController.CurrentPlayer == viewer)
+                RememberCurrentlyVisibleContent(viewer);
+            RefreshAllVisibility();
+        }
+
+        private void OnTurnChangingForVisualMemory()
+        {
+            PlayerSetupData outgoing = turnController != null ? turnController.CurrentPlayer : null;
+            if (outgoing != null && outgoing.IsHuman)
+            {
+                HumanVisualMemory.EndTurn(outgoing);
+                RefreshAllVisibility();
+            }
+        }
 
         // Only the currently-rendered viewer's own vision changing is worth a refresh here — an
         // AI's vision recomputing off-screen (once real AI logic exists) touches none of what's
         // currently drawn.
         private void OnVisibilityChanged(PlayerSetupData player)
         {
+            if (player != null && player.IsHuman)
+                RememberCurrentlyVisibleContent(player);
             if (player == VisionSystem.CurrentViewer)
                 RefreshAllVisibility();
+        }
+
+        private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
+        {
+            bool isViewersOwnTurn = turnController != null && turnController.CurrentPlayer == viewer;
+            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
+            {
+                if (isViewersOwnTurn)
+                    foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+                        if (army.Owner != viewer && BattleInitiator.IsEngageable(army))
+                            HumanVisualMemory.ObserveArmy(viewer, army.Id);
+
+                BuildingData building = BuildingRegistry.FindAt(hex);
+                bool exists = building != null && building.Visual != null;
+                HumanVisualMemory.ObserveBuilding(viewer, hex, exists);
+                if (exists)
+                    UpdateRememberedBuildingVisual(viewer, hex, building.Visual);
+                else
+                    RemoveRememberedBuildingVisual(viewer, hex);
+            }
+        }
+
+        private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
+        {
+            if (GameSession.Players == null)
+                return;
+            foreach (PlayerSetupData viewer in GameSession.Players)
+            {
+                // VisualStateChanged fires before the registry change recomputes away a
+                // building's own vision. Anyone still present in this old visible set really
+                // witnessed the transition and should remember the resulting state immediately.
+                if (viewer == null || !viewer.IsHuman || !VisionSystem.IsVisible(viewer, hex))
+                    continue;
+                bool exists = building != null && building.Visual != null;
+                HumanVisualMemory.ObserveBuilding(viewer, hex, exists);
+                if (exists)
+                    UpdateRememberedBuildingVisual(viewer, hex, building.Visual);
+                else
+                    RemoveRememberedBuildingVisual(viewer, hex);
+            }
+            RefreshAllVisibility();
+        }
+
+        private void UpdateRememberedBuildingVisual(PlayerSetupData viewer, HexCoord hex, MapObjectVisual source)
+        {
+            if (!_rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> visuals))
+            {
+                visuals = new Dictionary<HexCoord, MapObjectVisual>();
+                _rememberedBuildingVisuals[viewer] = visuals;
+            }
+            if (!visuals.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
+            {
+                snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
+                snapshot.name = source.name + " (Last Seen)";
+                visuals[hex] = snapshot;
+            }
+            snapshot.transform.position = source.transform.position;
+            snapshot.transform.rotation = source.transform.rotation;
+            snapshot.transform.localScale = source.transform.localScale;
+            snapshot.CopyAppearanceFrom(source);
+            snapshot.SetVisible(false);
+        }
+
+        private void RemoveRememberedBuildingVisual(PlayerSetupData viewer, HexCoord hex)
+        {
+            if (!_rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> visuals)
+                || !visuals.TryGetValue(hex, out MapObjectVisual snapshot))
+                return;
+            visuals.Remove(hex);
+            if (snapshot != null)
+            {
+                snapshot.SetVisible(false);
+                Destroy(snapshot.gameObject);
+            }
+        }
+
+        private void RefreshRememberedBuildingVisual(HexCoord hex)
+        {
+            foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>> entry in _rememberedBuildingVisuals)
+            {
+                if (!entry.Value.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
+                    continue;
+                bool visible = entry.Key == VisionSystem.CurrentViewer
+                    && HumanVisualMemory.IsBuildingKnown(entry.Key, hex)
+                    && !VisionSystem.IsVisible(entry.Key, hex);
+                snapshot.SetVisible(visible);
+            }
+        }
+
+        private void SetRememberedBuildingVisualsVisible(bool visible)
+        {
+            foreach (Dictionary<HexCoord, MapObjectVisual> visuals in _rememberedBuildingVisuals.Values)
+                foreach (MapObjectVisual snapshot in visuals.Values)
+                    if (snapshot != null)
+                        snapshot.SetVisible(visible);
         }
 
         // The modal doesn't touch the hex-side button row or ArmyInfoPanel itself while it's
@@ -439,8 +563,13 @@ namespace Game.Map
                 // (owning it is what grants the vision in the first place, so it's never hidden
                 // from its own owner).
                 bool contentVisible = owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(coord);
+                bool buildingKnown = HumanVisualMemory.IsBuildingKnown(VisionSystem.CurrentViewer, coord);
                 string ownerName = contentVisible ? owner?.Nickname : "Unknown";
-                string buildingName = contentVisible ? buildingHere?.Name : (buildingHere != null ? "Unknown" : null);
+                // Never use the live registry to distinguish "still there" from "destroyed"
+                // outside vision — doing so would leak the exact hidden change the remembered
+                // marker is meant to conceal. The current UI intentionally exposes no detailed
+                // building snapshot text, so both live-hidden and last-seen-only read Unknown.
+                string buildingName = contentVisible ? buildingHere?.Name : (buildingKnown ? "Unknown" : null);
                 // Resource yield is the one exception: terrain-derived and unchanging, so it's
                 // remembered in two tiers instead of hiding the instant vision leaves — merely
                 // having seen the hex (even from a neighbor's vision radius, never physically
@@ -776,8 +905,10 @@ namespace Game.Map
                 // player's army would — same "remembered once seen" exception the resource row
                 // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
+                bool seenThisHumanTurn = HumanVisualMemory.WasArmySeenThisTurn(VisionSystem.CurrentViewer, army.Id);
                 bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
-                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex) || everSeenNeutral);
+                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex)
+                        || everSeenNeutral || seenThisHumanTurn);
                 if (controller.Visual != null)
                 {
                     controller.Visual.SetVisible(visible);
@@ -816,6 +947,8 @@ namespace Game.Map
                     building.Visual.SetVisible(building.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex));
                 }
             }
+
+            RefreshRememberedBuildingVisual(hex);
         }
 
         // Re-runs the visibility half of RestackArmiesOn (army/building marker show/hide) for
@@ -832,6 +965,13 @@ namespace Game.Map
             var hexes = new HashSet<HexCoord>(ArmyRegistry.AllOccupiedHexes());
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
                 hexes.Add(building.Hex);
+            // Include every snapshot, not only the current viewer's known hexes. Otherwise a
+            // destroyed-building snapshot belonging to the previous hot-seat viewer is never
+            // visited (there is no live registry entry left to contribute its hex) and remains
+            // incorrectly visible after perspective switches.
+            foreach (Dictionary<HexCoord, MapObjectVisual> visuals in _rememberedBuildingVisuals.Values)
+                foreach (HexCoord hex in visuals.Keys)
+                    hexes.Add(hex);
             foreach (HexCoord hex in hexes)
                 RestackArmiesOn(hex, null);
         }

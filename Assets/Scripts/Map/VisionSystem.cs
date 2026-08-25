@@ -11,11 +11,12 @@ namespace Game.Map
     // they've actually VISITED — a separate, permanent flag, and NOT the same thing as "currently
     // within vision radius": per the project owner's own call, seeing a hex from a distance never
     // marks it visited, only an army or building physically standing on it does (see
-    // RecomputeFor's own `footprint` set vs. `fresh`). Content has no memory either way and
-    // re-hides the instant vision leaves; the bare fact "an army of mine has been here" is what's
+    // RecomputeFor's own `footprint` set vs. `fresh`). This class itself does not remember
+    // changing content: AiMapMemory owns decision-making memory, while HumanVisualMemory owns
+    // the deliberately narrow player-facing exceptions (enemy armies through the current turn,
+    // stationary buildings until corrected). The bare fact "an army of mine has been here" is
     // remembered forever, per player, and drives Game.Map.HexCoordLabel. Terrain itself is never
-    // gated by any of this — only content (armies/buildings/resource yield), per the owner's
-    // "map is always visible, content isn't" spec.
+    // gated by any of this — only content, per the owner's "map is always visible" spec.
     //
     // CurrentViewer is whichever player's perspective the map is currently rendered from — the
     // human whose turn it is (see GameTurnController), since this is a hot-seat game with
@@ -63,6 +64,7 @@ namespace Game.Map
             Visible.Clear();
             Visited.Clear();
             EverSeen.Clear();
+            HumanVisualMemory.Clear();
             CurrentViewer = null;
         }
 

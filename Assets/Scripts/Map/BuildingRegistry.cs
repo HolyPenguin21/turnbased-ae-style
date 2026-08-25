@@ -26,6 +26,11 @@ namespace Game.Map
         // ever actually call Unregister, same "wired for correctness, currently unreachable"
         // status as BaseViewerModalUI's own Repair button.
         public static event Action<BuildingData> BuildingDestroyed;
+        // Fired after the building's visible state changes but before that change can remove its
+        // former owner's own vision source. HumanVisualMemory uses this narrow pre-recompute
+        // window to record a capture/destruction the player was genuinely watching, without
+        // changing AiMapMemory's existing VisibilityChanged-driven decision data.
+        public static event Action<HexCoord, BuildingData> VisualStateChanged;
 
         public static void Clear()
         {
@@ -54,6 +59,7 @@ namespace Game.Map
             if (!ByHex.TryGetValue(hex, out BuildingData building))
                 return;
             ByHex.Remove(hex);
+            VisualStateChanged?.Invoke(hex, null);
             BuildingDestroyed?.Invoke(building);
             VisionSystem.RecomputeFor(building.Owner);
             VisionSystem.NotifyContentChanged(hex);
@@ -94,6 +100,7 @@ namespace Game.Map
                 // garrison ownership.
                 if (newOwner != null)
                     EnsureGarrisonForBuilding(building, hexSelection);
+                VisualStateChanged?.Invoke(building.Hex, building);
                 // Both sides of the handover lose/gain vision from this specific building —
                 // Unregister/Register (the Destroy branch below) already cover that on their
                 // own, but a capture never calls either, so both recomputes are done explicitly

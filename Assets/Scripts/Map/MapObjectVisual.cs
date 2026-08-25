@@ -23,6 +23,32 @@ namespace Game.Map
                 objectImage.sprite = icon;
         }
 
+        // Copies the complete rendered marker state into a separate last-seen snapshot. A
+        // snapshot must not keep reading the live building marker after vision leaves: captures
+        // change its colour and destroyed facilities delete it, either of which would leak an
+        // unseen world-state change to the human player.
+        public void CopyAppearanceFrom(MapObjectVisual source)
+        {
+            if (source == null)
+                return;
+            CopyRenderer(source.innerCircle, innerCircle);
+            CopyRenderer(source.objectImage, objectImage);
+        }
+
+        private static void CopyRenderer(SpriteRenderer source, SpriteRenderer target)
+        {
+            if (source == null || target == null)
+                return;
+            target.sprite = source.sprite;
+            target.color = source.color;
+            target.sharedMaterial = source.sharedMaterial;
+            target.sortingLayerID = source.sortingLayerID;
+            target.sortingOrder = source.sortingOrder;
+            target.transform.localPosition = source.transform.localPosition;
+            target.transform.localRotation = source.transform.localRotation;
+            target.transform.localScale = source.transform.localScale;
+        }
+
         // Circle and icon are two independent SpriteRenderers on the same flat (Y=0) marker —
         // the icon needs a higher order than its own circle to actually show up on top of it,
         // and callers (building vs. unit markers) use different GameConfig values so buildings
