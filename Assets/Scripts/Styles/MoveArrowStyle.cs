@@ -17,7 +17,7 @@ namespace Game.Styles
         public float curveBend = 0.28f;
 
         [Header("Shaft")]
-        public float tailWidth = 0.75f;
+        public float tailWidth = 0.9f;
 
         // A fully open-ended silhouette for the head instead of a fixed set of named zones
         // (wing/notch/neck as separate float fields) — add or remove points here to sculpt
@@ -33,12 +33,13 @@ namespace Game.Styles
         public ArrowHeadPoint[] headProfile =
         {
             new ArrowHeadPoint { distanceFromTip = 0f, halfWidth = 0f },       // tip
-            new ArrowHeadPoint { distanceFromTip = 0.3f, halfWidth = 0.27f },  // compact wing
-            new ArrowHeadPoint { distanceFromTip = 0.48f, halfWidth = 0.07f }, // base — meets the ribbon
+            new ArrowHeadPoint { distanceFromTip = 0.16f, halfWidth = 0.3f },  // wing (widest point)
+            new ArrowHeadPoint { distanceFromTip = 0.3f, halfWidth = 0.03f },  // notch (swallowtail pinch)
+            new ArrowHeadPoint { distanceFromTip = 0.4f, halfWidth = 0.06f },  // base — meets the shaft here
         };
 
         [Header("Outline")]
-        public float outlineThickness = 0.02f;
+        public float outlineThickness = 0.035f;
         public Color outlineColor = new Color(0.05f, 0.04f, 0.06f, 1f);
 
         // Longitudinal fade, tip -> tail — NOT the old per-cross-section "glassy stripe"
@@ -55,8 +56,8 @@ namespace Game.Styles
         // uniform solid colour, and only the last 25% of the tail (nearest the selected unit)
         // actually fades.
         [Header("Colour (longitudinal fade, tip -> tail)")]
-        [Range(0f, 1f)] public float tailAlpha = 0f;
-        [Range(0f, 1f)] public float gradientStart = 0.15f;
+        [Range(0f, 1f)] public float tailAlpha = 0.1f;
+        [Range(0f, 1f)] public float gradientStart = 0.75f;
 
         // Two badges — move cost and AP cost — straddling the arrow's midpoint, same radius
         // and text colour, only the fill colour differs. apBadgeColor matches the AP icon
