@@ -362,15 +362,13 @@ MonoBehaviour:
     headProfile:
     - distanceFromTip: 0
       halfWidth: 0
-    - distanceFromTip: 0.4
-      halfWidth: 0.3
-    - distanceFromTip: 0.31
-      halfWidth: 0.05
-    - distanceFromTip: 0.401
-      halfWidth: 0.05
-    outlineThickness: 0.03
+    - distanceFromTip: 0.3
+      halfWidth: 0.27
+    - distanceFromTip: 0.48
+      halfWidth: 0.07
+    outlineThickness: 0.02
     outlineColor: {r: 0.05, g: 0.04, b: 0.06, a: 1}
-    tailAlpha: 0.01
+    tailAlpha: 0
     gradientStart: 0.15
     badgeRadius: 0.18
     badgeSpacing: 0.4
