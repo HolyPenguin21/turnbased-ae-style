@@ -76,6 +76,7 @@ MonoBehaviour:
     initiative: 0
     unitTypeTags: 
     grantedAbilities:
+    - Barracks
     - CollectHuman
     - CollectEnergy
     - CollectMaterials
@@ -239,9 +240,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 7
-    displayName: Tech Scrapper
-    art: {fileID: 21300000, guid: 6c828ebd159427246b7b028ed2d6a336, type: 3}
-    detailArt: {fileID: 21300000, guid: b47fc4d3dec26bc48aa4ac74e68689ee, type: 3}
+    displayName: Hooded
+    art: {fileID: 21300000, guid: 735824846a4304645a8b477d61e13d9e, type: 3}
+    detailArt: {fileID: 21300000, guid: eb23825e602b7ec4aa14e02fbf5bb72b, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -249,21 +250,22 @@ MonoBehaviour:
       human: 1
       energy: 0
       materials: 0
-      tech: 1
+      tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 3
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 2
+    attack: 3
     defenseRating: 1
-    resistanceRating: 3
-    range: 1
-    hitPoints: 3
-    initiative: 1
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 2
     unitTypeTags: 00000000
     grantedAbilities:
-    - CollectTech
+    - ShockAttack
+    - Recce
     resourceYield:
       human: 0
       energy: 0
@@ -301,7 +303,98 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 9
-    displayName: Ash Runner
+    displayName: Tech Scrapper
+    art: {fileID: 21300000, guid: 6c828ebd159427246b7b028ed2d6a336, type: 3}
+    detailArt: {fileID: 21300000, guid: b47fc4d3dec26bc48aa4ac74e68689ee, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    resistanceRating: 3
+    range: 1
+    hitPoints: 3
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities:
+    - CollectTech
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 10
+    displayName: AA Rad Hunter
+    art: {fileID: 21300000, guid: 9927ae6eeb12f804a880e87f411f29dd, type: 3}
+    detailArt: {fileID: 21300000, guid: edc3d80d8adeccd4aa22b214fff7b239, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 01000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 11
+    displayName: LI Ash Drifter
+    art: {fileID: 21300000, guid: d340d646803302c4b820dc327a0583d4, type: 3}
+    detailArt: {fileID: 21300000, guid: a3bd25c8086e1ec46ad654b92346f23f, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 12
+    displayName: LI Ash Runner
     art: {fileID: 21300000, guid: 65c89f7c095128e42919a46bcfcf35b1, type: 3}
     detailArt: {fileID: 21300000, guid: b16ac6f2510ac7445a8264545e3e3abd, type: 3}
     faction: 4
@@ -330,16 +423,16 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 10
-    displayName: AA Rad Hunter
-    art: {fileID: 21300000, guid: 9927ae6eeb12f804a880e87f411f29dd, type: 3}
-    detailArt: {fileID: 21300000, guid: edc3d80d8adeccd4aa22b214fff7b239, type: 3}
+  - id: 13
+    displayName: MI Iron Husk
+    art: {fileID: 21300000, guid: 416e13f1b10664146a6ef2b5e0390660, type: 3}
+    detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
     faction: 4
     cardType: 1
-    apCost: 1
+    apCost: 2
     resourceCost:
       human: 1
-      energy: 1
+      energy: 0
       materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
@@ -347,20 +440,20 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 4
+    attack: 3
     defenseRating: 2
     resistanceRating: 2
     range: 2
-    hitPoints: 4
+    hitPoints: 5
     initiative: 1
-    unitTypeTags: 01000000
+    unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
-  - id: 11
+  - id: 14
     displayName: Scav Carrier
     art: {fileID: 21300000, guid: 50ea9173e748b7044892089a3e8d0430, type: 3}
     detailArt: {fileID: 21300000, guid: a4474cd9a8b280b45b298114de392d98, type: 3}
@@ -390,98 +483,6 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 12
-    displayName: Hooded
-    art: {fileID: 21300000, guid: 735824846a4304645a8b477d61e13d9e, type: 3}
-    detailArt: {fileID: 21300000, guid: eb23825e602b7ec4aa14e02fbf5bb72b, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 1
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 1
-    resistanceRating: 2
-    range: 2
-    hitPoints: 4
-    initiative: 2
-    unitTypeTags: 00000000
-    grantedAbilities:
-    - ShockAttack
-    - Recce
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 13
-    displayName: Ash Drifter
-    art: {fileID: 21300000, guid: d340d646803302c4b820dc327a0583d4, type: 3}
-    detailArt: {fileID: 21300000, guid: a3bd25c8086e1ec46ad654b92346f23f, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 1
-    resistanceRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    unitTypeTags: 00000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 14
-    displayName: Iron Husk
-    art: {fileID: 21300000, guid: 416e13f1b10664146a6ef2b5e0390660, type: 3}
-    detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 2
-    resourceCost:
-      human: 1
-      energy: 0
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    resistanceRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    unitTypeTags: 00000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
   - id: 15
     displayName: Rad Brute
     art: {fileID: 21300000, guid: d4fecf0dfb18ce34f9c5bc3f3ce2abc2, type: 3}
@@ -493,7 +494,7 @@ MonoBehaviour:
       human: 1
       energy: 2
       materials: 0
-      tech: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -515,7 +516,67 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 16
-    displayName: Rust Tank
+    displayName: HI Ash Walker
+    art: {fileID: 21300000, guid: a3318c5139165c94fb81a5e940cef118, type: 3}
+    detailArt: {fileID: 21300000, guid: 3ea59d657101a8a4ab53926d9e1aeacc, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    unitTypeTags: 00000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 17
+    displayName: BS Grave Engine
+    art: {fileID: 21300000, guid: fdc14e08d3ffe0940bce1a2ef9da540e, type: 3}
+    detailArt: {fileID: 21300000, guid: 5ce8e35ac974f3347a15a5f564224da9, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 2
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    resistanceRating: 4
+    range: 1
+    hitPoints: 7
+    initiative: 1
+    unitTypeTags: 0100000002000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 18
+    displayName: MT Rust Tank
     art: {fileID: 21300000, guid: 026bfcfa33cd247478012438377fb5f0, type: 3}
     detailArt: {fileID: 21300000, guid: 239cccefd5ea78344adba7ac0ef70dfe, type: 3}
     faction: 4
@@ -544,7 +605,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 17
+  - id: 19
     displayName: Leviathan
     art: {fileID: 21300000, guid: 45b07eefadb6f5348911c8d573ff5a63, type: 3}
     detailArt: {fileID: 21300000, guid: 49a1362e66c8c3f41863504915a07e8f, type: 3}
@@ -574,37 +635,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 18
-    displayName: Grave Engine
-    art: {fileID: 21300000, guid: fdc14e08d3ffe0940bce1a2ef9da540e, type: 3}
-    detailArt: {fileID: 21300000, guid: 5ce8e35ac974f3347a15a5f564224da9, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 1
-      energy: 2
-      materials: 3
-      tech: 3
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 4
-    resistanceRating: 4
-    range: 1
-    hitPoints: 7
-    initiative: 1
-    unitTypeTags: 0100000002000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 19
+  - id: 20
     displayName: Scrap Mortar
     art: {fileID: 21300000, guid: 28100ed5b3524b246a6152dace64a840, type: 3}
     detailArt: {fileID: 21300000, guid: 3d2689852cf6a674c82e8854e1dc27b1, type: 3}
@@ -615,7 +646,7 @@ MonoBehaviour:
       human: 1
       energy: 2
       materials: 1
-      tech: 0
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -634,7 +665,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 20
+  - id: 21
     displayName: Colossus
     art: {fileID: 21300000, guid: a1c5c512a5300c2429f7a1a0ec2fca42, type: 3}
     detailArt: {fileID: 21300000, guid: 8abc5f26f3a782a48b216f264ea732cf, type: 3}
@@ -645,7 +676,7 @@ MonoBehaviour:
       human: 1
       energy: 3
       materials: 2
-      tech: 2
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -665,7 +696,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 21
+  - id: 22
     displayName: Ash Howitzer
     art: {fileID: 21300000, guid: abff434567eaa434f956f1b5cae6acde, type: 3}
     detailArt: {fileID: 21300000, guid: d74666f79453083478b02daf45396343, type: 3}
@@ -673,10 +704,10 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
-      energy: 3
-      materials: 2
-      tech: 1
+      human: 3
+      energy: 4
+      materials: 3
+      tech: 5
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1

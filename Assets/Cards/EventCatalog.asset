@@ -113,7 +113,7 @@ MonoBehaviour:
     description: 'You found a mirage town - a pre-war resort settlement entirely
       constructed from heavy glass and polished steel, now half-buried by the desert
       dunes and perfectly preserving a surreal, frozen moment in time. Looks like
-      someone is inside: 4 targets.'
+      someone is inside: 3 targets.'
     guardArmyName: Nomads
     rewards:
     - type: 0
@@ -164,7 +164,7 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: 'Your combat group has halted before a heavily fortified, underground
       research bunker, its entrance disguised as an ordinary sewer treatment substation.
-      Looks like someone is inside: 1 target. '
+      Looks like someone is inside: 3 targets. '
     guardArmyName: Brutes
     rewards:
     - type: 0

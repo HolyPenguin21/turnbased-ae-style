@@ -88,37 +88,6 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 2
-    displayName: Research Facility
-    art: {fileID: 21300000, guid: 65b9fb50505008e4f9cfb20a6070a954, type: 3}
-    detailArt: {fileID: 21300000, guid: dab3965ddfc44fc4796cceaa4247d655, type: 3}
-    faction: 0
-    cardType: 2
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 1
-      tech: 0
-    requiredBuildingAbility: 
-    moveMax: 0
-    activationApCost: 0
-    commandRating: 0
-    fate: 0
-    attack: 0
-    defenseRating: 2
-    resistanceRating: 1
-    range: 0
-    hitPoints: 6
-    initiative: 0
-    unitTypeTags: 
-    grantedAbilities:
-    - Lab
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 3
     displayName: Dorian Kesh
     art: {fileID: 21300000, guid: 81e76679aeae3504d92152a36584c601, type: 3}
     detailArt: {fileID: 21300000, guid: 19d85eabae409024aadc1ec15d7790c7, type: 3}
@@ -148,7 +117,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 4
+  - id: 3
     displayName: Aldric Voss
     art: {fileID: 21300000, guid: 4f3b2dda16ebdf54ab56eefc909d531a, type: 3}
     detailArt: {fileID: 21300000, guid: bfe432bc43014f542b498e1346e00ea2, type: 3}
@@ -179,7 +148,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 5
+  - id: 4
     displayName: Nadia Thorne
     art: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
     detailArt: {fileID: 21300000, guid: 61636f53d0b54db47a62f6fbffe2b9c8, type: 3}
@@ -210,7 +179,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 6
+  - id: 5
     displayName: Kessa Vrail
     art: {fileID: 21300000, guid: cc4787e37aa8ed04eb111dcd564de512, type: 3}
     detailArt: {fileID: 21300000, guid: 7141bd2242b632c469a3c81ee250382c, type: 3}
@@ -240,7 +209,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 7
+  - id: 6
     displayName: Lira Sable
     art: {fileID: 21300000, guid: 36aa1715422b00c47995b2a802d4b470, type: 3}
     detailArt: {fileID: 21300000, guid: 2bfbdbfe359d3f542b8c19b3c77fd3a8, type: 3}
@@ -271,7 +240,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 8
+  - id: 7
     displayName: Scout
     art: {fileID: 21300000, guid: 7e65b43206e25644a92f7a085751e399, type: 3}
     detailArt: {fileID: 21300000, guid: feecf6b864fc56146a95a2db56533466, type: 3}
@@ -295,6 +264,37 @@ MonoBehaviour:
     hitPoints: 4
     initiative: 1
     unitTypeTags: 00000000
+    grantedAbilities:
+    - Recce
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 8
+    displayName: RC Vehicle
+    art: {fileID: 21300000, guid: 1045d74c3da1d834cb79582813054193, type: 3}
+    detailArt: {fileID: 21300000, guid: cc1844df7f78c8a449adf0d76a8afe81, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    unitTypeTags: 01000000
     grantedAbilities:
     - Recce
     resourceYield:
@@ -334,37 +334,6 @@ MonoBehaviour:
       materials: 0
       tech: 0
   - id: 10
-    displayName: RC Vehicle
-    art: {fileID: 21300000, guid: 1045d74c3da1d834cb79582813054193, type: 3}
-    detailArt: {fileID: 21300000, guid: cc1844df7f78c8a449adf0d76a8afe81, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 0
-      materials: 2
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    resistanceRating: 2
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    unitTypeTags: 01000000
-    grantedAbilities:
-    - Recce
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 11
     displayName: AA Crawler
     art: {fileID: 21300000, guid: 0710b2a7db76fab41848bd283704c766, type: 3}
     detailArt: {fileID: 21300000, guid: 803a5e0aedc809b4ab84f79fdcfad981, type: 3}
@@ -374,8 +343,8 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 1
-      materials: 1
-      tech: 0
+      materials: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -394,7 +363,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 12
+  - id: 11
     displayName: Light Infantry
     art: {fileID: 21300000, guid: 31193e8e1a6072b47b1970e84241463f, type: 3}
     detailArt: {fileID: 21300000, guid: bb7ce7e9597b25646a9800c17c6ebdc9, type: 3}
@@ -424,7 +393,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 13
+  - id: 12
     displayName: Iron guards
     art: {fileID: 21300000, guid: d947f00e53dba894898a7c929bd64aa1, type: 3}
     detailArt: {fileID: 21300000, guid: 71b9a21e35ca278418585b647419d6ed, type: 3}
@@ -434,8 +403,8 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 0
-      materials: 1
-      tech: 0
+      materials: 0
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -455,7 +424,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 14
+  - id: 13
     displayName: Medium infantry
     art: {fileID: 21300000, guid: 57c7f5684c2dddb42b56b4e565c14bfa, type: 3}
     detailArt: {fileID: 21300000, guid: 4b9dfd8f9f12a4242b73fd54ad42173b, type: 3}
@@ -485,7 +454,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 15
+  - id: 14
     displayName: Flamer
     art: {fileID: 21300000, guid: f53f9a67de751f747bb14826fc647b28, type: 3}
     detailArt: {fileID: 21300000, guid: 27f894ddddeff384090d3bf35fbdbc74, type: 3}
@@ -502,7 +471,7 @@ MonoBehaviour:
     activationApCost: 1
     commandRating: 0
     fate: 0
-    attack: 3
+    attack: 4
     defenseRating: 2
     resistanceRating: 1
     range: 1
@@ -516,7 +485,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 16
+  - id: 15
     displayName: AT Infantry
     art: {fileID: 21300000, guid: 5bd54449712263f4f9080efa19fb81a5, type: 3}
     detailArt: {fileID: 21300000, guid: f6313bed1de65754d9b350fc6f8d6d51, type: 3}
@@ -547,7 +516,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 17
+  - id: 16
     displayName: Heavy Infantry
     art: {fileID: 21300000, guid: ddd99a3f644357f42ad690fcf22dafa6, type: 3}
     detailArt: {fileID: 21300000, guid: e5047807d847ee342b209c8a78223453, type: 3}
@@ -578,7 +547,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 18
+  - id: 17
     displayName: BS Melee
     art: {fileID: 21300000, guid: 992c55f4f43cb43479e179dd46d1586b, type: 3}
     detailArt: {fileID: 21300000, guid: 4fc5885688c762640bbaafb4e3529bad, type: 3}
@@ -588,8 +557,8 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 1
-      materials: 2
-      tech: 1
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -609,7 +578,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 19
+  - id: 18
     displayName: BS Ranged
     art: {fileID: 21300000, guid: 8f05f333148e2614cb1f8c82b8bfdc50, type: 3}
     detailArt: {fileID: 21300000, guid: 028a4389a5d69854988fa7d61eb2299e, type: 3}
@@ -619,7 +588,7 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 2
-      materials: 2
+      materials: 1
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
@@ -639,8 +608,8 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 20
-    displayName: LT-54
+  - id: 19
+    displayName: Light Tank
     art: {fileID: 21300000, guid: 4ad88a83fb2be2f479bab36a43d07e2f, type: 3}
     detailArt: {fileID: 21300000, guid: 0a53a7a6c8028fc45b63942635e2dfbc, type: 3}
     faction: 0
@@ -669,37 +638,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 21
-    displayName: LT-78
-    art: {fileID: 21300000, guid: 9445a7dc760a8a843b935fcf180746a9, type: 3}
-    detailArt: {fileID: 21300000, guid: 28c6fb3e20d9ba247a0a7158c9bcb038, type: 3}
-    faction: 0
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 3
-    resistanceRating: 2
-    range: 2
-    hitPoints: 5
-    initiative: 1
-    unitTypeTags: 01000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-  - id: 22
+  - id: 20
     displayName: Medium Tank
     art: {fileID: 21300000, guid: 724c990830d2de349811dd18b22fe79d, type: 3}
     detailArt: {fileID: 21300000, guid: aba1f1203a5932e468dca31b04c838bd, type: 3}
@@ -729,7 +668,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 23
+  - id: 21
     displayName: Heavy Tank
     art: {fileID: 21300000, guid: 64e09054709fb25488a74fba6e8f08ed, type: 3}
     detailArt: {fileID: 21300000, guid: 2250c13c9ffa42247bcc9a3ee6e5fabb, type: 3}
@@ -739,8 +678,8 @@ MonoBehaviour:
     resourceCost:
       human: 0
       energy: 1
-      materials: 4
-      tech: 0
+      materials: 3
+      tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -760,7 +699,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 24
+  - id: 22
     displayName: Artillery Cannon
     art: {fileID: 21300000, guid: 8405a142c2690cf4f829caa14e4a6a03, type: 3}
     detailArt: {fileID: 21300000, guid: d66eb5642ca7d0a42b7adedbf3c2f04e, type: 3}
@@ -771,7 +710,7 @@ MonoBehaviour:
       human: 1
       energy: 2
       materials: 1
-      tech: 0
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 2
     activationApCost: 1
@@ -791,7 +730,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 25
+  - id: 23
     displayName: Artillery Tank
     art: {fileID: 21300000, guid: 4810b69d90fbc5d4c83b205220cebfd4, type: 3}
     detailArt: {fileID: 21300000, guid: a9c00334f55db484ea0252056de0f7cd, type: 3}
@@ -799,10 +738,10 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
-      energy: 3
+      human: 3
+      energy: 4
       materials: 2
-      tech: 1
+      tech: 5
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -821,7 +760,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 26
+  - id: 24
     displayName: Pulse Cannon
     art: {fileID: 21300000, guid: e6e5088baf044414f8218f7ec96c6180, type: 3}
     detailArt: {fileID: 21300000, guid: 77fc96088558ff3499ebcf37fbfe288a, type: 3}
@@ -831,8 +770,8 @@ MonoBehaviour:
     resourceCost:
       human: 1
       energy: 3
-      materials: 2
-      tech: 2
+      materials: 1
+      tech: 3
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -852,7 +791,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 27
+  - id: 25
     displayName: Watcher Drone
     art: {fileID: 21300000, guid: a857076aaa3bd2a4ead8b3d56a1b52cf, type: 3}
     detailArt: {fileID: 21300000, guid: 261462f902994374c86b849bfc579bd9, type: 3}

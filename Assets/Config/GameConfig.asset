@@ -349,7 +349,7 @@ MonoBehaviour:
       moveCost: 2
       defenseModifier: 1
     mountainsTerrainName: Mountains
-    mountainRangeCount: 4
+    mountainRangeCount: 3
     mountainRangeLength: 2
   minPlayers: 2
   maxPlayers: 6
