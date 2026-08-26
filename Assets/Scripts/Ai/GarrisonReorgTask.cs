@@ -318,10 +318,16 @@ namespace Game.Ai
         // own StillAssembling branch is what actually prevents this now, by refusing to let this
         // tier's fold move even consider a still-forming DefendCitadel army in the first place,
         // regardless of posture — see that method's own comment for the full chain.
+        // Aviation excluded (project owner's report, 2026-08-26: a lone Wasp sitting at its home
+        // airfield hex kept surfacing here as an ordinary "lone unit", proposed for
+        // ConsolidateUnits into the garrison, then failing at ArmyActions.TransferMember with
+        // "Aircraft can only be moved between an airfield and an aviation army.") — an aircraft's
+        // only legal reorg destinations are its own airfield or another air army, neither of which
+        // this generic ground fold ever offers; AiAviationSupport owns aircraft placement instead.
         private static bool IsLoneArmyAtBase(ArmyData army, HexCoord garrisonHex)
         {
-            return army != null && !army.IsGarrison && !army.IsPrison
-                && army.Members.Count == 1 && army.Hex.Equals(garrisonHex);
+            return army != null && !army.IsGarrison && !army.IsPrison && !army.IsAirfield
+                && !AviationRules.IsAirArmy(army) && army.Members.Count == 1 && army.Hex.Equals(garrisonHex);
         }
 
         // IdleBalance's own no-go list (2026-08-23 redesign, project owner's own spec point 3;

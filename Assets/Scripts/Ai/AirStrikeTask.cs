@@ -72,13 +72,16 @@ namespace Game.Ai
             }
         }
 
-        // Scans the same two AiMapMemory sources RaidWeakerArmyTask.FindTarget already uses
-        // (known enemy army sightings + known enemy-owned buildings/garrisons) — restricted to real
-        // ENEMY owners only (neutrals are never an AirStrike target, unlike RaidWeakerArmyTask's own
-        // "Раздел 5" scope — the spec's own wording is "known enemy armies/garrisons", not
-        // neutral clean-up). Stored aircraft sitting in an enemy airfield never surface here at all
-        // — BattleInitiator.IsEngageable (which AiMapMemory's own sighting recorder already gates
-        // on) excludes IsAirfield armies entirely, so this needs no separate filter for that case.
+        // Only scans known enemy ARMY/garrison sightings (AiMapMemory.KnownEnemySighting) — unlike
+        // RaidWeakerArmyTask.FindTarget's own "Раздел 5" scope, a bare AllKnownBuildings hex with no
+        // known sighting is never added here: a strike needs a real, known composition to plan
+        // against, and ground can capture/clear an empty building for free next turn anyway, so
+        // burning a sortie's energy on one that turns out empty (project owner's report, 2026-08-26
+        // turn 24 — Hollowmen struck (5,3), flew home, and the ground army then found only an empty
+        // resource building there) is pure waste. Stored aircraft sitting in an enemy airfield never
+        // surface here at all — BattleInitiator.IsEngageable (which AiMapMemory's own sighting
+        // recorder already gates on) excludes IsAirfield armies entirely, so this needs no separate
+        // filter for that case.
         // A candidate with no complete sortie (AiAviationSupport.TryPlanSortie/
         // TryPlanSortieFromStorage returns null) is dropped before scoring — never assumed
         // reachable just because it's known.
@@ -95,12 +98,6 @@ namespace Game.Ai
                     continue;
                 enemyHexes.Add(sighting.Hex);
                 enemyDefense[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
-            }
-            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
-            {
-                if (building.Owner == null || building.Owner == actor || building.Owner.IsNeutral || building.IsStartingCitadel)
-                    continue;
-                enemyHexes.Add(building.Hex);
             }
 
             StrikeTarget? best = null;

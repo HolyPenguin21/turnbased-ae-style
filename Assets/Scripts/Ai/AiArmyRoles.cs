@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -50,7 +51,15 @@ namespace Game.Ai
         // the AI would try to "recruit" straight into its own Prison).
         public static bool HasOpenSlot(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison)
+            // Airfield storage and air armies never count as an open "recipient" slot for any
+            // ground-side generic search that funnels through here (project owner's report,
+            // 2026-08-26: an empty airfield container kept surfacing as AssembleRaidForce/
+            // ActiveDefenceForce's "forming" army, proposing a hero/unit "join Airfield" only to
+            // fail at ArmyActions.TransferMember with "Ground units and heroes cannot join
+            // aviation.") — aircraft placement has its own dedicated path (AiAviationSupport/
+            // AiManagementPlanner.FindAviationPlacement), never this one.
+            if (army == null || army.IsGarrison || army.IsPrison
+                || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
             return army.HasRoom;
         }
@@ -79,7 +88,8 @@ namespace Game.Ai
         // report).
         public static bool IsPlainReserveArmy(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison || army.HasRecce)
+            if (army == null || army.IsGarrison || army.IsPrison || army.HasRecce
+                || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
             return army.Members.Count(m => m.IsHero) == 0 && army.HasRoom;
         }
@@ -90,7 +100,8 @@ namespace Game.Ai
         // fighting force instead of spinning up yet another one-off army.
         public static bool IsHeroLedCombatArmy(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison)
+            if (army == null || army.IsGarrison || army.IsPrison
+                || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
             return army.Members.Count(m => m.IsHero) == 1 && !army.HasRecce;
         }
@@ -103,7 +114,8 @@ namespace Game.Ai
         // unconstrained.
         public static bool IsHeroLed(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison)
+            if (army == null || army.IsGarrison || army.IsPrison
+                || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
             return army.Members.Count(m => m.IsHero) == 1;
         }
