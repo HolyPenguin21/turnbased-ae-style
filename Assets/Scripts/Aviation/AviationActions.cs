@@ -82,8 +82,8 @@ namespace Game.Aviation
             return true;
         }
 
-        // Only called at end turn. Passing through a friendly base earlier in a route must not
-        // land aircraft, otherwise a long ordered flight would stop before its player intended.
+        // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel
+        // condition only: cards stay in their formed air army instead of being transferred.
         public static int LandInSlotOrder(ArmyData airArmy, HexSelectionController hexSelection)
         {
             if (!AviationRules.IsValidAirArmy(airArmy))
@@ -92,18 +92,10 @@ namespace Game.Aviation
             if (airfield == null)
                 return 0;
 
-            int landed = 0;
-            while (airArmy.Members.Count > 0
-                && airfield.Members.Count < AviationRules.AirfieldCapacityAt(airArmy.Hex, airArmy.Owner))
-            {
-                UnitData aircraft = airArmy.Members[0];
-                airArmy.Members.RemoveAt(0);
+            foreach (UnitData aircraft in airArmy.Members)
                 AviationRules.ResetAfterLanding(aircraft);
-                airfield.AddMemberSorted(aircraft);
-                landed++;
-            }
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
-            return landed;
+            return airArmy.Members.Count;
         }
     }
 }
