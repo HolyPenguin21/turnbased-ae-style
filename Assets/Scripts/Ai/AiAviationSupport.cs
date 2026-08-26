@@ -37,16 +37,29 @@ namespace Game.Ai
         // project owner's own AirRecon-AA spec point 2) so AirReconTask's own route ranking reads
         // the exact same route-risk number instead of a second, separately-drifting copy — same
         // "one shared place" role this class already plays for TryPlanSortie/FreeLandingCapacity.
-        public static int KnownAaExposure(PlayerSetupData actor, HexPath leg)
+        public static int KnownAaExposure(PlayerSetupData actor, HexPath leg) =>
+            leg == null ? 0 : KnownAaExposureOver(actor, leg.Hexes);
+
+        // Exposure already unavoidable given where the army is standing RIGHT NOW — e.g. AA that
+        // was only revealed once the strike itself landed on this hex. Used exclusively by the
+        // emergency-return searches below (TryReplan/TryReplanMultiTurnReturn) as a baseline: a
+        // route home necessarily starts inside whatever's already covering the current hex, so
+        // that part of its exposure was never an avoidable choice and must not disqualify the
+        // route the way a genuinely NEW zone should (2026-08-26 fix, project owner's own report —
+        // an aircraft that discovers AA only on arrival at its target had every route home
+        // hard-rejected forever after, since KnownAaExposure(path) sees the same already-standing-
+        // in-it sighting on literally every candidate path).
+        public static int KnownAaExposureAt(PlayerSetupData actor, HexCoord hex) =>
+            KnownAaExposureOver(actor, new[] { hex });
+
+        private static int KnownAaExposureOver(PlayerSetupData actor, IEnumerable<HexCoord> hexes)
         {
-            if (leg == null)
-                return 0;
             int exposure = 0;
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
             {
                 if (!sighting.HasAntiAir)
                     continue;
-                if (leg.Hexes.Any(hex => HexGridMath.Distance(hex, sighting.Hex) <= AiConfig.raidThreatRadius))
+                if (hexes.Any(hex => HexGridMath.Distance(hex, sighting.Hex) <= AiConfig.raidThreatRadius))
                     exposure++;
             }
             return exposure;
@@ -470,6 +483,11 @@ namespace Game.Ai
         // margin left. Returns null the instant that margin is already zero — a fuel-exhausted
         // group has no multi-turn safety net at all, TryReplan's own single-turn search (or holding
         // position) is the only honest option left for it, exactly as before this feature existed.
+        //
+        // AA handling softened to match TryReplan below (2026-08-26 P0 fix) — see that method's own
+        // comment for the full rationale. Only exposure a candidate route adds BEYOND
+        // KnownAaExposureAt(current hex) can disqualify or rank it down; exposure the army is
+        // already standing in is never held against any route, since every route starts there.
         public static MultiTurnSortie? TryReplanMultiTurnReturn(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -477,9 +495,11 @@ namespace Game.Ai
             int safeRemaining = SafeUnlandedEndsRemaining(airArmy.Members);
             if (safeRemaining <= 0)
                 return null;
+            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
 
             MultiTurnSortie? best = null;
             int bestTurns = int.MaxValue;
+            int bestExposure = int.MaxValue;
             int bestCost = int.MaxValue;
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
@@ -489,8 +509,7 @@ namespace Game.Ai
                 HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
                 if (path == null)
                     continue;
-                if (KnownAaExposure(owner, path) > 0)
-                    continue;
+                int extraExposure = Mathf.Max(0, KnownAaExposure(owner, path) - baselineExposure);
 
                 if (!TrySimulateHexSequence(path.Hexes, 0, airArmy.CurrentMovement, airArmy.Members, safeRemaining, owner,
                     out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination, out _, out bool landsThisTurn))
@@ -499,13 +518,15 @@ namespace Game.Ai
                 int cost = AviationRules.PathMoveCost(airArmy, path);
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || requiredTurns < bestTurns
-                    || (requiredTurns == bestTurns && cost < bestCost)
-                    || (requiredTurns == bestTurns && cost == bestCost && forward < bestForward);
+                    || (requiredTurns == bestTurns && extraExposure < bestExposure)
+                    || (requiredTurns == bestTurns && extraExposure == bestExposure && cost < bestCost)
+                    || (requiredTurns == bestTurns && extraExposure == bestExposure && cost == bestCost && forward < bestForward);
                 if (better)
                 {
                     best = new MultiTurnSortie(airArmy.Hex, landing, null, path, cost, requiredTurns,
                         requiredUnlandedEnds, turn1Destination, false, landsThisTurn);
                     bestTurns = requiredTurns;
+                    bestExposure = extraExposure;
                     bestCost = cost;
                     bestForward = forward;
                 }
@@ -599,20 +620,31 @@ namespace Game.Ai
         // достижимый аэродром... приоритет: достижимость и безопасность посадки, меньшая дистанция
         // до текущей позиции, полезность как передовой база"), then AA handling hardened the same
         // day in a follow-up spec (item 1 — "ПВО единым жёстким фильтром... не трактовать ПВО как
-        // простой штраф"): a landing whose only route home carries ANY known-AA exposure
-        // (KnownAaExposure) is now dropped outright whenever an AA-free candidate also reaches this
-        // turn, never merely ranked behind one. Among the survivors the tie-break stays (1) shorter
-        // path cost from the army's own CURRENT hex, (2) more useful as a forward base — see
-        // NearestKnownEnemyDistance. Every candidate still has to clear the SAME reachability gate
-        // as before (real path, fits CurrentMovement, real free capacity). Null means no AA-free
-        // owned airfield is reachable at all this turn — callers must hold position rather than fly
-        // an emergency-return leg through known AA, per spec.
+        // простой штраф") — and then softened again the same day once that hard filter turned out
+        // to have its own P0 bug (project owner's own report): a strike that discovers AA only on
+        // ARRIVAL at its target had every route home rejected forever after, since the just-
+        // revealed sighting sits within raidThreatRadius of the army's own current hex and so
+        // covers literally every candidate path, safe ones included — ContinueSortie logged
+        // "no reachable owned airfield" every single step and the aircraft never moved again.
+        // TryReplan is ONLY ever called from ContinueSortie's own two "heading home" branches (see
+        // that method) — never from the voluntary launch/outbound path, which keeps its own
+        // separate absolute AA-free hard filter in PlanSortieCore/TryPlanSortiePreferForwardLanding
+        // untouched. So here, exposure already unavoidable from the army's CURRENT hex
+        // (KnownAaExposureAt) is no longer held against any candidate — every route necessarily
+        // starts inside it, so it was never an avoidable choice. Only exposure a route adds BEYOND
+        // that baseline still ranks it down (fewest-extra-exposure first), then shorter path cost,
+        // then forward usefulness — never an outright rejection, so a genuinely reachable airfield
+        // (capacity/movement permitting) always wins over holding position. Null still means no
+        // owned airfield is reachable at all this turn (capacity/movement), never "reachable but
+        // through AA."
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
                 return null;
+            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
 
             HexCoord? best = null;
+            int bestExposure = int.MaxValue;
             int bestCost = int.MaxValue;
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
@@ -625,15 +657,16 @@ namespace Game.Ai
                 int cost = AviationRules.PathMoveCost(airArmy, path);
                 if (cost > airArmy.CurrentMovement)
                     continue;
-                if (KnownAaExposure(owner, path) > 0)
-                    continue; // known AA on this route — never a candidate while a safe one might exist
+                int extraExposure = Mathf.Max(0, KnownAaExposure(owner, path) - baselineExposure);
 
                 int forward = NearestKnownEnemyDistance(owner, landing);
-                bool better = best == null || cost < bestCost
-                    || (cost == bestCost && forward < bestForward);
+                bool better = best == null || extraExposure < bestExposure
+                    || (extraExposure == bestExposure && cost < bestCost)
+                    || (extraExposure == bestExposure && cost == bestCost && forward < bestForward);
                 if (better)
                 {
                     best = landing;
+                    bestExposure = extraExposure;
                     bestCost = cost;
                     bestForward = forward;
                 }
