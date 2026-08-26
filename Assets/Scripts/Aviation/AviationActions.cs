@@ -61,22 +61,8 @@ namespace Game.Aviation
                 return false;
             }
 
-            PlayerRoot root = PlayerRootRegistry.FindFor(airfield.Owner);
-            // Launch mirrors a normal army's first movement activation: every aircraft pays its
-            // own activation AP, plus its aviation-specific Energy cost.  Card play AP was
-            // already paid when it entered the airfield and must never be charged twice.
-            int ap = aircraft.Sum(unit => unit.ActivationApCost);
-            int energy = aircraft.Sum(unit => unit.LaunchEnergyCost);
-            if (root == null || !root.CanSpendActionPoints(ap)
-                || root.GetResource(Game.Economy.ResourceType.Energy) < energy)
-            {
-                failReason = $"Not enough AP or Energy to launch ({ap} AP, {energy} Energy).";
-                return false;
-            }
-
-            root.SpendActionPoints(ap);
-            if (energy > 0)
-                root.AddResource(Game.Economy.ResourceType.Energy, -energy);
+            // Forming a stack is not a take-off. The common movement activation path charges
+            // AP + Energy exactly once, and is also what shows both costs on the route arrow.
             var army = new ArmyData
             {
                 Name = catalog != null ? catalog.GetRandomArmyName(ArmyRegistry.AllForOwner(airfield.Owner).Select(existing => existing.Name)) : "Air Wing",
