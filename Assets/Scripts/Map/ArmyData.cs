@@ -134,6 +134,10 @@ namespace Game.Map
         // a field army can silently violate the very capacity rule TransferMember polices.
         public bool CanLeaveWithoutOvercrowding(UnitData unit)
         {
+            // Airfield capacity comes from its building, not the ordinary army/hero rule; an
+            // aircraft may always leave its storage container for a compatible air army.
+            if (IsAirfield)
+                return Members.Contains(unit);
             var remaining = new List<UnitData>(Members);
             remaining.Remove(unit);
             return ComputeCapacity(remaining, IsGarrison) >= remaining.Count;

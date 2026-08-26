@@ -644,7 +644,8 @@ namespace Game.UI
                 titleText.text = string.IsNullOrEmpty(armyName) ? prefix : $"{prefix} — <b>{armyName}</b>";
             }
             if (contextButtonLabel != null)
-                contextButtonLabel.text = _currentArmy != null && _currentArmy.IsGarrison ? $"Create Army ({ArmyActions.CreateArmyApCost} AP)" : "Rename";
+                contextButtonLabel.text = _currentArmy != null && (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
+                    ? $"Create Army ({ArmyActions.CreateArmyApCost} AP)" : "Rename";
             // No administrative actions on someone else's army — Create Army/Rename both
             // mutate it (see OnContextButtonClicked) — nor on a Prison, even the owner's own.
             if (contextButton != null)
@@ -766,7 +767,7 @@ namespace Game.UI
             if (_currentArmy == null)
                 return;
 
-            if (_currentArmy.IsGarrison)
+            if (_currentArmy.IsGarrison || _currentArmy.IsAirfield)
                 CreateArmy();
             else
                 renamePopup?.Show(_currentArmy, OnRenamed);

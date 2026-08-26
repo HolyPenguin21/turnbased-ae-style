@@ -51,7 +51,7 @@ namespace Game.UI
             if (label == null || Army == null)
                 return;
 
-            if (!_showStats || Army.IsGarrison)
+            if (!_showStats || Army.IsGarrison || Army.IsAirfield)
             {
                 label.text = Army.Name;
                 return;

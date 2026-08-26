@@ -246,6 +246,9 @@ namespace Game.Setup
                 Defense = citadelCard != null ? citadelCard.defenseRating : 1,
                 Resistance = citadelCard != null ? citadelCard.resistanceRating : 1,
                 Fate = citadelCard != null ? citadelCard.fate : 1,
+                // Starting citadel must read the same airfield configuration as a later Base
+                // card; otherwise the first aircraft has no valid deployment target.
+                AirfieldCapacity = citadelCard != null ? Mathf.Max(0, citadelCard.airfieldCapacity) : 0,
                 // The one and only difference from a "Concord Citadel" card played later (see
                 // HexSelectionController.SpawnBuilding) — same card, same abilities below, but
                 // only THIS building's destruction ends the game for this player (see
