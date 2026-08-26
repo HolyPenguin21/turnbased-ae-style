@@ -948,7 +948,9 @@ namespace Game.Turns
 
         private void AdvanceToNextPlayer()
         {
-            AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
+            var aviationMessages = AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
+            if (aviationMessages.Count > 0)
+                ShowSpawnHint(string.Join("\n", aviationMessages));
             BeginPlayerTurn(_currentPlayerIndex + 1);
         }
     }
