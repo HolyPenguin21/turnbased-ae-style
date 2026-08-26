@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -185,7 +186,7 @@ namespace Game.UI
                     // just once the roll happens.
                     int terrainDefMod = 0;
                     int buildingDefMod = 0;
-                    if (isDefender)
+                    if (isDefender && !AviationRules.IsAirArmy(army))
                     {
                         if (map != null && map.TryGetTerrainAt(army.Hex, out TerrainTypeEntry terrain))
                             terrainDefMod = terrain.defenseModifier;
