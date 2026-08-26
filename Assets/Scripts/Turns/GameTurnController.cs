@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cameras;
 using Game.Cards;
 using Game.Combat;
@@ -921,7 +922,11 @@ namespace Game.Turns
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 foreach (UnitData unit in army.Members)
+                {
                     unit.ReplenishMoveForNewTurn();
+                    if (unit.IsAviation)
+                        unit.HasAirAttackedThisTurn = false;
+                }
                 // Activation is tracked per-ARMY, not per-unit (see ArmyData.
                 // HasActivatedThisTurn) — a unit never moves on its own.
                 army.HasActivatedThisTurn = false;
@@ -943,6 +948,7 @@ namespace Game.Turns
 
         private void AdvanceToNextPlayer()
         {
+            AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
             BeginPlayerTurn(_currentPlayerIndex + 1);
         }
     }

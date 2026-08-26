@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Terrain;
 using Game.Units;
@@ -171,12 +172,13 @@ namespace Game.Map
             {
                 HexCoord next = path[i];
                 map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
-                int cost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+                int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+                int cost = AviationRules.MovementCost(Data, terrainCost);
 
-                int sharedMoveCurrent = members[0].MoveCurrent;
+                int sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[0]);
                 for (int m = 1; m < members.Count; m++)
-                    if (members[m].MoveCurrent < sharedMoveCurrent)
-                        sharedMoveCurrent = members[m].MoveCurrent;
+                    if (AviationRules.EffectiveMoveCurrent(members[m]) < sharedMoveCurrent)
+                        sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[m]);
                 if (sharedMoveCurrent < cost)
                     break;
 

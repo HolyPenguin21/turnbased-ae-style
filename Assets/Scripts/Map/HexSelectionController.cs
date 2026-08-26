@@ -1092,7 +1092,7 @@ namespace Game.Map
             // (see ArmyData.IsPrison's own comment), so it must never become an owner's
             // "representative" army here either, or a real army (e.g. that owner's garrison)
             // would lose its marker to a Prison that was never meant to have one at all.
-            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0 && !a.IsPrison);
+            return ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count > 0 && !a.IsPrison && !a.IsAirfield);
         }
 
         // Every HexObjectLayout offset is in hex-radius units (x = left/right, y = world Z) —
@@ -1170,8 +1170,13 @@ namespace Game.Map
                         FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                             ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
                             : null;
-                        if (ownerCatalog != null && ownerCatalog.armyIcon != null)
-                            controller.Visual.SetIcon(ownerCatalog.armyIcon);
+                        if (ownerCatalog != null)
+                        {
+                            Sprite icon = army.IsAirArmy && ownerCatalog.airArmyIcon != null
+                                ? ownerCatalog.airArmyIcon : ownerCatalog.armyIcon;
+                            if (icon != null)
+                                controller.Visual.SetIcon(icon);
+                        }
                     }
                 }
 

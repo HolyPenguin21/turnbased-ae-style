@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
@@ -69,6 +70,23 @@ namespace Game.Map
                 failReason = "Invalid deploy request.";
                 return false;
             }
+            if (!AviationRules.CanContain(targetArmy, new UnitData { IsAviation = definition.isAviation }))
+            {
+                failReason = definition.isAviation
+                    ? "Aircraft must be deployed into an airfield or an aviation army."
+                    : "Ground units and heroes cannot join an aviation army.";
+                return false;
+            }
+            if (definition.isAviation && !targetArmy.IsAirfield)
+            {
+                failReason = "Aircraft must be deployed into an owned airfield first.";
+                return false;
+            }
+            if (targetArmy.IsAirfield && targetArmy.Members.Count >= AviationRules.AirfieldCapacityAt(targetArmy.Hex, owner))
+            {
+                failReason = $"The airfield at {targetArmy.Hex} is full.";
+                return false;
+            }
 
             int apCost = EffectiveDeployApCost(definition);
 
@@ -90,7 +108,8 @@ namespace Game.Map
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
                 definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt,
-                definition.apCost, definition.resourceCost);
+                definition.apCost, definition.resourceCost, definition.isAviation, definition.launchEnergyCost,
+                definition.turnsWithoutRefuel, definition.antiAirRadius);
             if (spawned == null)
             {
                 failReason = $"Could not spawn {definition.displayName}.";
@@ -130,7 +149,19 @@ namespace Game.Map
                 failReason = $"{unit.Name} is not a member of {source.Name}.";
                 return false;
             }
-            if (!target.HasRoom)
+            if (!AviationRules.CanContain(target, unit))
+            {
+                failReason = unit.IsAviation
+                    ? "Aircraft can only be moved between an airfield and an aviation army."
+                    : "Ground units and heroes cannot join aviation.";
+                return false;
+            }
+            if (target.IsAirfield && target.Members.Count >= AviationRules.AirfieldCapacityAt(target.Hex, target.Owner))
+            {
+                failReason = $"The airfield at {target.Hex} is full.";
+                return false;
+            }
+            if (!target.IsAirfield && !target.HasRoom)
             {
                 failReason = $"{target.Name} is full — can't move {unit.Name} in.";
                 return false;

@@ -60,6 +60,11 @@ namespace Game.Map
         // anywhere; kept for whenever a real use for a building's own Fate turns up.
         public int Fate;
 
+        // Design-time capacity copied from CardDefinition.  A positive capacity matters only
+        // while this owned building also has Barracks; this leaves room for future cards that
+        // grant an airfield without teaching every caller new building-name rules.
+        public int AirfieldCapacity;
+
         // Fixed at construction — index i is locked until UnlockedFacilitySlots > i, empty while
         // FacilitySlots[i] is null, otherwise filled. Never resized; a slot's identity (its
         // index) stays stable across upgrades. Per-instance rather than a shared constant since
