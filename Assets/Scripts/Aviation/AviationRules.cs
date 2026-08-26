@@ -52,6 +52,8 @@ namespace Game.Aviation
         {
             if (target == null || unit == null || target.IsPrison)
                 return false;
+            if (unit.IsAviation && target.IsGarrison)
+                return false;
             if (target.IsAirfield || IsAirArmy(target))
                 return unit.IsAviation;
             if (unit.IsAviation)
