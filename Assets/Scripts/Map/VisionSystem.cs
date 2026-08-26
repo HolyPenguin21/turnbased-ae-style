@@ -150,7 +150,10 @@ namespace Game.Map
                 // HandleVisionStep) actually needs: vision has to track where the army really is
                 // RIGHT NOW as it walks, not jump all at once once the whole path is done.
                 HexCoord origin = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
-                footprint.Add(origin);
+                // Aircraft reveal every crossed hex but never "visit" it: only their visibility
+                // is remembered, preserving the ground exploration distinction in FOW.
+                if (!army.IsAirArmy)
+                    footprint.Add(origin);
                 // UnitAbilities.Recce raises this specific army's own radius beyond the flat
                 // default — a single shared UnitAbilityCatalog.recceRadius value (see ArmyData.
                 // HasRecce's own comment on why it's a flag, not a per-member magnitude).
