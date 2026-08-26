@@ -966,12 +966,20 @@ namespace Game.Ai
         // ArmyRegistry's own enumeration order isn't guaranteed stable call to call.
         public static bool IsDisposableEmptyArmy(PlayerSetupData player, ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison || army.IsAirfield || army.Members.Count != 0 || army.Controller == null)
+            if (!IsDisposableEmptyArmyShape(army) || army.Controller == null)
                 return false;
             if (AiTaskRegistry.TaskFor(player, army) != null)
                 return false;
             return DisposableEmptyArmies(player).Contains(army);
         }
+
+        // Shared shape predicate for IsDisposableEmptyArmy/DisposableEmptyArmies (and therefore
+        // FindDisposableEmptyArmyAt, which only ever reads through DisposableEmptyArmies) — an
+        // airfield or an air army is never a reusable "empty shell" candidate for either path, so
+        // this is checked once here rather than risking the two getting out of sync again.
+        private static bool IsDisposableEmptyArmyShape(ArmyData army) =>
+            army != null && !army.IsGarrison && !army.IsPrison && !army.IsAirfield
+            && army.Members.Count == 0 && !AviationRules.IsAirArmy(army);
 
         // 2026-08-24 P2 fix (project owner's own report): used to skip the alphabetically-first
         // maxSpareArmies empties WHEREVER they happened to sit, which could — and did — pick an
@@ -984,7 +992,7 @@ namespace Game.Ai
         private static IEnumerable<ArmyData> DisposableEmptyArmies(PlayerSetupData player)
         {
             List<ArmyData> empties = ArmyRegistry.AllForOwner(player)
-                .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
+                .Where(a => IsDisposableEmptyArmyShape(a) && AiTaskRegistry.TaskFor(player, a) == null)
                 .ToList();
 
             var ownGarrisonHexes = new HashSet<HexCoord>(AiTurnController.OwnGarrisonHexes(player));
