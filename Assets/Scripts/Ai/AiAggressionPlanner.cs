@@ -220,6 +220,52 @@ namespace Game.Ai
                     AiConfig.raidReinforceDispatchScore);
             }
 
+            // Cost-of-victory gate (2026-08-26 P1, "RaidWeakerArmy не оценивает цену победы") —
+            // IsReady above only ever asked "can we win", never "is winning worth it". Computed
+            // here (not just at log time below) so a too-costly-but-technically-winnable target
+            // can actually turn this army around instead of always marching in — see AiConfig.
+            // raidMaxAcceptableCriticalChance's own comment for the full gate/exception rundown.
+            // Reused below for the unconditional log line too, so this never runs the same Monte
+            // Carlo estimate twice for one call.
+            WorthIt.BattleEstimate estimate = RaidWeakerArmyTask.EstimateAgainst(task.Army, required);
+            bool costAcceptable = RaidWeakerArmyTask.IsCostOfVictoryAcceptable(player, task.TargetHex, homeHex, required, estimate);
+            if (!costAcceptable)
+            {
+                if (task.Army.Hex.Equals(citadelHex))
+                    return null; // still assembling — TryRaidAssembleCandidates' own turn to act (citadel-scoped)
+
+                // Same "wait for a courier, or just walk home" AP comparison the outmatched-IsReady
+                // branch above already applies — a winnable-but-too-costly target gets the same two
+                // options a not-yet-winnable one does (retreat home doubles as "give up on this
+                // target" here, same as it already does above).
+                UnitData recruit = RaidWeakerArmyTask.FindNonHeroRecruitAt(player, homeHex, pool, task.Army, out ArmyData recruitSource, task.Army);
+                bool canDispatch = recruit != null && recruitSource != null && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost);
+                bool goHome = !canDispatch;
+                if (!goHome)
+                {
+                    int toHome = HexGridMath.Distance(task.Army.Hex, homeHex);
+                    float goHomeApCost = ApRoundTrip(task.Army.ActivationApCost, task.Army.MaxMovement, toHome,
+                        HexGridMath.Distance(homeHex, task.TargetHex));
+                    float waitApCost = ApOneWay(recruit.ActivationApCost, recruit.MoveMax, toHome);
+                    goHome = goHomeApCost <= waitApCost;
+                }
+
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid vs ({task.TargetHex.Q},{task.TargetHex.R}) "
+                    + $"clears win chance ({estimate.WinChance:P0}) but the cost is too high — expected survivor HP on win "
+                    + $"{estimate.ExpectedSurvivingHpRatioOnWin:P0}, critical-after-win chance {estimate.CriticalAfterBattleChance:P0} — "
+                    + (goHome ? "too costly, retreating to regroup." : "too costly, waiting for reinforcement."));
+
+                if (goHome)
+                {
+                    task.Retreating = true;
+                    return null;
+                }
+
+                var reinforceTask = new AiTask { Kind = AiTaskKind.RaidReinforce, TargetArmy = task.Army, TargetHex = task.Army.Hex };
+                return AiDecision.DispatchReinforcement(recruitSource, recruit, reinforceTask,
+                    AiConfig.raidReinforceDispatchScore);
+            }
+
             if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex))
                 return null;
 
@@ -248,8 +294,10 @@ namespace Game.Ai
             // Expected survivor HP / critical-after-win chance (2026-08-24 P1 plan, "WorthIt не
             // оценивает цену победы") — a high WinChance alone can't say whether the win leaves the
             // army immediately critically wounded (RaidWeakerArmyTask.IsCriticallyWounded) and
-            // straight back to base to repair; observability only for now, nothing gates on these
-            // two yet.
+            // straight back to base to repair. Gates the decision now (see costAcceptable above,
+            // 2026-08-26 P1) — this log just narrates WHY: "attacks despite risk" when costAcceptable
+            // only passed via one of IsCostOfVictoryAcceptable's own exceptions (strategic target /
+            // safe retreat home), plain otherwise.
             // Logged at most once per task per real game turn — see AiTask.
             // LastBattleEstimateLoggedTurn's own comment (including its own caveat: this is a
             // coarse fingerprint, not a full change detector) — unless that fingerprint changed
@@ -264,11 +312,18 @@ namespace Game.Ai
                 || !Mathf.Approximately(task.LastBattleEstimateThreatDefense, required.Defense);
             if (battleEstimateChanged)
             {
-                WorthIt.BattleEstimate estimate = RaidWeakerArmyTask.EstimateAgainst(task.Army, required);
+                bool risky = !required.IsUndefended
+                    && (estimate.CriticalAfterBattleChance > AiConfig.raidMaxAcceptableCriticalChance
+                        || estimate.ExpectedSurvivingHpRatioOnWin < AiConfig.raidMinAcceptableSurvivorHpRatio);
+                string riskNote = risky
+                    ? (RaidWeakerArmyTask.IsStrategicallyImportant(player, task.TargetHex)
+                        ? " Attacking despite the risk — target is strategically important."
+                        : " Attacking despite the risk — close enough to retreat home and repair afterward.")
+                    : "";
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" raid win chance vs "
                     + $"({task.TargetHex.Q},{task.TargetHex.R}) ~ {estimate.WinChance:P0} (min {AiConfig.raidMinimumWinChance:P0}), "
                     + $"expected survivor HP on win {estimate.ExpectedSurvivingHpRatioOnWin:P0}, "
-                    + $"critical-after-win chance {estimate.CriticalAfterBattleChance:P0}.");
+                    + $"critical-after-win chance {estimate.CriticalAfterBattleChance:P0}.{riskNote}");
                 task.LastBattleEstimateLoggedTurn = ctx.TurnNumber;
                 task.LastBattleEstimateTargetHex = task.TargetHex;
                 task.LastBattleEstimateArmyMemberCount = task.Army.Members.Count;
@@ -1938,7 +1993,7 @@ namespace Game.Ai
                 float bestEffectiveBonus = 0f;
                 float bestEffectiveSurvivalBonus = 0f;
                 float bestFinalScore = 0f;
-                foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, root, candidate, ctx.Map))
+                foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, root, candidate, ctx.Map, ctx.TurnNumber))
                 {
                     RaidSupportEvaluation support = EvaluateRaidCoordination(player, candidate, candidateTarget, activeRaids, ctx.Map);
                     // A raid ready to attack NOW can't be credited the same coordination bonus for a
@@ -1966,12 +2021,13 @@ namespace Game.Ai
                     }
                 }
 
+                // FindTargets itself already logs a deduped, reason-broken-down diagnostic
+                // ("blocked by AA" / "no complete sortie" / "rejected as ineffective" / "no known
+                // targets") whenever it yields nothing — see that method's own comment (2026-08-26
+                // P2 fix, "разделить причины отсутствия кандидата AirStrike"); no separate blanket
+                // line needed here any more.
                 if (!bestTarget.HasValue)
-                {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: AirStrike — no reachable known target with a complete "
-                        + $"sortie (same-turn or safe multi-turn) from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}).");
                     continue;
-                }
 
                 string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, bestFinalScore, bestEffectiveBonus,
                     bestEffectiveSurvivalBonus);
@@ -2354,9 +2410,13 @@ namespace Game.Ai
             {
                 // P1 gate (2026-08-26, "исключить авиаудары с нулевой ожидаемой эффективностью") —
                 // the ground-truth remnant is too thinned/tough for this roster to meaningfully
-                // damage or kill any more; same rejection ScoreSelfValue already logged its own
-                // reason for. Falls through to Returning exactly like every other repeat-cancelled
-                // condition above, never lingers loitering on a hex it can no longer usefully hit.
+                // damage or kill any more (ScoreSelfValue's own rejection — no separate log read
+                // from it here, see AirStrikeTask.ScoreRepeatStrike's own comment on why: the
+                // unconditional line right below is this path's only rejection notice, and this
+                // task transitions out of the loiter phase this same step, so it never re-fires for
+                // the same still-unchanged rejection). Falls through to Returning exactly like every
+                // other repeat-cancelled condition above, never lingers loitering on a hex it can no
+                // longer usefully hit.
                 task.AirMissionPhase = AiAirMissionPhase.Returning;
                 task.LandingHex = landingHex;
                 task.TargetHex = task.LandingHex;

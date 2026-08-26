@@ -250,6 +250,31 @@ namespace Game.Ai
         // should demand real odds, not a coin flip, before setting out. 0.65 (not defenceActive
         // WinChance's own 0.6) is the project owner's own starting pick, tune independently.
         public const float raidMinimumWinChance = 0.65f;
+        // Cost-of-victory gate for a VOLUNTARY raid's ordinary "still going" continuation
+        // (2026-08-26 P1, "RaidWeakerArmy не оценивает цену победы для решения") —
+        // AiAggressionPlanner.TryContinueRaidTask's own non-urgent branch (marching on
+        // task.TargetHex; NOT the threat-reaction counter-attack branch just above it, which is
+        // never gated by this — an immediate threat is answered regardless of cost) additionally
+        // checks RaidWeakerArmyTask.EstimateAgainst's own WorthIt.BattleEstimate once IsReady's
+        // bare WinChance bar already passed. If CriticalAfterBattleChance exceeds
+        // raidMaxAcceptableCriticalChance OR ExpectedSurvivingHpRatioOnWin falls below
+        // raidMinAcceptableSurvivorHpRatio, the raid is "technically winnable but too costly" and
+        // waits for reinforcement / retargets / gives up instead of marching in — UNLESS the
+        // target is an enemy building (capture has lasting value — see IsStrategicallyImportant)
+        // or the army could retreat to a nearby base to repair afterward regardless (see
+        // raidSafeRetreatRadius). 0.5/0.4 are the project owner's own starting picks (a worse-
+        // than-coin-flip chance of ending critically wounded, or losing more than 60% of the
+        // army's starting HP even on a WIN) — tune independently, same as raidMinimumWinChance.
+        public const float raidMaxAcceptableCriticalChance = 0.5f;
+        public const float raidMinAcceptableSurvivorHpRatio = 0.4f;
+        // "Safe to retreat and repair afterward" exception to the cost-of-victory gate above —
+        // hex distance from the raid's own TargetHex to AiTurnController.NearestOwnGarrisonHex,
+        // same coarse hex-count precision ProximityScore/ApRoundTrip already use for this kind of
+        // candidate-scoring distance check (never real pathfinding). Within this radius, a costly-
+        // but-winnable fight is allowed through even for a plain loot target — the army can just
+        // walk home and heal, so a critical-after-win result isn't the dead end it would be
+        // stranded deep in enemy territory.
+        public const int raidSafeRetreatRadius = 3;
         // Retarget hysteresis (2026-08-24, project owner's own report) —
         // AiAggressionPlanner.TryRaidAssembleCandidates' own StillAssembling retarget check no
         // longer switches off the CURRENT TargetHex just because ANY other known target scores

@@ -533,13 +533,14 @@ namespace Game.Ai
         // когда-то видели армию значит мы видели её состав и знаем всё о ней кроме текущего
         // состояния") — the full per-combatant snapshot SimulateOneBattle needs (see WinChance's
         // own DefenderProfile-list overload above) to actually play a real round-by-round fight
-        // instead of one flat aggregate exchange. HitPoints is
-        // deliberately never the remembered enemy's CURRENT HP — nothing here has any honest way
-        // to know that (fog of war never reveals it, only the last-seen composition does) — it's
-        // always the unit's MAX HP, i.e. "assume it's healed up since we last saw it", the same
-        // assumption a real player reasoning from memory would have to make too. A live/cheat
-        // source (AiDefencePlanner.CheatEstimateRaiderThreat) is free to pass the real CURRENT HP
-        // instead, since that path already reads the true ArmyData directly. This struct is now
+        // instead of one flat aggregate exchange. HitPoints is the unit's CURRENT HP as of its own
+        // last observation (AiMapMemory.OnVisibilityChanged, 2026-08-26 air-strike-memory fix —
+        // was MAX HP, "assume it's healed up since we last saw it"; there is no in-field regen in
+        // this game to make that assumption safe, only base-side UnitRepair, so a remembered
+        // sighting now freezes damage the same honest way it already freezes composition,
+        // corrected only by a later re-observation). A live/cheat source
+        // (AiDefencePlanner.CheatEstimateRaiderThreat) already reads the real ArmyData's own
+        // current HP the same way. This struct is now
         // used symmetrically for BOTH sides of a fight (see WinChance's own DefenderProfile-list
         // overload below) — "Defender" is a legacy name from when it only ever described the
         // other side; CanDamage/CanDamageAll still only read Defense/HasCeramicArmor off it.

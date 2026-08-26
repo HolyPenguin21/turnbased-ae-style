@@ -217,6 +217,43 @@ namespace Game.Ai
             return new WorthIt.BattleEstimate(chance, 1f, 0f);
         }
 
+        // "Strategically important" exception to the cost-of-victory gate below (2026-08-26 P1,
+        // "RaidWeakerArmy не оценивает цену победы") — an enemy building capture denies the enemy
+        // a base/facility for good, not just a one-time reward the way a neutral/event target is,
+        // so it stays worth pressing even at a steep HP cost, the same way IsReady's own bare
+        // win-chance bar already lets ANY beatable target through regardless of margin. Memory-
+        // based (AiMapMemory.KnownBuildingAt), same honesty rule as FindTarget's own building scan.
+        public static bool IsStrategicallyImportant(PlayerSetupData actor, HexCoord targetHex)
+        {
+            AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(actor, targetHex);
+            return building.HasValue && building.Value.Owner != null && building.Value.Owner != actor && !building.Value.Owner.IsNeutral;
+        }
+
+        // Cost-of-victory gate for a VOLUNTARY, non-urgent raid (2026-08-26 P1) — see AiConfig.
+        // raidMaxAcceptableCriticalChance's own comment for the full rundown of what this checks
+        // and why. Deliberately takes `homeHex` as a parameter rather than recomputing it — only
+        // AiAggressionPlanner.TryContinueRaidTask's own "still going" branch calls this (never the
+        // threat-reaction counter-attack branch above it in that same method — an immediate threat
+        // is answered regardless of cost, no gate here at all for that branch), and it already has
+        // its own fresh homeHex (AiTurnController.NearestOwnGarrisonHex) computed for this exact
+        // call, the same "recomputed every call, no stored anchor" rule every other read of it
+        // there already follows.
+        public static bool IsCostOfVictoryAcceptable(PlayerSetupData actor, HexCoord targetHex, HexCoord homeHex,
+            ThreatStrength threat, WorthIt.BattleEstimate estimate)
+        {
+            if (threat.IsUndefended)
+                return true;
+            if (estimate.CriticalAfterBattleChance <= AiConfig.raidMaxAcceptableCriticalChance
+                && estimate.ExpectedSurvivingHpRatioOnWin >= AiConfig.raidMinAcceptableSurvivorHpRatio)
+                return true;
+            if (IsStrategicallyImportant(actor, targetHex))
+                return true;
+            // Close enough to walk home and repair even after a costly win — the critical-after-
+            // win outcome CriticalAfterBattleChance flags isn't the dead end it would be stranded
+            // deep in enemy territory, so it's an acceptable gamble here too.
+            return HexGridMath.Distance(targetHex, homeHex) <= AiConfig.raidSafeRetreatRadius;
+        }
+
         // Routes through WorthIt.WinChance now (2026-08-22, project owner's own call: every army
         // comparison on the map goes through WorthIt, no second copy of the same math anywhere
         // else). Used to build its own per-unit snapshot here with a manual "wounded unit reads

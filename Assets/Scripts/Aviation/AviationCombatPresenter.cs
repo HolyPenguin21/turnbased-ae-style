@@ -102,8 +102,23 @@ namespace Game.Aviation
             if (airArmy == null || airArmy.Members.Count == 0)
                 yield break;
             List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner);
-            if (targets.Count > 0)
-                yield return RunAirStrike(airArmy, targets, result);
+            if (targets.Count == 0)
+                yield break;
+
+            yield return RunAirStrike(airArmy, targets, result);
+
+            // AiMapMemory's own EnemySightings snapshot is otherwise only refreshed by
+            // VisionSystem.VisibleContentChanged (see that event's own comment) — a surviving
+            // defender that merely lost HP, or lost a squadmate without the whole army dying,
+            // never routes through ArmyRegistry.Unregister (a full-army kill already renotifies
+            // this same hex on its own — see DeleteArmyIfEmptied → ArmyRegistry.Unregister), so
+            // without this the AI kept re-scoring a follow-up raid against the pre-strike roster
+            // (project owner's own report: a raid forecast that should have risen 28% → 52% after
+            // a supporting strike stayed at 28%). Routed through the SAME shared observation
+            // mechanism every other content change already uses, once for the whole strike (not
+            // per aircraft) — this presenter never touches AiMapMemory's own dictionaries
+            // directly.
+            VisionSystem.NotifyContentChanged(hex);
         }
 
         // The ground-mover mirror: this army carries at least one AA-tagged member, so every

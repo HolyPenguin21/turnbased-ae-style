@@ -396,12 +396,19 @@ namespace Game.Ai
                         // текущего состояния") — Attack/Initiative alongside Defense/CeramicArmor/
                         // TypeTags now, so WorthIt's own full-roster Monte Carlo (WinChance's
                         // DefenderProfile-list overload) can actually play this army out round by
-                        // round instead of only reading its aggregate sums. HitPointsMax, never
-                        // HitPointsCurrent — see DefenderProfile's own comment for why: nothing
-                        // here can honestly know the CURRENT HP of an army last seen turns ago,
-                        // only what it looked like fully healed.
+                        // round instead of only reading its aggregate sums. HitPointsCurrent
+                        // (2026-08-26, air-strike-memory fix — was HitPointsMax): this loop only
+                        // ever runs over a hex `player` can see RIGHT NOW (see the `foreach
+                        // (HexCoord hex in VisionSystem.VisibleHexesFor(player))` above), so the
+                        // damage on it is exactly as real an observed fact as its composition —
+                        // freezing it at last-observed value (never auto-healed, only corrected by
+                        // a later re-observation) matches the same "видимость с памятью" honesty
+                        // rule every other field here already follows, rather than singling HP out
+                        // for an "assume it healed" exception. There is no in-field HP regen in
+                        // this game (only UnitRepair, base-side) for that assumption to have been
+                        // protecting against.
                         Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
-                            m.TypeTags.ToList(), m.Attack, m.HitPointsMax, m.Initiative)).ToList(),
+                            m.TypeTags.ToList(), m.Attack, m.HitPointsCurrent, m.Initiative)).ToList(),
                         // Scanned over the FULL roster (not just nonHero above) — nothing rules out
                         // a hero carrying an AA ability, and this flag only ever feeds a
                         // conservative "don't fly recon here" gate, never a combat estimate, so

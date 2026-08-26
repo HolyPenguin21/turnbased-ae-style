@@ -109,6 +109,70 @@ namespace Game.Ai
             public float BaseScore => Breakdown.Total;
         }
 
+        // Everything ScoreSelfValue's own "no meaningful effect" rejection used to log directly
+        // (2026-08-26 P2 fix, "дедуплицировать лог отклонённых AirStrike") — now handed back to the
+        // caller instead, so the log line itself can move up to FindTargets (the "candidate
+        // collection" level) and be deduplicated there. Also doubles as the change-fingerprint
+        // LogRejectionIfChanged compares against: a coarse read, same "good enough to detect real
+        // change, not a full state diff" precision every other fingerprint in this codebase already
+        // settles for (see AiTask.LastBattleEstimateLoggedTurn's own comment).
+        private readonly struct RejectionDiagnostic
+        {
+            public readonly float DamageFraction;
+            public readonly float KillAnyProbability;
+            public readonly string UrgencyLabel;
+            public readonly int AircraftCount;
+            public readonly float AircraftAttackSum;
+
+            public RejectionDiagnostic(float damageFraction, float killAnyProbability, string urgencyLabel,
+                int aircraftCount, float aircraftAttackSum)
+            {
+                DamageFraction = damageFraction;
+                KillAnyProbability = killAnyProbability;
+                UrgencyLabel = urgencyLabel;
+                AircraftCount = aircraftCount;
+                AircraftAttackSum = aircraftAttackSum;
+            }
+
+            public int Fingerprint() => System.HashCode.Combine(Mathf.RoundToInt(DamageFraction * 1000f),
+                Mathf.RoundToInt(KillAnyProbability * 1000f), UrgencyLabel, AircraftCount, Mathf.RoundToInt(AircraftAttackSum));
+        }
+
+        // Rejection-log dedup state (2026-08-26 P2 fix) — keyed by (player, air-group identity,
+        // target hex, reason); a fresh LaunchCandidate/StrikeTarget pair is recomputed from scratch
+        // every single Decide step (nothing here is a persistent task yet — FindTargets runs during
+        // CANDIDATE SEARCH, before any AiTask exists), so unlike AiTask's own per-task fingerprint
+        // fields (LastBattleEstimateLoggedTurn) there is no object to hang this state on; a static
+        // dictionary is the only place left to remember "did we already say this, and did anything
+        // actually change since". Same "at most once per turn, unless the fingerprint changed"
+        // rule as that other precedent. Never explicitly cleared between games — a stale entry for
+        // a player/hex/army-id combination that no longer exists is harmless dead weight (it just
+        // sits unread forever), not a correctness risk, so there's no need for the ceremony of a
+        // Clear() hook the way AiMapMemory's own per-game state needs one.
+        private static readonly Dictionary<(PlayerSetupData Player, string GroupKey, HexCoord TargetHex, string Reason), (int Turn, int Fingerprint)>
+            _rejectionLogState = new Dictionary<(PlayerSetupData, string, HexCoord, string), (int, int)>();
+
+        private static void LogRejectionIfChanged(PlayerSetupData actor, int turnNumber, string groupKey, HexCoord targetHex,
+            string reason, int fingerprint, string message)
+        {
+            var key = (actor, groupKey, targetHex, reason);
+            if (_rejectionLogState.TryGetValue(key, out (int Turn, int Fingerprint) last)
+                && last.Turn == turnNumber && last.Fingerprint == fingerprint)
+                return;
+            _rejectionLogState[key] = (turnNumber, fingerprint);
+            AiDebugLog.Write(message);
+        }
+
+        // Stable identity for a LaunchCandidate's own dedup key — an already-formed air army has
+        // its own real ArmyData.Id; a still-stored group has no single persistent object at all
+        // (ScoreTarget can be called against a different subset of the same airfield's stock from
+        // one step to the next), so the airfield hex itself is the closest stand-in identity —
+        // good enough for THIS purpose (suppressing an unchanged repeat log), not meant to survive
+        // the stored roster actually changing composition (AircraftCount/AircraftAttackSum in the
+        // fingerprint above already catches that case).
+        private static string GroupKey(LaunchCandidate candidate) =>
+            candidate.ExistingArmy != null ? $"army:{candidate.ExistingArmy.Id}" : $"airfield:{candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}";
+
         // Additive self-value breakdown for one strike candidate (2026-08-26 air-strike scoring
         // rework, project owner's own spec) — every term here is either a flat weight from AiConfig
         // or reads straight off AviationCombatEstimator's own Monte Carlo output; no second combat
@@ -186,10 +250,16 @@ namespace Game.Ai
         // instead of only ever seeing whichever target happened to win on raw BaseScore alone (see
         // this method's own callers for why: a lower-BaseScore target that actually unlocks an
         // active raid must be able to outrank a higher-BaseScore one that doesn't).
-        public static IEnumerable<StrikeTarget> FindTargets(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map)
+        // `turnNumber` (2026-08-26 P1/P2 diagnostics fix) — only ever used to key the rejection-log
+        // dedup below (LogRejectionIfChanged/_rejectionLogState); never read by any selection or
+        // scoring decision, so passing it changes no AI behavior.
+        public static IEnumerable<StrikeTarget> FindTargets(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map,
+            int turnNumber)
         {
             if (actor == null || map == null)
                 yield break;
+
+            string groupKey = GroupKey(candidate);
 
             var targetHexes = new HashSet<HexCoord>();
             var targetInfo = new Dictionary<HexCoord, (float Defense, float Attack, string Name, IReadOnlyList<WorthIt.DefenderProfile> Defenders)>();
@@ -206,6 +276,18 @@ namespace Game.Ai
                 targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name, sighting.Defenders);
             }
 
+            // "No known targets at all" (2026-08-26 P2 fix, "разделить причины отсутствия
+            // кандидата AirStrike") — its own distinct diagnostic category, checked once here
+            // rather than falling through to the generic post-loop summary below with a zero
+            // known-target count baked in (same information, just a clearer single-purpose line).
+            if (targetHexes.Count == 0)
+            {
+                LogRejectionIfChanged(actor, turnNumber, groupKey, default, "NoKnownTargets", turnNumber,
+                    $"[AI] {actor.Nickname}: AirStrike unavailable from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}) — no known targets.");
+                yield break;
+            }
+
+            int blockedByAa = 0, noRoute = 0, ineffective = 0, accepted = 0;
             foreach (HexCoord hex in targetHexes)
             {
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
@@ -225,16 +307,55 @@ namespace Game.Ai
                         ? AiAviationSupport.TryPlanMultiTurnSortie(candidate.ExistingArmy, hex, map, actor)
                         : AiAviationSupport.TryPlanMultiTurnSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
                     if (!multiTurn.HasValue)
+                    {
+                        // No structured reason comes back from TryPlanSortie/TryPlanMultiTurnSortie
+                        // itself (both just return null on any failure — range, landing capacity, OR
+                        // the known-AA hard filter, all folded together). KnownAaExposureAt(hex) is
+                        // the one honest signal still available from here without reworking that
+                        // planning API: it can't tell whether AA blocked THIS route specifically,
+                        // only whether the target hex itself is known to carry AA — a reasonable
+                        // proxy in practice (an AA-carrying garrison is usually what a strike route
+                        // fails to safely reach), not a precise trace of the real rejection.
+                        if (AiAviationSupport.KnownAaExposureAt(actor, hex) > 0)
+                            blockedByAa++;
+                        else
+                            noRoute++;
                         continue;
+                    }
                 }
 
                 targetInfo.TryGetValue(hex, out var known);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
-                var scored = ScoreTarget(actor, root, candidate, hex, sortie, multiTurn, known.Defense, known.Attack, known.Defenders, name);
+                var scored = ScoreTarget(actor, root, candidate, hex, sortie, multiTurn, known.Defense, known.Attack, known.Defenders, name,
+                    out RejectionDiagnostic? rejection);
                 if (!scored.HasValue)
-                    continue; // no meaningful expected effect — rejected and logged inside ScoreSelfValue
+                {
+                    ineffective++;
+                    if (rejection.HasValue)
+                        LogRejectionIfChanged(actor, turnNumber, groupKey, hex, "Ineffective", rejection.Value.Fingerprint(),
+                            $"[AI] {actor.Nickname}: AirStrike rejected: no meaningful effect — target {name}, "
+                            + $"expectedDamage={rejection.Value.DamageFraction:P2}, killAny={rejection.Value.KillAnyProbability:P2}, "
+                            + $"urgency={rejection.Value.UrgencyLabel}.");
+                    continue;
+                }
+                accepted++;
                 (ScoreBreakdown breakdown, AviationCombatEstimator.AirStrikeEstimate estimate) = scored.Value;
                 yield return new StrikeTarget(hex, sortie, multiTurn, breakdown, estimate, name, known.Defense, known.Attack, known.Defenders);
+            }
+
+            // Aggregate "nothing usable this step" diagnostic (2026-08-26 P2 fix) — replaces the old
+            // single blanket "no reachable known target with a complete sortie" line
+            // (AiAggressionPlanner's own caller used to log this itself whenever it saw zero yielded
+            // targets); this version actually breaks the known-target pool down by why each one
+            // didn't pan out, instead of a single generic phrase that read the same whether nothing
+            // was known, everything was AA-blocked, or every target was simply not worth hitting.
+            if (accepted == 0)
+            {
+                int fingerprint = System.HashCode.Combine(targetHexes.Count, blockedByAa, noRoute, ineffective);
+                LogRejectionIfChanged(actor, turnNumber, groupKey, default, "Summary", fingerprint,
+                    $"[AI] {actor.Nickname}: AirStrike unavailable from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}): "
+                    + $"{targetHexes.Count} known target(s) — {blockedByAa} blocked by AA, {noRoute} has no complete sortie, "
+                    + $"{ineffective} rejected as ineffective.");
             }
         }
 
@@ -245,9 +366,9 @@ namespace Game.Ai
         // awareness. Deliberately NOT `FindTargets(...).OrderByDescending(...).FirstOrDefault()`
         // directly — StrikeTarget is a struct, so FirstOrDefault() on an empty sequence would
         // silently hand back a bogus all-default StrikeTarget instead of a real "no target" null.
-        public static StrikeTarget? FindTarget(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map)
+        public static StrikeTarget? FindTarget(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map, int turnNumber)
         {
-            List<StrikeTarget> targets = FindTargets(actor, root, candidate, map).ToList();
+            List<StrikeTarget> targets = FindTargets(actor, root, candidate, map, turnNumber).ToList();
             return targets.Count > 0 ? targets.OrderByDescending(t => t.BaseScore).First() : (StrikeTarget?)null;
         }
 
@@ -266,10 +387,11 @@ namespace Game.Ai
         private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate)? ScoreTarget(
             PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexCoord targetHex,
             AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
-            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName)
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName,
+            out RejectionDiagnostic? rejection)
         {
             var selfValueResult = ScoreSelfValue(actor, candidate.Aircraft, targetHex, targetDefense, targetAttack,
-                targetDefenders, targetName);
+                targetDefenders, targetName, out rejection);
             if (!selfValueResult.HasValue)
                 return null;
             (ScoreBreakdown selfValue, AviationCombatEstimator.AirStrikeEstimate estimate) = selfValueResult.Value;
@@ -313,7 +435,12 @@ namespace Game.Ai
         {
             float targetDefense = targetDefenders?.Sum(d => d.Defense) ?? 0f;
             float targetAttack = targetDefenders?.Sum(d => d.Attack) ?? 0f;
-            return ScoreSelfValue(actor, aircraft, targetHex, targetDefense, targetAttack, targetDefenders, targetName);
+            // Rejection reason discarded — AiAggressionPlanner.TryContinueLoiterAtTarget's own
+            // caller already logs a single unconditional "repeat AirStrike cancelled" line for a
+            // null result here, and that task transitions out of the loiter phase the same step
+            // (never calls back in for the same still-unchanged rejection), so this path was never
+            // the dedup problem FindTargets' own per-step re-scan was.
+            return ScoreSelfValue(actor, aircraft, targetHex, targetDefense, targetAttack, targetDefenders, targetName, out _);
         }
 
         // Shared damage/kill/urgency core (spec sections 1, 2, 5) behind both ScoreTarget (a fresh
@@ -332,8 +459,10 @@ namespace Game.Ai
         // because it happens to be the live threat Defence is reacting to.
         private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate)? ScoreSelfValue(
             PlayerSetupData actor, IReadOnlyList<UnitData> aircraft, HexCoord targetHex,
-            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName = null)
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders,
+            string targetName, out RejectionDiagnostic? rejection)
         {
+            rejection = null;
             AviationCombatEstimator.AirStrikeEstimate estimate =
                 AviationCombatEstimator.EstimateAirStrike(aircraft, targetDefense, targetAttack, targetDefenders);
 
@@ -351,9 +480,12 @@ namespace Game.Ai
                 bool wouldBeUrgent = actor != null
                     && AiDefencePlanner.IsUrgentAirStrikeTarget(actor, targetHex, out wouldBeCitadelUrgency);
                 string urgencyLabel = !wouldBeUrgent ? "none" : wouldBeCitadelUrgency ? "citadel" : "base";
-                string name = targetName ?? $"target at ({targetHex.Q},{targetHex.R})";
-                AiDebugLog.Write($"[AI] {actor?.Nickname}: AirStrike rejected: no meaningful effect — target {name}, "
-                    + $"expectedDamage={damageFraction:P2}, killAny={estimate.KillAnyProbability:P2}, urgency={urgencyLabel}.");
+                // No direct log here any more (2026-08-26 P2 fix, "дедуплицировать лог отклонённых
+                // AirStrike") — this is a pure scoring method, called every step for every known
+                // target; handed back to the caller instead (FindTargets/ScoreRepeatStrike's own
+                // caller) so the actual log line can live at the candidate-collection level, deduped.
+                rejection = new RejectionDiagnostic(damageFraction, estimate.KillAnyProbability, urgencyLabel,
+                    aircraft?.Count ?? 0, aircraft?.Sum(u => u.Attack) ?? 0f);
                 return null;
             }
 

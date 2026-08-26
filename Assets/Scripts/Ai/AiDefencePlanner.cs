@@ -341,9 +341,9 @@ namespace Game.Ai
                     bestAttack = attack;
                     // Full snapshot, real CURRENT HP (2026-08-22) — this is already the project
                     // owner's own sanctioned cheat (see this method's own top comment: reads live
-                    // ArmyData directly, no fog-of-war limitation to respect here), so unlike an
-                    // honest AiMapMemory sighting there's no reason to fall back to HitPointsMax —
-                    // the real current HP is right there on `m`.
+                    // ArmyData directly, no fog-of-war limitation to respect here), and (since
+                    // 2026-08-26) the same value an honest AiMapMemory sighting would itself
+                    // capture too — the real current HP is right there on `m`.
                     bestDefenders = army.Members.Where(m => !m.IsHero)
                         .Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor), m.TypeTags.ToList(),
                             m.Attack, m.HitPointsCurrent, m.Initiative))
