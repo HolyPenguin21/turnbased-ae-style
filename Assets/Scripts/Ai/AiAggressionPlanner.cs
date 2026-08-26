@@ -503,22 +503,84 @@ namespace Game.Ai
                 // short-circuit here on a theoretical "can never win" read, but the branch never
                 // actually cancelled the task either way (see the removed comment's own history —
                 // 2026-08-16 fix already stopped it from discarding progress), so recruiting was the
-                // only real difference a step made. Just log where the current numbers stand and let
-                // FindRecruitAt below decide for itself whether there's anyone left to add — a null
-                // result already `continue`s on its own, the same natural stop this pre-check used to
-                // reach a step later anyway.
-                AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required, AiConfig.raidMinimumWinChance));
-
+                // only real difference a step made. FindRecruitAt below still decides for itself
+                // whether there's anyone left to add — a null result naturally stops there, same as
+                // before — but now feeds a real stall watchdog too (see below) instead of letting a
+                // genuinely dead assembly wait for a reinforcement that can never come.
                 AiDecision heroCardDecision = TryHeroCardForRaid(player, root, hand, task.Army, task,
                     AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus, ctx);
+                UnitData recruit = null;
+                ArmyData source = null;
+                bool recruitAvailable = heroCardDecision != null;
+                if (!recruitAvailable)
+                {
+                    recruit = RaidWeakerArmyTask.FindRecruitAt(player, garrisonHex, task.Army, pool, out source);
+                    recruitAvailable = recruit != null && source != null && task.Army.HasRoom && !ctx.WouldRevisitArmy(recruit, task.Army);
+                }
+
+                // Stall-detection / log-dedup snapshot (2026-08-26, project owner's own spec item 5
+                // — see AiTask.RaidStallSinceTurn's own comment). Compares against the last snapshot
+                // this exact task recorded; any real difference both resets the stall clock AND
+                // earns a fresh "not enough force" log line even within the same turn, while an
+                // identical repeat is logged at most once per turn (see AiConfig.raidStallTurns).
+                float currentWinChance = RaidWeakerArmyTask.WinChanceAgainst(task.Army, required);
+                int memberCount = task.Army.Members.Count;
+                bool signatureChanged = task.RaidStallSinceTurn < 0
+                    || memberCount != task.RaidStallMemberCount
+                    || !task.TargetHex.Equals(task.RaidStallTarget)
+                    || recruitAvailable != task.RaidStallHadRecruit
+                    || !Mathf.Approximately(currentWinChance, task.RaidStallWinChance);
+                if (signatureChanged)
+                {
+                    task.RaidStallSinceTurn = ctx.TurnNumber;
+                    task.RaidStallMemberCount = memberCount;
+                    task.RaidStallTarget = task.TargetHex;
+                    task.RaidStallHadRecruit = recruitAvailable;
+                    task.RaidStallWinChance = currentWinChance;
+                }
+                if (signatureChanged || task.RaidLastLoggedTurn != ctx.TurnNumber)
+                {
+                    task.RaidLastLoggedTurn = ctx.TurnNumber;
+                    AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required, AiConfig.raidMinimumWinChance));
+                }
+
+                // Dead-end watchdog — nothing has moved on any axis (no recruit ever available
+                // either) for AiConfig.raidStallTurns running. Retarget to any other known target if
+                // one exists, else cancel outright and free the army back to the idle pool, rather
+                // than leave this task "waiting for reinforcement" forever.
+                if (!recruitAvailable && ctx.TurnNumber - task.RaidStallSinceTurn >= AiConfig.raidStallTurns)
+                {
+                    var otherTargetsForStall = new HashSet<HexCoord>(activeTargets);
+                    otherTargetsForStall.Remove(task.TargetHex);
+                    RaidWeakerArmyTask.RaidTarget? fallbackTarget = RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargetsForStall);
+                    if (fallbackTarget.HasValue)
+                    {
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — raid assembly stalled "
+                            + $"{AiConfig.raidStallTurns}+ turns with no progress, retargets from "
+                            + $"({task.TargetHex.Q},{task.TargetHex.R}) to ({fallbackTarget.Value.Hex.Q},{fallbackTarget.Value.Hex.R}).");
+                        activeTargets.Remove(task.TargetHex);
+                        task.TargetHex = fallbackTarget.Value.Hex;
+                        activeTargets.Add(task.TargetHex);
+                        task.RaidStallSinceTurn = ctx.TurnNumber;
+                        task.RaidStallTarget = task.TargetHex;
+                        task.RaidStallWinChance = RaidWeakerArmyTask.WinChanceAgainst(task.Army, fallbackTarget.Value.Threat);
+                    }
+                    else
+                    {
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — raid assembly stalled "
+                            + $"{AiConfig.raidStallTurns}+ turns with no progress and no other known target, cancels "
+                            + "the raid (army returns to the idle pool).");
+                        AiTaskRegistry.Remove(player, task);
+                    }
+                    continue;
+                }
+
                 if (heroCardDecision != null)
                 {
                     results.Add(heroCardDecision);
                     continue;
                 }
-
-                UnitData recruit = RaidWeakerArmyTask.FindRecruitAt(player, garrisonHex, task.Army, pool, out ArmyData source);
-                if (recruit == null || source == null || !task.Army.HasRoom || ctx.WouldRevisitArmy(recruit, task.Army))
+                if (!recruitAvailable)
                     continue; // nothing to recruit (or full) this step — waits for a recall/next card
                 results.Add(AiDecision.AssembleRaidForce(source, recruit, task.Army, task,
                     AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus));

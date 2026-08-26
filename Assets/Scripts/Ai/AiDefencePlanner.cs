@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -410,6 +411,24 @@ namespace Game.Ai
             if (task.Army.CurrentMovement <= 0 || (!task.Army.HasActivatedThisTurn && !root.CanSpendActionPoints(task.Army.ActivationApCost)))
                 return null;
 
+            // Invariant guard (2026-08-26, project owner's own spec item 1 — "наземная задача
+            // никогда не назначается авиа-армии"): DefendCitadel is a ground task through and
+            // through (Patrol/Active/Turtle all issue plain ground MoveArmy decisions) — every real
+            // selection path that could hand it an army (FindReadyIdleDefender, the emergency-
+            // preempt field-army recall, every recruit/merge/strengthen tier) now excludes
+            // AviationRules.IsAirArmy/IsAirfield explicitly, so this should never actually trip. Kept
+            // here anyway as the one shared choke point every DefendCitadel continuation passes
+            // through (TryContinueDefenceTask AND the freshly-built-task inline call from
+            // TryStartDefenceCandidatesFor both route through this same method) — a cheap safety net
+            // that turns a future leak in any one of those selection sites into a loud log line
+            // instead of a silently misbehaving aircraft stuck on ground patrol duty.
+            if (AviationRules.IsAirArmy(task.Army) || AviationRules.IsAirfield(task.Army))
+            {
+                AiDebugLog.Write($"[AI] {player.Nickname}: INVARIANT VIOLATION — DefendCitadel task holds aviation "
+                    + $"army \"{task.Army.Name}\", refusing to issue a ground decision for it.");
+                return null;
+            }
+
             // Turtle only ever applies to the citadel's own task (2026-08-21, project owner's own
             // call) — a later-founded base deliberately gets no siege-level escalation of its own,
             // only the citadel-anchored task ever reads IsUnderSiege at all. A base's own task falls
@@ -744,13 +763,19 @@ namespace Game.Ai
         private static UnitData FindPatrolRecceCandidate(PlayerSetupData player, int turnNumber, HexCoord hex, AiResourcePool pool, out ArmyData source)
         {
             source = null;
+            // 2026-08-26, project owner's own spec item 1 — a Recce-tagged AIRCRAFT (AirRecon is
+            // its own separate task/pipeline, see AiArmyRoles.IsSoloRecce's own comment) must never
+            // get folded into a ground patrol just because it happens to also carry the Recce
+            // ability; excludes both the whole source army (an air army/airfield) and the member
+            // itself.
             ArmyData atGarrison = pool.AvailableArmies()
-                .FirstOrDefault(a => !a.IsPrison && a.Hex.Equals(hex) && a.Members.Any(m => m.HasAbility(UnitAbilities.Recce)
+                .FirstOrDefault(a => !a.IsPrison && !AviationRules.IsAirArmy(a) && !AviationRules.IsAirfield(a)
+                    && a.Hex.Equals(hex) && a.Members.Any(m => !m.IsAviation && m.HasAbility(UnitAbilities.Recce)
                     && AiArmyRoles.CanSpareGarrisonMember(player, a, m)));
             if (atGarrison != null)
             {
                 source = atGarrison;
-                return atGarrison.Members.First(m => m.HasAbility(UnitAbilities.Recce));
+                return atGarrison.Members.First(m => !m.IsAviation && m.HasAbility(UnitAbilities.Recce));
             }
 
             if (turnNumber < AiConfig.reconPriorityDecayStartTurn)
@@ -1027,6 +1052,10 @@ namespace Game.Ai
         {
             return pool.AvailableArmies()
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count > 0
+                    // 2026-08-26, project owner's own spec item 1 — aviation gets only aviation
+                    // tasks, never ground patrol/intercept duty (see BuildPostureDecision's own
+                    // invariant guard).
+                    && !AviationRules.IsAirArmy(a) && !AviationRules.IsAirfield(a)
                     && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
                     && isReady(a))
                 .OrderByDescending(a => WorthIt.AttackSum(a))
@@ -1111,7 +1140,10 @@ namespace Game.Ai
                         continue;
                     foreach (UnitData unit in candidate.Members)
                     {
-                        if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                        // 2026-08-26, project owner's own spec item 1 — aviation never becomes
+                        // ground defense fodder (the activeSighting branch below already excluded
+                        // this; the Patrol/no-sighting branch here was missing it).
+                        if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce) || unit.IsAviation)
                             continue;
                         if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                             continue;
@@ -1324,6 +1356,10 @@ namespace Game.Ai
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army == reference || army.IsGarrison || army.IsPrison || army.Members.Count == 0
+                    // 2026-08-26, project owner's own spec item 1 — an emergency citadel recall is
+                    // still a ground reinforcement; aviation never gets pulled into it (see
+                    // BuildPostureDecision's own invariant guard).
+                    || AviationRules.IsAirArmy(army) || AviationRules.IsAirfield(army)
                     || army.Hex.Equals(garrisonHex) || army.Controller == null || army.CurrentMovement <= 0
                     || !BattleInitiator.IsCombatCapable(army) || AiArmyRoles.IsSoloRecce(army))
                     continue;

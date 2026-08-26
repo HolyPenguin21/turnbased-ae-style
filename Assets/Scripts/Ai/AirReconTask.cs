@@ -14,8 +14,6 @@ namespace Game.Ai
     // wavefront bookkeeping, just "closest useful, reachable, forward-of-us hex".
     public static class AirReconTask
     {
-        public static bool HasObservedEnemyAntiAir(PlayerSetupData actor) => AiMapMemory.HasObservedEnemyAntiAir(actor);
-
         public readonly struct ReconTarget
         {
             public readonly HexCoord Hex;
@@ -72,24 +70,50 @@ namespace Game.Ai
                 if (!sortie.HasValue)
                     continue;
 
+                // Route-level AA safety — rewritten 2026-08-26 (project owner's own spec item 4,
+                // "Единая жёсткая безопасность маршрута по ПВО") from a ranked-down scoring penalty
+                // into a genuine hard filter: a candidate whose planned round trip (either leg)
+                // carries ANY known-AA exposure (AiAviationSupport.KnownAaExposure — already scoped
+                // to hexes the route itself actually crosses, never "AA anywhere on the map") is
+                // dropped outright, never merely scored lower. Replaces the old global "any AA seen
+                // ANYWHERE suppresses AirRecon entirely" gate (removed from AiScoutPlanner.
+                // TryStartAirReconCandidates, see that method's own comment) with the precise rule
+                // the spec actually asked for — AA off THIS route no longer blocks anything, AA ON
+                // it always does. Every surviving candidate below is therefore always zero-exposure,
+                // so there is deliberately no separate penalty term left in the score formula for
+                // it any more (see AiConfig.airReconForwardLandingWeight's own comment on what
+                // replaced airReconAaExposurePenalty).
+                if (AiAviationSupport.KnownAaExposure(actor, sortie.Value.OutboundPath)
+                    + AiAviationSupport.KnownAaExposure(actor, sortie.Value.ReturnPath) > 0)
+                    continue;
+
                 float forwardBonus = EnemyConcentrationForwardBonus(actor, start, hex) * AiConfig.airReconForwardWeight;
                 float freshBonus = everSeen ? AiConfig.airReconForwardWeight * 0.5f : AiConfig.airReconForwardWeight;
-                // Known-AA route risk (AiAviationSupport.KnownAaExposure, shared with AirStrikeTask.
-                // ScoreTarget — 2026-08-26, project owner's own spec point 2 "учитывать ПВО при
-                // выборе вылета"). Same "ranked down, never a hard block" shape AirStrike already
-                // uses for the identical concern: a risky-but-only-reachable hex still wins if
-                // nothing safer scores as well, but a safe hex of otherwise-comparable info value
-                // always outranks a risky one, and at truly EQUAL informativeness (spec's own tie-
-                // break clause) the lower-exposure route wins outright — the penalty weight
-                // (airReconAaExposurePenalty) is deliberately sized close to forwardBonus/freshBonus
-                // themselves so it dominates near-ties without being able to out-vote a genuinely
-                // much more informative target the way airStrikeAaExposurePenalty is sized relative
-                // to airStrikeTargetValueWeight for the sibling task.
-                float aaExposurePenalty = AiAviationSupport.KnownAaExposure(actor, sortie.Value.OutboundPath)
-                    * AiConfig.airReconAaExposurePenalty;
-                float score = AiConfig.airReconBaseWeight + forwardBonus + freshBonus
-                    - sortie.Value.TotalCost * AiConfig.airReconDistancePenalty
-                    - aaExposurePenalty;
+
+                // Forward-landing bonus (2026-08-26, project owner's own spec item 3 — "разведка
+                // должна естественно садиться на передовой базе"). Without this, a short 2-hex hop
+                // that returns to the SAME airfield it launched from always scored best on distance
+                // alone (sortie.TotalCost is smallest for a round trip that never really goes
+                // anywhere), even when a longer flight that lands at a different, more forward base
+                // would reveal more and leave the fleet better based for next time. Rewards exactly
+                // that: zero unless the sortie's own chosen landing hex is BOTH different from the
+                // launch airfield AND genuinely closer to the nearest known enemy reference
+                // (AiAviationSupport.NearestKnownEnemyDistance, shared with TryReplan/
+                // TryPlanSortiePreferForwardLanding's own tie-break so "more forward" always means
+                // the same thing everywhere) — scaled by how many hexes closer, so a modest edge
+                // earns a modest nudge and a genuinely valuable relocation can outweigh the plain
+                // distance penalty of the extra flight it costs.
+                float forwardLandingBonus = 0f;
+                if (!sortie.Value.LandingHex.Equals(start))
+                {
+                    int startForward = AiAviationSupport.NearestKnownEnemyDistance(actor, start);
+                    int landingForward = AiAviationSupport.NearestKnownEnemyDistance(actor, sortie.Value.LandingHex);
+                    if (landingForward < startForward)
+                        forwardLandingBonus = (startForward - landingForward) * AiConfig.airReconForwardLandingWeight;
+                }
+
+                float score = AiConfig.airReconBaseWeight + forwardBonus + freshBonus + forwardLandingBonus
+                    - sortie.Value.TotalCost * AiConfig.airReconDistancePenalty;
 
                 if (best == null || score > best.Value.Score)
                     best = new ReconTarget(hex, sortie.Value, score,

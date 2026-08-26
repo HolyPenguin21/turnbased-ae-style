@@ -349,6 +349,24 @@ namespace Game.Ai
         // nothing ever reads it there.
         public int AssemblyProgressTurn = -1;
 
+        // RaidWeakerArmy only (2026-08-26, project owner's own "не держать рейд бесконечно на
+        // недостижимой цели" spec, item 5) — TryRaidAssembleCandidates' own stall-detection
+        // snapshot: this task's own army member count, TargetHex, whether a recruit/hero card was
+        // actually available to add, and the win chance against its current target, as of the last
+        // time ANY of the four genuinely differed from the call before. RaidStallSinceTurn is the
+        // turn number that snapshot was last refreshed — lazily initialized on this task's very
+        // first evaluation (starts at -1, which always reads as "changed" the first time it's
+        // checked, so a brand-new task can never read as already stalled). See AiConfig.
+        // raidStallTurns for the elapsed-turns threshold and TryRaidAssembleCandidates for how this
+        // also doubles as the "not enough force" log's own dedup key (an unchanged snapshot within
+        // the same turn skips re-printing the identical line).
+        public int RaidStallSinceTurn = -1;
+        public int RaidStallMemberCount = -1;
+        public HexCoord RaidStallTarget;
+        public bool RaidStallHadRecruit;
+        public float RaidStallWinChance = -1f;
+        public int RaidLastLoggedTurn = -1;
+
         // BuildBase only (Feature 2, 2026-08-24, project owner's own report — "captured/built bases
         // sitting undefended and getting flagged 'unguarded'"): true from the moment the building
         // itself finishes constructing (BuildBaseRoutine) until either a garrison-seed transfer
@@ -378,10 +396,11 @@ namespace Game.Ai
         public int GarrisonSeedStartedTurn = -1;
 
         // AirStrike/AirRecon only — the owned airfield the sortie is currently committed to
-        // landing at, chosen fresh by AiAviationSupport.TryPlanSortie/TryReplan every time the
-        // plan is (re)validated, per the spec's "any owned airfield, never hard-coded to the
-        // launch airfield" rule — never trusted stale across a replan, same as every other
-        // recomputed-live field on this class.
+        // landing at, chosen fresh by AiAviationSupport.TryPlanSortie/TryPlanSortiePreferForward
+        // Landing/TryReplan every time the plan is (re)validated, per the spec's "any owned
+        // airfield, never hard-coded to the launch airfield, never held onto once a better one is
+        // reachable" rule (2026-08-26 sharpened further, project owner's own spec item 2) — never
+        // trusted stale across a replan, same as every other recomputed-live field on this class.
         public HexCoord LandingHex;
 
         // AirStrike/AirRecon only — true while this sortie is still flying OUTBOUND toward the

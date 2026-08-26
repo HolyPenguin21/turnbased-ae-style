@@ -263,6 +263,19 @@ namespace Game.Ai
         // starts travelling this whole retarget check doesn't run at all any more (see that
         // method's own comment), so nothing changes mid-route.
         public const float raidRetargetMinImprovement = 5f;
+        // Dead-end assembly watchdog (2026-08-26, project owner's own spec item 5 — "не держать
+        // рейд бесконечно на недостижимой цели"). AiAggressionPlanner.TryRaidAssembleCandidates
+        // snapshots each StillAssembling task's own (member count, TargetHex, whether a
+        // recruit/hero was actually available, win chance against the current target) every step —
+        // AiTask.RaidStallSinceTurn is the turn number that snapshot last genuinely changed. Once
+        // ctx.TurnNumber - RaidStallSinceTurn reaches this many turns with NOTHING having moved on
+        // any of those four axes (the literal "waits for reinforcement forever" case — a recruit
+        // was never once available in all that time), the task force-retargets to any other known
+        // target if one exists, or cancels outright (frees the army back to the idle pool) if not.
+        // 3, one more than visitHexStallTurns/garrisonSeedMaxWaitTurns (2 each) — abandoning a raid
+        // loses more sunk cost (a partly-built force) than either of those, so it gets one extra
+        // turn of patience before the watchdog fires.
+        public const int raidStallTurns = 3;
         // raidReadyArmyBonus removed 2026-08-20 (project owner's own call) — a target already
         // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path", no
         // assembly needed) now scores the same flat aggressionBaseWeight as any other ready
@@ -1244,17 +1257,30 @@ namespace Game.Ai
         // Per-hex penalty on total sortie distance — same "shorter safe sortie distance" tie-break
         // spec asks for, after forward information gain.
         public const float airReconDistancePenalty = 1f;
-        // Flat penalty per point of known AA exposure along the outbound leg (AiAviationSupport.
-        // KnownAaExposure, shared with AirStrikeTask.ScoreTarget) — 2026-08-26, project owner's own
-        // spec point 2 "учитывать ПВО при выборе вылета". Same "ranked down, never a hard block"
-        // shape as airStrikeAaExposurePenalty, but sized close to airReconForwardWeight/the fresh-
-        // hex bonus (rather than small relative to a much larger base+value budget the way AirStrike's
-        // own penalty is) — AirRecon's whole score band is narrow (airReconBaseWeight=65 plus a
-        // handful of single-digit bonuses/penalties), so a same-sized AA penalty is enough to make a
-        // safe reachable hex always outrank a comparably-informative risky one, and to win outright at
-        // truly equal informativeness (spec's own explicit tie-break clause), without being able to
-        // out-vote a hex that is genuinely much more informative than every safe alternative.
-        public const float airReconAaExposurePenalty = 4f;
+        // airReconAaExposurePenalty removed 2026-08-26 (project owner's own follow-up spec, item 4
+        // — "Единая жёсткая безопасность маршрута по ПВО"): AirRecon's known-AA handling is no
+        // longer a ranked-down soft penalty at all — AirReconTask.FindReconHex now drops a
+        // candidate outright the moment its route (either leg) carries any known-AA exposure (see
+        // that method's own comment), so a scoring penalty that could only ever be outvoted by a
+        // large enough forward/fresh bonus no longer describes the rule. The global "any AA seen
+        // anywhere on the map" launch gate this same spec point removed (see
+        // AiScoutPlanner.TryStartAirReconCandidates' own former Condition 5) is a separate, unrelated
+        // mechanism — this file's own airStrikeAaExposurePenalty is untouched, AirStrike keeps its
+        // own pre-existing softer "ranked down, never blocked" treatment; only AirRecon's rule
+        // changed, per the spec's own explicit scope.
+        //
+        // Route safety bonus for AirRecon's own candidate scoring (2026-08-26, project owner's own
+        // spec item 3 — "разведка должна естественно садиться на передовой базе") — rewards a
+        // candidate hex whose planned sortie lands somewhere DIFFERENT from (and more forward than)
+        // the launch airfield, scaled by how much closer to the nearest known enemy reference
+        // (citadel first, else nearest known sighting — AiAviationSupport.NearestKnownEnemyDistance)
+        // that landing base actually is. Zero (no bonus) for a sortie that lands right back where it
+        // started, or at a base that isn't actually any more forward — see AirReconTask.FindReconHex's
+        // own comment for the full formula. Sized comparably to airReconForwardWeight/
+        // airReconDistancePenalty (AirRecon's whole score band is narrow) so a real forward-basing
+        // opportunity can outweigh the plain distance penalty of the extra flight it costs, without
+        // being able to out-vote a hex that's genuinely far more informative.
+        public const float airReconForwardLandingWeight = 2f;
         // AirStrikeTask.IsEligibleAircraft's own floor — an air group (stored or already airborne)
         // needs at least this many aircraft still able to attack this turn before AirStrike will
         // even consider it a launch candidate; below this, waiting for the hand/airfield to build

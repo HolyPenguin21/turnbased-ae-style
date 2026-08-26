@@ -581,10 +581,13 @@ namespace Game.Ai
             if (airStrikeCandidatesThisStep != null && airStrikeCandidatesThisStep.Count > 0)
                 return results;
 
-            // Condition 5 — global, conservative: any observed enemy AA anywhere suppresses AirRecon
-            // outright (see AirReconTask.HasObservedEnemyAntiAir's own comment).
-            if (AirReconTask.HasObservedEnemyAntiAir(player))
-                return results;
+            // Condition 5 (global "any observed enemy AA anywhere on the map suppresses AirRecon
+            // outright") removed 2026-08-26 (project owner's own follow-up spec, item 4 — "Единая
+            // жёсткая безопасность маршрута по ПВО"): AA seen somewhere OFF the actual flight route
+            // must never block a safe sortie elsewhere on the map. Route-level AA safety is now
+            // enforced precisely where it belongs — AirReconTask.FindReconHex drops any candidate
+            // whose own route carries known-AA exposure outright (a real per-route hard filter, not
+            // a global map-wide guess) — see that method's own comment.
 
             foreach (AirStrikeTask.LaunchCandidate candidate in AirStrikeTask.FindLaunchCandidates(player, pool))
             {

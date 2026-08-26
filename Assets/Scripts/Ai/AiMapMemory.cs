@@ -58,10 +58,12 @@ namespace Game.Ai
             public float AttackSum;
             public List<WorthIt.DefenderProfile> Defenders;
             // True if any member observed in this sighting carries an AntiAirRules-recognized AA
-            // ability (AiTask.AirRecon's own global gate, condition 5 — "the AI has seen enemy AA
-            // in ANY remembered enemy army", see HasObservedEnemyAntiAir below). Computed once at
-            // observation time, same honesty rule as every other field here — a hidden army's own
-            // AA is simply unknown, ordinary fog risk, not something this flags.
+            // ability — read by AiAviationSupport.KnownAaExposure (AirStrike/AirRecon's own
+            // per-ROUTE risk scan, see that method's own comment; the old global "seen anywhere on
+            // the map" AirRecon gate that used to read this field directly was removed 2026-08-26,
+            // project owner's own spec item 4). Computed once at observation time, same honesty rule
+            // as every other field here — a hidden army's own AA is simply unknown, ordinary fog
+            // risk, not something this flags.
             public bool HasAntiAir;
             // The global turn (see _currentTurn/OnTurnStarted below) this sighting was last
             // actually (re)observed — drives expiry in ExpireStaleSightings. Stamped, not left at
@@ -571,17 +573,9 @@ namespace Game.Ai
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
         }
 
-        // AirRecon's own global gate, condition 5 (AirReconTask.HasObservedEnemyAntiAir's own
-        // wrapper) — "if the AI has seen enemy AA in ANY remembered enemy army, do not propose
-        // AirRecon". Deliberately global (no radius/direction), and deliberately excludes neutral
-        // sightings — the spec's own wording is "enemy army", and every other AA-blind spot in this
-        // gate is already ordinary fog risk (an army never yet observed), not something this method
-        // is meant to second-guess.
-        public static bool HasObservedEnemyAntiAir(PlayerSetupData actor)
-        {
-            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
-                && sightings.Values.Any(s => s.Owner != null && !s.Owner.IsNeutral && s.Owner != actor && s.HasAntiAir);
-        }
+        // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
+        // removed 2026-08-26 (project owner's own spec item 4) — see EnemySighting.HasAntiAir's own
+        // comment for what replaced it.
 
         public static IEnumerable<KnownEnemySighting> KnownEnemySightingsNear(PlayerSetupData actor,
             IReadOnlyList<HexCoord> ownHexes, int radius)
