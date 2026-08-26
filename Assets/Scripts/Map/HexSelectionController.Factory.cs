@@ -58,6 +58,7 @@ namespace Game.Map
             // ActivationApCost, which sums each member's own cost).
             if (data.Abilities.Contains(UnitAbilities.RapidReaction))
                 data.ActivationApCost = 0;
+            UnitRepair.InitializeRepairCost(data);
             return data;
         }
 

@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using UnityEngine;
 
 namespace Game.Units
 {
@@ -24,19 +27,57 @@ namespace Game.Units
             return building != null && building.Owner == owner && building.IsBase;
         }
 
-        // Half of what the unit originally cost to play, rounded down per resource independently
-        // (the project owner's own spec — e.g. a 2AP/1 Human hero repairs for 1AP; a 5AP/2H/3E/4M
-        // unit repairs for 2AP/1H/1E/2M). Full heal only, no partial-damage scaling — the cost is
-        // fixed regardless of how wounded the unit currently is.
-        public static int ApCost(UnitData unit) => unit.ApCost / 2;
+        // Every repaired unit costs exactly one AP. Its resource part is rolled ONCE when the
+        // card enters play: ceil(half) of its original resource units, sampled without
+        // replacement, so the shown cost never changes for that individual card.
+        public static int ApCost(UnitData unit) => unit != null ? 1 : 0;
 
-        public static ResourceCost ResourceCost(UnitData unit) => new ResourceCost
+        public static ResourceCost ResourceCost(UnitData unit)
         {
-            human = (unit.OriginalResourceCost?.human ?? 0) / 2,
-            energy = (unit.OriginalResourceCost?.energy ?? 0) / 2,
-            materials = (unit.OriginalResourceCost?.materials ?? 0) / 2,
-            tech = (unit.OriginalResourceCost?.tech ?? 0) / 2,
-        };
+            InitializeRepairCost(unit);
+            return unit?.RepairResourceCost ?? new ResourceCost();
+        }
+
+        // Called by SpawnUnit as soon as a card becomes a live unit. The null guard also keeps
+        // old runtime-created units and display snapshots safe if they predate this field.
+        public static void InitializeRepairCost(UnitData unit)
+        {
+            if (unit == null || unit.RepairResourceCost != null)
+                return;
+
+            var available = new List<ResourceType>();
+            AddUnits(available, ResourceType.Human, unit.OriginalResourceCost?.human ?? 0);
+            AddUnits(available, ResourceType.Energy, unit.OriginalResourceCost?.energy ?? 0);
+            AddUnits(available, ResourceType.Materials, unit.OriginalResourceCost?.materials ?? 0);
+            AddUnits(available, ResourceType.Tech, unit.OriginalResourceCost?.tech ?? 0);
+
+            var repairCost = new ResourceCost();
+            int picks = (available.Count + 1) / 2;
+            for (int i = 0; i < picks; i++)
+            {
+                int index = Random.Range(0, available.Count);
+                AddOne(repairCost, available[index]);
+                available.RemoveAt(index);
+            }
+            unit.RepairResourceCost = repairCost;
+        }
+
+        private static void AddUnits(List<ResourceType> target, ResourceType type, int amount)
+        {
+            for (int i = 0; i < amount; i++)
+                target.Add(type);
+        }
+
+        private static void AddOne(ResourceCost cost, ResourceType type)
+        {
+            switch (type)
+            {
+                case ResourceType.Human: cost.human++; break;
+                case ResourceType.Energy: cost.energy++; break;
+                case ResourceType.Materials: cost.materials++; break;
+                case ResourceType.Tech: cost.tech++; break;
+            }
+        }
 
         // Checks AP then resources separately (rather than one combined check) so a caller can
         // report which one was actually short — same convention as ArmyActions.DeployUnitFromCard

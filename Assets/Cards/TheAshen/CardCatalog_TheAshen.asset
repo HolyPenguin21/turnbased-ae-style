@@ -456,7 +456,7 @@ MonoBehaviour:
   - id: 14
     displayName: Scav Carrier
     art: {fileID: 21300000, guid: 50ea9173e748b7044892089a3e8d0430, type: 3}
-    detailArt: {fileID: 21300000, guid: a4474cd9a8b280b45b298114de392d98, type: 3}
+    detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
