@@ -210,6 +210,8 @@ namespace Game.Turns
         public event Action TurnStateChanged;
 
         private int _currentPlayerIndex;
+        private readonly Dictionary<PlayerSetupData, List<string>> _pendingAviationMessages = new Dictionary<PlayerSetupData, List<string>>();
+        private readonly Queue<string> _aviationMessageQueue = new Queue<string>();
 
         // Set once at most one player still holds their own starting citadel — two paths lead
         // here now: OnBuildingDestroyed (a building's StructurePoints actually reaching 0 — still
@@ -228,6 +230,7 @@ namespace Game.Turns
             VisionSystem.DebugRevealAll = debugRevealFogOfWar;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
+            if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
@@ -241,6 +244,7 @@ namespace Game.Turns
         {
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged -= RecomputeBlockedState;
+            if (spawnHintPopup != null) spawnHintPopup.Hidden -= ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
@@ -908,6 +912,13 @@ namespace Game.Turns
                 endTurnButton.interactable = true;
             if (turnInfoPopup != null)
                 turnInfoPopup.Hide();
+            if (CurrentPlayer != null && _pendingAviationMessages.TryGetValue(CurrentPlayer, out List<string> messages))
+            {
+                _pendingAviationMessages.Remove(CurrentPlayer);
+                foreach (string message in messages)
+                    _aviationMessageQueue.Enqueue(message);
+                ShowNextAviationMessage();
+            }
             TurnStateChanged?.Invoke();
         }
 
@@ -950,8 +961,15 @@ namespace Game.Turns
         {
             var aviationMessages = AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
-                ShowSpawnHint(string.Join("\n", aviationMessages));
+                _pendingAviationMessages[CurrentPlayer] = aviationMessages;
             BeginPlayerTurn(_currentPlayerIndex + 1);
+        }
+
+        private void ShowNextAviationMessage()
+        {
+            if (spawnHintPopup == null || spawnHintPopup.IsShowing || _aviationMessageQueue.Count == 0)
+                return;
+            spawnHintPopup.Show(_aviationMessageQueue.Dequeue());
         }
     }
 }
