@@ -686,12 +686,23 @@ namespace Game.Map
                     ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, human);
                     if (garrison == null)
                         return false;
+                    // The garrison marker also stands in for a non-empty airfield (see
+                    // RestackArmiesOn) — when that's the ONLY thing actually stored here (garrison
+                    // itself empty), the click should open the airfield, not an empty garrison. A
+                    // non-empty garrison always wins over the airfield regardless.
+                    ArmyData target = garrison;
+                    if (garrison.Members.Count == 0)
+                    {
+                        ArmyData airfield = AviationRules.FindAirfieldAt(hex, human);
+                        if (airfield != null && airfield.Members.Count > 0)
+                            target = airfield;
+                    }
                     // This shortcut never runs SelectHex (it jumps straight to the modal instead
                     // of the usual highlight/info-panel flow) — _selectedHex still needs to be
                     // tracked so OnArmyModalClosed knows which hex's button row to refresh once
                     // the player closes it.
                     _selectedHex = hex;
-                    ShowArmyModal(garrison);
+                    ShowArmyModal(target);
                     return true;
                 }
 
@@ -1135,14 +1146,32 @@ namespace Game.Map
 
             List<ArmyData> armiesHere = NonEmptyArmiesAt(hex);
             bool hasBuilding = FindOwnerAt(hex) != null;
+
+            // Airfields have no independent marker. When one stores aircraft, the owner's garrison
+            // marker represents that container, exactly as it represents ground cards — even when
+            // the garrison itself is empty (nothing ever staged there), so it still needs a slot in
+            // armiesHere below to get laid out and shown at all.
+            var airfieldOwners = new HashSet<PlayerSetupData>(ArmyRegistry.AllAt(hex)
+                .FindAll(a => a.IsAirfield && a.Members.Count > 0).ConvertAll(a => a.Owner));
+            foreach (PlayerSetupData owner in airfieldOwners)
+            {
+                if (armiesHere.Exists(a => a.Owner == owner))
+                    continue;
+                ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, owner);
+                if (garrison != null)
+                    armiesHere.Add(garrison);
+            }
+
             List<PlayerSetupData> distinctOwners = DistinctOwners(armiesHere);
 
             // An army that just dropped to zero members (its last unit dragged out, see
             // CardHandUI/ArmyViewerModalUI's own RestackArmiesOn calls) drops out of armiesHere
             // above from this point on — nobody else ever tells its marker to hide, so it must
             // be done explicitly here, once, right as that happens (see the loop after this
-            // method's main one below).
-            List<ArmyData> emptiedHere = ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count == 0);
+            // method's main one below). Excludes anything just added to armiesHere above (an empty
+            // garrison standing in for its owner's non-empty airfield) — that one must stay shown,
+            // not be force-hidden right back down by this same-turn sweep.
+            List<ArmyData> emptiedHere = ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count == 0 && !armiesHere.Contains(a));
 
             HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding, distinctOwners);
 
@@ -1162,10 +1191,10 @@ namespace Game.Map
             if (_selectedArmy != null && armiesHere.Contains(_selectedArmy.Data))
                 representativeForOwner[_selectedArmy.Data.Owner] = _selectedArmy.Data;
 
-            // Airfields have no independent marker. When one stores aircraft, the owner's
-            // garrison marker represents that container, exactly as it represents ground cards.
-            var airfieldOwners = new HashSet<PlayerSetupData>(ArmyRegistry.AllAt(hex)
-                .FindAll(a => a.IsAirfield && a.Members.Count > 0).ConvertAll(a => a.Owner));
+            // Airfields have no independent marker (see airfieldOwners above, computed early
+            // enough to already have added the representative garrison to armiesHere itself).
+            // When one stores aircraft, the owner's garrison marker represents that container,
+            // exactly as it represents ground cards.
             foreach (PlayerSetupData owner in airfieldOwners)
             {
                 ArmyData garrison = armiesHere.Find(a => a.Owner == owner && a.IsGarrison);

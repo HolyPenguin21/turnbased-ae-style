@@ -39,6 +39,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 12
     initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 8
     unitTypeTags: 
     grantedAbilities:
     - Barracks
@@ -74,6 +79,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 8
     initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 4
     unitTypeTags: 
     grantedAbilities:
     - Barracks
@@ -110,6 +120,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities: []
     resourceYield:
@@ -140,6 +155,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - ApBonus
@@ -171,6 +191,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - RapidReaction
@@ -202,6 +227,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities: []
     resourceYield:
@@ -232,6 +262,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 6
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - Recce
@@ -263,6 +298,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Recce
@@ -294,6 +334,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - Recce
@@ -325,6 +370,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - CollectMaterials
@@ -356,6 +406,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities: []
     resourceYield:
@@ -386,6 +441,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -416,6 +476,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Berserk
@@ -447,6 +512,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -477,6 +547,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 4
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Pyrokinetic
@@ -508,6 +583,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Hyperkinetic
@@ -539,6 +619,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Berserk
@@ -570,6 +655,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 6
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities:
     - ShockAttack
@@ -601,6 +691,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -631,6 +726,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -661,6 +761,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -691,6 +796,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities:
     - CeramicArmor
@@ -722,6 +832,11 @@ MonoBehaviour:
     range: 3
     hitPoints: 2
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - ShockAttack
@@ -753,6 +868,11 @@ MonoBehaviour:
     range: 4
     hitPoints: 3
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities: []
     resourceYield:
@@ -783,6 +903,11 @@ MonoBehaviour:
     range: 3
     hitPoints: 3
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - Hyperkinetic
@@ -814,6 +939,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 2
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - Recce
@@ -823,9 +953,46 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+  - id: 26
+    displayName: Wasp
+    art: {fileID: 21300000, guid: 0582081bc468587498a85a13b5b174e1, type: 3}
+    detailArt: {fileID: 21300000, guid: bdaf62ff179c5cc488dff9bbd18e1c49, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 10
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 8
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - Recce
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 468b60833e660f549a5502f2f04a1b65, type: 3}
+  airArmyIcon: {fileID: 21300000, guid: da70df36c6db9144288276c23ded0b5c, type: 3}
   armyNamePool:
   - Ironfang
   - Rustborn

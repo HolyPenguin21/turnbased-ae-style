@@ -85,6 +85,19 @@ namespace Game.Aviation
             return IsAirArmy(army) ? 1 : Mathf.Max(1, terrainCost);
         }
 
+        // Same per-hex flattening as MovementCost above, applied to a whole HexPathfinder route
+        // at once — an air army spends exactly 1 MP per hex regardless of terrain, so its route's
+        // real cost is just the hex count, not HexPath.TotalCost (which is always terrain-weighted,
+        // see HexPathfinder.FindPath's own comment on why it never bakes in a mover-specific rule).
+        // Shared by the move-preview arrow and anything else that needs to show/check a route's
+        // actual MP cost for `army` instead of assuming a ground army's terrain-weighted one.
+        public static int PathMoveCost(ArmyData army, Game.HexGrid.HexPath path)
+        {
+            if (path == null)
+                return 0;
+            return IsAirArmy(army) ? path.Hexes.Count - 1 : path.TotalCost;
+        }
+
         public static void ResetAfterLanding(UnitData aircraft)
         {
             if (!IsAviation(aircraft))

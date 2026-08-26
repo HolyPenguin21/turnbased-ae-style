@@ -158,7 +158,10 @@ namespace Game.Map
                 points.Add(map.HexToWorld(hex));
             int apCost = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
             int energyCost = army.HasActivatedThisTurn ? 0 : army.ActivationEnergyCost;
-            _pathArrow.Show(points, path.TotalCost, apCost, energyCost, color);
+            // path.TotalCost is always terrain-weighted (see HexPathfinder.FindPath) — an air
+            // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
+            // ArmyController.MoveRoutine really charges), so the preview must show that instead.
+            _pathArrow.Show(points, AviationRules.PathMoveCost(army, path), apCost, energyCost, color);
         }
 
         // Truncates `path` at the first hex (after the origin) holding a combat-capable enemy
@@ -574,7 +577,9 @@ namespace Game.Map
                     RestackArmiesOn(actualHex, movingArmy);
                 }, shouldStopEarly: hex =>
                 {
-                    if (HasUnclaimedCleanEventHex(army, hex))
+                    // An air army still reveals FOW via HandleVisionStep below, but never triggers
+                    // or stops for a Hex Event — only a ground army can Explore one.
+                    if (!AviationRules.IsAirArmy(army) && HasUnclaimedCleanEventHex(army, hex))
                     {
                         eventStopClaimed = true;
                         return true;

@@ -39,6 +39,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 8
     initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - Barracks
@@ -74,6 +79,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 8
     initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - Barracks
@@ -110,6 +120,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 7
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities: []
     resourceYield:
@@ -140,6 +155,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 7
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - ApBonus
@@ -171,6 +191,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 7
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - Recce
@@ -202,6 +227,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 7
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities: []
     resourceYield:
@@ -232,6 +262,11 @@ MonoBehaviour:
     range: 0
     hitPoints: 7
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities: []
     resourceYield:
@@ -262,6 +297,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - Recce
@@ -294,6 +334,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - Recce
@@ -325,6 +370,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 3
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - CollectTech
@@ -356,6 +406,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities: []
     resourceYield:
@@ -386,6 +441,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -416,6 +476,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -446,6 +511,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -476,6 +546,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities: []
     resourceYield:
@@ -506,6 +581,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - ShockAttack
@@ -538,6 +618,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -568,6 +653,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 7
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -598,6 +688,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -628,6 +723,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 8
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
@@ -658,6 +758,11 @@ MonoBehaviour:
     range: 3
     hitPoints: 2
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities: []
     resourceYield:
@@ -688,6 +793,11 @@ MonoBehaviour:
     range: 3
     hitPoints: 3
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - Hyperkinetic
@@ -719,6 +829,11 @@ MonoBehaviour:
     range: 4
     hitPoints: 3
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
     - ShockAttack
@@ -730,6 +845,7 @@ MonoBehaviour:
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: af7f2ad35e7686c4bad4ff88fe20ebfd, type: 3}
+  airArmyIcon: {fileID: 21300000, guid: b6ad1aa4671c13d439e88f241d7139a6, type: 3}
   armyNamePool:
   - Dead Tide
   - Bone Crew

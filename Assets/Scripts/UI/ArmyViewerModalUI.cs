@@ -341,7 +341,7 @@ namespace Game.UI
                     $"{defenseLine}\n" +
                     $"Range {unit.Range}\n" +
                     $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
-                    $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +
+                    $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}\n" +
                     $"Initiative {unit.Initiative}";
                 if (unit.IsHero)
                     text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
