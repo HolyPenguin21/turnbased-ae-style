@@ -479,7 +479,7 @@ namespace Game.Ai
         {
             Kind = AiActionKind.LaunchAirStrike, ExistingArmy = candidate.ExistingArmy, TargetHex = candidate.AirfieldHex,
             AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
-            AirActionHex = target.Hex, AirLandingHex = target.Sortie.LandingHex, Score = score, Category = AiTaskCategory.Aggression,
+            AirActionHex = target.Hex, AirLandingHex = target.LandingHex, Score = score, Category = AiTaskCategory.Aggression,
             Reason = reason,
         };
 
@@ -490,7 +490,7 @@ namespace Game.Ai
         {
             Kind = AiActionKind.LaunchAirRecon, ExistingArmy = candidate.ExistingArmy, TargetHex = candidate.AirfieldHex,
             AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
-            AirActionHex = target.Hex, AirLandingHex = target.Sortie.LandingHex, Score = score, Category = AiTaskCategory.Reconnaissance,
+            AirActionHex = target.Hex, AirLandingHex = target.LandingHex, Score = score, Category = AiTaskCategory.Reconnaissance,
             Reason = target.Reason,
         };
 

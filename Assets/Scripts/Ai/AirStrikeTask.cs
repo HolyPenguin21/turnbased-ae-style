@@ -71,24 +71,36 @@ namespace Game.Ai
         public readonly struct StrikeTarget
         {
             public readonly HexCoord Hex;
-            public readonly AiAviationSupport.Sortie Sortie;
+            // Exactly one of Sortie/MultiTurn is ever set (2026-08-26 multi-turn aviation spec) —
+            // Sortie for an ordinary same-turn round trip, MultiTurn for a helicopter-style route
+            // spanning several turns, only ever considered once Sortie itself came back null (see
+            // FindTargets — same-turn always wins when both exist, per spec point 10's "если
+            // доступен однодневный план — использовать его как сейчас").
+            public readonly AiAviationSupport.Sortie? Sortie;
+            public readonly AiAviationSupport.MultiTurnSortie? MultiTurn;
             public readonly float BaseScore;
             public readonly string TargetName;
             public readonly float KnownDefense;
             public readonly float KnownAttack;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders;
 
-            public StrikeTarget(HexCoord hex, AiAviationSupport.Sortie sortie, float baseScore, string targetName,
-                float knownDefense, float knownAttack, IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
+            public StrikeTarget(HexCoord hex, AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
+                float baseScore, string targetName, float knownDefense, float knownAttack,
+                IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
             {
                 Hex = hex;
                 Sortie = sortie;
+                MultiTurn = multiTurn;
                 BaseScore = baseScore;
                 TargetName = targetName;
                 KnownDefense = knownDefense;
                 KnownAttack = knownAttack;
                 KnownDefenders = knownDefenders;
             }
+
+            public HexCoord LandingHex => Sortie?.LandingHex ?? MultiTurn?.LandingHex ?? default;
+            public int RequiredTurns => Sortie.HasValue ? 1 : (MultiTurn?.RequiredTurns ?? 1);
+            public int RequiredUnlandedEnds => MultiTurn?.RequiredUnlandedEnds ?? 0;
         }
 
         // Scans known ARMY/garrison sightings (AiMapMemory.KnownEnemySighting) — both non-neutral
@@ -142,13 +154,27 @@ namespace Game.Ai
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
                     ? AiAviationSupport.TryPlanSortie(candidate.ExistingArmy, hex, map, actor)
                     : AiAviationSupport.TryPlanSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
+
+                // No same-turn round trip — before dropping this target, check whether the group's
+                // own SafeUnlandedEndsRemaining margin (always 0 for a plane, see that method's own
+                // comment) allows a proven-safe multi-turn route instead (2026-08-26 multi-turn
+                // aviation spec, point 10). AiAggressionPlanner still decides whether to actually
+                // START one — this only ever hands back a technically-possible option, never
+                // touches strategic state itself (this class's own header comment).
+                AiAviationSupport.MultiTurnSortie? multiTurn = null;
                 if (!sortie.HasValue)
-                    continue;
+                {
+                    multiTurn = candidate.ExistingArmy != null
+                        ? AiAviationSupport.TryPlanMultiTurnSortie(candidate.ExistingArmy, hex, map, actor)
+                        : AiAviationSupport.TryPlanMultiTurnSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
+                    if (!multiTurn.HasValue)
+                        continue;
+                }
 
                 targetInfo.TryGetValue(hex, out var known);
-                float baseScore = ScoreTarget(candidate, sortie.Value, known.Defense, known.Attack);
+                float baseScore = ScoreTarget(candidate, sortie, multiTurn, known.Defense, known.Attack);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
-                yield return new StrikeTarget(hex, sortie.Value, baseScore, name, known.Defense, known.Attack, known.Defenders);
+                yield return new StrikeTarget(hex, sortie, multiTurn, baseScore, name, known.Defense, known.Attack, known.Defenders);
             }
         }
 
@@ -174,15 +200,29 @@ namespace Game.Ai
         // by known-AA exposure itself, the same rule AirRecon's own FindReconHex already applied.
         // No longer clamped to airStrikeScoreCap here (2026-08-26, AirStrike/Raid coordination spec)
         // — see StrikeTarget.BaseScore's own comment for why the cap moved to AiAggressionPlanner.
-        private static float ScoreTarget(LaunchCandidate candidate, AiAviationSupport.Sortie sortie, float targetDefense, float targetAttack)
+        // multiTurn (2026-08-26 multi-turn aviation spec, point 10) — every extra turn before the
+        // strike actually lands costs airStrikeExtraTurnPenalty, and every intermediate safe-
+        // unlanded-end the route spends costs airStrikeUnlandedEndPenalty, on top of the ordinary
+        // distance/AP terms below — deliberately small relative to airStrikeBaseWeight/
+        // airStrikeTargetValueWeight so a genuinely valuable multi-turn strike can still win, per
+        // spec's own "не делать штраф настолько большим, чтобы вертолётная механика фактически
+        // никогда не использовалась".
+        private static float ScoreTarget(LaunchCandidate candidate, AiAviationSupport.Sortie? sortie,
+            AiAviationSupport.MultiTurnSortie? multiTurn, float targetDefense, float targetAttack)
         {
             float score = AiConfig.airStrikeBaseWeight;
             float targetValue = targetDefense + targetAttack;
             score += Mathf.Sqrt(Mathf.Max(0f, targetValue)) * AiConfig.airStrikeTargetValueWeight;
             score += candidate.Aircraft.Count * AiConfig.airStrikeTargetValueWeight * 0.5f;
-            score -= sortie.TotalCost * AiConfig.airStrikeDistancePenalty;
+            int totalCost = sortie?.TotalCost ?? multiTurn?.TotalRouteCost ?? 0;
+            score -= totalCost * AiConfig.airStrikeDistancePenalty;
             int apEnergyCost = candidate.Aircraft.Sum(u => u.ActivationApCost + u.LaunchEnergyCost);
             score -= apEnergyCost * AiConfig.airStrikeApCostPenalty;
+            if (multiTurn.HasValue)
+            {
+                score -= Mathf.Max(0, multiTurn.Value.RequiredTurns - 1) * AiConfig.airStrikeExtraTurnPenalty;
+                score -= multiTurn.Value.RequiredUnlandedEnds * AiConfig.airStrikeUnlandedEndPenalty;
+            }
             return score;
         }
     }

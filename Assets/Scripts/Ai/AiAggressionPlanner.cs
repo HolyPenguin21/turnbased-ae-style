@@ -1913,15 +1913,24 @@ namespace Game.Ai
                 // лучший BaseScore, а потом проверять координацию").
                 AirStrikeTask.StrikeTarget? bestTarget = null;
                 RaidSupportEvaluation bestSupport = default;
+                float bestEffectiveBonus = 0f;
                 float bestFinalScore = 0f;
                 foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, candidate, ctx.Map))
                 {
                     RaidSupportEvaluation support = EvaluateRaidSupport(player, candidate, candidateTarget, activeRaids, ctx.Map);
-                    float finalScore = Mathf.Min(candidateTarget.BaseScore + support.CoordinationBonus, AiConfig.airStrikeScoreCap);
+                    // A raid ready to attack NOW can't be credited the same coordination bonus for a
+                    // strike that only lands several turns from now (2026-08-26 multi-turn aviation
+                    // spec, point 10 — "наземный рейд не должен ждать вертолёт бесконечно"): the
+                    // bonus is scaled down by how many extra turns the strike itself still needs,
+                    // never zeroed outright (a genuinely decisive future strike can still matter).
+                    int extraTurns = Mathf.Max(0, candidateTarget.RequiredTurns - 1);
+                    float effectiveBonus = extraTurns > 0 ? support.CoordinationBonus / (1 + extraTurns) : support.CoordinationBonus;
+                    float finalScore = Mathf.Min(candidateTarget.BaseScore + effectiveBonus, AiConfig.airStrikeScoreCap);
                     if (!bestTarget.HasValue || finalScore > bestFinalScore)
                     {
                         bestTarget = candidateTarget;
                         bestSupport = support;
+                        bestEffectiveBonus = effectiveBonus;
                         bestFinalScore = finalScore;
                     }
                 }
@@ -1929,11 +1938,11 @@ namespace Game.Ai
                 if (!bestTarget.HasValue)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: AirStrike — no reachable known target with a complete "
-                        + $"sortie from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}).");
+                        + $"sortie (same-turn or safe multi-turn) from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}).");
                     continue;
                 }
 
-                string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, candidate.Aircraft.Count, bestFinalScore);
+                string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, candidate.Aircraft.Count, bestFinalScore, bestEffectiveBonus);
 
                 if (candidate.ExistingArmy != null)
                 {
@@ -1950,7 +1959,8 @@ namespace Game.Ai
                     var task = new AiTask
                     {
                         Kind = AiTaskKind.AirStrike, Army = candidate.ExistingArmy, TargetHex = bestTarget.Value.Hex,
-                        LandingHex = bestTarget.Value.Sortie.LandingHex, AirOutbound = true,
+                        LandingHex = bestTarget.Value.LandingHex, AirOutbound = true,
+                        IsMultiTurnSortie = bestTarget.Value.RequiredTurns > 1,
                     };
                     results.Add(AiDecision.Move(candidate.ExistingArmy, bestTarget.Value.Hex, reason, task, bestFinalScore,
                         AiTaskCategory.Aggression));
@@ -2040,28 +2050,41 @@ namespace Game.Ai
         // spec item 8: the standard per-step candidate dump and the "decided ..." line already
         // surface this same string for every candidate/the actual winner respectively — see
         // AiTurnController.DescribeCandidates/RunTurn).
+        // effectiveBonus — support.CoordinationBonus already scaled down for a multi-turn strike's
+        // own delay (see TryStartAirStrikeCandidates' own comment); reported here instead of the raw
+        // support.CoordinationBonus so the printed number always matches what actually got added to
+        // BaseScore. missionPrefix (2026-08-26 multi-turn aviation spec, point 16) names the sortie
+        // shape up front — same-turn strikes stay silent about it (unchanged wording), a multi-turn
+        // one states the turn count and the fuel margin it spends.
         private static string BuildAirStrikeReason(AirStrikeTask.StrikeTarget target, RaidSupportEvaluation support, int aircraftCount,
-            float finalScore)
+            float finalScore, float effectiveBonus)
         {
+            string missionPrefix = target.RequiredTurns > 1
+                ? $"{target.RequiredTurns}-turn helicopter sortie, action reached "
+                    + (target.MultiTurn.HasValue && target.MultiTurn.Value.ReachesActionThisTurn ? "this turn, " : "later, ")
+                    + $"{target.RequiredUnlandedEnds} safe unlanded end(s) required, landing "
+                    + $"({target.LandingHex.Q},{target.LandingHex.R}) — "
+                : $"same-turn sortie, landing ({target.LandingHex.Q},{target.LandingHex.R}) — ";
+
             if (support.RaidTask == null)
-                return $"air strike on {target.TargetName} — {aircraftCount} aircraft ready";
+                return $"air strike on {target.TargetName} — {missionPrefix}{aircraftCount} aircraft ready";
 
             string raidName = support.RaidTask.Army.Name;
-            if (support.CoordinationBonus <= 0f)
+            if (effectiveBonus <= 0f)
             {
                 return support.WinChanceBefore >= AiConfig.raidMinimumWinChance
-                    ? $"air strike on {target.TargetName} — raid \"{raidName}\" already ready at {support.WinChanceBefore:P0}, "
-                        + "no coordination bonus"
-                    : $"air strike on {target.TargetName} — active raid found, but expected win chance remains "
-                        + $"{support.WinChanceAfter:P0}, no coordination bonus";
+                    ? $"air strike on {target.TargetName} — {missionPrefix}raid \"{raidName}\" already ready at "
+                        + $"{support.WinChanceBefore:P0}, no coordination bonus"
+                    : $"air strike on {target.TargetName} — {missionPrefix}active raid found, but expected win chance "
+                        + $"remains {support.WinChanceAfter:P0}, no coordination bonus";
             }
 
             string thresholdPart = support.CrossesReadinessThreshold
                 ? $", crosses {AiConfig.raidMinimumWinChance:P0} readiness threshold"
                 : string.Empty;
-            return $"air strike supports \"{raidName}\" raid on {target.TargetName} — expected raid win chance "
-                + $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}{thresholdPart}, coordination "
-                + $"+{support.CoordinationBonus:0}, score {target.BaseScore:0}→{finalScore:0}";
+            return $"air strike supports \"{raidName}\" raid on {target.TargetName} — {missionPrefix}expected raid win "
+                + $"chance {support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}{thresholdPart}, coordination "
+                + $"+{effectiveBonus:0}, score {target.BaseScore:0}→{finalScore:0}";
         }
 
         // Advances an already-committed AirStrike sortie — re-validates the sortie every step (per

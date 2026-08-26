@@ -611,7 +611,8 @@ namespace Game.Ai
                     var task = new AiTask
                     {
                         Kind = AiTaskKind.AirRecon, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,
-                        LandingHex = target.Value.Sortie.LandingHex, AirOutbound = true,
+                        LandingHex = target.Value.LandingHex, AirOutbound = true,
+                        IsMultiTurnSortie = target.Value.RequiredTurns > 1,
                     };
                     results.Add(AiDecision.Move(candidate.ExistingArmy, target.Value.Hex, target.Value.Reason, task, target.Value.Score,
                         AiTaskCategory.Reconnaissance));

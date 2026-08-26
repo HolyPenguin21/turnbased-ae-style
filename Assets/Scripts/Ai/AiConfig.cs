@@ -1230,6 +1230,15 @@ namespace Game.Ai
         // coordinationBonus is summed, so a raid-supporting strike's bonus isn't wasted clamping an
         // already-capped number.
         public const float airStrikeScoreCap = 118f;
+        // ---- AirStrike · multi-turn/helicopter routes (2026-08-26 multi-turn aviation spec) ----
+        // AirStrikeTask.ScoreTarget's own penalty for a route needing more than one real game turn
+        // to reach the target (RequiredTurns-1) and for each intermediate safe-unlanded-end it
+        // spends away from an owned airfield (RequiredUnlandedEnds) — deliberately small next to
+        // airStrikeBaseWeight/airStrikeTargetValueWeight so a genuinely valuable multi-turn strike
+        // can still win, per spec point 10's own "не делать штраф настолько большим, чтобы
+        // вертолётная механика фактически никогда не использовалась".
+        public const float airStrikeExtraTurnPenalty = 8f;
+        public const float airStrikeUnlandedEndPenalty = 4f;
         // ---- AirStrike · Raid coordination (2026-08-26, project owner's own spec) ----
         // AiAggressionPlanner.EvaluateRaidSupport's own bonus formula: flat base the instant an air
         // strike measurably improves an active RaidWeakerArmy task's own WorthIt win chance against
@@ -1307,6 +1316,11 @@ namespace Game.Ai
         // opportunity can outweigh the plain distance penalty of the extra flight it costs, without
         // being able to out-vote a hex that's genuinely far more informative.
         public const float airReconForwardLandingWeight = 2f;
+        // AirReconTask.FindReconHex's own penalty for a multi-turn route — same shape/reasoning as
+        // airStrikeExtraTurnPenalty/airStrikeUnlandedEndPenalty above, sized for AirRecon's own
+        // narrower score band (2026-08-26 multi-turn aviation spec, point 11).
+        public const float airReconExtraTurnPenalty = 6f;
+        public const float airReconUnlandedEndPenalty = 3f;
         // AirStrikeTask.IsEligibleAircraft's own floor — an air group (stored or already airborne)
         // needs at least this many aircraft still able to attack this turn before AirStrike will
         // even consider it a launch candidate; below this, waiting for the hand/airfield to build

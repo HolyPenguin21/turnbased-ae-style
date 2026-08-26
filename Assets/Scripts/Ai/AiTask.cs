@@ -116,6 +116,18 @@ namespace Game.Ai
         Turtle,
     }
 
+    // AirStrike/AirRecon only (2026-08-26 multi-turn aviation spec, point 9) — the explicit name
+    // for what AiTask.AirOutbound's own bool already encodes. Kept as a derived property on AiTask
+    // rather than a second stored field on purpose — the spec's own "не должно существовать двух
+    // независимых источников истины" — AirOutbound stays the one real field every existing
+    // ContinueSortie/LaunchRoutine/TryStartAir* call site already reads and writes; this enum is
+    // purely a clearer name for the same state, for new code and diagnostics to read by.
+    public enum AiAirMissionPhase
+    {
+        ToAction,
+        Returning,
+    }
+
     public static class AiTaskCatalog
     {
         public static AiTaskCategory CategoryOf(AiTaskKind kind)
@@ -411,6 +423,23 @@ namespace Game.Ai
         // not reacting to a threat) — set once per leg-transition by TryContinueAirStrikeTask/
         // TryContinueAirReconTask, never toggled back.
         public bool AirOutbound = true;
+
+        // AirStrike/AirRecon only — the same state as AirOutbound, named per the multi-turn
+        // aviation spec's own AiAirMissionPhase (point 9). Purely a readable alias, never a second
+        // source of truth — see that enum's own comment.
+        public AiAirMissionPhase AirMissionPhase
+        {
+            get => AirOutbound ? AiAirMissionPhase.ToAction : AiAirMissionPhase.Returning;
+            set => AirOutbound = value == AiAirMissionPhase.ToAction;
+        }
+
+        // AirStrike/AirRecon only (2026-08-26 multi-turn aviation spec) — true while this sortie's
+        // current committed plan is a AiAviationSupport.MultiTurnSortie (a route spanning more than
+        // one real game turn) rather than a same-turn AiAviationSupport.Sortie. Set fresh by
+        // AiAviationSupport.ContinueSortie every single step, purely descriptive/for logging — never
+        // trusted to decide anything, same "recomputed live, never stale" rule every other
+        // AiAviationSupport-owned field on this task already follows.
+        public bool IsMultiTurnSortie;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

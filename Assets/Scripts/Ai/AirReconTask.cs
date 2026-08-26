@@ -17,17 +17,27 @@ namespace Game.Ai
         public readonly struct ReconTarget
         {
             public readonly HexCoord Hex;
-            public readonly AiAviationSupport.Sortie Sortie;
+            // Exactly one of Sortie/MultiTurn is ever set (2026-08-26 multi-turn aviation spec) —
+            // same "same-turn wins whenever it exists, multi-turn only as fallback" rule
+            // AirStrikeTask.StrikeTarget's own pair follows — see FindReconHex.
+            public readonly AiAviationSupport.Sortie? Sortie;
+            public readonly AiAviationSupport.MultiTurnSortie? MultiTurn;
             public readonly float Score;
             public readonly string Reason;
 
-            public ReconTarget(HexCoord hex, AiAviationSupport.Sortie sortie, float score, string reason)
+            public ReconTarget(HexCoord hex, AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
+                float score, string reason)
             {
                 Hex = hex;
                 Sortie = sortie;
+                MultiTurn = multiTurn;
                 Score = score;
                 Reason = reason;
             }
+
+            public HexCoord LandingHex => Sortie?.LandingHex ?? MultiTurn?.LandingHex ?? default;
+            public int RequiredTurns => Sortie.HasValue ? 1 : (MultiTurn?.RequiredTurns ?? 1);
+            public int RequiredUnlandedEnds => MultiTurn?.RequiredUnlandedEnds ?? 0;
         }
 
         // Scans a bounded ring around the launch/current hex (loosely sized off the fleet's own
@@ -75,8 +85,25 @@ namespace Game.Ai
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
                     ? AiAviationSupport.TryPlanSortie(candidate.ExistingArmy, hex, map, actor)
                     : AiAviationSupport.TryPlanSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
+
+                // No same-turn round trip — fall back to a proven-safe multi-turn route the same
+                // way AirStrikeTask.FindTargets does (2026-08-26 multi-turn aviation spec, point 11).
+                // TryPlanMultiTurnSortie/FromStorage already simulate the WHOLE trip (there and back)
+                // turn-by-turn before ever returning a value, so a helicopter can never be offered a
+                // recon hex it can reach but not safely leave again — the spec's own "не должен
+                // использовать весь запас топлива для движения к цели, оставляя невозможным возврат"
+                // is enforced there, not here.
+                AiAviationSupport.MultiTurnSortie? multiTurn = null;
                 if (!sortie.HasValue)
-                    continue;
+                {
+                    multiTurn = candidate.ExistingArmy != null
+                        ? AiAviationSupport.TryPlanMultiTurnSortie(candidate.ExistingArmy, hex, map, actor)
+                        : AiAviationSupport.TryPlanMultiTurnSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
+                    if (!multiTurn.HasValue)
+                        continue;
+                }
+                HexCoord landingHex = sortie?.LandingHex ?? multiTurn.Value.LandingHex;
+                int totalCost = sortie?.TotalCost ?? multiTurn.Value.TotalRouteCost;
 
                 float forwardBonus = EnemyConcentrationForwardBonus(actor, start, hex) * AiConfig.airReconForwardWeight;
                 float freshBonus = everSeen ? AiConfig.airReconForwardWeight * 0.5f : AiConfig.airReconForwardWeight;
@@ -95,20 +122,36 @@ namespace Game.Ai
                 // earns a modest nudge and a genuinely valuable relocation can outweigh the plain
                 // distance penalty of the extra flight it costs.
                 float forwardLandingBonus = 0f;
-                if (!sortie.Value.LandingHex.Equals(start))
+                if (!landingHex.Equals(start))
                 {
                     int startForward = AiAviationSupport.NearestKnownEnemyDistance(actor, start);
-                    int landingForward = AiAviationSupport.NearestKnownEnemyDistance(actor, sortie.Value.LandingHex);
+                    int landingForward = AiAviationSupport.NearestKnownEnemyDistance(actor, landingHex);
                     if (landingForward < startForward)
                         forwardLandingBonus = (startForward - landingForward) * AiConfig.airReconForwardLandingWeight;
                 }
 
                 float score = AiConfig.airReconBaseWeight + forwardBonus + freshBonus + forwardLandingBonus
-                    - sortie.Value.TotalCost * AiConfig.airReconDistancePenalty;
+                    - totalCost * AiConfig.airReconDistancePenalty;
+
+                string reasonSuffix = everSeen ? " — stale info" : " — unexplored";
+                string reason;
+                if (multiTurn.HasValue)
+                {
+                    // Extra-turn/unlanded-end penalties (spec point 11) — small relative to
+                    // airReconBaseWeight/airReconForwardWeight so a genuinely valuable multi-turn
+                    // recon flight can still win, matching AirStrikeTask.ScoreTarget's own restraint.
+                    score -= Mathf.Max(0, multiTurn.Value.RequiredTurns - 1) * AiConfig.airReconExtraTurnPenalty;
+                    score -= multiTurn.Value.RequiredUnlandedEnds * AiConfig.airReconUnlandedEndPenalty;
+                    reason = $"recon flight toward ({hex.Q},{hex.R}) — {multiTurn.Value.RequiredTurns}-turn route, "
+                        + $"{multiTurn.Value.RequiredUnlandedEnds} safe unlanded end(s) required" + reasonSuffix;
+                }
+                else
+                {
+                    reason = $"recon flight toward ({hex.Q},{hex.R})" + reasonSuffix;
+                }
 
                 if (best == null || score > best.Value.Score)
-                    best = new ReconTarget(hex, sortie.Value, score,
-                        $"recon flight toward ({hex.Q},{hex.R})" + (everSeen ? " — stale info" : " — unexplored"));
+                    best = new ReconTarget(hex, sortie, multiTurn, score, reason);
             }
             return best;
         }

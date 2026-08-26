@@ -105,6 +105,26 @@ namespace Game.Ai
             return reserved;
         }
 
+        // How many MORE times this group can safely end a turn away from an owned airfield right
+        // now, before AviationTurnLifecycle.ResolveEndOfTurn's own fuel-damage rule
+        // (ConsecutiveUnlandedEnds > TurnsWithoutRefuel) would fire. A plane (TurnsWithoutRefuel==0,
+        // never landed away) always reads 0 here — the existing single-turn Sortie/PlanSortieCore
+        // model already covers it exactly as before (2026-08-26 multi-turn aviation spec, point 6:
+        // "самолёты должны сохранить текущее поведение"). A mixed group is bound by its single most
+        // fuel-limited member (spec point 2/14: "группа ограничена самым ограниченным участником")
+        // — never per-member, since this codebase never splits an air army mid-flight.
+        public static int SafeUnlandedEndsRemaining(IReadOnlyList<UnitData> aircraft)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+                return 0;
+            int min = int.MaxValue;
+            foreach (UnitData unit in aircraft)
+                min = Mathf.Min(min, Mathf.Max(0, unit.TurnsWithoutRefuel - unit.ConsecutiveUnlandedEnds));
+            return min == int.MaxValue ? 0 : min;
+        }
+
+        public static int SafeUnlandedEndsRemaining(ArmyData airArmy) => SafeUnlandedEndsRemaining(airArmy?.Members);
+
         // start airfield -> action hex -> any owned airfield with free capacity — the shared
         // safety invariant every AirStrike/AirRecon continuation re-derives fresh (never cached on
         // the task) before proposing a launch or a further step.
@@ -227,6 +247,254 @@ namespace Game.Ai
                 }
             }
             return best;
+        }
+
+        // Multi-turn aviation spec (2026-08-26, project owner's own follow-up to the helicopter/
+        // TurnsWithoutRefuel cards already in play): a Sortie above only ever proves a round trip
+        // that fits inside ONE turn's own movement budget — the correct, safe model for a plane
+        // (TurnsWithoutRefuel==0, must always land the very turn it flies), but needlessly grounds
+        // any card with a positive TurnsWithoutRefuel margin whenever the target is merely a little
+        // farther than one turn's reach. This struct/pair of planners covers exactly that second
+        // case: a route that may span several real game turns, proven safe end-to-end (start ->
+        // action -> landing) BEFORE it's ever offered as a candidate, the same "prove the whole trip
+        // up front" contract Sortie already keeps, just extended across turn boundaries via
+        // TrySimulateHexSequence below. RequiredUnlandedEnds is the worst single stretch of
+        // consecutive turn-ends this route asks the group to spend away from ANY owned airfield —
+        // must never exceed SafeUnlandedEndsRemaining, checked live at every step (never trusted
+        // stale once committed — see ContinueSortie).
+        public readonly struct MultiTurnSortie
+        {
+            public readonly HexCoord ActionHex;
+            public readonly HexCoord LandingHex;
+            public readonly HexPath PathToAction;
+            public readonly HexPath PathFromActionToLanding;
+            public readonly int TotalRouteCost;
+            public readonly int RequiredTurns;
+            public readonly int RequiredUnlandedEnds;
+            public readonly HexCoord CurrentTurnDestination;
+            public readonly bool ReachesActionThisTurn;
+            public readonly bool LandsThisTurn;
+
+            public MultiTurnSortie(HexCoord actionHex, HexCoord landingHex, HexPath pathToAction,
+                HexPath pathFromActionToLanding, int totalRouteCost, int requiredTurns, int requiredUnlandedEnds,
+                HexCoord currentTurnDestination, bool reachesActionThisTurn, bool landsThisTurn)
+            {
+                ActionHex = actionHex;
+                LandingHex = landingHex;
+                PathToAction = pathToAction;
+                PathFromActionToLanding = pathFromActionToLanding;
+                TotalRouteCost = totalRouteCost;
+                RequiredTurns = requiredTurns;
+                RequiredUnlandedEnds = requiredUnlandedEnds;
+                CurrentTurnDestination = currentTurnDestination;
+                ReachesActionThisTurn = reachesActionThisTurn;
+                LandsThisTurn = landsThisTurn;
+            }
+        }
+
+        public static MultiTurnSortie? TryPlanMultiTurnSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
+                return null;
+            return PlanMultiTurnSortieCore(airArmy.Hex, airArmy, airArmy.Members, airArmy.CurrentMovement,
+                path => AviationRules.PathMoveCost(airArmy, path), airArmy.Members.Count, 0, actionHex, map, owner);
+        }
+
+        public static MultiTurnSortie? TryPlanMultiTurnSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
+            HexCoord actionHex, HexMap map, PlayerSetupData owner)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+                return null;
+            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            return PlanMultiTurnSortieCore(airfieldHex, null, aircraft, movement, path => path.Hexes.Count - 1,
+                aircraft.Count, aircraft.Count, actionHex, map, owner);
+        }
+
+        // Same landing search as PlanSortieCore (capacity/AA hard filter/forward-then-cost ranking,
+        // all through the exact same FreeLandingCapacity/KnownAaExposure/NearestKnownEnemyDistance
+        // helpers) except the round-trip feasibility test is TrySimulateHexSequence's own turn-by-
+        // turn simulation instead of a flat "outboundCost + returnCost <= movement" check. Ranks by
+        // fewest real turns first (a helicopter that can reach and return in 2 turns always beats
+        // one needing 3, regardless of forwardness/cost), THEN forwardness, THEN cost — same
+        // tie-break shape PlanSortieCore already uses, just with RequiredTurns as the new outermost
+        // tier. Returns null outright whenever this group has no safe unlanded-end margin at all
+        // (SafeUnlandedEndsRemaining <= 0) — that's exactly a plane, and planes stay on
+        // PlanSortieCore's existing single-turn model untouched (spec point 6).
+        private static MultiTurnSortie? PlanMultiTurnSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
+            IReadOnlyList<UnitData> aircraft, int firstTurnMovement, System.Func<HexPath, int> pathCost,
+            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+        {
+            if (map == null || owner == null)
+                return null;
+            int safeRemaining = SafeUnlandedEndsRemaining(aircraft);
+            if (safeRemaining <= 0)
+                return null;
+
+            HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex, flatCost: true);
+            if (outbound == null)
+                return null;
+            if (KnownAaExposure(owner, outbound) > 0)
+                return null; // known AA anywhere on the outbound leg — hard filter, whole-route (spec point 7)
+
+            MultiTurnSortie? best = null;
+            int bestTurns = int.MaxValue;
+            int bestForward = int.MaxValue;
+            int bestCost = int.MaxValue;
+            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
+            {
+                int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
+                if (landing.Equals(startHex))
+                    freeSlots += vacatingAtStart;
+                if (freeSlots < requiredSlots)
+                    continue;
+                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
+                if (ret == null)
+                    continue;
+                if (KnownAaExposure(owner, ret) > 0)
+                    continue; // known AA on the return leg — same hard filter as the outbound leg
+
+                if (!TrySimulateHexSequence(CombineRoute(outbound, ret), outbound.Hexes.Count - 1, firstTurnMovement,
+                    aircraft, safeRemaining, owner, out int requiredTurns, out int requiredUnlandedEnds,
+                    out HexCoord turn1Destination, out bool reachesActionThisTurn, out bool landsThisTurn))
+                    continue;
+
+                int totalCost = pathCost(outbound) + pathCost(ret);
+                int forward = NearestKnownEnemyDistance(owner, landing);
+                bool better = best == null || requiredTurns < bestTurns
+                    || (requiredTurns == bestTurns && forward < bestForward)
+                    || (requiredTurns == bestTurns && forward == bestForward && totalCost < bestCost);
+                if (better)
+                {
+                    best = new MultiTurnSortie(actionHex, landing, outbound, ret, totalCost, requiredTurns,
+                        requiredUnlandedEnds, turn1Destination, reachesActionThisTurn, landsThisTurn);
+                    bestTurns = requiredTurns;
+                    bestForward = forward;
+                    bestCost = totalCost;
+                }
+            }
+            return best;
+        }
+
+        // The multi-turn analogue of TryReplan — an emergency (or merely "no same-turn route
+        // exists any more") return-to-base search for an army with a genuine safe-unlanded-ends
+        // margin left. Returns null the instant that margin is already zero — a fuel-exhausted
+        // group has no multi-turn safety net at all, TryReplan's own single-turn search (or holding
+        // position) is the only honest option left for it, exactly as before this feature existed.
+        public static MultiTurnSortie? TryReplanMultiTurnReturn(ArmyData airArmy, HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
+                return null;
+            int safeRemaining = SafeUnlandedEndsRemaining(airArmy.Members);
+            if (safeRemaining <= 0)
+                return null;
+
+            MultiTurnSortie? best = null;
+            int bestTurns = int.MaxValue;
+            int bestCost = int.MaxValue;
+            int bestForward = int.MaxValue;
+            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
+            {
+                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
+                    continue;
+                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
+                if (path == null)
+                    continue;
+                if (KnownAaExposure(owner, path) > 0)
+                    continue;
+
+                if (!TrySimulateHexSequence(path.Hexes, 0, airArmy.CurrentMovement, airArmy.Members, safeRemaining, owner,
+                    out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination, out _, out bool landsThisTurn))
+                    continue;
+
+                int cost = AviationRules.PathMoveCost(airArmy, path);
+                int forward = NearestKnownEnemyDistance(owner, landing);
+                bool better = best == null || requiredTurns < bestTurns
+                    || (requiredTurns == bestTurns && cost < bestCost)
+                    || (requiredTurns == bestTurns && cost == bestCost && forward < bestForward);
+                if (better)
+                {
+                    best = new MultiTurnSortie(airArmy.Hex, landing, null, path, cost, requiredTurns,
+                        requiredUnlandedEnds, turn1Destination, false, landsThisTurn);
+                    bestTurns = requiredTurns;
+                    bestCost = cost;
+                    bestForward = forward;
+                }
+            }
+            return best;
+        }
+
+        private static IReadOnlyList<HexCoord> CombineRoute(HexPath outbound, HexPath returnPath)
+        {
+            var hexes = new List<HexCoord>(outbound.Hexes);
+            hexes.AddRange(returnPath.Hexes.Skip(1));
+            return hexes;
+        }
+
+        // Turn-by-turn feasibility core shared by PlanMultiTurnSortieCore (a two-leg start->action->
+        // landing route) and TryReplanMultiTurnReturn (a single landing-only leg, actionIndex 0 —
+        // "the action already happened, everything from here on is the return"). Walks the route
+        // hex-by-hex, spending firstTurnMovement this turn and each aircraft's own fresh
+        // EffectiveMoveMax (min across the group) every turn after — mirrors ArmyData.CurrentMovement/
+        // MaxMovement's own "min across members" rule (spec point 2/14), never a per-member split.
+        // A turn-end hex that IS an owned airfield fully resets the simulated fuel counter (matching
+        // AviationRules.ResetAfterLanding — landing anywhere owned refuels, not just the original
+        // launch field); any other turn-end increments it, and the route is rejected the instant that
+        // running count would exceed safeRemaining — exactly the live game's own
+        // "ConsecutiveUnlandedEnds > TurnsWithoutRefuel" damage rule (AviationTurnLifecycle.
+        // ResolveEndOfTurn), simulated here as a pure query, never touching real unit state (spec
+        // point 15 — "не менять fuel-damage механику").
+        private static bool TrySimulateHexSequence(IReadOnlyList<HexCoord> hexes, int actionIndex, int firstTurnMovement,
+            IReadOnlyList<UnitData> aircraft, int safeRemaining, PlayerSetupData owner,
+            out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination,
+            out bool reachesActionThisTurn, out bool landsThisTurn)
+        {
+            requiredTurns = 0;
+            requiredUnlandedEnds = 0;
+            turn1Destination = hexes.Count > 0 ? hexes[0] : default;
+            reachesActionThisTurn = actionIndex <= 0;
+            landsThisTurn = false;
+
+            int lastIndex = hexes.Count - 1;
+            if (lastIndex <= 0)
+            {
+                landsThisTurn = true;
+                return true;
+            }
+
+            int idx = 0;
+            int used = 0;
+            int turnMovement = firstTurnMovement;
+            int maxEffective = aircraft.Min(AviationRules.EffectiveMoveMax);
+            bool first = true;
+
+            while (idx < lastIndex)
+            {
+                if (turnMovement <= 0)
+                    return false; // no movement at all this turn and the route isn't finished yet
+                idx = Mathf.Min(lastIndex, idx + turnMovement);
+                requiredTurns++;
+                HexCoord stop = hexes[idx];
+                if (first)
+                {
+                    turn1Destination = stop;
+                    reachesActionThisTurn = idx >= actionIndex;
+                    first = false;
+                }
+                if (idx == lastIndex || AviationRules.IsOwnedAirfieldAt(stop, owner))
+                {
+                    used = 0;
+                }
+                else
+                {
+                    used++;
+                    if (used > safeRemaining)
+                        return false;
+                    requiredUnlandedEnds = Mathf.Max(requiredUnlandedEnds, used);
+                }
+                turnMovement = maxEffective;
+            }
+            landsThisTurn = requiredTurns == 1;
+            return true;
         }
 
         // The "plan became invalid" fallback (target disappeared, landing base captured/destroyed/
@@ -434,40 +702,79 @@ namespace Game.Ai
             if (task.AirOutbound)
             {
                 Sortie? sortie = TryPlanSortiePreferForwardLanding(task.Army, task.TargetHex, ctx.Map, player);
-                if (!sortie.HasValue)
+                if (sortie.HasValue)
                 {
-                    HexCoord? fallback = TryReplan(task.Army, ctx.Map, player);
-                    if (fallback == null)
-                    {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable "
-                            + "owned airfield this turn, holding position.");
-                        return null;
-                    }
-                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} target/route no longer "
-                        + $"viable, turns for home to ({fallback.Value.Q},{fallback.Value.R}).");
-                    task.AirOutbound = false;
-                    task.LandingHex = fallback.Value;
-                    task.TargetHex = fallback.Value;
-                    destination = fallback.Value;
+                    task.LandingHex = sortie.Value.LandingHex;
+                    task.IsMultiTurnSortie = false;
+                    destination = task.TargetHex;
                 }
                 else
                 {
-                    task.LandingHex = sortie.Value.LandingHex;
-                    destination = task.TargetHex;
+                    // No same-turn round trip exists any more — before giving up on the target
+                    // outright, check whether this group still has enough safe-unlanded-ends margin
+                    // (SafeUnlandedEndsRemaining) to reach it and return over several turns instead
+                    // (multi-turn aviation spec, point 10: AiAggressionPlanner/AiScoutPlanner decide
+                    // to START a multi-turn sortie, but CONTINUING one re-derives the exact same
+                    // full-round-trip proof every step here, never trusting a plan made turns ago).
+                    MultiTurnSortie? multi = TryPlanMultiTurnSortie(task.Army, task.TargetHex, ctx.Map, player);
+                    if (multi.HasValue)
+                    {
+                        task.LandingHex = multi.Value.LandingHex;
+                        task.IsMultiTurnSortie = true;
+                        destination = task.TargetHex;
+                        LogMultiTurnContinuation(player, task, logLabel, multi.Value, arrivingHome: false);
+                    }
+                    else
+                    {
+                        // Neither a same-turn nor a safe multi-turn round trip exists any more —
+                        // abandon forward progress immediately and turn for home (spec point 10:
+                        // "если уже нельзя гарантировать возвращение после атаки — немедленно
+                        // отказаться от атаки и перейти к Returning").
+                        HexCoord? fallback = TryReplan(task.Army, ctx.Map, player);
+                        MultiTurnSortie? multiFallback = fallback == null ? TryReplanMultiTurnReturn(task.Army, ctx.Map, player) : null;
+                        if (fallback == null && multiFallback == null)
+                        {
+                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} — no safe "
+                                + "airfield reachable before fuel deadline; holds position.");
+                            return null;
+                        }
+                        task.AirOutbound = false;
+                        HexCoord home = fallback ?? multiFallback.Value.LandingHex;
+                        task.IsMultiTurnSortie = fallback == null;
+                        task.LandingHex = home;
+                        task.TargetHex = home;
+                        destination = home;
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} aborted — target "
+                            + "plus safe return no longer fits remaining fuel; returning to nearest safe airfield "
+                            + $"({home.Q},{home.R})" + (multiFallback.HasValue ? $" over {multiFallback.Value.RequiredTurns} turn(s)." : "."));
+                    }
                 }
             }
             else
             {
                 HexCoord? confirmedLanding = TryReplan(task.Army, ctx.Map, player);
-                if (confirmedLanding == null)
+                if (confirmedLanding != null)
                 {
-                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable owned "
-                        + "airfield this turn, holding position.");
-                    return null;
+                    task.LandingHex = confirmedLanding.Value;
+                    task.TargetHex = confirmedLanding.Value;
+                    task.IsMultiTurnSortie = false;
+                    destination = confirmedLanding.Value;
                 }
-                task.LandingHex = confirmedLanding.Value;
-                task.TargetHex = confirmedLanding.Value;
-                destination = confirmedLanding.Value;
+                else
+                {
+                    MultiTurnSortie? multiReturn = TryReplanMultiTurnReturn(task.Army, ctx.Map, player);
+                    if (!multiReturn.HasValue)
+                    {
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable owned "
+                            + "airfield this turn, holding position.");
+                        return null;
+                    }
+                    task.LandingHex = multiReturn.Value.LandingHex;
+                    task.TargetHex = multiReturn.Value.LandingHex;
+                    task.IsMultiTurnSortie = true;
+                    destination = multiReturn.Value.LandingHex;
+                    LogMultiTurnContinuation(player, task, logLabel, multiReturn.Value, arrivingHome: true);
+                }
             }
 
             if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination, task))
@@ -478,6 +785,26 @@ namespace Game.Ai
 
             string reason = task.AirOutbound ? outboundReason : "returns to land";
             return AiDecision.Move(task.Army, nextStep.Value, reason, task, continuationScore, category);
+        }
+
+        // Multi-turn diagnostic line (spec point 12/16) — reports the group's own live
+        // SafeUnlandedEndsRemaining against what this specific plan still needs, so a playtester can
+        // see exactly when the next turn's landing stops being optional. `arrivingHome` only changes
+        // the wording (still pressing toward the objective vs. already turned for home).
+        private static void LogMultiTurnContinuation(PlayerSetupData player, AiTask task, string logLabel,
+            MultiTurnSortie multi, bool arrivingHome)
+        {
+            int safeNow = SafeUnlandedEndsRemaining(task.Army.Members);
+            int remainingAfter = Mathf.Max(0, safeNow - multi.RequiredUnlandedEnds);
+            string deadline = remainingAfter <= 0
+                ? "next turn must land"
+                : $"{remainingAfter} safe unlanded end(s) remain";
+            string progress = arrivingHome
+                ? $"returns over {multi.RequiredTurns} more turn(s)"
+                : (multi.ReachesActionThisTurn ? "action reached this turn" : $"{multi.RequiredTurns}-turn route continues");
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} {progress}, "
+                + $"{multi.RequiredUnlandedEnds} safe unlanded end(s) required — {deadline}; landing "
+                + $"({multi.LandingHex.Q},{multi.LandingHex.R}).");
         }
 
         // Launch-affordability pre-check for a still-STORED group of aircraft (no ArmyData exists
