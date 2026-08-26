@@ -52,6 +52,10 @@ namespace Game.Map
         // drains this at the next turn boundary).
         [SerializeField] private BattleContactPopupUI battleContactPopup;
         [SerializeField] private BattleScreenUI battleScreen;
+        // Resolves AA reactions/air strikes as an army's own move steps land — see
+        // HexSelectionController.Movement.cs's own IssueMoveOrder, which wires this into
+        // ArmyController.MoveAlong's resolveStepAsync hook for every mover, air or ground alike.
+        [SerializeField] private AviationCombatPresenter aviationCombatPresenter;
         // Small usability margin around the marker's real projected SpriteRenderer bounds.
         // The bounds themselves scale with orthographic zoom (MapObjectVisual.ContainsScreenPoint),
         // so this never turns into the old fixed 30px invisible collider at long zoom.
@@ -274,7 +278,13 @@ namespace Game.Map
             }
             bool alreadyRemembered = visuals.TryGetValue(source.Id, out RememberedArmyVisual remembered);
             if (alreadyRemembered && remembered != null && !remembered.Hex.Equals(hex))
+            {
+                HexCoord vacatedHex = remembered.Hex;
                 RemoveRememberedArmyFromHexIndex(viewer, remembered);
+                // Whatever else is still remembered on the hex this army just moved away from
+                // (in this viewer's memory) may now need a simpler layout without it.
+                ReapplyRememberedLayout(viewer, vacatedHex);
+            }
             if (!alreadyRemembered || remembered == null || remembered.Visual == null)
             {
                 MapObjectVisual visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
@@ -292,12 +302,6 @@ namespace Game.Map
             int constructionDefense = observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
             remembered.Snapshot.VisualSnapshotConstructionDefense = constructionDefense;
             remembered.Snapshot.VisualSnapshotDefenseBonus = terrainDefense + constructionDefense;
-            // A remembered marker must never preserve the live hex layout: an offset in fog
-            // would reveal that another army or building shares this hex. Last-seen content is
-            // intentionally a single, centred marker until vision returns.
-            remembered.Visual.transform.position = map != null
-                ? map.HexToWorld(hex)
-                : source.Controller.transform.position;
             remembered.Visual.transform.rotation = source.Controller.transform.rotation;
             remembered.Visual.transform.localScale = source.Controller.transform.localScale;
             remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
@@ -308,6 +312,57 @@ namespace Game.Map
                 remembered.Visual.SetIcon(ownerCatalog.armyIcon);
             remembered.Visual.SetVisible(false);
             AddRememberedArmyToHexIndex(viewer, remembered);
+            // Position last, after the hex index is up to date — see ReapplyRememberedLayout's
+            // own comment for why a remembered building+army pair is safe to lay out for real
+            // instead of collapsing to centre (per the project owner's own 2026-08-26 follow-up).
+            ReapplyRememberedLayout(viewer, hex);
+        }
+
+        // Computes the SAME per-owner offset layout the live map uses (HexObjectLayout), but from
+        // what THIS viewer has actually remembered TOGETHER for `hex` — never from the live/
+        // current occupants, which may include something this viewer never actually confirmed.
+        // A remembered building-ghost and army-ghost(s) for the same hex are always written
+        // together, from the very same moment of real vision (see
+        // RememberCurrentlyVisibleContent/OnBuildingVisualStateChanged) — an army that only moves
+        // onto the hex AFTER fog falls never gets a remembered entry at all, so a pair that DOES
+        // coexist here already reflects a single confirmed snapshot. Laying that pair out with
+        // real offsets instead of forcing them into one blob therefore discloses nothing beyond
+        // what's already being shown — unlike the live map, where a lone army arriving on a hex
+        // whose building this viewer hasn't personally confirmed yet still must NOT get an offset
+        // (that would announce the building's presence for free); this method only ever runs for
+        // already-remembered content, so that original concern doesn't apply here.
+        private void ReapplyRememberedLayout(PlayerSetupData viewer, HexCoord hex)
+        {
+            if (map == null || gameConfig == null)
+                return;
+
+            MapObjectVisual buildingVisual = null;
+            if (_rememberedBuildingVisuals.TryGetValue(viewer, out Dictionary<HexCoord, MapObjectVisual> buildingVisuals))
+                buildingVisuals.TryGetValue(hex, out buildingVisual);
+            bool hasBuilding = buildingVisual != null;
+
+            var owners = new List<PlayerSetupData>();
+            List<RememberedArmyVisual> atHex = null;
+            if (_rememberedArmyVisualsByHex.TryGetValue(viewer, out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex))
+                byHex.TryGetValue(hex, out atHex);
+            if (atHex != null)
+                foreach (RememberedArmyVisual remembered in atHex)
+                    if (remembered.Snapshot != null && !owners.Contains(remembered.Snapshot.Owner))
+                        owners.Add(remembered.Snapshot.Owner);
+
+            HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding, owners);
+
+            if (hasBuilding)
+                buildingVisual.transform.position = map.HexToWorld(hex) + ToWorldOffset(layout.BuildingOffset);
+            if (atHex != null)
+                foreach (RememberedArmyVisual remembered in atHex)
+                {
+                    if (remembered.Visual == null || remembered.Snapshot == null)
+                        continue;
+                    int index = owners.IndexOf(remembered.Snapshot.Owner);
+                    Vector2 offset = index >= 0 ? layout.ArmyOffsets[index] : Vector2.zero;
+                    remembered.Visual.transform.position = map.HexToWorld(hex) + ToWorldOffset(offset);
+                }
         }
 
         private void AddRememberedArmyToHexIndex(PlayerSetupData viewer, RememberedArmyVisual remembered)
@@ -351,10 +406,16 @@ namespace Game.Map
             foreach (int armyId in stale)
             {
                 RememberedArmyVisual remembered = visuals[armyId];
+                HexCoord vacatedHex = remembered.Hex;
                 RemoveRememberedArmyFromHexIndex(viewer, remembered);
                 visuals.Remove(armyId);
                 if (remembered.Visual != null)
                     Destroy(remembered.Visual.gameObject);
+                // Whatever else is still remembered at this hex (a building ghost, another
+                // owner's army ghost) may now need to fall back to a simpler layout without this
+                // one — e.g. a lone remembered building re-centres once its only companion army
+                // ghost is gone.
+                ReapplyRememberedLayout(viewer, vacatedHex);
             }
         }
 
@@ -385,8 +446,26 @@ namespace Game.Map
                         remembered.Visual.SetVisible(visible);
         }
 
+        // VisualStateChanged fires for both a capture (building != null, already re-owned) and a
+        // destruction (building == null — see BuildingRegistry.Unregister) — either way, any
+        // IsAirfield army still sitting on this hex under a DIFFERENT owner than the building's
+        // new one (or any owner at all, once the building is simply gone) has lost the base that
+        // gave it a right to be here. Its stored aircraft go back to their own owner's hand
+        // rather than just disappearing; an actual airborne IsAirArmy above the hex is untouched
+        // (AviationRules.IsAirfield already excludes it).
+        private void ReturnStaleAirfieldsAt(HexCoord hex, BuildingData building)
+        {
+            var staleAirfields = new List<ArmyData>();
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+                if (AviationRules.IsAirfield(army) && (building == null || army.Owner != building.Owner))
+                    staleAirfields.Add(army);
+            foreach (ArmyData army in staleAirfields)
+                AviationActions.ReturnStoredAircraftToDeck(army, this);
+        }
+
         private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
         {
+            ReturnStaleAirfieldsAt(hex, building);
             if (GameSession.Players == null)
                 return;
             foreach (PlayerSetupData viewer in GameSession.Players)
@@ -419,13 +498,13 @@ namespace Game.Map
                 snapshot.name = source.name + " (Last Seen)";
                 visuals[hex] = snapshot;
             }
-            // As with army memory above, a fogged remembered building never keeps a corner
-            // layout from its last visible frame: that position would disclose a co-occupant.
-            snapshot.transform.position = map != null ? map.HexToWorld(hex) : source.transform.position;
             snapshot.transform.rotation = source.transform.rotation;
             snapshot.transform.localScale = source.transform.localScale;
             snapshot.CopyAppearanceFrom(source);
             snapshot.SetVisible(false);
+            // Position last — see ReapplyRememberedLayout's own comment for why a remembered
+            // building+army pair is safe to lay out for real instead of collapsing to centre.
+            ReapplyRememberedLayout(viewer, hex);
         }
 
         private void RemoveRememberedBuildingVisual(PlayerSetupData viewer, HexCoord hex)
@@ -439,6 +518,9 @@ namespace Game.Map
                 snapshot.SetVisible(false);
                 Destroy(snapshot.gameObject);
             }
+            // The building ghost is gone — any remembered army(ies) still at this hex must fall
+            // back to whatever layout fits without it (e.g. a lone remembered army re-centres).
+            ReapplyRememberedLayout(viewer, hex);
         }
 
         private void RefreshRememberedBuildingVisual(HexCoord hex)

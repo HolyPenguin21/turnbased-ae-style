@@ -148,10 +148,25 @@ namespace Game.Map
             // technical red for a path that ends in enemy contact (see Game.Combat.
             // BattleInitiator) — same truncation TryIssueMoveOrder itself will apply, so the
             // preview always shows exactly where the army will actually stop.
-            ArmyData enemyArmy = null;
-            if (!AviationRules.IsAirArmy(army))
-                path = TruncateAtEnemyContact(path, army, out enemyArmy);
-            Color color = enemyArmy != null ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
+            Color color;
+            if (AviationRules.IsAirArmy(army))
+            {
+                // An air army's own attack (AA reaction/air strike, see
+                // Game.Aviation.AviationCombatPresenter) never resolves via "move onto/next to an
+                // enemy" the way ground contact does (see HandleVisionStep's own comment: ground
+                // contact never halts an air army mid-flight), so TruncateAtEnemyContact's
+                // path-end check doesn't apply here at all. Per the project owner's own spec:
+                // red/green instead reflects whether this army still HAS an attack left to spend
+                // this turn (any member not yet HasAirAttackedThisTurn) versus already spent —
+                // same red-means-can-attack/green-means-can't meaning as the ground arrow, just
+                // keyed off the per-turn attack budget instead of a specific target on the path.
+                color = HasAirAttackAvailable(army) ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
+            }
+            else
+            {
+                path = TruncateAtEnemyContact(path, army, out ArmyData enemyArmy);
+                color = enemyArmy != null ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
+            }
 
             var points = new List<Vector3>(path.Hexes.Count);
             foreach (HexCoord hex in path.Hexes)
@@ -162,6 +177,17 @@ namespace Game.Map
             // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
             // ArmyController.MoveRoutine really charges), so the preview must show that instead.
             _pathArrow.Show(points, AviationRules.PathMoveCost(army, path), apCost, energyCost, color);
+        }
+
+        // Whether ANY member of an air army still has its own attack available this turn — see
+        // ShowPathArrow's own comment on why an air army's arrow colour keys off this instead of
+        // TruncateAtEnemyContact's target-on-path check.
+        private static bool HasAirAttackAvailable(ArmyData army)
+        {
+            foreach (UnitData member in army.Members)
+                if (!member.HasAirAttackedThisTurn)
+                    return true;
+            return false;
         }
 
         // Truncates `path` at the first hex (after the origin) holding a combat-capable enemy
@@ -587,7 +613,11 @@ namespace Game.Map
                     return HandleVisionStep(army, hex);
                 },
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
-                onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true));
+                onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),
+                resolveStepAsync: aviationCombatPresenter != null
+                    ? (System.Func<HexCoord, HexCoord, ArmyController.StepResolutionOutcome, System.Collections.IEnumerator>)
+                        ((from, to, outcome) => aviationCombatPresenter.ResolveStep(army, to, outcome))
+                    : null);
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);

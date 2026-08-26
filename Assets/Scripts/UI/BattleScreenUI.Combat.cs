@@ -280,6 +280,20 @@ namespace Game.UI
             // while a real battle's panelRoot IS already showing, so that one still narrates.
             RunNextCaptureKillChallenge(pending, () =>
             {
+                // This hero-only encounter never goes through OnBattleOutcomeAcknowledged (see
+                // this method's own comment — attackPopup IS the entire encounter), so unlike a
+                // normal battle it never got that method's own Fate replenish either. Without
+                // this, a hero who spent Fate defending here (e.g. an Escaped outcome) stayed
+                // permanently short on a LATER Capture Kill attempt against the same hero —
+                // FateMax stayed correct as the roll's own pool size (see BeginCaptureKill), but
+                // the actual current Fate available to spend during the duel never recovered
+                // (see the project owner's own report: the defending side's Fate wasn't full on
+                // a second capture attempt). Both sides, same as OnBattleOutcomeAcknowledged.
+                foreach (UnitData unit in hunterArmy.Members)
+                    unit.ReplenishFateForNewBattle();
+                foreach (UnitData unit in targetArmy.Members)
+                    unit.ReplenishFateForNewBattle();
+
                 // hunterArmy.Hex (captured BEFORE any of this runs — see hunterArmy's own
                 // comment on why it's stable here even for a targetArmy that ends up retreating)
                 // rather than targetArmy.Hex — a hero that Escaped this exact Challenge stays a
@@ -426,6 +440,20 @@ namespace Game.UI
                 return;
             BuildingData building = BuildingRegistry.FindAt(loserArmy.Hex);
             if (building == null || building.Owner != loserArmy.Owner)
+                return;
+            // A base can have more than one defending army on the same hex (e.g. a garrison PLUS
+            // a field army — see BattleInitiator.FindEnemyAt's own comment on why only one gets
+            // fought at a time), chained one battle at a time via ResolveHexAfterVictory. Only
+            // capture/destroy once EVERY one of the building owner's own engageable armies here
+            // is gone — same "any other defender left?" check TryHandoverVacatedBase already
+            // applies for the retreat path (BattleScreenUI.Retreat.cs). Without this, the base
+            // recoloured/gave vision to the winner the instant the FIRST defending army alone was
+            // wiped out, even with a second battle for it still pending (see the project owner's
+            // own report: clicking Delay before that second battle already showed the base as
+            // captured).
+            bool otherDefenderRemains = ArmyRegistry.AllAt(loserArmy.Hex)
+                .Any(resident => resident != loserArmy && resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident));
+            if (otherDefenderRemains)
                 return;
             BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner, hexSelectionController);
         }
@@ -623,6 +651,19 @@ namespace Game.UI
             ArmyData nextEnemy = survivor?.Owner != null && !hexPending
                 ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
                 : null;
+
+            // Diagnostics for the project owner's own report (2026-08-26): a hex left with
+            // several separate hero-only armies (e.g. a citadel's combat garrison PLUS a
+            // separate hero-only stack) is expected to chain straight into a Capture Kill
+            // Challenge for the next one (see nextEnemyHeroOnly below) rather than opening a
+            // normal battle screen — inspection didn't turn up a case where this branches wrong,
+            // so this logs every chained pick instead of guessing; compare against what the
+            // player actually saw next time this reproduces.
+            if (nextEnemy != null)
+                BattleDebugLog.Write($"[HeroChallengeDiag] ResolveHexAfterVictory at ({hex.Q},{hex.R}): survivor={survivor?.Name} " +
+                    $"({survivor?.Owner?.Nickname}) -> nextEnemy={nextEnemy.Name} ({nextEnemy.Owner?.Nickname}, " +
+                    $"members={nextEnemy.Members.Count}, heroes={nextEnemy.Members.Count(m => m.IsHero)}, " +
+                    $"IsCombatCapable={BattleInitiator.IsCombatCapable(nextEnemy)})");
 
             // True only when TriggerHexEventIfClear just opened (or reopened) a fresh guard fight
             // on THIS SAME battleScreen instance, reentrantly, from inside this very call stack —

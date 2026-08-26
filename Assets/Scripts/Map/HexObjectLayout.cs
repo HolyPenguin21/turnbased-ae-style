@@ -16,7 +16,14 @@ namespace Game.Map
     //  2. A building plus exactly one army -> the fixed building/army corner offsets.
     //  3. No building, exactly two armies of DIFFERENT owners -> side by side, mirrored around
     //     the centre (twoArmySideOffset).
-    //  4. Anything past that (a building sharing a hex with 2+ armies, 3+ armies of mixed
+    //  4. A building plus exactly two armies of DIFFERENT owners (e.g. an attacker making
+    //     contact with a defended base/citadel, battle still pending) -> the building keeps its
+    //     own corner offset, the two armies sit side by side with twoArmySideOffset same as rule
+    //     3 — same offsets just combined, rather than collapsing everyone to centre the moment a
+    //     building is involved (see the project owner's own report: armies visually snapped to
+    //     the hex centre — looking already-captured/garrison-like — while a siege battle for the
+    //     base was still pending).
+    //  5. Anything past that (a building sharing a hex with 3+ armies, 3+ armies of mixed
     //     owners, several armies of the SAME owner) isn't designed yet — same-owner stacking is
     //     a known follow-up — so everyone just stacks at centre (building keeps its own corner
     //     if present) rather than guessing a layout.
@@ -49,11 +56,11 @@ namespace Game.Map
                 return new Result(config.buildingIconOffset, armyOffsets);
             }
 
-            if (!hasBuilding && armyCount == 2 && armyOwners[0] != armyOwners[1])
+            if (armyCount == 2 && armyOwners[0] != armyOwners[1])
             {
                 armyOffsets[0] = new Vector2(-config.twoArmySideOffset.x, config.twoArmySideOffset.y);
                 armyOffsets[1] = new Vector2(config.twoArmySideOffset.x, config.twoArmySideOffset.y);
-                return new Result(Vector2.zero, armyOffsets);
+                return new Result(hasBuilding ? config.buildingIconOffset : Vector2.zero, armyOffsets);
             }
 
             // Fallback for not-yet-designed combinations — stack everyone at centre.

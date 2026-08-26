@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Core;
 using Game.Map;
 using UnityEngine;
@@ -55,6 +56,10 @@ namespace Game.UI
         public void Show(IReadOnlyList<ArmyData> armies, Action<ArmyData> onArmyClicked, ArmyData selectedArmy = null, bool showStats = false)
         {
             _armies = armies != null ? new List<ArmyData>(armies) : new List<ArmyData>();
+            // An airfield army lists before the garrison (per the project owner's own request) —
+            // a stable sort (LINQ OrderBy, not List.Sort) so every other relative ordering the
+            // caller already chose stays untouched, only airfield-vs-garrison gets reordered.
+            _armies = _armies.OrderBy(a => a.IsAirfield ? 0 : a.IsGarrison ? 2 : 1).ToList();
             _onArmyClicked = onArmyClicked;
             _selectedArmy = selectedArmy;
             _showStats = showStats;

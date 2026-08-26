@@ -184,6 +184,12 @@ namespace Game.UI
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
+        // Lets GameTurnController fold this popup into InputBlocked the same way every other
+        // map-level popup already is — needed now that Game.Aviation.AviationCombatPresenter can
+        // open this popup directly for an AA reaction/air strike, outside of BattleScreenUI
+        // entirely (which already covers its own nested Begin calls via its own VisibilityChanged).
+        public event Action VisibilityChanged;
+
         private void Awake()
         {
             if (rollButton != null)
@@ -275,6 +281,7 @@ namespace Game.UI
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
             }
+            VisibilityChanged?.Invoke();
             if (rollStateRoot != null)
                 rollStateRoot.SetActive(true);
             if (resultStateRoot != null)
@@ -425,6 +432,7 @@ namespace Game.UI
                 panelRoot.SetActive(true);
                 panelRoot.transform.SetAsLastSibling();
             }
+            VisibilityChanged?.Invoke();
             if (rollStateRoot != null)
                 rollStateRoot.SetActive(false);
             if (resultStateRoot != null)
@@ -645,6 +653,16 @@ namespace Game.UI
                 if (acceptButton != null)
                     acceptButton.interactable = true;
 
+                // Diagnostics for the project owner's own report (Ground Combat, 2026-08-26):
+                // the duel sometimes ends before the defender gets to react to/make a reroll.
+                // Nothing in RunDuel/RunHumanTurn's own structure looked wrong on inspection —
+                // this side always opens Spend/Accept first per Defender's Prerogative — so this
+                // logs the exact moment the window opens (and OnAcceptClicked logs the moment it
+                // closes) rather than guessing at a fix blind; compare timestamps/sequence next
+                // time this reproduces.
+                BattleDebugLog.Write($"[FateDuelDiag] Spend/Accept OPEN for {(isDefenderTurn ? "defender" : "attacker")} " +
+                    $"{hero?.Name} (fate={hero?.Fate}, dice={BattleDebugLog.DiceString(ownDice)})");
+
                 yield return new WaitUntil(() => _humanSpent || _humanDeclined);
 
                 _awaitingHumanDecision = false;
@@ -760,6 +778,9 @@ namespace Game.UI
         {
             if (!_awaitingHumanDecision)
                 return;
+            // See RunHumanTurn's own OPEN log — the matching close, for the same diagnostics.
+            BattleDebugLog.Write($"[FateDuelDiag] Accept clicked for {(_defenderTurnActive ? "defender" : "attacker")} " +
+                $"{(_defenderTurnActive ? _defenderHero?.Name : _attackerHero?.Name)}");
             _humanDeclined = true;
             defenderRow?.SetSpendInteractable(false);
             attackerRow?.SetSpendInteractable(false);
@@ -1084,8 +1105,10 @@ namespace Game.UI
 
         public void Hide()
         {
-            if (panelRoot != null)
-                panelRoot.SetActive(false);
+            if (panelRoot == null || !panelRoot.activeSelf)
+                return;
+            panelRoot.SetActive(false);
+            VisibilityChanged?.Invoke();
         }
     }
 }
