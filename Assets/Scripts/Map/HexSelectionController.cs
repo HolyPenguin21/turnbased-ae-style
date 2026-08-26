@@ -1162,6 +1162,11 @@ namespace Game.Map
             if (_selectedArmy != null && armiesHere.Contains(_selectedArmy.Data))
                 representativeForOwner[_selectedArmy.Data.Owner] = _selectedArmy.Data;
 
+            // Airfields have no independent marker. When one stores aircraft, the owner's
+            // garrison marker represents that container, exactly as it represents ground cards.
+            var airfieldOwners = new HashSet<PlayerSetupData>(ArmyRegistry.AllAt(hex)
+                .FindAll(a => a.IsAirfield && a.Members.Count > 0).ConvertAll(a => a.Owner));
+
             for (int i = 0; i < armiesHere.Count; i++)
             {
                 ArmyData army = armiesHere[i];
@@ -1188,7 +1193,7 @@ namespace Game.Map
                             : null;
                         if (ownerCatalog != null)
                         {
-                            Sprite icon = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyIcon != null
+                            Sprite icon = (AviationRules.IsAirArmy(army) || (army.IsGarrison && airfieldOwners.Contains(army.Owner))) && ownerCatalog.airArmyIcon != null
                                 ? ownerCatalog.airArmyIcon : ownerCatalog.armyIcon;
                             if (icon != null)
                                 controller.Visual.SetIcon(icon);
