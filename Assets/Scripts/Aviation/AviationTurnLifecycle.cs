@@ -39,7 +39,7 @@ namespace Game.Aviation
                         // emergency landings visibly severe without silently restoring damage.
                         aircraft.HitPointsCurrent = Mathf.FloorToInt(aircraft.HitPointsCurrent * 0.5f);
                         aircraft.HasEmergencyFlightPenalty = true;
-                        messages.Add($"{airArmy.Name}: {aircraft.Name} lost 50% HP because it did not finish the turn at an airfield.");
+                        messages.Add($"{airArmy.Name} at {airArmy.Hex}: {aircraft.Name} lost 50% HP because it did not finish the turn at an airfield.");
                         continue;
                     }
                     airArmy.Members.Remove(aircraft);
@@ -48,11 +48,11 @@ namespace Game.Aviation
                 if (airArmy.Members.Count == 0)
                 {
                     hexSelection?.DeleteArmyIfEmptied(airArmy);
-                    messages.Add($"{airArmy.Name}: all aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {airArmy.Hex}: all aircraft were destroyed because they did not finish the turn at an airfield.");
                 }
                 else if (destroyed > 0)
                 {
-                    messages.Add($"{airArmy.Name}: {destroyed} aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {airArmy.Hex}: {destroyed} aircraft were destroyed because they did not finish the turn at an airfield.");
                 }
             }
             return messages;
