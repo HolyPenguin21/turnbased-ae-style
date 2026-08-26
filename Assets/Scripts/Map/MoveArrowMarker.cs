@@ -54,6 +54,11 @@ namespace Game.Map
         private TextMeshPro _apBadgeText;
         private MeshFilter _apBadgeBorderFilter;
         private MeshRenderer _apBadgeBorderRenderer;
+        private MeshFilter _energyBadgeFilter;
+        private MeshRenderer _energyBadgeRenderer;
+        private TextMeshPro _energyBadgeText;
+        private MeshFilter _energyBadgeBorderFilter;
+        private MeshRenderer _energyBadgeBorderRenderer;
         private bool _initialized;
 
         private void Awake()
@@ -125,6 +130,16 @@ namespace Game.Map
             _apBadgeRenderer.sortingOrder = _style.badgeSortingOrder;
             _apBadgeText = BuildBadgeText(_apBadgeFilter, _style.badgeTextColor);
 
+            _energyBadgeBorderFilter = BuildChildMesh("EnergyBadgeBorder", shader, out _energyBadgeBorderRenderer);
+            _energyBadgeBorderFilter.mesh = BuildRingMesh(_style.badgeRadius, _style.badgeRadius + _style.badgeBorderThickness);
+            _energyBadgeBorderRenderer.sharedMaterial.color = _style.badgeBorderColor;
+            _energyBadgeBorderRenderer.sortingOrder = _style.badgeBorderSortingOrder;
+            _energyBadgeFilter = BuildChildMesh("EnergyBadge", shader, out _energyBadgeRenderer);
+            _energyBadgeFilter.mesh = BuildCircleMesh(_style.badgeRadius);
+            _energyBadgeRenderer.sharedMaterial.color = _style.apBadgeColor;
+            _energyBadgeRenderer.sortingOrder = _style.badgeSortingOrder;
+            _energyBadgeText = BuildBadgeText(_energyBadgeFilter, _style.badgeTextColor);
+
             Hide();
         }
 
@@ -171,7 +186,7 @@ namespace Game.Map
         // HexPath.Hexes converted via HexMap.HexToWorld. apCost is whatever the caller will
         // actually charge for this move (see HexSelectionController.TryIssueMoveOrder) — 0
         // once the unit's already "activated" this turn, not always 1.
-        public void Show(IReadOnlyList<Vector3> hexCenters, int cost, int apCost, Color color)
+        public void Show(IReadOnlyList<Vector3> hexCenters, int cost, int apCost, int energyCost, Color color)
         {
             if (!_initialized)
                 Initialize(null);
@@ -200,9 +215,9 @@ namespace Game.Map
             // a badge pair offset by the curve's own sideways direction would tilt with the
             // arrow instead of staying level.
             Vector3 midPosition = BadgePosition(curve);
-            float halfSpacing = _style.badgeSpacing * 0.5f;
+            float spacing = _style.badgeSpacing;
 
-            Vector3 badgePos = midPosition - Vector3.right * halfSpacing;
+            Vector3 badgePos = midPosition - Vector3.right * spacing;
             _badgeFilter.transform.position = badgePos;
             _badgeBorderFilter.transform.position = badgePos;
             _badgeText.text = cost.ToString();
@@ -210,13 +225,21 @@ namespace Game.Map
             _badgeBorderRenderer.enabled = true;
             _badgeText.gameObject.SetActive(true);
 
-            Vector3 apBadgePos = midPosition + Vector3.right * halfSpacing;
+            Vector3 apBadgePos = midPosition;
             _apBadgeFilter.transform.position = apBadgePos;
             _apBadgeBorderFilter.transform.position = apBadgePos;
             _apBadgeText.text = apCost.ToString();
             _apBadgeRenderer.enabled = true;
             _apBadgeBorderRenderer.enabled = true;
             _apBadgeText.gameObject.SetActive(true);
+
+            Vector3 energyBadgePos = midPosition + Vector3.right * spacing;
+            _energyBadgeFilter.transform.position = energyBadgePos;
+            _energyBadgeBorderFilter.transform.position = energyBadgePos;
+            _energyBadgeText.text = energyCost.ToString();
+            _energyBadgeRenderer.enabled = true;
+            _energyBadgeBorderRenderer.enabled = true;
+            _energyBadgeText.gameObject.SetActive(true);
         }
 
         public void Hide()
@@ -229,6 +252,9 @@ namespace Game.Map
             if (_apBadgeRenderer != null) _apBadgeRenderer.enabled = false;
             if (_apBadgeBorderRenderer != null) _apBadgeBorderRenderer.enabled = false;
             if (_apBadgeText != null) _apBadgeText.gameObject.SetActive(false);
+            if (_energyBadgeRenderer != null) _energyBadgeRenderer.enabled = false;
+            if (_energyBadgeBorderRenderer != null) _energyBadgeBorderRenderer.enabled = false;
+            if (_energyBadgeText != null) _energyBadgeText.gameObject.SetActive(false);
         }
 
         // One continuous Hermite spline through every waypoint, instead of an independent
