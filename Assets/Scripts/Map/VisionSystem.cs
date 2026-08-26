@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Aviation;
 using Game.Core;
 using Game.HexGrid;
 using Game.Players;
@@ -152,7 +153,7 @@ namespace Game.Map
                 HexCoord origin = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
                 // Aircraft reveal every crossed hex but never "visit" it: only their visibility
                 // is remembered, preserving the ground exploration distinction in FOW.
-                if (!army.IsAirArmy)
+                if (!AviationRules.IsAirArmy(army))
                     footprint.Add(origin);
                 // UnitAbilities.Recce raises this specific army's own radius beyond the flat
                 // default — a single shared UnitAbilityCatalog.recceRadius value (see ArmyData.
