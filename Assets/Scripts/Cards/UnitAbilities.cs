@@ -65,6 +65,11 @@ namespace Game.Cards
         // project owner's own call.
         public const string Recce = "Recce";
 
+        // Anti-air range is configured per card (CardDefinition.antiAirRadius), while this one
+        // tag says that the unit may perform the reaction at all.  Parsing stays in
+        // Game.Aviation.AntiAirRules rather than duplicated by movement and UI.
+        public const string AntiAir = "AA";
+
         // "+2 AP on this player's turn" — works on any card type (Unit/Hero/Facility/Base), same
         // as every ability here, but only while the carrier is actually IN PLAY: a member of one
         // of this player's own (non-Prison) armies, or a Base/Facility they own, per the project
@@ -126,7 +131,7 @@ namespace Game.Cards
         // automatically from there on.
         public static readonly string[] All =
         {
-            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce, ApBonus,
+            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce, AntiAir, ApBonus,
             Barracks, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 

@@ -31,7 +31,7 @@ namespace Game.Map
         // returned UnitData to whichever ArmyData it belongs to (ArmyData.AddMemberSorted) and,
         // if that changes the army's own visibility (e.g. its first member ever), refreshing the
         // hex with RestackArmiesOn.
-        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null)
+        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1)
         {
             if (owner == null)
                 return null;
@@ -46,6 +46,10 @@ namespace Game.Map
                 Attack = attack, Defense = defense, Resistance = resistance, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
                 Initiative = initiative, Fate = fate, FateMax = fate,
                 ApCost = apCost, OriginalResourceCost = resourceCost,
+                IsAviation = isAviation,
+                LaunchEnergyCost = launchEnergyCost,
+                TurnsWithoutRefuel = Mathf.Max(0, turnsWithoutRefuel),
+                AntiAirRadius = Mathf.Max(1, antiAirRadius),
             };
             if (grantedAbilities != null)
                 foreach (string ability in grantedAbilities)
@@ -107,7 +111,7 @@ namespace Game.Map
                 return;
 
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
+            if (!army.IsAirArmy && building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
                 return;
 
             ArmyRegistry.Unregister(army);
@@ -148,6 +152,7 @@ namespace Game.Map
                 Defense = definition.defenseRating,
                 Resistance = definition.resistanceRating,
                 Fate = definition.fate,
+                AirfieldCapacity = Mathf.Max(0, definition.airfieldCapacity),
             };
             building.IsBase = true;
             foreach (string ability in definition.grantedAbilities)

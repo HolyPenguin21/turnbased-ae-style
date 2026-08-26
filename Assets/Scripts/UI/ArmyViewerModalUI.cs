@@ -169,6 +169,7 @@ namespace Game.UI
 
         private void Awake()
         {
+            armyButtonRow?.SetMaxVisible(8);
             _canvas = GetComponentInParent<Canvas>();
             if (closeButton != null)
                 closeButton.onClick.AddListener(Hide);
@@ -668,8 +669,8 @@ namespace Game.UI
                 armyButtonRow.Show(_snapshotSiblings, SwitchTo, _currentArmy);
                 return;
             }
-            // Prison goes first, per the user's own spec, and only appears at all once it holds
-            // at least one captured hero; Garrison goes second. Everyone else keeps ArmyRegistry's
+            // Prison then Airfield then Garrison, per the user's own spec.  The airfield appears
+            // only once it actually stores aircraft; Garrison follows. Everyone else keeps ArmyRegistry's
             // own natural (registration) order, same as before this existed, rather than a full
             // sort that could otherwise reshuffle them unpredictably (List.Sort isn't stable).
             List<ArmyData> atHex = ArmyRegistry.AllAt(_currentArmy.Hex).FindAll(a => a.Owner == _currentArmy.Owner);
@@ -677,11 +678,14 @@ namespace Game.UI
             ArmyData prison = atHex.Find(a => a.IsPrison && a.Members.Count > 0);
             if (prison != null)
                 siblings.Add(prison);
+            ArmyData airfield = atHex.Find(a => a.IsAirfield && a.Members.Count > 0);
+            if (airfield != null)
+                siblings.Add(airfield);
             ArmyData garrison = atHex.Find(a => a.IsGarrison);
             if (garrison != null)
                 siblings.Add(garrison);
             foreach (ArmyData army in atHex)
-                if (!army.IsPrison && !army.IsGarrison)
+                if (!army.IsPrison && !army.IsAirfield && !army.IsGarrison)
                     siblings.Add(army);
             armyButtonRow.Show(siblings, SwitchTo);
         }

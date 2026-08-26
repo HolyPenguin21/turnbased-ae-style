@@ -34,6 +34,13 @@ namespace Game.UI
 
         public IReadOnlyList<ArmyButtonUI> Buttons => _buttons;
 
+        // The modal owns the "eight direct entries" UX rule; the map-side row can retain its
+        // independently configured capacity and never inherits this presentation constraint.
+        public void SetMaxVisible(int value)
+        {
+            maxVisible = Mathf.Max(1, value);
+        }
+
         private void Awake()
         {
             if (scrollLeftButton != null)

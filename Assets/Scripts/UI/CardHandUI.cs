@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -615,6 +616,20 @@ namespace Game.UI
             if (human == null)
                 return false;
 
+            // Aircraft never pass through the ordinary garrison deployment path: it would make
+            // a valid card temporarily mix with heroes/ground units and bypass airfield capacity.
+            if (definition.isAviation)
+            {
+                if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
+                        hex.Value, out string aviationFailReason))
+                {
+                    turnController.ShowSpawnHint(aviationFailReason);
+                    return false;
+                }
+                RemoveCard(card);
+                return true;
+            }
+
             if (!IsValidDropTarget(definition, human, hex.Value))
             {
                 turnController.ShowSpawnHint($"Can't deploy {definition.displayName} here — needs a building with {definition.requiredBuildingAbility}.");
@@ -742,6 +757,24 @@ namespace Game.UI
             // somewhere a fresh Unit/Hero card can ever land, per the user's own call.
             if (targetArmy.IsPrison)
                 return false;
+
+            if (definition.isAviation)
+            {
+                if (!targetArmy.IsAirfield)
+                {
+                    turnController.ShowSpawnHint("Aircraft can only be deployed into an airfield.");
+                    return false;
+                }
+                if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
+                        targetArmy.Hex, out string aviationFailReason))
+                {
+                    turnController.ShowSpawnHint(aviationFailReason);
+                    return false;
+                }
+                armyViewerModal.RefreshAfterExternalDeploy();
+                RemoveCard(card);
+                return true;
+            }
 
             if (!IsValidDropTarget(definition, human, targetArmy.Hex))
             {

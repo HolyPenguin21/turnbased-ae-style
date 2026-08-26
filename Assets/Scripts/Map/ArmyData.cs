@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
@@ -46,6 +47,11 @@ namespace Game.Map
         // HexSelectionController.RefreshArmyButtonRow), and its contents can't be dragged/moved
         // at all once shown (see ArmyViewerModalUI.IsReadOnly folding this in).
         public bool IsPrison;
+        // An airfield is an immobile aircraft container created lazily at an owned Barracks hex.
+        // An air army is the mobile counterpart.  Both remain ArmyData so the registry, FOW and
+        // modal stack keep one source of truth instead of a parallel aviation collection.
+        public bool IsAirfield;
+        public bool IsAirArmy;
         public readonly List<UnitData> Members = new List<UnitData>();
 
         // The player's own last battle-grid layout for this specific army (see
@@ -77,8 +83,10 @@ namespace Game.Map
         // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
         // empty army rather than throwing on Members[0].
-        public int CurrentMovement => Members.Count > 0 ? Members.Min(m => m.MoveCurrent) : 0;
-        public int MaxMovement => Members.Count > 0 ? Members.Min(m => m.MoveMax) : 0;
+        public int CurrentMovement => Members.Count > 0
+            ? Members.Min(AviationRules.EffectiveMoveCurrent) : 0;
+        public int MaxMovement => Members.Count > 0
+            ? Members.Min(AviationRules.EffectiveMoveMax) : 0;
 
         // Canon capacity rule, computed fresh (never cached) so it's always correct as members
         // come and go: no hero -> 2; garrison without a hero -> a higher default since it's

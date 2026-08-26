@@ -56,6 +56,17 @@ namespace Game.Units
         // an army, so there's no such thing as "this one unit already activated" any more.
         public int ActivationApCost = 1;
 
+        // Aviation state belongs to the actual card instance, rather than to its army: a mixed
+        // plane/helicopter stack can therefore apply fuel and emergency movement to each member
+        // independently before the army takes its slowest effective movement value.
+        public bool IsAviation;
+        public int LaunchEnergyCost;
+        public int TurnsWithoutRefuel;
+        public int AntiAirRadius = 1;
+        public int ConsecutiveUnlandedEnds;
+        public bool HasEmergencyFlightPenalty;
+        public bool HasAirAttackedThisTurn;
+
         // What this unit originally cost to play from hand — carried over from
         // CardDefinition.apCost/resourceCost at spawn time, same as ActivationApCost. Only
         // consumed by UnitRepair. RepairResourceCost is rolled once from this full card cost

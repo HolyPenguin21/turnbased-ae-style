@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -145,7 +146,9 @@ namespace Game.Map
             // technical red for a path that ends in enemy contact (see Game.Combat.
             // BattleInitiator) — same truncation TryIssueMoveOrder itself will apply, so the
             // preview always shows exactly where the army will actually stop.
-            path = TruncateAtEnemyContact(path, army, out ArmyData enemyArmy);
+            ArmyData enemyArmy = null;
+            if (!AviationRules.IsAirArmy(army))
+                path = TruncateAtEnemyContact(path, army, out enemyArmy);
             Color color = enemyArmy != null ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
 
             var points = new List<Vector3>(path.Hexes.Count);
@@ -210,6 +213,10 @@ namespace Game.Map
         {
             bool wasKnown = VisionSystem.IsVisible(mover.Owner, hex);
             VisionSystem.RecomputeFor(mover.Owner);
+            // Air armies still reveal the map while flying, but strategic ground contact and a
+            // foreign building never halt them; their own step resolver later handles AA/raid.
+            if (AviationRules.IsAirArmy(mover))
+                return false;
             if (wasKnown)
                 return false;
 
@@ -353,7 +360,7 @@ namespace Game.Map
             // building, not a mobile force) — assign units to a real army first (see the
             // garrison button on HexInfoPanelUI, or a precise click on its own marker).
             ArmyData army = controller.Data;
-            if (army == null || army.IsGarrison)
+            if (army == null || army.IsGarrison || army.IsAirfield)
             {
                 NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
                 return MoveOrderResult.CannotMove;
@@ -373,7 +380,8 @@ namespace Game.Map
             // ever resolve it and no way out — a real Capture Kill Challenge/Retreat skill this
             // army doesn't have. A hero-only army was never a real combat participant on this hex
             // to begin with, so it stays free to just walk off).
-            if (BattleInitiator.IsCombatCapable(army) && BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
+            if (!AviationRules.IsAirArmy(army) && BattleInitiator.IsCombatCapable(army)
+                && BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
             {
                 NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
                 return MoveOrderResult.LockedInCombat;
@@ -395,7 +403,8 @@ namespace Game.Map
             // if the original destination was further along the path. Shared with the hover
             // preview arrow (see ShowPathArrow) so it always shows exactly where the army will
             // actually stop.
-            path = TruncateAtEnemyContact(path, army, out _);
+            if (!AviationRules.IsAirArmy(army))
+                path = TruncateAtEnemyContact(path, army, out _);
 
             // An army only ever stops short of a hex it can't fully afford (see
             // ArmyController.MoveRoutine) — never enters it partway "in debt" any more. Caught
@@ -403,7 +412,8 @@ namespace Game.Map
             // MoveAlong would do nothing at all and the player would see no feedback for why the
             // order silently failed.
             map.TryGetTerrainAt(path.Hexes[1], out TerrainTypeEntry firstStepEntry);
-            int firstStepCost = firstStepEntry != null ? Mathf.Max(1, firstStepEntry.moveCost) : 1;
+            int terrainFirstStepCost = firstStepEntry != null ? Mathf.Max(1, firstStepEntry.moveCost) : 1;
+            int firstStepCost = AviationRules.MovementCost(army, terrainFirstStepCost);
             if (army.CurrentMovement < firstStepCost)
             {
                 NotifyMoveBlocked(army,
@@ -477,7 +487,8 @@ namespace Game.Map
                     // on the same hex as someone else's army. Shared with BattleScreenUI.Retreat.
                     // cs's PerformRetreat, which needs the exact same check for a retreat landing
                     // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
-                    BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this);
+                    if (!AviationRules.IsAirArmy(army))
+                        BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this);
 
                     // movingArmy's own marker was last positioned by MoveAlong's resolveOffset
                     // call for actualHex, which ran BEFORE the destroy above — if that undefended
@@ -512,7 +523,9 @@ namespace Game.Map
                         return;
                     }
 
-                    BattleStartResult battleResult = TryBeginBattleAt(actualHex, army);
+                    BattleStartResult battleResult = AviationRules.IsAirArmy(army)
+                        ? BattleStartResult.NoContact
+                        : TryBeginBattleAt(actualHex, army);
 
                     if (battleResult == BattleStartResult.Started)
                     {

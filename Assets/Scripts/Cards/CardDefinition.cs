@@ -82,6 +82,21 @@ namespace Game.Cards
         // every other stat above.
         public int initiative = 1;
 
+        // Aircraft are still ordinary Unit cards, but cannot be mixed with ground troops or
+        // heroes in one ArmyData.  The runtime copy on UnitData keeps per-card fuel/attack
+        // state; these fields stay immutable card-design inputs.
+        [Header("Aviation (Unit/Base only)")]
+        public bool isAviation;
+        public int launchEnergyCost;
+        public int turnsWithoutRefuel;
+        // Radius used when this card carries UnitAbilities.AntiAir.  Keeping its magnitude as a
+        // number avoids inventing one ability tag per range and keeps the inspector dropdown
+        // useful to content authors.
+        public int antiAirRadius = 1;
+        // A Barracks-capable Base with a positive value is also an airfield.  Kept on the Base
+        // card so Citadel/Base capacities are data, not a hard-coded building-name table.
+        public int airfieldCapacity;
+
         // Classification tags (Bio/Mechanical/Armored/...) — only meaningful for Hero/Unit
         // cards, and only ever shown in a unit's detail panel (ArmyViewerModalUI.
         // ShowUnitDetail), never on the compact card itself (unlike grantedAbilities, which
