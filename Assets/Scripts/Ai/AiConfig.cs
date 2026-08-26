@@ -1251,6 +1251,17 @@ namespace Game.Ai
         // already follows. Only ever evaluated for a fresh launch from storage (candidate.ExistingArmy
         // == null) — an already-airborne group spends no NEW Energy picking its next target.
         public const float airStrikeLastEnergyPenalty = 10f;
+        // ---- Minimum tactical effect gate (2026-08-26 P1 fix, "исключить авиаудары с нулевой
+        // ожидаемой эффективностью") — AirStrikeTask.ScoreSelfValue rejects a candidate outright,
+        // before it ever becomes a scored StrikeTarget, when its own AviationCombatEstimator
+        // forecast clears neither of these floors (reported bug: a target with 0% expected damage
+        // and 0% kill chance still scored 80 off base+urgency alone and got struck for real AP/
+        // Energy). A raw, exactly-zero forecast (no known per-unit roster, or a target the AI truly
+        // cannot scratch) is always rejected regardless of these values; they only matter for a
+        // small but genuinely nonzero forecast, so keep them low enough that a useful finishing
+        // blow or real chip damage against a tough target never gets caught by mistake.
+        public const float airStrikeMinExpectedDamageFraction = 0.01f;
+        public const float airStrikeMinKillProbability = 0.01f;
         // Hard ceiling every AirStrike candidate's own final score (BaseScore + coordination bonus)
         // is clamped to, applied once in AiAggressionPlanner AFTER the coordination bonus is added
         // (so a raid-supporting or urgent-citadel strike's own bonus is never wasted clamping an

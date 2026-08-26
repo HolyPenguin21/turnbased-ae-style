@@ -127,10 +127,21 @@ namespace Game.Ai
             public readonly bool IsCitadelUrgency;
             public readonly float RouteCost;
             public readonly float ResourceScarcityCost;
+            // Energy forecast diagnostics (2026-08-26 P1 fix, "last Energy" planner/executor
+            // parity) — the same energy-before/predicted-cost/energy-after numbers
+            // ResourceScarcityPenalty derived ResourceScarcityCost from, kept alongside it purely
+            // so BuildAirStrikeReason/debug logging can show the forecast, not just the resulting
+            // penalty number. Always 0/0/0/false for a repeat strike or any other candidate
+            // ResourceScarcityPenalty never ran for (no NEW energy spend to forecast there).
+            public readonly float EnergyBefore;
+            public readonly float PredictedEnergyCost;
+            public readonly float EnergyAfter;
+            public readonly bool EnergyAlreadyPaid;
             public readonly float Total;
 
             public ScoreBreakdown(float baseWeight, float damageFraction, float damageValue, float killAnyProbability,
-                float killValue, float urgencyValue, bool isCitadelUrgency, float routeCost, float resourceScarcityCost)
+                float killValue, float urgencyValue, bool isCitadelUrgency, float routeCost, float resourceScarcityCost,
+                float energyBefore = 0f, float predictedEnergyCost = 0f, float energyAfter = 0f, bool energyAlreadyPaid = false)
             {
                 Base = baseWeight;
                 DamageFraction = damageFraction;
@@ -141,6 +152,10 @@ namespace Game.Ai
                 IsCitadelUrgency = isCitadelUrgency;
                 RouteCost = routeCost;
                 ResourceScarcityCost = resourceScarcityCost;
+                EnergyBefore = energyBefore;
+                PredictedEnergyCost = predictedEnergyCost;
+                EnergyAfter = energyAfter;
+                EnergyAlreadyPaid = energyAlreadyPaid;
                 Total = baseWeight + damageValue + killValue + urgencyValue - routeCost - resourceScarcityCost;
             }
         }
@@ -214,9 +229,11 @@ namespace Game.Ai
                 }
 
                 targetInfo.TryGetValue(hex, out var known);
-                (ScoreBreakdown breakdown, AviationCombatEstimator.AirStrikeEstimate estimate) = ScoreTarget(
-                    actor, root, candidate, hex, sortie, multiTurn, known.Defense, known.Attack, known.Defenders);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
+                var scored = ScoreTarget(actor, root, candidate, hex, sortie, multiTurn, known.Defense, known.Attack, known.Defenders, name);
+                if (!scored.HasValue)
+                    continue; // no meaningful expected effect — rejected and logged inside ScoreSelfValue
+                (ScoreBreakdown breakdown, AviationCombatEstimator.AirStrikeEstimate estimate) = scored.Value;
                 yield return new StrikeTarget(hex, sortie, multiTurn, breakdown, estimate, name, known.Defense, known.Attack, known.Defenders);
             }
         }
@@ -246,13 +263,16 @@ namespace Game.Ai
         // by known-AA exposure itself. Not clamped to airStrikeScoreCap here — see
         // StrikeTarget.BaseScore's own comment for why the cap only ever applies once, in
         // AiAggressionPlanner, after any coordination bonus is added.
-        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreTarget(
+        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate)? ScoreTarget(
             PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexCoord targetHex,
             AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
-            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName)
         {
-            (ScoreBreakdown selfValue, AviationCombatEstimator.AirStrikeEstimate estimate) =
-                ScoreSelfValue(actor, candidate.Aircraft, targetHex, targetDefense, targetAttack, targetDefenders);
+            var selfValueResult = ScoreSelfValue(actor, candidate.Aircraft, targetHex, targetDefense, targetAttack,
+                targetDefenders, targetName);
+            if (!selfValueResult.HasValue)
+                return null;
+            (ScoreBreakdown selfValue, AviationCombatEstimator.AirStrikeEstimate estimate) = selfValueResult.Value;
 
             int totalCost = sortie?.TotalCost ?? multiTurn?.TotalRouteCost ?? 0;
             float routeCost = totalCost * AiConfig.airStrikeDistancePenalty;
@@ -264,11 +284,12 @@ namespace Game.Ai
                 routeCost += multiTurn.Value.RequiredUnlandedEnds * AiConfig.airStrikeUnlandedEndPenalty;
             }
 
-            float resourceScarcityCost = ResourceScarcityPenalty(root, actor, candidate);
+            EnergyForecast energyForecast = ResourceScarcityPenalty(root, actor, candidate);
 
             var breakdown = new ScoreBreakdown(selfValue.Base, selfValue.DamageFraction, selfValue.DamageValue,
                 selfValue.KillAnyProbability, selfValue.KillValue, selfValue.UrgencyValue, selfValue.IsCitadelUrgency,
-                routeCost, resourceScarcityCost);
+                routeCost, energyForecast.Penalty, energyForecast.EnergyBefore, energyForecast.PredictedCost,
+                energyForecast.EnergyAfter, energyForecast.AlreadyPaid);
             return (breakdown, estimate);
         }
 
@@ -282,14 +303,17 @@ namespace Game.Ai
         // flat airStrikeRepeatScore constant: a repeat against a real, still-dangerous remnant
         // naturally scores in the normal AirStrike band; a repeat against an already-thinned
         // remnant naturally falls toward airStrikeBaseWeight, per spec's own "естественная оценка
-        // текущего состава и HP цели".
-        public static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreRepeatStrike(
+        // текущего состава и HP цели". Nullable for the same reason ScoreTarget is — the P1
+        // "no meaningful effect" gate (see ScoreSelfValue) applies here too, so a repeat with no
+        // real expected damage/kill left against the ground-truth remnant is rejected the same way
+        // a fresh candidate would be, never allowed through just because the army is already there.
+        public static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate)? ScoreRepeatStrike(
             PlayerSetupData actor, IReadOnlyList<UnitData> aircraft, HexCoord targetHex,
-            IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
+            IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName = null)
         {
             float targetDefense = targetDefenders?.Sum(d => d.Defense) ?? 0f;
             float targetAttack = targetDefenders?.Sum(d => d.Attack) ?? 0f;
-            return ScoreSelfValue(actor, aircraft, targetHex, targetDefense, targetAttack, targetDefenders);
+            return ScoreSelfValue(actor, aircraft, targetHex, targetDefense, targetAttack, targetDefenders, targetName);
         }
 
         // Shared damage/kill/urgency core (spec sections 1, 2, 5) behind both ScoreTarget (a fresh
@@ -297,9 +321,18 @@ namespace Game.Ai
         // repeat, no route/resource cost at all) — one Monte Carlo pass
         // (AviationCombatEstimator.EstimateAirStrike), read into the same weighted terms either way,
         // so the two paths can never quietly diverge on what "expected outcome" means.
-        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreSelfValue(
+        //
+        // Returns null — reject the candidate outright, before it ever becomes a scored StrikeTarget
+        // or competes on Total — when the SAME forecast neither of ScoreTarget/ScoreRepeatStrike ever
+        // recomputes shows no meaningful expected damage AND no meaningful chance to kill anything
+        // (2026-08-26 P1 fix, "исключить авиаудары с нулевой ожидаемой эффективностью"; see
+        // AiConfig.airStrikeMinExpectedDamageFraction/airStrikeMinKillProbability's own comment).
+        // Deliberately checked BEFORE urgencyValue is even added to the breakdown — a target this
+        // forecast says the AI cannot meaningfully hurt does not "defend" the base/citadel just
+        // because it happens to be the live threat Defence is reacting to.
+        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate)? ScoreSelfValue(
             PlayerSetupData actor, IReadOnlyList<UnitData> aircraft, HexCoord targetHex,
-            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders, string targetName = null)
         {
             AviationCombatEstimator.AirStrikeEstimate estimate =
                 AviationCombatEstimator.EstimateAirStrike(aircraft, targetDefense, targetAttack, targetDefenders);
@@ -310,6 +343,20 @@ namespace Game.Ai
             // RaidWeakerArmyTask.EstimateAgainst's own aggregate fallback already follows.
             float targetTotalHp = targetDefenders != null ? targetDefenders.Sum(d => Mathf.Max(0f, d.HitPoints)) : 0f;
             float damageFraction = targetTotalHp > 0.01f ? Mathf.Clamp01(estimate.ExpectedDamage / targetTotalHp) : 0f;
+
+            if (damageFraction < AiConfig.airStrikeMinExpectedDamageFraction
+                && estimate.KillAnyProbability < AiConfig.airStrikeMinKillProbability)
+            {
+                bool wouldBeCitadelUrgency = false;
+                bool wouldBeUrgent = actor != null
+                    && AiDefencePlanner.IsUrgentAirStrikeTarget(actor, targetHex, out wouldBeCitadelUrgency);
+                string urgencyLabel = !wouldBeUrgent ? "none" : wouldBeCitadelUrgency ? "citadel" : "base";
+                string name = targetName ?? $"target at ({targetHex.Q},{targetHex.R})";
+                AiDebugLog.Write($"[AI] {actor?.Nickname}: AirStrike rejected: no meaningful effect — target {name}, "
+                    + $"expectedDamage={damageFraction:P2}, killAny={estimate.KillAnyProbability:P2}, urgency={urgencyLabel}.");
+                return null;
+            }
+
             float damageValue = damageFraction * AiConfig.airStrikeDamageFractionWeight;
 
             // Kill value (spec section 2) — bounded by construction: KillAnyProbability/WipeProbability
@@ -329,22 +376,56 @@ namespace Game.Ai
             return (breakdown, estimate);
         }
 
+        // Energy forecast for launching THIS candidate (2026-08-26 P1 fix, "корректно учитывать
+        // расход последней Energy для сформированной авиагруппы") — reuses the exact same
+        // ArmyData.HasActivatedThisTurn rule the real executor (HexSelectionController.Movement's
+        // own MoveArmy cost computation: `army.HasActivatedThisTurn ? 0 : army.ActivationEnergyCost`)
+        // already charges by, instead of assuming ExistingArmy != null means free. A still-STORED
+        // group (ExistingArmy == null) has never activated by definition — its own first move,
+        // this same launch, always pays the full cost. A formed, landed, untasked group pays it too
+        // UNLESS it already activated (and so already paid) earlier this same turn, in which case
+        // this launch is its second move and costs nothing further — same "already activated, free"
+        // rule every other AI spend check keys off ArmyData.HasActivatedThisTurn for.
+        private readonly struct EnergyForecast
+        {
+            public readonly float Penalty;
+            public readonly float EnergyBefore;
+            public readonly float PredictedCost;
+            public readonly float EnergyAfter;
+            public readonly bool AlreadyPaid;
+
+            public EnergyForecast(float penalty, float energyBefore, float predictedCost, float energyAfter, bool alreadyPaid)
+            {
+                Penalty = penalty;
+                EnergyBefore = energyBefore;
+                PredictedCost = predictedCost;
+                EnergyAfter = energyAfter;
+                AlreadyPaid = alreadyPaid;
+            }
+        }
+
         // Resource scarcity (spec section 6) — extra penalty when launching THIS candidate would
         // leave zero AiResourceReservation-visible Energy free for any OTHER AI spend this same
-        // step. Only ever evaluated for a fresh launch out of storage (ExistingArmy == null) — an
-        // already-airborne group re-picking its next target spends no NEW launch Energy. Read
-        // through AiResourceReservation.Available, never root.GetResource directly — same "reserved
-        // resources are never free" rule AiAviationSupport.CanAffordLaunch's own comment already
-        // states for this exact Energy check.
-        private static float ResourceScarcityPenalty(PlayerRoot root, PlayerSetupData actor, LaunchCandidate candidate)
+        // step. Read through AiResourceReservation.Available, never root.GetResource directly —
+        // same "reserved resources are never free" rule AiAviationSupport.CanAffordLaunch's own
+        // comment already states for this exact Energy check.
+        private static EnergyForecast ResourceScarcityPenalty(PlayerRoot root, PlayerSetupData actor, LaunchCandidate candidate)
         {
-            if (root == null || actor == null || candidate.ExistingArmy != null)
-                return 0f;
-            int energyCost = candidate.Aircraft.Sum(u => u.LaunchEnergyCost);
+            if (root == null || actor == null)
+                return new EnergyForecast(0f, 0f, 0f, 0f, false);
+
+            float energyBefore = AiResourceReservation.Available(root, actor, ResourceType.Energy);
+            bool alreadyPaid = candidate.ExistingArmy != null && candidate.ExistingArmy.HasActivatedThisTurn;
+            if (alreadyPaid)
+                return new EnergyForecast(0f, energyBefore, 0f, energyBefore, true);
+
+            float energyCost = candidate.Aircraft.Sum(u => u.LaunchEnergyCost);
             if (energyCost <= 0)
-                return 0f;
-            float availableAfter = AiResourceReservation.Available(root, actor, ResourceType.Energy) - energyCost;
-            return availableAfter <= 0.01f ? AiConfig.airStrikeLastEnergyPenalty : 0f;
+                return new EnergyForecast(0f, energyBefore, 0f, energyBefore, false);
+
+            float energyAfter = energyBefore - energyCost;
+            float penalty = energyAfter <= 0.01f ? AiConfig.airStrikeLastEnergyPenalty : 0f;
+            return new EnergyForecast(penalty, energyBefore, energyCost, energyAfter, false);
         }
     }
 }

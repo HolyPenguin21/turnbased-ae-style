@@ -2197,7 +2197,18 @@ namespace Game.Ai
 
             terms.Add($"+ urgency {b.UrgencyValue:0}{(b.IsCitadelUrgency ? " (citadel threat)" : string.Empty)}");
             terms.Add($"- route {b.RouteCost:0}");
-            terms.Add($"- resources {b.ResourceScarcityCost:0}{(b.ResourceScarcityCost > 0.01f ? " (uses last Energy)" : string.Empty)}");
+            // Energy forecast detail (2026-08-26 P1 fix, "last Energy" planner/executor parity) —
+            // shows Energy before/predicted cost/after so a "resources 0" line can be told apart
+            // from a genuine "already activated, nothing left to spend" case instead of reading as
+            // the same thing (the reported bug: a formed group's real 2→0 first-launch spend used
+            // to print "resources 0" here with no forecast at all).
+            string resourcesDetail = b.EnergyAlreadyPaid
+                ? " (already activated this turn, no new Energy spend)"
+                : b.PredictedEnergyCost > 0.01f
+                    ? $" (energy {b.EnergyBefore:0.#}→{b.EnergyAfter:0.#}, cost {b.PredictedEnergyCost:0.#}"
+                        + $"{(b.ResourceScarcityCost > 0.01f ? ", uses last Energy" : string.Empty)})"
+                    : string.Empty;
+            terms.Add($"- resources {b.ResourceScarcityCost:0}{resourcesDetail}");
 
             float uncappedTotal = b.Total + effectiveBonus;
             string totalPart = finalScore < uncappedTotal - 0.01f
@@ -2337,7 +2348,23 @@ namespace Game.Ai
             // toward airStrikeBaseWeight — the "natural falloff" the spec explicitly allows in place
             // of a new strike-history subsystem.
             List<WorthIt.DefenderProfile> defenders = remaining.SelectMany(a => a.Members).Select(WorthIt.FromLiveUnit).ToList();
-            (AirStrikeTask.ScoreBreakdown breakdown, _) = AirStrikeTask.ScoreRepeatStrike(player, task.Army.Members, task.Army.Hex, defenders);
+            string targetName = string.Join(", ", remaining.Select(a => a.Name));
+            var scored = AirStrikeTask.ScoreRepeatStrike(player, task.Army.Members, task.Army.Hex, defenders, targetName);
+            if (!scored.HasValue)
+            {
+                // P1 gate (2026-08-26, "исключить авиаудары с нулевой ожидаемой эффективностью") —
+                // the ground-truth remnant is too thinned/tough for this roster to meaningfully
+                // damage or kill any more; same rejection ScoreSelfValue already logged its own
+                // reason for. Falls through to Returning exactly like every other repeat-cancelled
+                // condition above, never lingers loitering on a hex it can no longer usefully hit.
+                task.AirMissionPhase = AiAirMissionPhase.Returning;
+                task.LandingHex = landingHex;
+                task.TargetHex = task.LandingHex;
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — repeat AirStrike cancelled — "
+                    + $"no meaningful expected effect left on the remnant; returns to airfield ({landingHex.Q},{landingHex.R}).");
+                return null;
+            }
+            (AirStrikeTask.ScoreBreakdown breakdown, _) = scored.Value;
             float score = Mathf.Min(breakdown.Total, AiConfig.airStrikeScoreCap);
 
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — repeats AirStrike — air attack "
