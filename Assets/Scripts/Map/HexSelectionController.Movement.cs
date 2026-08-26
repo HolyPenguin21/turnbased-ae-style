@@ -368,6 +368,7 @@ namespace Game.Map
                 NotifyMoveBlocked(army, $"{army?.Name ?? "This army"} can't move — assign its units to a real army first.");
                 return MoveOrderResult.CannotMove;
             }
+            RefreshArmyIcon(army);
 
             // An army sharing its hex with a combat-capable enemy army can't just walk away —
             // the only way out is retreating from battle (see the manual's Retreat Challenge),
