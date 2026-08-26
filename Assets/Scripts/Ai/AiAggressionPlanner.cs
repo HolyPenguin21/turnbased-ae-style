@@ -166,7 +166,7 @@ namespace Game.Ai
                         task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
                 }
 
-                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, threat.Value.Hex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, threat.Value.Hex))
                     return null;
                 task.TargetHex = threat.Value.Hex;
                 return AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army",
@@ -219,7 +219,7 @@ namespace Game.Ai
                     AiConfig.raidReinforceDispatchScore);
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
+            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex))
                 return null;
 
             // No raidCommittedBonus top-up any more (removed 2026-08-19) — Разведка's own
@@ -279,7 +279,7 @@ namespace Game.Ai
             string moveReason = $"attacks the target at ({task.TargetHex.Q},{task.TargetHex.R})";
             RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
                 RaidWeakerArmyTask.FindCaptureStepDestination(player, task.Army, task.TargetHex, ctx.Map);
-            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, captureStep.Value.NextHex))
+            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, captureStep.Value.NextHex))
             {
                 moveDestination = captureStep.Value.NextHex;
                 moveReason = FormatCaptureStepReason(captureStep.Value, "on the way");
@@ -569,7 +569,7 @@ namespace Game.Ai
                 // and rejected outright at IssueMoveOrder. `readyArmy` isn't lost by skipping it
                 // here — it stays exactly as ready next step, ArmyRegistry never forgets it, so no
                 // task/registration is needed to remember the attempt.
-                if (!AiTurnController.CanIssueMoveNow(root, readyArmy, ctx.Map, target.Value.Hex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, readyArmy, ctx.Map, target.Value.Hex))
                     return results;
                 results.Add(AiDecision.Move(readyArmy, target.Value, readyTask,
                     AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression));
@@ -705,12 +705,12 @@ namespace Game.Ai
                 string reason = "returns to the garrison to assemble the force";
                 RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
                     RaidWeakerArmyTask.FindCaptureStepDestination(player, army, garrisonHex, ctx.Map);
-                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value.NextHex))
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, captureStep.Value.NextHex))
                 {
                     destination = captureStep.Value.NextHex;
                     reason = FormatCaptureStepReason(captureStep.Value, "on the way home");
                 }
-                else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
+                else if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, garrisonHex))
                     continue;
 
                 var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
@@ -768,12 +768,12 @@ namespace Game.Ai
                 string reason = "nothing left to raid — returns to base";
                 RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
                     RaidWeakerArmyTask.FindCaptureStepDestination(player, army, homeHex, ctx.Map);
-                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, army, ctx.Map, captureStep.Value.NextHex))
+                if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, captureStep.Value.NextHex))
                 {
                     destination = captureStep.Value.NextHex;
                     reason = FormatCaptureStepReason(captureStep.Value, "on the way home");
                 }
-                else if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
+                else if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, homeHex))
                     continue;
 
                 var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
@@ -835,7 +835,7 @@ namespace Game.Ai
 
                 if (goHome)
                 {
-                    if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
+                    if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, homeHex))
                         continue;
                     var homeTarget = new AiScoutPlanner.ScoutTarget(homeHex, 0f,
                         "critically wounded — returns to base to repair");
@@ -901,7 +901,7 @@ namespace Game.Ai
 
             if (!task.Army.Hex.Equals(task.TargetHex))
             {
-                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex))
                     return null;
                 var moveTarget = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
                     $"reinforcement heads to \"{task.TargetArmy.Name}\"");
@@ -1321,7 +1321,7 @@ namespace Game.Ai
             // FindAffordableStep gap this closes). Re-checked here, now that targetHex is actually
             // known, rather than folded into the early filter above — that one still runs first and
             // cheaply, before the real (pricier) FindTargetHex search above even happens.
-            if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, targetHex.Value))
+            if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, targetHex.Value))
                 return results;
 
             var task = new AiTask { Kind = AiTaskKind.BuildBase, Army = army, TargetHex = targetHex.Value };
@@ -1460,7 +1460,7 @@ namespace Game.Ai
                 float threatHexBonus = WorthIt.HexDefenseBonus(threat.Value.Hex, ctx.Map);
                 float threatDefense = threat.Value.DefenseSum + threatHexBonus;
                 if (RaidWeakerArmyTask.IsReady(task.Army, threatDefense, threat.Value.AttackSum, threat.Value.Defenders, threatHexBonus))
-                    return AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, threat.Value.Hex)
+                    return AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, threat.Value.Hex)
                         ? AiDecision.Move(task.Army, threat.Value.Hex, "counter-attacks a known nearby army on the way to found the new base",
                             task, AiConfig.aggressionBaseWeight + AiConfig.raidCounterAttackBonus, AiTaskCategory.Aggression)
                         : null;
@@ -1486,7 +1486,7 @@ namespace Game.Ai
                 AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
-                return AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex)
+                return AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex)
                     ? AiDecision.Move(task.Army, task.TargetHex, $"heads to found a new base at ({task.TargetHex.Q},{task.TargetHex.R})",
                         task, AiConfig.aggressionBaseWeight + AiConfig.buildBaseTravelBonus, AiTaskCategory.Aggression)
                     : null;

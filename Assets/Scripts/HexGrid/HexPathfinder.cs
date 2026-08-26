@@ -36,8 +36,17 @@ namespace Game.HexGrid
         // enemy the hero has no way to react to, so it must never be crossed blind, not just
         // discouraged). The caller is responsible for exempting `destination` itself if it
         // should still be reachable despite being flagged.
+        //
+        // flatCost: routes for an air mover, whose real charge is a flat 1 MP per hex regardless
+        // of terrain (see AviationRules.MovementCost/PathMoveCost) — without this, the search
+        // still ranks routes by ground moveCost, so it can hand back a longer detour around
+        // expensive terrain (mountains) instead of the true shortest hex-count route an aircraft
+        // would actually fly, and can wrongly reject a sortie that's really within range (2026-08-26
+        // fix, project owner's own report). Ground movers must never pass this — their real charge
+        // genuinely IS terrain-weighted, so flattening it here would misroute them too.
         public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination,
-            System.Func<HexCoord, bool> avoidHex = null, System.Func<HexCoord, bool> blockHex = null)
+            System.Func<HexCoord, bool> avoidHex = null, System.Func<HexCoord, bool> blockHex = null,
+            bool flatCost = false)
         {
             if (map == null)
                 return null;
@@ -68,7 +77,7 @@ namespace Game.HexGrid
                     if (blockHex != null && blockHex(next))
                         continue;
 
-                    int stepCost = Mathf.Max(1, entry.moveCost);
+                    int stepCost = flatCost ? 1 : Mathf.Max(1, entry.moveCost);
                     if (avoidHex != null && avoidHex(next))
                         stepCost += AvoidPenalty;
                     int newCost = costSoFar[current] + stepCost;
@@ -93,11 +102,19 @@ namespace Game.HexGrid
             }
             hexes.Reverse();
 
-            int realCost = 0;
-            for (int i = 1; i < hexes.Count; i++)
+            int realCost;
+            if (flatCost)
             {
-                map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
-                realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
+                realCost = hexes.Count - 1;
+            }
+            else
+            {
+                realCost = 0;
+                for (int i = 1; i < hexes.Count; i++)
+                {
+                    map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
+                    realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
+                }
             }
 
             return new HexPath(hexes, realCost);

@@ -1258,12 +1258,20 @@ namespace Game.Ai
         {
             if (map == null || army == null || destination.Equals(army.Hex))
                 return null;
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: blockHex);
+            // An air army's real per-hex charge is always 1, regardless of terrain (see
+            // AviationRules.MovementCost) — routing it through the ground-weighted Dijkstra search
+            // can hand back a longer detour around expensive terrain than the true shortest air
+            // route, and wrongly reject a step that's actually affordable (2026-08-26 fix, project
+            // owner's own report). flatCost makes the search itself rank routes the same way an
+            // aircraft actually pays for them.
+            bool isAirArmy = AviationRules.IsAirArmy(army);
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: blockHex, flatCost: isAirArmy);
             if (path == null || path.Hexes.Count < 2)
                 return null;
             HexCoord step = path.Hexes[1];
             map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
-            int cost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+            int terrainCost = entry != null ? entry.moveCost : 1;
+            int cost = AviationRules.MovementCost(army, terrainCost);
             return army.CurrentMovement >= cost ? step : (HexCoord?)null;
         }
 
@@ -1275,18 +1283,25 @@ namespace Game.Ai
         // own FindReadyIdleArmy branch had no feasibility check at all), and Sable's Defence patrol
         // proposed a 3-AP move while 2 AP remained. IssueMoveOrder (see HexSelectionController.
         // Movement.cs) then silently rejected the order either way, wasting the whole step. Folds
-        // together the two things IssueMoveOrder itself independently enforces before it ever
+        // together the three things IssueMoveOrder itself independently enforces before it ever
         // accepts an order: FindAffordableStep's own movement-point/path check for the FIRST step
         // only (never the whole route — a multi-turn journey is fine, a step this Decide() call
         // can't even begin is not), plus the one-time ActivationApCost an army not yet activated
-        // this turn also has to afford out of the shared AP pool. Every category's candidate sites
-        // now route through this one helper instead of each growing its own copy of either check —
-        // since both conditions are things execution already independently requires, a candidate
-        // this rejects would always have failed at IssueMoveOrder anyway, so gating it here only
-        // ever removes a doomed candidate from arbitration, never a viable one.
-        internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination) =>
+        // this turn also has to afford out of the shared AP pool, plus (2026-08-26 fix, project
+        // owner's own report) that same activation's ActivationEnergyCost — zero for every ground
+        // army, but real for an air army about to launch, and IssueMoveOrder rejects the order for
+        // it same as a missing AP would. Read through AiResourceReservation.Available (never
+        // root.GetResource directly), the same reservation-aware figure CanAffordLaunch already
+        // uses, so this can't double-spend Energy another active task already claimed. Every
+        // category's candidate sites now route through this one helper instead of each growing its
+        // own copy of either check — since all three conditions are things execution already
+        // independently requires, a candidate this rejects would always have failed at
+        // IssueMoveOrder anyway, so gating it here only ever removes a doomed candidate from
+        // arbitration, never a viable one.
+        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
-                && (army.HasActivatedThisTurn || root.CanSpendActionPoints(army.ActivationApCost));
+                && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
+                    && AiResourceReservation.Available(root, player, ResourceType.Energy) >= army.ActivationEnergyCost));
 
         // Problem 4 (2026-08-24, project owner's own report): a raw armies=X→Y count in the
         // turn-ends line can't tell fragmentation (a growing pile of small leftover armies) apart

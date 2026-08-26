@@ -996,7 +996,7 @@ namespace Game.Ai
                 AiDecision first = BuildPostureDecision(player, root, ctx, readyTask);
                 if (first != null)
                     results.Add(first);
-                else if (AiTurnController.CanIssueMoveNow(root, readyDefender, ctx.Map, homeHex))
+                else if (AiTurnController.CanIssueMoveNow(root, player, readyDefender, ctx.Map, homeHex))
                     results.Add(AiDecision.Move(readyDefender, homeHex, "citadel defense — reports to the garrison",
                         readyTask, AiConfig.defencePatrolScore, AiTaskCategory.Defence));
                 return results;
@@ -1344,7 +1344,7 @@ namespace Game.Ai
                     || (existingTask.Kind == AiTaskKind.RaidWeakerArmy
                         && RaidWeakerArmyTask.IsReady(army, RaidWeakerArmyTask.RequiredStrengthAt(player, existingTask.TargetHex, ctx.Map)))))
                     continue;
-                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, garrisonHex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, garrisonHex))
                     continue;
 
                 var target = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f, "citadel under siege — recalled to defend");

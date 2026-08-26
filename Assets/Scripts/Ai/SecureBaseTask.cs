@@ -179,7 +179,7 @@ namespace Game.Ai
 
             if (!task.Army.Hex.Equals(task.HomeHex))
             {
-                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.HomeHex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.HomeHex))
                     return null;
                 var moveTarget = new AiScoutPlanner.ScoutTarget(task.HomeHex, 0f,
                     $"reinforcement heads to secure the base at ({task.HomeHex.Q},{task.HomeHex.R})");

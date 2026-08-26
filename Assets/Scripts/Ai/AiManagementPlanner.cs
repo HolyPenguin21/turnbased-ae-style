@@ -1108,7 +1108,7 @@ namespace Game.Ai
             }
             task.TargetHex = homeHex;
 
-            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, homeHex))
+            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, homeHex))
                 return null;
 
             var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f, "stranded alone — returns for consolidation");

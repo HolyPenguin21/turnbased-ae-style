@@ -528,7 +528,7 @@ namespace Game.Ai
                     AiTaskRegistry.Remove(player, task);
 
                     HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
-                    if (task.Army.Hex.Equals(garrisonHex) || !AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, garrisonHex))
+                    if (task.Army.Hex.Equals(garrisonHex) || !AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, garrisonHex))
                         return null;
                     var fleeTarget = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
                         "a known enemy army is too strong — retreats to the citadel");
@@ -537,7 +537,7 @@ namespace Game.Ai
 
                 if (HexGridMath.Distance(task.Army.Hex, enemyThreat.Value.Hex) <= task.Army.CurrentMovement)
                 {
-                    if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, enemyThreat.Value.Hex))
+                    if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, enemyThreat.Value.Hex))
                         return null;
                     return AiDecision.Move(task.Army, enemyThreat.Value.Hex,
                         $"\"{task.Army.Name}\" attacks a known weaker army at ({enemyThreat.Value.Hex.Q},{enemyThreat.Value.Hex.R}) "
@@ -700,7 +700,7 @@ namespace Game.Ai
                     || AiTaskRegistry.TaskFor(player, army) != null)
                     continue;
                 HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
-                if (!AiTurnController.CanIssueMoveNow(root, army, ctx.Map, homeHex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, homeHex))
                     continue;
                 var target = new AiScoutPlanner.ScoutTarget(homeHex, 0f,
                     "nothing left to build — returns to nearest base");
@@ -760,7 +760,7 @@ namespace Game.Ai
             HexCoord targetHex = bestHex.Value;
             ResourceType type = bestType.Value;
             ArmyData collector = ResourcesScrapTask.FindActor(player, targetHex, type, pool);
-            if (collector == null || !AiTurnController.CanIssueMoveNow(root, collector, ctx.Map, targetHex))
+            if (collector == null || !AiTurnController.CanIssueMoveNow(root, player, collector, ctx.Map, targetHex))
                 return results;
 
             var task = new AiTask { Kind = AiTaskKind.ResourcesScrap, Army = collector, TargetHex = targetHex, ResourceType = type };
@@ -873,7 +873,7 @@ namespace Game.Ai
 
             if (!task.Army.Hex.Equals(task.TargetHex))
             {
-                if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, task.TargetHex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex))
                     return null;
                 var target = new AiScoutPlanner.ScoutTarget(task.TargetHex, 0f,
                     $"\"{task.Army.Name}\" goes to collect {task.ResourceType} at "

@@ -78,7 +78,7 @@ namespace Game.Ai
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanSortieCore(airArmy.Hex, airArmy, army => army.CurrentMovement, path => AviationRules.PathMoveCost(airArmy, path),
-                actionHex, map, owner, preferredLanding);
+                airArmy.Members.Count, 0, actionHex, map, owner, preferredLanding);
         }
 
         // Same "start -> action hex -> owned airfield with capacity" plan, computed for aircraft
@@ -96,17 +96,31 @@ namespace Game.Ai
             if (aircraft == null || aircraft.Count == 0)
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
-            return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1, actionHex, map, owner, null);
+            return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
+                aircraft.Count, aircraft.Count, actionHex, map, owner, null);
         }
 
+        // requiredSlots: how many aircraft need a free landing slot together — the WHOLE group
+        // lands as one stack, so a landing hex with fewer free slots than that must be rejected
+        // outright, not just "at least one" (2026-08-26 fix, project owner's own report — two
+        // aircraft could otherwise both plan to land on a base with only 1 free slot). vacatingAtStart:
+        // for a still-STORED group (TryPlanSortieFromStorage), these exact aircraft are themselves
+        // counted in FindAirfieldAt(startHex)'s own Members.Count right now, even though they're
+        // about to launch and free that many slots up — so a fully-packed airfield can still plan a
+        // round-trip sortie back to itself (the other 2026-08-26 edge case: without this, the sole
+        // airfield being full would make the AI think it could never fly a sortie that returns
+        // there, even though take-off itself vacates the slots this same sortie needs to land).
+        // Zero for an already-airborne army (TryPlanSortie/TryReplan) — it was never part of any
+        // airfield's stored container, so no double-count to undo.
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
-            HexCoord actionHex, HexMap map, PlayerSetupData owner, HexCoord? preferredLanding)
+            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            HexCoord? preferredLanding)
         {
             if (map == null || owner == null)
                 return null;
 
-            HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex);
+            HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex, flatCost: true);
             if (outbound == null)
                 return null;
             int outboundCost = pathCost(outbound);
@@ -119,9 +133,14 @@ namespace Game.Ai
             Sortie? best = null;
             foreach (HexCoord landing in candidates)
             {
-                if (!AviationRules.IsOwnedAirfieldAt(landing, owner) || FreeLandingCapacity(landing, owner, excludingFromCapacity) <= 0)
+                if (!AviationRules.IsOwnedAirfieldAt(landing, owner))
                     continue;
-                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing);
+                int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
+                if (landing.Equals(startHex))
+                    freeSlots += vacatingAtStart;
+                if (freeSlots < requiredSlots)
+                    continue;
+                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
                 if (ret == null)
                     continue;
                 int totalCost = outboundCost + pathCost(ret);
@@ -149,9 +168,9 @@ namespace Game.Ai
             int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                if (FreeLandingCapacity(landing, owner, airArmy) <= 0)
+                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
                     continue;
-                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing);
+                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
                 if (path == null)
                     continue;
                 int cost = AviationRules.PathMoveCost(airArmy, path);
@@ -254,7 +273,7 @@ namespace Game.Ai
                 destination = confirmedLanding.Value;
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, destination))
+            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination))
                 return null;
             HexCoord? nextStep = AiTurnController.FindAffordableStep(ctx.Map, task.Army, destination);
             if (nextStep == null)
