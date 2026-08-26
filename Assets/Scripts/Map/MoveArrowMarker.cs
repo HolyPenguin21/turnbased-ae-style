@@ -136,7 +136,7 @@ namespace Game.Map
             _energyBadgeBorderRenderer.sortingOrder = _style.badgeBorderSortingOrder;
             _energyBadgeFilter = BuildChildMesh("EnergyBadge", shader, out _energyBadgeRenderer);
             _energyBadgeFilter.mesh = BuildCircleMesh(_style.badgeRadius);
-            _energyBadgeRenderer.sharedMaterial.color = _style.apBadgeColor;
+            _energyBadgeRenderer.sharedMaterial.color = new Color(0.851f, 0.749f, 0.149f, 1f); // #D9BF26
             _energyBadgeRenderer.sortingOrder = _style.badgeSortingOrder;
             _energyBadgeText = BuildBadgeText(_energyBadgeFilter, _style.badgeTextColor);
 
@@ -217,7 +217,8 @@ namespace Game.Map
             Vector3 midPosition = BadgePosition(curve);
             float spacing = _style.badgeSpacing;
 
-            Vector3 badgePos = midPosition - Vector3.right * spacing;
+            bool showEnergy = energyCost > 0;
+            Vector3 badgePos = showEnergy ? midPosition - Vector3.right * spacing : midPosition - Vector3.right * spacing * 0.5f;
             _badgeFilter.transform.position = badgePos;
             _badgeBorderFilter.transform.position = badgePos;
             _badgeText.text = cost.ToString();
@@ -225,7 +226,7 @@ namespace Game.Map
             _badgeBorderRenderer.enabled = true;
             _badgeText.gameObject.SetActive(true);
 
-            Vector3 apBadgePos = midPosition;
+            Vector3 apBadgePos = showEnergy ? midPosition : midPosition + Vector3.right * spacing * 0.5f;
             _apBadgeFilter.transform.position = apBadgePos;
             _apBadgeBorderFilter.transform.position = apBadgePos;
             _apBadgeText.text = apCost.ToString();
@@ -233,6 +234,13 @@ namespace Game.Map
             _apBadgeBorderRenderer.enabled = true;
             _apBadgeText.gameObject.SetActive(true);
 
+            if (!showEnergy)
+            {
+                _energyBadgeRenderer.enabled = false;
+                _energyBadgeBorderRenderer.enabled = false;
+                _energyBadgeText.gameObject.SetActive(false);
+                return;
+            }
             Vector3 energyBadgePos = midPosition + Vector3.right * spacing;
             _energyBadgeFilter.transform.position = energyBadgePos;
             _energyBadgeBorderFilter.transform.position = energyBadgePos;
