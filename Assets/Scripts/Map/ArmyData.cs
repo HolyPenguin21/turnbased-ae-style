@@ -79,6 +79,12 @@ namespace Game.Map
         // moving as a whole, not just as much as its single heaviest member).
         public int ActivationApCost => Members.Count > 0 ? Members.Sum(m => m.ActivationApCost) : 0;
 
+        // Energy is part of activation only for a real airborne stack. Keeping it on ArmyData
+        // makes the move preview, move order and future AI use the same amount.
+        public int ActivationEnergyCost => IsAirArmy
+            ? Members.Sum(m => m.LaunchEnergyCost)
+            : 0;
+
         // Shared movement — every member advances in lockstep, capped by whichever one has the
         // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
