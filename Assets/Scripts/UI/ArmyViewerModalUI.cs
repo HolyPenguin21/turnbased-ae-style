@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cards;
 using Game.Core;
 using Game.Map;
@@ -743,16 +744,17 @@ namespace Game.UI
 
             int fatePoints = hero != null ? hero.FateMax : 0;
 
+            bool isAirArmy = AviationRules.IsAirArmy(_currentArmy);
             int terrainDefMod = 0;
-            if (map != null && map.TryGetTerrainAt(_currentArmy.Hex, out TerrainTypeEntry terrain))
+            if (!isAirArmy && map != null && map.TryGetTerrainAt(_currentArmy.Hex, out TerrainTypeEntry terrain))
                 terrainDefMod = terrain.defenseModifier;
             int buildingDefMod = 0;
-            if (_currentArmy.VisualSnapshotConstructionDefense.HasValue)
+            if (!isAirArmy && _currentArmy.VisualSnapshotConstructionDefense.HasValue)
                 buildingDefMod = _currentArmy.VisualSnapshotConstructionDefense.Value;
             else
             {
                 BuildingData building = BuildingRegistry.FindAt(_currentArmy.Hex);
-                if (building != null && building.IsBase)
+                if (!isAirArmy && building != null && building.IsBase)
                     buildingDefMod = building.Defense;
             }
 
