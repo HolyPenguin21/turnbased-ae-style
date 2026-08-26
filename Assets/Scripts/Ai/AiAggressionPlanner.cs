@@ -1874,15 +1874,24 @@ namespace Game.Ai
             public readonly bool CrossesReadinessThreshold;
             // Repeat-strike spec (2026-08-26) — the estimated win chance if the launch candidate
             // ALSO gets its repeat strike (only ever populated when HasSecondStrike is true, see
-            // EvaluateRaidSupport's own comment); equals WinChanceAfter, and HasSecondStrike stays
-            // false, for any candidate that isn't a fuel-margin-eligible multi-turn sortie. Never
-            // assumed equal to WinChanceAfter automatically — chained onto the FIRST strike's own
-            // expected post-strike roster, since a target can be thinned or wiped by then.
+            // EvaluateRaidCoordination's own comment); equals WinChanceAfter, and HasSecondStrike
+            // stays false, for any candidate that isn't a fuel-margin-eligible multi-turn sortie.
+            // Never assumed equal to WinChanceAfter automatically — chained onto the FIRST strike's
+            // own expected post-strike roster, since a target can be thinned or wiped by then.
             public readonly float WinChanceAfterSecondStrike;
             public readonly bool HasSecondStrike;
+            // Added 2026-08-26 (air-strike scoring rework, spec sections 3/8) — the raid's own
+            // WorthIt.BattleEstimate improvement this strike buys, read via RaidWeakerArmyTask.
+            // EstimateAgainst before vs after: how much ExpectedSurvivingHpRatioOnWin rises
+            // (SurvivalGain) and CriticalAfterBattleChance falls (CriticalReduction). This is the
+            // ONLY coordination credit a strike against an already-redundant (95%+ win chance) raid
+            // can still earn — see CoordinationBonus's own composition in EvaluateRaidCoordination.
+            public readonly float SurvivalGain;
+            public readonly float CriticalReduction;
 
             public RaidSupportEvaluation(AiTask raidTask, float winChanceBefore, float winChanceAfter, float coordinationBonus,
-                bool crossesReadinessThreshold, float winChanceAfterSecondStrike, bool hasSecondStrike)
+                bool crossesReadinessThreshold, float winChanceAfterSecondStrike, bool hasSecondStrike,
+                float survivalGain, float criticalReduction)
             {
                 RaidTask = raidTask;
                 WinChanceBefore = winChanceBefore;
@@ -1891,6 +1900,8 @@ namespace Game.Ai
                 CrossesReadinessThreshold = crossesReadinessThreshold;
                 WinChanceAfterSecondStrike = winChanceAfterSecondStrike;
                 HasSecondStrike = hasSecondStrike;
+                SurvivalGain = survivalGain;
+                CriticalReduction = criticalReduction;
             }
         }
 
@@ -1925,23 +1936,32 @@ namespace Game.Ai
                 AirStrikeTask.StrikeTarget? bestTarget = null;
                 RaidSupportEvaluation bestSupport = default;
                 float bestEffectiveBonus = 0f;
+                float bestEffectiveSurvivalBonus = 0f;
                 float bestFinalScore = 0f;
-                foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, candidate, ctx.Map))
+                foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, root, candidate, ctx.Map))
                 {
-                    RaidSupportEvaluation support = EvaluateRaidSupport(player, candidate, candidateTarget, activeRaids, ctx.Map);
+                    RaidSupportEvaluation support = EvaluateRaidCoordination(player, candidate, candidateTarget, activeRaids, ctx.Map);
                     // A raid ready to attack NOW can't be credited the same coordination bonus for a
                     // strike that only lands several turns from now (2026-08-26 multi-turn aviation
                     // spec, point 10 — "наземный рейд не должен ждать вертолёт бесконечно"): the
                     // bonus is scaled down by how many extra turns the strike itself still needs,
                     // never zeroed outright (a genuinely decisive future strike can still matter).
+                    // The survival-only slice is scaled the same way, tracked separately purely so
+                    // BuildAirStrikeReason can print "+ raid ..." and "+ survival ..." as two
+                    // distinct log terms instead of one opaque combined number.
                     int extraTurns = Mathf.Max(0, candidateTarget.RequiredTurns - 1);
-                    float effectiveBonus = extraTurns > 0 ? support.CoordinationBonus / (1 + extraTurns) : support.CoordinationBonus;
+                    float scale = extraTurns > 0 ? 1f / (1 + extraTurns) : 1f;
+                    float survivalBonus = support.SurvivalGain * AiConfig.airStrikeRaidSurvivalWeight
+                        + support.CriticalReduction * AiConfig.airStrikeRaidCriticalReductionWeight;
+                    float effectiveBonus = support.CoordinationBonus * scale;
+                    float effectiveSurvivalBonus = survivalBonus * scale;
                     float finalScore = Mathf.Min(candidateTarget.BaseScore + effectiveBonus, AiConfig.airStrikeScoreCap);
                     if (!bestTarget.HasValue || finalScore > bestFinalScore)
                     {
                         bestTarget = candidateTarget;
                         bestSupport = support;
                         bestEffectiveBonus = effectiveBonus;
+                        bestEffectiveSurvivalBonus = effectiveSurvivalBonus;
                         bestFinalScore = finalScore;
                     }
                 }
@@ -1953,7 +1973,8 @@ namespace Game.Ai
                     continue;
                 }
 
-                string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, candidate.Aircraft.Count, bestFinalScore, bestEffectiveBonus);
+                string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, bestFinalScore, bestEffectiveBonus,
+                    bestEffectiveSurvivalBonus);
 
                 if (candidate.ExistingArmy != null)
                 {
@@ -1985,13 +2006,13 @@ namespace Game.Ai
         }
 
         // Whichever active raid (if any) targets the SAME hex as `target`, plus the honest WorthIt
-        // win-chance swing striking it would give that raid — before vs after
+        // BattleEstimate swing striking it would give that raid — before vs after
         // AviationCombatEstimator.EstimateAirStrike's own expected post-strike roster, both read
-        // through RaidWeakerArmyTask.WinChanceAgainst (never a second, simplified army-vs-army
-        // formula of its own — 2026-08-26 spec item 3: "все army-vs-army сравнения должны
-        // по-прежнему проходить через WorthIt"). Never mutates `raid`, its Army, or AiMapMemory —
-        // purely a read: the real target composition only ever changes once the strike actually
-        // lands (see AviationCombatPresenter.RunAirStrike) and AiMapMemory re-observes the hex.
+        // through RaidWeakerArmyTask.EstimateAgainst (never a second, simplified army-vs-army
+        // formula of its own — spec section 3: "все army-vs-army сравнения должны по-прежнему
+        // проходить через WorthIt"). Never mutates `raid`, its Army, or AiMapMemory — purely a read:
+        // the real target composition only ever changes once the strike actually lands (see
+        // AviationCombatPresenter.RunAirStrike) and AiMapMemory re-observes the hex.
         //
         // `target`'s own KnownDefense/KnownDefenders describe only the physical army sighting an
         // air strike can actually hit (AviationCombatPresenter.FindAirStrikeTargetsAt never touches
@@ -2000,12 +2021,22 @@ namespace Game.Ai
         // own "two separate fights" comment). When that's the case, striking the army can't lower
         // what the raid actually has to beat, so this raid is skipped entirely rather than crediting
         // a strike for a threat it never touches.
-        private static RaidSupportEvaluation EvaluateRaidSupport(PlayerSetupData player, AirStrikeTask.LaunchCandidate candidate,
+        //
+        // 2026-08-26 air-strike scoring rework (spec sections 3/8) — this used to return a flat
+        // "already ready, no bonus" zero the instant WinChanceBefore cleared raidMinimumWinChance
+        // (0.65); that gate is now airStrikeRaidRedundantWinChance (0.95, a coarser bar — a raid at
+        // 70-90% is still genuinely helped by a coordinated strike even though it's already
+        // "ready"), and even a strike against an already-redundant raid can still earn survival
+        // credit (SurvivalGain/CriticalReduction) if it measurably lowers that raid's own cost of
+        // victory, per spec's own "допускается бонус, если он заметно уменьшает риск тяжёлых потерь
+        // после победы".
+        private static RaidSupportEvaluation EvaluateRaidCoordination(PlayerSetupData player, AirStrikeTask.LaunchCandidate candidate,
             AirStrikeTask.StrikeTarget target, IReadOnlyList<AiTask> activeRaids, HexMap map)
         {
             AiTask bestRaid = null;
             float bestBefore = 0f, bestAfter = 0f, bestAfterSecond = 0f, bestImprovement = float.NegativeInfinity;
             bool bestHasSecondStrike = false;
+            float bestSurvivalGain = 0f, bestCriticalReduction = 0f;
 
             foreach (AiTask raid in activeRaids)
             {
@@ -2017,15 +2048,20 @@ namespace Game.Ai
                 if (target.KnownDefense < armyOnlyDefenseBefore - 0.01f)
                     continue; // a known Hex Event guard outranks the army here — this strike can't touch the real threat
 
-                float chanceBefore = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatBefore);
+                WorthIt.BattleEstimate estimateBefore = RaidWeakerArmyTask.EstimateAgainst(raid.Army, threatBefore);
+                float chanceBefore = estimateBefore.WinChance;
 
-                AviationCombatEstimator.AirStrikeEstimate firstEstimate = AviationCombatEstimator.EstimateAirStrike(
-                    candidate.Aircraft, target.KnownDefense, target.KnownAttack, target.KnownDefenders);
+                // Reuses target.Estimate — the exact same first-strike Monte Carlo pass
+                // AirStrikeTask.ScoreTarget already ran for its own damage/kill terms — instead of
+                // re-simulating an identical strike here (2026-08-26 rework — StrikeTarget.Estimate
+                // added specifically for this reuse).
+                AviationCombatEstimator.AirStrikeEstimate firstEstimate = target.Estimate;
                 bool wipedOutFirst = target.KnownDefenders != null && target.KnownDefenders.Count > 0
                     && firstEstimate.ExpectedDefendersAfter.Count == 0;
                 var threatAfterFirst = new RaidWeakerArmyTask.ThreatStrength(firstEstimate.ExpectedDefenseAfter + threatBefore.HexBonus,
                     firstEstimate.ExpectedAttackAfter, firstEstimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name, wipedOutFirst);
-                float chanceAfterFirst = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfterFirst);
+                WorthIt.BattleEstimate estimateAfterFirst = RaidWeakerArmyTask.EstimateAgainst(raid.Army, threatAfterFirst);
+                float chanceAfterFirst = estimateAfterFirst.WinChance;
 
                 // A repeat strike is a real possibility for ANY candidate — same-turn Sortie or
                 // multi-turn — that still has fuel margin left AND could actually land safely next
@@ -2047,6 +2083,7 @@ namespace Game.Ai
                     && AiAviationSupport.SafeUnlandedEndsRemaining(candidate.Aircraft) >= 1
                     && AiAviationSupport.CanStrikeNextTurnAndLand(candidate.Aircraft, target.Hex, candidate.AirfieldHex, map, player, out _);
                 float chanceAfterSecond = chanceAfterFirst;
+                WorthIt.BattleEstimate estimateAfterSecond = estimateAfterFirst;
                 if (hasSecondStrike)
                 {
                     AviationCombatEstimator.AirStrikeEstimate secondEstimate = AviationCombatEstimator.EstimateAirStrike(
@@ -2056,7 +2093,8 @@ namespace Game.Ai
                     var threatAfterSecond = new RaidWeakerArmyTask.ThreatStrength(secondEstimate.ExpectedDefenseAfter + threatBefore.HexBonus,
                         secondEstimate.ExpectedAttackAfter, secondEstimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name,
                         wipedOutSecond);
-                    chanceAfterSecond = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfterSecond);
+                    estimateAfterSecond = RaidWeakerArmyTask.EstimateAgainst(raid.Army, threatAfterSecond);
+                    chanceAfterSecond = estimateAfterSecond.WinChance;
                 }
 
                 float improvement = chanceAfterSecond - chanceBefore;
@@ -2068,19 +2106,24 @@ namespace Game.Ai
                     bestAfter = chanceAfterFirst;
                     bestAfterSecond = chanceAfterSecond;
                     bestHasSecondStrike = hasSecondStrike;
+                    bestSurvivalGain = Mathf.Max(0f, estimateAfterSecond.ExpectedSurvivingHpRatioOnWin - estimateBefore.ExpectedSurvivingHpRatioOnWin);
+                    bestCriticalReduction = Mathf.Max(0f, estimateBefore.CriticalAfterBattleChance - estimateAfterSecond.CriticalAfterBattleChance);
                 }
             }
 
             if (bestRaid == null)
-                return new RaidSupportEvaluation(null, 0f, 0f, 0f, false, 0f, false);
+                return new RaidSupportEvaluation(null, 0f, 0f, 0f, false, 0f, false, 0f, 0f);
 
-            // Already ready without any help at all — a strike here doesn't unlock anything, so it
-            // must never outrank a target that DOES just because their hexes happen to coincide
-            // (spec item 5's own "не вытеснять более полезную цель только из-за совпадения
-            // координаты").
-            if (bestBefore >= AiConfig.raidMinimumWinChance)
-                return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, AiConfig.airStrikeRaidAlreadyReadyBonus, false,
-                    bestAfterSecond, bestHasSecondStrike);
+            float survivalBonus = bestSurvivalGain * AiConfig.airStrikeRaidSurvivalWeight
+                + bestCriticalReduction * AiConfig.airStrikeRaidCriticalReductionWeight;
+
+            // Redundant support (spec section 8) — a raid this far past raidMinimumWinChance has
+            // nothing left worth "unlocking"; only the survival credit above still applies, never a
+            // bonus for merely sharing a target hex (spec item 5's own "не вытеснять более полезную
+            // цель только из-за совпадения координаты").
+            if (bestBefore >= AiConfig.airStrikeRaidRedundantWinChance)
+                return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, survivalBonus, false,
+                    bestAfterSecond, bestHasSecondStrike, bestSurvivalGain, bestCriticalReduction);
 
             float clampedImprovement = Mathf.Max(0f, bestAfterSecond - bestBefore);
             float bonus = clampedImprovement > 0f
@@ -2089,24 +2132,35 @@ namespace Game.Ai
             bool crosses = bestBefore < AiConfig.raidMinimumWinChance && bestAfterSecond >= AiConfig.raidMinimumWinChance;
             if (crosses)
                 bonus += AiConfig.airStrikeRaidThresholdCrossBonus;
+            bonus += survivalBonus;
 
-            return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, bonus, crosses, bestAfterSecond, bestHasSecondStrike);
+            return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, bonus, crosses, bestAfterSecond, bestHasSecondStrike,
+                bestSurvivalGain, bestCriticalReduction);
         }
 
         // The full diagnostic Reason for an AirStrike candidate — composed exactly once per
-        // candidate, here, never as a separate AiDebugLog.Write per losing candidate (2026-08-26
-        // spec item 8: the standard per-step candidate dump and the "decided ..." line already
-        // surface this same string for every candidate/the actual winner respectively — see
+        // candidate, here, never as a separate AiDebugLog.Write per losing candidate (spec's own
+        // "Лог не должен печатать отдельную строку для каждого отвергнутого кандидата"; the
+        // standard per-step candidate dump and the "decided ..." line already surface this same
+        // string for every candidate/the actual winner respectively — see
         // AiTurnController.DescribeCandidates/RunTurn).
-        // effectiveBonus — support.CoordinationBonus already scaled down for a multi-turn strike's
-        // own delay (see TryStartAirStrikeCandidates' own comment); reported here instead of the raw
-        // support.CoordinationBonus so the printed number always matches what actually got added to
-        // BaseScore. missionPrefix (2026-08-26 multi-turn aviation spec, point 16) names the sortie
-        // shape up front — same-turn strikes stay silent about it (unchanged wording), a multi-turn
-        // one states the turn count and the fuel margin it spends.
-        private static string BuildAirStrikeReason(AirStrikeTask.StrikeTarget target, RaidSupportEvaluation support, int aircraftCount,
-            float finalScore, float effectiveBonus)
+        //
+        // 2026-08-26 air-strike scoring rework (spec's own "Логирование" section) — replaces the
+        // old prose sentence with an explicit additive breakdown (base/damage/kill/raid/urgency
+        // minus route/resource costs) so a log reader can see EXACTLY why this strike outranked
+        // (or lost to) everything else, not just the final number. Kept as one embeddable clause —
+        // same single-line convention every other AiDecision.Reason in this codebase already
+        // follows (AiTurnController appends ". " after it) — rather than the spec's own illustrative
+        // multi-line example, which would break that shared rendering convention.
+        //
+        // effectiveBonus/effectiveSurvivalBonus — support's own CoordinationBonus/survival slice
+        // already scaled down for a multi-turn strike's own delay (see
+        // TryStartAirStrikeCandidates' own comment); reported here instead of the raw
+        // support fields so the printed numbers always match what actually got added to BaseScore.
+        private static string BuildAirStrikeReason(AirStrikeTask.StrikeTarget target, RaidSupportEvaluation support,
+            float finalScore, float effectiveBonus, float effectiveSurvivalBonus)
         {
+            AirStrikeTask.ScoreBreakdown b = target.Breakdown;
             string missionPrefix = target.RequiredTurns > 1
                 ? $"{target.RequiredTurns}-turn helicopter sortie, action reached "
                     + (target.MultiTurn.HasValue && target.MultiTurn.Value.ReachesActionThisTurn ? "this turn, " : "later, ")
@@ -2114,37 +2168,43 @@ namespace Game.Ai
                     + $"({target.LandingHex.Q},{target.LandingHex.R}) — "
                 : $"same-turn sortie, landing ({target.LandingHex.Q},{target.LandingHex.R}) — ";
 
+            string title = support.RaidTask == null
+                ? $"air strike on {target.TargetName}"
+                : $"air strike supports \"{support.RaidTask.Army.Name}\" raid on {target.TargetName}";
+
+            var terms = new List<string>
+            {
+                $"base {b.Base:0}",
+                $"+ damage {b.DamageValue:0} ({b.DamageFraction:P0} HP)",
+                $"+ kill {b.KillValue:0} ({b.KillAnyProbability:P0} any kill)",
+            };
+
             if (support.RaidTask == null)
-                return $"air strike on {target.TargetName} — {missionPrefix}{aircraftCount} aircraft ready";
-
-            string raidName = support.RaidTask.Army.Name;
-            if (effectiveBonus <= 0f)
             {
-                return support.WinChanceBefore >= AiConfig.raidMinimumWinChance
-                    ? $"air strike on {target.TargetName} — {missionPrefix}raid \"{raidName}\" already ready at "
-                        + $"{support.WinChanceBefore:P0}, no coordination bonus"
-                    : $"air strike on {target.TargetName} — {missionPrefix}active raid found, but expected win chance "
-                        + $"remains {support.WinChanceAfter:P0}, no coordination bonus";
+                terms.Add("+ raid 0 (no active raid on this hex)");
+            }
+            else
+            {
+                float raidDeltaBonus = effectiveBonus - effectiveSurvivalBonus;
+                string thresholdPart = support.CrossesReadinessThreshold ? $", crosses {AiConfig.raidMinimumWinChance:P0}" : string.Empty;
+                string afterPart = support.HasSecondStrike
+                    ? $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}→{support.WinChanceAfterSecondStrike:P0}"
+                    : $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}";
+                terms.Add($"+ raid {raidDeltaBonus:0} ({afterPart}{thresholdPart})");
+                if (effectiveSurvivalBonus > 0.01f)
+                    terms.Add($"+ survival {effectiveSurvivalBonus:0}");
             }
 
-            string thresholdPart = support.CrossesReadinessThreshold
-                ? $", crosses {AiConfig.raidMinimumWinChance:P0} readiness threshold"
-                : string.Empty;
+            terms.Add($"+ urgency {b.UrgencyValue:0}{(b.IsCitadelUrgency ? " (citadel threat)" : string.Empty)}");
+            terms.Add($"- route {b.RouteCost:0}");
+            terms.Add($"- resources {b.ResourceScarcityCost:0}{(b.ResourceScarcityCost > 0.01f ? " (uses last Energy)" : string.Empty)}");
 
-            // Repeat-strike spec (2026-08-26, point 8) — names the estimated second strike's own
-            // contribution separately from the first, never folding them into one number, so it's
-            // visible this is a two-hit plan rather than one strike credited twice.
-            if (support.HasSecondStrike)
-            {
-                return $"{target.RequiredTurns}-turn helicopter support on {target.TargetName} — raid win chance "
-                    + $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0} after first strike, expected "
-                    + $"{support.WinChanceAfter:P0}→{support.WinChanceAfterSecondStrike:P0} after repeat strike"
-                    + $"{thresholdPart}; must land at ({target.LandingHex.Q},{target.LandingHex.R}) after second attack";
-            }
+            float uncappedTotal = b.Total + effectiveBonus;
+            string totalPart = finalScore < uncappedTotal - 0.01f
+                ? $"= {uncappedTotal:0}, capped to {finalScore:0}"
+                : $"= {finalScore:0}";
 
-            return $"air strike supports \"{raidName}\" raid on {target.TargetName} — {missionPrefix}expected raid win "
-                + $"chance {support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}{thresholdPart}, coordination "
-                + $"+{effectiveBonus:0}, score {target.BaseScore:0}→{finalScore:0}";
+            return $"{title} — {missionPrefix}{string.Join(" ", terms)} {totalPart}";
         }
 
         // Advances an already-committed AirStrike sortie — re-validates the sortie every step (per
@@ -2268,11 +2328,25 @@ namespace Game.Ai
                 return null; // still the same turn as the last strike — wait for next turn's reset
 
             task.LandingHex = landingHex; // keep the reserved landing fresh even while still loitering
+
+            // 2026-08-26 rework (spec section 7) — the repeat's own score now comes from the same
+            // base+damage+kill(+urgency) formula ScoreTarget uses for a fresh candidate, evaluated
+            // against the REAL roster still standing on the hex, instead of the old flat
+            // airStrikeRepeatScore constant. A repeat against a real, still-dangerous remnant scores
+            // in the normal AirStrike band or higher; one against an already-thinned remnant falls
+            // toward airStrikeBaseWeight — the "natural falloff" the spec explicitly allows in place
+            // of a new strike-history subsystem.
+            List<WorthIt.DefenderProfile> defenders = remaining.SelectMany(a => a.Members).Select(WorthIt.FromLiveUnit).ToList();
+            (AirStrikeTask.ScoreBreakdown breakdown, _) = AirStrikeTask.ScoreRepeatStrike(player, task.Army.Members, task.Army.Hex, defenders);
+            float score = Mathf.Min(breakdown.Total, AiConfig.airStrikeScoreCap);
+
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — repeats AirStrike — air attack "
                 + $"refreshed for the new turn; must return to airfield ({landingHex.Q},{landingHex.R}) this turn.");
-            string reason = $"repeats the air strike at ({task.Army.Hex.Q},{task.Army.Hex.R}) before returning to "
-                + $"({landingHex.Q},{landingHex.R})";
-            return AiDecision.RepeatAirStrike(task, AiConfig.airStrikeRepeatScore, reason);
+            string reason = $"repeats the air strike at ({task.Army.Hex.Q},{task.Army.Hex.R}) — base {breakdown.Base:0} "
+                + $"+ damage {breakdown.DamageValue:0} ({breakdown.DamageFraction:P0} HP) + kill {breakdown.KillValue:0} "
+                + $"({breakdown.KillAnyProbability:P0} any kill) + urgency {breakdown.UrgencyValue:0} = {score:0}; "
+                + $"before returning to ({landingHex.Q},{landingHex.R})";
+            return AiDecision.RepeatAirStrike(task, score, reason);
         }
 
         // Executes AiActionKind.ExecuteAirStrikeAtCurrentHex — the army never moves; this only

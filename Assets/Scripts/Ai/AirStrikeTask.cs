@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -56,14 +57,16 @@ namespace Game.Ai
             }
         }
 
-        // BaseScore/TargetName/KnownDefense/KnownAttack/KnownDefenders (2026-08-26, AirStrike/Raid
-        // coordination spec, project owner's own report) — replaces the old Score/Reason pair.
-        // AirStrikeTask never knows about active Raid tasks (see this class's own header comment),
-        // so it no longer composes a final Reason string itself; it only ever hands back its own
-        // raw, UNCAPPED base score plus everything AiAggressionPlanner needs to judge whether this
-        // target also helps an active RaidWeakerArmy task (KnownDefense/KnownAttack/KnownDefenders
-        // feed AviationCombatEstimator.EstimateAirStrike directly, same three numbers ScoreTarget
-        // itself already read off the same sighting). BaseScore is deliberately never clamped to
+        // Breakdown/TargetName/KnownDefense/KnownAttack/KnownDefenders/Estimate (2026-08-26,
+        // air-strike scoring rework, project owner's own report) — replaces the old bare BaseScore
+        // float. AirStrikeTask never knows about active Raid tasks (see this class's own header
+        // comment), so it still never composes a final Reason string itself; it only ever hands
+        // back its own raw, UNCAPPED self-value breakdown (Breakdown.Total == old BaseScore's role)
+        // plus everything AiAggressionPlanner needs to judge whether this target also helps an
+        // active RaidWeakerArmy task. Estimate is the SAME AviationCombatEstimator.EstimateAirStrike
+        // call Breakdown's own damage/kill terms were computed from — exposed so AiAggressionPlanner's
+        // own raid-coordination step reuses it as the "after first strike" roster instead of paying
+        // for an identical second Monte Carlo pass. BaseScore is deliberately never clamped to
         // airStrikeScoreCap here any more — see that constant's own comment: the cap now applies
         // exactly once, in AiAggressionPlanner, AFTER any coordination bonus is added, so a
         // genuinely raid-supporting strike can still win against a marginally-higher-BaseScore
@@ -78,20 +81,22 @@ namespace Game.Ai
             // доступен однодневный план — использовать его как сейчас").
             public readonly AiAviationSupport.Sortie? Sortie;
             public readonly AiAviationSupport.MultiTurnSortie? MultiTurn;
-            public readonly float BaseScore;
+            public readonly ScoreBreakdown Breakdown;
+            public readonly AviationCombatEstimator.AirStrikeEstimate Estimate;
             public readonly string TargetName;
             public readonly float KnownDefense;
             public readonly float KnownAttack;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders;
 
             public StrikeTarget(HexCoord hex, AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
-                float baseScore, string targetName, float knownDefense, float knownAttack,
-                IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
+                ScoreBreakdown breakdown, AviationCombatEstimator.AirStrikeEstimate estimate, string targetName,
+                float knownDefense, float knownAttack, IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
             {
                 Hex = hex;
                 Sortie = sortie;
                 MultiTurn = multiTurn;
-                BaseScore = baseScore;
+                Breakdown = breakdown;
+                Estimate = estimate;
                 TargetName = targetName;
                 KnownDefense = knownDefense;
                 KnownAttack = knownAttack;
@@ -101,6 +106,43 @@ namespace Game.Ai
             public HexCoord LandingHex => Sortie?.LandingHex ?? MultiTurn?.LandingHex ?? default;
             public int RequiredTurns => Sortie.HasValue ? 1 : (MultiTurn?.RequiredTurns ?? 1);
             public int RequiredUnlandedEnds => MultiTurn?.RequiredUnlandedEnds ?? 0;
+            public float BaseScore => Breakdown.Total;
+        }
+
+        // Additive self-value breakdown for one strike candidate (2026-08-26 air-strike scoring
+        // rework, project owner's own spec) — every term here is either a flat weight from AiConfig
+        // or reads straight off AviationCombatEstimator's own Monte Carlo output; no second combat
+        // model. Total deliberately excludes any raid-coordination bonus (AiAggressionPlanner's own
+        // EvaluateRaidCoordination adds that separately, then applies airStrikeScoreCap exactly
+        // once) — this is a target's STANDALONE tactical value, per spec section 4's "самостоятельная
+        // тактическая ценность" (a strike must never require an active raid to be worth flying).
+        public readonly struct ScoreBreakdown
+        {
+            public readonly float Base;
+            public readonly float DamageFraction;
+            public readonly float DamageValue;
+            public readonly float KillAnyProbability;
+            public readonly float KillValue;
+            public readonly float UrgencyValue;
+            public readonly bool IsCitadelUrgency;
+            public readonly float RouteCost;
+            public readonly float ResourceScarcityCost;
+            public readonly float Total;
+
+            public ScoreBreakdown(float baseWeight, float damageFraction, float damageValue, float killAnyProbability,
+                float killValue, float urgencyValue, bool isCitadelUrgency, float routeCost, float resourceScarcityCost)
+            {
+                Base = baseWeight;
+                DamageFraction = damageFraction;
+                DamageValue = damageValue;
+                KillAnyProbability = killAnyProbability;
+                KillValue = killValue;
+                UrgencyValue = urgencyValue;
+                IsCitadelUrgency = isCitadelUrgency;
+                RouteCost = routeCost;
+                ResourceScarcityCost = resourceScarcityCost;
+                Total = baseWeight + damageValue + killValue + urgencyValue - routeCost - resourceScarcityCost;
+            }
         }
 
         // Scans known ARMY/garrison sightings (AiMapMemory.KnownEnemySighting) — both non-neutral
@@ -129,7 +171,7 @@ namespace Game.Ai
         // instead of only ever seeing whichever target happened to win on raw BaseScore alone (see
         // this method's own callers for why: a lower-BaseScore target that actually unlocks an
         // active raid must be able to outrank a higher-BaseScore one that doesn't).
-        public static IEnumerable<StrikeTarget> FindTargets(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
+        public static IEnumerable<StrikeTarget> FindTargets(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map)
         {
             if (actor == null || map == null)
                 yield break;
@@ -172,9 +214,10 @@ namespace Game.Ai
                 }
 
                 targetInfo.TryGetValue(hex, out var known);
-                float baseScore = ScoreTarget(candidate, sortie, multiTurn, known.Defense, known.Attack);
+                (ScoreBreakdown breakdown, AviationCombatEstimator.AirStrikeEstimate estimate) = ScoreTarget(
+                    actor, root, candidate, hex, sortie, multiTurn, known.Defense, known.Attack, known.Defenders);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
-                yield return new StrikeTarget(hex, sortie, multiTurn, baseScore, name, known.Defense, known.Attack, known.Defenders);
+                yield return new StrikeTarget(hex, sortie, multiTurn, breakdown, estimate, name, known.Defense, known.Attack, known.Defenders);
             }
         }
 
@@ -185,45 +228,123 @@ namespace Game.Ai
         // awareness. Deliberately NOT `FindTargets(...).OrderByDescending(...).FirstOrDefault()`
         // directly — StrikeTarget is a struct, so FirstOrDefault() on an empty sequence would
         // silently hand back a bogus all-default StrikeTarget instead of a real "no target" null.
-        public static StrikeTarget? FindTarget(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
+        public static StrikeTarget? FindTarget(PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexMap map)
         {
-            List<StrikeTarget> targets = FindTargets(actor, candidate, map).ToList();
+            List<StrikeTarget> targets = FindTargets(actor, root, candidate, map).ToList();
             return targets.Count > 0 ? targets.OrderByDescending(t => t.BaseScore).First() : (StrikeTarget?)null;
         }
 
-        // Ranking order per spec: target value/defence worth striking, expected damage × ready
-        // aircraft count, shorter total sortie distance, lower AP/energy cost. Known AA route
-        // exposure is no longer a term here (2026-08-26, project owner's own follow-up spec item 1
-        // — "не трактовать ПВО как простой штраф в score"): `sortie` only ever reaches this method
+        // Additive self-value scoring (2026-08-26 air-strike scoring rework, project owner's own
+        // spec — see ScoreBreakdown's own comment for the full term list). Every army-vs-army number
+        // here comes from ONE AviationCombatEstimator.EstimateAirStrike Monte Carlo pass, reused for
+        // both the damage and kill terms and returned to the caller (so AiAggressionPlanner's own
+        // raid-coordination step never re-simulates the same first strike). Known-AA route exposure
+        // is still not a term here (2026-08-26, project owner's own earlier follow-up spec item 1 —
+        // "не трактовать ПВО как простой штраф в score"): `sortie` only ever reaches this method
         // already AA-free, since AiAviationSupport.PlanSortieCore (behind TryPlanSortie/
         // TryPlanSortieFromStorage, see FindTargets above) now hard-filters every candidate landing
-        // by known-AA exposure itself, the same rule AirRecon's own FindReconHex already applied.
-        // No longer clamped to airStrikeScoreCap here (2026-08-26, AirStrike/Raid coordination spec)
-        // — see StrikeTarget.BaseScore's own comment for why the cap moved to AiAggressionPlanner.
-        // multiTurn (2026-08-26 multi-turn aviation spec, point 10) — every extra turn before the
-        // strike actually lands costs airStrikeExtraTurnPenalty, and every intermediate safe-
-        // unlanded-end the route spends costs airStrikeUnlandedEndPenalty, on top of the ordinary
-        // distance/AP terms below — deliberately small relative to airStrikeBaseWeight/
-        // airStrikeTargetValueWeight so a genuinely valuable multi-turn strike can still win, per
-        // spec's own "не делать штраф настолько большим, чтобы вертолётная механика фактически
-        // никогда не использовалась".
-        private static float ScoreTarget(LaunchCandidate candidate, AiAviationSupport.Sortie? sortie,
-            AiAviationSupport.MultiTurnSortie? multiTurn, float targetDefense, float targetAttack)
+        // by known-AA exposure itself. Not clamped to airStrikeScoreCap here — see
+        // StrikeTarget.BaseScore's own comment for why the cap only ever applies once, in
+        // AiAggressionPlanner, after any coordination bonus is added.
+        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreTarget(
+            PlayerSetupData actor, PlayerRoot root, LaunchCandidate candidate, HexCoord targetHex,
+            AiAviationSupport.Sortie? sortie, AiAviationSupport.MultiTurnSortie? multiTurn,
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
         {
-            float score = AiConfig.airStrikeBaseWeight;
-            float targetValue = targetDefense + targetAttack;
-            score += Mathf.Sqrt(Mathf.Max(0f, targetValue)) * AiConfig.airStrikeTargetValueWeight;
-            score += candidate.Aircraft.Count * AiConfig.airStrikeTargetValueWeight * 0.5f;
+            (ScoreBreakdown selfValue, AviationCombatEstimator.AirStrikeEstimate estimate) =
+                ScoreSelfValue(actor, candidate.Aircraft, targetHex, targetDefense, targetAttack, targetDefenders);
+
             int totalCost = sortie?.TotalCost ?? multiTurn?.TotalRouteCost ?? 0;
-            score -= totalCost * AiConfig.airStrikeDistancePenalty;
+            float routeCost = totalCost * AiConfig.airStrikeDistancePenalty;
             int apEnergyCost = candidate.Aircraft.Sum(u => u.ActivationApCost + u.LaunchEnergyCost);
-            score -= apEnergyCost * AiConfig.airStrikeApCostPenalty;
+            routeCost += apEnergyCost * AiConfig.airStrikeApCostPenalty;
             if (multiTurn.HasValue)
             {
-                score -= Mathf.Max(0, multiTurn.Value.RequiredTurns - 1) * AiConfig.airStrikeExtraTurnPenalty;
-                score -= multiTurn.Value.RequiredUnlandedEnds * AiConfig.airStrikeUnlandedEndPenalty;
+                routeCost += Mathf.Max(0, multiTurn.Value.RequiredTurns - 1) * AiConfig.airStrikeExtraTurnPenalty;
+                routeCost += multiTurn.Value.RequiredUnlandedEnds * AiConfig.airStrikeUnlandedEndPenalty;
             }
-            return score;
+
+            float resourceScarcityCost = ResourceScarcityPenalty(root, actor, candidate);
+
+            var breakdown = new ScoreBreakdown(selfValue.Base, selfValue.DamageFraction, selfValue.DamageValue,
+                selfValue.KillAnyProbability, selfValue.KillValue, selfValue.UrgencyValue, selfValue.IsCitadelUrgency,
+                routeCost, resourceScarcityCost);
+            return (breakdown, estimate);
+        }
+
+        // Repeat-strike self-value (2026-08-26 rework, spec section 7) — a helicopter already
+        // sitting on the target hex, deciding whether to hold for one more strike
+        // (AiAggressionPlanner.TryContinueLoiterAtTarget), scored through the exact same
+        // base+damage+kill(+urgency) terms ScoreTarget uses for a fresh candidate — just against the
+        // REAL ground-truth roster still standing on the hex (AviationCombatPresenter.
+        // FindAirStrikeTargetsAt) instead of a remembered sighting, and with no route/AP/resource
+        // cost at all (the army is already there — nothing left to fly or launch). Replaces the old
+        // flat airStrikeRepeatScore constant: a repeat against a real, still-dangerous remnant
+        // naturally scores in the normal AirStrike band; a repeat against an already-thinned
+        // remnant naturally falls toward airStrikeBaseWeight, per spec's own "естественная оценка
+        // текущего состава и HP цели".
+        public static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreRepeatStrike(
+            PlayerSetupData actor, IReadOnlyList<UnitData> aircraft, HexCoord targetHex,
+            IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
+        {
+            float targetDefense = targetDefenders?.Sum(d => d.Defense) ?? 0f;
+            float targetAttack = targetDefenders?.Sum(d => d.Attack) ?? 0f;
+            return ScoreSelfValue(actor, aircraft, targetHex, targetDefense, targetAttack, targetDefenders);
+        }
+
+        // Shared damage/kill/urgency core (spec sections 1, 2, 5) behind both ScoreTarget (a fresh
+        // candidate, plus its own route/resource cost) and ScoreRepeatStrike (an already-landed
+        // repeat, no route/resource cost at all) — one Monte Carlo pass
+        // (AviationCombatEstimator.EstimateAirStrike), read into the same weighted terms either way,
+        // so the two paths can never quietly diverge on what "expected outcome" means.
+        private static (ScoreBreakdown Breakdown, AviationCombatEstimator.AirStrikeEstimate Estimate) ScoreSelfValue(
+            PlayerSetupData actor, IReadOnlyList<UnitData> aircraft, HexCoord targetHex,
+            float targetDefense, float targetAttack, IReadOnlyList<WorthIt.DefenderProfile> targetDefenders)
+        {
+            AviationCombatEstimator.AirStrikeEstimate estimate =
+                AviationCombatEstimator.EstimateAirStrike(aircraft, targetDefense, targetAttack, targetDefenders);
+
+            // damageFraction (spec section 1) — only computable against a real per-unit roster
+            // (targetDefenders); an aggregate-sum-only sighting has no per-unit HP to divide by, so
+            // this term reads 0 for it, same "no per-unit data, no estimate" convention
+            // RaidWeakerArmyTask.EstimateAgainst's own aggregate fallback already follows.
+            float targetTotalHp = targetDefenders != null ? targetDefenders.Sum(d => Mathf.Max(0f, d.HitPoints)) : 0f;
+            float damageFraction = targetTotalHp > 0.01f ? Mathf.Clamp01(estimate.ExpectedDamage / targetTotalHp) : 0f;
+            float damageValue = damageFraction * AiConfig.airStrikeDamageFractionWeight;
+
+            // Kill value (spec section 2) — bounded by construction: KillAnyProbability/WipeProbability
+            // are themselves in [0,1], so this term can never exceed
+            // airStrikeKillAnyWeight + airStrikeExpectedKillWeight*rosterSize + airStrikeWipeBonus.
+            float killValue = estimate.KillAnyProbability * AiConfig.airStrikeKillAnyWeight
+                + estimate.ExpectedKillCount * AiConfig.airStrikeExpectedKillWeight
+                + estimate.WipeProbability * AiConfig.airStrikeWipeBonus;
+
+            float urgencyValue = 0f;
+            bool isCitadelUrgency = false;
+            if (actor != null && AiDefencePlanner.IsUrgentAirStrikeTarget(actor, targetHex, out isCitadelUrgency))
+                urgencyValue = isCitadelUrgency ? AiConfig.airStrikeUrgencyCitadelBonus : AiConfig.airStrikeUrgencyBaseBonus;
+
+            var breakdown = new ScoreBreakdown(AiConfig.airStrikeBaseWeight, damageFraction, damageValue,
+                estimate.KillAnyProbability, killValue, urgencyValue, isCitadelUrgency, 0f, 0f);
+            return (breakdown, estimate);
+        }
+
+        // Resource scarcity (spec section 6) — extra penalty when launching THIS candidate would
+        // leave zero AiResourceReservation-visible Energy free for any OTHER AI spend this same
+        // step. Only ever evaluated for a fresh launch out of storage (ExistingArmy == null) — an
+        // already-airborne group re-picking its next target spends no NEW launch Energy. Read
+        // through AiResourceReservation.Available, never root.GetResource directly — same "reserved
+        // resources are never free" rule AiAviationSupport.CanAffordLaunch's own comment already
+        // states for this exact Energy check.
+        private static float ResourceScarcityPenalty(PlayerRoot root, PlayerSetupData actor, LaunchCandidate candidate)
+        {
+            if (root == null || actor == null || candidate.ExistingArmy != null)
+                return 0f;
+            int energyCost = candidate.Aircraft.Sum(u => u.LaunchEnergyCost);
+            if (energyCost <= 0)
+                return 0f;
+            float availableAfter = AiResourceReservation.Available(root, actor, ResourceType.Energy) - energyCost;
+            return availableAfter <= 0.01f ? AiConfig.airStrikeLastEnergyPenalty : 0f;
         }
     }
 }

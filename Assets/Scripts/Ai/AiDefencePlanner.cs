@@ -229,6 +229,32 @@ namespace Game.Ai
         public static AiMapMemory.KnownEnemySighting? CurrentActiveThreat(PlayerSetupData player, HexCoord homeHex) =>
             FindActiveThreatSighting(player, homeHex);
 
+        // AirStrikeTask's own urgency term (2026-08-26, air-strike scoring rework, project owner's
+        // own spec section 5 — "срочность цели") — whether `targetHex` IS the live threat this
+        // player's own Defence tier is already reacting to: the citadel's own siege threat
+        // (SiegeThreatHex) or an active-defence threat sighting for one of this player's own
+        // Base-tagged hexes (CurrentActiveThreat, same per-base scan FindActiveThreatSighting's own
+        // comment already runs). Reuses those two read-only predicates directly — no second,
+        // air-strike-only threat scan of its own, per the rework spec's own "не вводить отдельное
+        // всеведение" constraint. `isCitadelThreat` lets the caller weigh the two cases differently
+        // (a citadel threat outranks an ordinary base threat) without re-deriving which one fired.
+        public static bool IsUrgentAirStrikeTarget(PlayerSetupData player, HexCoord targetHex, out bool isCitadelThreat)
+        {
+            isCitadelThreat = SiegeThreatHex(player)?.Equals(targetHex) ?? false;
+            if (isCitadelThreat)
+                return true;
+
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner != player || !building.IsBase)
+                    continue;
+                AiMapMemory.KnownEnemySighting? threat = CurrentActiveThreat(player, building.Hex);
+                if (threat.HasValue && threat.Value.Hex.Equals(targetHex))
+                    return true;
+            }
+            return false;
+        }
+
         // Whether `army` is currently strong enough to actually intercept `sighting` — Active's own
         // COMPOSITION gate (AiConfig.defenceActiveWinChance, 60/40 dynamic against this specific
         // known army), routed through WorthIt.MeetsWinChance directly per this class's own "only

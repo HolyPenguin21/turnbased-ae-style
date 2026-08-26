@@ -1192,61 +1192,95 @@ namespace Game.Ai
         // through its own separate, never-penalized constant.
 
         // ---- Aviation (AirStrike / AirRecon) ----
-        // AirStrike's own base weight (AiAggressionPlanner.TryStartAirStrikeCandidates). Pinned
-        // just above economyBaseWeight (105)/reconBaseWeight/aggressionBaseWeight (100) — a
-        // worthwhile-target air strike should outrank ordinary, non-urgent Economy/Recon travel,
-        // per the spec's own "above non-urgent economic/recon travel only when it has a worthwhile
-        // known target" — but every per-candidate bonus below is clamped by
-        // airStrikeScoreCap so the whole tier can never reach a ground raid's own tactical
-        // combat/execute score (raidCounterAttackBonus tier, aggressionBaseWeight+20=120) or
-        // defenceActiveScore/defencePreemptScore (120/130) — an already-launched sortie's own
-        // continuation score (see airStrikeContinuationScore below) sits separately, above this
-        // start tier, since a committed sortie must keep flying once airborne (same "committed
-        // work outranks a fresh start" principle raidReinforceDispatchScore already follows for
-        // ground raids).
-        public const float airStrikeBaseWeight = 108f;
-        // How much a target's own estimated value/defence (worth striking at all) can add on top
-        // of airStrikeBaseWeight — see AirStrikeTask.ScoreTarget.
-        public const float airStrikeTargetValueWeight = 6f;
-        // airStrikeAaExposurePenalty removed 2026-08-26 (project owner's own follow-up spec, item 1
-        // — "ПВО единым жёстким фильтром для всей авиации"): AirStrike's known-AA handling is no
-        // longer a ranked-down soft penalty here either — AiAviationSupport.PlanSortieCore (behind
-        // TryPlanSortie/TryPlanSortieFromStorage, see AirStrikeTask.FindTarget) now hard-drops any
-        // candidate landing whose route carries known-AA exposure whenever an AA-free one also
-        // reaches, the same rule AirRecon's own gate already applied — see that method's own removal
-        // note below for airReconAaExposurePenalty, which this now matches exactly.
+        // ---- AirStrike scoring v2 (2026-08-26, "переработать оценку полезности авиаудара" spec,
+        // project owner's own report) — replaces the old flat-base + sqrt(defense+attack) formula,
+        // under which almost any technically reachable target scored ~108-118 regardless of
+        // whether the strike actually accomplished anything (the reported bug: 0%-win-chance raid
+        // support, already-100%-ready raid support, and repeats with no visible tactical change all
+        // scored near the ceiling). The new score is additive over concrete EXPECTED-OUTCOME terms
+        // (AirStrikeTask.ScoreTarget/ScoreBreakdown) — base + damage + kill + raid coordination
+        // + urgency − route/AP/multi-turn/resource-scarcity costs — so a technically-available but
+        // useless strike now lands near the bare base weight, well below ordinary Economy/Recon
+        // travel, while a genuinely valuable one still climbs toward the same cap the old formula
+        // had. Every army-vs-army number still comes from WorthIt/AviationCombatEstimator only —
+        // this rework adds no second combat model, just reweights how their outputs turn into score.
+        //
+        // Collapsed from 108 to a low floor — a launch candidate must no longer outscore ordinary,
+        // non-urgent Economy/Recon travel (economyBaseWeight 105/reconBaseWeight, aggressionBaseWeight
+        // 100) purely for being technically reachable; every point of real priority now has to come
+        // from the additive terms below.
+        public const float airStrikeBaseWeight = 80f;
+        // ---- Expected damage (AirStrikeTask.ScoreTarget's own damage term, spec section 1) ----
+        // damageFraction = AviationCombatEstimator.AirStrikeEstimate.ExpectedDamage / the target's
+        // own total known HP, clamped to [0,1] before this weight is applied — hard-caps this term
+        // at airStrikeDamageFractionWeight by construction, so a large-but-nearly-invulnerable army
+        // (big Attack/Defense, low expected damage fraction) can no longer score well just for being
+        // big, the way the old sqrt(defense+attack) term let it.
+        public const float airStrikeDamageFractionWeight = 25f;
+        // ---- Kill probability/value (spec section 2) ----
+        // Reads AviationCombatEstimator.AirStrikeEstimate's own per-trial kill tallies (extended by
+        // this same rework — KillAnyProbability/ExpectedKillCount/WipeProbability, all read off the
+        // SAME Monte Carlo trials ExpectedDamage already averages over, never a second simulation).
+        // killAnyWeight*KillAnyProbability + expectedKillWeight*ExpectedKillCount is hard-capped in
+        // practice near killAnyWeight+a small multiple of expectedKillWeight since both factors are
+        // themselves ≤ the defender roster size; wipeBonus is a further, separately-capped [0,1]
+        // top-up specifically for "the whole target dies", not just "somebody on it dies".
+        public const float airStrikeKillAnyWeight = 12f;
+        public const float airStrikeExpectedKillWeight = 4f;
+        public const float airStrikeWipeBonus = 6f;
+        // ---- Urgency (spec section 5) ----
+        // AirStrikeTask.ScoreTarget's own flat bonus, ONLY when the target hex IS the live threat
+        // this player's Defence tier is already reacting to — AiDefencePlanner.
+        // IsUrgentAirStrikeTarget, which reuses SiegeThreatHex/CurrentActiveThreat directly rather
+        // than running a second, air-strike-only threat scan. Citadel threats outrank an ordinary
+        // base threat, matching Defence's own citadel-first tie-break elsewhere in this file.
+        public const float airStrikeUrgencyCitadelBonus = 15f;
+        public const float airStrikeUrgencyBaseBonus = 8f;
+        // ---- Sortie cost (unchanged mechanics — spec section 6, "сохранить штрафы") ----
         // Per-hex penalty on total sortie distance (outbound + return legs) — shorter sorties rank
         // higher, per spec's "shorter total sortie distance" tie-break.
         public const float airStrikeDistancePenalty = 1.5f;
         // Per-AP/Energy penalty on the sortie's own launch cost — spec's "lower AP/energy cost"
         // tie-break, same shape as every other cost-vs-value tradeoff in this file.
         public const float airStrikeApCostPenalty = 1f;
-        // Hard ceiling every AirStrike start candidate is clamped to — keeps the whole tier's
-        // bonuses from ever crossing raidCounterAttackBonus's own tier (aggressionBaseWeight+20=120),
-        // per the spec's explicit priority ladder. Applied in AiAggressionPlanner.
-        // TryStartAirStrikeCandidates now (2026-08-26, AirStrike/Raid coordination spec — moved out
-        // of AirStrikeTask.ScoreTarget, which used to clamp the raw BaseScore before any
-        // coordination bonus existed): the cap now applies exactly once, AFTER BaseScore +
-        // coordinationBonus is summed, so a raid-supporting strike's bonus isn't wasted clamping an
-        // already-capped number.
-        public const float airStrikeScoreCap = 118f;
+        // ---- Resource scarcity (new, spec section 6) ----
+        // Extra penalty when launching THIS candidate would leave zero AiResourceReservation-visible
+        // Energy free for any OTHER AI spend this same step (a hand card, a facility build, another
+        // sortie) — read through AiResourceReservation.Available, never root.GetResource directly,
+        // same "reserved resources are never free" rule every other AI spend check in this file
+        // already follows. Only ever evaluated for a fresh launch from storage (candidate.ExistingArmy
+        // == null) — an already-airborne group spends no NEW Energy picking its next target.
+        public const float airStrikeLastEnergyPenalty = 10f;
+        // Hard ceiling every AirStrike candidate's own final score (BaseScore + coordination bonus)
+        // is clamped to, applied once in AiAggressionPlanner AFTER the coordination bonus is added
+        // (so a raid-supporting or urgent-citadel strike's own bonus is never wasted clamping an
+        // already-capped BaseScore). Kept strictly below raidCounterAttackBonus's own tactical tier
+        // (aggressionBaseWeight+20=120) and defenceActiveScore/defencePreemptScore (120/130), per the
+        // spec's own explicit priority ladder ("обычный авиаудар не должен перебивать действительно
+        // срочную Defence-задачу") — an urgent-citadel strike can approach this ceiling but never
+        // reach or cross the ground-combat/defence tiers that sit at or above it.
+        public const float airStrikeScoreCap = 119f;
         // ---- AirStrike · multi-turn/helicopter routes (2026-08-26 multi-turn aviation spec) ----
         // AirStrikeTask.ScoreTarget's own penalty for a route needing more than one real game turn
         // to reach the target (RequiredTurns-1) and for each intermediate safe-unlanded-end it
         // spends away from an owned airfield (RequiredUnlandedEnds) — deliberately small next to
-        // airStrikeBaseWeight/airStrikeTargetValueWeight so a genuinely valuable multi-turn strike
+        // airStrikeBaseWeight/airStrikeDamageFractionWeight so a genuinely valuable multi-turn strike
         // can still win, per spec point 10's own "не делать штраф настолько большим, чтобы
         // вертолётная механика фактически никогда не использовалась".
         public const float airStrikeExtraTurnPenalty = 8f;
         public const float airStrikeUnlandedEndPenalty = 4f;
-        // ---- AirStrike · repeat strike before returning (2026-08-26 follow-up spec) ----
-        // A helicopter already sitting on the target hex, mid-sortie, choosing to repeat its
-        // strike next turn (AiAggressionPlanner.TryContinueLoiterAtTarget) rather than start a
-        // fresh candidate elsewhere — scored above an ordinary fresh AirStrike start
-        // (airStrikeScoreCap=118) since the army is already committed and sitting in a dangerous
-        // spot; still below the ground-raid tactical/defence tiers (120/130), same "committed work
-        // outranks a fresh start" principle airStrikeContinuationScore already follows.
-        public const float airStrikeRepeatScore = 116f;
+        // ---- AirStrike · repeat strike before returning (spec section 7, "повторные удары") ----
+        // A helicopter already sitting on the target hex, mid-sortie, choosing to repeat its strike
+        // next turn (AiAggressionPlanner.TryContinueLoiterAtTarget) is no longer a flat score —
+        // 2026-08-26 rework replaced the old flat airStrikeRepeatScore constant with the SAME
+        // base+damage+kill(+raid coordination)−cost formula ScoreTarget uses, evaluated fresh against
+        // the real, ground-truth roster still standing on the hex (AviationCombatPresenter.
+        // FindAirStrikeTargetsAt) every time. A repeat with real expected value (a live kill chance,
+        // meaningful raid help) naturally scores in the normal AirStrike band or higher; a repeat
+        // against an already-thinned, low-HP remnant naturally falls toward airStrikeBaseWeight and
+        // below economyBaseWeight — the same "natural falloff from re-scoring current HP/composition"
+        // the spec explicitly allows in place of a new strike-history subsystem (spec section 7's own
+        // "новая оценка текущего состава и HP цели естественно снижает балл бесполезного повторения").
         // AiTask.AirStrikesCompleted's own ceiling — even a card with a large TurnsWithoutRefuel
         // margin only ever gets ONE repeat strike per sortie (first + one repeat = 2 total) until a
         // separate balance pass explicitly raises this (spec point 10: "расширение до трёх и более
@@ -1259,25 +1293,39 @@ namespace Game.Ai
         // genuine survivor clears it; this only exists to skip an empty/wiped hex outright (spec
         // point 2's "ожидаемая ценность второго удара выше минимального порога").
         public const float airStrikeRepeatMinTargetValue = 1f;
-        // ---- AirStrike · Raid coordination (2026-08-26, project owner's own spec) ----
-        // AiAggressionPlanner.EvaluateRaidSupport's own bonus formula: flat base the instant an air
-        // strike measurably improves an active RaidWeakerArmy task's own WorthIt win chance against
-        // the SAME target hex (RaidWeakerArmyTask.WinChanceAgainst, before vs after
+        // ---- AirStrike · Raid coordination (2026-08-26 rework, spec section 3) ----
+        // AiAggressionPlanner.EvaluateRaidCoordination's own bonus formula: flat base the instant an
+        // air strike measurably improves an active RaidWeakerArmy task's own WorthIt win chance
+        // against the SAME target hex (RaidWeakerArmyTask.WinChanceAgainst, before vs after
         // AviationCombatEstimator.EstimateAirStrike's own expected post-strike roster), plus this
-        // weight times the raw chance improvement (0..1) — so a strike that only shaves a few points
-        // off still gets some credit, while one that swings the fight decisively gets more.
-        public const float airStrikeRaidSupportBaseBonus = 8f;
-        public const float airStrikeRaidSupportChanceWeight = 30f;
+        // weight times the raw chance improvement (0..1) — deliberately small base/weight so a
+        // 0%→4% swing (spec's own example) reads as a genuinely minimal bonus, not a free ~8-15
+        // points for barely moving the needle the way the pre-rework constants did.
+        public const float airStrikeRaidSupportBaseBonus = 3f;
+        public const float airStrikeRaidSupportChanceWeight = 25f;
         // Extra flat bonus on top of the above when the strike is the difference between the raid
         // NOT clearing raidMinimumWinChance and clearing it — the strike doesn't just help, it
-        // actually unlocks the raid this turn (see EvaluateRaidSupport's own crossesReadinessThreshold).
-        public const float airStrikeRaidThresholdCrossBonus = 20f;
-        // Deliberately zero, kept as a named constant rather than a bare 0f literal purely so the
-        // "already ready, no bonus" branch in EvaluateRaidSupport reads as an intentional policy
-        // choice, not a forgotten case: a raid that already clears raidMinimumWinChance without any
-        // help gets no coordination bonus at all — striking its target doesn't unlock anything, so
-        // it must never outrank an ordinary target purely because their hexes happen to coincide.
-        public const float airStrikeRaidAlreadyReadyBonus = 0f;
+        // actually unlocks the raid this turn (see EvaluateRaidCoordination's own crossesReadinessThreshold).
+        // Lowered from 20 to 15 alongside the rest of this rework's retune (spec point 3's own
+        // "ориентировочно +15").
+        public const float airStrikeRaidThresholdCrossBonus = 15f;
+        // Win chance above which a raid counts as "redundant support" (spec section 8) — a coarser,
+        // higher bar than raidMinimumWinChance (0.65, the ordinary "is this raid ready to attack at
+        // all" gate): a raid at, say, 75% is still genuinely helped by a coordinated strike even
+        // though it already clears raidMinimumWinChance, but a raid at 95%+ has nothing left worth
+        // unlocking — only a strike that measurably improves its OWN survival odds still earns a
+        // bonus past this point (see airStrikeRaidSurvivalWeight/airStrikeRaidCriticalReductionWeight
+        // below), never one that merely shares a target hex.
+        public const float airStrikeRaidRedundantWinChance = 0.95f;
+        // Bonus weight for reducing the raid's own expected cost of victory (spec sections 3 and 8,
+        // "уменьшает вероятность критического состояния" / "уменьшает expected survivor HP loss") —
+        // read off RaidWeakerArmyTask.EstimateAgainst's own WorthIt.BattleEstimate before vs after the
+        // strike. survivalWeight multiplies the gain in ExpectedSurvivingHpRatioOnWin (0..1);
+        // criticalReductionWeight multiplies the drop in CriticalAfterBattleChance (0..1). Small on
+        // their own (a raid that was already going to win outright gets little from either), but this
+        // is the ONLY coordination credit a strike against an already-95%+-ready raid can still earn.
+        public const float airStrikeRaidSurvivalWeight = 8f;
+        public const float airStrikeRaidCriticalReductionWeight = 10f;
         // An already-launched AirStrike/AirRecon sortie's own continuation score (outbound or
         // return leg) — TryContinueAirStrikeTask/TryContinueAirReconTask. Above both start tiers
         // (airStrikeBaseWeight/airReconBaseWeight) — an airborne sortie has already spent its

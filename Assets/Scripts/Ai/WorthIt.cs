@@ -401,9 +401,14 @@ namespace Game.Ai
         }
 
         // Converts a real UnitData into the same per-combatant snapshot DefenderProfile carries for
-        // a remembered/cheat-read enemy — our own army is never behind fog of war, so this always
-        // uses the unit's REAL current HP (never HitPointsMax the way a remembered enemy has to).
-        private static DefenderProfile FromLiveUnit(UnitData unit) =>
+        // a remembered/cheat-read enemy — used both for our own army (never behind fog of war) and
+        // for a REAL, ground-truth-visible enemy roster no memory lookup is needed for (e.g. an
+        // AirStrike loiter/repeat target the army is physically sitting on top of right now — see
+        // AiAggressionPlanner.TryEnterLoiterAtTarget). Either way this always uses the unit's REAL
+        // current HP (never HitPointsMax the way a remembered/fogged enemy has to). Public since
+        // 2026-08-26 (air-strike scoring rework) for that second use — same single conversion, no
+        // second copy of it anywhere else.
+        public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative);
 

@@ -37,14 +37,29 @@ namespace Game.Ai
             public readonly float ExpectedAttackAfter;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> ExpectedDefendersAfter;
             public readonly float ExpectedDamage;
+            // Three added 2026-08-26 (air-strike scoring rework, project owner's own spec section
+            // 2 — "уничтожение юнитов") — read off the SAME Trials completed strikes ExpectedDamage
+            // already averages over, never a second simulation pass. KillAnyProbability: fraction of
+            // trials where at least one defender died. ExpectedKillCount: mean defenders killed per
+            // trial. WipeProbability: fraction of trials where EVERY defender died (a stronger,
+            // per-trial reading than "ExpectedDefendersAfter ended up empty", which only says the
+            // AVERAGE remaining roster is empty and can hide a coin-flip wipe behind a merely-heavy
+            // average casualty count).
+            public readonly float KillAnyProbability;
+            public readonly float ExpectedKillCount;
+            public readonly float WipeProbability;
 
             public AirStrikeEstimate(float expectedDefenseAfter, float expectedAttackAfter,
-                IReadOnlyList<WorthIt.DefenderProfile> expectedDefendersAfter, float expectedDamage)
+                IReadOnlyList<WorthIt.DefenderProfile> expectedDefendersAfter, float expectedDamage,
+                float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f)
             {
                 ExpectedDefenseAfter = expectedDefenseAfter;
                 ExpectedAttackAfter = expectedAttackAfter;
                 ExpectedDefendersAfter = expectedDefendersAfter;
                 ExpectedDamage = expectedDamage;
+                KillAnyProbability = killAnyProbability;
+                ExpectedKillCount = expectedKillCount;
+                WipeProbability = wipeProbability;
             }
         }
 
@@ -78,6 +93,8 @@ namespace Game.Ai
             int n = knownDefenders.Count;
             var hpSum = new float[n];
             float totalDamageSum = 0f;
+            int killAnyTrials = 0, wipeTrials = 0;
+            float killCountSum = 0f;
 
             for (int trial = 0; trial < Trials; trial++)
             {
@@ -111,6 +128,13 @@ namespace Game.Ai
                 for (int i = 0; i < n; i++)
                     hpSum[i] += hp[i];
                 totalDamageSum += startHp - hp.Sum();
+
+                int killedThisTrial = n - alive.Count;
+                killCountSum += killedThisTrial;
+                if (killedThisTrial >= 1)
+                    killAnyTrials++;
+                if (killedThisTrial == n)
+                    wipeTrials++;
             }
 
             var expectedDefenders = new List<WorthIt.DefenderProfile>();
@@ -127,7 +151,8 @@ namespace Game.Ai
                 expectedAttack += original.Attack;
             }
 
-            return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders, totalDamageSum / Trials);
+            return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders, totalDamageSum / Trials,
+                (float)killAnyTrials / Trials, killCountSum / Trials, (float)wipeTrials / Trials);
         }
 
         // Deterministic per-matchup seed, same reasoning as WorthIt.BuildSeed's own comment — built
