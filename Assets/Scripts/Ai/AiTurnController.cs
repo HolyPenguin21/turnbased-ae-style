@@ -1348,24 +1348,39 @@ namespace Game.Ai
         // Problem 4 (2026-08-24, project owner's own report): a raw armies=X→Y count in the
         // turn-ends line can't tell fragmentation (a growing pile of small leftover armies) apart
         // from healthy growth (a few well-formed ones) — Halden went 4→7→10 armies over two turns
-        // with no way to see WHAT those were. Diagnostic-only instrumentation: breaks the same
-        // non-garrison/non-prison count the turn-ends line already reports down by which Level-1
-        // task category currently owns each army (AiTaskRegistry.TaskFor's own Category, "untasked"
-        // for an idle army with no active task at all — see AiTask.cs's own AiTaskCategory comment)
-        // and by roster size. Never touches scoring or creation limits — read-only over whatever
-        // RunTurn already produced this turn.
+        // with no way to see WHAT those were. Diagnostic-only instrumentation: read-only over
+        // whatever RunTurn already produced this turn, never touches scoring or creation limits.
+        //
+        // 2026-08-26 split (project owner's own report): the original single breakdown only
+        // excluded IsGarrison/IsPrison, so an ordinary ground army, a formed air army, a taskless
+        // returned aircraft, an active-sortie aircraft, and an airfield's own storage container all
+        // landed in the SAME armies/units/avgUnitsPerArmy count — a taskless single-aircraft air
+        // army read as a "solo orphaned" ground army, and an empty airfield container could read as
+        // a "reserved empty army". Now two independent blocks, each over its own filtered roster, so
+        // the ground block alone is what fragmentation analysis should read.
         private static string BuildArmyBreakdownLog(PlayerSetupData player, int turnNumber)
         {
-            List<ArmyData> armies = ArmyRegistry.AllForOwner(player).Where(a => !a.IsGarrison && !a.IsPrison).ToList();
-            int totalUnits = armies.Sum(a => a.Members.Count);
-            float avgUnitsPerArmy = armies.Count > 0 ? (float)totalUnits / armies.Count : 0f;
+            return $"{BuildGroundArmyBreakdown(player, turnNumber)}\n\n{BuildAviationBreakdown(player, turnNumber)}";
+        }
 
-            string categoryBreakdown = armies.Count > 0
-                ? string.Join(", ", armies
-                    .GroupBy(a => AiTaskRegistry.TaskFor(player, a)?.Category)
-                    .OrderByDescending(g => g.Count())
-                    .Select(g => $"{(g.Key.HasValue ? g.Key.Value.ToString() : "untasked")}={g.Count()}"))
-                : "none";
+        // Part 1 — ground field armies only: not Garrison/Prison (as before) and now also not an
+        // airfield container or a formed air army (AviationRules.IsAirfield/IsAirArmy — the same
+        // two predicates every AiArmyRoles ground-role check already excludes on). This is the only
+        // roster fragmentation analysis should read.
+        private static string BuildGroundArmyBreakdown(PlayerSetupData player, int turnNumber)
+        {
+            List<ArmyData> armies = ArmyRegistry.AllForOwner(player)
+                .Where(a => !a.IsGarrison && !a.IsPrison && !AviationRules.IsAirfield(a) && !AviationRules.IsAirArmy(a))
+                .ToList();
+            int totalUnits = armies.Sum(a => a.Members.Count);
+
+            // Task-status split — independent of roster size, sums to armies.Count: "active" (an
+            // AiTask other than ReturnForConsolidation owns it), "returning" (ReturnForConsolidation
+            // — see Feature 4B's own comment on AiTaskKind.ReturnForConsolidation), "idle" (no task
+            // at all).
+            int returning = armies.Count(a => AiTaskRegistry.TaskFor(player, a)?.Kind == AiTaskKind.ReturnForConsolidation);
+            int active = armies.Count(a => AiTaskRegistry.TaskFor(player, a) != null) - returning;
+            int idle = armies.Count - active - returning;
 
             int emptyArmies = armies.Count(a => a.Members.Count == 0);
             int soloArmies = armies.Count(a => a.Members.Count == 1);
@@ -1380,20 +1395,20 @@ namespace Game.Ai
             // FindStrandedWeakArmies) so this log can never disagree with what those two stages
             // actually did/will do this same phase.
             //
-            // 0 members: "reserved" — within GatherFallbackCandidates' own maxSpareArmies buffer,
+            // 0 members: "spare" — within GatherFallbackCandidates' own maxSpareArmies buffer,
             // task-less (the deliberately kept reserve, see IsDisposableEmptyArmy's own comment);
             // "reusable" — task-less and beyond that buffer (IsDisposableEmptyArmy true — exactly
             // what RunEmptyArmyCleanup just tried to hand out for reuse or dispose of); "orphaned" —
             // everything else at 0 members (e.g. still task-claimed but its roster emptied out from
             // under it — IsDisposableEmptyArmy deliberately leaves a task-owned shell alone).
             int emptyReusable = armies.Count(a => GarrisonReorgTask.IsDisposableEmptyArmy(player, a));
-            int emptyReserved = armies.Count(a => a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
+            int emptySpare = armies.Count(a => a.Members.Count == 0 && AiTaskRegistry.TaskFor(player, a) == null)
                 - emptyReusable;
-            int emptyOrphaned = emptyArmies - emptyReserved - emptyReusable;
+            int emptyOrphaned = emptyArmies - emptySpare - emptyReusable;
 
             // 1 member: "tasked" — an active AiTask OTHER than ReturnForConsolidation owns it (a
-            // courier, a raid/defence recruit still solo, a scout mid-VisitHex, ...); "solo-recce"
-            // — task-less and AiArmyRoles.IsSoloRecce (left alone by design, see
+            // courier, a raid/defence recruit still solo, a scout mid-VisitHex, ...); "recce" —
+            // task-less and AiArmyRoles.IsSoloRecce (left alone by design, see
             // FindStrandedWeakArmies' own comment); "returning" — carries an active
             // ReturnForConsolidation task (2026-08-24 P0 fix: this used to read
             // GarrisonReorgTask.FindStrandedWeakArmies directly, back when RunStrandedArmyRecovery
@@ -1412,10 +1427,49 @@ namespace Game.Ai
                 && AiTaskRegistry.TaskFor(player, a)?.Kind == AiTaskKind.ReturnForConsolidation);
             int soloOrphaned = soloArmies - soloTasked - soloRecce - soloReturning;
 
-            return $"[AI] {player.Nickname}: army breakdown (turn {turnNumber}) — armies={armies.Count} ({categoryBreakdown}), "
-                + $"units={totalUnits}, avgUnitsPerArmy={avgUnitsPerArmy:0.0}, roster size: 0={emptyArmies} "
-                + $"(reserved={emptyReserved}, reusable={emptyReusable}, orphaned={emptyOrphaned}), 1={soloArmies} "
-                + $"(tasked={soloTasked}, solo-recce={soloRecce}, returning={soloReturning}, orphaned={soloOrphaned}), 2+={multiArmies}";
+            return $"[AI] {player.Nickname} ground breakdown (turn {turnNumber}):\n"
+                + $"armies={armies.Count}, units={totalUnits}\n"
+                + $"active={active}, idle={idle}, returning={returning}\n"
+                + $"empty: spare={emptySpare}, reusable={emptyReusable}, orphaned={emptyOrphaned}\n"
+                + $"solo: tasked={soloTasked}, recce={soloRecce}, returning={soloReturning}, orphaned={soloOrphaned}\n"
+                + $"2+={multiArmies}";
+        }
+
+        // Part 2 — aviation armies plus (part 3) their airfield infrastructure, folded into the
+        // same block since both read off the same OwnedAirfieldHexes set. Formed air armies
+        // (AviationRules.IsAirArmy) are split by what currently owns each one: an active AirStrike/
+        // AirRecon AiTask, or task-less. A task-less air army sitting on one of this player's own
+        // airfield hexes (AviationRules.IsOwnedAirfieldAt) is "landed ready" — a normal, complete
+        // sortie waiting for its next task, never "orphaned" (see this method's own class comment on
+        // AiAviationSupport for why a landed group is a deliberate, reusable state, not a leak).
+        // A task-less air army anywhere else is the genuinely suspicious case — airborne with no
+        // task driving it, i.e. "stranded" — see AiAviationSupport.ContinueSortie's own "holds
+        // position" fallback for the one legitimate way this happens (no safe route home this
+        // step), which should clear itself the very next turn once a route opens back up.
+        private static string BuildAviationBreakdown(PlayerSetupData player, int turnNumber)
+        {
+            List<ArmyData> airArmies = ArmyRegistry.AllForOwner(player).Where(a => AviationRules.IsAirArmy(a)).ToList();
+            int aircraft = airArmies.Sum(a => a.Members.Count);
+            int activeStrike = airArmies.Count(a => AiTaskRegistry.TaskFor(player, a)?.Kind == AiTaskKind.AirStrike);
+            int activeRecon = airArmies.Count(a => AiTaskRegistry.TaskFor(player, a)?.Kind == AiTaskKind.AirRecon);
+            int tasklessLanded = airArmies.Count(a => AiTaskRegistry.TaskFor(player, a) == null
+                && AviationRules.IsOwnedAirfieldAt(a.Hex, player));
+            int tasklessAirborne = airArmies.Count(a => AiTaskRegistry.TaskFor(player, a) == null) - tasklessLanded;
+
+            // Infrastructure (part 3) — airfield containers (AviationRules.IsAirfield) are never a
+            // ground/air army in their own right, only a stored-aircraft box; "slots" reads the same
+            // capacity/occupancy AviationRules.FreeAirfieldCapacity already enforces at deploy time,
+            // never a second, independently-drifting count.
+            int storedAircraft = ArmyRegistry.AllForOwner(player).Where(a => AviationRules.IsAirfield(a)).Sum(a => a.Members.Count);
+            List<HexCoord> airfieldHexes = AiAviationSupport.OwnedAirfieldHexes(player).ToList();
+            int totalSlots = airfieldHexes.Sum(hex => AviationRules.AirfieldCapacityAt(hex, player));
+
+            return $"[AI] {player.Nickname} aviation breakdown (turn {turnNumber}):\n"
+                + $"air armies={airArmies.Count}, aircraft={aircraft}\n"
+                + $"active strike={activeStrike}, active recon={activeRecon}\n"
+                + $"landed ready={tasklessLanded}, airborne stranded={tasklessAirborne}\n"
+                + $"stored aircraft={storedAircraft}\n"
+                + $"airfields={airfieldHexes.Count}, slots={storedAircraft}/{totalSlots} used";
         }
 
         // Feature 1's own diagnostic (2026-08-24) — BuildFacilityTask.RankHex has no reason string
