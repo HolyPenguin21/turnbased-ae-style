@@ -183,7 +183,13 @@ namespace Game.Map
                     break;
 
                 foreach (UnitData member in members)
-                    member.MoveCurrent -= cost;
+                {
+                    // A fuel-penalised aircraft exposes half its raw MP as usable MP. Spend
+                    // two raw points per entered hex so that displayed usable MP falls by one
+                    // every step instead of every second step.
+                    int rawCost = member.HasEmergencyFlightPenalty ? cost * 2 : cost;
+                    member.MoveCurrent = Mathf.Max(0, member.MoveCurrent - rawCost);
+                }
                 HexCoord previous = _currentHex;
                 _currentHex = next;
                 onStepStarted?.Invoke(previous, next);
