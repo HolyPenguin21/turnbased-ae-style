@@ -149,7 +149,12 @@ namespace Game.Map
                 failReason = $"{unit.Name} is not a member of {source.Name}.";
                 return false;
             }
-            if (!AviationRules.CanContain(target, unit))
+            // "Create Army" from an airfield intentionally creates the usual empty field army.
+            // Its first aircraft is the authoritative moment it becomes an air army; without
+            // this conversion the UI can never form one through its normal drag workflow.
+            bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !target.IsAirArmy
+                && !target.IsGarrison && !target.IsAirfield && target.Members.Count == 0;
+            if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
             {
                 failReason = unit.IsAviation
                     ? "Aircraft can only be moved between an airfield and an aviation army."
@@ -186,6 +191,8 @@ namespace Game.Map
             }
 
             source.Members.Remove(unit);
+            if (promoteToAirArmy)
+                target.IsAirArmy = true;
             target.AddMemberSorted(unit);
             targetRoot?.SpendActionPoints(unit.ActivationApCost);
             // Neither army has a marker of its own that follows individual units around (see
