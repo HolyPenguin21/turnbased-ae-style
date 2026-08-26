@@ -74,6 +74,16 @@ namespace Game.Map
         // MoveCurrent at the start of a turn (see GameTurnController.ReplenishMoveForOwner).
         public bool HasActivatedThisTurn;
 
+        // Repeat-strike bookkeeping (2026-08-26 follow-up) — which hex, and whether it actually
+        // landed a strike, the most recent AviationCombatPresenter.ResolveAirStrikeAtCurrentHex
+        // call resolved for THIS army. Overwritten every time that resolves (whether or not it
+        // actually attacked), so these only ever describe the last hex-entry resolved — read them
+        // immediately after a move that might have struck, same "read once right after" pattern
+        // HasActivatedThisTurn's own callers already follow (see AiAggressionPlanner.
+        // TryContinueAirStrikeTask). Aviation only; a ground army never sets these.
+        public HexCoord? LastAirStrikeHex;
+        public bool LastAirStrikeAttacked;
+
         // How much AP it costs to activate this army for its first move order of the turn —
         // the sum of every member's own ActivationApCost (a bigger army costs more to get
         // moving as a whole, not just as much as its single heaviest member).

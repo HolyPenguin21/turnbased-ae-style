@@ -2027,16 +2027,25 @@ namespace Game.Ai
                     firstEstimate.ExpectedAttackAfter, firstEstimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name, wipedOutFirst);
                 float chanceAfterFirst = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfterFirst);
 
-                // A repeat strike is only a real possibility for a multi-turn sortie with fuel
-                // margin still left (repeat-strike spec, point 8) — real eligibility (route/AA/
-                // capacity/target-still-there) is re-verified live once the army is actually
-                // sitting on the hex (TryEnterLoiterAtTarget/CanStrikeNextTurnAndLand); this is only
-                // ever an ESTIMATE feeding the launch decision's own score, chained onto the FIRST
-                // strike's own expected post-strike roster rather than assumed equal to it (spec:
-                // "не считать второй удар равным первому автоматически" — units can die, the target
-                // can be wiped, between the two).
-                bool hasSecondStrike = !wipedOutFirst && target.RequiredTurns > 1
-                    && AiAviationSupport.SafeUnlandedEndsRemaining(candidate.Aircraft) >= 1;
+                // A repeat strike is a real possibility for ANY candidate — same-turn Sortie or
+                // multi-turn — that still has fuel margin left AND could actually land safely next
+                // turn from the target hex; never gated on target.RequiredTurns > 1 any more (a
+                // same-turn sortie with spare TurnsWithoutRefuel margin can loiter exactly like a
+                // multi-turn one — see TryEnterLoiterAtTarget, which never checks RequiredTurns
+                // either). This mirrors that method's own three conditions so the estimate never
+                // diverges from what actually gets offered once the army is sitting on the hex:
+                // fuel margin (SafeUnlandedEndsRemaining), a target still standing after the first
+                // strike (wipedOutFirst, already computed above), and a proven same-turn landing
+                // next turn without spending this turn's movement (CanStrikeNextTurnAndLand). Real
+                // eligibility is still re-verified live once the army is actually there
+                // (TryEnterLoiterAtTarget/TryContinueLoiterAtTarget) — this is only ever an ESTIMATE
+                // feeding the launch decision's own score, chained onto the FIRST strike's own
+                // expected post-strike roster rather than assumed equal to it (spec: "не считать
+                // второй удар равным первому автоматически" — units can die, the target can be
+                // wiped, between the two).
+                bool hasSecondStrike = !wipedOutFirst
+                    && AiAviationSupport.SafeUnlandedEndsRemaining(candidate.Aircraft) >= 1
+                    && AiAviationSupport.CanStrikeNextTurnAndLand(candidate.Aircraft, target.Hex, map, player, out _);
                 float chanceAfterSecond = chanceAfterFirst;
                 if (hasSecondStrike)
                 {
@@ -2147,19 +2156,35 @@ namespace Game.Ai
         {
             if (task.Army != null)
             {
-                // The outbound leg just landed the army on its own ActionHex (the first strike
-                // already happened as a side effect of that very move, via AviationCombatPresenter.
-                // ResolveAirArmyStep) — decide, exactly once per sortie, whether this is a
-                // multi-turn helicopter profile worth holding position for a repeat strike, or an
+                // The outbound leg just landed the army on its own ActionHex — decide, exactly once
+                // per sortie, whether this is worth holding position for a repeat strike, or an
                 // ordinary sortie that turns for home immediately (repeat-strike spec, point 2).
+                // Reaching ActionHex is NOT the same as having struck it: AviationCombatPresenter.
+                // ResolveAirArmyStep resolves a strike at EVERY hex the army actually enters along
+                // its path, not just the final one, so a target sighted on an earlier hex this same
+                // turn can already have used up every aircraft's HasAirAttackedThisTurn before the
+                // army ever reaches ActionHex — in which case nothing here was ever struck and there
+                // is no "first strike" to hold position and repeat. ArmyData.LastAirStrikeHex/
+                // LastAirStrikeAttacked (set by that same resolver, ground truth from the actual
+                // combat step, not inferred from position) are what distinguish "arrived" from
+                // "struck" — only the latter ever starts the loiter/repeat flow or counts toward
+                // AiTask.AirStrikesCompleted.
                 if (task.AirMissionPhase == AiAirMissionPhase.ToAction && task.Army.Hex.Equals(task.TargetHex))
                 {
-                    task.AirStrikesCompleted = Mathf.Max(task.AirStrikesCompleted, 1);
-                    if (TryEnterLoiterAtTarget(player, ctx, task))
-                        return null; // logged inside; nothing to move this step
-                    // Loiter denied — falls through to ContinueSortie below, which still contains
-                    // the ordinary "outbound leg finished -> Returning" flip (AirMissionPhase is
-                    // still ToAction here, so that transition fires exactly as it always has).
+                    bool struckActionHex = task.Army.LastAirStrikeAttacked
+                        && task.Army.LastAirStrikeHex.HasValue && task.Army.LastAirStrikeHex.Value.Equals(task.TargetHex);
+                    if (struckActionHex)
+                    {
+                        task.AirStrikesCompleted = Mathf.Max(task.AirStrikesCompleted, 1);
+                        if (TryEnterLoiterAtTarget(player, ctx, task))
+                            return null; // logged inside; nothing to move this step
+                    }
+                    // Loiter denied, or nothing was ever struck here — falls through to
+                    // ContinueSortie below, which still contains the ordinary "outbound leg
+                    // finished -> Returning" flip (AirMissionPhase is still ToAction here, so that
+                    // transition fires exactly as it always has). A sortie that already spent its
+                    // attack on an earlier hex this turn is never described as loitering for a
+                    // "repeat" strike it never actually landed once here.
                 }
                 else if (task.AirMissionPhase == AiAirMissionPhase.LoiterAtTarget)
                 {
@@ -2251,11 +2276,16 @@ namespace Game.Ai
         }
 
         // Executes AiActionKind.ExecuteAirStrikeAtCurrentHex — the army never moves; this only
-        // invokes AviationCombatPresenter.ResolveAirStrikeAtCurrentHex directly on its current hex
-        // (repeat-strike spec, point 5: same mechanic as the first strike, no second implementation,
-        // no fake move). Immediately advances the task to Returning afterward — a repeat strike is
-        // never followed by yet another one in the same decision (the max-strikes cap and the fresh
-        // safety recheck both already happen in TryContinueLoiterAtTarget before this ever runs).
+        // invokes the shared Game.Aviation.AviationActions.ResolveStationaryStrike action (2026-08-26
+        // consistency follow-up — the mechanic itself lives there now, not here, so a future human
+        // control can call the exact same two methods; AiAggressionPlanner only ever decides WHEN to
+        // use it, via TryContinueLoiterAtTarget above). Immediately advances the task to Returning
+        // afterward — a repeat strike is never followed by yet another one in the same decision (the
+        // max-strikes cap and the fresh safety recheck both already happen in
+        // TryContinueLoiterAtTarget before this ever runs). AirStrikesCompleted only increments if
+        // an aircraft actually fired — TryContinueLoiterAtTarget already re-verified a live target
+        // and a fresh attack immediately before proposing this decision, but the count must still
+        // reflect what really happened, never what was merely attempted.
         public static IEnumerator RepeatAirStrikeRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
         {
             AiTask task = decision.Task;
@@ -2263,9 +2293,11 @@ namespace Game.Ai
             if (task?.Army == null || presenter == null)
                 yield break;
 
-            yield return presenter.ResolveAirStrikeAtCurrentHex(task.Army);
+            var result = new AviationCombatPresenter.AirStrikeResult();
+            yield return AviationActions.ResolveStationaryStrike(presenter, task.Army, result);
 
-            task.AirStrikesCompleted++;
+            if (result.Attacked)
+                task.AirStrikesCompleted++;
             task.AirMissionPhase = AiAirMissionPhase.Returning;
             task.TargetHex = task.LandingHex;
             yield return AiTurnController.WaitStep(ctx);

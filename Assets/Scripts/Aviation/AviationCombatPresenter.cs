@@ -57,7 +57,31 @@ namespace Game.Aviation
                 yield break;
             }
 
-            yield return ResolveAirStrikeAtCurrentHex(airArmy);
+            // hex here is the just-entered hex (from ArmyController.MoveRoutine's own per-step
+            // loop) — airArmy.Hex/Data.Hex is NOT updated until the whole move finishes (see
+            // ArmyController.CurrentHex's own comment), so during an in-progress multi-hex move it
+            // still names the ORIGIN hex, not this one. Passing it explicitly (rather than letting
+            // ResolveAirStrikeAtCurrentHex read airArmy.Hex itself) is what makes a strike at hex 3
+            // of a 5-hex path actually resolve against hex 3's own defenders instead of hex 0's.
+            var result = new AirStrikeResult();
+            yield return ResolveAirStrikeAtCurrentHex(airArmy, hex, result);
+            // Repeat-strike bookkeeping (AiAggressionPlanner.TryContinueAirStrikeTask) — overwritten
+            // on every hex actually entered, so by the time a caller reads it back the values always
+            // describe the LAST hex resolved, which is exactly wherever this move actually stopped.
+            airArmy.LastAirStrikeHex = hex;
+            airArmy.LastAirStrikeAttacked = result.Attacked;
+        }
+
+        // Coroutines can't return a value directly — same "mutable scratch instance" pattern
+        // ArmyController.StepResolutionOutcome already uses. Attacked is true only once an aircraft
+        // ACTUALLY fired (RunAirStrike below); merely finding a non-empty target list is not enough
+        // (every aircraft may already have HasAirAttackedThisTurn set from an earlier hex this same
+        // turn — see AviationCombatPresenter.ResolveAirArmyStep's own comment on stale hexes, and
+        // AiAggressionPlanner.TryContinueAirStrikeTask's own comment on why "reached the hex" and
+        // "struck the hex" must never be conflated).
+        public sealed class AirStrikeResult
+        {
+            public bool Attacked;
         }
 
         // The actual "strike whatever enemy content shares this hex" step, factored out (2026-08-26
@@ -68,16 +92,18 @@ namespace Game.Aviation
         // army cleanup), never a second implementation. Deliberately does NOT re-run AA entry
         // reactions above — those trigger only on actually ENTERING the hex (AntiAirRules.
         // CollectEntryReactions), which a repeat strike from an army already parked there never
-        // does. Public so AiAggressionPlanner.RepeatAirStrikeRoutine can call it directly, the one
-        // case an AI routine needs this presenter without a move happening first (see
-        // HexSelectionController.AviationCombatPresenter's own comment).
-        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy)
+        // does. Public so Game.Aviation.AviationActions.ResolveStationaryStrike (the shared,
+        // AI-and-human aviation action) can call it directly, the one case a caller needs this
+        // presenter without a move happening first (see HexSelectionController.
+        // AviationCombatPresenter's own comment). `hex` is the army's real current hex — see
+        // ResolveAirArmyStep's own comment on why this is never read off airArmy.Hex internally.
+        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex, AirStrikeResult result = null)
         {
             if (airArmy == null || airArmy.Members.Count == 0)
                 yield break;
-            List<ArmyData> targets = FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner);
+            List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner);
             if (targets.Count > 0)
-                yield return RunAirStrike(airArmy, targets);
+                yield return RunAirStrike(airArmy, targets, result);
         }
 
         // The ground-mover mirror: this army carries at least one AA-tagged member, so every
@@ -134,7 +160,7 @@ namespace Game.Aviation
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
         }
 
-        private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies)
+        private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies, AirStrikeResult result = null)
         {
             foreach (UnitData aircraft in airArmy.Members.ToList())
             {
@@ -147,6 +173,8 @@ namespace Game.Aviation
 
                 (UnitData target, ArmyData targetArmy) = pool[Random.Range(0, pool.Count)];
                 aircraft.HasAirAttackedThisTurn = true;
+                if (result != null)
+                    result.Attacked = true;
 
                 UnitData defenderHero = target.IsHero ? target : targetArmy.Members.Find(unit => unit.IsHero);
                 // A targeted hero's own Fate stat is its real pool (its Defense is 0 — see

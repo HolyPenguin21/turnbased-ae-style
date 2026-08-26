@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -103,6 +104,33 @@ namespace Game.Aviation
                     hexSelection?.GrantCard(army.Owner, aircraft.OriginatingCard);
             }
             hexSelection?.DeleteArmyIfEmptied(army);
+        }
+
+        // Stationary air strike — an air army already sitting on a hex attacking whatever enemy
+        // content shares it again, without moving, once HasAirAttackedThisTurn resets for a new
+        // turn. Added 2026-08-26 (repeat-strike consistency follow-up) as the one shared entry
+        // point for this capability: AiAggressionPlanner's own repeat-strike scoring (TryEnter/
+        // TryContinueLoiterAtTarget) decides WHEN to use it, but the capability itself — an
+        // already-parked helicopter attacking again — was never AI-specific, only its sole caller
+        // was. A future human control (e.g. a button while a helicopter sits on a live target)
+        // calls the same two methods, so AP/targeting/HasAirAttackedThisTurn rules can never drift
+        // between the two callers, same reason every other method in this class already lives here
+        // rather than inside AiAggressionPlanner or a UI script.
+        public static bool CanStrikeAtCurrentHex(ArmyData airArmy)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy))
+                return false;
+            if (!airArmy.Members.Any(unit => !unit.HasAirAttackedThisTurn))
+                return false;
+            return AviationCombatPresenter.FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner).Count > 0;
+        }
+
+        public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
+            AviationCombatPresenter.AirStrikeResult result = null)
+        {
+            if (presenter == null || airArmy == null)
+                yield break;
+            yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, result);
         }
 
         // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel

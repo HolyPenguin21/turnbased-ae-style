@@ -389,17 +389,45 @@ namespace Game.Ai
         public static bool CanStrikeNextTurnAndLand(ArmyData airArmy, HexCoord currentHex, HexMap map, PlayerSetupData owner,
             out HexCoord landingHex)
         {
-            landingHex = default;
-            if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
+            if (!AviationRules.IsValidAirArmy(airArmy))
+            {
+                landingHex = default;
                 return false;
-            int nextTurnMovement = airArmy.Members.Min(AviationRules.EffectiveMoveMax);
+            }
+            return CanStrikeNextTurnAndLandCore(airArmy.Members, airArmy, currentHex, map, owner, out landingHex);
+        }
+
+        // Estimate-time overload (AiAggressionPlanner.EvaluateRaidSupport's raid-support scoring) —
+        // the launch candidate hasn't flown yet, so there's no ArmyData to validate/exclude from
+        // landing capacity, only the raw aircraft list a launch would use. Same rule otherwise; a
+        // candidate can only ever be "estimated eligible" here, real eligibility is still
+        // re-verified live once the army is actually sitting on the hex (TryEnterLoiterAtTarget/
+        // CanStrikeNextTurnAndLand(ArmyData, ...) above).
+        public static bool CanStrikeNextTurnAndLand(IReadOnlyList<UnitData> aircraft, HexCoord currentHex, HexMap map,
+            PlayerSetupData owner, out HexCoord landingHex)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+            {
+                landingHex = default;
+                return false;
+            }
+            return CanStrikeNextTurnAndLandCore(aircraft, null, currentHex, map, owner, out landingHex);
+        }
+
+        private static bool CanStrikeNextTurnAndLandCore(IReadOnlyList<UnitData> aircraft, ArmyData excludingFromCapacity,
+            HexCoord currentHex, HexMap map, PlayerSetupData owner, out HexCoord landingHex)
+        {
+            landingHex = default;
+            if (map == null || owner == null)
+                return false;
+            int nextTurnMovement = aircraft.Min(AviationRules.EffectiveMoveMax);
 
             HexCoord? best = null;
             int bestForward = int.MaxValue;
             int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
+                if (FreeLandingCapacity(landing, owner, excludingFromCapacity) < aircraft.Count)
                     continue;
                 HexPath path = HexPathfinder.FindPath(map, currentHex, landing, flatCost: true);
                 if (path == null)
