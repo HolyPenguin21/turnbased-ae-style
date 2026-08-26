@@ -14,7 +14,10 @@ namespace Game.Aviation
     public static class AviationRules
     {
         public static bool IsAviation(UnitData unit) => unit != null && unit.IsAviation;
-        public static bool IsAirArmy(ArmyData army) => army != null && army.IsAirArmy;
+        // Composition is authoritative for mobile aviation: this also makes visual state recover
+        // correctly after a save/load or a drag-created army whose flag was not yet refreshed.
+        public static bool IsAirArmy(ArmyData army) => army != null && !army.IsAirfield && !army.IsGarrison
+            && !army.IsPrison && army.Members.Count > 0 && army.Members.All(unit => unit.IsAviation);
         public static bool IsAirfield(ArmyData army) => army != null && army.IsAirfield;
 
         public static bool IsAirfieldBuilding(BuildingData building, PlayerSetupData owner)
@@ -49,7 +52,7 @@ namespace Game.Aviation
         {
             if (target == null || unit == null || target.IsPrison)
                 return false;
-            if (target.IsAirfield || target.IsAirArmy)
+            if (target.IsAirfield || IsAirArmy(target))
                 return unit.IsAviation;
             if (unit.IsAviation)
                 return target.Members.Count == 0;
@@ -58,8 +61,7 @@ namespace Game.Aviation
 
         public static bool IsValidAirArmy(ArmyData army)
         {
-            return army != null && army.IsAirArmy && !army.IsGarrison && !army.IsPrison
-                && army.Members.Count > 0 && army.Members.All(member => member.IsAviation);
+            return IsAirArmy(army);
         }
 
         public static int EffectiveMoveCurrent(UnitData unit)
