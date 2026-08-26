@@ -66,6 +66,8 @@ MonoBehaviour:
       count: 0
     - cardKey: The Ashen/Ash Howitzer
       count: 1
+    - cardKey: The Ashen/Striker
+      count: 2
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -88,7 +90,7 @@ MonoBehaviour:
     - cardKey: Iron Concord/RC Vehicle
       count: 1
     - cardKey: Iron Concord/Scrapper
-      count: 1
+      count: 0
     - cardKey: Iron Concord/AA Crawler
       count: 1
     - cardKey: Iron Concord/Light Infantry

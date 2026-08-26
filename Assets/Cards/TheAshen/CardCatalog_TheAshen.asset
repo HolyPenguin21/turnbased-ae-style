@@ -843,6 +843,42 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+  - id: 23
+    displayName: Striker
+    art: {fileID: 21300000, guid: c5e00d5b15e757444a012ee9b326e3e1, type: 3}
+    detailArt: {fileID: 21300000, guid: e129ac4dab53f3b46b9fef9258fef7df, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 10
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 7
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - Recce
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: af7f2ad35e7686c4bad4ff88fe20ebfd, type: 3}
