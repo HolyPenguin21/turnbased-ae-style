@@ -375,6 +375,56 @@ namespace Game.Ai
             return best;
         }
 
+        // Repeat-strike spec (2026-08-26 follow-up) — can this army, PARKED at currentHex (no MP
+        // spent getting there — a repeat strike never moves the army, see AviationCombatPresenter.
+        // ResolveAirStrikeAtCurrentHex), still reach a safe owned airfield NEXT turn, once its own
+        // movement refreshes? Deliberately uses each aircraft's fresh EffectiveMoveMax (spec point 3:
+        // "движение, которое будет восстановлено на следующем ходу"), never the army's current,
+        // already-spent CurrentMovement — this is a forward-looking check for a turn that hasn't
+        // started yet. The repeat strike itself never costs its own MP (mirrors the live rule: a
+        // strike has never charged movement of its own, see AviationCombatPresenter.RunAirStrike —
+        // "repeat" reuses the exact same free mechanic), so no cost is deducted here beyond the
+        // return path itself. Same capacity/AA-hard-filter/forward-then-cost ranking every other
+        // landing search in this class already applies — one shared rule, never a second copy.
+        public static bool CanStrikeNextTurnAndLand(ArmyData airArmy, HexCoord currentHex, HexMap map, PlayerSetupData owner,
+            out HexCoord landingHex)
+        {
+            landingHex = default;
+            if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
+                return false;
+            int nextTurnMovement = airArmy.Members.Min(AviationRules.EffectiveMoveMax);
+
+            HexCoord? best = null;
+            int bestForward = int.MaxValue;
+            int bestCost = int.MaxValue;
+            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
+            {
+                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
+                    continue;
+                HexPath path = HexPathfinder.FindPath(map, currentHex, landing, flatCost: true);
+                if (path == null)
+                    continue;
+                int cost = path.Hexes.Count - 1; // flat 1 MP/hex, same rule AviationRules.PathMoveCost applies
+                if (cost > nextTurnMovement)
+                    continue;
+                if (KnownAaExposure(owner, path) > 0)
+                    continue;
+
+                int forward = NearestKnownEnemyDistance(owner, landing);
+                bool better = best == null || forward < bestForward || (forward == bestForward && cost < bestCost);
+                if (better)
+                {
+                    best = landing;
+                    bestForward = forward;
+                    bestCost = cost;
+                }
+            }
+            if (best == null)
+                return false;
+            landingHex = best.Value;
+            return true;
+        }
+
         // The multi-turn analogue of TryReplan — an emergency (or merely "no same-turn route
         // exists any more") return-to-base search for an army with a genuine safe-unlanded-ends
         // margin left. Returns null the instant that margin is already zero — a fuel-exhausted

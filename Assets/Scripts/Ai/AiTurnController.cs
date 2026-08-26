@@ -955,6 +955,9 @@ namespace Game.Ai
                 case AiActionKind.LaunchAirRecon:
                     yield return AiAviationSupport.LaunchRoutine(player, decision, ctx, AiTaskKind.AirRecon);
                     break;
+                case AiActionKind.ExecuteAirStrikeAtCurrentHex:
+                    yield return AiAggressionPlanner.RepeatAirStrikeRoutine(player, decision, ctx);
+                    break;
                 case AiActionKind.Wait:
                     yield return WaitStep(ctx);
                     break;

@@ -1239,6 +1239,26 @@ namespace Game.Ai
         // вертолётная механика фактически никогда не использовалась".
         public const float airStrikeExtraTurnPenalty = 8f;
         public const float airStrikeUnlandedEndPenalty = 4f;
+        // ---- AirStrike · repeat strike before returning (2026-08-26 follow-up spec) ----
+        // A helicopter already sitting on the target hex, mid-sortie, choosing to repeat its
+        // strike next turn (AiAggressionPlanner.TryContinueLoiterAtTarget) rather than start a
+        // fresh candidate elsewhere — scored above an ordinary fresh AirStrike start
+        // (airStrikeScoreCap=118) since the army is already committed and sitting in a dangerous
+        // spot; still below the ground-raid tactical/defence tiers (120/130), same "committed work
+        // outranks a fresh start" principle airStrikeContinuationScore already follows.
+        public const float airStrikeRepeatScore = 116f;
+        // AiTask.AirStrikesCompleted's own ceiling — even a card with a large TurnsWithoutRefuel
+        // margin only ever gets ONE repeat strike per sortie (first + one repeat = 2 total) until a
+        // separate balance pass explicitly raises this (spec point 10: "расширение до трёх и более
+        // ударов должно быть отдельным балансным решением").
+        public const int maxStrikesPerSortie = 2;
+        // Minimum combined Defense+Attack still standing on the target hex (read directly off the
+        // real ArmyData roster via AviationCombatPresenter.FindAirStrikeTargetsAt — ground truth,
+        // not fogged memory, since the army is physically there) for a repeat strike to be worth
+        // waiting a whole turn for. Deliberately a low floor, not a real value-vs-risk model — any
+        // genuine survivor clears it; this only exists to skip an empty/wiped hex outright (spec
+        // point 2's "ожидаемая ценность второго удара выше минимального порога").
+        public const float airStrikeRepeatMinTargetValue = 1f;
         // ---- AirStrike · Raid coordination (2026-08-26, project owner's own spec) ----
         // AiAggressionPlanner.EvaluateRaidSupport's own bonus formula: flat base the instant an air
         // strike measurably improves an active RaidWeakerArmy task's own WorthIt win chance against

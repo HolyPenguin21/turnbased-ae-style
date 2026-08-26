@@ -122,9 +122,14 @@ namespace Game.Ai
     // независимых источников истины" — AirOutbound stays the one real field every existing
     // ContinueSortie/LaunchRoutine/TryStartAir* call site already reads and writes; this enum is
     // purely a clearer name for the same state, for new code and diagnostics to read by.
+    // LoiterAtTarget added 2026-08-26 (repeat-strike spec) — AirStrike only, a multi-turn sortie
+    // that already landed its first strike, deliberately staying parked on ActionHex to repeat the
+    // attack once HasAirAttackedThisTurn resets on the next turn, before finally heading home.
+    // AirRecon never uses this value — see AiTask.AirMissionPhase's own comment.
     public enum AiAirMissionPhase
     {
         ToAction,
+        LoiterAtTarget,
         Returning,
     }
 
@@ -422,16 +427,34 @@ namespace Game.Ai
         // Retreating above, just aviation's own copy since the trigger differs (finishing a leg,
         // not reacting to a threat) — set once per leg-transition by TryContinueAirStrikeTask/
         // TryContinueAirReconTask, never toggled back.
-        public bool AirOutbound = true;
+        // AirStrike/AirRecon only — the real stored phase (2026-08-26 repeat-strike spec flips
+        // which of AirMissionPhase/AirOutbound is the source of truth: LoiterAtTarget is a genuine
+        // third state AirOutbound's own bool cannot represent, so THIS field is now authoritative —
+        // AirOutbound below is the derived alias instead, kept only because every pre-existing
+        // ContinueSortie/LaunchRoutine/TryStartAir* call site already reads/writes it as a bool and
+        // none of them need to know about LoiterAtTarget specifically (it collapses to "not
+        // outbound" for all of them, same as Returning). AirRecon never sets this to
+        // LoiterAtTarget — see that enum's own comment.
+        public AiAirMissionPhase AirMissionPhase = AiAirMissionPhase.ToAction;
 
-        // AirStrike/AirRecon only — the same state as AirOutbound, named per the multi-turn
-        // aviation spec's own AiAirMissionPhase (point 9). Purely a readable alias, never a second
-        // source of truth — see that enum's own comment.
-        public AiAirMissionPhase AirMissionPhase
+        // AirStrike/AirRecon only — derived from AirMissionPhase above, never a second source of
+        // truth (multi-turn aviation spec, point 9). True only for ToAction; both LoiterAtTarget and
+        // Returning read as false here, since every existing reader of this bool only ever needed
+        // to distinguish "still heading to the objective" from "everything else."
+        public bool AirOutbound
         {
-            get => AirOutbound ? AiAirMissionPhase.ToAction : AiAirMissionPhase.Returning;
-            set => AirOutbound = value == AiAirMissionPhase.ToAction;
+            get => AirMissionPhase == AiAirMissionPhase.ToAction;
+            set => AirMissionPhase = value ? AiAirMissionPhase.ToAction : AiAirMissionPhase.Returning;
         }
+
+        // AirStrike only (2026-08-26 repeat-strike spec) — how many times this sortie has actually
+        // struck its target hex so far (the first strike, a side effect of the move that lands the
+        // army on ActionHex, counts as 1 the moment that arrival is observed — see
+        // AiAggressionPlanner.TryContinueAirStrikeTask). Capped at AiConfig.maxStrikesPerSortie —
+        // once reached, TryEnterLoiterAtTarget/TryContinueLoiterAtTarget refuse to hold the army over
+        // the target any longer, regardless of remaining fuel margin (spec point 10: "расширение до
+        // трёх и более ударов должно быть отдельным балансным решением"). AirRecon never uses this.
+        public int AirStrikesCompleted;
 
         // AirStrike/AirRecon only (2026-08-26 multi-turn aviation spec) — true while this sortie's
         // current committed plan is a AiAviationSupport.MultiTurnSortie (a route spanning more than

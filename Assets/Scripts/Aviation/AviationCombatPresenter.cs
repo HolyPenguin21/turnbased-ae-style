@@ -57,7 +57,25 @@ namespace Game.Aviation
                 yield break;
             }
 
-            List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner);
+            yield return ResolveAirStrikeAtCurrentHex(airArmy);
+        }
+
+        // The actual "strike whatever enemy content shares this hex" step, factored out (2026-08-26
+        // repeat-strike spec, point 5) so a multi-turn AirStrike's own repeat attack next turn — the
+        // army already sitting on ActionHex, HasAirAttackedThisTurn freshly reset by
+        // GameTurnController.ReplenishMoveForOwner — runs through the EXACT same mechanic as the
+        // first strike (RunAirStrike, HasAirAttackedThisTurn gating, combat resolver, defender/empty-
+        // army cleanup), never a second implementation. Deliberately does NOT re-run AA entry
+        // reactions above — those trigger only on actually ENTERING the hex (AntiAirRules.
+        // CollectEntryReactions), which a repeat strike from an army already parked there never
+        // does. Public so AiAggressionPlanner.RepeatAirStrikeRoutine can call it directly, the one
+        // case an AI routine needs this presenter without a move happening first (see
+        // HexSelectionController.AviationCombatPresenter's own comment).
+        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy)
+        {
+            if (airArmy == null || airArmy.Members.Count == 0)
+                yield break;
+            List<ArmyData> targets = FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner);
             if (targets.Count > 0)
                 yield return RunAirStrike(airArmy, targets);
         }

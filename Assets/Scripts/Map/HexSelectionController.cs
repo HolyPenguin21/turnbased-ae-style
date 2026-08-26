@@ -56,6 +56,11 @@ namespace Game.Map
         // HexSelectionController.Movement.cs's own IssueMoveOrder, which wires this into
         // ArmyController.MoveAlong's resolveStepAsync hook for every mover, air or ground alike.
         [SerializeField] private AviationCombatPresenter aviationCombatPresenter;
+        // Public read accessor (2026-08-26 repeat-strike spec) — AiAggressionPlanner's own
+        // RepeatAirStrikeRoutine needs to invoke ResolveAirStrikeAtCurrentHex directly (an AiTask's
+        // multi-turn AirStrike loitering over its target, not a move step), the one case an AI
+        // routine needs this presenter without an actual move happening first.
+        public AviationCombatPresenter AviationCombatPresenter => aviationCombatPresenter;
         // Small usability margin around the marker's real projected SpriteRenderer bounds.
         // The bounds themselves scale with orthographic zoom (MapObjectVisual.ContainsScreenPoint),
         // so this never turns into the old fixed 30px invisible collider at long zoom.

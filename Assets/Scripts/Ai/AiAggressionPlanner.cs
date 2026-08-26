@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -1871,15 +1872,25 @@ namespace Game.Ai
             public readonly float WinChanceAfter;
             public readonly float CoordinationBonus;
             public readonly bool CrossesReadinessThreshold;
+            // Repeat-strike spec (2026-08-26) — the estimated win chance if the launch candidate
+            // ALSO gets its repeat strike (only ever populated when HasSecondStrike is true, see
+            // EvaluateRaidSupport's own comment); equals WinChanceAfter, and HasSecondStrike stays
+            // false, for any candidate that isn't a fuel-margin-eligible multi-turn sortie. Never
+            // assumed equal to WinChanceAfter automatically — chained onto the FIRST strike's own
+            // expected post-strike roster, since a target can be thinned or wiped by then.
+            public readonly float WinChanceAfterSecondStrike;
+            public readonly bool HasSecondStrike;
 
             public RaidSupportEvaluation(AiTask raidTask, float winChanceBefore, float winChanceAfter, float coordinationBonus,
-                bool crossesReadinessThreshold)
+                bool crossesReadinessThreshold, float winChanceAfterSecondStrike, bool hasSecondStrike)
             {
                 RaidTask = raidTask;
                 WinChanceBefore = winChanceBefore;
                 WinChanceAfter = winChanceAfter;
                 CoordinationBonus = coordinationBonus;
                 CrossesReadinessThreshold = crossesReadinessThreshold;
+                WinChanceAfterSecondStrike = winChanceAfterSecondStrike;
+                HasSecondStrike = hasSecondStrike;
             }
         }
 
@@ -1993,7 +2004,8 @@ namespace Game.Ai
             AirStrikeTask.StrikeTarget target, IReadOnlyList<AiTask> activeRaids, HexMap map)
         {
             AiTask bestRaid = null;
-            float bestBefore = 0f, bestAfter = 0f, bestImprovement = float.NegativeInfinity;
+            float bestBefore = 0f, bestAfter = 0f, bestAfterSecond = 0f, bestImprovement = float.NegativeInfinity;
+            bool bestHasSecondStrike = false;
 
             foreach (AiTask raid in activeRaids)
             {
@@ -2007,42 +2019,69 @@ namespace Game.Ai
 
                 float chanceBefore = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatBefore);
 
-                AviationCombatEstimator.AirStrikeEstimate estimate = AviationCombatEstimator.EstimateAirStrike(
+                AviationCombatEstimator.AirStrikeEstimate firstEstimate = AviationCombatEstimator.EstimateAirStrike(
                     candidate.Aircraft, target.KnownDefense, target.KnownAttack, target.KnownDefenders);
-                bool wipedOut = target.KnownDefenders != null && target.KnownDefenders.Count > 0 && estimate.ExpectedDefendersAfter.Count == 0;
-                var threatAfter = new RaidWeakerArmyTask.ThreatStrength(estimate.ExpectedDefenseAfter + threatBefore.HexBonus,
-                    estimate.ExpectedAttackAfter, estimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name, wipedOut);
-                float chanceAfter = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfter);
+                bool wipedOutFirst = target.KnownDefenders != null && target.KnownDefenders.Count > 0
+                    && firstEstimate.ExpectedDefendersAfter.Count == 0;
+                var threatAfterFirst = new RaidWeakerArmyTask.ThreatStrength(firstEstimate.ExpectedDefenseAfter + threatBefore.HexBonus,
+                    firstEstimate.ExpectedAttackAfter, firstEstimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name, wipedOutFirst);
+                float chanceAfterFirst = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfterFirst);
 
-                float improvement = chanceAfter - chanceBefore;
+                // A repeat strike is only a real possibility for a multi-turn sortie with fuel
+                // margin still left (repeat-strike spec, point 8) — real eligibility (route/AA/
+                // capacity/target-still-there) is re-verified live once the army is actually
+                // sitting on the hex (TryEnterLoiterAtTarget/CanStrikeNextTurnAndLand); this is only
+                // ever an ESTIMATE feeding the launch decision's own score, chained onto the FIRST
+                // strike's own expected post-strike roster rather than assumed equal to it (spec:
+                // "не считать второй удар равным первому автоматически" — units can die, the target
+                // can be wiped, between the two).
+                bool hasSecondStrike = !wipedOutFirst && target.RequiredTurns > 1
+                    && AiAviationSupport.SafeUnlandedEndsRemaining(candidate.Aircraft) >= 1;
+                float chanceAfterSecond = chanceAfterFirst;
+                if (hasSecondStrike)
+                {
+                    AviationCombatEstimator.AirStrikeEstimate secondEstimate = AviationCombatEstimator.EstimateAirStrike(
+                        candidate.Aircraft, firstEstimate.ExpectedDefenseAfter, firstEstimate.ExpectedAttackAfter,
+                        firstEstimate.ExpectedDefendersAfter);
+                    bool wipedOutSecond = firstEstimate.ExpectedDefendersAfter.Count > 0 && secondEstimate.ExpectedDefendersAfter.Count == 0;
+                    var threatAfterSecond = new RaidWeakerArmyTask.ThreatStrength(secondEstimate.ExpectedDefenseAfter + threatBefore.HexBonus,
+                        secondEstimate.ExpectedAttackAfter, secondEstimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name,
+                        wipedOutSecond);
+                    chanceAfterSecond = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfterSecond);
+                }
+
+                float improvement = chanceAfterSecond - chanceBefore;
                 if (bestRaid == null || improvement > bestImprovement)
                 {
                     bestRaid = raid;
                     bestImprovement = improvement;
                     bestBefore = chanceBefore;
-                    bestAfter = chanceAfter;
+                    bestAfter = chanceAfterFirst;
+                    bestAfterSecond = chanceAfterSecond;
+                    bestHasSecondStrike = hasSecondStrike;
                 }
             }
 
             if (bestRaid == null)
-                return new RaidSupportEvaluation(null, 0f, 0f, 0f, false);
+                return new RaidSupportEvaluation(null, 0f, 0f, 0f, false, 0f, false);
 
             // Already ready without any help at all — a strike here doesn't unlock anything, so it
             // must never outrank a target that DOES just because their hexes happen to coincide
             // (spec item 5's own "не вытеснять более полезную цель только из-за совпадения
             // координаты").
             if (bestBefore >= AiConfig.raidMinimumWinChance)
-                return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, AiConfig.airStrikeRaidAlreadyReadyBonus, false);
+                return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, AiConfig.airStrikeRaidAlreadyReadyBonus, false,
+                    bestAfterSecond, bestHasSecondStrike);
 
-            float clampedImprovement = Mathf.Max(0f, bestAfter - bestBefore);
+            float clampedImprovement = Mathf.Max(0f, bestAfterSecond - bestBefore);
             float bonus = clampedImprovement > 0f
                 ? AiConfig.airStrikeRaidSupportBaseBonus + clampedImprovement * AiConfig.airStrikeRaidSupportChanceWeight
                 : 0f;
-            bool crosses = bestBefore < AiConfig.raidMinimumWinChance && bestAfter >= AiConfig.raidMinimumWinChance;
+            bool crosses = bestBefore < AiConfig.raidMinimumWinChance && bestAfterSecond >= AiConfig.raidMinimumWinChance;
             if (crosses)
                 bonus += AiConfig.airStrikeRaidThresholdCrossBonus;
 
-            return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, bonus, crosses);
+            return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, bonus, crosses, bestAfterSecond, bestHasSecondStrike);
         }
 
         // The full diagnostic Reason for an AirStrike candidate — composed exactly once per
@@ -2082,6 +2121,18 @@ namespace Game.Ai
             string thresholdPart = support.CrossesReadinessThreshold
                 ? $", crosses {AiConfig.raidMinimumWinChance:P0} readiness threshold"
                 : string.Empty;
+
+            // Repeat-strike spec (2026-08-26, point 8) — names the estimated second strike's own
+            // contribution separately from the first, never folding them into one number, so it's
+            // visible this is a two-hit plan rather than one strike credited twice.
+            if (support.HasSecondStrike)
+            {
+                return $"{target.RequiredTurns}-turn helicopter support on {target.TargetName} — raid win chance "
+                    + $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0} after first strike, expected "
+                    + $"{support.WinChanceAfter:P0}→{support.WinChanceAfterSecondStrike:P0} after repeat strike"
+                    + $"{thresholdPart}; must land at ({target.LandingHex.Q},{target.LandingHex.R}) after second attack";
+            }
+
             return $"air strike supports \"{raidName}\" raid on {target.TargetName} — {missionPrefix}expected raid win "
                 + $"chance {support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}{thresholdPart}, coordination "
                 + $"+{effectiveBonus:0}, score {target.BaseScore:0}→{finalScore:0}";
@@ -2094,8 +2145,130 @@ namespace Game.Ai
         // AviationTurnLifecycle, this task never touches it.
         public static AiDecision TryContinueAirStrikeTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task, AiResourcePool pool)
         {
+            if (task.Army != null)
+            {
+                // The outbound leg just landed the army on its own ActionHex (the first strike
+                // already happened as a side effect of that very move, via AviationCombatPresenter.
+                // ResolveAirArmyStep) — decide, exactly once per sortie, whether this is a
+                // multi-turn helicopter profile worth holding position for a repeat strike, or an
+                // ordinary sortie that turns for home immediately (repeat-strike spec, point 2).
+                if (task.AirMissionPhase == AiAirMissionPhase.ToAction && task.Army.Hex.Equals(task.TargetHex))
+                {
+                    task.AirStrikesCompleted = Mathf.Max(task.AirStrikesCompleted, 1);
+                    if (TryEnterLoiterAtTarget(player, ctx, task))
+                        return null; // logged inside; nothing to move this step
+                    // Loiter denied — falls through to ContinueSortie below, which still contains
+                    // the ordinary "outbound leg finished -> Returning" flip (AirMissionPhase is
+                    // still ToAction here, so that transition fires exactly as it always has).
+                }
+                else if (task.AirMissionPhase == AiAirMissionPhase.LoiterAtTarget)
+                {
+                    AiDecision repeat = TryContinueLoiterAtTarget(player, ctx, task);
+                    if (task.AirMissionPhase == AiAirMissionPhase.LoiterAtTarget)
+                        return repeat; // still safely waiting (a real repeat-strike candidate, or
+                                       // null — nothing to do until next turn's own attack reset)
+                    // else: TryContinueLoiterAtTarget itself just flipped the phase to Returning —
+                    // fall through to ContinueSortie below to actually start the trip home THIS step.
+                }
+            }
+
             return AiAviationSupport.ContinueSortie(player, root, ctx, task, "AirStrike", "presses on toward the strike target",
                 AiConfig.airStrikeContinuationScore, AiTaskCategory.Aggression);
+        }
+
+        // Called exactly once per sortie, the moment the outbound leg lands on ActionHex — decides
+        // whether this AirStrike should hold position for a repeat strike next turn rather than
+        // turn for home immediately (repeat-strike spec, point 2). Every condition is re-derived
+        // live off the army's OWN current state/hex, never off the plan that got it here:
+        //   - SafeUnlandedEndsRemaining margin left (a plane, margin 0, can never qualify — same
+        //     "planes keep their existing single-turn model" rule the multi-turn spec itself set).
+        //   - a real, still-standing target on the hex (ground truth via AviationCombatPresenter.
+        //     FindAirStrikeTargetsAt, not fogged memory — the army is physically there right now).
+        //   - a proven safe landing NEXT turn without moving this turn (CanStrikeNextTurnAndLand).
+        //   - the sortie hasn't already used up its AiConfig.maxStrikesPerSortie strikes.
+        private static bool TryEnterLoiterAtTarget(PlayerSetupData player, AiTurnContext ctx, AiTask task)
+        {
+            if (task.AirStrikesCompleted >= AiConfig.maxStrikesPerSortie)
+                return false;
+            if (AiAviationSupport.SafeUnlandedEndsRemaining(task.Army.Members) < 1)
+                return false;
+
+            List<ArmyData> remaining = AviationCombatPresenter.FindAirStrikeTargetsAt(task.Army.Hex, player);
+            float remainingValue = remaining.Sum(a => a.Members.Sum(u => u.Defense + u.Attack));
+            if (remainingValue < AiConfig.airStrikeRepeatMinTargetValue)
+                return false; // first strike cleared the hex (or never found anyone) — nothing to repeat
+
+            if (!AiAviationSupport.CanStrikeNextTurnAndLand(task.Army, task.Army.Hex, ctx.Map, player, out HexCoord landingHex))
+                return false;
+
+            task.AirMissionPhase = AiAirMissionPhase.LoiterAtTarget;
+            task.LandingHex = landingHex;
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — first AirStrike completed at "
+                + $"({task.Army.Hex.Q},{task.Army.Hex.R}) — holds over the target for one repeat strike next turn; "
+                + $"{AiAviationSupport.SafeUnlandedEndsRemaining(task.Army.Members)} safe unlanded end(s) available, "
+                + $"landing ({landingHex.Q},{landingHex.R}) reserved.");
+            return true;
+        }
+
+        // Every step while LoiterAtTarget — re-validates all the same conditions TryEnterLoiterAtTarget
+        // checked (spec point 7: "повторная проверка перед вторым ударом", never a one-time decision)
+        // before ever proposing the repeat strike. The moment any of them fails, immediately flips to
+        // Returning and returns null so the caller falls through to ContinueSortie's own home-bound
+        // move THIS SAME step — never lingers a turn longer than it has to once repeating stops being
+        // safe or worthwhile.
+        private static AiDecision TryContinueLoiterAtTarget(PlayerSetupData player, AiTurnContext ctx, AiTask task)
+        {
+            List<ArmyData> remaining = AviationCombatPresenter.FindAirStrikeTargetsAt(task.Army.Hex, player);
+            float remainingValue = remaining.Sum(a => a.Members.Sum(u => u.Defense + u.Attack));
+            bool targetGone = remainingValue < AiConfig.airStrikeRepeatMinTargetValue;
+            bool strikesExhausted = task.AirStrikesCompleted >= AiConfig.maxStrikesPerSortie;
+
+            bool canReturn = AiAviationSupport.CanStrikeNextTurnAndLand(task.Army, task.Army.Hex, ctx.Map, player, out HexCoord landingHex);
+
+            if (targetGone || strikesExhausted || !canReturn)
+            {
+                task.AirMissionPhase = AiAirMissionPhase.Returning;
+                if (canReturn)
+                    task.LandingHex = landingHex;
+                task.TargetHex = task.LandingHex;
+                string why = targetGone ? "target destroyed or left the hex"
+                    : strikesExhausted ? "repeat-strike limit reached"
+                    : "safe same-turn landing is no longer guaranteed";
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — repeat AirStrike cancelled — {why}; "
+                    + $"returns to airfield ({task.LandingHex.Q},{task.LandingHex.R}).");
+                return null;
+            }
+
+            if (!task.Army.Members.Any(u => !u.HasAirAttackedThisTurn))
+                return null; // still the same turn as the last strike — wait for next turn's reset
+
+            task.LandingHex = landingHex; // keep the reserved landing fresh even while still loitering
+            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — repeats AirStrike — air attack "
+                + $"refreshed for the new turn; must return to airfield ({landingHex.Q},{landingHex.R}) this turn.");
+            string reason = $"repeats the air strike at ({task.Army.Hex.Q},{task.Army.Hex.R}) before returning to "
+                + $"({landingHex.Q},{landingHex.R})";
+            return AiDecision.RepeatAirStrike(task, AiConfig.airStrikeRepeatScore, reason);
+        }
+
+        // Executes AiActionKind.ExecuteAirStrikeAtCurrentHex — the army never moves; this only
+        // invokes AviationCombatPresenter.ResolveAirStrikeAtCurrentHex directly on its current hex
+        // (repeat-strike spec, point 5: same mechanic as the first strike, no second implementation,
+        // no fake move). Immediately advances the task to Returning afterward — a repeat strike is
+        // never followed by yet another one in the same decision (the max-strikes cap and the fresh
+        // safety recheck both already happen in TryContinueLoiterAtTarget before this ever runs).
+        public static IEnumerator RepeatAirStrikeRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            AiTask task = decision.Task;
+            AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+            if (task?.Army == null || presenter == null)
+                yield break;
+
+            yield return presenter.ResolveAirStrikeAtCurrentHex(task.Army);
+
+            task.AirStrikesCompleted++;
+            task.AirMissionPhase = AiAirMissionPhase.Returning;
+            task.TargetHex = task.LandingHex;
+            yield return AiTurnController.WaitStep(ctx);
         }
     }
 }

@@ -46,6 +46,13 @@ namespace Game.Ai
         // MoveArmy — see AiTurnController's own class comment on the execution split.
         LaunchAirStrike,
         LaunchAirRecon,
+        // Агрессия · Авиация, repeat-strike spec (2026-08-26) — a multi-turn AirStrike already
+        // parked on its own ActionHex (AiAirMissionPhase.LoiterAtTarget), striking again the
+        // instant HasAirAttackedThisTurn resets for the new turn, WITHOUT moving — see
+        // AviationCombatPresenter.ResolveAirStrikeAtCurrentHex/AiAggressionPlanner.
+        // RepeatAirStrikeRoutine. Never used to launch or move anything; TargetHex on this decision
+        // is just the army's own current hex (for logging/UI), not a destination.
+        ExecuteAirStrikeAtCurrentHex,
         Wait,
         Pass,
     }
@@ -492,6 +499,15 @@ namespace Game.Ai
             AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
             AirActionHex = target.Hex, AirLandingHex = target.LandingHex, Score = score, Category = AiTaskCategory.Reconnaissance,
             Reason = target.Reason,
+        };
+
+        // Агрессия · Авиация, repeat-strike spec — see AiActionKind.ExecuteAirStrikeAtCurrentHex's
+        // own comment. `reason` is built by the caller (AiAggressionPlanner.
+        // TryContinueLoiterAtTarget) since it already knows the live target-value/landing state.
+        public static AiDecision RepeatAirStrike(AiTask task, float score, string reason) => new AiDecision
+        {
+            Kind = AiActionKind.ExecuteAirStrikeAtCurrentHex, ExistingArmy = task.Army, TargetHex = task.Army.Hex,
+            Task = task, Score = score, Category = AiTaskCategory.Aggression, Reason = reason,
         };
 
         public static AiDecision None(string reason) => new AiDecision { Kind = AiActionKind.Pass, Reason = reason };
