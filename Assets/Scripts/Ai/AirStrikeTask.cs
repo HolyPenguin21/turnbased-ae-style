@@ -132,9 +132,14 @@ namespace Game.Ai
         }
 
         // Ranking order per spec: target value/defence worth striking, expected damage × ready
-        // aircraft count, lower known AA exposure along the route, shorter total sortie distance,
-        // lower AP/energy cost. Clamped to airStrikeScoreCap so this tier can never cross a ground
-        // raid's own tactical combat/execute score (see that constant's own comment).
+        // aircraft count, shorter total sortie distance, lower AP/energy cost. Known AA route
+        // exposure is no longer a term here (2026-08-26, project owner's own follow-up spec item 1
+        // — "не трактовать ПВО как простой штраф в score"): `sortie` only ever reaches this method
+        // already AA-free, since AiAviationSupport.PlanSortieCore (behind TryPlanSortie/
+        // TryPlanSortieFromStorage, see FindTarget above) now hard-filters every candidate landing
+        // by known-AA exposure itself, the same rule AirRecon's own FindReconHex already applied.
+        // Clamped to airStrikeScoreCap so this tier can never cross a ground raid's own tactical
+        // combat/execute score (see that constant's own comment).
         private static float ScoreTarget(PlayerSetupData actor, LaunchCandidate candidate, AiAviationSupport.Sortie sortie,
             float targetDefense, float targetAttack, HexMap map)
         {
@@ -142,7 +147,6 @@ namespace Game.Ai
             float targetValue = targetDefense + targetAttack;
             score += Mathf.Sqrt(Mathf.Max(0f, targetValue)) * AiConfig.airStrikeTargetValueWeight;
             score += candidate.Aircraft.Count * AiConfig.airStrikeTargetValueWeight * 0.5f;
-            score -= AiAviationSupport.KnownAaExposure(actor, sortie.OutboundPath) * AiConfig.airStrikeAaExposurePenalty;
             score -= sortie.TotalCost * AiConfig.airStrikeDistancePenalty;
             int apEnergyCost = candidate.Aircraft.Sum(u => u.ActivationApCost + u.LaunchEnergyCost);
             score -= apEnergyCost * AiConfig.airStrikeApCostPenalty;

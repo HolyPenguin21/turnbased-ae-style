@@ -107,10 +107,7 @@ namespace Game.Ai
 
         // start airfield -> action hex -> any owned airfield with free capacity — the shared
         // safety invariant every AirStrike/AirRecon continuation re-derives fresh (never cached on
-        // the task) before proposing a launch or a further step. `preferredLanding` lets a caller
-        // ask "is the CURRENTLY chosen landing hex still good" without re-searching every airfield
-        // — TryContinueAirStrikeTask/TryContinueAirReconTask pass the task's own LandingHex first
-        // and only fall back to a full search (via TryReplan) once that specific one stops working.
+        // the task) before proposing a launch or a further step.
         public readonly struct Sortie
         {
             public readonly HexCoord ActionHex;
@@ -129,13 +126,12 @@ namespace Game.Ai
             }
         }
 
-        public static Sortie? TryPlanSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner,
-            HexCoord? preferredLanding = null)
+        public static Sortie? TryPlanSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanSortieCore(airArmy.Hex, airArmy, army => army.CurrentMovement, path => AviationRules.PathMoveCost(airArmy, path),
-                airArmy.Members.Count, 0, actionHex, map, owner, preferredLanding);
+                airArmy.Members.Count, 0, actionHex, map, owner);
         }
 
         // Same "start -> action hex -> owned airfield with capacity" plan, computed for aircraft
@@ -154,7 +150,7 @@ namespace Game.Ai
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
             return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
-                aircraft.Count, aircraft.Count, actionHex, map, owner, null);
+                aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
 
         // requiredSlots: how many aircraft need a free landing slot together — the WHOLE group
@@ -169,10 +165,27 @@ namespace Game.Ai
         // there, even though take-off itself vacates the slots this same sortie needs to land).
         // Zero for an already-airborne army (TryPlanSortie/TryReplan) — it was never part of any
         // airfield's stored container, so no double-count to undo.
+        // Landing choice rewritten 2026-08-26 (project owner's own follow-up spec, item 1+2 —
+        // "ПВО единым жёстким фильтром" / "не выбирать единственный самый дешёвый landing до
+        // расчёта score цели"). Two things used to be wrong together here: (a) a route crossing
+        // known AA was still a valid candidate, only ever losing a tie-break it could still win
+        // against an equally-cheap safe one, and (b) EVERY reachable owned airfield is now actually
+        // weighed against each other by safety-then-forwardness-then-cost, not just by raw total
+        // path cost — so AirStrikeTask.FindTarget/AirReconTask.FindReconHex, which both call this
+        // (via TryPlanSortie/TryPlanSortieFromStorage) once per candidate TARGET, get back the one
+        // truly best target+landing pairing for that target instead of a cheapest-path landing that
+        // happened to lock in before the target's own score (which leans on this Sortie's forward-
+        // landing bonus, see AirReconTask.FindReconHex) was ever computed. A landing whose route
+        // (either leg) carries ANY known AA exposure is dropped outright whenever the AA-free set is
+        // non-empty — never merely ranked down — matching TryReplan/TryPlanSortiePreferForwardLanding
+        // below. Returns null when no AA-free candidate reaches within the mover's own movement
+        // budget this turn — callers (LaunchAirStrike/LaunchAirRecon candidate search) must simply
+        // not offer that target as a launch option, per spec's own "cancel the voluntary task/don't
+        // launch" — there is deliberately no "fly the unsafe route anyway" fallback for a launch
+        // that hasn't happened yet.
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
-            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
-            HexCoord? preferredLanding)
+            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
         {
             if (map == null || owner == null)
                 return null;
@@ -181,17 +194,14 @@ namespace Game.Ai
             if (outbound == null)
                 return null;
             int outboundCost = pathCost(outbound);
+            int outboundExposure = KnownAaExposure(owner, outbound);
             int movement = movementBudget(excludingFromCapacity);
 
-            IEnumerable<HexCoord> candidates = preferredLanding.HasValue
-                ? new[] { preferredLanding.Value }
-                : OwnedAirfieldHexes(owner);
-
             Sortie? best = null;
-            foreach (HexCoord landing in candidates)
+            int bestForward = int.MaxValue;
+            int bestCost = int.MaxValue;
+            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                if (!AviationRules.IsOwnedAirfieldAt(landing, owner))
-                    continue;
                 int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
                 if (landing.Equals(startHex))
                     freeSlots += vacatingAtStart;
@@ -203,8 +213,18 @@ namespace Game.Ai
                 int totalCost = outboundCost + pathCost(ret);
                 if (totalCost > movement)
                     continue;
-                if (best == null || totalCost < best.Value.TotalCost)
+                if (outboundExposure + KnownAaExposure(owner, ret) > 0)
+                    continue; // known AA on this route — never a candidate while a safe one might exist
+
+                int forward = NearestKnownEnemyDistance(owner, landing);
+                bool better = best == null || forward < bestForward
+                    || (forward == bestForward && totalCost < bestCost);
+                if (better)
+                {
                     best = new Sortie(actionHex, landing, outbound, ret, totalCost);
+                    bestForward = forward;
+                    bestCost = totalCost;
+                }
             }
             return best;
         }
@@ -219,20 +239,22 @@ namespace Game.Ai
         //
         // Ranking rewritten 2026-08-26 (project owner's own spec item 2 — "заново выбирать лучший
         // достижимый аэродром... приоритет: достижимость и безопасность посадки, меньшая дистанция
-        // до текущей позиции, полезность как передовой база") from plain cheapest-path-cost to a
-        // three-tier priority: (1) lower known-AA route exposure (KnownAaExposure — "safety"; never
-        // a hard filter here, an exposed-but-only-reachable base still beats no base at all), (2)
-        // shorter distance from the army's own CURRENT hex, (3) more useful as a forward base — see
+        // до текущей позиции, полезность как передовой база"), then AA handling hardened the same
+        // day in a follow-up spec (item 1 — "ПВО единым жёстким фильтром... не трактовать ПВО как
+        // простой штраф"): a landing whose only route home carries ANY known-AA exposure
+        // (KnownAaExposure) is now dropped outright whenever an AA-free candidate also reaches this
+        // turn, never merely ranked behind one. Among the survivors the tie-break stays (1) shorter
+        // path cost from the army's own CURRENT hex, (2) more useful as a forward base — see
         // NearestKnownEnemyDistance. Every candidate still has to clear the SAME reachability gate
-        // as before (real path, fits CurrentMovement, real free capacity) — only which one wins
-        // among the reachable set changed.
+        // as before (real path, fits CurrentMovement, real free capacity). Null means no AA-free
+        // owned airfield is reachable at all this turn — callers must hold position rather than fly
+        // an emergency-return leg through known AA, per spec.
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
                 return null;
 
             HexCoord? best = null;
-            int bestExposure = int.MaxValue;
             int bestCost = int.MaxValue;
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
@@ -245,16 +267,15 @@ namespace Game.Ai
                 int cost = AviationRules.PathMoveCost(airArmy, path);
                 if (cost > airArmy.CurrentMovement)
                     continue;
+                if (KnownAaExposure(owner, path) > 0)
+                    continue; // known AA on this route — never a candidate while a safe one might exist
 
-                int exposure = KnownAaExposure(owner, path);
                 int forward = NearestKnownEnemyDistance(owner, landing);
-                bool better = best == null || exposure < bestExposure
-                    || (exposure == bestExposure && cost < bestCost)
-                    || (exposure == bestExposure && cost == bestCost && forward < bestForward);
+                bool better = best == null || cost < bestCost
+                    || (cost == bestCost && forward < bestForward);
                 if (better)
                 {
                     best = landing;
-                    bestExposure = exposure;
                     bestCost = cost;
                     bestForward = forward;
                 }
@@ -264,17 +285,29 @@ namespace Game.Ai
 
         // Same reachability math TryPlanSortie/PlanSortieCore already apply for an already-airborne
         // army (full round trip current hex -> actionHex -> a landing hex, all within
-        // airArmy.CurrentMovement), but ranked by the SAME three-tier priority TryReplan's own
-        // comment describes instead of raw cheapest-total-cost — used ONLY by ContinueSortie's own
-        // outbound-leg re-evaluation (2026-08-26, project owner's own spec item 2), which used to
-        // pin the search to the task's own already-chosen LandingHex (`preferredLanding`) and only
-        // widen to a full search once that one specific hex stopped working. Now every owned
-        // airfield is re-considered fresh on every step, so a better/safer/more-forward base can win
-        // at any point during the outbound leg, not just once the original choice breaks outright.
-        // Still returns null whenever no owned airfield offers a real round trip at all — the
-        // caller's own existing TryReplan fallback (abandon the target, fly straight home) already
-        // covers that per spec's "если не может закончить... идти к ближайшему безопасному
-        // аэродрому" — no separate handling needed here.
+        // airArmy.CurrentMovement) — used ONLY by ContinueSortie's own outbound-leg re-evaluation
+        // (2026-08-26, project owner's own spec item 2), which used to pin the search to the task's
+        // own already-chosen LandingHex and only widen to a full search once that one specific hex
+        // stopped working. Now every owned airfield is re-considered fresh on every step, so a
+        // safer/more-forward base can win at any point during the outbound leg, not just once the
+        // original choice breaks outright.
+        //
+        // Priority order corrected 2026-08-26 (project owner's own follow-up spec, item 1+3 — the
+        // old order was "ПВО → близость к текущей позиции → передовость", which meant a nearby
+        // REARWARD base almost always beat a genuinely useful forward one on the middle tier before
+        // forwardness ever got a say). Now: (1) known-AA route exposure is a hard filter, not a
+        // ranking tier at all — a landing whose route (either leg) carries ANY exposure is dropped
+        // outright whenever an AA-free candidate also completes the round trip, never merely ranked
+        // behind one (per spec's own "не трактовать ПВО как простой штраф"); (2) among the AA-free
+        // survivors, more useful as a forward base (NearestKnownEnemyDistance, shared with
+        // TryReplan's own tie-break so "more forward" always means the same thing everywhere) now
+        // outranks (3) lower total round-trip cost — the old straight-line "distance from current
+        // position" tie-break is gone entirely, folded into this same final cost tier via the
+        // route's own real totalCost, which already measures it more precisely. Returns null
+        // whenever no AA-free owned airfield offers a real round trip at all — the caller's own
+        // existing TryReplan fallback (abandon the target, fly straight home) already covers that
+        // per spec's "если не может закончить... идти к ближайшему безопасному аэродрому" — no
+        // separate handling needed here.
         public static Sortie? TryPlanSortiePreferForwardLanding(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner || map == null)
@@ -284,12 +317,12 @@ namespace Game.Ai
             if (outbound == null)
                 return null;
             int outboundCost = AviationRules.PathMoveCost(airArmy, outbound);
+            int outboundExposure = KnownAaExposure(owner, outbound);
             int movement = airArmy.CurrentMovement;
 
             Sortie? best = null;
-            int bestExposure = int.MaxValue;
-            int bestDistance = int.MaxValue;
             int bestForward = int.MaxValue;
+            int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
                 if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
@@ -299,20 +332,19 @@ namespace Game.Ai
                     continue;
                 int totalCost = outboundCost + AviationRules.PathMoveCost(airArmy, ret);
                 if (totalCost > movement)
-                    continue; // not a real, complete, safe round trip from here — never a candidate
+                    continue; // not a real, complete round trip from here — never a candidate
 
-                int exposure = KnownAaExposure(owner, outbound) + KnownAaExposure(owner, ret);
-                int distance = HexGridMath.Distance(airArmy.Hex, landing);
+                if (outboundExposure + KnownAaExposure(owner, ret) > 0)
+                    continue; // known AA on this route — never a candidate while a safe one might exist
+
                 int forward = NearestKnownEnemyDistance(owner, landing);
-                bool better = best == null || exposure < bestExposure
-                    || (exposure == bestExposure && distance < bestDistance)
-                    || (exposure == bestExposure && distance == bestDistance && forward < bestForward);
+                bool better = best == null || forward < bestForward
+                    || (forward == bestForward && totalCost < bestCost);
                 if (better)
                 {
                     best = new Sortie(actionHex, landing, outbound, ret, totalCost);
-                    bestExposure = exposure;
-                    bestDistance = distance;
                     bestForward = forward;
+                    bestCost = totalCost;
                 }
             }
             return best;
@@ -347,11 +379,14 @@ namespace Game.Ai
         // preferentially sticks to the task's own already-chosen LandingHex, it re-searches every
         // owned airfield fresh via TryPlanSortiePreferForwardLanding on every single step, the same
         // "never held onto, always re-derived" treatment the return leg's own TryReplan call already
-        // got. Both legs now rank candidates by the same reachability/safety -> distance ->
-        // forward-usefulness priority (see TryReplan's own comment) instead of raw cheapest cost.
-        // Whenever NEITHER leg can find a complete safe round trip any more, the existing "turn for
-        // home NOW, abandon further progress toward the target" fallback below already does exactly
-        // what the spec asks ("если не может закончить текущий или следующий ход на безопасном
+        // got. Both legs hard-filter to known-AA-free candidates first (2026-08-26 follow-up spec,
+        // item 1); the outbound leg then prefers forward usefulness over cost (TryPlanSortie
+        // PreferForwardLanding's own comment, spec item 3 — it's actively choosing where to base
+        // next), while the return leg still prefers lower cost over forward usefulness (TryReplan's
+        // own comment — it's just going home). Whenever NEITHER leg can find a complete safe round
+        // trip any more, the existing "turn for home NOW, abandon further progress toward the
+        // target" fallback below already does exactly what the spec asks ("если не может закончить
+        // текущий или следующий ход на безопасном
         // аэродроме... идти к ближайшему безопасному аэродрому") — nothing about that fallback
         // shape needed to change, only which landing hex wins when a plan DOES still exist. Returns
         // null (propose nothing this step) whenever nothing reachable exists at all — callers must

@@ -33,13 +33,14 @@ namespace Game.Ai
         // Scans a bounded ring around the launch/current hex (loosely sized off the fleet's own
         // round-trip range — AiAviationSupport.TryPlanSortie/TryPlanSortieFromStorage is still the
         // real feasibility gate, this radius only keeps the scan itself cheap; it's also what
-        // already picks the landing airfield as part of that same feasibility check — a forward
-        // base naturally wins whenever it yields a cheaper total round trip than a rearward one, so
-        // no separate relocation task is ever needed just to get a recon flight based somewhere more
-        // convenient), scores each unexplored-or-stale, reachable hex by forward progress toward
-        // known enemy territory (favoured over lateral wandering, per spec — see
-        // EnemyConcentrationForwardBonus for how that direction is now derived) then shorter safe
-        // distance, then known AA route risk, and returns the single best. Never targets a known
+        // already picks the landing airfield as part of that same feasibility check, safety-then-
+        // forwardness-then-cost per AiAviationSupport.PlanSortieCore's own ranking — a forward base
+        // naturally wins whenever it's an AA-free candidate closer to known enemy territory than a
+        // rearward one, so no separate relocation task is ever needed just to get a recon flight
+        // based somewhere more convenient), scores each unexplored-or-stale, reachable hex by
+        // forward progress toward known enemy territory (favoured over lateral wandering, per spec —
+        // see EnemyConcentrationForwardBonus for how that direction is now derived) then shorter safe
+        // distance, and returns the single best. Never targets a known
         // enemy army for damage the way AirStrikeTask does — a discovered enemy along the way is a
         // free opportunistic strike the shared resolver already offers (AviationCombatPresenter.
         // ResolveStep), not something this method goes looking for.
@@ -64,27 +65,17 @@ namespace Game.Ai
                 if (everSeen && visible)
                     continue; // nothing to learn right now — currently visible AND already known
 
+                // Route-level AA safety: AiAviationSupport.PlanSortieCore (behind TryPlanSortie/
+                // TryPlanSortieFromStorage below) now hard-filters every candidate landing by known
+                // AA exposure itself (2026-08-26, project owner's own follow-up spec item 1 —
+                // "ПВО единым жёстким фильтром для всей авиации"), so a returned Sortie is always
+                // already zero-exposure on both legs — no separate filter or score penalty needed
+                // here any more (see AiConfig.airReconForwardLandingWeight's own comment on what
+                // replaced airReconAaExposurePenalty).
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
                     ? AiAviationSupport.TryPlanSortie(candidate.ExistingArmy, hex, map, actor)
                     : AiAviationSupport.TryPlanSortieFromStorage(candidate.AirfieldHex, candidate.Aircraft, hex, map, actor);
                 if (!sortie.HasValue)
-                    continue;
-
-                // Route-level AA safety — rewritten 2026-08-26 (project owner's own spec item 4,
-                // "Единая жёсткая безопасность маршрута по ПВО") from a ranked-down scoring penalty
-                // into a genuine hard filter: a candidate whose planned round trip (either leg)
-                // carries ANY known-AA exposure (AiAviationSupport.KnownAaExposure — already scoped
-                // to hexes the route itself actually crosses, never "AA anywhere on the map") is
-                // dropped outright, never merely scored lower. Replaces the old global "any AA seen
-                // ANYWHERE suppresses AirRecon entirely" gate (removed from AiScoutPlanner.
-                // TryStartAirReconCandidates, see that method's own comment) with the precise rule
-                // the spec actually asked for — AA off THIS route no longer blocks anything, AA ON
-                // it always does. Every surviving candidate below is therefore always zero-exposure,
-                // so there is deliberately no separate penalty term left in the score formula for
-                // it any more (see AiConfig.airReconForwardLandingWeight's own comment on what
-                // replaced airReconAaExposurePenalty).
-                if (AiAviationSupport.KnownAaExposure(actor, sortie.Value.OutboundPath)
-                    + AiAviationSupport.KnownAaExposure(actor, sortie.Value.ReturnPath) > 0)
                     continue;
 
                 float forwardBonus = EnemyConcentrationForwardBonus(actor, start, hex) * AiConfig.airReconForwardWeight;

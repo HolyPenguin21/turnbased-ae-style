@@ -1208,12 +1208,13 @@ namespace Game.Ai
         // How much a target's own estimated value/defence (worth striking at all) can add on top
         // of airStrikeBaseWeight — see AirStrikeTask.ScoreTarget.
         public const float airStrikeTargetValueWeight = 6f;
-        // Flat penalty per point of known AA exposure along the route (AiMapMemory.
-        // KnownEnemySighting.HasAntiAir-tagged hexes the planned sortie's path would cross) —
-        // named per the spec's own "lower known AA exposure along the route" ranking factor. Never
-        // a hard block (unlike AirRecon's own gate below) — AirStrike is allowed to fly into known
-        // AA risk if the target is worth it, just ranked down in favor of a safer route/target.
-        public const float airStrikeAaExposurePenalty = 4f;
+        // airStrikeAaExposurePenalty removed 2026-08-26 (project owner's own follow-up spec, item 1
+        // — "ПВО единым жёстким фильтром для всей авиации"): AirStrike's known-AA handling is no
+        // longer a ranked-down soft penalty here either — AiAviationSupport.PlanSortieCore (behind
+        // TryPlanSortie/TryPlanSortieFromStorage, see AirStrikeTask.FindTarget) now hard-drops any
+        // candidate landing whose route carries known-AA exposure whenever an AA-free one also
+        // reaches, the same rule AirRecon's own gate already applied — see that method's own removal
+        // note below for airReconAaExposurePenalty, which this now matches exactly.
         // Per-hex penalty on total sortie distance (outbound + return legs) — shorter sorties rank
         // higher, per spec's "shorter total sortie distance" tie-break.
         public const float airStrikeDistancePenalty = 1.5f;
@@ -1264,10 +1265,11 @@ namespace Game.Ai
         // that method's own comment), so a scoring penalty that could only ever be outvoted by a
         // large enough forward/fresh bonus no longer describes the rule. The global "any AA seen
         // anywhere on the map" launch gate this same spec point removed (see
-        // AiScoutPlanner.TryStartAirReconCandidates' own former Condition 5) is a separate, unrelated
-        // mechanism — this file's own airStrikeAaExposurePenalty is untouched, AirStrike keeps its
-        // own pre-existing softer "ranked down, never blocked" treatment; only AirRecon's rule
-        // changed, per the spec's own explicit scope.
+        // AiScoutPlanner.TryStartAirReconCandidates' own former Condition 5) is a separate,
+        // unrelated mechanism. AirStrike kept its own softer "ranked down, never blocked" treatment
+        // at the time this note was written; a follow-up spec later that same day (item 1 — "ПВО
+        // единым жёстким фильтром для всей авиации") unified the two, hard-filtering AirStrike the
+        // same way — see airStrikeAaExposurePenalty's own removal note above.
         //
         // Route safety bonus for AirRecon's own candidate scoring (2026-08-26, project owner's own
         // spec item 3 — "разведка должна естественно садиться на передовой базе") — rewards a
