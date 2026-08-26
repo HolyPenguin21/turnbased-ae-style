@@ -1166,6 +1166,12 @@ namespace Game.Map
             // garrison marker represents that container, exactly as it represents ground cards.
             var airfieldOwners = new HashSet<PlayerSetupData>(ArmyRegistry.AllAt(hex)
                 .FindAll(a => a.IsAirfield && a.Members.Count > 0).ConvertAll(a => a.Owner));
+            foreach (PlayerSetupData owner in airfieldOwners)
+            {
+                ArmyData garrison = armiesHere.Find(a => a.Owner == owner && a.IsGarrison);
+                if (garrison != null)
+                    representativeForOwner[owner] = garrison;
+            }
 
             for (int i = 0; i < armiesHere.Count; i++)
             {
