@@ -152,7 +152,7 @@ namespace Game.Map
             // "Create Army" from an airfield intentionally creates the usual empty field army.
             // Its first aircraft is the authoritative moment it becomes an air army; without
             // this conversion the UI can never form one through its normal drag workflow.
-            bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !target.IsAirArmy
+            bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !AviationRules.IsAirArmy(target)
                 && !target.IsGarrison && !target.IsAirfield && target.Members.Count == 0;
             if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
             {
