@@ -67,6 +67,14 @@ namespace Game.Units
         public bool HasEmergencyFlightPenalty;
         public bool HasAirAttackedThisTurn;
 
+        // The card this unit was originally deployed from, if any — carried over at spawn time
+        // (see HexSelectionController.Factory.SpawnUnit) purely so a container that can lose its
+        // contents without a battle (an airfield emptied on capture/destruction, see
+        // AviationActions.ReturnStoredAircraftToDeck) can hand the card back to its owner instead
+        // of just deleting it. Null for anything spawned without a definition on hand (neutral/
+        // hex-event armies) — those are never returned anywhere on removal.
+        public CardDefinition OriginatingCard;
+
         // What this unit originally cost to play from hand — carried over from
         // CardDefinition.apCost/resourceCost at spawn time, same as ActivationApCost. Only
         // consumed by UnitRepair. RepairResourceCost is rolled once from this full card cost

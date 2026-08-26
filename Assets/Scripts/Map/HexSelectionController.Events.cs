@@ -285,9 +285,12 @@ namespace Game.Map
             }
         }
 
-        private void GrantCard(PlayerSetupData owner, CardDefinition card)
+        // Public so Game.Aviation.AviationActions can hand a stored aircraft's card back to its
+        // owner the same way a hex-event reward does (see ReturnStoredAircraftToDeck) — same
+        // human/AI hand routing either way, no separate "returned" destination of its own.
+        public void GrantCard(PlayerSetupData owner, CardDefinition card)
         {
-            if (cardHandUI == null)
+            if (cardHandUI == null || owner == null || card == null)
                 return;
             if (owner.IsHuman)
                 cardHandUI.AddCard(new CardData(card));

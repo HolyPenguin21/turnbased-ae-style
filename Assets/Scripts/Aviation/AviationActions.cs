@@ -82,6 +82,26 @@ namespace Game.Aviation
             return true;
         }
 
+        // Shared by the aviation service's own BuildingRegistry subscription (see
+        // HexSelectionController.ReturnStaleAirfieldsAt) — capturing or destroying the building
+        // that hosts an airfield leaves its STORED (never-launched) aircraft with no owner able
+        // to fly them, so each one's card goes back to its original owner's hand (same
+        // destination a hex-event reward card lands in — see HexSelectionController.GrantCard)
+        // instead of just vanishing. An already-airborne air army above this hex is a completely
+        // separate ArmyData and is never touched here.
+        public static void ReturnStoredAircraftToDeck(ArmyData airfield, HexSelectionController hexSelection)
+        {
+            if (!AviationRules.IsAirfield(airfield))
+                return;
+            foreach (UnitData aircraft in airfield.Members.ToList())
+            {
+                airfield.Members.Remove(aircraft);
+                if (aircraft.OriginatingCard != null)
+                    hexSelection?.GrantCard(airfield.Owner, aircraft.OriginatingCard);
+            }
+            hexSelection?.DeleteArmyIfEmptied(airfield);
+        }
+
         // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel
         // condition only: cards stay in their formed air army instead of being transferred.
         public static int LandInSlotOrder(ArmyData airArmy, HexSelectionController hexSelection)

@@ -39,6 +39,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -69,6 +74,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -99,6 +109,11 @@ MonoBehaviour:
     range: 2
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -129,6 +144,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 4
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
     - ShockAttack
@@ -160,6 +180,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 5
     initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
@@ -190,6 +215,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 12
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities:
     - CeramicArmor
@@ -221,8 +251,14 @@ MonoBehaviour:
     range: 2
     hitPoints: 6
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 01000000
-    grantedAbilities: []
+    grantedAbilities:
+    - AA
     resourceYield:
       human: 0
       energy: 0
@@ -231,5 +267,6 @@ MonoBehaviour:
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
+  airArmyIcon: {fileID: 0}
   armyNamePool:
   - Desert striders

@@ -109,7 +109,7 @@ namespace Game.Map
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
                 definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt,
                 definition.apCost, definition.resourceCost, definition.isAviation, definition.launchEnergyCost,
-                definition.turnsWithoutRefuel, definition.antiAirRadius);
+                definition.turnsWithoutRefuel, definition.antiAirRadius, definition);
             if (spawned == null)
             {
                 failReason = $"Could not spawn {definition.displayName}.";

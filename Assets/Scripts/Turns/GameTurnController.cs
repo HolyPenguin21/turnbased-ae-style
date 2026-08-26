@@ -121,6 +121,12 @@ namespace Game.Turns
         // comments (HexSelectionController.Events.cs owns showing/hiding both).
         [SerializeField] private EventChoicePopupUI eventChoicePopup;
         [SerializeField] private EventRewardPopupUI eventRewardPopup;
+        // Same "map input locked out entirely, never a valid card-drop target" treatment —
+        // Game.Aviation.AviationCombatPresenter opens these directly for an AA reaction/air
+        // strike, outside of battleScreen entirely, so they need their own entry here instead of
+        // riding along on battleScreen's own VisibilityChanged.
+        [SerializeField] private BattleAttackPopupUI aviationAttackPopup;
+        [SerializeField] private AaChoicePopupUI aaChoicePopup;
 
         // Both cached and recomputed only when one of the underlying popups' own
         // VisibilityChanged fires (see OnEnable/RecomputeBlockedState) — this game is
@@ -156,13 +162,17 @@ namespace Game.Turns
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
                 || (battleScreen != null && battleScreen.IsShowing)
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing)
+                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
+                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
             bool newCardDraggingBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
                 || (battleScreen != null && battleScreen.IsShowing)
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing)
+                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
+                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
 
             if (newInputBlocked != _inputBlocked)
             {
@@ -237,6 +247,8 @@ namespace Game.Turns
             if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged += RecomputeBlockedState;
             if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged += RecomputeBlockedState;
+            if (aviationAttackPopup != null) aviationAttackPopup.VisibilityChanged += RecomputeBlockedState;
+            if (aaChoicePopup != null) aaChoicePopup.VisibilityChanged += RecomputeBlockedState;
             RecomputeBlockedState();
         }
 
@@ -251,6 +263,8 @@ namespace Game.Turns
             if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged -= RecomputeBlockedState;
             if (eventRewardPopup != null) eventRewardPopup.VisibilityChanged -= RecomputeBlockedState;
+            if (aviationAttackPopup != null) aviationAttackPopup.VisibilityChanged -= RecomputeBlockedState;
+            if (aaChoicePopup != null) aaChoicePopup.VisibilityChanged -= RecomputeBlockedState;
         }
 
         // The win condition: destroying a player's starting citadel (see
@@ -930,6 +944,9 @@ namespace Game.Turns
         // BattleScreenUI.Combat.cs's OnBattleOutcomeAcknowledged), not per strategic turn.
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
+            // AA availability is turn-scoped the same way move points are (see AntiAirState's
+            // own comment) — reset alongside everything else this owner's fresh turn restores.
+            AntiAirState.ResetForOwner(player);
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 foreach (UnitData unit in army.Members)

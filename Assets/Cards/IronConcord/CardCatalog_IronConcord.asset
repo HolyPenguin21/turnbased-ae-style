@@ -412,7 +412,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 01000000
-    grantedAbilities: []
+    grantedAbilities:
+    - AA
     resourceYield:
       human: 0
       energy: 0

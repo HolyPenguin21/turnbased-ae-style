@@ -16,6 +16,14 @@ namespace Game.Map
     // every member's MoveCurrent in lockstep by reading Data.Members directly.
     public class ArmyController : MonoBehaviour
     {
+        // Unity coroutines can't return a value the ordinary way — a resolveStepAsync callback
+        // (see MoveAlong) mutates this scratch instance instead, and MoveRoutine reads it back
+        // the instant the coroutine that callback returned actually finishes.
+        public sealed class StepResolutionOutcome
+        {
+            public bool StopMovement;
+        }
+
         [SerializeField] private float pulseAmount = 0.1f;
         [SerializeField] private float pulseSpeed = 4f;
         [SerializeField] private float stepDuration = 0.3f;
@@ -142,7 +150,8 @@ namespace Game.Map
         public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
             System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null,
             System.Action<HexCoord, HexCoord> onStepStarted = null,
-            System.Action<HexCoord, HexCoord> onStepCompleted = null)
+            System.Action<HexCoord, HexCoord> onStepCompleted = null,
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
@@ -153,7 +162,7 @@ namespace Game.Map
             _currentHex = Data.Hex;
             ResetTransform(map, resolveOffset(Data.Hex));
             StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly,
-                onStepStarted, onStepCompleted));
+                onStepStarted, onStepCompleted, resolveStepAsync));
         }
 
         // shouldStopEarly is called once per hex actually entered (never the origin), AFTER this
@@ -162,10 +171,17 @@ namespace Game.Map
         // caller instead (see HexSelectionController.Movement.cs's own reveal-on-entry check:
         // fog hides what a hex holds until the mover is actually standing on it, so a path
         // computed from the fogged-out start can't already know to stop there on its own).
+        //
+        // resolveStepAsync (optional) is the ONE place this whole shared pipeline can actually
+        // PAUSE an in-progress animated move — an AA reaction or air strike (see Game.Aviation.
+        // AviationCombatPresenter) needs the exact same army sitting still while its own popup
+        // resolves, rather than kicking off a second, nested move of its own. Existing ground
+        // callers simply never pass one and keep today's fire-and-forget onStepCompleted timing.
         private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
             System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly,
             System.Action<HexCoord, HexCoord> onStepStarted,
-            System.Action<HexCoord, HexCoord> onStepCompleted)
+            System.Action<HexCoord, HexCoord> onStepCompleted,
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync)
         {
             List<UnitData> members = Data.Members;
             for (int i = 1; i < path.Count; i++)
@@ -197,6 +213,18 @@ namespace Game.Map
                 Vector3 targetPosition = map.HexToWorld(next) + resolveOffset(next);
                 yield return StepTo(targetPosition);
                 onStepCompleted?.Invoke(previous, next);
+
+                if (resolveStepAsync != null)
+                {
+                    var outcome = new StepResolutionOutcome();
+                    yield return resolveStepAsync(previous, next, outcome);
+                    // Data.Members is the SAME list `members` already points at — a reaction that
+                    // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it
+                    // in place, so the next loop iteration's members[0] lookup above must never
+                    // run against an empty roster.
+                    if (Data.Members.Count == 0 || outcome.StopMovement)
+                        break;
+                }
 
                 if (shouldStopEarly != null && shouldStopEarly(next))
                     break;

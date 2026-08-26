@@ -87,6 +87,11 @@ namespace Game.Map
             snapshot.Owner = source.Owner;
             snapshot.IsGarrison = source.IsGarrison;
             snapshot.IsPrison = source.IsPrison;
+            // IsAirfield has no composition to recover it from (unlike IsAirArmy, which
+            // AviationRules derives fresh from every member's own IsAviation flag below) — an
+            // airfield can be empty, so it must be copied explicitly or a remembered one would
+            // read back as a plain empty army.
+            snapshot.IsAirfield = source.IsAirfield;
             snapshot.HasActivatedThisTurn = source.HasActivatedThisTurn;
             foreach (UnitData member in source.Members)
                 snapshot.Members.Add(SnapshotUnit(member));
@@ -123,6 +128,11 @@ namespace Game.Map
                 Initiative = source.Initiative,
                 IsPrisoner = source.IsPrisoner,
                 CapturedFrom = source.CapturedFrom,
+                // AviationRules.IsAirArmy reads this per member to classify the containing
+                // ArmyData snapshot — without it a remembered air army's own members would all
+                // read as ordinary ground units under fog (see SnapshotArmy's own IsAirfield
+                // comment for the other half of this: that flag can't self-heal from composition).
+                IsAviation = source.IsAviation,
             };
             foreach (string ability in source.Abilities)
                 snapshot.Abilities.Add(ability);

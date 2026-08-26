@@ -1,4 +1,5 @@
 using Game.Ai;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -26,7 +27,7 @@ namespace Game.Combat
         // BattleScreenUI.Combat.cs.
         public static bool IsCombatCapable(ArmyData army)
         {
-            if (army == null)
+            if (army == null || AviationRules.IsAirArmy(army) || AviationRules.IsAirfield(army))
                 return false;
             foreach (UnitData member in army.Members)
                 if (!member.IsHero)
@@ -42,7 +43,14 @@ namespace Game.Combat
         // Tactical Battle Module (see HexSelectionController.Movement.cs's own branch) — it goes
         // straight to BattleScreenUI.BeginCaptureKillEncounter instead, since there's nothing
         // for a normal battle round to actually do against it.
-        public static bool IsEngageable(ArmyData army) => army != null && army.Members.Count > 0;
+        // An air army/airfield is likewise never a CONTACT target here — a ground army arriving
+        // on a hex that only holds one of those must not open the ordinary battle screen against
+        // aircraft; aviation has its own separate AA/air-strike resolution instead. An airfield
+        // specifically is only ever emptied by capturing the Base building underneath it (see
+        // BuildingRegistry.CaptureOrDestroyIfUndefended -> AviationActions.ReturnStoredAircraftToDeck),
+        // never fought directly.
+        public static bool IsEngageable(ArmyData army) => army != null && army.Members.Count > 0
+            && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army);
 
         // The STRONGEST enemy CONTACTABLE army at `hex`, if any — null if the hex is clear or
         // only holds friendly/empty armies. See IsEngageable for what counts. Ranked by raw
