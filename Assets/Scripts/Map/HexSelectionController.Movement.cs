@@ -477,6 +477,11 @@ namespace Game.Map
                     HexCoord actualHex = movingArmy.CurrentHex;
                     ArmyRegistry.MoveArmy(army, actualHex);
 
+                    // Create the container as soon as aircraft reach their own barracks. They
+                    // do not merge into it: landing is only the end-turn refuel condition.
+                    if (AviationRules.IsAirArmy(army) && AviationRules.IsOwnedAirfieldAt(actualHex, army.Owner))
+                        AviationActions.EnsureAirfield(this, army.Owner, actualHex);
+
                     // The origin hex's own layout (a building recentring once the last army
                     // actually leaves, in particular) only reads correctly once MoveArmy above
                     // has re-keyed `army` away from it — the earlier RestackArmiesOn(originHex,
