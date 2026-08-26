@@ -102,9 +102,11 @@ namespace Game.Map
             // IssueMoveOrder's own AP check further down, just applied to the preview instead of
             // the actual order).
             bool needsActivation = !army.HasActivatedThisTurn;
+            int energyCost = needsActivation ? army.ActivationEnergyCost : 0;
             PlayerRoot ownerRoot = PlayerRootRegistry.FindFor(army.Owner);
             bool canAffordActivation = !needsActivation
-                || (ownerRoot != null && ownerRoot.CanSpendActionPoints(army.ActivationApCost));
+                || (ownerRoot != null && ownerRoot.CanSpendActionPoints(army.ActivationApCost)
+                    && ownerRoot.GetResource(ResourceType.Energy) >= energyCost);
             if (army.CurrentMovement <= 0 || !canAffordActivation)
             {
                 if (_pathArrow != null)
@@ -155,7 +157,8 @@ namespace Game.Map
             foreach (HexCoord hex in path.Hexes)
                 points.Add(map.HexToWorld(hex));
             int apCost = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
-            _pathArrow.Show(points, path.TotalCost, apCost, color);
+            int energyCost = army.HasActivatedThisTurn ? 0 : army.ActivationEnergyCost;
+            _pathArrow.Show(points, path.TotalCost, apCost, energyCost, color);
         }
 
         // Truncates `path` at the first hex (after the origin) holding a combat-capable enemy
@@ -430,14 +433,18 @@ namespace Game.Map
             // army is given a move order in a turn — every move order after that, for the
             // rest of the turn, costs MoveCurrent only. See ArmyData.HasActivatedThisTurn.
             bool needsActivation = !army.HasActivatedThisTurn;
-            if (needsActivation && !ownerRoot.CanSpendActionPoints(army.ActivationApCost))
+            int energyCost = needsActivation ? army.ActivationEnergyCost : 0;
+            if (needsActivation && (!ownerRoot.CanSpendActionPoints(army.ActivationApCost)
+                || ownerRoot.GetResource(ResourceType.Energy) < energyCost))
             {
-                NotifyMoveBlocked(army, $"Not enough action points to move {army.Name} ({army.ActivationApCost} AP needed).");
+                NotifyMoveBlocked(army, $"Not enough resources to move {army.Name} ({army.ActivationApCost} AP, {energyCost} Energy needed).");
                 return MoveOrderResult.InsufficientActionPoints;
             }
             if (needsActivation)
             {
                 ownerRoot.SpendActionPoints(army.ActivationApCost);
+                if (energyCost > 0)
+                    ownerRoot.AddResource(ResourceType.Energy, -energyCost);
                 army.HasActivatedThisTurn = true;
             }
 
