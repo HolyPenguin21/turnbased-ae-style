@@ -72,36 +72,48 @@ namespace Game.Ai
             }
         }
 
-        // Only scans known enemy ARMY/garrison sightings (AiMapMemory.KnownEnemySighting) — unlike
-        // RaidWeakerArmyTask.FindTarget's own "Раздел 5" scope, a bare AllKnownBuildings hex with no
-        // known sighting is never added here: a strike needs a real, known composition to plan
-        // against, and ground can capture/clear an empty building for free next turn anyway, so
-        // burning a sortie's energy on one that turns out empty (project owner's report, 2026-08-26
-        // turn 24 — Hollowmen struck (5,3), flew home, and the ground army then found only an empty
-        // resource building there) is pure waste. Stored aircraft sitting in an enemy airfield never
-        // surface here at all — BattleInitiator.IsEngageable (which AiMapMemory's own sighting
-        // recorder already gates on) excludes IsAirfield armies entirely, so this needs no separate
-        // filter for that case.
+        // Scans known ARMY/garrison sightings (AiMapMemory.KnownEnemySighting) — both non-neutral
+        // enemy sightings AND neutral ones (AllKnownNeutralSightings, added 2026-08-26 — project
+        // owner's own spec point 1, same "known sighting" source RaidWeakerArmyTask.FindTarget
+        // already merges in for its own ground-raid target pool). Unlike RaidWeakerArmyTask's own
+        // "Раздел 5" scope, a bare AllKnownBuildings hex with no known sighting (enemy OR neutral)
+        // is never added here: a strike needs a real, known composition to plan against, and ground
+        // can capture/clear an empty building for free next turn anyway, so burning a sortie's
+        // energy on one that turns out empty (project owner's report, 2026-08-26 turn 24 —
+        // Hollowmen struck (5,3), flew home, and the ground army then found only an empty resource
+        // building there) is pure waste. Stored aircraft sitting in an airfield never surface here
+        // at all — BattleInitiator.IsEngageable (which AiMapMemory's own sighting recorder already
+        // gates on) excludes IsAirfield armies entirely, so this needs no separate filter for that
+        // case.
         // A candidate with no complete sortie (AiAviationSupport.TryPlanSortie/
         // TryPlanSortieFromStorage returns null) is dropped before scoring — never assumed
-        // reachable just because it's known.
+        // reachable just because it's known. TryPlanSortie/TryPlanSortieFromStorage are exactly
+        // where the "full safe round trip" requirement (start airfield -> target -> any owned
+        // airfield with a free landing slot) already lives, so a neutral target with no such route
+        // is dropped the same way an unreachable enemy one already was — no separate check needed
+        // here for that half of point 1's spec.
         public static StrikeTarget? FindTarget(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
         {
             if (actor == null || map == null)
                 return null;
 
-            var enemyHexes = new HashSet<HexCoord>();
-            var enemyDefense = new Dictionary<HexCoord, (float Defense, float Attack, string Name)>();
+            var targetHexes = new HashSet<HexCoord>();
+            var targetInfo = new Dictionary<HexCoord, (float Defense, float Attack, string Name)>();
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
             {
-                if (sighting.Owner == null || sighting.Owner == actor || sighting.Owner.IsNeutral)
+                if (sighting.Owner == null || sighting.Owner == actor)
                     continue;
-                enemyHexes.Add(sighting.Hex);
-                enemyDefense[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
+                targetHexes.Add(sighting.Hex);
+                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
+            }
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(actor))
+            {
+                targetHexes.Add(sighting.Hex);
+                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
             }
 
             StrikeTarget? best = null;
-            foreach (HexCoord hex in enemyHexes)
+            foreach (HexCoord hex in targetHexes)
             {
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
                     ? AiAviationSupport.TryPlanSortie(candidate.ExistingArmy, hex, map, actor)
@@ -109,7 +121,7 @@ namespace Game.Ai
                 if (!sortie.HasValue)
                     continue;
 
-                enemyDefense.TryGetValue(hex, out (float Defense, float Attack, string Name) known);
+                targetInfo.TryGetValue(hex, out (float Defense, float Attack, string Name) known);
                 float score = ScoreTarget(actor, candidate, sortie.Value, known.Defense, known.Attack, map);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
                 if (best == null || score > best.Value.Score)
@@ -130,32 +142,11 @@ namespace Game.Ai
             float targetValue = targetDefense + targetAttack;
             score += Mathf.Sqrt(Mathf.Max(0f, targetValue)) * AiConfig.airStrikeTargetValueWeight;
             score += candidate.Aircraft.Count * AiConfig.airStrikeTargetValueWeight * 0.5f;
-            score -= KnownAaExposure(actor, sortie.OutboundPath) * AiConfig.airStrikeAaExposurePenalty;
+            score -= AiAviationSupport.KnownAaExposure(actor, sortie.OutboundPath) * AiConfig.airStrikeAaExposurePenalty;
             score -= sortie.TotalCost * AiConfig.airStrikeDistancePenalty;
             int apEnergyCost = candidate.Aircraft.Sum(u => u.ActivationApCost + u.LaunchEnergyCost);
             score -= apEnergyCost * AiConfig.airStrikeApCostPenalty;
             return Mathf.Min(score, AiConfig.airStrikeScoreCap);
-        }
-
-        // Coarse route-risk read — every known-AA-tagged enemy sighting (AiMapMemory.
-        // KnownEnemySighting.HasAntiAir, see that field's own comment) within raidThreatRadius of
-        // ANY hex the outbound leg crosses. Deliberately approximate (no per-unit AA radius is kept
-        // in memory, only the bool flag) — good enough to rank routes relative to each other, never
-        // meant as an exact prediction of what will actually react (that stays AntiAirRules' own
-        // live, honest-fog job at execution time).
-        private static int KnownAaExposure(PlayerSetupData actor, HexPath outbound)
-        {
-            if (outbound == null)
-                return 0;
-            int exposure = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
-            {
-                if (!sighting.HasAntiAir)
-                    continue;
-                if (outbound.Hexes.Any(hex => HexGridMath.Distance(hex, sighting.Hex) <= AiConfig.raidThreatRadius))
-                    exposure++;
-            }
-            return exposure;
         }
     }
 }

@@ -34,19 +34,23 @@ namespace Game.Ai
 
         // Scans a bounded ring around the launch/current hex (loosely sized off the fleet's own
         // round-trip range — AiAviationSupport.TryPlanSortie/TryPlanSortieFromStorage is still the
-        // real feasibility gate, this radius only keeps the scan itself cheap), scores each
-        // unexplored-or-stale, reachable hex by forward progress toward known enemy territory
-        // (favoured over lateral wandering, per spec) then shorter safe distance, and returns the
-        // single best. Never targets a known enemy army for damage the way AirStrikeTask does — a
-        // discovered enemy along the way is a free opportunistic strike the shared resolver already
-        // offers (AviationCombatPresenter.ResolveStep), not something this method goes looking for.
+        // real feasibility gate, this radius only keeps the scan itself cheap; it's also what
+        // already picks the landing airfield as part of that same feasibility check — a forward
+        // base naturally wins whenever it yields a cheaper total round trip than a rearward one, so
+        // no separate relocation task is ever needed just to get a recon flight based somewhere more
+        // convenient), scores each unexplored-or-stale, reachable hex by forward progress toward
+        // known enemy territory (favoured over lateral wandering, per spec — see
+        // EnemyConcentrationForwardBonus for how that direction is now derived) then shorter safe
+        // distance, then known AA route risk, and returns the single best. Never targets a known
+        // enemy army for damage the way AirStrikeTask does — a discovered enemy along the way is a
+        // free opportunistic strike the shared resolver already offers (AviationCombatPresenter.
+        // ResolveStep), not something this method goes looking for.
         public static ReconTarget? FindReconHex(PlayerSetupData actor, AirStrikeTask.LaunchCandidate candidate, HexMap map)
         {
             if (actor == null || map == null)
                 return null;
 
             HexCoord start = candidate.AirfieldHex;
-            HexCoord? enemyRef = FindEnemyReferenceHex(actor);
             int roundTripRange = candidate.ExistingArmy != null
                 ? candidate.ExistingArmy.CurrentMovement
                 : candidate.Aircraft.Min(AviationRules.EffectiveMoveMax);
@@ -68,16 +72,24 @@ namespace Game.Ai
                 if (!sortie.HasValue)
                     continue;
 
-                float forwardBonus = 0f;
-                if (enemyRef.HasValue)
-                {
-                    int distToEnemy = HexGridMath.Distance(hex, enemyRef.Value);
-                    int startDistToEnemy = HexGridMath.Distance(start, enemyRef.Value);
-                    forwardBonus = Mathf.Max(0, startDistToEnemy - distToEnemy) * AiConfig.airReconForwardWeight;
-                }
+                float forwardBonus = EnemyConcentrationForwardBonus(actor, start, hex) * AiConfig.airReconForwardWeight;
                 float freshBonus = everSeen ? AiConfig.airReconForwardWeight * 0.5f : AiConfig.airReconForwardWeight;
+                // Known-AA route risk (AiAviationSupport.KnownAaExposure, shared with AirStrikeTask.
+                // ScoreTarget — 2026-08-26, project owner's own spec point 2 "учитывать ПВО при
+                // выборе вылета"). Same "ranked down, never a hard block" shape AirStrike already
+                // uses for the identical concern: a risky-but-only-reachable hex still wins if
+                // nothing safer scores as well, but a safe hex of otherwise-comparable info value
+                // always outranks a risky one, and at truly EQUAL informativeness (spec's own tie-
+                // break clause) the lower-exposure route wins outright — the penalty weight
+                // (airReconAaExposurePenalty) is deliberately sized close to forwardBonus/freshBonus
+                // themselves so it dominates near-ties without being able to out-vote a genuinely
+                // much more informative target the way airStrikeAaExposurePenalty is sized relative
+                // to airStrikeTargetValueWeight for the sibling task.
+                float aaExposurePenalty = AiAviationSupport.KnownAaExposure(actor, sortie.Value.OutboundPath)
+                    * AiConfig.airReconAaExposurePenalty;
                 float score = AiConfig.airReconBaseWeight + forwardBonus + freshBonus
-                    - sortie.Value.TotalCost * AiConfig.airReconDistancePenalty;
+                    - sortie.Value.TotalCost * AiConfig.airReconDistancePenalty
+                    - aaExposurePenalty;
 
                 if (best == null || score > best.Value.Score)
                     best = new ReconTarget(hex, sortie.Value, score,
@@ -86,18 +98,54 @@ namespace Game.Ai
             return best;
         }
 
-        // Known enemy citadel if any (strongest, most stable directional reference); falls back to
-        // any known non-neutral army sighting otherwise. Null (no bias, nearest unexplored hex wins
-        // on distance alone) only once nothing about the enemy is known at all yet.
-        private static HexCoord? FindEnemyReferenceHex(PlayerSetupData actor)
+        // Directional bias toward enemy territory, rewritten 2026-08-26 (project owner's own spec
+        // point 2 — "направление должен строиться не только от известной цитадели, но и от
+        // скоплений известных вражеских армий, ближайшие и более сильные... больший directional
+        // bonus") to blend EVERY known reference instead of picking a single one (the old
+        // FindEnemyReferenceHex: citadel if known, else the first enemy sighting found, full stop).
+        // No separate multi-army spatial clustering model exists anywhere else in this codebase —
+        // RaidWeakerArmyTask's own known-target pool already treats each AiMapMemory.
+        // KnownEnemySighting as its own independent entry rather than grouping several into one
+        // "concentration" — so this reuses that same per-sighting granularity: each sighting IS its
+        // own concentration, weighted by its own remembered strength (DefenseSum+AttackSum) divided
+        // by (1 + its own distance from the launch hex), so a near, strong army pulls the direction
+        // far harder than a distant, weak one, exactly per spec. The enemy citadel (if known) is
+        // folded in as one more weighted reference, at a flat airReconCitadelWeight strength — it
+        // carries no combat-strength numbers of its own to weigh by, but stays the single most
+        // stable, always-relevant directional anchor the old code already treated it as.
+        // Returns a weighted-AVERAGE forward-progress amount (never negative) — averaging (not
+        // summing) keeps the result on the same rough scale FindReconHex's own airReconForwardWeight
+        // multiplier already expected from the old single-reference version, regardless of how many
+        // enemies happen to be known right now; a hex advancing toward the weighted centroid of
+        // every known reference scores highest, one retreating from all of them scores zero.
+        private static float EnemyConcentrationForwardBonus(PlayerSetupData actor, HexCoord start, HexCoord candidate)
         {
+            float weightedProgress = 0f;
+            float totalWeight = 0f;
+
+            void Accumulate(HexCoord reference, float weight)
+            {
+                if (weight <= 0f)
+                    return;
+                int startDist = HexGridMath.Distance(start, reference);
+                int candidateDist = HexGridMath.Distance(candidate, reference);
+                weightedProgress += weight * Mathf.Max(0, startDist - candidateDist);
+                totalWeight += weight;
+            }
+
             foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
                 if (building.IsStartingCitadel && building.Owner != null && building.Owner != actor && !building.Owner.IsNeutral)
-                    return building.Hex;
+                    Accumulate(building.Hex, AiConfig.airReconCitadelWeight);
+
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
-                if (sighting.Owner != null && sighting.Owner != actor && !sighting.Owner.IsNeutral)
-                    return sighting.Hex;
-            return null;
+            {
+                if (sighting.Owner == null || sighting.Owner == actor)
+                    continue;
+                float strength = Mathf.Max(0f, sighting.DefenseSum + sighting.AttackSum);
+                Accumulate(sighting.Hex, strength / (1 + HexGridMath.Distance(start, sighting.Hex)));
+            }
+
+            return totalWeight > 0f ? weightedProgress / totalWeight : 0f;
         }
     }
 }

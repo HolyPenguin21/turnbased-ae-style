@@ -401,7 +401,15 @@ namespace Game.Ai
         // re-measuring from the original citadel. buildBasePreferredDistance is the sweet spot
         // ScoreCandidateHex's own distance term aims for; buildBaseMinDistanceFromExistingBase/
         // buildBaseMaxDistanceFromExistingBase are the hard legality floor/ceiling around it.
-        public const int buildBasePreferredDistance = 3;
+        // Raised from 3 to 4 (2026-08-26, project owner's own spec point 3) — now sits exactly at
+        // buildBaseMaxDistanceFromExistingBase, so distance 4 itself takes zero distance-term
+        // penalty and distance 3 costs one buildBaseDistanceWeight unit (still fully legal, per the
+        // spec's own "distance 3 remains допустима if a noticeably better resource hex/terrain/
+        // direction is there" — ScoreCandidateHex is already a plain weighted sum of this distance
+        // term plus the resource/terrain/directional ones, so a strong-enough edge on any of those
+        // already lets a distance-3 candidate outscore a plain distance-4 one with nothing else
+        // going for it; no separate override/exception logic needed for that half of the spec).
+        public const int buildBasePreferredDistance = 4;
         // Target hex legality floor — a candidate strictly closer than this to whichever of the
         // player's own Base-tagged buildings is nearest to it is illegal (too cramped, would
         // overlap that base's own useful radius) — the starting citadel itself always counts as
@@ -413,7 +421,7 @@ namespace Game.Ai
         // than through an off-by-one exclusive floor.
         public const int buildBaseMinDistanceFromExistingBase = 2;
         // Target hex legality ceiling — see buildBaseMinDistanceFromExistingBase's own comment.
-        // Paired with buildBasePreferredDistance(3) landing safely inside [min, max].
+        // Paired with buildBasePreferredDistance(4) landing exactly on this ceiling.
         public const int buildBaseMaxDistanceFromExistingBase = 4;
         // ScoreCandidateHex's own per-hex-of-deviation penalty from buildBasePreferredDistance —
         // keeps the internal ranking centered on the sweet spot even though every candidate in
@@ -1220,11 +1228,33 @@ namespace Game.Ai
         public const float airReconBaseWeight = 65f;
         // Forward information-gain bonus (a recon hex genuinely toward known enemy territory, with
         // fresh/unexplored neighbors) — see AirReconTask.FindReconHex, same "fresh neighbor" shape
-        // VisitHexTask/freshNeighborWeight already uses for ground Recon.
+        // VisitHexTask/freshNeighborWeight already uses for ground Recon. Multiplies
+        // EnemyConcentrationForwardBonus's own [0,1]-ish weighted-progress fraction, so this constant
+        // still directly caps the term's max contribution the same way it did back when that fraction
+        // was a plain 0-or-1 "does the single known reference get closer" check.
         public const float airReconForwardWeight = 5f;
+        // EnemyConcentrationForwardBonus's own flat weight for the known enemy citadel reference (it
+        // carries no DefenseSum/AttackSum of its own to weigh by, unlike an ordinary army sighting) —
+        // 2026-08-26, project owner's own spec point 2. Sized comfortably above a single typical
+        // sighting's own strength/(1+distance) weight so the citadel keeps acting as the strongest,
+        // most stable directional anchor (matching the old FindEnemyReferenceHex's citadel-first
+        // priority) while still letting a genuinely large/near cluster of known enemy armies pull the
+        // direction away from it, per spec's own "not only from the citadel" ask.
+        public const float airReconCitadelWeight = 30f;
         // Per-hex penalty on total sortie distance — same "shorter safe sortie distance" tie-break
         // spec asks for, after forward information gain.
         public const float airReconDistancePenalty = 1f;
+        // Flat penalty per point of known AA exposure along the outbound leg (AiAviationSupport.
+        // KnownAaExposure, shared with AirStrikeTask.ScoreTarget) — 2026-08-26, project owner's own
+        // spec point 2 "учитывать ПВО при выборе вылета". Same "ranked down, never a hard block"
+        // shape as airStrikeAaExposurePenalty, but sized close to airReconForwardWeight/the fresh-
+        // hex bonus (rather than small relative to a much larger base+value budget the way AirStrike's
+        // own penalty is) — AirRecon's whole score band is narrow (airReconBaseWeight=65 plus a
+        // handful of single-digit bonuses/penalties), so a same-sized AA penalty is enough to make a
+        // safe reachable hex always outrank a comparably-informative risky one, and to win outright at
+        // truly equal informativeness (spec's own explicit tie-break clause), without being able to
+        // out-vote a hex that is genuinely much more informative than every safe alternative.
+        public const float airReconAaExposurePenalty = 4f;
         // AirStrikeTask.IsEligibleAircraft's own floor — an air group (stored or already airborne)
         // needs at least this many aircraft still able to attack this turn before AirStrike will
         // even consider it a launch candidate; below this, waiting for the hand/airfield to build

@@ -28,6 +28,30 @@ namespace Game.Ai
         public static IEnumerable<HexCoord> OwnedAirfieldHexes(PlayerSetupData player) =>
             AiTurnController.OwnGarrisonHexes(player).Where(hex => AviationRules.IsOwnedAirfieldAt(hex, player));
 
+        // Coarse route-risk read — every known-AA-tagged enemy sighting (AiMapMemory.
+        // KnownEnemySighting.HasAntiAir, see that field's own comment) within raidThreatRadius of
+        // ANY hex the given leg crosses. Deliberately approximate (no per-unit AA radius is kept in
+        // memory, only the bool flag) — good enough to rank routes relative to each other, never
+        // meant as an exact prediction of what will actually react (that stays AntiAirRules' own
+        // live, honest-fog job at execution time). Moved here from AirStrikeTask (2026-08-26,
+        // project owner's own AirRecon-AA spec point 2) so AirReconTask's own route ranking reads
+        // the exact same route-risk number instead of a second, separately-drifting copy — same
+        // "one shared place" role this class already plays for TryPlanSortie/FreeLandingCapacity.
+        public static int KnownAaExposure(PlayerSetupData actor, HexPath leg)
+        {
+            if (leg == null)
+                return 0;
+            int exposure = 0;
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
+            {
+                if (!sighting.HasAntiAir)
+                    continue;
+                if (leg.Hexes.Any(hex => HexGridMath.Distance(hex, sighting.Hex) <= AiConfig.raidThreatRadius))
+                    exposure++;
+            }
+            return exposure;
+        }
+
         // How many MORE aircraft `hex` can actually receive right now. The engine itself only
         // capacity-checks the STORED container (new card deployment, see AviationRules.
         // FreeAirfieldCapacity/ArmyActions.DeployUnitFromCard) — a landed, already-launched air
