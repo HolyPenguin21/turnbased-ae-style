@@ -81,7 +81,7 @@ namespace Game.Map
 
         // Energy is part of activation only for a real airborne stack. Keeping it on ArmyData
         // makes the move preview, move order and future AI use the same amount.
-        public int ActivationEnergyCost => IsAirArmy
+        public int ActivationEnergyCost => AviationRules.IsAirArmy(this)
             ? Members.Sum(m => m.LaunchEnergyCost)
             : 0;
 
@@ -91,8 +91,10 @@ namespace Game.Map
         // empty army rather than throwing on Members[0].
         public int CurrentMovement => Members.Count > 0
             ? Members.Min(AviationRules.EffectiveMoveCurrent) : 0;
+        // The fuel penalty reduces this turn's remaining MP only. Keep the printed maximum
+        // unmodified so UI correctly reads, for example, 5/10 rather than 5/5.
         public int MaxMovement => Members.Count > 0
-            ? Members.Min(AviationRules.EffectiveMoveMax) : 0;
+            ? Members.Min(unit => unit.MoveMax) : 0;
 
         // Canon capacity rule, computed fresh (never cached) so it's always correct as members
         // come and go: no hero -> 2; garrison without a hero -> a higher default since it's
