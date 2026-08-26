@@ -120,6 +120,26 @@ namespace Game.Map
                 AiDebugLog.Write($"[BUILDING] Facility \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) owned by "
                     + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} destroyed by {(newOwner != null ? newOwner.Nickname : "nobody")}.");
             }
+
+            // 2026-08-26 fix (project owner's own report): this is the one authoritative method
+            // every capture/destroy path funnels through (see this method's own class comment),
+            // but it never itself refreshed the hex's own army layout — every INDIVIDUAL call site
+            // elsewhere in the project is careful to call RestackArmiesOn right after a roster/
+            // ownership change (HexSelectionController.Movement.cs's own move-in capture,
+            // BattleScreenUI.Combat.cs's HandleBuildingOnArmyDefeat, ...), but a capture reached
+            // through BattleScreenUI.Retreat.cs's TryHandoverVacatedBase (a hero escaping a
+            // Capture Kill Challenge, then its now hero-only army retreating off its OWN base) is
+            // the very last thing PerformRetreat does — nothing downstream ever restacks this hex
+            // again afterward. EnsureGarrisonForBuilding above may just have spawned a brand-new
+            // empty garrison for the new owner, and VisualStateChanged's own ReturnStaleAviationAt
+            // subscriber may just have returned the previous owner's own stale airfield/air-army
+            // cards to hand (per the project owner's own spec, both containers now empty out on
+            // capture the same way) — with no restack, every marker still resting on this hex kept
+            // whatever offset it had BEFORE this roster change, which read as markers hovering in
+            // the wrong spot until the hex was next reselected (project owner's own report: two air
+            // armies stuck hovering over a just-captured base, and a now-empty army's marker
+            // sitting stale rather than actually hidden).
+            hexSelection?.RestackArmiesOn(building.Hex, null);
         }
 
         // Shared by every place an army finishes ARRIVING on a hex without a fight of its own —

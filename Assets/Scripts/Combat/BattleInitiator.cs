@@ -47,7 +47,7 @@ namespace Game.Combat
         // on a hex that only holds one of those must not open the ordinary battle screen against
         // aircraft; aviation has its own separate AA/air-strike resolution instead. An airfield
         // specifically is only ever emptied by capturing the Base building underneath it (see
-        // BuildingRegistry.CaptureOrDestroyIfUndefended -> AviationActions.ReturnStoredAircraftToDeck),
+        // BuildingRegistry.CaptureOrDestroyIfUndefended -> AviationActions.ReturnAircraftToDeck),
         // never fought directly.
         public static bool IsEngageable(ArmyData army) => army != null && army.Members.Count > 0
             && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army);

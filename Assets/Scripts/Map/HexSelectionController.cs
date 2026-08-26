@@ -448,24 +448,27 @@ namespace Game.Map
 
         // VisualStateChanged fires for both a capture (building != null, already re-owned) and a
         // destruction (building == null — see BuildingRegistry.Unregister) — either way, any
-        // IsAirfield army still sitting on this hex under a DIFFERENT owner than the building's
-        // new one (or any owner at all, once the building is simply gone) has lost the base that
-        // gave it a right to be here. Its stored aircraft go back to their own owner's hand
-        // rather than just disappearing; an actual airborne IsAirArmy above the hex is untouched
-        // (AviationRules.IsAirfield already excludes it).
-        private void ReturnStaleAirfieldsAt(HexCoord hex, BuildingData building)
+        // aviation (an IsAirfield container OR a real IsAirArmy formation still parked right
+        // here) under a DIFFERENT owner than the building's new one (or any owner at all, once
+        // the building is simply gone) has lost the base that gave it a right to be here. Every
+        // one of its aircraft goes back to its own owner's hand rather than just disappearing —
+        // or, for an air army, than being left stranded hovering over what's now enemy ground
+        // (project owner's own report, 2026-08-26: two air armies stuck over a just-captured
+        // base — the old "an airborne IsAirArmy is untouched" rule left them exactly there).
+        private void ReturnStaleAviationAt(HexCoord hex, BuildingData building)
         {
-            var staleAirfields = new List<ArmyData>();
+            var staleAviation = new List<ArmyData>();
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (AviationRules.IsAirfield(army) && (building == null || army.Owner != building.Owner))
-                    staleAirfields.Add(army);
-            foreach (ArmyData army in staleAirfields)
-                AviationActions.ReturnStoredAircraftToDeck(army, this);
+                if ((AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
+                    && (building == null || army.Owner != building.Owner))
+                    staleAviation.Add(army);
+            foreach (ArmyData army in staleAviation)
+                AviationActions.ReturnAircraftToDeck(army, this);
         }
 
         private void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
         {
-            ReturnStaleAirfieldsAt(hex, building);
+            ReturnStaleAviationAt(hex, building);
             if (GameSession.Players == null)
                 return;
             foreach (PlayerSetupData viewer in GameSession.Players)

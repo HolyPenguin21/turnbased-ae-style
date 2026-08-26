@@ -350,7 +350,27 @@ namespace Game.UI
                     RemoveHero(heroArmy, hero);
                     RefreshGrid();
                     break;
-                // Escaped: nothing removed, hero stays a member of heroArmy.
+                case CaptureKillOutcome.Escaped:
+                    // A garrison has no army of its own to flee IN — it's anchored to its
+                    // Barracks building and can never move at all (see HexSelectionController.
+                    // Movement.cs's own IssueMoveOrder garrison guard). The retreat logic just
+                    // below assumes the loser's remaining army can physically leave the hex,
+                    // which a garrison can't — per the project owner's own root-cause report
+                    // (2026-08-26): a garrisoned hero who "escaped" the duel was retreating the
+                    // whole garrison off its own base instead, an army that was never mobile to
+                    // begin with. Closed the way the project owner specified: a garrisoned hero
+                    // evading the duel is automatically treated as Captured instead — same
+                    // handling as the case just above. A hero belonging to an ordinary (mobile)
+                    // army still gets a real Escaped result; only the garrison case is overridden.
+                    if (heroArmy != null && heroArmy.IsGarrison)
+                    {
+                        if (!TryImprison(hero, heroArmy, hunterArmy))
+                            RemoveHero(heroArmy, hero);
+                        RefreshGrid();
+                    }
+                    break;
+                // Escaped, non-garrison: nothing removed, hero stays a member of heroArmy — its
+                // own army retreats below once every hero in the queue has been resolved.
             }
 
             // Checking retreat-need right after EACH hero (the original version of this) was a

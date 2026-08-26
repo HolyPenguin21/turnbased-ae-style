@@ -36,10 +36,14 @@ namespace Game.Aviation
                 FiredThisTurn.Add(aaUnit);
         }
 
+        // `owner` is deliberately allowed to be null here — that's Neutral's own turn slot (see
+        // GameTurnController.ReplenishMoveForOwner/BeginPlayerTurn's own "Neutral's fixed last
+        // slot" comment), and Neutral-owned AA units need this same per-turn reset just as much
+        // as a real player's do. An early `owner == null` return used to skip it entirely, so a
+        // Neutral AA unit that ever fired once stayed stuck in FiredThisTurn forever — it could
+        // never react again on any later turn (project owner's own report, 2026-08-26).
         public static void ResetForOwner(PlayerSetupData owner)
         {
-            if (owner == null)
-                return;
             FiredThisTurn.RemoveWhere(unit => unit.Owner == owner);
             PromptedThisTurn.RemoveWhere(entry => entry.aaUnit.Owner == owner);
         }

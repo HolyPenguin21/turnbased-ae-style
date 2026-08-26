@@ -155,12 +155,21 @@ namespace Game.Map
                 // Game.Aviation.AviationCombatPresenter) never resolves via "move onto/next to an
                 // enemy" the way ground contact does (see HandleVisionStep's own comment: ground
                 // contact never halts an air army mid-flight), so TruncateAtEnemyContact's
-                // path-end check doesn't apply here at all. Per the project owner's own spec:
-                // red/green instead reflects whether this army still HAS an attack left to spend
-                // this turn (any member not yet HasAirAttackedThisTurn) versus already spent —
-                // same red-means-can-attack/green-means-can't meaning as the ground arrow, just
-                // keyed off the per-turn attack budget instead of a specific target on the path.
-                color = HasAirAttackAvailable(army) ? gameConfig.moveArrowAttackColor : gameConfig.moveArrowMoveColor;
+                // path-end check doesn't apply here at all. Per the project owner's own spec
+                // (2026-08-26 correction): red requires BOTH that this army still has an attack
+                // left to spend this turn (any member not yet HasAirAttackedThisTurn) AND that the
+                // path's own destination hex actually holds a real air-strike target (same target
+                // set AviationCombatPresenter.FindAirStrikeTargetsAt will strike on arrival) —
+                // landing on an empty hex, or one with nothing left to hit, is always green even
+                // with attacks still unspent. Vision-gated the same way TruncateAtEnemyContact/
+                // AvoidEnemyHex already are below — a fog-hidden target is a surprise on arrival,
+                // never something the preview reveals early.
+                HexCoord destination = path.Hexes[path.Hexes.Count - 1];
+                bool hasTarget = VisionSystem.IsVisible(army.Owner, destination)
+                    && AviationCombatPresenter.FindAirStrikeTargetsAt(destination, army.Owner).Count > 0;
+                color = HasAirAttackAvailable(army) && hasTarget
+                    ? gameConfig.moveArrowAttackColor
+                    : gameConfig.moveArrowMoveColor;
             }
             else
             {

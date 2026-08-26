@@ -83,23 +83,26 @@ namespace Game.Aviation
         }
 
         // Shared by the aviation service's own BuildingRegistry subscription (see
-        // HexSelectionController.ReturnStaleAirfieldsAt) — capturing or destroying the building
-        // that hosts an airfield leaves its STORED (never-launched) aircraft with no owner able
-        // to fly them, so each one's card goes back to its original owner's hand (same
-        // destination a hex-event reward card lands in — see HexSelectionController.GrantCard)
-        // instead of just vanishing. An already-airborne air army above this hex is a completely
-        // separate ArmyData and is never touched here.
-        public static void ReturnStoredAircraftToDeck(ArmyData airfield, HexSelectionController hexSelection)
+        // HexSelectionController.ReturnStaleAviationAt) — capturing or destroying the building
+        // that hosts an airfield leaves its STORED (never-launched) aircraft, and any already-
+        // launched air army still parked right there on the same hex, with no owner able to fly
+        // them, so each one's card goes back to its original owner's hand (same destination a
+        // hex-event reward card lands in — see HexSelectionController.GrantCard) instead of just
+        // vanishing — per the project owner's own spec (2026-08-26): "все воздушные юниты (из
+        // ангара и армий) снова кладутся в руку игроку, чтобы он их снова разыгрывал". Works on
+        // either an IsAirfield container or a real IsAirArmy formation — both just end up as a
+        // list of aircraft UnitData to convert back into cards.
+        public static void ReturnAircraftToDeck(ArmyData army, HexSelectionController hexSelection)
         {
-            if (!AviationRules.IsAirfield(airfield))
+            if (!AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army))
                 return;
-            foreach (UnitData aircraft in airfield.Members.ToList())
+            foreach (UnitData aircraft in army.Members.ToList())
             {
-                airfield.Members.Remove(aircraft);
+                army.Members.Remove(aircraft);
                 if (aircraft.OriginatingCard != null)
-                    hexSelection?.GrantCard(airfield.Owner, aircraft.OriginatingCard);
+                    hexSelection?.GrantCard(army.Owner, aircraft.OriginatingCard);
             }
-            hexSelection?.DeleteArmyIfEmptied(airfield);
+            hexSelection?.DeleteArmyIfEmptied(army);
         }
 
         // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel

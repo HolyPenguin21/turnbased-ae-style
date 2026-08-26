@@ -55,10 +55,12 @@ namespace Game.Aviation
 
         // Every enemy AA unit anywhere on the map currently within its own radius of `hex` and
         // still free (see AntiAirState) to react against `airArmy` specifically — called once an
-        // air army finishes entering a hex. Deliberately does NOT consult human FOW: a hidden AA
-        // unit still correctly reacts before an air strike even though the air army's own owner
-        // can't see it (per the design's own "hidden AA fires before an air strike" rule) — this
-        // is a map-truth query, not a display one.
+        // air army finishes entering a hex. Per the project owner's own 2026-08-26 correction,
+        // an AA unit only reacts against a hex ITS OWN owner can currently see — a radius alone
+        // is not a reaction, only a hidden AA unit's own visibility TO THE AIR ARMY's owner stays
+        // irrelevant (the enemy doesn't need to have spotted the gun for the gun to fire back).
+        // Radius is the cheaper check (Distance, no registry/vision lookup) so it runs first —
+        // the AA owner's own vision of `enteredHex` is only checked for whoever's still in range.
         public static List<AaReaction> CollectEntryReactions(ArmyData airArmy, HexCoord enteredHex)
         {
             var reactions = new List<AaReaction>();
@@ -76,6 +78,8 @@ namespace Game.Aviation
                     foreach (UnitData member in army.Members)
                     {
                         if (!TryGetRadius(member, out int radius) || distance > radius)
+                            continue;
+                        if (!VisionSystem.IsVisible(army.Owner, enteredHex))
                             continue;
                         if (!AntiAirState.CanReact(member, airArmy.Id))
                             continue;
@@ -106,6 +110,11 @@ namespace Game.Aviation
                 {
                     int distance = HexGridMath.Distance(hex, airHex);
                     if (distance > radius)
+                        continue;
+                    // Same visibility rule as CollectEntryReactions above: radius alone doesn't
+                    // earn a shot, this AA member's own owner must actually see the air army's
+                    // hex too.
+                    if (!VisionSystem.IsVisible(groundArmy.Owner, airHex))
                         continue;
                     foreach (ArmyData airArmy in ArmyRegistry.AllAt(airHex))
                     {

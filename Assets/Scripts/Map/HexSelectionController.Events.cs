@@ -285,8 +285,8 @@ namespace Game.Map
             }
         }
 
-        // Public so Game.Aviation.AviationActions can hand a stored aircraft's card back to its
-        // owner the same way a hex-event reward does (see ReturnStoredAircraftToDeck) — same
+        // Public so Game.Aviation.AviationActions can hand a stored/flying aircraft's card back
+        // to its owner the same way a hex-event reward does (see ReturnAircraftToDeck) — same
         // human/AI hand routing either way, no separate "returned" destination of its own.
         public void GrantCard(PlayerSetupData owner, CardDefinition card)
         {

@@ -167,8 +167,11 @@ namespace Game.Aviation
         // design: "against an unlanded enemy air army, choose a random aircraft; no dice
         // doubling") — an airfield's own STORED aircraft are never a strike target, only ever
         // emptied by capturing the Base building underneath it (see
-        // AviationActions.ReturnStoredAircraftToDeck).
-        private static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner)
+        // AviationActions.ReturnAircraftToDeck).
+        // Public: also the move-arrow preview's own query for whether a hovered destination holds
+        // a real target (see HexSelectionController.Movement.cs's own ShowPathArrow) — same
+        // targets set, so the arrow's red/green never disagrees with what actually gets struck.
+        public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner)
         {
             var result = new List<ArmyData>();
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
