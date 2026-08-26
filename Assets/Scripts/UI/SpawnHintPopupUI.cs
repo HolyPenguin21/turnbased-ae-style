@@ -21,6 +21,7 @@ namespace Game.UI
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
         public event Action VisibilityChanged;
+        public event Action Hidden;
 
         // Relies solely on the scene's own initial inactive state (m_IsActive: 0) for "hidden
         // until shown" — panelRoot IS this component's own GameObject, so calling
@@ -64,6 +65,7 @@ namespace Game.UI
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             VisibilityChanged?.Invoke();
+            Hidden?.Invoke();
         }
     }
 }
