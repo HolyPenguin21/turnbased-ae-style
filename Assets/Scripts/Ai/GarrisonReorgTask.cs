@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -651,8 +652,8 @@ namespace Game.Ai
             // rebalanced back down by this same method, working directly against the posture's own
             // purpose.
             List<ArmyData> fieldArmies = ArmyRegistry.AllForOwner(player)
-                .Where(a => !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
-                    && !IsProtectedTaskArmy(player, a))
+                .Where(a => !a.IsGarrison && !a.IsPrison && !a.IsAirfield && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
+                    && !AviationRules.IsAirArmy(a) && !IsProtectedTaskArmy(player, a))
                 .ToList();
             if (fieldArmies.Count == 0)
                 return null;
@@ -816,8 +817,8 @@ namespace Game.Ai
             // Excludes every protected task army — see IsProtectedTaskArmy's own comment (same
             // exclusion FindHexBalanceMove uses).
             List<ArmyData> fieldArmies = ArmyRegistry.AllForOwner(player)
-                .Where(a => !a.IsGarrison && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
-                    && !IsProtectedTaskArmy(player, a))
+                .Where(a => !a.IsGarrison && !a.IsPrison && !a.IsAirfield && a.Hex.Equals(garrisonHex) && a.Members.Count > 0
+                    && !AviationRules.IsAirArmy(a) && !IsProtectedTaskArmy(player, a))
                 .ToList();
             if (fieldArmies.Count == 0)
                 return null;
@@ -959,7 +960,7 @@ namespace Game.Ai
         // ArmyRegistry's own enumeration order isn't guaranteed stable call to call.
         public static bool IsDisposableEmptyArmy(PlayerSetupData player, ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison || army.Members.Count != 0 || army.Controller == null)
+            if (army == null || army.IsGarrison || army.IsPrison || army.IsAirfield || army.Members.Count != 0 || army.Controller == null)
                 return false;
             if (AiTaskRegistry.TaskFor(player, army) != null)
                 return false;
@@ -1079,6 +1080,7 @@ namespace Game.Ai
             return ArmyRegistry.AllForOwner(player)
                 .Where(a => !a.IsGarrison && !a.IsPrison && a.Controller != null && a.Members.Count == 1
                     && !ownGarrisonHexes.Contains(a.Hex)
+                    && !AviationRules.IsAirArmy(a)
                     && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
                     && AiTaskRegistry.TaskFor(player, a) == null);
         }

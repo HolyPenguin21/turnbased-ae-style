@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -149,7 +150,8 @@ namespace Game.Ai
             int bestDistance = int.MaxValue;
             foreach (ArmyData army in pool.AvailableArmies())
             {
-                if (army.IsGarrison || army.IsPrison || army.Members.Count != 1 || !army.Members[0].HasAbility(ability))
+                if (army.IsGarrison || army.IsPrison || army.Members.Count != 1
+                    || army.Members[0].IsAviation || !army.Members[0].HasAbility(ability))
                     continue;
                 int distance = HexGridMath.Distance(army.Hex, targetHex);
                 if (distance < bestDistance)
@@ -204,15 +206,17 @@ namespace Game.Ai
             string ability = UnitAbilities.CollectAbilityFor(type);
             foreach (ArmyData source in pool.AvailableArmies())
             {
-                if (source.IsPrison || !source.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, source) != null)
+                if (source.IsPrison || source.IsAirfield || AviationRules.IsAirArmy(source)
+                    || !source.Hex.Equals(garrisonHex) || AiTaskRegistry.TaskFor(player, source) != null)
                     continue;
-                UnitData unit = source.Members.FirstOrDefault(m => m.HasAbility(ability));
+                UnitData unit = source.Members.FirstOrDefault(m => !m.IsAviation && m.HasAbility(ability));
                 if (unit == null || source.Members.Count == 1)
                     continue; // already solo — FindNearestSoloCollector's own job, not a detach
 
                 int escortCount = source.Members.Count - 1;
                 ArmyData mergeTarget = ArmyRegistry.AllForOwner(player).FirstOrDefault(a =>
-                    a != source && !a.IsPrison && a.Hex.Equals(garrisonHex) && a.Capacity - a.Members.Count >= escortCount);
+                    a != source && !a.IsPrison && !a.IsAirfield && !AviationRules.IsAirArmy(a)
+                    && a.Hex.Equals(garrisonHex) && a.Capacity - a.Members.Count >= escortCount);
                 if (mergeTarget != null)
                     return new CollectorDetachPlan(source, unit, mergeTarget);
 

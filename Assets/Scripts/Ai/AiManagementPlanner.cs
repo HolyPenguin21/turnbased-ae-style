@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -37,6 +38,8 @@ namespace Game.Ai
             Recce, // solo Recce party — placed by AiScoutPlanner, never by FindPlacement
             Hero, // non-Recce hero — garrison first, else an army (see FindPlacement)
             Unit, // plain non-Recce unit — garrison first, else an army (see FindPlacement)
+            Aviation, // aircraft card — placed at an owned airfield by FindAviationPlacement, never
+                       // by FindPlacement; never participates in Hero/Unit alternation, same as Recce.
         }
 
         // ---- Разыгрывание карты из руки ----
@@ -214,6 +217,34 @@ namespace Game.Ai
                 : (CardPlacement?)null;
         }
 
+        // Aviation's own placement rule (2026, "менеджер различает карты самолетов" spec) —
+        // deliberately separate from FindPlacement above, never merged into it: aircraft never go
+        // through the ordinary garrison-deposit path at all (same rule CardHandUI.
+        // TryDeployUnitOrHero's own isAviation branch already enforces for a human's drag-drop —
+        // see that method's own comment, "would make a valid card temporarily mix with heroes/
+        // ground units and bypass airfield capacity"). Selects among EVERY owned eligible airfield
+        // (citadel + every later Base, via AiAviationSupport.OwnedAirfieldHexes — not just the
+        // starting garrison) with free STORED capacity right now, citadel-first (OwnedAirfieldHexes'
+        // own stable order) — same live AP/resource affordability gate FindPlacement itself applies,
+        // just no "existing army with room" tiers at all since a stored aircraft group is never an
+        // ArmyData a card could join. Reads AviationRules.FreeAirfieldCapacity directly (the
+        // STORED-container-only figure ArmyActions.DeployUnitFromCard itself gates on) rather than
+        // AiAviationSupport.FreeLandingCapacity's own deliberately-more-conservative figure — a
+        // card deposit is exactly the capacity the engine already enforces, never AiAviationSupport's
+        // own extra caution about a landed sortie sharing the hex.
+        public static HexCoord? FindAviationPlacement(PlayerSetupData player, PlayerRoot root, CardData card)
+        {
+            CardDefinition definition = card.Definition;
+            int deployApCost = ArmyActions.EffectiveDeployApCost(definition);
+            if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                return null;
+
+            foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
+                if (AviationRules.FreeAirfieldCapacity(hex, player) > 0)
+                    return hex;
+            return null;
+        }
+
         // Garrison keeps at least AiConfig.garrisonReservedSlots open at all times as far as
         // ordinary card deposits are concerned — see AiConfig.garrisonReservedSlots's own comment
         // for why this is a stricter gate than the raw HasRoom the overflow-eviction side
@@ -253,10 +284,20 @@ namespace Game.Ai
             return definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.Recce);
         }
 
+        // Aircraft are ordinary CardType.Unit cards (see CardDefinition.isAviation's own comment —
+        // "Aircraft are still ordinary Unit cards") — without this exclusion they'd silently fall
+        // straight into IsUnitOrHeroCard's normal Unit-card scoring/placement path below, the exact
+        // "менеджер не различает карты самолетов" bug this whole feature exists to fix. Excluded
+        // from FindPlacement/TryPlayCardCandidates/ComputeHandResourceDemand's own Hero/Unit reads
+        // the same way IsRecceCard already is — see FindAviationPlacement's own comment for where
+        // an aviation card actually gets placed instead.
+        public static bool IsAviationCard(CardData card) => card?.Definition != null && card.Definition.isAviation;
+
         // Shared by TryPlayCardCandidates (scoring) and AiTurnController.PlayCardRoutine
         // (NotifyCardRolePlayed, once a card actually deploys) — both need the identical read so
         // the alternation state below can never disagree with what a card was actually scored as.
-        public static CardRole RoleOf(CardData card) => IsRecceCard(card) ? CardRole.Recce
+        public static CardRole RoleOf(CardData card) => IsAviationCard(card) ? CardRole.Aviation
+            : IsRecceCard(card) ? CardRole.Recce
             : card.Definition.cardType == CardType.Hero ? CardRole.Hero
             : CardRole.Unit;
 
@@ -296,7 +337,7 @@ namespace Game.Ai
                 // that method's own comment — a Recce card competes for AiScoutPlanner's own pipeline,
                 // not this one, and doesn't compete for the resource categories this demand signal
                 // cares about the way an ordinary Unit/Hero card does).
-                if (!IsUnitOrHeroCard(card) || IsRecceCard(card))
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card))
                     continue;
                 ResourceCost cost = card.Definition.resourceCost;
                 AddCappedDeficit(demand, ResourceType.Human, cost.human, root, player);
@@ -339,7 +380,7 @@ namespace Game.Ai
         // about a resource that's unavailable outright, not a mid-execution failure).
         public static void NotifyCardRolePlayed(PlayerSetupData player, CardRole role)
         {
-            if (player != null && role != CardRole.Recce)
+            if (player != null && role != CardRole.Recce && role != CardRole.Aviation)
                 LastPlayedCardRole[player] = role;
         }
 
@@ -440,9 +481,9 @@ namespace Game.Ai
             if (hand == null)
                 return results;
 
-            int unplayedUnitCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c)
+            int unplayedUnitCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c) && !IsAviationCard(c)
                 && c.Definition.cardType == CardType.Unit);
-            int unplayedHeroCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c)
+            int unplayedHeroCards = hand.Hand.Count(c => IsUnitOrHeroCard(c) && !IsRecceCard(c) && !IsAviationCard(c)
                 && c.Definition.cardType == CardType.Hero);
             // Share of the unplayed Hero+Unit pool, not a raw count (2026-08-21 fix — see
             // AiConfig.cardRoleBacklogShareWeight's own comment for why a raw count structurally
@@ -486,7 +527,7 @@ namespace Game.Ai
             float bestHeroValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
-                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Hero)
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Hero)
                     continue; // Recce is AiScoutPlanner's own; Unit cards are the pre-pass below
                 CardPlacement? heroPlacement = FindPlacement(player, root, card);
                 if (!heroPlacement.HasValue)
@@ -516,7 +557,7 @@ namespace Game.Ai
             float bestUnitValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
-                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || RoleOf(card) != CardRole.Unit)
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Unit)
                     continue;
                 CardPlacement? placement = FindPlacement(player, root, card);
                 if (!placement.HasValue)
@@ -555,6 +596,26 @@ namespace Game.Ai
                 AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, score, AiTaskCategory.Management);
                 decision.Reason += roleBalance;
                 results.Add(decision);
+            }
+
+            // Aviation — one best card, if any, same "internal-only pre-pass, only the winner
+            // becomes a candidate" shape as the Hero/Unit passes above, just no alternation/backlog
+            // machinery (aircraft are their own role entirely, see CardRole.Aviation's own comment)
+            // and no fit/value tie-break — FindAviationPlacement itself is the whole gate, first
+            // affordable card in hand order wins. Management stops here at successful storage
+            // (AiTurnController.PlayCardRoutine's own aviation branch) — assignment, launch, and
+            // movement are AirStrikeTask/AirReconTask's own job entirely (see AiTask.AirStrike/
+            // AirRecon's own comments), never this method's.
+            foreach (CardData card in hand.Hand)
+            {
+                if (!IsAviationCard(card))
+                    continue;
+                HexCoord? airfieldHex = FindAviationPlacement(player, root, card);
+                if (!airfieldHex.HasValue)
+                    continue;
+                results.Add(AiDecision.PlayCard(null, card, CardRole.Aviation, AiConfig.managementAviationCardScore,
+                    AiTaskCategory.Management, airfieldHex));
+                break;
             }
             return results;
         }

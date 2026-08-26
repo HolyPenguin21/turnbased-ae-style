@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -433,7 +434,8 @@ namespace Game.Ai
         public static ArmyData FindReadyIdleArmy(PlayerSetupData player, ThreatStrength threat, AiResourcePool pool, float minWinChance = 0.5f)
         {
             return pool.AvailableArmies()
-                .Where(a => !a.IsGarrison && !a.IsPrison && a.Members.Count > 0
+                .Where(a => !a.IsGarrison && !a.IsPrison && !a.IsAirfield && a.Members.Count > 0
+                    && !AviationRules.IsAirArmy(a)
                     && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
                     && IsReady(a, threat, minWinChance))
                 .OrderByDescending(a => WorthIt.AttackSum(a))

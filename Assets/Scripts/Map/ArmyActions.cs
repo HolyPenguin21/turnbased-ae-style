@@ -230,6 +230,22 @@ namespace Game.Map
                 failReason = "Invalid swap request.";
                 return false;
             }
+            // Same composition boundary TransferMember already enforces via AviationRules.
+            // CanContain (see that method's own check) — SwapMembers never called it, so nothing
+            // stopped a ground-army reorg swap from silently mixing an aircraft into a ground
+            // army/garrison or a ground unit into an airfield's own stored container/an air army,
+            // since none of those callers were ever written with aviation in mind. A flat refusal
+            // rather than CanContain's own per-target rules (which assume a single unit joining a
+            // STABLE target, not two simultaneous swaps) — nothing in this codebase has a legitimate
+            // reason to swap a member between an aviation-composed army and anything else; aviation's
+            // own launch/land flow never uses SwapMembers at all (see AviationActions.TryLaunch/
+            // AiAviationSupport.LaunchRoutine).
+            if (armyA.IsAirfield || AviationRules.IsAirArmy(armyA) || armyB.IsAirfield || AviationRules.IsAirArmy(armyB)
+                || unitA.IsAviation || unitB.IsAviation)
+            {
+                failReason = "Aircraft and ground units/heroes can't be swapped between armies.";
+                return false;
+            }
             if (!armyA.Members.Contains(unitA))
             {
                 failReason = $"{unitA.Name} is not a member of {armyA.Name}.";

@@ -37,7 +37,10 @@ namespace Game.Ai
         {
             if (army == null || army.IsGarrison || army.IsPrison || army.Members.Count != 1)
                 return false;
-            return army.Members[0].HasAbility(UnitAbilities.Recce);
+            // Aviation is never ground Разведка's composition, whatever abilities a given aircraft
+            // card happens to carry (see AiTask.AirRecon's own comment — aviation reconnaissance is
+            // its own separate task/pipeline entirely, never VisitHexTask's).
+            return !army.Members[0].IsAviation && army.Members[0].HasAbility(UnitAbilities.Recce);
         }
 
         // Whether `army` has a real roster slot at all — not the garrison (nothing there is a

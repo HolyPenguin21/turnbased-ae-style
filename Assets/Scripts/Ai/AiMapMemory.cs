@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Economy;
@@ -56,6 +57,12 @@ namespace Game.Ai
             public float DefenseSum;
             public float AttackSum;
             public List<WorthIt.DefenderProfile> Defenders;
+            // True if any member observed in this sighting carries an AntiAirRules-recognized AA
+            // ability (AiTask.AirRecon's own global gate, condition 5 — "the AI has seen enemy AA
+            // in ANY remembered enemy army", see HasObservedEnemyAntiAir below). Computed once at
+            // observation time, same honesty rule as every other field here — a hidden army's own
+            // AA is simply unknown, ordinary fog risk, not something this flags.
+            public bool HasAntiAir;
             // The global turn (see _currentTurn/OnTurnStarted below) this sighting was last
             // actually (re)observed — drives expiry in ExpireStaleSightings. Stamped, not left at
             // its default, even for a sighting recorded before the very first OnTurnStarted call
@@ -73,9 +80,10 @@ namespace Game.Ai
             public readonly float DefenseSum;
             public readonly float AttackSum;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
+            public readonly bool HasAntiAir;
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
-                IReadOnlyList<WorthIt.DefenderProfile> defenders)
+                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false)
             {
                 Hex = hex;
                 Owner = owner;
@@ -84,6 +92,7 @@ namespace Game.Ai
                 DefenseSum = defenseSum;
                 AttackSum = attackSum;
                 Defenders = defenders;
+                HasAntiAir = hasAntiAir;
             }
         }
 
@@ -391,6 +400,11 @@ namespace Game.Ai
                         // only what it looked like fully healed.
                         Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
                             m.TypeTags.ToList(), m.Attack, m.HitPointsMax, m.Initiative)).ToList(),
+                        // Scanned over the FULL roster (not just nonHero above) — nothing rules out
+                        // a hero carrying an AA ability, and this flag only ever feeds a
+                        // conservative "don't fly recon here" gate, never a combat estimate, so
+                        // there's no reason to narrow it the way the DefenderProfile list above does.
+                        HasAntiAir = enemy.Members.Any(m => AntiAirRules.TryGetRadius(m, out _)),
                         SeenTurn = _currentTurn,
                     };
                 }
@@ -539,7 +553,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -554,7 +568,19 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && !sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
+        }
+
+        // AirRecon's own global gate, condition 5 (AirReconTask.HasObservedEnemyAntiAir's own
+        // wrapper) — "if the AI has seen enemy AA in ANY remembered enemy army, do not propose
+        // AirRecon". Deliberately global (no radius/direction), and deliberately excludes neutral
+        // sightings — the spec's own wording is "enemy army", and every other AA-blind spot in this
+        // gate is already ordinary fog risk (an army never yet observed), not something this method
+        // is meant to second-guess.
+        public static bool HasObservedEnemyAntiAir(PlayerSetupData actor)
+        {
+            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
+                && sightings.Values.Any(s => s.Owner != null && !s.Owner.IsNeutral && s.Owner != actor && s.HasAntiAir);
         }
 
         public static IEnumerable<KnownEnemySighting> KnownEnemySightingsNear(PlayerSetupData actor,
@@ -566,7 +592,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -582,7 +608,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
             return null;
         }
 

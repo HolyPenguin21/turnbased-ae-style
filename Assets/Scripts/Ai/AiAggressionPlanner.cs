@@ -1788,5 +1788,58 @@ namespace Game.Ai
                 ctx.ArmyViewerModal.ShowReadOnly(move.Target);
             yield return AiTurnController.WaitStep(ctx);
         }
+
+        // ---- Агрессия · Авиация (AiTaskKind.AirStrike) ----
+        // Behavioral specifics (target selection, sortie planning) live on AirStrikeTask/
+        // AiAviationSupport — this tier only sequences calls into them and turns the results into
+        // AiDecision/AiTask, same split every other category here already follows. Never reads or
+        // plays a hand card, never recruits — see AirStrikeTask's own class comment.
+
+        public static List<AiDecision> TryStartAirStrikeCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiResourcePool pool)
+        {
+            var results = new List<AiDecision>();
+            if (AiTaskRegistry.CountActive(player, AiTaskKind.AirStrike) >= AiConfig.maxConcurrentAirStrike)
+                return results;
+
+            foreach (AirStrikeTask.LaunchCandidate candidate in AirStrikeTask.FindLaunchCandidates(player, pool))
+            {
+                if (candidate.ExistingArmy == null && !AiAviationSupport.CanAffordLaunch(root, player, candidate.Aircraft))
+                    continue;
+                AirStrikeTask.StrikeTarget? target = AirStrikeTask.FindTarget(player, candidate, ctx.Map);
+                if (!target.HasValue)
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: AirStrike — no reachable known target with a complete "
+                        + $"sortie from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}).");
+                    continue;
+                }
+
+                if (candidate.ExistingArmy != null)
+                {
+                    var task = new AiTask
+                    {
+                        Kind = AiTaskKind.AirStrike, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,
+                        LandingHex = target.Value.Sortie.LandingHex, AirOutbound = true,
+                    };
+                    results.Add(AiDecision.Move(candidate.ExistingArmy, target.Value.Hex, target.Value.Reason, task, target.Value.Score,
+                        AiTaskCategory.Aggression));
+                }
+                else
+                {
+                    results.Add(AiDecision.LaunchAirStrike(candidate, target.Value, target.Value.Score));
+                }
+            }
+            return results;
+        }
+
+        // Advances an already-committed AirStrike sortie — re-validates the sortie every step (per
+        // spec: a task must recheck before it launches OR MOVES), advances whichever leg is active,
+        // and flips AirOutbound/repoints TargetHex once the outbound leg is done. Completes the
+        // moment the army sits on its own LandingHex — end-turn fuel/landing stays owned entirely by
+        // AviationTurnLifecycle, this task never touches it.
+        public static AiDecision TryContinueAirStrikeTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task, AiResourcePool pool)
+        {
+            return AiAviationSupport.ContinueSortie(player, root, ctx, task, "AirStrike", "presses on toward the strike target",
+                AiConfig.airStrikeContinuationScore, AiTaskCategory.Aggression);
+        }
     }
 }

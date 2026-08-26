@@ -1147,7 +1147,7 @@ namespace Game.Ai
                     continue;
                 foreach (UnitData unit in candidate.Members)
                 {
-                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce))
+                    if (unit.IsHero || unit.IsAviation || unit.HasAbility(UnitAbilities.Recce))
                         continue;
                     if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                         continue;

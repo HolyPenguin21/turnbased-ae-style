@@ -541,5 +541,76 @@ namespace Game.Ai
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
+
+        // ---- Разведка · Авиация (AiTaskKind.AirRecon) ----
+        // Fallback-only, per AiTask.AirRecon's own comment — target selection lives on
+        // AirReconTask/AiAviationSupport, this tier only sequences calls into them (same split
+        // VisitHexTask/RaidWeakerArmyTask already establish for their own categories) and gates the
+        // spec's own 5 start conditions.
+
+        public static List<AiDecision> TryStartAirReconCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            AiResourcePool pool, List<AiDecision> airStrikeCandidatesThisStep)
+        {
+            var results = new List<AiDecision>();
+            if (AiTaskRegistry.CountActive(player, AiTaskKind.AirRecon) >= AiConfig.maxConcurrentAirRecon)
+                return results;
+
+            // Condition 1 — no actionable AirStrike candidate this step. Reads
+            // AiAggressionPlanner.TryStartAirStrikeCandidates' own result for this SAME step
+            // (already gathered by AiTurnController.Decide right before this tier runs) — same
+            // intentional cross-category read AiDefencePlanner.IsUnderSiege already establishes as
+            // acceptable precedent, not a new coupling shape. Condition 2 ("no higher-priority
+            // Aggression objective for the same arbitration state") needs no separate check here —
+            // airReconBaseWeight (65) already sits below every ordinary ground-Aggression tier
+            // (aggressionBaseWeight=100 and up), so real Aggression work always wins the unified
+            // arbiter on score alone without AirRecon needing to explicitly defer to it.
+            if (airStrikeCandidatesThisStep != null && airStrikeCandidatesThisStep.Count > 0)
+                return results;
+
+            // Condition 5 — global, conservative: any observed enemy AA anywhere suppresses AirRecon
+            // outright (see AirReconTask.HasObservedEnemyAntiAir's own comment).
+            if (AirReconTask.HasObservedEnemyAntiAir(player))
+                return results;
+
+            foreach (AirStrikeTask.LaunchCandidate candidate in AirStrikeTask.FindLaunchCandidates(player, pool))
+            {
+                // Condition 3 — free resources after current reservations, launch AP/Energy
+                // affordable.
+                if (candidate.ExistingArmy == null && !AiAviationSupport.CanAffordLaunch(root, player, candidate.Aircraft))
+                    continue;
+
+                // Condition 4 — a complete recon sortie can start and land in the same turn.
+                AirReconTask.ReconTarget? target = AirReconTask.FindReconHex(player, candidate, ctx.Map);
+                if (!target.HasValue)
+                    continue;
+
+                if (candidate.ExistingArmy != null)
+                {
+                    var task = new AiTask
+                    {
+                        Kind = AiTaskKind.AirRecon, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,
+                        LandingHex = target.Value.Sortie.LandingHex, AirOutbound = true,
+                    };
+                    results.Add(AiDecision.Move(candidate.ExistingArmy, target.Value.Hex, target.Value.Reason, task, target.Value.Score,
+                        AiTaskCategory.Reconnaissance));
+                }
+                else
+                {
+                    results.Add(AiDecision.LaunchAirRecon(candidate, target.Value, target.Value.Score));
+                }
+            }
+            return results;
+        }
+
+        // Advances an already-committed AirRecon sortie — a free opportunistic strike along the way
+        // (AviationCombatPresenter.ResolveStep, already wired into every ordinary MoveArmy step)
+        // never reclassifies this into AirStrike or extends the sortie; ContinueSortie's own
+        // "recheck a safe landing before every further step" rule already covers "confirm the
+        // survivors can still reach an owned airfield before continuing" for free.
+        public static AiDecision TryContinueAirReconTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
+        {
+            return AiAviationSupport.ContinueSortie(player, root, ctx, task, "AirRecon", "flies on toward the recon target",
+                AiConfig.airStrikeContinuationScore, AiTaskCategory.Reconnaissance);
+        }
     }
 }

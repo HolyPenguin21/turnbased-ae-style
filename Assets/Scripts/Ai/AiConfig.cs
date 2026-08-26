@@ -1169,5 +1169,77 @@ namespace Game.Ai
         // (AiEconomyPlanner.TryStartCollectorDetachCandidates), so the detach step shares the same
         // mature-economy penalty as ordinary Задача 2 travel instead of silently bypassing it
         // through its own separate, never-penalized constant.
+
+        // ---- Aviation (AirStrike / AirRecon) ----
+        // AirStrike's own base weight (AiAggressionPlanner.TryStartAirStrikeCandidates). Pinned
+        // just above economyBaseWeight (105)/reconBaseWeight/aggressionBaseWeight (100) — a
+        // worthwhile-target air strike should outrank ordinary, non-urgent Economy/Recon travel,
+        // per the spec's own "above non-urgent economic/recon travel only when it has a worthwhile
+        // known target" — but every per-candidate bonus below is clamped by
+        // airStrikeScoreCap so the whole tier can never reach a ground raid's own tactical
+        // combat/execute score (raidCounterAttackBonus tier, aggressionBaseWeight+20=120) or
+        // defenceActiveScore/defencePreemptScore (120/130) — an already-launched sortie's own
+        // continuation score (see airStrikeContinuationScore below) sits separately, above this
+        // start tier, since a committed sortie must keep flying once airborne (same "committed
+        // work outranks a fresh start" principle raidReinforceDispatchScore already follows for
+        // ground raids).
+        public const float airStrikeBaseWeight = 108f;
+        // How much a target's own estimated value/defence (worth striking at all) can add on top
+        // of airStrikeBaseWeight — see AirStrikeTask.ScoreTarget.
+        public const float airStrikeTargetValueWeight = 6f;
+        // Flat penalty per point of known AA exposure along the route (AiMapMemory.
+        // KnownEnemySighting.HasAntiAir-tagged hexes the planned sortie's path would cross) —
+        // named per the spec's own "lower known AA exposure along the route" ranking factor. Never
+        // a hard block (unlike AirRecon's own gate below) — AirStrike is allowed to fly into known
+        // AA risk if the target is worth it, just ranked down in favor of a safer route/target.
+        public const float airStrikeAaExposurePenalty = 4f;
+        // Per-hex penalty on total sortie distance (outbound + return legs) — shorter sorties rank
+        // higher, per spec's "shorter total sortie distance" tie-break.
+        public const float airStrikeDistancePenalty = 1.5f;
+        // Per-AP/Energy penalty on the sortie's own launch cost — spec's "lower AP/energy cost"
+        // tie-break, same shape as every other cost-vs-value tradeoff in this file.
+        public const float airStrikeApCostPenalty = 1f;
+        // Hard ceiling every AirStrike start candidate is clamped to (see AirStrikeTask.ScoreTarget)
+        // — keeps the whole tier's bonuses from ever crossing raidCounterAttackBonus's own tier
+        // (aggressionBaseWeight+20=120), per the spec's explicit priority ladder.
+        public const float airStrikeScoreCap = 118f;
+        // An already-launched AirStrike/AirRecon sortie's own continuation score (outbound or
+        // return leg) — TryContinueAirStrikeTask/TryContinueAirReconTask. Above both start tiers
+        // (airStrikeBaseWeight/airReconBaseWeight) — an airborne sortie has already spent its
+        // launch AP/Energy and cannot simply wait a turn without risking the emergency-fuel
+        // penalty, so once committed it must keep flying ahead of a fresh, uncommitted candidate,
+        // same "committed work outranks a fresh start" shape raidReinforceDispatchScore already
+        // follows. Still below raidCounterAttackBonus's own tactical tier (120) and well below
+        // defenceActiveScore/defencePreemptScore (120/130), per spec.
+        public const float airStrikeContinuationScore = aggressionBaseWeight + 15f;
+        // AirRecon's own base weight (AiScoutPlanner.TryStartAirReconCandidates) — deliberately a
+        // fallback tier: below reconBaseWeight/aggressionBaseWeight (100, ordinary actionable
+        // Recon/Aggression) since AirRecon only ever fires when Aggression has nothing actionable
+        // this step, per spec. Still above managementFallbackHighScore/defencePatrolScoreFloor so
+        // an idle air wing with nothing better to do prefers a recon flight over doing nothing.
+        public const float airReconBaseWeight = 65f;
+        // Forward information-gain bonus (a recon hex genuinely toward known enemy territory, with
+        // fresh/unexplored neighbors) — see AirReconTask.FindReconHex, same "fresh neighbor" shape
+        // VisitHexTask/freshNeighborWeight already uses for ground Recon.
+        public const float airReconForwardWeight = 5f;
+        // Per-hex penalty on total sortie distance — same "shorter safe sortie distance" tie-break
+        // spec asks for, after forward information gain.
+        public const float airReconDistancePenalty = 1f;
+        // AirStrikeTask.IsEligibleAircraft's own floor — an air group (stored or already airborne)
+        // needs at least this many aircraft still able to attack this turn before AirStrike will
+        // even consider it a launch candidate; below this, waiting for the hand/airfield to build
+        // up a real strike package is preferred over sending a token single aircraft.
+        public const int aviationLaunchMinReadyAircraft = 1;
+        // How many AirStrike/AirRecon tasks may be active across this player's own aircraft at
+        // once — same "don't let one Level-1 category spread itself across every available actor
+        // at once" intent every other maxConcurrentX cap in this codebase already enforces
+        // (MaxConcurrentVisitHex/maxConcurrentRaid/maxConcurrentDefend/maxConcurrentSecureBase).
+        public const int maxConcurrentAirStrike = 2;
+        public const int maxConcurrentAirRecon = 1;
+        // AiManagementPlanner.TryPlayCardCandidates' own aviation-card placement tier — sized like
+        // the ordinary Hero/Unit alternation score (managementBaseWeight=50-tier) since aviation
+        // cards don't compete with, or alternate against, Hero/Unit backlog pressure; they're their
+        // own role entirely (see AiManagementPlanner.IsAviationCard).
+        public const float managementAviationCardScore = managementBaseWeight + 10f;
     }
 }

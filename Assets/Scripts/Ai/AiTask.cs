@@ -74,6 +74,18 @@ namespace Game.Ai
                     // one reacts to the GARRISON'S OWN roster, not the enemy, and completes the
                     // moment AiArmyRoles.IsBaseGarrisonSecure says the base can stand on its own.
 
+        AirStrike, // Агрессия · Авиация — launch already-deployed aircraft, strike a known enemy
+                    // target, and land safely at any owned airfield. See AirStrikeTask's own class
+                    // comment for target selection/eligibility and AiAggressionPlanner.
+                    // TryStartAirStrikeCandidates/TryContinueAirStrikeTask for orchestration. Never
+                    // recruits — a sortie's whole roster is whatever's already at the airfield or
+                    // already airborne (see AiTask.AirOutbound's own comment).
+
+        AirRecon, // Разведка · Авиация — fallback-only: flies toward the enemy to reveal
+                    // information when Агрессия has no actionable AirStrike target and the economy
+                    // isn't resource-starved. See AirReconTask's own class comment and
+                    // AiScoutPlanner.TryStartAirReconCandidates/TryContinueAirReconTask.
+
         // Менеджмент — a single stranded, untasked lone field army (GarrisonReorgTask.
         // FindStrandedWeakArmies) walking itself home to the nearest own garrison hex so the
         // existing IdleBalance lone-army-fold tier (FindLoneArmyFoldMove) can pick it up once it
@@ -124,6 +136,10 @@ namespace Game.Ai
                 case AiTaskKind.DefendCitadel:
                 case AiTaskKind.SecureBase:
                     return AiTaskCategory.Defence;
+                case AiTaskKind.AirStrike:
+                    return AiTaskCategory.Aggression;
+                case AiTaskKind.AirRecon:
+                    return AiTaskCategory.Reconnaissance;
                 default:
                     return AiTaskCategory.Management;
             }
@@ -360,6 +376,22 @@ namespace Game.Ai
         // the same turn-boundary simplification AiTask.AssemblyProgressTurn already uses for its
         // own stall clock instead of an incrementing counter.
         public int GarrisonSeedStartedTurn = -1;
+
+        // AirStrike/AirRecon only — the owned airfield the sortie is currently committed to
+        // landing at, chosen fresh by AiAviationSupport.TryPlanSortie/TryReplan every time the
+        // plan is (re)validated, per the spec's "any owned airfield, never hard-coded to the
+        // launch airfield" rule — never trusted stale across a replan, same as every other
+        // recomputed-live field on this class.
+        public HexCoord LandingHex;
+
+        // AirStrike/AirRecon only — true while this sortie is still flying OUTBOUND toward the
+        // objective (TargetHex is the enemy hex to strike / the recon hex to reveal); false once
+        // that leg is done (target resolved/gone, or the recon hex reached), at which point
+        // TargetHex is repointed at LandingHex for the return leg. A ONE-WAY flip, same shape as
+        // Retreating above, just aviation's own copy since the trigger differs (finishing a leg,
+        // not reacting to a threat) — set once per leg-transition by TryContinueAirStrikeTask/
+        // TryContinueAirReconTask, never toggled back.
+        public bool AirOutbound = true;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

@@ -39,6 +39,13 @@ namespace Game.Ai
         SeedNewBaseGarrison,
         DispatchBaseReinforcement,
         DepositReinforcement,
+        // Агрессия/Разведка · Авиация — the stored-aircraft/existing-untasked-air-army -> committed
+        // sortie transition (AviationActions.TryLaunch). Two Kinds sharing one execution routine
+        // purely so debug output names the right category, same pattern AssembleRaidForce/
+        // ActiveDefenceForce already establish. Ordinary flight steps after launch stay plain
+        // MoveArmy — see AiTurnController's own class comment on the execution split.
+        LaunchAirStrike,
+        LaunchAirRecon,
         Wait,
         Pass,
     }
@@ -86,6 +93,17 @@ namespace Game.Ai
         // build site).
         public HexCoord? EconomyBuildHex;
         public ResourceType? EconomyResourceType;
+        // LaunchAirStrike/LaunchAirRecon only — the specific stored aircraft (AirStrikeTask.
+        // LaunchCandidate.Aircraft) AviationActions.TryLaunch should pull out of the airfield's own
+        // container. Null when ExistingArmy is already a formed, untasked air army — nothing to
+        // launch, the routine just registers a fresh task around it directly.
+        public IReadOnlyList<UnitData> AircraftToLaunch;
+        // LaunchAirStrike/LaunchAirRecon only — the already-validated AiAviationSupport.Sortie's
+        // own ActionHex/LandingHex, carried through so the execution routine can build the new
+        // AiTask (TargetHex starts at AirActionHex, AirOutbound=true, LandingHex=AirLandingHex)
+        // without re-deriving the plan a second time.
+        public HexCoord AirActionHex;
+        public HexCoord AirLandingHex;
         // Set whenever this decision advances/starts a persistent AiTask (every MoveArmy
         // decision under Разведка/Экономика, and every BuildFacility decision) — null for
         // PlayCard/ReserveArmy/DrawCard/Pass, which never persist one (see AiTaskKind's own
@@ -320,17 +338,26 @@ namespace Game.Ai
         // disjoint card sets (Recce cards never reach Менеджмент's own candidates any more — see
         // TryPlayCardCandidates' own comment) — an explicit parameter here rather than inferring
         // it from `role` still keeps that genuinely up to the caller.
+        // `targetHex` — Aviation role only (AiManagementPlanner.FindAviationPlacement's own chosen
+        // airfield hex). ExistingArmy stays null for that role (there is no "reinforce this army"
+        // concept for a stored aircraft card — AviationActions.TryDeployFromCard finds/creates the
+        // airfield container itself, see AiTurnController.PlayCardRoutine's own aviation branch),
+        // so PlayCardRoutine needs this hex passed explicitly instead of reading it off ExistingArmy
+        // the way every other role already does.
         public static AiDecision PlayCard(ArmyData existing, CardData card, AiManagementPlanner.CardRole role, float score,
-            AiTaskCategory category) => new AiDecision
+            AiTaskCategory category, HexCoord? targetHex = null) => new AiDecision
         {
             Kind = AiActionKind.PlayCard,
             ExistingArmy = existing,
+            TargetHex = targetHex ?? default,
             Card = card,
             Score = score,
             Category = category,
-            Reason = existing != null
-                ? $"reinforces \"{existing.Name}\" with card {card.Definition.displayName}{RoleLabel(role)}"
-                : $"new army for card {card.Definition.displayName}{RoleLabel(role)}",
+            Reason = role == AiManagementPlanner.CardRole.Aviation
+                ? $"stores {card.Definition.displayName} at the airfield ({targetHex?.Q ?? 0},{targetHex?.R ?? 0})"
+                : existing != null
+                    ? $"reinforces \"{existing.Name}\" with card {card.Definition.displayName}{RoleLabel(role)}"
+                    : $"new army for card {card.Definition.displayName}{RoleLabel(role)}",
         };
 
         private static string RoleLabel(AiManagementPlanner.CardRole role)
@@ -339,6 +366,7 @@ namespace Game.Ai
             {
                 case AiManagementPlanner.CardRole.Recce: return " (Recce, solo)";
                 case AiManagementPlanner.CardRole.Hero: return " (hero)";
+                case AiManagementPlanner.CardRole.Aviation: return " (aviation)";
                 default: return "";
             }
         }
@@ -434,6 +462,30 @@ namespace Game.Ai
             Score = score,
             Category = AiTaskCategory.Management,
             Reason = "hand is played out",
+        };
+
+        // Агрессия · Авиация, шаг 1 — see AiAggressionPlanner.TryStartAirStrikeCandidates/
+        // AirStrikeTask.FindTarget. ExistingArmy is the already-formed, untasked air army when one
+        // exists (candidate.ExistingArmy), else null (still stored — AircraftToLaunch carries
+        // exactly which units to pull out of the airfield container). TargetHex is the AIRFIELD
+        // (where the launch itself happens), never the strike target — that's AirActionHex.
+        public static AiDecision LaunchAirStrike(AirStrikeTask.LaunchCandidate candidate, AirStrikeTask.StrikeTarget target, float score) => new AiDecision
+        {
+            Kind = AiActionKind.LaunchAirStrike, ExistingArmy = candidate.ExistingArmy, TargetHex = candidate.AirfieldHex,
+            AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
+            AirActionHex = target.Hex, AirLandingHex = target.Sortie.LandingHex, Score = score, Category = AiTaskCategory.Aggression,
+            Reason = target.Reason,
+        };
+
+        // Разведка · Авиация, шаг 1 — see AiScoutPlanner.TryStartAirReconCandidates/
+        // AirReconTask.FindReconHex. Same shape as LaunchAirStrike above, own Kind purely so debug
+        // output says "Разведка", not "Агрессия", for an AirRecon launch.
+        public static AiDecision LaunchAirRecon(AirStrikeTask.LaunchCandidate candidate, AirReconTask.ReconTarget target, float score) => new AiDecision
+        {
+            Kind = AiActionKind.LaunchAirRecon, ExistingArmy = candidate.ExistingArmy, TargetHex = candidate.AirfieldHex,
+            AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
+            AirActionHex = target.Hex, AirLandingHex = target.Sortie.LandingHex, Score = score, Category = AiTaskCategory.Reconnaissance,
+            Reason = target.Reason,
         };
 
         public static AiDecision None(string reason) => new AiDecision { Kind = AiActionKind.Pass, Reason = reason };

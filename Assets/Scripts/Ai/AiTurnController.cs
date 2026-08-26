@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Aviation;
 using Game.Cameras;
 using Game.Cards;
 using Game.Combat;
@@ -451,6 +452,22 @@ namespace Game.Ai
                 if (decision != null)
                     candidates.Add(decision);
             }
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.AirStrike).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiAggressionPlanner.TryContinueAirStrikeTask(player, root, ctx, task, pool);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.AirRecon).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiScoutPlanner.TryContinueAirReconTask(player, root, ctx, task);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
             foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.ReturnForConsolidation).ToList())
             {
                 if (stuckScouts.Contains(task.Army))
@@ -475,6 +492,12 @@ namespace Game.Ai
             candidates.AddRange(AiDefencePlanner.TryStartDefenceCandidates(player, root, ctx, pool));
             candidates.AddRange(AiDefencePlanner.TryDefencePreemptCandidates(player, root, ctx));
             candidates.AddRange(AiScoutPlanner.TryStartReconAssemblyCandidates(player, root, ctx, hand, pool));
+            // AirRecon's own gate condition 1 (see AiScoutPlanner.TryStartAirReconCandidates' own
+            // comment) needs THIS step's AirStrike start-candidates specifically — captured here,
+            // before AirRecon is asked, rather than re-deriving them a second time.
+            List<AiDecision> airStrikeCandidates = AiAggressionPlanner.TryStartAirStrikeCandidates(player, root, ctx, pool);
+            candidates.AddRange(airStrikeCandidates);
+            candidates.AddRange(AiScoutPlanner.TryStartAirReconCandidates(player, root, ctx, pool, airStrikeCandidates));
 
             foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.RepairUnit).ToList())
             {
@@ -914,6 +937,12 @@ namespace Game.Ai
                 case AiActionKind.DepositReinforcement:
                     yield return AiOperations.DepositReinforcementRoutine(player, decision, ctx);
                     break;
+                case AiActionKind.LaunchAirStrike:
+                    yield return AiAviationSupport.LaunchRoutine(player, decision, ctx, AiTaskKind.AirStrike);
+                    break;
+                case AiActionKind.LaunchAirRecon:
+                    yield return AiAviationSupport.LaunchRoutine(player, decision, ctx, AiTaskKind.AirRecon);
+                    break;
                 case AiActionKind.Wait:
                     yield return WaitStep(ctx);
                     break;
@@ -1020,6 +1049,40 @@ namespace Game.Ai
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             if (root == null)
                 yield break;
+
+            // Aviation branch — same reason CardHandUI.TryDeployUnitOrHero's own human drag-drop
+            // never lets an aviation card reach the ordinary garrison-deposit path below (see that
+            // method's own comment): AviationActions.TryDeployFromCard finds/creates the airfield
+            // container itself (EnsureAirfield), so there's no "existing army or spawn a fresh one"
+            // choice to make here the way every other card role has. decision.TargetHex carries
+            // AiManagementPlanner.FindAviationPlacement's own chosen airfield hex (see AiDecision.
+            // PlayCard's own comment on why ExistingArmy stays null for this role).
+            if (decision.Card.Definition.isAviation)
+            {
+                yield return PanTo(ctx, decision.TargetHex);
+                int apAv0 = root.ActionPoints;
+                int humanAv0 = root.GetResource(ResourceType.Human);
+                int energyAv0 = root.GetResource(ResourceType.Energy);
+                int materialsAv0 = root.GetResource(ResourceType.Materials);
+                int techAv0 = root.GetResource(ResourceType.Tech);
+
+                bool aviationDeployed = AviationActions.TryDeployFromCard(decision.Card.Definition, player, root, ctx.HexSelection,
+                    decision.TargetHex, out string aviationFailReason);
+                if (aviationDeployed)
+                {
+                    AiHandData aviationHand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
+                    aviationHand?.Hand.Remove(decision.Card);
+                    string aviationDelta = ResourceDeltaSuffix(root, apAv0, humanAv0, energyAv0, materialsAv0, techAv0);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: {decision.Card.Definition.displayName} stored at the airfield "
+                        + $"({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.{aviationDelta}");
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: couldn't store {decision.Card.Definition.displayName} — {aviationFailReason}");
+                }
+                yield return WaitStep(ctx);
+                yield break;
+            }
 
             ArmyData targetArmy = decision.ExistingArmy;
             HexCoord hex = targetArmy?.Hex ?? GarrisonHexFor(player);
