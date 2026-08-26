@@ -394,7 +394,7 @@ namespace Game.Ai
                 landingHex = default;
                 return false;
             }
-            return CanStrikeNextTurnAndLandCore(airArmy.Members, airArmy, currentHex, map, owner, out landingHex);
+            return CanStrikeNextTurnAndLandCore(airArmy.Members, airArmy, currentHex, default, 0, map, owner, out landingHex);
         }
 
         // Estimate-time overload (AiAggressionPlanner.EvaluateRaidSupport's raid-support scoring) —
@@ -403,19 +403,28 @@ namespace Game.Ai
         // candidate can only ever be "estimated eligible" here, real eligibility is still
         // re-verified live once the army is actually sitting on the hex (TryEnterLoiterAtTarget/
         // CanStrikeNextTurnAndLand(ArmyData, ...) above).
-        public static bool CanStrikeNextTurnAndLand(IReadOnlyList<UnitData> aircraft, HexCoord currentHex, HexMap map,
-            PlayerSetupData owner, out HexCoord landingHex)
+        //
+        // launchAirfieldHex (2026-08-26 fix, project owner's own report): these aircraft are still
+        // physically sitting in THAT airfield's own stored container right now — the very launch
+        // this estimate is scoring is what will vacate their slots there. Same vacatingAtStart idea
+        // TryPlanSortieFromStorage/PlanMultiTurnSortieCore already apply for the outbound leg — here
+        // it's the second-strike LANDING leg that can otherwise wrongly see the home field as full
+        // of aircraft that, by the time a second strike would land, will already have left. Applies
+        // ONLY to that one specific airfield hex, never to any other owned airfield the search
+        // considers — those are unaffected by this launch either way.
+        public static bool CanStrikeNextTurnAndLand(IReadOnlyList<UnitData> aircraft, HexCoord currentHex,
+            HexCoord launchAirfieldHex, HexMap map, PlayerSetupData owner, out HexCoord landingHex)
         {
             if (aircraft == null || aircraft.Count == 0)
             {
                 landingHex = default;
                 return false;
             }
-            return CanStrikeNextTurnAndLandCore(aircraft, null, currentHex, map, owner, out landingHex);
+            return CanStrikeNextTurnAndLandCore(aircraft, null, currentHex, launchAirfieldHex, aircraft.Count, map, owner, out landingHex);
         }
 
         private static bool CanStrikeNextTurnAndLandCore(IReadOnlyList<UnitData> aircraft, ArmyData excludingFromCapacity,
-            HexCoord currentHex, HexMap map, PlayerSetupData owner, out HexCoord landingHex)
+            HexCoord currentHex, HexCoord vacatingHex, int vacatingAtStart, HexMap map, PlayerSetupData owner, out HexCoord landingHex)
         {
             landingHex = default;
             if (map == null || owner == null)
@@ -427,7 +436,10 @@ namespace Game.Ai
             int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                if (FreeLandingCapacity(landing, owner, excludingFromCapacity) < aircraft.Count)
+                int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
+                if (vacatingAtStart > 0 && landing.Equals(vacatingHex))
+                    freeSlots += vacatingAtStart;
+                if (freeSlots < aircraft.Count)
                     continue;
                 HexPath path = HexPathfinder.FindPath(map, currentHex, landing, flatCost: true);
                 if (path == null)

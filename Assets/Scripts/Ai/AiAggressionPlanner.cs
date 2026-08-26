@@ -2045,7 +2045,7 @@ namespace Game.Ai
                 // wiped, between the two).
                 bool hasSecondStrike = !wipedOutFirst
                     && AiAviationSupport.SafeUnlandedEndsRemaining(candidate.Aircraft) >= 1
-                    && AiAviationSupport.CanStrikeNextTurnAndLand(candidate.Aircraft, target.Hex, map, player, out _);
+                    && AiAviationSupport.CanStrikeNextTurnAndLand(candidate.Aircraft, target.Hex, candidate.AirfieldHex, map, player, out _);
                 float chanceAfterSecond = chanceAfterFirst;
                 if (hasSecondStrike)
                 {
