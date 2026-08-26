@@ -111,7 +111,9 @@ Condition 5 is global and conservative for v1: if the AI has seen enemy AA in an
 
 AirRecon does not target a known enemy army for damage. It selects an unexplored or stale-information hex in the approximate direction of known enemy territory/citadel, constrained by a complete return route to any own airfield. It should favour forward information gain over lateral wandering, then shorter safe sortie distance.
 
-The task launches, moves toward that recon hex using the shared movement pipeline, and turns toward the selected landing airfield early enough to finish the same turn there. If contact produces an ordinary air strike under the shared resolver, that is a consequence of movement, not a reason to reclassify the task into AirStrike mid-flight.
+The task launches, moves toward that recon hex using the shared movement pipeline, and turns toward the selected landing airfield early enough to finish the same turn there.
+
+If it discovers an enemy unit while flying, it may use the ordinary air strike that the shared resolver already offers. This is a **free opportunistic attack**, not a new aggression objective: AirRecon does not reclassify into AirStrike, re-target for a second attack, or extend the sortie. Before continuing after the resolved challenge, it must confirm that the current surviving aircraft can still reach an owned landing airfield in the same turn; otherwise it skips any further voluntary movement and follows the safest reachable landing route. The attack itself remains fully owned by `AviationCombatPresenter`.
 
 On new information, it may adjust the forward recon hex or landing base, but cannot extend the route past the safe-landing invariant. It completes on reaching an owned airfield hex; end-turn refuelling is still handled by `AviationTurnLifecycle`.
 
