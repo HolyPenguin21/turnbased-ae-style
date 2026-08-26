@@ -33,29 +33,37 @@ namespace Game.Aviation
                     aircraft.ConsecutiveUnlandedEnds++;
                     if (aircraft.ConsecutiveUnlandedEnds <= aircraft.TurnsWithoutRefuel)
                         continue;
-                    if (!aircraft.HasEmergencyFlightPenalty)
+                    // Every overdue end inflicts the same fixed damage: half of this card's
+                    // maximum HP. Whether it survives is therefore determined solely by its
+                    // current HP; repairing it naturally lets it survive another missed landing.
+                    aircraft.HitPointsCurrent -= Mathf.CeilToInt(aircraft.HitPointsMax * 0.5f);
+                    aircraft.HasEmergencyFlightPenalty = true;
+                    if (aircraft.HitPointsCurrent > 0)
                     {
-                        // Losing half of CURRENT HP leaves floor(current/2), making repeated
-                        // emergency landings visibly severe without silently restoring damage.
-                        aircraft.HitPointsCurrent = Mathf.FloorToInt(aircraft.HitPointsCurrent * 0.5f);
-                        aircraft.HasEmergencyFlightPenalty = true;
-                        messages.Add($"{airArmy.Name} at {airArmy.Hex}: {aircraft.Name} lost 50% HP because it did not finish the turn at an airfield.");
+                        messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {aircraft.Name} lost 50% max HP because it did not finish the turn at an airfield.");
                         continue;
                     }
+                    aircraft.HitPointsCurrent = 0;
                     airArmy.Members.Remove(aircraft);
                     destroyed++;
                 }
                 if (airArmy.Members.Count == 0)
                 {
                     hexSelection?.DeleteArmyIfEmptied(airArmy);
-                    messages.Add($"{airArmy.Name} at {airArmy.Hex}: all aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: all aircraft were destroyed because they did not finish the turn at an airfield.");
                 }
                 else if (destroyed > 0)
                 {
-                    messages.Add($"{airArmy.Name} at {airArmy.Hex}: {destroyed} aircraft were destroyed because they did not finish the turn at an airfield.");
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {destroyed} aircraft were destroyed because they did not finish the turn at an airfield.");
                 }
             }
             return messages;
+        }
+
+        private static string FormatGameCoord(Game.HexGrid.HexCoord hex)
+        {
+            (int col, int row) = hex.ToOffset();
+            return $"({col}, {row})";
         }
     }
 }
