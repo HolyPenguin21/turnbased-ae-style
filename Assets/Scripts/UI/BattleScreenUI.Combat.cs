@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cameras;
 using Game.Cards;
 using Game.Combat;
@@ -74,7 +75,7 @@ namespace Game.UI
             // the user's own report).
             int defenderTerrainBonus = 0;
             int defenderConstructionBonus = 0;
-            if (defenderArmy != null && defenderArmy == _defender)
+            if (defenderArmy != null && defenderArmy == _defender && !AviationRules.IsAirArmy(defenderArmy))
             {
                 if (map != null && map.TryGetTerrainAt(defenderArmy.Hex, out TerrainTypeEntry terrain))
                     defenderTerrainBonus += terrain.defenseModifier;
