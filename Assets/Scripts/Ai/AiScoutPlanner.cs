@@ -436,7 +436,7 @@ namespace Game.Ai
                 // AiResourceReservation.CanAfford (not definition.resourceCost.CanAfford(root)
                 // directly, same reason as FindPlacement — never spend what an active
                 // BuildFacility task already claimed).
-                CardData recceCard = FindMatchingRecceCard(hand, wantHero);
+                CardData recceCard = FindMatchingRecceCard(hand, wantHero, ctx);
                 if (recceCard != null)
                 {
                     CardDefinition definition = recceCard.Definition;
@@ -454,8 +454,8 @@ namespace Game.Ai
                 return results;
             }
 
-            CardData card = FindMatchingRecceCard(hand, wantHero);
-            if (card == null || ctx.FailedPlayCardsThisTurn.Contains(card))
+            CardData card = FindMatchingRecceCard(hand, wantHero, ctx);
+            if (card == null)
                 return results; // no candidate this step — nothing left to place
 
             // Own placement check, entirely self-contained — a Recce card always deploys into the
@@ -483,9 +483,15 @@ namespace Game.Ai
         // must win over Recce here the same way AiManagementPlanner.RoleOf already checks
         // IsAviationCard before IsRecceCard — an aircraft card is only ever placed by
         // AiManagementPlanner.FindAviationPlacement, never through this Recce-carrier pipeline.
-        private static CardData FindMatchingRecceCard(AiHandData hand, bool wantHero) =>
+        // Excludes any card already in ctx.FailedPlayCardsThisTurn right here in the match predicate
+        // (2026-08-26 P2 fix, project owner's own report) — rather than picking the first match and
+        // only THEN checking it against the failed set, which used to stop the whole search dead the
+        // moment that first match happened to be a card that already failed this turn, even when
+        // hand held another perfectly good Recce card behind it.
+        private static CardData FindMatchingRecceCard(AiHandData hand, bool wantHero, AiTurnContext ctx) =>
             hand?.Hand.FirstOrDefault(c => AiManagementPlanner.IsRecceCard(c) && !AiManagementPlanner.IsAviationCard(c)
-                && c.Definition.cardType == (wantHero ? CardType.Hero : CardType.Unit));
+                && c.Definition.cardType == (wantHero ? CardType.Hero : CardType.Unit)
+                && !ctx.FailedPlayCardsThisTurn.Contains(c));
 
         // ---- Execution ----
 
