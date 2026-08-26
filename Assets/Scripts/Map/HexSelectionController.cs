@@ -1009,7 +1009,7 @@ namespace Game.Map
         {
             if (army == null)
                 return;
-            if (army.IsGarrison)
+            if (army.IsGarrison || army.IsAirfield)
             {
                 // Opening the garrison isn't picking an army to move — whatever named army was
                 // previously selected (its button shown pressed-in/disabled) needs to let go so
