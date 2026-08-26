@@ -1815,6 +1815,16 @@ namespace Game.Ai
 
                 if (candidate.ExistingArmy != null)
                 {
+                    // A formed-but-never-yet-activated air army (deployed straight onto the map
+                    // this same step, or left over from a prior step that never got to move it)
+                    // has never been through the ExistingArmy==null CanAffordLaunch check above —
+                    // that branch only ever covers a still-STORED group. Without this, IssueMoveOrder
+                    // would silently reject the real order later if AP/Energy ran out meanwhile
+                    // (2026-08-26 P1 fix, project owner's own report), same gap TryContinueAirStrikeTask
+                    // already closes for every step AFTER the first via ContinueSortie's own
+                    // CanIssueMoveNow call.
+                    if (!AiTurnController.CanIssueMoveNow(root, player, candidate.ExistingArmy, ctx.Map, target.Value.Hex))
+                        continue;
                     var task = new AiTask
                     {
                         Kind = AiTaskKind.AirStrike, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,

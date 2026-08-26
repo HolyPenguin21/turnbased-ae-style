@@ -985,6 +985,17 @@ namespace Game.Ai
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination)
                 : MoveOrderResult.CannotMove;
+
+            // The launch-Energy reservation AiAviationSupport.LaunchRoutine placed on this task
+            // (2026-08-26 P1 fix) only ever needs to survive until this exact moment — IssueMoveOrder
+            // just spent the REAL ActivationEnergyCost from root (or found it already spent, army
+            // already activated earlier this turn), either way there's nothing left for the
+            // reservation to protect. Release is idempotent (a no-op if nothing was ever reserved,
+            // e.g. every ordinary ground-army move, or a continuation step after the first), so this
+            // never needs a success/failure check on moveResult itself.
+            if (decision.Task != null && (decision.Task.Kind == AiTaskKind.AirStrike || decision.Task.Kind == AiTaskKind.AirRecon))
+                AiResourceReservation.Release(decision.Task);
+
             if (army.Controller != null)
                 yield return new WaitUntil(() => !army.Controller.IsMoving);
 

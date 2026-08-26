@@ -104,12 +104,17 @@ namespace Game.Ai
         // — a founded-base card costs real resources same as a facility, and the two must share
         // the same "все траты ИИ" pool this class already enforces rather than being able to eat
         // into each other's reservation.
+        // Widened 2026-08-26 (project owner's own report) to also count AirStrike/AirRecon — see
+        // AiAviationSupport.LaunchRoutine's own single TopUp call for its own ActivationEnergyCost,
+        // reserved the instant a launch decision commits so no OTHER AI spend can eat the Energy
+        // this same army's own first move order needs a step or more later.
         private static int TotalReservedExcluding(PlayerSetupData player, ResourceType type, AiTask excluding)
         {
             int total = 0;
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
-                if (task == excluding || (task.Kind != AiTaskKind.BuildFacility && task.Kind != AiTaskKind.BuildBase))
+                if (task == excluding || (task.Kind != AiTaskKind.BuildFacility && task.Kind != AiTaskKind.BuildBase
+                    && task.Kind != AiTaskKind.AirStrike && task.Kind != AiTaskKind.AirRecon))
                     continue;
                 if (ReservedByTask.TryGetValue(task, out int[] reserved))
                     total += reserved[(int)type];

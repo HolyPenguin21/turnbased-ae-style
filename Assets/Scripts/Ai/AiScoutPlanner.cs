@@ -586,6 +586,11 @@ namespace Game.Ai
 
                 if (candidate.ExistingArmy != null)
                 {
+                    // Same gap as AiAggressionPlanner.TryStartAirStrikeCandidates (2026-08-26 P1
+                    // fix, project owner's own report) — a formed-but-not-yet-activated air army
+                    // never went through the ExistingArmy==null CanAffordLaunch branch above.
+                    if (!AiTurnController.CanIssueMoveNow(root, player, candidate.ExistingArmy, ctx.Map, target.Value.Hex))
+                        continue;
                     var task = new AiTask
                     {
                         Kind = AiTaskKind.AirRecon, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,

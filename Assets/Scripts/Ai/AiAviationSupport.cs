@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -34,8 +35,12 @@ namespace Game.Ai
         // conservative than the engine strictly requires: it also counts every other already-
         // landed air army's own aircraft against the same capacity, so the AI never voluntarily
         // stacks more aircraft onto one airfield hex than its stated capacity, even though nothing
-        // stops it from doing so. `excluding` — the mover's own air army, so a sortie re-checking
-        // its ALREADY-chosen landing hex mid-flight doesn't count itself against its own capacity.
+        // stops it from doing so. Also subtracts every OTHER active sortie's own claim on this
+        // landing hex via ReservedLandingSlots below (2026-08-26 fix) — an in-flight sortie is
+        // just as real a claim on the slot it's headed for as an aircraft already sitting there.
+        // `excluding` — the mover's own air army, so a sortie re-checking its ALREADY-chosen
+        // landing hex mid-flight doesn't count itself against its own capacity (both as a landed
+        // army and, via its own AiTask, as a reservation).
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
         {
             int capacity = AviationRules.AirfieldCapacityAt(hex, owner);
@@ -45,7 +50,35 @@ namespace Game.Ai
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
                 if (army != excluding && army.Owner == owner && AviationRules.IsAirArmy(army))
                     used += army.Members.Count;
+            AiTask excludingTask = excluding != null ? AiTaskRegistry.TaskFor(owner, excluding) : null;
+            used += ReservedLandingSlots(hex, owner, excludingTask);
             return Mathf.Max(0, capacity - used);
+        }
+
+        // How many of `hex`'s own free slots are already spoken for by OTHER active AirStrike/
+        // AirRecon sorties committed to land there but not physically there yet (still outbound,
+        // or inbound but not yet arrived — see AiTask.LandingHex's own comment). Landed aircraft
+        // are deliberately NOT counted again here — FreeLandingCapacity's own ArmyRegistry loop
+        // above already counts anything physically sitting on `hex` right now, landed or not;
+        // double-counting a task whose army has already arrived would undercount capacity for
+        // nothing. `excludingTask` lets a sortie re-checking its OWN already-chosen landing hex
+        // exclude its own prior claim, the same role FreeLandingCapacity's own `excluding`
+        // ArmyData param already plays against the ArmyRegistry loop (2026-08-26 fix, project
+        // owner's own report: two independently-launched 2-aircraft groups could otherwise both
+        // claim the same single free slot on a 2-capacity base, since neither's outbound flight
+        // was ever visible to the other's own capacity check until it actually landed).
+        private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AiTask excludingTask)
+        {
+            int reserved = 0;
+            foreach (AiTask task in AiTaskRegistry.TasksFor(owner))
+            {
+                if (task == excludingTask || (task.Kind != AiTaskKind.AirStrike && task.Kind != AiTaskKind.AirRecon))
+                    continue;
+                if (task.Army == null || !task.LandingHex.Equals(hex) || task.Army.Hex.Equals(hex))
+                    continue;
+                reserved += task.Army.Members.Count;
+            }
+            return reserved;
         }
 
         // start airfield -> action hex -> any owned airfield with free capacity — the shared
@@ -205,6 +238,10 @@ namespace Game.Ai
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army) || !AviationRules.IsAirArmy(task.Army))
             {
+                // Releases whatever launch-Energy reservation (see AiAviationSupport.LaunchRoutine)
+                // this task may still be holding — safe even if the army already moved and the
+                // reservation was already released there (Release is a no-op on an unknown task).
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
@@ -212,6 +249,7 @@ namespace Game.Ai
             {
                 // AA destroyed the whole sortie — ordinary empty-army cleanup applies (see
                 // AiTurnController.RunEmptyArmyCleanup), nothing left here to fly.
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
@@ -229,6 +267,7 @@ namespace Game.Ai
             // Return leg finished — the sortie is over.
             if (!task.AirOutbound && task.Army.Hex.Equals(task.TargetHex))
             {
+                AiResourceReservation.Release(task);
                 AiTaskRegistry.Remove(player, task);
                 return null;
             }
@@ -305,11 +344,18 @@ namespace Game.Ai
         // (converting a still-stored aircraft group into a real flying ArmyData, via
         // AviationActions.TryLaunch — the exact same shared API a human's own launch button calls).
         // Forming the stack itself is free (see AviationActions.TryLaunch's own comment — "forming a
-        // stack is not a take-off"); the real AP/Energy launch cost is charged the ordinary way, by
-        // this new army's own first MoveArmy activation, the very next step — nothing special-cased
-        // here for that. Registers the fresh AiTask itself once the army actually exists — Commit
-        // never does this for a Launch* decision (decision.Task is deliberately left null by the
-        // factories; there is no task, and nothing to claim, until the launch actually succeeds).
+        // stack is not a take-off"); the real AP/Energy launch cost is still charged the ordinary
+        // way, by this new army's own first MoveArmy activation, whenever that step actually comes
+        // up (possibly several Decide() steps or even turns later — see AiTurnController.RunTurn's
+        // own one-decision-per-step loop). The Energy portion of that future cost IS reserved here,
+        // though (2026-08-26 P1 fix, project owner's own report) via the AiResourceReservation.TopUp
+        // call below — otherwise a higher-scoring candidate on some later step could spend it out
+        // from under this army before its own first move ever gets a turn, and the safe-return
+        // invariant every AirStrike/AirRecon sortie is supposed to guarantee would already be
+        // broken by the time CanIssueMoveNow finally catches the shortfall. Registers the fresh
+        // AiTask itself once the army actually exists — Commit never does this for a Launch*
+        // decision (decision.Task is deliberately left null by the factories; there is no task, and
+        // nothing to claim, until the launch actually succeeds).
         public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx, AiTaskKind taskKind)
         {
             ArmyData airArmy = decision.ExistingArmy;
@@ -338,6 +384,20 @@ namespace Game.Ai
                 Kind = taskKind, Army = airArmy, TargetHex = decision.AirActionHex, LandingHex = decision.AirLandingHex, AirOutbound = true,
             };
             AiTaskRegistry.Add(player, task);
+
+            // Reserve this army's own first-move ActivationEnergyCost the instant the task exists
+            // (2026-08-26 P1 fix, project owner's own report) — CanAffordLaunch above only checked
+            // it was available a moment ago, at candidate time; without a real reservation here, a
+            // DIFFERENT higher-scoring task could spend that same Energy before this army's own
+            // first MoveArmy step ever gets a turn to claim it (Decide only ever commits ONE
+            // decision per step — see AiTurnController.RunTurn's own per-step loop — so a freshly
+            // formed air army can easily sit un-activated for one or more further steps, even whole
+            // turns, before ContinueSortie's own CanIssueMoveNow check ever runs again). Released
+            // the moment that first move actually executes for real — see
+            // AiTurnController.MoveArmyRoutine's own Release call — never held past that, unlike
+            // BuildFacility/BuildBase's own multi-turn trickle reservation.
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            AiResourceReservation.TopUp(root, player, task, new ResourceCost { energy = airArmy.ActivationEnergyCost });
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} — target "
                 + $"({decision.AirActionHex.Q},{decision.AirActionHex.R}), landing ({decision.AirLandingHex.Q},{decision.AirLandingHex.R}).");
             yield return AiTurnController.WaitStep(ctx);
