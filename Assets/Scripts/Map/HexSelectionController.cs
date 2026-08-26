@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -1172,7 +1173,7 @@ namespace Game.Map
                             : null;
                         if (ownerCatalog != null)
                         {
-                            Sprite icon = army.IsAirArmy && ownerCatalog.airArmyIcon != null
+                            Sprite icon = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyIcon != null
                                 ? ownerCatalog.airArmyIcon : ownerCatalog.armyIcon;
                             if (icon != null)
                                 controller.Visual.SetIcon(icon);
