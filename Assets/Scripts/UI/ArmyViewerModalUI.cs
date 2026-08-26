@@ -679,7 +679,7 @@ namespace Game.UI
             ArmyData prison = atHex.Find(a => a.IsPrison && a.Members.Count > 0);
             if (prison != null)
                 siblings.Add(prison);
-            ArmyData airfield = atHex.Find(a => a.IsAirfield && a.Members.Count > 0);
+            ArmyData airfield = atHex.Find(a => a.IsAirfield);
             if (airfield != null)
                 siblings.Add(airfield);
             ArmyData garrison = atHex.Find(a => a.IsGarrison);
@@ -758,7 +758,7 @@ namespace Game.UI
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
                 $"{fatePoints} Fate Points\nNot Stealth Capable\n" +
-                $"Movement Range: {_currentArmy.MaxMovement}\n" +
+                $"Move: {_currentArmy.CurrentMovement}/{_currentArmy.MaxMovement}\n" +
                 $"Terrain Def: {terrainDefMod:+0;-0;+0}\nConstruction Def: {buildingDefMod:+0;-0;+0}";
         }
 
