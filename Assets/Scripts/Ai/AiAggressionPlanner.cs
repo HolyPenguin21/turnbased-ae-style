@@ -510,7 +510,7 @@ namespace Game.Ai
                 AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required, AiConfig.raidMinimumWinChance));
 
                 AiDecision heroCardDecision = TryHeroCardForRaid(player, root, hand, task.Army, task,
-                    AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus);
+                    AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus, ctx);
                 if (heroCardDecision != null)
                 {
                     results.Add(heroCardDecision);
@@ -593,7 +593,7 @@ namespace Game.Ai
             var newTask = new AiTask { Kind = AiTaskKind.RaidWeakerArmy, Army = forming, TargetHex = target.Value.Hex, StillAssembling = true };
 
             AiDecision newTaskHeroCardDecision = TryHeroCardForRaid(player, root, hand, forming, newTask,
-                AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus);
+                AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus, ctx);
             if (newTaskHeroCardDecision != null)
             {
                 results.Add(newTaskHeroCardDecision);
@@ -635,7 +635,7 @@ namespace Game.Ai
         // card gets played anywhere (by Менеджмент or otherwise) — it doesn't stall the raid for
         // more than a step in the ordinary case.
         private static AiDecision TryHeroCardForRaid(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            ArmyData formingArmy, AiTask task, float score)
+            ArmyData formingArmy, AiTask task, float score, AiTurnContext ctx)
         {
             if (hand == null || !formingArmy.HasRoom || !RaidWeakerArmyTask.NeedsHero(formingArmy)
                 || AiManagementPlanner.IsCardRoleCoolingDown(player, AiManagementPlanner.CardRole.Hero))
@@ -644,7 +644,8 @@ namespace Game.Ai
             foreach (CardData card in hand.Hand)
             {
                 if (!AiManagementPlanner.IsUnitOrHeroCard(card) || AiManagementPlanner.IsRecceCard(card)
-                    || AiManagementPlanner.RoleOf(card) != AiManagementPlanner.CardRole.Hero)
+                    || AiManagementPlanner.RoleOf(card) != AiManagementPlanner.CardRole.Hero
+                    || ctx.FailedPlayCardsThisTurn.Contains(card))
                     continue;
                 CardDefinition definition = card.Definition;
                 if (!AiManagementPlanner.IsAtRequiredBuilding(formingArmy, player, definition))

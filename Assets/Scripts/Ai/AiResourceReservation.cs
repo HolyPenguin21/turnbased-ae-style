@@ -79,10 +79,13 @@ namespace Game.Ai
 
         // Every AI spend path's own "what can I actually still touch" read — a hand card (see
         // AiTurnController.TryPlayCard) included, not just a rival BuildFacility task, per the
-        // owner's own "все траты ИИ" call.
-        public static int Available(PlayerRoot root, PlayerSetupData player, ResourceType type)
+        // owner's own "все траты ИИ" call. `excluding` lets a task read what's free without
+        // double-subtracting its OWN already-reserved amount (2026-08-26 P1 fix — see
+        // AiTurnController.CanIssueMoveNow's own `reservationOwner` param for why a freshly
+        // launched sortie needs this); every other caller passes null, unchanged.
+        public static int Available(PlayerRoot root, PlayerSetupData player, ResourceType type, AiTask excluding = null)
         {
-            return root == null ? 0 : root.GetResource(type) - TotalReservedExcluding(player, type, null);
+            return root == null ? 0 : root.GetResource(type) - TotalReservedExcluding(player, type, excluding);
         }
 
         public static bool CanAfford(PlayerRoot root, PlayerSetupData player, ResourceCost cost)

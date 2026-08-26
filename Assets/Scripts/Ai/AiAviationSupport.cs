@@ -312,7 +312,7 @@ namespace Game.Ai
                 destination = confirmedLanding.Value;
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination))
+            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination, task))
                 return null;
             HexCoord? nextStep = AiTurnController.FindAffordableStep(ctx.Map, task.Army, destination);
             if (nextStep == null)
@@ -400,7 +400,46 @@ namespace Game.Ai
             AiResourceReservation.TopUp(root, player, task, new ResourceCost { energy = airArmy.ActivationEnergyCost });
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} — target "
                 + $"({decision.AirActionHex.Q},{decision.AirActionHex.R}), landing ({decision.AirLandingHex.Q},{decision.AirLandingHex.R}).");
-            yield return AiTurnController.WaitStep(ctx);
+
+            // Launch and the sortie's first real step are now one indivisible sequence (2026-08-26
+            // P1 fix, project owner's own report) — RunTurn's own one-decision-per-step loop used
+            // to leave it here: task registered, Energy reserved, but the army itself still just
+            // sitting on the map unactivated until ContinueSortie happened to win arbitration on
+            // some LATER Decide() step. A different, higher-scoring candidate could spend AP in
+            // between, or a route/landing-slot could stop being safe, and the aircraft would be
+            // stranded already airborne with no step left to move it. Driving ContinueSortie
+            // synchronously right here — the exact same recheck of route/AP/Energy/landing-slot
+            // every later step already goes through, this task's own reservation excluded via
+            // CanIssueMoveNow's own reservationOwner param — closes that gap: by the time this
+            // coroutine yields back to RunTurn's own step loop, the army has either taken its
+            // first real step for real, or never left storage at all.
+            string logLabel = taskKind == AiTaskKind.AirStrike ? "AirStrike" : "AirRecon";
+            string outboundReason = taskKind == AiTaskKind.AirStrike
+                ? "presses on toward the strike target" : "flies on toward the recon target";
+            AiTaskCategory category = taskKind == AiTaskKind.AirStrike ? AiTaskCategory.Aggression : AiTaskCategory.Reconnaissance;
+            AiDecision firstMove = ContinueSortie(player, root, ctx, task, logLabel, outboundReason,
+                AiConfig.airStrikeContinuationScore, category);
+            if (firstMove == null)
+            {
+                // Can't even take the first step this turn — never leave the group formed and
+                // airborne with nothing able to move it: undo the launch and return every aircraft
+                // to the airfield's own stored container, right where they started this step.
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" — {taskKind} has no viable first step "
+                    + "this turn, cancels the launch and returns aircraft to storage.");
+                AiResourceReservation.Release(task);
+                AiTaskRegistry.Remove(player, task);
+                ArmyData homeAirfield = AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
+                foreach (UnitData aircraft in airArmy.Members.ToList())
+                {
+                    airArmy.Members.Remove(aircraft);
+                    homeAirfield?.AddMemberSorted(aircraft);
+                }
+                ctx.HexSelection?.DeleteArmyIfEmptied(airArmy);
+                ctx.HexSelection?.RestackArmiesOn(airArmy.Hex, null);
+                yield return AiTurnController.WaitStep(ctx);
+                yield break;
+            }
+            yield return AiTurnController.MoveArmyRoutine(player, firstMove, ctx);
         }
     }
 }

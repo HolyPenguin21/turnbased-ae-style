@@ -109,6 +109,18 @@ namespace Game.Ai
         // same call, only the STALE main-loop history is discarded.
         public void ClearVisitedArmiesForReorgPhase() => UnitVisitedArmies.Clear();
 
+        // PlayCard candidates that already failed to actually deploy THIS turn (2026-08-26 P1
+        // fix, project owner's own report) — an aviation card wrongly routed into a non-aviation
+        // candidate pipeline kept re-scoring itself and re-failing PlayCardRoutine's own deploy
+        // call every further step, burning the whole turn's step budget on the same doomed
+        // candidate. A fresh, empty set every turn, same shape as UnitVisitedArmies above — a
+        // card is free to fail and be retried NEXT turn once whatever made it fail may have
+        // changed (a place freed up, AP replenished), only a same-turn repeat is blocked. Every
+        // PlayCard candidate source (AiManagementPlanner.TryPlayCardCandidates, AiScoutPlanner's
+        // own Recce pipeline, AiAggressionPlanner.TryHeroCardForRaid) must skip a card in here;
+        // PlayCardRoutine adds to it the moment its own deploy call reports failure.
+        public readonly HashSet<CardData> FailedPlayCardsThisTurn = new HashSet<CardData>();
+
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
             ArmyViewerModalUI armyViewerModal, CardHandUI humanCardHand, float stepDelay,
             GameConfig gameConfig, int turnNumber, bool showArmyModal)
@@ -949,7 +961,11 @@ namespace Game.Ai
             }
         }
 
-        private static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        // Internal, not private — AiAviationSupport.LaunchRoutine also calls this directly to
+        // execute a freshly launched sortie's first real step in the same, indivisible decision
+        // (2026-08-26 P1 fix — see that method's own comment), not just from PerformDecision's
+        // own dispatch switch below.
+        internal static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
         {
             ArmyData army = decision.ExistingArmy;
             if (army?.Controller == null)
@@ -1089,6 +1105,7 @@ namespace Game.Ai
                 }
                 else
                 {
+                    ctx.FailedPlayCardsThisTurn.Add(decision.Card);
                     AiDebugLog.Write($"[AI] {player.Nickname}: couldn't store {decision.Card.Definition.displayName} — {aviationFailReason}");
                 }
                 yield return WaitStep(ctx);
@@ -1139,6 +1156,7 @@ namespace Game.Ai
             }
             else
             {
+                ctx.FailedPlayCardsThisTurn.Add(decision.Card);
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't deploy {decision.Card.Definition.displayName} — {failReason}");
             }
 
@@ -1309,10 +1327,20 @@ namespace Game.Ai
         // independently requires, a candidate this rejects would always have failed at
         // IssueMoveOrder anyway, so gating it here only ever removes a doomed candidate from
         // arbitration, never a viable one.
-        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination) =>
+        // `reservationOwner` — the AirStrike/AirRecon task this exact army/move belongs to, if
+        // any (2026-08-26 P1 fix, project owner's own report). AiAviationSupport.LaunchRoutine
+        // reserves this army's own ActivationEnergyCost the instant its task is created (so no
+        // OTHER task can spend it out from under a not-yet-activated sortie), but that same
+        // reservation used to count against THIS check too — at Energy exactly equal to the
+        // activation cost, Available() came back 0 (root's Energy minus the task's own claim on
+        // it) and the army could never take its first step at all, despite the Energy genuinely
+        // being there. Passing the task here excludes only ITS OWN reservation from the read,
+        // never anyone else's — a rival task's claim still counts exactly as before.
+        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination,
+            AiTask reservationOwner = null) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
                 && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
-                    && AiResourceReservation.Available(root, player, ResourceType.Energy) >= army.ActivationEnergyCost));
+                    && AiResourceReservation.Available(root, player, ResourceType.Energy, reservationOwner) >= army.ActivationEnergyCost));
 
         // Problem 4 (2026-08-24, project owner's own report): a raw armies=X→Y count in the
         // turn-ends line can't tell fragmentation (a growing pile of small leftover armies) apart

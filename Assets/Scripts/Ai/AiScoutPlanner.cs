@@ -455,7 +455,7 @@ namespace Game.Ai
             }
 
             CardData card = FindMatchingRecceCard(hand, wantHero);
-            if (card == null)
+            if (card == null || ctx.FailedPlayCardsThisTurn.Contains(card))
                 return results; // no candidate this step — nothing left to place
 
             // Own placement check, entirely self-contained — a Recce card always deploys into the
@@ -474,9 +474,17 @@ namespace Game.Ai
 
         // Shared by both the pre-emptive "request an empty army" gate and the later "play the
         // card" step below — same match rule (Recce-tagged, hero/unit shape matching `wantHero`),
-        // so the two can never disagree on what counts as a usable Recce card.
+        // so the two can never disagree on what counts as a usable Recce card. Excludes an
+        // aviation card even when it also carries Recce (2026-08-26 P1 fix, project owner's own
+        // report — a Recce-tagged aircraft card used to fall straight into this pipeline and get
+        // deployed via the ordinary ArmyActions.DeployUnitFromCard path into a non-airfield
+        // Barracks, failing every step with "Aircraft can only be deployed to your Barracks
+        // airfield" and re-scoring itself right up to the turn's step limit. Aviation classification
+        // must win over Recce here the same way AiManagementPlanner.RoleOf already checks
+        // IsAviationCard before IsRecceCard — an aircraft card is only ever placed by
+        // AiManagementPlanner.FindAviationPlacement, never through this Recce-carrier pipeline.
         private static CardData FindMatchingRecceCard(AiHandData hand, bool wantHero) =>
-            hand?.Hand.FirstOrDefault(c => AiManagementPlanner.IsRecceCard(c)
+            hand?.Hand.FirstOrDefault(c => AiManagementPlanner.IsRecceCard(c) && !AiManagementPlanner.IsAviationCard(c)
                 && c.Definition.cardType == (wantHero ? CardType.Hero : CardType.Unit));
 
         // ---- Execution ----

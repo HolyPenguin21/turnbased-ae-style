@@ -527,7 +527,8 @@ namespace Game.Ai
             float bestHeroValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
-                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Hero)
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Hero
+                    || ctx.FailedPlayCardsThisTurn.Contains(card))
                     continue; // Recce is AiScoutPlanner's own; Unit cards are the pre-pass below
                 CardPlacement? heroPlacement = FindPlacement(player, root, card);
                 if (!heroPlacement.HasValue)
@@ -557,7 +558,8 @@ namespace Game.Ai
             float bestUnitValue = float.NegativeInfinity;
             foreach (CardData card in hand.Hand)
             {
-                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Unit)
+                if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card) || RoleOf(card) != CardRole.Unit
+                    || ctx.FailedPlayCardsThisTurn.Contains(card))
                     continue;
                 CardPlacement? placement = FindPlacement(player, root, card);
                 if (!placement.HasValue)
@@ -608,7 +610,7 @@ namespace Game.Ai
             // AirRecon's own comments), never this method's.
             foreach (CardData card in hand.Hand)
             {
-                if (!IsAviationCard(card))
+                if (!IsAviationCard(card) || ctx.FailedPlayCardsThisTurn.Contains(card))
                     continue;
                 HexCoord? airfieldHex = FindAviationPlacement(player, root, card);
                 if (!airfieldHex.HasValue)
