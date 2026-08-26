@@ -631,7 +631,7 @@ MonoBehaviour:
     range: 2
     hitPoints: 5
     initiative: 1
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000002000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -674,7 +674,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 2250c13c9ffa42247bcc9a3ee6e5fabb, type: 3}
     faction: 0
     cardType: 1
-    apCost: 4
+    apCost: 5
     resourceCost:
       human: 0
       energy: 1

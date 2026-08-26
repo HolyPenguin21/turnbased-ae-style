@@ -14,25 +14,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   knownAbilities:
   - tag: CriticalDamage
-    description: Dmg dealt in a successful attack is x2
+    description: 'Hit: x2 DMG'
   - tag: CeramicArmor
-    description: Dmg received is reduced by a flat amount
+    description: -1 DMG received
   - tag: Berserk
-    description: 'Each time this unit is hit: +Attack/-Defense'
+    description: 'On hit: +ATK / -DEF'
   - tag: RapidReaction
-    description: Deploys for 0 AP; costs 0 AP to move as part of an army
+    description: '0 AP: Deploy & Army Move'
   - tag: ShockAttack
     description: Hit forces target to skip turn
   - tag: Hyperkinetic
-    description: Adds 2 dmg against "Armored" targets
+    description: +2 DMG vs Armor
   - tag: Pyrokinetic
-    description: Adds 2 dmg against "Bio" targets
+    description: +2 DMG vs Bio targets
   - tag: Recce
-    description: Extends this unit's army vision radius
+    description: Extends army vision
   - tag: ApBonus
-    description: While in play, grants +2 AP on this player's turn
+    description: 'Passive: +2 AP/turn'
   - tag: Barracks
-    description: Hex can receive Hero/Unit cards deployed from hand
+    description: Accepts hand deploys
   - tag: Lab
     description: "Carried by a placed Facility (e.g. Research Facility) \u2014 no
       behavior wired yet"
