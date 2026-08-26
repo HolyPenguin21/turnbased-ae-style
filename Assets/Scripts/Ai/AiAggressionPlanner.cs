@@ -1858,23 +1858,82 @@ namespace Game.Ai
         // AiDecision/AiTask, same split every other category here already follows. Never reads or
         // plays a hand card, never recruits — see AirStrikeTask's own class comment.
 
+        // AirStrike/Raid coordination (2026-08-26, project owner's own spec) — which active
+        // RaidWeakerArmy task (if any) a given StrikeTarget would actually help, and the WorthIt
+        // win-chance swing that raid gets from it. This decision lives entirely HERE, never on
+        // AirStrikeTask (see that class's own header comment: composition/scoring only, no
+        // coordination logic) — AirStrikeTask hands back raw candidates via FindTargets, this class
+        // is the only one that ever reads AiTaskRegistry to relate them to an active raid.
+        private readonly struct RaidSupportEvaluation
+        {
+            public readonly AiTask RaidTask;
+            public readonly float WinChanceBefore;
+            public readonly float WinChanceAfter;
+            public readonly float CoordinationBonus;
+            public readonly bool CrossesReadinessThreshold;
+
+            public RaidSupportEvaluation(AiTask raidTask, float winChanceBefore, float winChanceAfter, float coordinationBonus,
+                bool crossesReadinessThreshold)
+            {
+                RaidTask = raidTask;
+                WinChanceBefore = winChanceBefore;
+                WinChanceAfter = winChanceAfter;
+                CoordinationBonus = coordinationBonus;
+                CrossesReadinessThreshold = crossesReadinessThreshold;
+            }
+        }
+
         public static List<AiDecision> TryStartAirStrikeCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiResourcePool pool)
         {
             var results = new List<AiDecision>();
             if (AiTaskRegistry.CountActive(player, AiTaskKind.AirStrike) >= AiConfig.maxConcurrentAirStrike)
                 return results;
 
+            // Gathered once per call, not per candidate/target — every LaunchCandidate this step
+            // judges its own targets against the exact same set of active raids. Excludes: a
+            // retreating raid (fleeing, not fighting — see RaidWeakerArmyTask's own "Поведение"
+            // comment), a task whose Army was destroyed/never assigned, and a raid targeting a hex
+            // that's no longer even a valid target per memory (RaidWeakerArmyTask.
+            // IsStillValidTarget) — none of these can meaningfully be "supported" by a strike.
+            // BuildBase/Defence/Reconnaissance tasks are excluded implicitly by the Kind filter
+            // itself, even if their own army happens to be moving through the same hex.
+            List<AiTask> activeRaids = AiTaskRegistry.TasksFor(player)
+                .Where(t => t.Kind == AiTaskKind.RaidWeakerArmy && t.Army != null && t.Army.Controller != null
+                    && t.Army.Members.Count > 0 && !t.Retreating && RaidWeakerArmyTask.IsStillValidTarget(player, t.TargetHex))
+                .ToList();
+
             foreach (AirStrikeTask.LaunchCandidate candidate in AirStrikeTask.FindLaunchCandidates(player, pool))
             {
                 if (candidate.ExistingArmy == null && !AiAviationSupport.CanAffordLaunch(root, player, candidate.Aircraft))
                     continue;
-                AirStrikeTask.StrikeTarget? target = AirStrikeTask.FindTarget(player, candidate, ctx.Map);
-                if (!target.HasValue)
+
+                // Every reachable target is weighed here, not just the raw-BaseScore winner — a
+                // target that's a few points behind on BaseScore alone can still win once its own
+                // coordination bonus is added (2026-08-26 spec section 7: "не выбирать сначала
+                // лучший BaseScore, а потом проверять координацию").
+                AirStrikeTask.StrikeTarget? bestTarget = null;
+                RaidSupportEvaluation bestSupport = default;
+                float bestFinalScore = 0f;
+                foreach (AirStrikeTask.StrikeTarget candidateTarget in AirStrikeTask.FindTargets(player, candidate, ctx.Map))
+                {
+                    RaidSupportEvaluation support = EvaluateRaidSupport(player, candidate, candidateTarget, activeRaids, ctx.Map);
+                    float finalScore = Mathf.Min(candidateTarget.BaseScore + support.CoordinationBonus, AiConfig.airStrikeScoreCap);
+                    if (!bestTarget.HasValue || finalScore > bestFinalScore)
+                    {
+                        bestTarget = candidateTarget;
+                        bestSupport = support;
+                        bestFinalScore = finalScore;
+                    }
+                }
+
+                if (!bestTarget.HasValue)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: AirStrike — no reachable known target with a complete "
                         + $"sortie from ({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}).");
                     continue;
                 }
+
+                string reason = BuildAirStrikeReason(bestTarget.Value, bestSupport, candidate.Aircraft.Count, bestFinalScore);
 
                 if (candidate.ExistingArmy != null)
                 {
@@ -1886,22 +1945,123 @@ namespace Game.Ai
                     // (2026-08-26 P1 fix, project owner's own report), same gap TryContinueAirStrikeTask
                     // already closes for every step AFTER the first via ContinueSortie's own
                     // CanIssueMoveNow call.
-                    if (!AiTurnController.CanIssueMoveNow(root, player, candidate.ExistingArmy, ctx.Map, target.Value.Hex))
+                    if (!AiTurnController.CanIssueMoveNow(root, player, candidate.ExistingArmy, ctx.Map, bestTarget.Value.Hex))
                         continue;
                     var task = new AiTask
                     {
-                        Kind = AiTaskKind.AirStrike, Army = candidate.ExistingArmy, TargetHex = target.Value.Hex,
-                        LandingHex = target.Value.Sortie.LandingHex, AirOutbound = true,
+                        Kind = AiTaskKind.AirStrike, Army = candidate.ExistingArmy, TargetHex = bestTarget.Value.Hex,
+                        LandingHex = bestTarget.Value.Sortie.LandingHex, AirOutbound = true,
                     };
-                    results.Add(AiDecision.Move(candidate.ExistingArmy, target.Value.Hex, target.Value.Reason, task, target.Value.Score,
+                    results.Add(AiDecision.Move(candidate.ExistingArmy, bestTarget.Value.Hex, reason, task, bestFinalScore,
                         AiTaskCategory.Aggression));
                 }
                 else
                 {
-                    results.Add(AiDecision.LaunchAirStrike(candidate, target.Value, target.Value.Score));
+                    results.Add(AiDecision.LaunchAirStrike(candidate, bestTarget.Value, bestFinalScore, reason));
                 }
             }
             return results;
+        }
+
+        // Whichever active raid (if any) targets the SAME hex as `target`, plus the honest WorthIt
+        // win-chance swing striking it would give that raid — before vs after
+        // AviationCombatEstimator.EstimateAirStrike's own expected post-strike roster, both read
+        // through RaidWeakerArmyTask.WinChanceAgainst (never a second, simplified army-vs-army
+        // formula of its own — 2026-08-26 spec item 3: "все army-vs-army сравнения должны
+        // по-прежнему проходить через WorthIt"). Never mutates `raid`, its Army, or AiMapMemory —
+        // purely a read: the real target composition only ever changes once the strike actually
+        // lands (see AviationCombatPresenter.RunAirStrike) and AiMapMemory re-observes the hex.
+        //
+        // `target`'s own KnownDefense/KnownDefenders describe only the physical army sighting an
+        // air strike can actually hit (AviationCombatPresenter.FindAirStrikeTargetsAt never touches
+        // a Hex Event's own card-guard) — RaidWeakerArmyTask.RequiredStrengthAt's threatBefore.
+        // Defense can instead be dominated by a stronger EVENT guard sharing the same hex (see its
+        // own "two separate fights" comment). When that's the case, striking the army can't lower
+        // what the raid actually has to beat, so this raid is skipped entirely rather than crediting
+        // a strike for a threat it never touches.
+        private static RaidSupportEvaluation EvaluateRaidSupport(PlayerSetupData player, AirStrikeTask.LaunchCandidate candidate,
+            AirStrikeTask.StrikeTarget target, IReadOnlyList<AiTask> activeRaids, HexMap map)
+        {
+            AiTask bestRaid = null;
+            float bestBefore = 0f, bestAfter = 0f, bestImprovement = float.NegativeInfinity;
+
+            foreach (AiTask raid in activeRaids)
+            {
+                if (!raid.TargetHex.Equals(target.Hex))
+                    continue;
+
+                RaidWeakerArmyTask.ThreatStrength threatBefore = RaidWeakerArmyTask.RequiredStrengthAt(player, target.Hex, map);
+                float armyOnlyDefenseBefore = threatBefore.Defense - threatBefore.HexBonus;
+                if (target.KnownDefense < armyOnlyDefenseBefore - 0.01f)
+                    continue; // a known Hex Event guard outranks the army here — this strike can't touch the real threat
+
+                float chanceBefore = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatBefore);
+
+                AviationCombatEstimator.AirStrikeEstimate estimate = AviationCombatEstimator.EstimateAirStrike(
+                    candidate.Aircraft, target.KnownDefense, target.KnownAttack, target.KnownDefenders);
+                bool wipedOut = target.KnownDefenders != null && target.KnownDefenders.Count > 0 && estimate.ExpectedDefendersAfter.Count == 0;
+                var threatAfter = new RaidWeakerArmyTask.ThreatStrength(estimate.ExpectedDefenseAfter + threatBefore.HexBonus,
+                    estimate.ExpectedAttackAfter, estimate.ExpectedDefendersAfter, threatBefore.HexBonus, threatBefore.Name, wipedOut);
+                float chanceAfter = RaidWeakerArmyTask.WinChanceAgainst(raid.Army, threatAfter);
+
+                float improvement = chanceAfter - chanceBefore;
+                if (bestRaid == null || improvement > bestImprovement)
+                {
+                    bestRaid = raid;
+                    bestImprovement = improvement;
+                    bestBefore = chanceBefore;
+                    bestAfter = chanceAfter;
+                }
+            }
+
+            if (bestRaid == null)
+                return new RaidSupportEvaluation(null, 0f, 0f, 0f, false);
+
+            // Already ready without any help at all — a strike here doesn't unlock anything, so it
+            // must never outrank a target that DOES just because their hexes happen to coincide
+            // (spec item 5's own "не вытеснять более полезную цель только из-за совпадения
+            // координаты").
+            if (bestBefore >= AiConfig.raidMinimumWinChance)
+                return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, AiConfig.airStrikeRaidAlreadyReadyBonus, false);
+
+            float clampedImprovement = Mathf.Max(0f, bestAfter - bestBefore);
+            float bonus = clampedImprovement > 0f
+                ? AiConfig.airStrikeRaidSupportBaseBonus + clampedImprovement * AiConfig.airStrikeRaidSupportChanceWeight
+                : 0f;
+            bool crosses = bestBefore < AiConfig.raidMinimumWinChance && bestAfter >= AiConfig.raidMinimumWinChance;
+            if (crosses)
+                bonus += AiConfig.airStrikeRaidThresholdCrossBonus;
+
+            return new RaidSupportEvaluation(bestRaid, bestBefore, bestAfter, bonus, crosses);
+        }
+
+        // The full diagnostic Reason for an AirStrike candidate — composed exactly once per
+        // candidate, here, never as a separate AiDebugLog.Write per losing candidate (2026-08-26
+        // spec item 8: the standard per-step candidate dump and the "decided ..." line already
+        // surface this same string for every candidate/the actual winner respectively — see
+        // AiTurnController.DescribeCandidates/RunTurn).
+        private static string BuildAirStrikeReason(AirStrikeTask.StrikeTarget target, RaidSupportEvaluation support, int aircraftCount,
+            float finalScore)
+        {
+            if (support.RaidTask == null)
+                return $"air strike on {target.TargetName} — {aircraftCount} aircraft ready";
+
+            string raidName = support.RaidTask.Army.Name;
+            if (support.CoordinationBonus <= 0f)
+            {
+                return support.WinChanceBefore >= AiConfig.raidMinimumWinChance
+                    ? $"air strike on {target.TargetName} — raid \"{raidName}\" already ready at {support.WinChanceBefore:P0}, "
+                        + "no coordination bonus"
+                    : $"air strike on {target.TargetName} — active raid found, but expected win chance remains "
+                        + $"{support.WinChanceAfter:P0}, no coordination bonus";
+            }
+
+            string thresholdPart = support.CrossesReadinessThreshold
+                ? $", crosses {AiConfig.raidMinimumWinChance:P0} readiness threshold"
+                : string.Empty;
+            return $"air strike supports \"{raidName}\" raid on {target.TargetName} — expected raid win chance "
+                + $"{support.WinChanceBefore:P0}→{support.WinChanceAfter:P0}{thresholdPart}, coordination "
+                + $"+{support.CoordinationBonus:0}, score {target.BaseScore:0}→{finalScore:0}";
         }
 
         // Advances an already-committed AirStrike sortie — re-validates the sortie every step (per

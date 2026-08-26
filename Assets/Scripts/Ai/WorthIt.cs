@@ -140,7 +140,13 @@ namespace Game.Ai
         // is always an aggregate Attack/Defense sum, already integer-valued in practice —
         // RoundToInt only guards against float drift from summing. `rng` — this evaluation's own
         // local System.Random (see BuildSeed's own comment), never UnityEngine.Random.
-        private static int RollSuccesses(float diceCount, System.Random rng)
+        //
+        // Public since 2026-08-26 (AirStrike/Raid coordination spec, project owner's own report) —
+        // AviationCombatEstimator's own one-sided air-strike simulation needs this exact same die
+        // mechanic but plays it out in a different battle SHAPE (sequential single-target aircraft
+        // attacks, no return fire) that doesn't fit SimulateOneBattle's round-robin structure, so it
+        // reuses this one primitive rather than rolling its own copy of the 50/50 mechanic.
+        public static int RollSuccesses(float diceCount, System.Random rng)
         {
             int count = Mathf.Max(0, Mathf.RoundToInt(diceCount));
             int successes = 0;

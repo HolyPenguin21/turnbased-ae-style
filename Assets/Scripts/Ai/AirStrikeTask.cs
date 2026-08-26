@@ -56,19 +56,38 @@ namespace Game.Ai
             }
         }
 
+        // BaseScore/TargetName/KnownDefense/KnownAttack/KnownDefenders (2026-08-26, AirStrike/Raid
+        // coordination spec, project owner's own report) — replaces the old Score/Reason pair.
+        // AirStrikeTask never knows about active Raid tasks (see this class's own header comment),
+        // so it no longer composes a final Reason string itself; it only ever hands back its own
+        // raw, UNCAPPED base score plus everything AiAggressionPlanner needs to judge whether this
+        // target also helps an active RaidWeakerArmy task (KnownDefense/KnownAttack/KnownDefenders
+        // feed AviationCombatEstimator.EstimateAirStrike directly, same three numbers ScoreTarget
+        // itself already read off the same sighting). BaseScore is deliberately never clamped to
+        // airStrikeScoreCap here any more — see that constant's own comment: the cap now applies
+        // exactly once, in AiAggressionPlanner, AFTER any coordination bonus is added, so a
+        // genuinely raid-supporting strike can still win against a marginally-higher-BaseScore
+        // ordinary target instead of the bonus being wasted on an already-clamped number.
         public readonly struct StrikeTarget
         {
             public readonly HexCoord Hex;
             public readonly AiAviationSupport.Sortie Sortie;
-            public readonly float Score;
-            public readonly string Reason;
+            public readonly float BaseScore;
+            public readonly string TargetName;
+            public readonly float KnownDefense;
+            public readonly float KnownAttack;
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders;
 
-            public StrikeTarget(HexCoord hex, AiAviationSupport.Sortie sortie, float score, string reason)
+            public StrikeTarget(HexCoord hex, AiAviationSupport.Sortie sortie, float baseScore, string targetName,
+                float knownDefense, float knownAttack, IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
             {
                 Hex = hex;
                 Sortie = sortie;
-                Score = score;
-                Reason = reason;
+                BaseScore = baseScore;
+                TargetName = targetName;
+                KnownDefense = knownDefense;
+                KnownAttack = knownAttack;
+                KnownDefenders = knownDefenders;
             }
         }
 
@@ -92,27 +111,32 @@ namespace Game.Ai
         // airfield with a free landing slot) already lives, so a neutral target with no such route
         // is dropped the same way an unreachable enemy one already was — no separate check needed
         // here for that half of point 1's spec.
-        public static StrikeTarget? FindTarget(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
+        // Every reachable known target with a complete sortie, not just the single best one — added
+        // 2026-08-26 (AirStrike/Raid coordination spec) so AiAggressionPlanner can weigh a
+        // coordination bonus against EVERY candidate's own BaseScore before picking a winner,
+        // instead of only ever seeing whichever target happened to win on raw BaseScore alone (see
+        // this method's own callers for why: a lower-BaseScore target that actually unlocks an
+        // active raid must be able to outrank a higher-BaseScore one that doesn't).
+        public static IEnumerable<StrikeTarget> FindTargets(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
         {
             if (actor == null || map == null)
-                return null;
+                yield break;
 
             var targetHexes = new HashSet<HexCoord>();
-            var targetInfo = new Dictionary<HexCoord, (float Defense, float Attack, string Name)>();
+            var targetInfo = new Dictionary<HexCoord, (float Defense, float Attack, string Name, IReadOnlyList<WorthIt.DefenderProfile> Defenders)>();
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
             {
                 if (sighting.Owner == null || sighting.Owner == actor)
                     continue;
                 targetHexes.Add(sighting.Hex);
-                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
+                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name, sighting.Defenders);
             }
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(actor))
             {
                 targetHexes.Add(sighting.Hex);
-                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name);
+                targetInfo[sighting.Hex] = (sighting.DefenseSum, sighting.AttackSum, sighting.Name, sighting.Defenders);
             }
 
-            StrikeTarget? best = null;
             foreach (HexCoord hex in targetHexes)
             {
                 AiAviationSupport.Sortie? sortie = candidate.ExistingArmy != null
@@ -121,14 +145,24 @@ namespace Game.Ai
                 if (!sortie.HasValue)
                     continue;
 
-                targetInfo.TryGetValue(hex, out (float Defense, float Attack, string Name) known);
-                float score = ScoreTarget(actor, candidate, sortie.Value, known.Defense, known.Attack, map);
+                targetInfo.TryGetValue(hex, out var known);
+                float baseScore = ScoreTarget(candidate, sortie.Value, known.Defense, known.Attack);
                 string name = string.IsNullOrEmpty(known.Name) ? $"target at ({hex.Q},{hex.R})" : known.Name;
-                if (best == null || score > best.Value.Score)
-                    best = new StrikeTarget(hex, sortie.Value, score,
-                        $"air strike on {name} — {candidate.Aircraft.Count} aircraft ready");
+                yield return new StrikeTarget(hex, sortie.Value, baseScore, name, known.Defense, known.Attack, known.Defenders);
             }
-            return best;
+        }
+
+        // Compatibility wrapper — the single best-BaseScore target, same selection this method
+        // always made before FindTargets existed. AiAggressionPlanner no longer calls this (it needs
+        // every candidate to weigh its own coordination bonus — see FindTargets' own comment); kept
+        // for any other/future caller that only ever wants "the one best target" with no raid
+        // awareness. Deliberately NOT `FindTargets(...).OrderByDescending(...).FirstOrDefault()`
+        // directly — StrikeTarget is a struct, so FirstOrDefault() on an empty sequence would
+        // silently hand back a bogus all-default StrikeTarget instead of a real "no target" null.
+        public static StrikeTarget? FindTarget(PlayerSetupData actor, LaunchCandidate candidate, HexMap map)
+        {
+            List<StrikeTarget> targets = FindTargets(actor, candidate, map).ToList();
+            return targets.Count > 0 ? targets.OrderByDescending(t => t.BaseScore).First() : (StrikeTarget?)null;
         }
 
         // Ranking order per spec: target value/defence worth striking, expected damage × ready
@@ -136,12 +170,11 @@ namespace Game.Ai
         // exposure is no longer a term here (2026-08-26, project owner's own follow-up spec item 1
         // — "не трактовать ПВО как простой штраф в score"): `sortie` only ever reaches this method
         // already AA-free, since AiAviationSupport.PlanSortieCore (behind TryPlanSortie/
-        // TryPlanSortieFromStorage, see FindTarget above) now hard-filters every candidate landing
+        // TryPlanSortieFromStorage, see FindTargets above) now hard-filters every candidate landing
         // by known-AA exposure itself, the same rule AirRecon's own FindReconHex already applied.
-        // Clamped to airStrikeScoreCap so this tier can never cross a ground raid's own tactical
-        // combat/execute score (see that constant's own comment).
-        private static float ScoreTarget(PlayerSetupData actor, LaunchCandidate candidate, AiAviationSupport.Sortie sortie,
-            float targetDefense, float targetAttack, HexMap map)
+        // No longer clamped to airStrikeScoreCap here (2026-08-26, AirStrike/Raid coordination spec)
+        // — see StrikeTarget.BaseScore's own comment for why the cap moved to AiAggressionPlanner.
+        private static float ScoreTarget(LaunchCandidate candidate, AiAviationSupport.Sortie sortie, float targetDefense, float targetAttack)
         {
             float score = AiConfig.airStrikeBaseWeight;
             float targetValue = targetDefense + targetAttack;
@@ -150,7 +183,7 @@ namespace Game.Ai
             score -= sortie.TotalCost * AiConfig.airStrikeDistancePenalty;
             int apEnergyCost = candidate.Aircraft.Sum(u => u.ActivationApCost + u.LaunchEnergyCost);
             score -= apEnergyCost * AiConfig.airStrikeApCostPenalty;
-            return Mathf.Min(score, AiConfig.airStrikeScoreCap);
+            return score;
         }
     }
 }

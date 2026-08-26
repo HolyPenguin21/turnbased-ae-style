@@ -1221,10 +1221,34 @@ namespace Game.Ai
         // Per-AP/Energy penalty on the sortie's own launch cost — spec's "lower AP/energy cost"
         // tie-break, same shape as every other cost-vs-value tradeoff in this file.
         public const float airStrikeApCostPenalty = 1f;
-        // Hard ceiling every AirStrike start candidate is clamped to (see AirStrikeTask.ScoreTarget)
-        // — keeps the whole tier's bonuses from ever crossing raidCounterAttackBonus's own tier
-        // (aggressionBaseWeight+20=120), per the spec's explicit priority ladder.
+        // Hard ceiling every AirStrike start candidate is clamped to — keeps the whole tier's
+        // bonuses from ever crossing raidCounterAttackBonus's own tier (aggressionBaseWeight+20=120),
+        // per the spec's explicit priority ladder. Applied in AiAggressionPlanner.
+        // TryStartAirStrikeCandidates now (2026-08-26, AirStrike/Raid coordination spec — moved out
+        // of AirStrikeTask.ScoreTarget, which used to clamp the raw BaseScore before any
+        // coordination bonus existed): the cap now applies exactly once, AFTER BaseScore +
+        // coordinationBonus is summed, so a raid-supporting strike's bonus isn't wasted clamping an
+        // already-capped number.
         public const float airStrikeScoreCap = 118f;
+        // ---- AirStrike · Raid coordination (2026-08-26, project owner's own spec) ----
+        // AiAggressionPlanner.EvaluateRaidSupport's own bonus formula: flat base the instant an air
+        // strike measurably improves an active RaidWeakerArmy task's own WorthIt win chance against
+        // the SAME target hex (RaidWeakerArmyTask.WinChanceAgainst, before vs after
+        // AviationCombatEstimator.EstimateAirStrike's own expected post-strike roster), plus this
+        // weight times the raw chance improvement (0..1) — so a strike that only shaves a few points
+        // off still gets some credit, while one that swings the fight decisively gets more.
+        public const float airStrikeRaidSupportBaseBonus = 8f;
+        public const float airStrikeRaidSupportChanceWeight = 30f;
+        // Extra flat bonus on top of the above when the strike is the difference between the raid
+        // NOT clearing raidMinimumWinChance and clearing it — the strike doesn't just help, it
+        // actually unlocks the raid this turn (see EvaluateRaidSupport's own crossesReadinessThreshold).
+        public const float airStrikeRaidThresholdCrossBonus = 20f;
+        // Deliberately zero, kept as a named constant rather than a bare 0f literal purely so the
+        // "already ready, no bonus" branch in EvaluateRaidSupport reads as an intentional policy
+        // choice, not a forgotten case: a raid that already clears raidMinimumWinChance without any
+        // help gets no coordination bonus at all — striking its target doesn't unlock anything, so
+        // it must never outrank an ordinary target purely because their hexes happen to coincide.
+        public const float airStrikeRaidAlreadyReadyBonus = 0f;
         // An already-launched AirStrike/AirRecon sortie's own continuation score (outbound or
         // return leg) — TryContinueAirStrikeTask/TryContinueAirReconTask. Above both start tiers
         // (airStrikeBaseWeight/airReconBaseWeight) — an airborne sortie has already spent its

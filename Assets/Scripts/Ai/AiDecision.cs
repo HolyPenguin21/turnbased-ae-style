@@ -465,16 +465,22 @@ namespace Game.Ai
         };
 
         // Агрессия · Авиация, шаг 1 — see AiAggressionPlanner.TryStartAirStrikeCandidates/
-        // AirStrikeTask.FindTarget. ExistingArmy is the already-formed, untasked air army when one
+        // AirStrikeTask.FindTargets. ExistingArmy is the already-formed, untasked air army when one
         // exists (candidate.ExistingArmy), else null (still stored — AircraftToLaunch carries
         // exactly which units to pull out of the airfield container). TargetHex is the AIRFIELD
         // (where the launch itself happens), never the strike target — that's AirActionHex.
-        public static AiDecision LaunchAirStrike(AirStrikeTask.LaunchCandidate candidate, AirStrikeTask.StrikeTarget target, float score) => new AiDecision
+        // `reason` — an explicit caller-supplied string since 2026-08-26 (AirStrike/Raid
+        // coordination spec), replacing the old `target.Reason` read: AiAggressionPlanner now
+        // composes the full diagnostic reason itself (BuildAirStrikeReason), since only it knows
+        // whether this strike also supports an active raid — StrikeTarget itself never carries a
+        // Reason any more (see that struct's own comment).
+        public static AiDecision LaunchAirStrike(AirStrikeTask.LaunchCandidate candidate, AirStrikeTask.StrikeTarget target, float score,
+            string reason) => new AiDecision
         {
             Kind = AiActionKind.LaunchAirStrike, ExistingArmy = candidate.ExistingArmy, TargetHex = candidate.AirfieldHex,
             AircraftToLaunch = candidate.ExistingArmy == null ? candidate.Aircraft : null,
             AirActionHex = target.Hex, AirLandingHex = target.Sortie.LandingHex, Score = score, Category = AiTaskCategory.Aggression,
-            Reason = target.Reason,
+            Reason = reason,
         };
 
         // Разведка · Авиация, шаг 1 — see AiScoutPlanner.TryStartAirReconCandidates/
