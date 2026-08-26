@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Core;
@@ -92,7 +93,7 @@ namespace Game.Map
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
                 : null;
-            if (army.IsAirArmy && ownerCatalog != null && ownerCatalog.airArmyIcon != null)
+            if (AviationRules.IsAirArmy(army) && ownerCatalog != null && ownerCatalog.airArmyIcon != null)
                 marker.SetIcon(ownerCatalog.airArmyIcon);
             marker.SetVisible(false); // RestackArmiesOn below decides if it should actually show
 
@@ -116,7 +117,10 @@ namespace Game.Map
                 return;
 
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (!army.IsAirArmy && building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
+            // Every empty army on its owner's Barracks hex remains as a reusable container.
+            // This is deliberately shared by ground and air armies; air composition must not
+            // make a formerly airborne stack an exception after its last card is destroyed.
+            if (building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
                 return;
 
             ArmyRegistry.Unregister(army);
