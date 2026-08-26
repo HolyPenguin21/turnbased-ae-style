@@ -89,6 +89,9 @@ namespace Game.Map
             marker.transform.position = map.HexToWorld(army.Hex);
             marker.SetColor(PlayerColorPalette.Colors[army.Owner.ColorIndex]);
             marker.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
+            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
+                : null;
             if (army.IsAirArmy && ownerCatalog != null && ownerCatalog.airArmyIcon != null)
                 marker.SetIcon(ownerCatalog.airArmyIcon);
             marker.SetVisible(false); // RestackArmiesOn below decides if it should actually show
