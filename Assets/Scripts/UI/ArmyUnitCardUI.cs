@@ -58,6 +58,8 @@ namespace Game.UI
         // StealthUnit) — same hover-only shape as repairButton. Optional prefab ref: a null
         // button just means the stealth action isn't offered on the card until it's wired.
         [SerializeField] private Button stealthButton;
+        // "Hide" (entering — 1 AP, shown on the shared cost strip below, NOT on the label)
+        // or "Unhide" (leaving — free).
         [SerializeField] private TMP_Text stealthButtonLabel;
         // Always-on "this unit is in stealth" marker the OWNER sees on their own hidden units
         // (the enemy never gets a card for a hidden unit at all — see ArmyViewerModalUI.
@@ -235,35 +237,47 @@ namespace Game.UI
         // same "hover-only, condition re-checked live" shape as BaseSlotCardUI's own Repair.
         public void OnPointerEnter(PointerEventData eventData)
         {
-            bool show = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
-            repairButton?.gameObject.SetActive(show);
-            if (show)
-                ShowRepairCostPreview();
-            else
-                HideRepairCostPreview();
+            bool repair = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
+            repairButton?.gameObject.SetActive(repair);
 
-            RefreshStealthButton();
+            RefreshStealthButton(out bool stealthHasCost);
+
+            // The cost strip is shared: Repair owns it when shown; otherwise the "Hide"
+            // action shows its own 1-AP cost through the exact same badge mechanism (never
+            // written on the button label — Unhide is free and shows nothing).
+            if (repair)
+                ShowRepairCostPreview();
+            else if (stealthHasCost)
+                ShowStealthCostPreview();
+            else
+                HideCostPreview();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
             repairButton?.gameObject.SetActive(false);
-            HideRepairCostPreview();
             stealthButton?.gameObject.SetActive(false);
+            HideCostPreview();
         }
 
-        // "Enter stealth (1 AP)" for an eligible Stealth-tagged unit not yet hidden,
-        // "Exit stealth" (free) for the owner on a hidden one — re-checked live on hover,
-        // same shape as the Repair button above.
-        private void RefreshStealthButton()
+        // "Hide" for an eligible Stealth-tagged unit not yet hidden (costs 1 AP — shown on
+        // the cost strip, see ShowStealthCostPreview), "Unhide" (free) for the owner on a
+        // hidden one. Re-checked live on hover, same shape as the Repair button above.
+        // `hasCost` — true only in the "Hide" state, so OnPointerEnter can drive the strip.
+        private void RefreshStealthButton(out bool hasCost)
         {
+            hasCost = false;
             if (stealthButton == null || Unit == null || _modal == null)
+            {
+                stealthButton?.gameObject.SetActive(false);
                 return;
+            }
             bool canEnter = _modal.CanEnterStealthUnit(Unit);
             bool canExit = _modal.CanExitStealthUnit(Unit);
             stealthButton.gameObject.SetActive(canEnter || canExit);
             if (stealthButtonLabel != null && (canEnter || canExit))
-                stealthButtonLabel.text = canExit ? "Exit stealth" : "Enter stealth (1 AP)";
+                stealthButtonLabel.text = canExit ? "Unhide" : "Hide";
+            hasCost = canEnter && !canExit;
         }
 
         // One coloured circle badge per non-zero cost component, AP first — same convention as
@@ -281,6 +295,20 @@ namespace Game.UI
             SetBadge(4, cost.tech);
         }
 
+        // Entering stealth costs a flat 1 AP per unit — shown on the very same badge strip
+        // Repair uses (AP slot only), never on the button label.
+        private void ShowStealthCostPreview()
+        {
+            if (costPreviewRoot == null)
+                return;
+            costPreviewRoot.SetActive(true);
+            SetBadge(0, 1);
+            SetBadge(1, 0);
+            SetBadge(2, 0);
+            SetBadge(3, 0);
+            SetBadge(4, 0);
+        }
+
         private void SetBadge(int index, int amount)
         {
             if (costBadgeIcons == null || index >= costBadgeIcons.Length || costBadgeIcons[index] == null)
@@ -291,7 +319,7 @@ namespace Game.UI
                 costBadgeAmounts[index].text = amount.ToString();
         }
 
-        private void HideRepairCostPreview()
+        private void HideCostPreview()
         {
             if (costPreviewRoot != null)
                 costPreviewRoot.SetActive(false);
