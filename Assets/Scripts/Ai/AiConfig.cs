@@ -158,6 +158,17 @@ namespace Game.Ai
         // preserves the outward-wave shape while cutting the long unnecessary marches. Initial value,
         // not yet checked against a real playtest log (project owner's own note — try 2 or 3 first).
         public const int visitFrontierLocalRadius = 3;
+        // Cross-category score a "distant frontier fallback" step contributes to the arbiter
+        // (2026-08-27, project owner's own log audit — late game, with everything near the scout
+        // already explored, scouts oscillated between far frontier hexes that turned out stale
+        // ("gone on re-observation") the moment they arrived, spending a full decayed reconBaseWeight
+        // (~50) of priority and ending turns with AP that could have gone anywhere else). A distant
+        // fallback is real exploration when it pays off, but it must not out-priority ordinary work
+        // — scored like a cleanup hop (visitCleanupScore tier) rather than a full frontier move.
+        // The VisitHex task itself is NOT dropped: the scout still holds vision, still flees/reacts
+        // to enemy armies (TryFlee keeps its own scoutFleeBonus tier untouched), it just stops
+        // treating a stale long march as a priority.
+        public const float visitDistantFallbackScore = 25f;
         // While Агрессия has an active RaidWeakerArmy task (any — a real committed raid force
         // matters more than another routine scouting hop), subtracted from VisitHex's own flat
         // reconBaseWeight contribution to the arbiter (project owner's own 2026-08-19 rebalance —
@@ -301,6 +312,25 @@ namespace Game.Ai
         // loses more sunk cost (a partly-built force) than either of those, so it gets one extra
         // turn of patience before the watchdog fires.
         public const int raidStallTurns = 3;
+        // Hard upper bound on how long a single raid may sit at the garrison still assembling
+        // (2026-08-27, project owner's own log audit — "Nomads" fed one recruit at a time for 10
+        // turns straight, never crossing raidMinimumWinChance, permanently occupying the sole
+        // maxConcurrentRaid slot). raidStallTurns above only fires when NO recruit is available at
+        // all; a raid that keeps finding exactly one more body every turn never trips it. Once
+        // ctx.TurnNumber - AiTask.RaidAssembleStartedTurn reaches this many turns AND the force
+        // still isn't IsReady, TryRaidAssembleCandidates force-retargets to a genuinely different
+        // known target if one exists, else cancels the raid outright (army back to the idle pool).
+        // Deliberately well above raidStallTurns — a slowly-growing force IS making progress, it
+        // just needs a ceiling so it can't grow forever against an unwinnable target.
+        public const int raidAssembleMaxTurns = 6;
+        // Above how many known defenders a hex stops being a "raid" target at all (2026-08-27,
+        // project owner's own log audit — a garrison-seeded raid kept picking 5-unit neutral camps
+        // like "Cactus-Pickers" it could never realistically clear, then starved its own garrison
+        // feeding an assembly that never launched). A camp this size is an army-vs-army fight for
+        // the main force, not a raid; RaidWeakerArmyTask.FindTarget skips it so the single raid
+        // slot goes to a takeable target or stays free. A target the raiding army ALREADY clears
+        // (IsReady) is exempt — if we can take it now, size doesn't matter.
+        public const int raidTargetMaxDefenders = 4;
         // raidReadyArmyBonus removed 2026-08-20 (project owner's own call) — a target already
         // beatable by an existing idle army as-is (RaidWeakerArmyTask's own "fast path", no
         // assembly needed) now scores the same flat aggressionBaseWeight as any other ready
@@ -340,6 +370,15 @@ namespace Game.Ai
         public const float raidRequestArmyPenalty = -5f;
         // 2026-08-20 rebalance (project owner's own call): 20 → 10.
         public const float raidAssembleBonus = 10f;
+        // Progress-scaled damping of raidAssembleBonus (2026-08-27, project owner's own log audit —
+        // AssembleRaidForce's flat aggressionBaseWeight+raidAssembleBonus=110 won arbitration every
+        // single step, so a raid stuck at ~18% win chance kept out-competing scouting/economy while
+        // pouring premium cards into a force that never launched). While currentWinChance is below
+        // raidMinimumWinChance the bonus is multiplied by clamp(currentWinChance /
+        // raidMinimumWinChance, this, 1) — an assembly making real headway is barely touched, one
+        // stalled far below the bar drops toward this floor and stops crowding out everything else.
+        // Never scales the aggressionBaseWeight itself — a raid that IS ready still scores full.
+        public const float raidAssembleMinBonusFactor = 0.3f;
         // TryRaidRegroupCandidates' own dispatch step, AND TryContinueRaidTask's own in-flight
         // "weakened mid-travel, not from an enemy threat" branch (both AiDecision.
         // DispatchReinforcement) — a field army chose to wait rather than march home itself
@@ -1458,5 +1497,106 @@ namespace Game.Ai
         // cards don't compete with, or alternate against, Hero/Unit backlog pressure; they're their
         // own role entirely (see AiManagementPlanner.IsAviationCard).
         public const float managementAviationCardScore = managementBaseWeight + 10f;
+
+        // ---- Strategic layer (2026-08-27, project owner's own redesign) ----
+        // A per-turn assessment (AiStrategyDirector) produces one desire axis in [0..1] per
+        // AiTaskCategory, then AiTurnBudget splits the turn's AP/resources by those axes, and
+        // Decide TILTS each candidate's score by its category's axis + how far that category is
+        // over its budget. This is a NUDGE on top of the existing base-weight arbiter, never a
+        // hard gate — at strategyAxisGain=0 & strategyBudgetOverGain=0 it's an exact no-op. Later
+        // phases flatten the base weights toward parity and let the axes carry cross-category
+        // priority (retiring AggressionSuppressionPenalty / reconPriorityDecay etc.).
+        public const bool strategyLayerEnabled = true;
+        // Step 5 (2026-08-27) — retire the hand-rolled cross-category couplings the strategic axes
+        // now subsume, so a new behavior no longer needs a fresh constant threaded between two old
+        // ones. When true:
+        //   • ReconMoveWeight stops tapering by turn number — the Reconnaissance axis's own
+        //     `decayWithTurn` consideration already does exactly this, so keeping both double-taxes
+        //     late-game scouting.
+        //   • AggressionSuppressionPenalty returns 0 — "a committed raid keeps moving ahead of
+        //     routine scouting" is now carried by the Aggression axis (raised while a raid/operation
+        //     runs) plus AiTurnBudget's AP split, not a flat -10 on the Recon side.
+        // Default OFF: turned on and measured during calibration, once real attack-heavy games
+        // exist to A/B against (project owner's own call — the strategic layer lands first, the
+        // legacy couplings come out only once the axes are proven in combat).
+        public const bool strategyRetireLegacyCouplings = false;
+        // Score offset span from the axis: (axis - 0.5) * this. Sized well under the ~100 base
+        // weights so it decides ties and near-calls, never overrides a genuinely urgent candidate
+        // (a 120 Defence intercept still beats a 100+12 Economy move).
+        public const float strategyAxisGain = 24f;
+        // Weight of the PREVIOUS turn's axis value when smoothing (axis = (1-s)*raw + s*prev) —
+        // keeps the AI from whipsawing attack<->defend turn to turn. Hard events (under siege)
+        // bypass the smoother and snap the Defence axis to its raw value.
+        public const float strategyAxisSmoothing = 0.4f;
+        // Defence-axis specifics (2026-08-27 log audit — DEF decayed to a literal 0.00 with nothing
+        // in sight and would have taken many smoothed turns to react to a real threat).
+        // Baseline vigilance floor, and asymmetric smoothing: a RISING threat is barely smoothed
+        // (snap the guard up), a FADING one decays slowly (don't drop it the instant an enemy
+        // leaves sight).
+        public const float strategyDefenceFloor = 0.12f;
+        // Raised floor for a player that has a committed field army AND knows the enemy is on the
+        // map — an actively-campaigning side keeps a minimum guard up even before a threat reaches
+        // its bases (2026-08-27 log audit — a Pressure-posture player sat at DEF ~0.15 the whole
+        // war and gave Defence only its floor AP).
+        public const float strategyDefenceAtWarFloor = 0.28f;
+        public const float strategyDefenceRiseSmoothing = 0.15f;
+        public const float strategyDefenceFallSmoothing = 0.6f;
+        // Earliest turn the AllIn posture (which zeroes the Economy axis) may be entered at all —
+        // AllIn also still requires a matured economy and no threat (see AiStrategyDirector.
+        // DerivePosture). Guards against an opening-game false positive.
+        public const int strategyAllInMinTurn = 14;
+
+        // ---- Operations layer (2026-08-27, project owner's own redesign) ----
+        // A multi-turn campaign with an objective, coordinated across several assets, that persists
+        // and drives the lower layers until it completes or aborts (AiOperation / AiOperationPlanner).
+        // v1 = Offensive only (DefensiveConsolidation is a v2 stub — the DEF axis + existing
+        // DefendCitadel/preempt already cover defence). An Offensive operation adopts the player's
+        // raid task, pins it to a strategic objective (a known enemy building, else a known enemy
+        // army's hex), shields it from AiAggressionPlanner's own retarget/stall watchdogs, and
+        // marches it in with an advance directive + air support until the objective falls or the
+        // deadline runs out.
+        public const int maxConcurrentOperations = 1;
+        // An Offensive operation only forms while the strategic posture is Pressure/AllIn AND the
+        // Aggression axis is at least this high — it's a real commitment, not something to start on
+        // a whim.
+        public const float operationOffensiveMinAggression = 0.7f;
+        // Turns from creation before an Offensive operation that still hasn't reached its objective
+        // aborts (strike force marches home, task handed back to the ordinary planners). One more
+        // than raidAssembleMaxTurns(6) + a few turns of travel.
+        public const int operationDeadlineTurns = 12;
+        // Flat score bump every candidate carrying an operation-owned task gets in Decide, on top
+        // of the strategic tilt — keeps the operation's own work reliably ahead of unrelated
+        // routine candidates without swamping a genuine emergency.
+        public const float operationDirectiveBoost = 16f;
+        // The Offensive operation's own "march the strike force to the objective" directive score
+        // (an AiDecision.Move built from the shared path primitive) — above a raid's ordinary
+        // travel continuation so the advance stays decisive, at the raidCounterAttackBonus tier.
+        public const float operationAdvanceScore = aggressionBaseWeight + 18f;
+        // Turns to hold off starting a new Offensive after the last one ended (2026-08-27 log
+        // audit — five 1-2 turn campaigns back to back off transient enemy-army sightings).
+        public const int operationCooldownTurns = 4;
+        // Start gate: the projected strike force (strongest field army + half the garrison stock)
+        // must be at least this multiple of a candidate objective's known defence for the
+        // operation to even form. Below it the AI keeps doing ordinary raids until it's stronger.
+        public const float operationFeasibilityRatio = 1.15f;
+        // Early-abort: once an active operation's projected force has stayed below
+        // objectiveDefence * operationHopelessRatio for operationHopelessTurns running (and the
+        // strike hasn't reached the objective), the campaign is abandoned rather than waiting out
+        // the full deadline.
+        public const float operationHopelessRatio = 0.6f;
+        public const int operationHopelessTurns = 3;
+        // Fraction of the turn's AP held back unallocated by AiTurnBudget — an "opportunity fund"
+        // that makes every category hit its cap a little sooner, leaving headroom for whatever
+        // still scores high on raw merit (a suddenly-available strong raid, an emergency intercept).
+        public const float strategyBudgetReserveFrac = 0.15f;
+        // Once a category has spent more AP this turn than AiTurnBudget allocated it, its further
+        // candidates take a penalty of (spent/alloc - 1) * this, capped at strategyBudgetPenaltyCap.
+        public const float strategyBudgetOverGain = 20f;
+        public const float strategyBudgetPenaltyCap = 30f;
+        // Floor on any one category's AP allocation (so a near-zero-desire category isn't
+        // infinitely penalised the instant it spends its first AP), plus a higher floor for
+        // Management specifically — housekeeping (card draw, garrison tidy) must never fully starve.
+        public const float strategyBudgetMinAllocAp = 1f;
+        public const float strategyBudgetManagementMinAllocAp = 2f;
     }
 }

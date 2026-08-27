@@ -38,13 +38,21 @@ namespace Game.Ai
             // TryReturnHomeCandidates) leaves this false — cleanup is a VisitHexTask.FindTarget-only
             // concept.
             public readonly bool IsCleanup;
+            // VisitHexTask.FindTarget-only (2026-08-27) — true when the only frontier candidate left
+            // anywhere is outside visitFrontierLocalRadius of this scout ("distant frontier
+            // fallback"). Real exploration, but on a mostly-explored map these picks routinely go
+            // stale before the scout arrives, so AiScoutPlanner scores the step down to the
+            // visitDistantFallbackScore tier instead of a full frontier move. Left false by every
+            // other ScoutTarget source.
+            public readonly bool IsDistantFallback;
 
-            public ScoutTarget(HexCoord hex, float score, string reason, bool isCleanup = false)
+            public ScoutTarget(HexCoord hex, float score, string reason, bool isCleanup = false, bool isDistantFallback = false)
             {
                 Hex = hex;
                 Score = score;
                 Reason = reason;
                 IsCleanup = isCleanup;
+                IsDistantFallback = isDistantFallback;
             }
         }
 
@@ -111,7 +119,10 @@ namespace Game.Ai
         // isFlee: true to skip the taper entirely for that candidate.
         private static float ReconMoveWeight(AiTurnContext ctx, bool isFlee = false)
         {
-            if (isFlee)
+            // Flee is exempt from the taper as always; step 5 (strategyRetireLegacyCouplings)
+            // exempts EVERY candidate — the Reconnaissance axis's own decayWithTurn term now owns
+            // turn-based recon fade, no need to also subtract it here.
+            if (isFlee || AiConfig.strategyRetireLegacyCouplings)
                 return AiConfig.reconBaseWeight;
             int turnsPast = ctx.TurnNumber - AiConfig.reconPriorityDecayStartTurn;
             if (turnsPast <= 0)
@@ -128,7 +139,8 @@ namespace Game.Ai
         // scoutFleeBonus's own comment: a scout fleeing a real threat must reliably land at
         // reconBaseWeight+scoutFleeBonus=125, not have a committed raid eat into that.
         private static float AggressionSuppressionPenalty(PlayerSetupData player) =>
-            AiTaskRegistry.CountActive(player, AiTaskKind.RaidWeakerArmy) > 0
+            !AiConfig.strategyRetireLegacyCouplings
+            && AiTaskRegistry.CountActive(player, AiTaskKind.RaidWeakerArmy) > 0
                 ? AiConfig.reconAggressionSuppressionPenalty
                 : 0f;
 
@@ -222,7 +234,9 @@ namespace Game.Ai
                 ? ReconMoveWeight(ctx, isFlee: true)
                 : target.Value.IsCleanup
                     ? AiConfig.visitCleanupScore
-                    : ReconMoveWeight(ctx);
+                    : target.Value.IsDistantFallback
+                        ? AiConfig.visitDistantFallbackScore
+                        : ReconMoveWeight(ctx);
             float score = baseWeight
                 - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                 + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);
@@ -283,7 +297,9 @@ namespace Game.Ai
                     ? ReconMoveWeight(ctx, isFlee: true)
                     : target.Value.IsCleanup
                         ? AiConfig.visitCleanupScore
-                        : ReconMoveWeight(ctx);
+                        : target.Value.IsDistantFallback
+                            ? AiConfig.visitDistantFallbackScore
+                            : ReconMoveWeight(ctx);
                 float score = baseWeight
                     - (fleeTarget.HasValue ? 0f : AggressionSuppressionPenalty(player))
                     + (fleeTarget.HasValue ? fleeTarget.Value.Score : 0f);

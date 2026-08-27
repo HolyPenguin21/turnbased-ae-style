@@ -333,6 +333,19 @@ namespace Game.Ai
         // neutral). FindReadyIdleArmy deliberately still allows a lone strong-enough army to raid
         // without a hero — this only stops that army from getting DUPLICATED onto an already-
         // claimed target, not from existing at all.
+        // A hex with more than AiConfig.raidTargetMaxDefenders known defenders is an army-vs-army
+        // fight for the main force, not a raid (2026-08-27, project owner's own log audit — a
+        // garrison-seeded raid kept committing its sole slot to 5-unit neutral camps it could never
+        // realistically clear, feeding an assembly that never launched). Exempt the moment `army`
+        // already clears IsReady against it — if we can take it now, defender count is moot.
+        private static bool TooBigForARaid(ArmyData army, ThreatStrength required)
+        {
+            int defenderCount = required.Defenders?.Count ?? 0;
+            if (defenderCount <= AiConfig.raidTargetMaxDefenders)
+                return false;
+            return !IsReady(army, required, AiConfig.raidMinimumWinChance);
+        }
+
         public static RaidTarget? FindTarget(PlayerSetupData actor, ArmyData army, HexMap map, IReadOnlyCollection<HexCoord> excludeHexes = null)
         {
             if (actor == null || army == null || map == null)
@@ -355,6 +368,8 @@ namespace Game.Ai
                 if (excludeHexes != null && excludeHexes.Contains(candidate))
                     continue;
                 ThreatStrength required = RequiredStrengthAt(actor, candidate, map);
+                if (TooBigForARaid(army, required))
+                    continue;
                 float score = ProximityScore(army, candidate, citadelHex, required);
                 if (best == null || score > best.Value.Score)
                     best = new RaidTarget(candidate, required,
@@ -373,6 +388,8 @@ namespace Game.Ai
                     continue;
 
                 ThreatStrength required = RequiredStrengthAt(actor, building.Hex, map);
+                if (TooBigForARaid(army, required))
+                    continue;
                 // No dedicated bonus any more (raidBuildingUndefendedBonus/GuardedWeakerBonus
                 // removed 2026-08-19, project owner's own call) — scored on ProximityScore alone,
                 // same as any neutral/event target; raidCounterAttackBonus already covers "attack a
@@ -402,8 +419,12 @@ namespace Game.Ai
         {
             if (actor == null)
                 return false;
-            if (AiMapMemory.AllKnownNeutralSightings(actor).Any())
-                return true;
+            // Camps past raidTargetMaxDefenders don't count here either (2026-08-27) — FindTarget
+            // skips them (TooBigForARaid), so a won-out raid army that "sees" only those would
+            // otherwise never be told to walk home (its sole reader, TryRaidReturnHomeCandidates).
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(actor))
+                if ((sighting.Defenders?.Count ?? 0) <= AiConfig.raidTargetMaxDefenders)
+                    return true;
             if (AiMapMemory.KnownEventGuardHexes(actor).Any())
                 return true;
             // Memory-based (2026-08-24 fix, section 3.2) — same AllKnownBuildings source

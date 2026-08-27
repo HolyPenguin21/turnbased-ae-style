@@ -516,9 +516,14 @@ namespace Game.Ai
                 // the trip itself hasn't started costing anything. Excludes every OTHER active
                 // task's hex but not this task's own, so FindTarget can freely re-pick the same hex
                 // right back (the common case — nothing changed) without being forced off it.
+                // An operation-owned raid (2026-08-27 operations layer) never re-shops its target
+                // here — AiOperationPlanner pins it to the operation's strategic objective and owns
+                // the decision to change or abandon it.
                 var otherTargets = new HashSet<HexCoord>(activeTargets);
                 otherTargets.Remove(task.TargetHex);
-                RaidWeakerArmyTask.RaidTarget? retarget = RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargets);
+                RaidWeakerArmyTask.RaidTarget? retarget = task.OperationId >= 0
+                    ? (RaidWeakerArmyTask.RaidTarget?)null
+                    : RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargets);
                 if (retarget.HasValue && !retarget.Value.Hex.Equals(task.TargetHex))
                 {
                     // Retarget hysteresis (2026-08-24, project owner's own report — see AiConfig.
@@ -563,8 +568,20 @@ namespace Game.Ai
                 // whether there's anyone left to add — a null result naturally stops there, same as
                 // before — but now feeds a real stall watchdog too (see below) instead of letting a
                 // genuinely dead assembly wait for a reinforcement that can never come.
+                // Progress-scaled assemble score (2026-08-27, project owner's own log audit — see
+                // AiConfig.raidAssembleMinBonusFactor's own comment). Below raidMinimumWinChance the
+                // raidAssembleBonus term tapers toward its floor so a far-from-ready assembly stops
+                // out-competing every routine scout/economy move step after step; a raid already at
+                // or past the bar keeps the full bonus.
+                float assembleWinChance = RaidWeakerArmyTask.WinChanceAgainst(task.Army, required);
+                float assembleBonusFactor = assembleWinChance >= AiConfig.raidMinimumWinChance
+                    ? 1f
+                    : Mathf.Clamp(assembleWinChance / AiConfig.raidMinimumWinChance,
+                        AiConfig.raidAssembleMinBonusFactor, 1f);
+                float assembleScore = AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus * assembleBonusFactor;
+
                 AiDecision heroCardDecision = TryHeroCardForRaid(player, root, hand, task.Army, task,
-                    AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus, ctx);
+                    assembleScore, ctx);
                 UnitData recruit = null;
                 ArmyData source = null;
                 bool recruitAvailable = heroCardDecision != null;
@@ -579,7 +596,7 @@ namespace Game.Ai
                 // this exact task recorded; any real difference both resets the stall clock AND
                 // earns a fresh "not enough force" log line even within the same turn, while an
                 // identical repeat is logged at most once per turn (see AiConfig.raidStallTurns).
-                float currentWinChance = RaidWeakerArmyTask.WinChanceAgainst(task.Army, required);
+                float currentWinChance = assembleWinChance; // already computed above, same (task.Army, required)
                 int memberCount = task.Army.Members.Count;
                 bool signatureChanged = task.RaidStallSinceTurn < 0
                     || memberCount != task.RaidStallMemberCount
@@ -600,19 +617,37 @@ namespace Game.Ai
                     AiDebugLog.Write(FormatNotEnoughForceLog(player, task.Army, required, AiConfig.raidMinimumWinChance));
                 }
 
-                // Dead-end watchdog — nothing has moved on any axis (no recruit ever available
-                // either) for AiConfig.raidStallTurns running. Retarget to any other known target if
-                // one exists, else cancel outright and free the army back to the idle pool, rather
-                // than leave this task "waiting for reinforcement" forever.
-                if (!recruitAvailable && ctx.TurnNumber - task.RaidStallSinceTurn >= AiConfig.raidStallTurns)
+                // Wall-clock hard cap (2026-08-27, project owner's own log audit — see AiConfig.
+                // raidAssembleMaxTurns / AiTask.RaidAssembleStartedTurn). Lazily stamped for any
+                // task that predates this field (loaded mid-game at -1) so the cap counts from now,
+                // never from turn 0.
+                if (task.RaidAssembleStartedTurn < 0)
+                    task.RaidAssembleStartedTurn = ctx.TurnNumber;
+                bool hardCapReached = ctx.TurnNumber - task.RaidAssembleStartedTurn >= AiConfig.raidAssembleMaxTurns;
+
+                // Abandon watchdog — either the dead-end case (nothing available to add for
+                // raidStallTurns running) OR the wall-clock cap (a force that keeps growing one
+                // body at a time but still can't clear an unwinnable target). Retarget to a
+                // GENUINELY DIFFERENT known target if one exists, else cancel outright and free the
+                // army back to the idle pool. The exclude set keeps this task's OWN current hex in
+                // it (2026-08-27 fix — it used to Remove() it, so FindTarget was free to hand the
+                // identical hex straight back, log "retargets from (X) to (X)", and reset the stall
+                // clock forever: the cancel branch was structurally unreachable while any target
+                // existed at all).
+                // An operation-owned raid is exempt — AiOperationPlanner's own phase machine owns
+                // its deadline and abort (2026-08-27 operations layer). It still gets the "not
+                // enough force" diagnostic line above, just not the cancel.
+                bool deadEnd = !recruitAvailable && ctx.TurnNumber - task.RaidStallSinceTurn >= AiConfig.raidStallTurns;
+                if ((deadEnd || hardCapReached) && task.OperationId < 0)
                 {
-                    var otherTargetsForStall = new HashSet<HexCoord>(activeTargets);
-                    otherTargetsForStall.Remove(task.TargetHex);
+                    var otherTargetsForStall = new HashSet<HexCoord>(activeTargets) { task.TargetHex };
                     RaidWeakerArmyTask.RaidTarget? fallbackTarget = RaidWeakerArmyTask.FindTarget(player, task.Army, ctx.Map, otherTargetsForStall);
-                    if (fallbackTarget.HasValue)
+                    string why = hardCapReached
+                        ? $"raid assembly hit the {AiConfig.raidAssembleMaxTurns}-turn cap still not ready"
+                        : $"raid assembly stalled {AiConfig.raidStallTurns}+ turns with no progress";
+                    if (fallbackTarget.HasValue && !fallbackTarget.Value.Hex.Equals(task.TargetHex))
                     {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — raid assembly stalled "
-                            + $"{AiConfig.raidStallTurns}+ turns with no progress, retargets from "
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {why}, retargets from "
                             + $"({task.TargetHex.Q},{task.TargetHex.R}) to ({fallbackTarget.Value.Hex.Q},{fallbackTarget.Value.Hex.R}).");
                         activeTargets.Remove(task.TargetHex);
                         task.TargetHex = fallbackTarget.Value.Hex;
@@ -620,12 +655,12 @@ namespace Game.Ai
                         task.RaidStallSinceTurn = ctx.TurnNumber;
                         task.RaidStallTarget = task.TargetHex;
                         task.RaidStallWinChance = RaidWeakerArmyTask.WinChanceAgainst(task.Army, fallbackTarget.Value.Threat);
+                        task.RaidAssembleStartedTurn = ctx.TurnNumber; // fresh wall-clock for the new target
                     }
                     else
                     {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — raid assembly stalled "
-                            + $"{AiConfig.raidStallTurns}+ turns with no progress and no other known target, cancels "
-                            + "the raid (army returns to the idle pool).");
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {why} and no other known "
+                            + "target, cancels the raid (army returns to the idle pool).");
                         AiTaskRegistry.Remove(player, task);
                     }
                     continue;
@@ -638,8 +673,7 @@ namespace Game.Ai
                 }
                 if (!recruitAvailable)
                     continue; // nothing to recruit (or full) this step — waits for a recall/next card
-                results.Add(AiDecision.AssembleRaidForce(source, recruit, task.Army, task,
-                    AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus));
+                results.Add(AiDecision.AssembleRaidForce(source, recruit, task.Army, task, assembleScore));
             }
 
             // Оборона цитадели moved out entirely 2026-08-20 — see AiDefencePlanner.
@@ -708,7 +742,7 @@ namespace Game.Ai
                 return results;
             }
 
-            var newTask = new AiTask { Kind = AiTaskKind.RaidWeakerArmy, Army = forming, TargetHex = target.Value.Hex, StillAssembling = true };
+            var newTask = new AiTask { Kind = AiTaskKind.RaidWeakerArmy, Army = forming, TargetHex = target.Value.Hex, StillAssembling = true, RaidAssembleStartedTurn = ctx.TurnNumber };
 
             AiDecision newTaskHeroCardDecision = TryHeroCardForRaid(player, root, hand, forming, newTask,
                 AiConfig.aggressionBaseWeight + AiConfig.raidAssembleBonus, ctx);
@@ -1506,7 +1540,10 @@ namespace Game.Ai
 
             foreach (AiTask task in AiTaskRegistry.TasksFor(player))
             {
+                // An operation-owned raid is off-limits to BuildBase preemption (2026-08-27
+                // operations layer) — the operation is the point of this turn's aggression.
                 if (task.Kind != AiTaskKind.RaidWeakerArmy || task.Retreating || !task.StillAssembling || task.Army == null
+                    || task.OperationId >= 0
                     || !AiArmyRoles.IsHeroLed(task.Army) || !BattleInitiator.IsCombatCapable(task.Army))
                     continue;
                 float strength = WorthIt.AttackSum(task.Army) + WorthIt.DefenseSum(task.Army);

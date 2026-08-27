@@ -233,7 +233,8 @@ namespace Game.Ai
             if (isDistantFallback)
             {
                 best = new AiScoutPlanner.ScoutTarget(best.Value.Hex, best.Value.Score,
-                    best.Value.Reason + " — distant frontier fallback, nothing unexplored closer", best.Value.IsCleanup);
+                    best.Value.Reason + " — distant frontier fallback, nothing unexplored closer",
+                    best.Value.IsCleanup, isDistantFallback: true);
             }
 
             // The scan above never checks real move cost, so a nearby-yet-expensive pick (rough

@@ -271,13 +271,29 @@ namespace Game.Ai
             // MaxStepsPerTurn budget re-proposing the exact same failing move.
             var stuckScouts = new HashSet<ArmyData>();
             var pool = new AiResourcePool(player, root, hand);
+
+            // Strategic layer (2026-08-27) — one per-turn assessment of what this player wants to
+            // be doing (AiStrategyDirector), then an AP/resource split by those desires
+            // (AiTurnBudget). Both live exactly as long as `pool` does: computed once here, threaded
+            // through every Decide call this turn, and `budget` accumulates spend across steps.
+            // Decide tilts each candidate's score by its category's axis + how far that category is
+            // over budget (AiStrategyLayer.Adjust). A no-op at AiConfig.strategyAxisGain = 0.
+            AiStrategyAssessment strategy = AiStrategyDirector.Evaluate(player, root, hand, ctx);
+            var budget = new AiTurnBudget(root.ActionPoints, strategy);
+            AiDebugLog.Write($"[AI] {player.Nickname}: {budget.DebugLine()}");
+
+            // Operations layer (2026-08-27) — advance/retire active multi-turn campaigns and start
+            // a new Offensive when the strategic posture calls for it, BEFORE the step loop so the
+            // raid task it adopts is already pinned to its objective for this turn's Decide calls.
+            AiOperationPlanner.AssessAll(player, root, ctx, strategy);
+
             // Per-Kind tally for the turn-end summary below — Pass excluded (it only ever ends the
             // turn, never itself represents work done).
             var actionCounts = new Dictionary<AiActionKind, int>();
 
             for (int step = 0; step < AiConfig.maxStepsPerTurn; step++)
             {
-                AiDecision decision = Decide(player, root, hand, ctx, stuckScouts, pool);
+                AiDecision decision = Decide(player, root, hand, ctx, stuckScouts, pool, strategy, budget);
                 AiDebugLog.Write($"[AI] {player.Nickname}: step {step + 1}/{AiConfig.maxStepsPerTurn} — decided {decision.Kind} "
                     + $"(score {Fmt(decision.Score)}{CategoryTag(decision.Category)}) — {decision.Reason}.");
                 if (decision.Kind == AiActionKind.Pass)
@@ -296,7 +312,13 @@ namespace Game.Ai
                 }
 
                 HexCoord? beforeHex = decision.Kind == AiActionKind.MoveArmy ? decision.ExistingArmy.Hex : (HexCoord?)null;
+                int apBeforeDecision = root.ActionPoints;
                 yield return PerformDecision(player, decision, ctx);
+                // Attribute this step's actual AP spend to its category so AiTurnBudget can throttle
+                // a category that's blowing its share (see AiStrategyLayer.Adjust). AP-free steps
+                // (AssembleRaidForce, DrawCard, ...) record nothing.
+                if (decision.Category.HasValue)
+                    budget.RecordSpend(decision.Category.Value, apBeforeDecision - root.ActionPoints);
                 if (beforeHex.HasValue && decision.ExistingArmy.Hex.Equals(beforeHex.Value))
                     stuckScouts.Add(decision.ExistingArmy);
 
@@ -389,7 +411,7 @@ namespace Game.Ai
         // Only the winning candidate is committed (see Commit) — every other candidate built this
         // step (unregistered AiTask objects, PreemptedTask references) is simply discarded.
         private static AiDecision Decide(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            HashSet<ArmyData> stuckScouts, AiResourcePool pool)
+            HashSet<ArmyData> stuckScouts, AiResourcePool pool, AiStrategyAssessment strategy, AiTurnBudget budget)
         {
             // Claim every army already committed to a persistent task up front — keeps
             // AvailableArmies() (and thus every "start a NEW task" tier below) from re-offering
@@ -500,6 +522,7 @@ namespace Game.Ai
             candidates.AddRange(AiAggressionPlanner.TryRaidReturnHomeCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryRaidRegroupCandidates(player, root, ctx, pool, stuckScouts));
             candidates.AddRange(AiAggressionPlanner.TryStartBuildBaseCandidates(player, root, ctx, hand, pool));
+            candidates.AddRange(AiOperationPlanner.EmitDirectives(player, root, ctx));
             candidates.AddRange(AiDefencePlanner.TryStartSecureBaseCandidates(player, root, ctx));
             candidates.AddRange(AiDefencePlanner.TryStartDefenceCandidates(player, root, ctx, pool));
             candidates.AddRange(AiDefencePlanner.TryDefencePreemptCandidates(player, root, ctx));
@@ -520,6 +543,23 @@ namespace Game.Ai
             candidates.AddRange(AiManagementPlanner.TryStartRepairCandidates(player, root, hand));
             candidates.AddRange(AiManagementPlanner.TryPlayCardCandidates(player, root, hand, ctx));
             candidates.AddRange(AiManagementPlanner.GatherFallbackCandidates(player, root, hand, ctx));
+
+            // Strategic tilt (2026-08-27) — nudge every categorized candidate by its desire axis
+            // and its category's over-budget penalty BEFORE the dump log and the arbiter, so both
+            // see the same adjusted numbers. Additive and bounded (see AiStrategyLayer.Adjust) —
+            // never a hard gate, a genuinely urgent candidate still wins. Pass (Category null) is
+            // untouched.
+            if (AiConfig.strategyLayerEnabled)
+                foreach (AiDecision candidate in candidates)
+                    if (candidate.Category.HasValue)
+                        candidate.Score = AiStrategyLayer.Adjust(candidate.Score, candidate.Category.Value, strategy, budget);
+
+            // Operations boost (2026-08-27) — a candidate advancing an operation-owned task rides a
+            // flat bump on top of the strategic tilt so the campaign's own work stays reliably
+            // ahead of unrelated routine candidates.
+            foreach (AiDecision candidate in candidates)
+                if (AiOperationPlanner.IsOperationTask(candidate.Task))
+                    candidate.Score += AiConfig.operationDirectiveBoost;
 
             AiDebugLog.Write($"[AI] {player.Nickname}: {candidates.Count} candidate(s) — {DescribeCandidates(candidates)}");
 

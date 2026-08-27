@@ -384,6 +384,26 @@ namespace Game.Ai
         public float RaidStallWinChance = -1f;
         public int RaidLastLoggedTurn = -1;
 
+        // RaidWeakerArmy only (2026-08-27, project owner's own log audit) — which
+        // AiTurnContext.TurnNumber this raid task was first created on, stamped once at creation and
+        // never moved. Unlike RaidStallSinceTurn (which resets on every recruit/retarget and so
+        // only ever catches a raid with NOTHING available to add), this is a flat wall-clock: once
+        // ctx.TurnNumber - RaidAssembleStartedTurn reaches AiConfig.raidAssembleMaxTurns and the
+        // force still isn't IsReady, TryRaidAssembleCandidates abandons the target regardless of
+        // whether one more recruit happens to be available — the "grows one body a turn forever
+        // against an unwinnable camp" case the recruit-gated watchdog structurally can't see.
+        public int RaidAssembleStartedTurn = -1;
+
+        // Set (>= 0) when an AiOperation has adopted this task as one of its assets (2026-08-27
+        // operations layer). The operation owns the task's TARGET and LIFECYCLE while this is set —
+        // AiAggressionPlanner's own retarget-shop and stall/deadline watchdogs skip an
+        // operation-owned raid task entirely (AiOperationPlanner re-points and abandons it instead,
+        // per the operation's phase machine), and AiTurnController.Decide boosts every candidate
+        // carrying an operation-owned task by AiConfig.operationDirectiveBoost. Cleared back to -1
+        // the moment the operation completes or aborts, handing the task back to the ordinary
+        // planners on the usual footing.
+        public int OperationId = -1;
+
         // BuildBase only (Feature 2, 2026-08-24, project owner's own report — "captured/built bases
         // sitting undefended and getting flagged 'unguarded'"): true from the moment the building
         // itself finishes constructing (BuildBaseRoutine) until either a garrison-seed transfer

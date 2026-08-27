@@ -133,6 +133,8 @@ namespace Game.Setup
             AiMapMemory.Clear();
             AiMapMemory.EnsureSubscribed();
             AiTaskRegistry.Clear();
+            AiOperationRegistry.Clear();
+            AiStrategyRegistry.Clear();
             AiResourceReservation.Clear();
             AiManagementPlanner.Clear();
             AssignStartingHexes(GameSession.Players);
