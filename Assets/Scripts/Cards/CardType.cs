@@ -14,6 +14,15 @@ namespace Game.Cards
         // GameConfig.extractionFacilityCards). Granted directly by a hero during battle instead
         // (not built yet) and shown only in the battle screen's own vertical hand — see
         // Game.UI.BattleHandUI.
-        Tactic
+        Tactic,
+        // The manual's "Attachment" — a permanent modifier a player hangs onto one of their
+        // own Unit/Hero cards (later: Facility) via right-click → pick target, never dragged
+        // onto the map (this project has drag-and-drop for playing units, so the manual's
+        // drag-attach gesture would collide — see the project owner's own call). Carries an
+        // EquipmentGrant (see CardDefinition.equipment) that adds/overwrites the host's
+        // abilities and stats. Intended to reach the hand as a challenge/event reward, not a
+        // normal deck draw (temporarily allowed in a StartingDeck for testing). Stats block
+        // above is meaningless for it, same as for Facility/Tactic.
+        Equipment
     }
 }

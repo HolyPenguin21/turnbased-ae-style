@@ -132,5 +132,13 @@ namespace Game.Cards
         // future card design that grants a flat resource on its own.
         [Header("Resource Yield (CardType.Base only, not yet wired to gameplay)")]
         public ResourceYields resourceYield = new ResourceYields();
+
+        // Only meaningful for CardType.Equipment — the modifier this card applies to whatever
+        // it's hung on (see Game.Cards.EquipmentGrant / EquipmentSystem). Every Stats/Cost
+        // field above still applies the normal way: apCost/resourceCost is what attaching it
+        // costs, everything else (attack/defenseRating/moveMax/...) is ignored for Equipment,
+        // same as it already is for Facility/Tactic.
+        [Header("Equipment (CardType.Equipment only)")]
+        public EquipmentGrant equipment = new EquipmentGrant();
     }
 }
