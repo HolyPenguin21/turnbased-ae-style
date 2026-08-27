@@ -140,6 +140,9 @@ namespace Game.UI
 
                 ArmyRegistry.MoveArmy(army, destination);
                 hexSelectionController?.RestackArmiesOn(battleHex, null);
+                // Same arrival stealth check an ordinary strategic move runs (see
+                // HexSelectionController.Movement.cs / Game.Map.StealthSystem).
+                Game.Map.StealthSystem.RunChecksForArrival(army, destination);
 
                 // Per the user's own spec: an undefended enemy extraction facility on the
                 // destination hex doesn't survive the retreating army walking onto it, same rule

@@ -187,6 +187,10 @@ namespace Game.Map
             // the whole hex — positions the new marker correctly (and re-centres any armies
             // already sharing the hex, now that it has a building).
             RestackArmiesOn(hex, null);
+
+            // Stealth trigger B (see Game.Map.StealthSystem): a newly founded building is a
+            // fresh vision source — check enemy hidden units on hexes `owner` now sees.
+            StealthSystem.RunChecksForNewVisionSource(owner);
             return building;
         }
 
@@ -324,6 +328,10 @@ namespace Game.Map
 
             if (_selectedHex.HasValue && _selectedHex.Value.Equals(hex))
                 SelectHex(hex, preserveSelection: true);
+
+            // Stealth trigger B (see Game.Map.StealthSystem) — covers a facility card that
+            // itself carries an r1sX vision tag.
+            StealthSystem.RunChecksForNewVisionSource(owner);
             return true;
         }
     }

@@ -516,6 +516,13 @@ namespace Game.Map
                     HexCoord actualHex = movingArmy.CurrentHex;
                     ArmyRegistry.MoveArmy(army, actualHex);
 
+                    // Stealth trigger A (see Game.Map.StealthSystem): both sides' vision has
+                    // just been recomputed for this final position — check this army's own
+                    // hidden members against enemy observers of the hex, and enemy hidden
+                    // units now inside this army's vision against its owner. Once per completed
+                    // move, not per animation step.
+                    StealthSystem.RunChecksForArrival(army, actualHex);
+
                     // Create the container as soon as aircraft reach their own barracks. They
                     // do not merge into it: landing is only the end-turn refuel condition.
                     if (AviationRules.IsAirArmy(army) && AviationRules.IsOwnedAirfieldAt(actualHex, army.Owner))

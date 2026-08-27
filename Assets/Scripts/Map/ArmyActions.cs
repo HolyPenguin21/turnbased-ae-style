@@ -121,6 +121,14 @@ namespace Game.Map
             // targetArmy's own marker does, and this may be its first member ever (e.g. a
             // garrison that had zero units until now), so its visibility needs refreshing.
             hexSelectionController.RestackArmiesOn(targetArmy.Hex, null);
+
+            // Stealth trigger B (see Game.Map.StealthSystem): a deploy that adds an r1sX
+            // Recce source widens this army's vision — recompute it here (AddMemberSorted
+            // alone doesn't) — then check every enemy hidden unit now inside `owner`'s
+            // vision, base/citadel hexes included.
+            if (AbilityParams.GetBestRecceRadius(spawned) > 0)
+                VisionSystem.RecomputeFor(owner);
+            StealthSystem.RunChecksForNewVisionSource(owner);
             return true;
         }
 
