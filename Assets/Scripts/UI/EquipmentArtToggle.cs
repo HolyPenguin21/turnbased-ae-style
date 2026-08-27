@@ -17,25 +17,21 @@ namespace Game.UI
     public class EquipmentArtToggle : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
     {
         [SerializeField] private Image cardArtImage;
-        // The GameObject to show only while equipment is attached — defaults to this one.
+        // The GameObject shown only while equipment is attached — leave empty to toggle this
+        // component's own GameObject. Resolved every Configure (not cached in Awake) so it
+        // works even if that GameObject starts inactive in the prefab and Awake hasn't run.
         [SerializeField] private GameObject buttonVisual;
 
         private Sprite _unitArt;
         private Sprite _equipmentArt;
-
-        private void Awake()
-        {
-            if (buttonVisual == null)
-                buttonVisual = gameObject;
-        }
 
         public void Configure(Sprite unitArt, Sprite equipmentArt)
         {
             _unitArt = unitArt;
             _equipmentArt = equipmentArt;
             Revert();
-            if (buttonVisual != null)
-                buttonVisual.SetActive(_equipmentArt != null);
+            GameObject target = buttonVisual != null ? buttonVisual : gameObject;
+            target.SetActive(_equipmentArt != null);
         }
 
         public void OnPointerDown(PointerEventData eventData)
