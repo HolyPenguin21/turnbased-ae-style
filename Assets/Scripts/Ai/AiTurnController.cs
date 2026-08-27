@@ -968,6 +968,22 @@ namespace Game.Ai
         // execute a freshly launched sortie's first real step in the same, indivisible decision
         // (2026-08-26 P1 fix — see that method's own comment), not just from PerformDecision's
         // own dispatch switch below.
+        // Would an army of `player`'s finishing its move on `hex` capture the Base / destroy
+        // the facility there for free — i.e. there's a foreign-owned building and nobody of
+        // that owner's still on the hex to defend it (the exact condition BuildingRegistry.
+        // CaptureOrDestroyIfUndefended acts on). Used to decide whether a hidden AI scout
+        // must drop stealth before this move (a hidden unit can't take anything).
+        private static bool WouldTakeOverBuildingAt(HexCoord hex, PlayerSetupData player)
+        {
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner == null || building.Owner == player)
+                return false;
+            foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
+                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, player))
+                    return false;
+            return true;
+        }
+
         internal static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
         {
             ArmyData army = decision.ExistingArmy;
@@ -1000,13 +1016,20 @@ namespace Game.Ai
             int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+            // A hidden unit can't take a hex/base/facility (stealth design §5) — so if this
+            // move ends on an enemy/neutral building nobody's left to defend, the AI must
+            // drop stealth first, whatever the task, or the scout would just walk on and
+            // capture nothing. (An undefended building only — a defended one is a fight the
+            // solo scout stays hidden and out of.)
+            bool wantsBuildingTakeover = WouldTakeOverBuildingAt(destination, player);
+
             // Safe-first stealth rule (stealth design §8): a solo reconnaissance army whose
             // sole member carries Stealth4 slips into stealth before it ever moves, provided
             // it still has 1 AP to spend and isn't already committed to a job a hidden unit
             // can't finish (raid/defence/capture — those tasks are never IsSoloRecce anyway,
-            // but the Kind check keeps it explicit). Entry is 1 AP per unit; voluntary exit
-            // later (immediately before an action stealth forbids) is free.
-            if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army)
+            // but the Kind check keeps it explicit) and this specific move isn't a building
+            // takeover. Entry is 1 AP per unit; voluntary exit later is free.
+            if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
                 && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
                 && root != null && root.CanSpendActionPoints(1))
             {
@@ -1018,17 +1041,18 @@ namespace Game.Ai
                     AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
                 }
             }
-            // The mirror: this army is being moved for a job a hidden unit can't finish
-            // (a raid/capture/patrol move ending in contact or a building takeover) — drop
-            // stealth on any hidden member now, immediately before the action, never earlier
-            // (stealth design §8). Free.
-            else if (decision.Task != null && decision.Task.Kind != AiTaskKind.VisitHex)
+            // The mirror: this army is being moved for something a hidden unit can't finish
+            // (a raid/capture/patrol move ending in contact, or an undefended building
+            // takeover on arrival) — drop stealth on any hidden member now, immediately
+            // before the action, never earlier (stealth design §8). Free.
+            else if (wantsBuildingTakeover || (decision.Task != null && decision.Task.Kind != AiTaskKind.VisitHex))
             {
                 foreach (UnitData member in army.Members.ToList())
                     if (member.IsHidden)
                     {
                         Game.Map.StealthSystem.ExitStealth(member);
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" leaves stealth before a {decision.Task.Kind} action.");
+                        string why = wantsBuildingTakeover ? "capture/destroy a building" : $"a {decision.Task.Kind} action";
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" leaves stealth before {why}.");
                     }
             }
 

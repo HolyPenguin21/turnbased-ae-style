@@ -42,7 +42,7 @@ each scenario pins exact dice / turn‑serial / terrain values.
 | 9 | Inspecting / menu‑style reads (`IsHiddenFrom`, `SpotPoolAgainst`, `TargetableMembersFor`, `FindEnemyAt`) roll no challenge |
 | 10 | `RunChecksForArrival` / `RunChecksForNewVisionSource` / `RunChecksAfterHiddenUnitAction` each roll exactly one challenge per (unit, observer) pair even with several observer sources |
 | 11 | A fully‑hidden army is not a contact target, can't initiate contact, and doesn't block the mover |
-| 12 | Mixed army: the visible member is engageable/targetable, the hidden member is off the roster |
+| 12 | Mixed army: on the map an enemy sees the visible member only; **joining a battle reveals the whole roster** (`RevealArmy`) and it fights as an ordinary army |
 | 13 | A hidden unit neither holds a base (it's captured over its head) nor captures one (a fully‑hidden mover can't) |
 | 14 | `FindAirStrikeTargetsAt` skips a hidden‑undetected unit, includes it once detected |
 | 15 | A detection lasts through the end of the observer's next own turn (`CompletedTurnsFor` serial), then lapses |

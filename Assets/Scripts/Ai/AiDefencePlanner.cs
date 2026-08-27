@@ -326,11 +326,11 @@ namespace Game.Ai
                     continue;
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(other))
                 {
-                    // The sanctioned cheat may read a VISIBLE enemy's live stats, never a
-                    // hidden-and-undetected unit's (spec §8) — an army with no member `player`
-                    // can currently see is simply not here as far as this scan is concerned.
-                    if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, player))
-                        continue;
+                    // Deliberately NOT stealth-filtered (project owner's own call) — this is
+                    // the sanctioned cheat, it reads live ArmyData including hidden units, so
+                    // "something is near my base" registers even for a hidden scout. It only
+                    // ever TRIGGERS a patrol (see PatrolThreatPresent); the patrol then has to
+                    // actually run the ordinary detection challenge to find the scout, or not.
                     if (army.IsGarrison || army.IsPrison || army.Members.Count == 0
                         || army.Members.Count > AiConfig.makeshiftScoutMinMembers)
                         continue; // only scout/raid-shaped compositions, never the enemy's whole main force
@@ -398,10 +398,10 @@ namespace Game.Ai
                 {
                     if (army.IsGarrison || army.IsPrison || army.Members.Count == 0)
                         continue;
-                    // Proximity-based urgency still only counts an enemy `player` can actually
-                    // see — a hidden-and-undetected scout builds no patrol urgency (spec §8).
-                    if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, player))
-                        continue;
+                    // NOT stealth-filtered — same sanctioned-cheat reasoning as
+                    // CheatEstimateRaiderThreat above: a hidden scout near a guarded hex still
+                    // raises patrol urgency; whether the patrol then actually finds it is the
+                    // ordinary detection challenge's job.
 
                     // Single radius for every real enemy army regardless of shape (2026-08-22,
                     // project owner's own follow-up call — removes the old scout-vs-real-army

@@ -273,12 +273,20 @@ namespace StealthSim
             ArmyRegistry.Register(mixed);
             StealthSystem.EnterStealth(hidden);
 
-            var roster = StealthSystem.TargetableMembersFor(mixed, p1).ToList();
-            bool onlyVisible = roster.Count == 1 && roster[0] == visible;
+            // On the MAP: enemy sees only the visible member; the mixed army is still a normal
+            // contact target through it.
+            var mapRoster = StealthSystem.TargetableMembersFor(mixed, p1).ToList();
+            bool mapShowsOnlyVisible = mapRoster.Count == 1 && mapRoster[0] == visible;
             bool engageable = BattleInitiator.IsEngageable(mixed, p1);
             bool foundForContact = BattleInitiator.FindEnemyAt(At(0, 0), p1) == mixed;
-            Check("12 mixed army: visible member engages, hidden member off the roster",
-                onlyVisible && engageable && foundForContact);
+
+            // Joining the battle reveals every hidden member — the full roster fights.
+            StealthSystem.RevealArmy(mixed);
+            var battleRoster = StealthSystem.TargetableMembersFor(mixed, p1).ToList();
+            bool battleShowsAll = battleRoster.Count == 2 && !hidden.IsHidden;
+
+            Check("12 mixed army: map shows visible member only; battle initiation reveals the whole roster",
+                mapShowsOnlyVisible && engageable && foundForContact && battleShowsAll);
         }
 
         private static void Scenario13_HiddenUnitCannotHoldOrTakeBuilding()

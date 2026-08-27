@@ -325,21 +325,21 @@ namespace Game.Map
                 member.MoveCurrent = 0;
 
             var participants = new List<ArmyData> { mover, enemy };
+
+            // Joining a battle is a full reveal (project owner's own call): every hidden
+            // member of BOTH armies drops stealth and fights as an ordinary unit. FindEnemyAt
+            // already refused contact against a FULLY-hidden defender, and CanInitiateContact
+            // refused a fully-hidden mover — a mixed army on either side is what reaches here,
+            // and it behaves like any other army once revealed. Done BEFORE the hero-only
+            // classification so it reads the true, full roster.
+            Game.Map.StealthSystem.RevealArmy(enemy);
+            Game.Map.StealthSystem.RevealArmy(mover);
+
             // A hero-only contact (see BattleInitiator.IsEngageable vs IsCombatCapable) has
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
             // side, nothing to click/attack — so it skips the grid entirely and goes straight to
             // a Capture Kill Challenge sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-            // Observer-aware: if the enemy's only members visible to the mover are hero(es)
-            // — its non-hero units hidden — this is a hero-only contact to them.
-            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy, mover.Owner);
-
-            // Contact through this army lifts stealth ONLY on members the mover had already
-            // personally detected (§5/§7) — an undetected hidden member of a MIXED army stays
-            // hidden and simply isn't in the battle (§6). FindEnemyAt already excluded a
-            // fully-hidden defender outright.
-            foreach (UnitData member in enemy.Members)
-                if (member.IsHidden && Game.Map.StealthSystem.IsDetectedBy(member, mover.Owner))
-                    Game.Map.StealthSystem.ExitStealth(member);
+            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy);
 
             // A human-controlled mover gets the interactive Fight/Delay choice, same as always.
             // An AI/Neutral mover fights immediately instead of ever choosing Delay — see this

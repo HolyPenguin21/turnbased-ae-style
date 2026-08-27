@@ -262,13 +262,11 @@ namespace Game.UI
             else if (targetArmy.Owner != null && targetArmy.Owner.IsHuman)
                 _localArmy = targetArmy;
 
-            // Starting the Capture/Kill Challenge is a directed action against the target hero
-            // — a hidden hero the hunter had personally detected loses stealth now (§5/§7);
-            // a hidden hero the hunter cannot see never reaches here (BattleInitiator.
-            // FindEnemyAt excluded it).
-            foreach (UnitData hero in HeroesOnly(targetArmy))
-                if (hero.IsHidden && !Game.Map.StealthSystem.IsHiddenFrom(hero, hunterArmy.Owner))
-                    Game.Map.StealthSystem.ExitStealth(hero);
+            // Joining the encounter is a full reveal (project owner's own call) — any hidden
+            // hero on either side drops stealth. A fully-hidden target never reaches here
+            // (BattleInitiator.FindEnemyAt excluded it); this covers a mixed hero-only army.
+            Game.Map.StealthSystem.RevealArmy(targetArmy);
+            Game.Map.StealthSystem.RevealArmy(hunterArmy);
 
             var pending = new Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)>();
             foreach (UnitData hero in HeroesOnly(targetArmy))

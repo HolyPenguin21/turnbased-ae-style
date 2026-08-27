@@ -107,6 +107,18 @@ namespace Game.Map
             Notify(unit, null);
         }
 
+        // Drop stealth on every hidden member of `army` — what the start of a battle does
+        // (project owner's own call): once a fight is actually joined, both sides' hidden
+        // units reveal and fight as an ordinary army. No-op for a member that isn't hidden.
+        public static void RevealArmy(ArmyData army)
+        {
+            if (army == null)
+                return;
+            foreach (UnitData member in new List<UnitData>(army.Members))
+                if (member.IsHidden)
+                    ExitStealth(member);
+        }
+
         // Death / removal from play / return-to-deck — drop every trace so a recycled
         // UnitData reference can never carry a stale detection.
         public static void OnUnitRemoved(UnitData unit)

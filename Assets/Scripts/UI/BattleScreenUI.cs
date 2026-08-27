@@ -281,14 +281,13 @@ namespace Game.UI
             _attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             _defender = participants != null && participants.Count > 1 ? participants[1] : null;
 
-            // The battle itself is a directed action against every defender the attacker can
-            // see — a defender the attacker had already personally detected loses stealth
-            // now (§5/§7); one still hidden from the attacker is simply left out of the roster
-            // by BattleGrid.FromArmies (§6), never revealed.
-            if (_defender != null && _attacker != null)
-                foreach (UnitData member in _defender.Members.ToList())
-                    if (member.IsHidden && !Game.Map.StealthSystem.IsHiddenFrom(member, _attacker.Owner))
-                        Game.Map.StealthSystem.ExitStealth(member);
+            // Joining a battle is a full reveal on both sides (project owner's own call) —
+            // every hidden member fights as an ordinary unit. Usually already done at the
+            // contact site (HexSelectionController.Movement.cs); repeated here as the single
+            // choke every battle-start path passes through (delayed battles, chained
+            // encounters), and idempotent for an already-visible unit.
+            Game.Map.StealthSystem.RevealArmy(_attacker);
+            Game.Map.StealthSystem.RevealArmy(_defender);
 
             _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
