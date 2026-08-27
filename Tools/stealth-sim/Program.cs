@@ -357,17 +357,30 @@ namespace StealthSim
             Reset();
             var enemy = Player("E");
             var owner = Player("O");
-            var unit = Unit("x", "Stealth4");
-            ArmyRegistry.Register(Army("x", At(0, 0), owner, unit));
+            var unit = Unit("Scout-7", "Stealth4");
+            ArmyRegistry.Register(Army("x", At(3, 2), owner, unit));
+            ArmyRegistry.Register(Army("o", At(3, 2), enemy, Unit("o", "r1s6")));
             StealthSystem.EnterStealth(unit);
-            StealthSystem.MarkDetected(unit, enemy);
+            _stubSpotSuccesses = 5; _stubHideSuccesses = 0;
+            bool rolled = StealthSystem.ResolveDetection(unit, enemy, At(3, 2));
 
             bool ownerUnaffected = !StealthSystem.IsHiddenFrom(unit, owner); // owner just sees own unit, as always
-            bool debugOff = !StealthSystem.DebugLog;                        // no player-facing log by default
+            bool ownerNoNotice = StealthSystem.TakeDetectionNotices(owner).Count == 0;
+            bool debugOff = !StealthSystem.DebugLog;
             bool noReverseLookup = typeof(StealthSystem).GetMethods(BindingFlags.Public | BindingFlags.Static)
                 .All(m => !m.Name.Contains("WhoDetected") && !m.Name.Contains("Detectors"));
-            Check("16 owner is told nothing when an enemy detects their unit",
-                ownerUnaffected && debugOff && noReverseLookup);
+
+            // The detector — and only the detector — gets a turn-start notice naming the
+            // unit and its (col,row); it drains on read (not re-announced).
+            var detectorNotices = StealthSystem.TakeDetectionNotices(enemy);
+            (int col, int row) = At(3, 2).ToOffset();
+            bool detectorNoticed = detectorNotices.Count == 1
+                && detectorNotices[0].Contains("Scout-7") && detectorNotices[0].Contains($"({col}, {row})");
+            bool drained = StealthSystem.TakeDetectionNotices(enemy).Count == 0;
+
+            Check("16 owner told nothing; detector alone gets one turn-start notice (drains on read)",
+                rolled && ownerUnaffected && ownerNoNotice && debugOff && noReverseLookup
+                && detectorNoticed && drained);
         }
 
         private static void Scenario17_DirectedActionLiftsStealth()

@@ -46,7 +46,7 @@ each scenario pins exact dice / turn‑serial / terrain values.
 | 13 | A hidden unit neither holds a base (it's captured over its head) nor captures one (a fully‑hidden mover can't) |
 | 14 | `FindAirStrikeTargetsAt` skips a hidden‑undetected unit, includes it once detected |
 | 15 | A detection lasts through the end of the observer's next own turn (`CompletedTurnsFor` serial), then lapses |
-| 16 | The owner gets no signal — still just sees their own unit, `DebugLog` off, no "who detected me" API |
+| 16 | The owner gets no signal (still just sees their own unit, no notice, no "who detected me" API); the **detector alone** gets one turn-start notice naming the unit and its `(col, row)`, drained on read |
 | 17 | A detected hidden unit is a valid concrete target; `ExitStealth` (what the directed‑action paths call) reveals it and clears its detection table |
 | 18 | `AiMapMemory` never records a hidden‑undetected enemy as a current sighting; records it once detected |
 | 19 | An AI solo scout carrying Stealth4 satisfies the pre‑move auto‑stealth gate (`IsSoloRecce` + `CanEnterStealth`) |

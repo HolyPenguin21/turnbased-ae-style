@@ -51,6 +51,15 @@ namespace Game.Map
         private static readonly Dictionary<UnitData, Dictionary<PlayerSetupData, long>> _detected
             = new Dictionary<UnitData, Dictionary<PlayerSetupData, long>>();
 
+        // Per-detector queue of "you just spotted X at H" lines, drained at the start of that
+        // detector's own next turn (see GameTurnController.OnTurnConfirmed — shown via
+        // SpawnHintPopupUI right after the aviation end-of-turn damage messages). ONLY the
+        // player who rolled the successful detection ever sees these; the hidden unit's owner
+        // is still told nothing (design §4/§16). A fresh detection of the same (unit, observer)
+        // pair is not re-announced while the previous one is still live.
+        private static readonly Dictionary<PlayerSetupData, List<string>> _detectionNotices
+            = new Dictionary<PlayerSetupData, List<string>>();
+
         // Fired whenever a unit's hidden/detected state changes so UI rosters/markers,
         // AiMapMemory and VisionSystem content notifications rebuild. StealthChangedAt carries
         // the affected hex where one is known (for a targeted content refresh).
@@ -60,6 +69,18 @@ namespace Game.Map
         public static void Clear()
         {
             _detected.Clear();
+            _detectionNotices.Clear();
+        }
+
+        // Removes and returns `observer`'s queued detection announcements (empty list if none).
+        public static List<string> TakeDetectionNotices(PlayerSetupData observer)
+        {
+            if (observer != null && _detectionNotices.TryGetValue(observer, out List<string> notices))
+            {
+                _detectionNotices.Remove(observer);
+                return notices;
+            }
+            return new List<string>();
         }
 
         // ---------------------------------------------------------------- stealth state ----
@@ -309,8 +330,22 @@ namespace Game.Map
             {
                 MarkDetected(unit, observer); // fires StealthChanged itself
                 StealthChangedAt?.Invoke(hex);
+                QueueDetectionNotice(observer, unit, hex);
             }
             return detected;
+        }
+
+        // Queues the detector-only "spotted X at H" line for `observer`'s next turn start.
+        private static void QueueDetectionNotice(PlayerSetupData observer, UnitData unit, HexCoord hex)
+        {
+            if (!_detectionNotices.TryGetValue(observer, out List<string> notices))
+            {
+                notices = new List<string>();
+                _detectionNotices[observer] = notices;
+            }
+            (int col, int row) = hex.ToOffset(); // player-facing (col, row), same as the aviation messages
+            string name = string.IsNullOrEmpty(unit.Name) ? "an enemy unit" : unit.Name;
+            notices.Add($"Hidden enemy detected: {name} at ({col}, {row}).");
         }
 
         // ------------------------------------------------------------------ trigger points ----

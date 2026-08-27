@@ -912,6 +912,10 @@ namespace Game.Turns
             }
             else
             {
+                // An AI detector never gets the SpawnHintPopupUI (that's human turn-start
+                // only, via OnTurnConfirmed) — drop its queued detection notices here so they
+                // don't accumulate forever.
+                StealthSystem.TakeDetectionNotices(player);
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(player);
                 // debugFollowAiVision's hand/resources half (see ShowAiHandDebug/ShowRootDebug's
@@ -940,12 +944,27 @@ namespace Game.Turns
                 endTurnButton.interactable = true;
             if (turnInfoPopup != null)
                 turnInfoPopup.Hide();
-            if (CurrentPlayer != null && _pendingAviationMessages.TryGetValue(CurrentPlayer, out List<string> messages))
+            if (CurrentPlayer != null)
             {
-                _pendingAviationMessages.Remove(CurrentPlayer);
-                foreach (string message in messages)
-                    _aviationMessageQueue.Enqueue(message);
-                ShowNextAviationMessage();
+                bool anyQueued = false;
+                if (_pendingAviationMessages.TryGetValue(CurrentPlayer, out List<string> messages))
+                {
+                    _pendingAviationMessages.Remove(CurrentPlayer);
+                    foreach (string message in messages)
+                        _aviationMessageQueue.Enqueue(message);
+                    anyQueued |= messages.Count > 0;
+                }
+                // Stealth-detection announcements — shown to (and only to) the player who
+                // rolled the successful detection, right AFTER the aviation damage messages
+                // and through the same one-at-a-time SpawnHintPopupUI queue. The hidden
+                // unit's owner is still told nothing (design §4/§16).
+                foreach (string notice in StealthSystem.TakeDetectionNotices(CurrentPlayer))
+                {
+                    _aviationMessageQueue.Enqueue(notice);
+                    anyQueued = true;
+                }
+                if (anyQueued)
+                    ShowNextAviationMessage();
             }
             TurnStateChanged?.Invoke();
         }
