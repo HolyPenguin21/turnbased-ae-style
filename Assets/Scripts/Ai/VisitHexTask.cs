@@ -102,6 +102,17 @@ namespace Game.Ai
             // citadel instead.
             HexCoord homeHex = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
 
+            // TryFlee runs BEFORE the scout's first move of a freshly created task, when a
+            // stealth-capable solo Recce is still visible but about to slip into stealth on that
+            // very step (AiTurnController.MoveArmyRoutine). Treating it as a plain visible scout
+            // here would retreat it before it ever gets the chance — so a scout not yet hidden
+            // but IsStealthCapableForNextMove is handled like an already-hidden one below (it has
+            // never moved, so nobody has personally detected it: entering stealth makes it fully
+            // hidden from everyone). Mirrors ScoreCandidate's own scoutStealthy gate. An already-
+            // ACTIVATED scout fails IsStealthCapableForNextMove and flees normally.
+            bool willEnterStealthFirstStep = !army.Members.Any(m => m.IsHidden)
+                && IsStealthCapableForNextMove(player, army);
+
             HexCoord? threatHex = null;
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
@@ -120,6 +131,13 @@ namespace Game.Ai
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: scout \"{army.Name}\" ignores nearby enemy at "
                         + $"({sighting.Hex.Q}, {sighting.Hex.R}) — remains hidden from {sighting.Owner.Nickname}.");
+                    continue;
+                }
+
+                if (willEnterStealthFirstStep)
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: scout \"{army.Name}\" ignores nearby enemy at "
+                        + $"({sighting.Hex.Q}, {sighting.Hex.R}) — enters stealth before its first step.");
                     continue;
                 }
 
