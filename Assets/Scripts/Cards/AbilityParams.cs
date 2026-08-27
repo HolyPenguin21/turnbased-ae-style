@@ -163,5 +163,18 @@ namespace Game.Cards
                     return true;
             return false;
         }
+
+        // Same, for a StealthN tag — lets AiScoutPlanner.FindMatchingRecceCard prefer a Recce
+        // card whose unit can also slip into stealth (safe-first scouting) before the card is
+        // ever spawned into a UnitData, mirroring AbilitiesHaveAnyRecce above.
+        public static bool AbilitiesHaveAnyStealth(System.Collections.Generic.IEnumerable<string> abilities)
+        {
+            if (abilities == null)
+                return false;
+            foreach (string ability in abilities)
+                if (TryGetStealthLevel(ability, out _))
+                    return true;
+            return false;
+        }
     }
 }

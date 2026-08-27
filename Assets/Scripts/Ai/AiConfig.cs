@@ -819,6 +819,16 @@ namespace Game.Ai
         // trigger ANOTHER flee if re-entered, no wider.
         public const int scoutDangerRadius = scoutFleeRadius;
 
+        // Стелс · Задача 3 — риск обнаружения. A scout that is CURRENTLY IN STEALTH is not
+        // refused a target hex within scoutFleeRadius of a known non-neutral army the way an
+        // ordinary visible scout is (that hard exclusion still applies to a visible one, and
+        // TryFlee still reacts once it has actually arrived). Instead each such nearby sighting
+        // subtracts this from the candidate's internal score — soft enough that an equally good
+        // safer frontier hex wins, but the scout may still slip in close when every alternative
+        // is clearly worse. ~1.2 fresh-neighbours' worth (freshNeighborWeight = 4), well under
+        // one hex of scoutProximityWeight (5), so proximity still dominates.
+        public const float scoutStealthRiskPenalty = 6f;
+
         // ---- Экономика — Задача 1 (Постройка facility) ----
         // "1 постройка за раз" — the project owner's own 2026-08-19 call: several concurrent builds
         // were each reserving a different resource type, between them locking card play out of all

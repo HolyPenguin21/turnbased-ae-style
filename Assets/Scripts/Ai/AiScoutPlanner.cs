@@ -488,10 +488,21 @@ namespace Game.Ai
         // only THEN checking it against the failed set, which used to stop the whole search dead the
         // moment that first match happened to be a card that already failed this turn, even when
         // hand held another perfectly good Recce card behind it.
-        private static CardData FindMatchingRecceCard(AiHandData hand, bool wantHero, AiTurnContext ctx) =>
-            hand?.Hand.FirstOrDefault(c => AiManagementPlanner.IsRecceCard(c) && !AiManagementPlanner.IsAviationCard(c)
+        private static CardData FindMatchingRecceCard(AiHandData hand, bool wantHero, AiTurnContext ctx)
+        {
+            if (hand?.Hand == null)
+                return null;
+            bool Matches(CardData c) => AiManagementPlanner.IsRecceCard(c) && !AiManagementPlanner.IsAviationCard(c)
                 && c.Definition.cardType == (wantHero ? CardType.Hero : CardType.Unit)
-                && !ctx.FailedPlayCardsThisTurn.Contains(c));
+                && !ctx.FailedPlayCardsThisTurn.Contains(c);
+            // Prefer a Recce card whose unit can ALSO enter stealth (safe-first scouting — stealth
+            // design §8; a hidden solo scout is challenged far less often than a visible one), but
+            // never block an ordinary Recce card when no stealth-capable one is in hand — a visible
+            // scout still beats no scout at all.
+            return hand.Hand.FirstOrDefault(c => Matches(c)
+                       && AbilityParams.AbilitiesHaveAnyStealth(c.Definition.grantedAbilities))
+                   ?? hand.Hand.FirstOrDefault(Matches);
+        }
 
         // ---- Execution ----
 

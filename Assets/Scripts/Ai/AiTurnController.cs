@@ -1031,14 +1031,26 @@ namespace Game.Ai
             // takeover. Entry is 1 AP per unit; voluntary exit later is free.
             if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
                 && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
-                && root != null && root.CanSpendActionPoints(1))
+                && root != null)
             {
                 UnitData scout = army.Members[0];
                 if (Game.Map.StealthSystem.CanEnterStealth(scout))
                 {
-                    root.SpendActionPoints(1);
-                    Game.Map.StealthSystem.EnterStealth(scout);
-                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
+                    // Stealth entry costs 1 AP ON TOP of this move's own ActivationApCost (the army
+                    // hasn't activated yet — see the guard above). Only slip into stealth if the
+                    // turn can still afford BOTH; if it can afford the scouting move but not
+                    // move + stealth, the scout still goes out, just visible (stealth design §8 —
+                    // never skip the discovery move itself just to stay hidden).
+                    if (root.CanSpendActionPoints(army.ActivationApCost + 1))
+                    {
+                        root.SpendActionPoints(1);
+                        Game.Map.StealthSystem.EnterStealth(scout);
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
+                    }
+                    else
+                    {
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" skips stealth — insufficient AP for activation + stealth.");
+                    }
                 }
             }
             // The mirror: this army is being moved for something a hidden unit can't finish

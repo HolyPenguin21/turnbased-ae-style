@@ -87,7 +87,23 @@ namespace Game.Ai
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue; // neutrals never trigger flight — see this class's own comment
 
+                // Стелс · Задача 1 — a scout still FULLY HIDDEN from this sighting's owner (and
+                // not personally detected by them) is under no threat from that army, so it keeps
+                // scouting past it. StealthSystem.ArmyFullyHiddenFrom already folds in
+                // IsDetectedBy via IsHiddenFrom, so this one call covers both "in stealth" and
+                // "not spotted by this player". Keep scanning the rest: one nearby army whose
+                // owner CAN see the scout — an ordinary visible scout, or one already detected —
+                // is still enough to make it retreat.
+                if (sighting.Owner != null && Game.Map.StealthSystem.ArmyFullyHiddenFrom(army, sighting.Owner))
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: scout \"{army.Name}\" ignores nearby enemy at "
+                        + $"({sighting.Hex.Q}, {sighting.Hex.R}) — remains hidden from {sighting.Owner.Nickname}.");
+                    continue;
+                }
+
                 threatHex = sighting.Hex;
+                AiDebugLog.Write($"[AI] {player.Nickname}: scout \"{army.Name}\" retreats — detected/visible to "
+                    + $"{(sighting.Owner != null ? sighting.Owner.Nickname : "an enemy")} at ({sighting.Hex.Q}, {sighting.Hex.R}).");
                 break;
             }
             if (!threatHex.HasValue)
@@ -262,12 +278,25 @@ namespace Game.Ai
             // just have TryFlee retreat it again next turn, burning AP getting there for nothing
             // — see the user's own report of a scout walking up to a hex next to an enemy
             // citadel it already knew about, only to immediately retreat.
+            //
+            // Стелс · Задача 3 — that hard exclusion holds only for an ORDINARY (visible) scout.
+            // A scout CURRENTLY IN STEALTH is instead softly penalised per nearby sighting
+            // (scoutStealthRiskPenalty): it can still slip in close when every safer frontier hex
+            // scores clearly worse, but an equal one elsewhere wins. Detection status is
+            // deliberately NOT consulted here — unlike TryFlee (which reacts after the fact), the
+            // scout's owner has no honest way to know whether a planned move will get it spotted;
+            // "is the scout hidden at all" is the only gate. Risk is read only from honest
+            // AiMapMemory, never live stealth-side vision.
+            bool scoutHidden = army.Members.Any(m => m.IsHidden);
+            float stealthRiskPenalty = 0f;
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(actor, new[] { candidate }, AiConfig.scoutFleeRadius))
             {
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue;
-                return null;
+                if (!scoutHidden)
+                    return null;
+                stealthRiskPenalty += AiConfig.scoutStealthRiskPenalty;
             }
 
             // A cooled-down scout-danger zone (see AiMapMemory.ScoutDangerZones' own comment)
@@ -299,8 +328,14 @@ namespace Game.Ai
             if (citadelHex.HasValue)
                 score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.visitTargetCitadelWeight;
 
-            return new AiScoutPlanner.ScoutTarget(candidate, score,
-                $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)", isCleanup);
+            // Стелс · Задача 3 — soft detection-risk penalty for a hidden scout (see the
+            // scoutHidden loop above); zero for a visible one (it was excluded outright there).
+            score -= stealthRiskPenalty;
+
+            string reason = $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)";
+            if (stealthRiskPenalty > 0f)
+                reason += $" — near a known enemy army, -{stealthRiskPenalty:0} stealth-risk";
+            return new AiScoutPlanner.ScoutTarget(candidate, score, reason, isCleanup);
         }
 
         // This composition never fights (see this class's own "Поведение" comment), so it must
