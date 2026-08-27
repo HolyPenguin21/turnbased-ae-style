@@ -152,7 +152,7 @@ namespace Game.UI
                 // while the building it's about to destroy still counts as "hasBuilding", leaving
                 // it stranded beside a marker that's gone a moment later (see HexSelectionController
                 // .Movement.cs's own identical ordering fix for the same bug on an ordinary move).
-                BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner, hexSelectionController);
+                BuildingRegistry.CaptureOrDestroyIfUndefended(destination, army.Owner, hexSelectionController, army);
                 hexSelectionController?.RestackArmiesOn(destination, null);
 
                 // Per the user's own spec: landing on a hex held by an engageable hostile army
@@ -223,8 +223,11 @@ namespace Game.UI
             if (!survivingArmy.Hex.Equals(battleHex) || !BattleInitiator.IsEngageable(survivingArmy))
                 return; // didn't actually end up holding the hex (retreated/destroyed too)
 
+            // A resident every member of which is hidden from the winner doesn't hold the
+            // base (see Game.Map.StealthSystem).
             bool otherDefenderRemains = ArmyRegistry.AllAt(battleHex)
-                .Any(resident => resident.Owner == previousOwner && BattleInitiator.IsEngageable(resident));
+                .Any(resident => resident.Owner == previousOwner
+                    && BattleInitiator.IsEngageable(resident, survivingArmy.Owner));
             if (otherDefenderRemains)
                 return; // a second defender (e.g. an intact garrison the retreating army wasn't) still holds it
 

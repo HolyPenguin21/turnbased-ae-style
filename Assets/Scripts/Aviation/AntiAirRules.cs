@@ -81,6 +81,11 @@ namespace Game.Aviation
                             continue;
                         if (!VisionSystem.IsVisible(army.Owner, enteredHex))
                             continue;
+                        // A hidden AA unit does not react until it has been revealed (§5/§7):
+                        // still in stealth at all, or hidden from the very air army it would
+                        // be shooting at.
+                        if (member.IsHidden || Game.Map.StealthSystem.IsHiddenFrom(member, airArmy.Owner))
+                            continue;
                         if (!AntiAirState.CanReact(member, airArmy.Id))
                             continue;
                         reactions.Add(new AaReaction(member, army, airArmy, distance));
@@ -105,6 +110,10 @@ namespace Game.Aviation
             foreach (UnitData member in groundArmy.Members)
             {
                 if (!TryGetRadius(member, out int radius))
+                    continue;
+                // A hidden unit takes no offensive action, an opportunity AA shot included
+                // (§5) — it must voluntarily leave stealth first.
+                if (member.IsHidden)
                     continue;
                 foreach (HexCoord airHex in ArmyRegistry.AllOccupiedHexes())
                 {

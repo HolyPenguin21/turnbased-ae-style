@@ -262,6 +262,14 @@ namespace Game.UI
             else if (targetArmy.Owner != null && targetArmy.Owner.IsHuman)
                 _localArmy = targetArmy;
 
+            // Starting the Capture/Kill Challenge is a directed action against the target hero
+            // — a hidden hero the hunter had personally detected loses stealth now (§5/§7);
+            // a hidden hero the hunter cannot see never reaches here (BattleInitiator.
+            // FindEnemyAt excluded it).
+            foreach (UnitData hero in HeroesOnly(targetArmy))
+                if (hero.IsHidden && !Game.Map.StealthSystem.IsHiddenFrom(hero, hunterArmy.Owner))
+                    Game.Map.StealthSystem.ExitStealth(hero);
+
             var pending = new Queue<(UnitData hero, ArmyData heroArmy, ArmyData hunterArmy)>();
             foreach (UnitData hero in HeroesOnly(targetArmy))
                 pending.Enqueue((hero, targetArmy, hunterArmy));
@@ -475,8 +483,12 @@ namespace Game.UI
             // wiped out, even with a second battle for it still pending (see the project owner's
             // own report: clicking Delay before that second battle already showed the base as
             // captured).
+            // A resident every member of which is hidden from the winner cannot hold the
+            // building (see Game.Map.StealthSystem) — IsEngageable(resident, winner), not a
+            // raw pass.
             bool otherDefenderRemains = ArmyRegistry.AllAt(loserArmy.Hex)
-                .Any(resident => resident != loserArmy && resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident));
+                .Any(resident => resident != loserArmy && resident.Owner == building.Owner
+                    && BattleInitiator.IsEngageable(resident, winnerArmy?.Owner));
             if (otherDefenderRemains)
                 return;
             BuildingRegistry.CaptureOrDestroy(building, winnerArmy?.Owner, hexSelectionController);

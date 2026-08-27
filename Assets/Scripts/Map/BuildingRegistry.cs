@@ -149,13 +149,21 @@ namespace Game.Map
         // included — same IsEngageable check Contact uses) changes hands/gets destroyed the
         // moment `mover` arrives, no fight to trigger since there was never anyone there to put
         // one up. No-op for a building `mover` already owns, or a hex with no building at all.
-        public static void CaptureOrDestroyIfUndefended(HexCoord hex, PlayerSetupData mover, HexSelectionController hexSelection)
+        public static void CaptureOrDestroyIfUndefended(HexCoord hex, PlayerSetupData mover, HexSelectionController hexSelection,
+            ArmyData moverArmy = null)
         {
             BuildingData building = FindAt(hex);
             if (building == null || building.Owner == null || building.Owner == mover)
                 return;
+            // Individual stealth (see Game.Map.StealthSystem): a mover every member of which
+            // is hidden from the building's owner cannot capture as an "invisible attacker";
+            // and a hidden resident cannot hold the building as an "invisible defender" — so
+            // the defender scan filters on IsEngageable(resident, mover) (real, visible
+            // defenders only), not a raw AllAt() pass.
+            if (moverArmy != null && Game.Map.StealthSystem.ArmyFullyHiddenFrom(moverArmy, building.Owner))
+                return;
             foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
-                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident))
+                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, mover))
                     return;
             CaptureOrDestroy(building, mover, hexSelection);
         }

@@ -119,12 +119,17 @@ namespace Game.Combat
         public static BattleGrid FromArmies(ArmyData attacker, ArmyData defender)
         {
             var grid = new BattleGrid();
-            PlaceArmy(grid, attacker, AttackerFrontRow, AttackerBackRow);
-            PlaceArmy(grid, defender, DefenderFrontRow, DefenderBackRow);
+            // Individual stealth (see Game.Map.StealthSystem): a hidden attacker member does
+            // not fight (§5), and a defender member still hidden from the attacker is not on
+            // the enemy's roster (§6) — a detected one was already revealed at contact time.
+            PlaceArmy(grid, attacker, AttackerFrontRow, AttackerBackRow, m => !m.IsHidden);
+            PlaceArmy(grid, defender, DefenderFrontRow, DefenderBackRow,
+                m => !Game.Map.StealthSystem.IsHiddenFrom(m, attacker?.Owner));
             return grid;
         }
 
-        private static void PlaceArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow)
+        private static void PlaceArmy(BattleGrid grid, ArmyData army, int frontRow, int backRow,
+            System.Func<UnitData, bool> include = null)
         {
             if (army == null)
                 return;
@@ -132,6 +137,8 @@ namespace Game.Combat
             var unplaced = new List<UnitData>();
             foreach (UnitData member in army.Members)
             {
+                if (include != null && !include(member))
+                    continue;
                 if (army.SavedArrangement.TryGetValue(member, out var slot)
                     && (slot.row == frontRow || slot.row == backRow)
                     && grid.Get(slot.row, slot.col) == null)

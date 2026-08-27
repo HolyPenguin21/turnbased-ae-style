@@ -52,6 +52,34 @@ namespace Game.Combat
         public static bool IsEngageable(ArmyData army) => army != null && army.Members.Count > 0
             && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army);
 
+        // Individual stealth (see Game.Map.StealthSystem): the observer-aware forms every
+        // ground-contact/target query MUST use instead of the bare ones above. A member
+        // hidden from `observer` is not on the hex as far as they're concerned — a mixed
+        // army is engageable through its visible members only, and an army every one of
+        // whose members is hidden from `observer` is not engageable / not combat-capable
+        // to them at all (never an auto-reveal — the contact simply doesn't happen).
+        public static bool IsEngageable(ArmyData army, PlayerSetupData observer)
+            => army != null && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army)
+               && Game.Map.StealthSystem.HasAnyTargetableMember(army, observer);
+
+        public static bool IsCombatCapable(ArmyData army, PlayerSetupData observer)
+            => army != null && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army)
+               && Game.Map.StealthSystem.HasTargetableCombatMember(army, observer);
+
+        // Whether `mover` has any member that may actually START a fight — a non-hero unit
+        // that is NOT itself hidden (a hidden unit never initiates auto-contact, §5; an army
+        // every combat member of which is hidden just walks through, §10.11). Mixed armies
+        // still initiate through their visible non-hero members.
+        public static bool CanInitiateContact(ArmyData mover)
+        {
+            if (mover == null || AviationRules.IsAirArmy(mover) || AviationRules.IsAirfield(mover))
+                return false;
+            foreach (UnitData member in mover.Members)
+                if (!member.IsHero && !member.IsHidden)
+                    return true;
+            return false;
+        }
+
         // The STRONGEST enemy CONTACTABLE army at `hex`, if any — null if the hex is clear or
         // only holds friendly/empty armies. See IsEngageable for what counts. Ranked by raw
         // Defense+Attack (WorthIt.DefenseSum/AttackSum, non-hero members only, no hex bonus —
@@ -70,7 +98,9 @@ namespace Game.Combat
             float strongestPower = float.NegativeInfinity;
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
-                if (army.Owner == mover || !IsEngageable(army))
+                // IsEngageable(army, mover) — a defender every member of which is hidden from
+                // the mover is not a contact target (see this method's own stealth note).
+                if (army.Owner == mover || !IsEngageable(army, mover))
                     continue;
                 float power = WorthIt.DefenseSum(army) + WorthIt.AttackSum(army);
                 if (strongest == null || power > strongestPower)

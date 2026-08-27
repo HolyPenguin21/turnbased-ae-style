@@ -212,7 +212,9 @@ namespace Game.Map
         private static HexPath TruncateAtEnemyContact(HexPath path, ArmyData mover, out ArmyData enemyArmy)
         {
             enemyArmy = null;
-            if (!BattleInitiator.IsCombatCapable(mover))
+            // CanInitiateContact — a fully-hidden army (every combat member in stealth) walks
+            // through without stopping, same as a hero-only army (see Game.Combat.BattleInitiator).
+            if (!BattleInitiator.CanInitiateContact(mover))
                 return path;
             for (int i = 1; i < path.Hexes.Count; i++)
             {
@@ -289,7 +291,7 @@ namespace Game.Map
             if (entry == null || entry.Consumed)
                 return false;
             foreach (ArmyData other in ArmyRegistry.AllAt(hex))
-                if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other))
+                if (other.Owner != mover.Owner && BattleInitiator.IsEngageable(other, mover.Owner))
                     return false;
             return true;
         }
@@ -307,7 +309,7 @@ namespace Game.Map
         // AiTurnController.MoveArmyRoutine's own cross-file call.
         public BattleStartResult TryBeginBattleAt(HexCoord hex, ArmyData mover)
         {
-            if (!BattleInitiator.IsCombatCapable(mover))
+            if (!BattleInitiator.CanInitiateContact(mover))
                 return BattleStartResult.MoverCannotFight;
             if (DelayedBattleRegistry.IsHexPending(hex))
                 return BattleStartResult.Pending;
@@ -327,7 +329,17 @@ namespace Game.Map
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
             // side, nothing to click/attack — so it skips the grid entirely and goes straight to
             // a Capture Kill Challenge sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy);
+            // Observer-aware: if the enemy's only members visible to the mover are hero(es)
+            // — its non-hero units hidden — this is a hero-only contact to them.
+            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy, mover.Owner);
+
+            // Contact through this army lifts stealth ONLY on members the mover had already
+            // personally detected (§5/§7) — an undetected hidden member of a MIXED army stays
+            // hidden and simply isn't in the battle (§6). FindEnemyAt already excluded a
+            // fully-hidden defender outright.
+            foreach (UnitData member in enemy.Members)
+                if (member.IsHidden && Game.Map.StealthSystem.IsDetectedBy(member, mover.Owner))
+                    Game.Map.StealthSystem.ExitStealth(member);
 
             // A human-controlled mover gets the interactive Fight/Delay choice, same as always.
             // An AI/Neutral mover fights immediately instead of ever choosing Delay — see this
@@ -422,7 +434,7 @@ namespace Game.Map
             // ever resolve it and no way out — a real Capture Kill Challenge/Retreat skill this
             // army doesn't have. A hero-only army was never a real combat participant on this hex
             // to begin with, so it stays free to just walk off).
-            if (!AviationRules.IsAirArmy(army) && BattleInitiator.IsCombatCapable(army)
+            if (!AviationRules.IsAirArmy(army) && BattleInitiator.CanInitiateContact(army)
                 && BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
             {
                 NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
@@ -546,7 +558,7 @@ namespace Game.Map
                     // cs's PerformRetreat, which needs the exact same check for a retreat landing
                     // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
                     if (!AviationRules.IsAirArmy(army))
-                        BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this);
+                        BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this, army);
 
                     // movingArmy's own marker was last positioned by MoveAlong's resolveOffset
                     // call for actualHex, which ran BEFORE the destroy above — if that undefended

@@ -185,12 +185,15 @@ namespace Game.Aviation
                 if (aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0)
                     continue;
 
-                List<(UnitData unit, ArmyData army)> pool = CollectStrikeTargets(targetArmies);
+                List<(UnitData unit, ArmyData army)> pool = CollectStrikeTargets(targetArmies, airArmy.Owner);
                 if (pool.Count == 0)
                     break; // nothing left standing on this hex for the rest of the roster either
 
                 (UnitData target, ArmyData targetArmy) = pool[Random.Range(0, pool.Count)];
                 aircraft.HasAirAttackedThisTurn = true;
+                // A directed strike on a personally-detected hidden unit lifts its stealth
+                // (§7) — no effect on a non-hidden target.
+                Game.Map.StealthSystem.ExitStealth(target);
                 if (result != null)
                     result.Attacked = true;
 
@@ -220,13 +223,17 @@ namespace Game.Aviation
             }
         }
 
-        private static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies)
+        private static List<(UnitData, ArmyData)> CollectStrikeTargets(List<ArmyData> targetArmies, PlayerSetupData striker)
         {
             var pool = new List<(UnitData, ArmyData)>();
             foreach (ArmyData army in targetArmies)
                 if (army.Members.Count > 0)
                     foreach (UnitData unit in army.Members)
-                        pool.Add((unit, army));
+                        // A unit hidden from the striker is neither a target nor collateral
+                        // (see Game.Map.StealthSystem) — unless the striker has personally
+                        // detected it, in which case IsHiddenFrom is already false.
+                        if (!Game.Map.StealthSystem.IsHiddenFrom(unit, striker))
+                            pool.Add((unit, army));
             return pool;
         }
 
@@ -246,6 +253,11 @@ namespace Game.Aviation
                 if (army.Owner == owner || army.Owner == null || army.IsPrison || army.Members.Count == 0)
                     continue;
                 if (AviationRules.IsAirfield(army))
+                    continue;
+                // Individual stealth (see Game.Map.StealthSystem): an army with no member
+                // visible to the striking player is not an air-strike target at all — this
+                // also keeps the move-arrow preview from turning red over a hidden-only hex.
+                if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, owner))
                     continue;
                 result.Add(army);
             }
