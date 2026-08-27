@@ -11,10 +11,11 @@ namespace Game.Ai
 {
     // Reads an army's scouting role straight from its current composition — no stored role flag
     // anywhere on ArmyData, per the AI architecture doc's own "role isn't stored, it's read from
-    // the roster" call (see AI_ARCHITECTURE.html section 02). Stealth doesn't exist in this
-    // project yet (see the project owner's own call) — Recce (Game.Cards.UnitAbilities.Recce,
-    // already used by Game.Map.VisionSystem to widen an army's vision radius) stands in for the
-    // design doc's "Scout" composition requirement instead.
+    // the roster" call (see AI_ARCHITECTURE.html section 02). A Recce-tagged member (an r1sX
+    // ability, read via Game.Cards.AbilityParams — already used by Game.Map.VisionSystem to
+    // widen an army's vision radius) stands in for the design doc's "Scout" composition
+    // requirement. Individual Stealth (UnitData.IsHidden, see Game.Map.StealthSystem) is a
+    // separate per-unit concern and never a role signal here.
     //
     // Three army shapes AiTurnController's own PlayCard tier deliberately steers cards toward
     // (the project owner's own spec): a solo Recce party (unit or hero, see IsEmptyDeployableArmy
@@ -41,7 +42,7 @@ namespace Game.Ai
             // Aviation is never ground Разведка's composition, whatever abilities a given aircraft
             // card happens to carry (see AiTask.AirRecon's own comment — aviation reconnaissance is
             // its own separate task/pipeline entirely, never VisitHexTask's).
-            return !army.Members[0].IsAviation && army.Members[0].HasAbility(UnitAbilities.Recce);
+            return !army.Members[0].IsAviation && AbilityParams.UnitHasAnyRecce(army.Members[0]);
         }
 
         // Whether `army` has a real roster slot at all — not the garrison (nothing there is a
@@ -88,7 +89,7 @@ namespace Game.Ai
         // report).
         public static bool IsPlainReserveArmy(ArmyData army)
         {
-            if (army == null || army.IsGarrison || army.IsPrison || army.HasRecce
+            if (army == null || army.IsGarrison || army.IsPrison || AbilityParams.ArmyHasAnyRecce(army)
                 || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
             return army.Members.Count(m => m.IsHero) == 0 && army.HasRoom;
@@ -103,7 +104,7 @@ namespace Game.Ai
             if (army == null || army.IsGarrison || army.IsPrison
                 || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return false;
-            return army.Members.Count(m => m.IsHero) == 1 && !army.HasRecce;
+            return army.Members.Count(m => m.IsHero) == 1 && !AbilityParams.ArmyHasAnyRecce(army);
         }
 
         // Any hero-led army at all — bare, Recce-carrying, or already escorted, the only thing

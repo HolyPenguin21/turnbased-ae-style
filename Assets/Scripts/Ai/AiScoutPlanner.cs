@@ -91,7 +91,7 @@ namespace Game.Ai
                 // the point some of its own callers use this), so the check is explicit here.
                 if (AiTaskRegistry.TaskFor(player, source) != null)
                     continue;
-                UnitData unit = source.Members.FirstOrDefault(m => m.HasAbility(UnitAbilities.Recce) && m.IsHero == wantHero);
+                UnitData unit = source.Members.FirstOrDefault(m => AbilityParams.UnitHasAnyRecce(m) && m.IsHero == wantHero);
                 if (unit == null || (!source.IsGarrison && source.Members.Count == 1))
                     continue; // already solo — already IsSoloRecce, nothing to assemble
                 return new BuriedRecceUnit(source, unit);

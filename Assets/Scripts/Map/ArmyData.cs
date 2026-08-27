@@ -161,13 +161,8 @@ namespace Game.Map
             return ComputeCapacity(remaining, IsGarrison) >= remaining.Count;
         }
 
-        // Whether any member carries UnitAbilities.Recce — computed fresh every time, same
-        // "never cached" rule as Capacity/ActivationApCost above, so it's always correct as
-        // members come and go. The magnitude itself is a single shared UnitAbilityCatalog value
-        // now (like every other ability), not per-member, so having several Recce-tagged members
-        // doesn't stack anything — see Game.Map.VisionSystem.RecomputeFor, which reads this flag
-        // to expand this army's own vision beyond GameConfig.armyVisionRadius's flat default.
-        public bool HasRecce => Members.Exists(m => m.HasAbility(UnitAbilities.Recce));
+        // HasRecce was removed when Recce became parameterized (r1s0/r1s4/...) — read
+        // Game.Cards.AbilityParams.ArmyHasAnyRecce(army) / GetBestRecceRadius(army) instead.
 
         // Heroes always sit at the front of the roster (ArmyViewerModalUI's grid keeps them
         // there even as the player freely drags cards to reorder — see its hero-first reorder

@@ -502,7 +502,7 @@ namespace Game.Ai
                 // 2026-08-26, project owner's own DefendCitadel spec item 1 — never fold an
                 // aircraft into a ground raid/defense force just because it's sitting co-located
                 // (this shared helper is used by both AiAggressionPlanner and AiDefencePlanner).
-                UnitData unit = candidate.Members.FirstOrDefault(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce) && !m.IsAviation);
+                UnitData unit = candidate.Members.FirstOrDefault(m => !m.IsHero && !AbilityParams.UnitHasAnyRecce(m) && !m.IsAviation);
                 if (unit != null)
                 {
                     source = candidate;
@@ -562,7 +562,7 @@ namespace Game.Ai
                     // 2026-08-26, project owner's own DefendCitadel spec item 1 — this recruit pick
                     // is shared by Raid and Defence assembly alike; an aircraft never qualifies as
                     // ground recruit fodder for either.
-                    if (unit.IsHero != wantHero || unit.HasAbility(UnitAbilities.Recce) || unit.IsAviation)
+                    if (unit.IsHero != wantHero || AbilityParams.UnitHasAnyRecce(unit) || unit.IsAviation)
                         continue;
                     if (!wantHero && !allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                         continue;
@@ -627,7 +627,7 @@ namespace Game.Ai
                 {
                     // 2026-08-26, project owner's own DefendCitadel spec item 1 — same aviation
                     // exclusion as FindRecruitAt above, for the same reason.
-                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce) || unit.IsAviation)
+                    if (unit.IsHero || AbilityParams.UnitHasAnyRecce(unit) || unit.IsAviation)
                         continue;
                     // Same last-garrison-defender guard every other donor lookup in this codebase
                     // already applies (2026-08-24 follow-up, project owner's own report) — this

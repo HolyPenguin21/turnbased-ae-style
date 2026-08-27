@@ -215,8 +215,16 @@ MonoBehaviour:
     abbreviation: Hyper +2
   - ability: Pyrokinetic
     abbreviation: Pyro +2
-  - ability: Recce
-    abbreviation: Recce
+  - ability: r1s0
+    abbreviation: r1s0
+  - ability: r1s4
+    abbreviation: r1s4
+  - ability: r1s5
+    abbreviation: r1s5
+  - ability: r1s6
+    abbreviation: r1s6
+  - ability: Stealth4
+    abbreviation: Stealth4
   - ability: ApBonus
     abbreviation: AP+2
   - ability: Barracks

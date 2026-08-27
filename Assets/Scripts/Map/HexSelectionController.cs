@@ -566,8 +566,9 @@ namespace Game.Map
         private void OnArmyModalClosed()
         {
             // Only the current player can ever open their own army/garrison modal in the first
-            // place (see IsInputAllowed) — a member gaining/losing UnitAbilities.Recce in there
-            // changes that army's own HasRecce (see ArmyData), which nothing else would
+            // place (see IsInputAllowed) — a member gaining/losing an r1sX Recce tag in there
+            // changes that army's own vision radius (see Game.Cards.AbilityParams /
+            // VisionSystem.RecomputeFor), which nothing else would
             // otherwise notice: adding/removing a unit doesn't re-register the army itself
             // (see ArmyRegistry.Register/Unregister), so vision never recomputes on its own here.
             VisionSystem.RecomputeFor(turnController?.CurrentPlayer);

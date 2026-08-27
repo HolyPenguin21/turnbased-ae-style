@@ -281,7 +281,7 @@ namespace Game.Ai
             if (!IsUnitOrHeroCard(card))
                 return false;
             CardDefinition definition = card.Definition;
-            return definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.Recce);
+            return AbilityParams.AbilitiesHaveAnyRecce(definition.grantedAbilities);
         }
 
         // Aircraft are ordinary CardType.Unit cards (see CardDefinition.isAviation's own comment —

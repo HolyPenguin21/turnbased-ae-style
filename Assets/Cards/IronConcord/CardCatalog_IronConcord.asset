@@ -269,7 +269,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
-    - Recce
+    - r1s0
     resourceYield:
       human: 0
       energy: 0
@@ -305,7 +305,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
-    - Recce
+    - r1s0
     resourceYield:
       human: 0
       energy: 0
@@ -341,7 +341,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
-    - Recce
+    - r1s0
     resourceYield:
       human: 0
       energy: 0
@@ -377,7 +377,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
-    - Recce
+    - r1s0
     - RapidReaction
     resourceYield:
       human: 0
@@ -984,7 +984,43 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
-    - Recce
+    - r1s0
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+  - id: 27
+    displayName: Rusty Vulture
+    art: {fileID: 21300000, guid: 561d3ea5c445ffb4c8037400a6b5c810, type: 3}
+    detailArt: {fileID: 21300000, guid: 2a8c873ddb383d447b6f045e4f44f453, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 6
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 5
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 0
+    antiAirRadius: 2
+    airfieldCapacity: 0
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - r1s0
     resourceYield:
       human: 0
       energy: 0

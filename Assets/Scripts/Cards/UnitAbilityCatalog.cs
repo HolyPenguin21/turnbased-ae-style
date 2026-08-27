@@ -83,12 +83,9 @@ namespace Game.Cards
         [Header("Pyrokinetic +2 vs Bio — UnitAbilities.Pyrokinetic")]
         public int pyrokineticBonusDamage = 2;
 
-        [Header("Recce — UnitAbilities.Recce")]
-        // Extra hex steps an army with a Recce-tagged member sees beyond GameConfig.
-        // armyVisionRadius — a single shared magnitude like every other ability above (see
-        // ArmyData.HasRecce/VisionSystem.RecomputeFor), not per-card any more.
-        public int recceRadius = 1;
-        // Reserved for a future use, no gameplay effect yet — per the project owner's own call.
-        public int recceStrength;
+        // Recce is parameterized now (r1s0/r1s4/r1s5/r1s6) — its radius/spot-strength live
+        // in the tag string itself and are read via Game.Cards.AbilityParams, so there is no
+        // shared magnitude field here any more. Stealth4's hide dice are likewise encoded in
+        // the tag. knownAbilities above still carries a hand-written description for each.
     }
 }

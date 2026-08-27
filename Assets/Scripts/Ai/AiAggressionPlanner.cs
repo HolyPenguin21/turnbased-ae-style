@@ -1853,7 +1853,7 @@ namespace Game.Ai
         {
             if (builderArmy == null)
                 return null;
-            List<UnitData> nonHero = builderArmy.Members.Where(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce)).ToList();
+            List<UnitData> nonHero = builderArmy.Members.Where(m => !m.IsHero && !AbilityParams.UnitHasAnyRecce(m)).ToList();
             if (nonHero.Count == 0)
                 return null;
 

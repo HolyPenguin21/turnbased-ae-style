@@ -758,7 +758,7 @@ namespace Game.Ai
                 : candidates;
             deconflicted = baseCandidates.Count < candidates.Count;
 
-            List<HexCoord> visible = army.HasRecce ? baseCandidates : baseCandidates.Where(h => VisionSystem.IsVisible(player, h)).ToList();
+            List<HexCoord> visible = AbilityParams.ArmyHasAnyRecce(army) ? baseCandidates : baseCandidates.Where(h => VisionSystem.IsVisible(player, h)).ToList();
             List<HexCoord> pool = visible.Count > 0 ? visible : baseCandidates;
 
             if (visited.Count == 0)
@@ -796,12 +796,12 @@ namespace Game.Ai
             // itself.
             ArmyData atGarrison = pool.AvailableArmies()
                 .FirstOrDefault(a => !a.IsPrison && !AviationRules.IsAirArmy(a) && !AviationRules.IsAirfield(a)
-                    && a.Hex.Equals(hex) && a.Members.Any(m => !m.IsAviation && m.HasAbility(UnitAbilities.Recce)
+                    && a.Hex.Equals(hex) && a.Members.Any(m => !m.IsAviation && AbilityParams.UnitHasAnyRecce(m)
                     && AiArmyRoles.CanSpareGarrisonMember(player, a, m)));
             if (atGarrison != null)
             {
                 source = atGarrison;
-                return atGarrison.Members.First(m => !m.IsAviation && m.HasAbility(UnitAbilities.Recce));
+                return atGarrison.Members.First(m => !m.IsAviation && AbilityParams.UnitHasAnyRecce(m));
             }
 
             if (turnNumber < AiConfig.reconPriorityDecayStartTurn)
@@ -997,7 +997,7 @@ namespace Game.Ai
                 if (IsComposedReady(existing.Army))
                 {
                     existing.StillAssembling = false; // see AiTask.StillAssembling's own comment
-                    if (!existing.Army.HasRecce)
+                    if (!AbilityParams.ArmyHasAnyRecce(existing.Army))
                     {
                         UnitData recce = FindPatrolRecceCandidate(player, ctx.TurnNumber, homeHex, pool, out ArmyData recceSource);
                         if (recce != null && recceSource != null && existing.Army.HasRoom && !ctx.WouldRevisitArmy(recce, existing.Army)
@@ -1169,7 +1169,7 @@ namespace Game.Ai
                         // 2026-08-26, project owner's own spec item 1 — aviation never becomes
                         // ground defense fodder (the activeSighting branch below already excluded
                         // this; the Patrol/no-sighting branch here was missing it).
-                        if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce) || unit.IsAviation)
+                        if (unit.IsHero || AbilityParams.UnitHasAnyRecce(unit) || unit.IsAviation)
                             continue;
                         if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                             continue;
@@ -1205,7 +1205,7 @@ namespace Game.Ai
                     continue;
                 foreach (UnitData unit in candidate.Members)
                 {
-                    if (unit.IsHero || unit.IsAviation || unit.HasAbility(UnitAbilities.Recce))
+                    if (unit.IsHero || unit.IsAviation || AbilityParams.UnitHasAnyRecce(unit))
                         continue;
                     if (!allowCriticallyWounded && unit.HitPointsCurrent <= unit.HitPointsMax / 2)
                         continue;
@@ -1439,7 +1439,7 @@ namespace Game.Ai
                     continue;
                 foreach (UnitData unit in task.Army.Members)
                 {
-                    if (unit.IsHero || unit.HasAbility(UnitAbilities.Recce) || unit.HitPointsCurrent <= unit.HitPointsMax / 2
+                    if (unit.IsHero || AbilityParams.UnitHasAnyRecce(unit) || unit.HitPointsCurrent <= unit.HitPointsMax / 2
                         || unit.Attack <= bestAttack)
                         continue;
                     best = unit;

@@ -57,13 +57,24 @@ namespace Game.Cards
         // UnitAbilityCatalog.pyrokineticBonusDamage, ChallengeResult.ApplyAbilityModifiers.
         public const string Pyrokinetic = "Pyrokinetic";
 
-        // Extends its army's own vision radius (see Game.Map.VisionSystem) beyond the flat
-        // GameConfig.armyVisionRadius default — same shared-catalog-value pattern as every other
-        // ability above (see UnitAbilityCatalog.recceRadius/recceStrength). An army with any
-        // Recce-tagged member gets the flat bonus once, not summed per member (see ArmyData.
-        // HasRecce) — "strength" itself has no effect yet, reserved for a future use per the
-        // project owner's own call.
-        public const string Recce = "Recce";
+        // Parameterized reconnaissance tags (replaced the old bool "Recce" + shared
+        // UnitAbilityCatalog.recceRadius/recceStrength — project owner's own call, see the
+        // stealth design). Grammar is r<radius>s<spot>: army vision +<radius> hexes (see
+        // Game.Map.VisionSystem), and <spot> spot dice brought to a stealth-detection
+        // Challenge (see Game.Map.StealthSystem). Numbers are parsed by Game.Cards.
+        // AbilityParams — nobody re-parses these strings. Radii/pools take the max across
+        // members and across observers, never a sum. r1s0 widens vision and reveals
+        // ordinary units but its 0-die pool can never detect a hidden unit.
+        public const string R1S0 = "r1s0";
+        public const string R1S4 = "r1s4";
+        public const string R1S5 = "r1s5";
+        public const string R1S6 = "r1s6";
+
+        // A unit carrying this MAY be put into stealth (1 AP per unit to enter, 0 to leave)
+        // — hide-dice pool is <level> plus a terrain bump (see Game.Map.StealthSystem.
+        // HideDiceFor). Stealth state lives per-UnitData (UnitData.IsHidden), never on the
+        // army. Not assigned to any shipped card yet — the project owner adds carriers.
+        public const string Stealth4 = "Stealth4";
 
         // Anti-air range is configured per card (CardDefinition.antiAirRadius), while this one
         // tag says that the unit may perform the reaction at all.  Parsing stays in
@@ -131,7 +142,8 @@ namespace Game.Cards
         // automatically from there on.
         public static readonly string[] All =
         {
-            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic, Recce, AntiAir, ApBonus,
+            CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
+            R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
             Barracks, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 

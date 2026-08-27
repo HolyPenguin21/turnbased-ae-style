@@ -133,7 +133,7 @@ namespace Game.Ai
             foreach (ArmyData donor in ArmyRegistry.AllForOwner(player).Where(a => a.IsGarrison && !a.Hex.Equals(targetHex)))
             {
                 UnitData candidate = donor.Members
-                    .Where(m => !m.IsHero && !m.HasAbility(UnitAbilities.Recce)
+                    .Where(m => !m.IsHero && !AbilityParams.UnitHasAnyRecce(m)
                         && AiArmyRoles.CanSpareGarrisonMember(player, donor, m, allowCitadelEmergency: false))
                     .OrderBy(m => m.Defense + m.Attack).ThenByDescending(m => m.Range > 1 ? 1 : 0)
                     .FirstOrDefault();

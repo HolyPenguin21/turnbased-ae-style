@@ -155,11 +155,12 @@ namespace Game.Map
                 // is remembered, preserving the ground exploration distinction in FOW.
                 if (!AviationRules.IsAirArmy(army))
                     footprint.Add(origin);
-                // UnitAbilities.Recce raises this specific army's own radius beyond the flat
-                // default — a single shared UnitAbilityCatalog.recceRadius value (see ArmyData.
-                // HasRecce's own comment on why it's a flag, not a per-member magnitude).
-                int recceRadius = _config != null && _config.abilityCatalog != null ? _config.abilityCatalog.recceRadius : 0;
-                int radius = army.HasRecce ? Math.Max(armyRadius, recceRadius) : armyRadius;
+                // A Recce-tagged member (r1sX) widens this army's own vision by its radius
+                // step beyond the flat GameConfig.armyVisionRadius default — the number comes
+                // from the tag itself now (see Game.Cards.AbilityParams), max across members,
+                // never summed. Detection strength (the sX part) is a separate concern handled
+                // by Game.Map.StealthSystem, not here.
+                int radius = armyRadius + Game.Cards.AbilityParams.GetBestRecceRadius(army);
                 foreach (HexCoord hex in HexGridMath.HexesInRange(origin, radius))
                     fresh.Add(hex);
             }
