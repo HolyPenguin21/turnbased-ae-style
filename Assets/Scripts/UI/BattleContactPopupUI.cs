@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Game.Aviation;
 using Game.Cards;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -123,8 +124,14 @@ namespace Game.UI
         public void Show(HexCoord hex, List<ArmyData> participants, Action onFight, Action onDelay)
         {
             Populate(hex, participants);
+            // A defender with no combat-capable unit left (hero-only army/garrison) isn't fought
+            // in the Tactical Battle Module at all — onFight routes straight into a Capture/Kill
+            // Challenge sequence (see the callers' own targetHeroOnly branch / BattleScreenUI.
+            // BeginCaptureKillEncounter). Label the button for what it actually does in that case.
+            bool captureOnly = participants != null && participants.Count > 1
+                && !BattleInitiator.IsCombatCapable(participants[1]);
             if (fightButtonLabel != null)
-                fightButtonLabel.text = "To Battle";
+                fightButtonLabel.text = captureOnly ? "Capture" : "To Battle";
 
             if (fightButton != null)
             {

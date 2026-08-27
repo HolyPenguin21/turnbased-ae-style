@@ -35,13 +35,13 @@ MonoBehaviour:
     - cardKey: The Ashen/Elena Hayes
       count: 1
     - cardKey: The Ashen/Hooded
-      count: 2
+      count: 3
     - cardKey: The Ashen/Dust Runner
       count: 1
     - cardKey: The Ashen/Tech Scrapper
       count: 0
     - cardKey: The Ashen/AA Rad Hunter
-      count: 1
+      count: 2
     - cardKey: The Ashen/LI Ash Drifter
       count: 0
     - cardKey: The Ashen/LI Ash Runner
@@ -68,6 +68,8 @@ MonoBehaviour:
       count: 1
     - cardKey: The Ashen/Striker
       count: 2
+    - cardKey: The Ashen/Scrapwing
+      count: 2
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -92,7 +94,7 @@ MonoBehaviour:
     - cardKey: Iron Concord/Scrapper
       count: 0
     - cardKey: Iron Concord/AA Crawler
-      count: 1
+      count: 2
     - cardKey: Iron Concord/Light Infantry
       count: 0
     - cardKey: Iron Concord/Iron guards
@@ -124,4 +126,6 @@ MonoBehaviour:
     - cardKey: Iron Concord/Watcher Drone
       count: 2
     - cardKey: Iron Concord/Wasp
+      count: 2
+    - cardKey: Iron Concord/Rusty Vulture
       count: 2
