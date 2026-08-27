@@ -667,7 +667,7 @@ namespace Game.UI
             if (definition.isAviation)
             {
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        hex.Value, out string aviationFailReason))
+                        hex.Value, out string aviationFailReason, card.Data?.Equipment))
                 {
                     turnController.ShowSpawnHint(aviationFailReason);
                     return false;
@@ -812,7 +812,7 @@ namespace Game.UI
                     return false;
                 }
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        targetArmy.Hex, out string aviationFailReason))
+                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment))
                 {
                     turnController.ShowSpawnHint(aviationFailReason);
                     return false;

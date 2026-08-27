@@ -29,7 +29,8 @@ namespace Game.Aviation
         }
 
         public static bool TryDeployFromCard(CardDefinition definition, PlayerSetupData owner,
-            PlayerRoot root, HexSelectionController hexSelection, Game.HexGrid.HexCoord hex, out string failReason)
+            PlayerRoot root, HexSelectionController hexSelection, Game.HexGrid.HexCoord hex, out string failReason,
+            CardDefinition attachedEquipment = null)
         {
             failReason = null;
             if (definition == null || !definition.isAviation)
@@ -43,7 +44,7 @@ namespace Game.Aviation
                 failReason = "Aircraft can only be deployed to your Barracks airfield.";
                 return false;
             }
-            return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason);
+            return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason, attachedEquipment);
         }
 
         public static bool TryLaunch(ArmyData airfield, IList<UnitData> aircraft, FactionCardCatalog catalog,
