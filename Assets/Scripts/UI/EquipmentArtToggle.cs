@@ -8,12 +8,12 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // The small button on a unit/hero card (CardUI, ArmyUnitCardUI, BattleGridCellUI) that
-    // discloses the CardType.Equipment card attached to that host:
-    //   - hover  -> hide the host's own stat row, show a text panel with the equipment's name,
-    //               added abilities, then stat changes (see EquipmentCardText.HoverInfo).
-    //   - press-and-hold -> swap the card portrait to the equipment's art.
-    // Everything reverts on release / when the pointer leaves the button (the owning card also
-    // calls Revert() from its own OnPointerExit, per the spec).
+    // discloses the CardType.Equipment card attached to that host. While the pointer is over
+    // it OR the left button is held down on it, the card shows the equipment instead of the
+    // unit: portrait swapped to the equipment's art, the host's stat row hidden, and a text
+    // panel with the equipment's name, added abilities, then stat changes (see
+    // EquipmentCardText.HoverInfo). Everything reverts when neither condition holds — and the
+    // owning card also calls Revert() from its own OnPointerExit, per the spec.
     //
     // The owning card drives this: Configure(unitArt, equipmentCard, config) every time it
     // (re)binds a unit — that also shows/hides this button (hidden when nothing's attached).
@@ -25,64 +25,85 @@ namespace Game.UI
         // component's own GameObject. Resolved every Configure (not cached in Awake) so it
         // works even if it starts inactive in the prefab.
         [SerializeField] private GameObject buttonVisual;
-        // The host card's own stat row/badges — hidden while hovering this button.
+        // The host card's own stat row/badges — hidden while the equipment is being shown.
         [SerializeField] private GameObject statsToHideOnHover;
-        // Where the equipment's name/abilities/stats are written on hover. Normally starts
-        // inactive/empty; shown only during hover.
+        // Where the equipment's name/abilities/stats are written. Normally starts inactive/
+        // empty; shown only while the equipment is being shown.
         [SerializeField] private TMP_Text infoText;
 
         private Sprite _unitArt;
         private CardDefinition _equipment;
         private GameConfig _config;
         private bool _statsWereActive = true;
+        private bool _hovering;
+        private bool _pressed;
 
         public void Configure(Sprite unitArt, CardDefinition equipment, GameConfig config)
         {
             _unitArt = unitArt;
             _equipment = equipment;
             _config = config;
+            _hovering = false;
+            _pressed = false;
             _statsWereActive = statsToHideOnHover == null || statsToHideOnHover.activeSelf;
-            Revert();
+            ApplyState();
             GameObject target = buttonVisual != null ? buttonVisual : gameObject;
-            // Shown whenever equipment is attached — the hover text works with no art; only the
-            // press-and-hold portrait swap needs equipment.art (and no-ops without it).
+            // Shown whenever equipment is attached — the info text works with no art; only the
+            // portrait swap needs equipment.art (and no-ops without it).
             target.SetActive(_equipment != null);
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (_equipment == null)
-                return;
-            _statsWereActive = statsToHideOnHover == null || statsToHideOnHover.activeSelf;
-            if (statsToHideOnHover != null)
-                statsToHideOnHover.SetActive(false);
-            if (infoText != null)
-            {
-                infoText.text = EquipmentCardText.HoverInfo(_equipment, _config);
-                infoText.gameObject.SetActive(true);
-            }
+            _hovering = true;
+            ApplyState();
         }
 
-        public void OnPointerExit(PointerEventData eventData) => Revert();
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            _hovering = false;
+            _pressed = false;
+            ApplyState();
+        }
 
         public void OnPointerDown(PointerEventData eventData)
         {
-            if (_equipment?.art != null && cardArtImage != null)
-                cardArtImage.sprite = _equipment.art;
+            _pressed = true;
+            ApplyState();
         }
 
-        public void OnPointerUp(PointerEventData eventData) => Revert();
+        public void OnPointerUp(PointerEventData eventData)
+        {
+            _pressed = false;
+            ApplyState();
+        }
 
-        // Restore the portrait, the host's stat row, and hide the info panel. Also called by the
-        // owning card from its own OnPointerExit.
+        // Called by the owning card from its own OnPointerExit — force everything back.
         public void Revert()
         {
-            if (cardArtImage != null && _unitArt != null)
-                cardArtImage.sprite = _unitArt;
+            _hovering = false;
+            _pressed = false;
+            ApplyState();
+        }
+
+        private void ApplyState()
+        {
+            bool show = _equipment != null && (_hovering || _pressed);
+
+            if (cardArtImage != null)
+            {
+                Sprite target = show && _equipment.art != null ? _equipment.art : _unitArt;
+                if (target != null)
+                    cardArtImage.sprite = target;
+            }
             if (statsToHideOnHover != null)
-                statsToHideOnHover.SetActive(_statsWereActive);
+                statsToHideOnHover.SetActive(show ? false : _statsWereActive);
             if (infoText != null)
-                infoText.gameObject.SetActive(false);
+            {
+                if (show)
+                    infoText.text = EquipmentCardText.HoverInfo(_equipment, _config);
+                infoText.gameObject.SetActive(show);
+            }
         }
     }
 }

@@ -10,12 +10,13 @@ namespace Game.UI
     // button (see EquipmentArtToggle). One place so both read the EquipmentGrant identically.
     public static class EquipmentCardText
     {
-        // "Fits: Infantry, Vehicle" — empty string when hostTypeTags is empty (fits anything).
+        // "Infantry, Vehicle" — the unit type tags this equipment fits. Empty string when
+        // hostTypeTags is empty (fits anything).
         public static string HostTags(EquipmentGrant grant)
         {
             if (grant?.hostTypeTags == null || grant.hostTypeTags.Count == 0)
                 return string.Empty;
-            return "Fits: " + string.Join(", ", grant.hostTypeTags);
+            return string.Join(", ", grant.hostTypeTags);
         }
 
         // Abilities the grant ADDS — abbreviated via GameConfig, raw PrettyName fallback when
@@ -25,14 +26,13 @@ namespace Game.UI
             List<string> tags = grant?.addAbilities;
             if (tags == null || tags.Count == 0)
                 return string.Empty;
-            string joined = config != null
+            return config != null
                 ? config.FormatAbilities(tags)
                 : string.Join(" ", tags.Select(UnitAbilities.PrettyName));
-            return string.IsNullOrEmpty(joined) ? string.Empty : "Skill: " + joined;
         }
 
-        // "Range → 1, Defense +2, HP +3" — override shows an arrow, additive a signed
-        // number. Empty when the grant changes no stats.
+        // "Range = 1, Defense +2, HP +3" — override shows "= value", additive a signed number.
+        // Empty when the grant changes no stats.
         public static string StatChanges(EquipmentGrant grant)
         {
             if (grant?.statChanges == null || grant.statChanges.Count == 0)
@@ -44,7 +44,7 @@ namespace Game.UI
                     continue;
                 string name = StatName(change.stat);
                 parts.Add(change.isOverride
-                    ? $"{name} → {change.amount}"
+                    ? $"{name} = {change.amount}"
                     : $"{name} {(change.amount >= 0 ? "+" : "")}{change.amount}");
             }
             return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
