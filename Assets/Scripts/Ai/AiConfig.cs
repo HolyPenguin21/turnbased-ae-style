@@ -1425,6 +1425,13 @@ namespace Game.Ai
         // narrower score band (2026-08-26 multi-turn aviation spec, point 11).
         public const float airReconExtraTurnPenalty = 6f;
         public const float airReconUnlandedEndPenalty = 3f;
+        // How many turns AirReconTask.FindReconHex leaves a hex alone after an AirRecon sortie was
+        // last sent toward it (project owner's own spec — "AirRecon не должен бесконечно летать в
+        // один stale-гекс"). Within this window the hex is not offered as a recon target again
+        // UNLESS a known enemy army or building still sits on it — that's live intel worth
+        // re-checking, not a stale fog corner. See AiMapMemory.RecordAirReconTarget /
+        // WasAirReconnedWithin, stamped every outbound step by AiAviationSupport.ContinueSortie.
+        public const int airReconTargetCooldownTurns = 3;
         // AirStrikeTask.IsEligibleAircraft's own floor — an air group (stored or already airborne)
         // needs at least this many aircraft still able to attack this turn before AirStrike will
         // even consider it a launch candidate; below this, waiting for the hand/airfield to build

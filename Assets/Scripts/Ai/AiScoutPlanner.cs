@@ -589,6 +589,11 @@ namespace Game.Ai
             // whose own route carries known-AA exposure outright (a real per-route hard filter, not
             // a global map-wide guess) — see that method's own comment.
 
+            // Recon hexes already claimed by an earlier candidate in this same Decide pass — passed
+            // into FindReconHex so two air armies never pick the identical hex (project owner's own
+            // spec). Only meaningful when more than one launch candidate exists this step.
+            var reservedTargets = new HashSet<HexCoord>();
+
             foreach (AirStrikeTask.LaunchCandidate candidate in AirStrikeTask.FindLaunchCandidates(player, pool))
             {
                 // Condition 3 — free resources after current reservations, launch AP/Energy
@@ -596,8 +601,11 @@ namespace Game.Ai
                 if (candidate.ExistingArmy == null && !AiAviationSupport.CanAffordLaunch(root, player, candidate.Aircraft))
                     continue;
 
-                // Condition 4 — a complete recon sortie can start and land in the same turn.
-                AirReconTask.ReconTarget? target = AirReconTask.FindReconHex(player, candidate, ctx.Map);
+                // Condition 4 — a complete recon sortie can start and land in the same turn, toward
+                // a hex that's actually worth reconnoitring: fresh (or stale-with-a-reason), making
+                // forward progress toward known enemy territory, not flown to in the last few turns,
+                // and not already claimed by another air army this step. No such hex → no launch.
+                AirReconTask.ReconTarget? target = AirReconTask.FindReconHex(player, candidate, ctx.Map, ctx.TurnNumber, reservedTargets);
                 if (!target.HasValue)
                     continue;
 
@@ -621,6 +629,9 @@ namespace Game.Ai
                 {
                     results.Add(AiDecision.LaunchAirRecon(candidate, target.Value, target.Value.Score));
                 }
+                // Claimed for the rest of this Decide pass — a later launch candidate won't be
+                // offered the same hex (deconfliction is done; the arbiter still picks at most one).
+                reservedTargets.Add(target.Value.Hex);
             }
             return results;
         }

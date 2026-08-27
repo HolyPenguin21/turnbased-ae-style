@@ -210,6 +210,17 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, List<ScoutDangerZone>> ScoutDangerZones =
             new Dictionary<PlayerSetupData, List<ScoutDangerZone>>();
 
+        // Разведка · Авиация (AiTaskKind.AirRecon) — hex -> the global turn an AirRecon sortie was
+        // last sent toward it (AiAviationSupport.ContinueSortie stamps this every outbound step).
+        // Purpose-built for AirReconTask.FindReconHex's own anti-loop cooldown (project owner's own
+        // spec — "AirRecon не должен бесконечно летать в один stale-гекс"): a hex flown to recently
+        // is not offered as a recon target again for AiConfig.airReconTargetCooldownTurns turns
+        // unless a known enemy army/building still sits on it. One entry per hex, re-stamped on a
+        // repeat sortie. Never auto-expired here — FindReconHex compares against the current turn
+        // itself (see WasAirReconnedWithin) and simply stops caring once the window has passed.
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> AirReconTargets =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
+
         private static bool _subscribed;
         // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
         // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
@@ -261,6 +272,7 @@ namespace Game.Ai
             KnownEventGuards.Clear();
             KnownBuildings.Clear();
             ScoutDangerZones.Clear();
+            AirReconTargets.Clear();
             _currentTurn = 0;
         }
 
@@ -347,6 +359,30 @@ namespace Game.Ai
         {
             return ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
                 && zones.Any(z => HexGridMath.Distance(z.Center, hex) <= z.Radius);
+        }
+
+        // Stamps `hex` as the target an AirRecon sortie is currently flying toward, at
+        // `turnNumber` — see AirReconTargets' own comment. Called every outbound step from
+        // AiAviationSupport.ContinueSortie so the cooldown counts from the sortie's last real
+        // progress toward the hex, not merely its launch turn.
+        public static void RecordAirReconTarget(PlayerSetupData actor, HexCoord hex, int turnNumber)
+        {
+            if (actor == null)
+                return;
+            if (!AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets))
+                AirReconTargets[actor] = targets = new Dictionary<HexCoord, int>();
+            targets[hex] = turnNumber;
+        }
+
+        // True if an AirRecon sortie was last sent toward `hex` fewer than `cooldownTurns` turns
+        // ago (relative to `currentTurn`). AirReconTask.FindReconHex uses this to stop re-proposing
+        // the same stale hex over and over — the caller still applies the "unless a known enemy
+        // army/building is there" exception itself.
+        public static bool WasAirReconnedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
+        {
+            return AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets)
+                && targets.TryGetValue(hex, out int turn)
+                && currentTurn - turn < cooldownTurns;
         }
 
         private static void OnVisibilityChanged(PlayerSetupData player)

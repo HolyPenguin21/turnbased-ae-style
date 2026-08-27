@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.HexGrid;
@@ -47,14 +48,27 @@ namespace Game.Ai
         // forwardness-then-cost per AiAviationSupport.PlanSortieCore's own ranking — a forward base
         // naturally wins whenever it's an AA-free candidate closer to known enemy territory than a
         // rearward one, so no separate relocation task is ever needed just to get a recon flight
-        // based somewhere more convenient), scores each unexplored-or-stale, reachable hex by
-        // forward progress toward known enemy territory (favoured over lateral wandering, per spec —
-        // see EnemyConcentrationForwardBonus for how that direction is now derived) then shorter safe
-        // distance, and returns the single best. Never targets a known
-        // enemy army for damage the way AirStrikeTask does — a discovered enemy along the way is a
-        // free opportunistic strike the shared resolver already offers (AviationCombatPresenter.
+        // based somewhere more convenient), then scores the surviving hexes by forward progress
+        // toward known enemy territory (favoured over lateral wandering, per spec — see
+        // EnemyConcentrationForwardBonus for how that direction is now derived) then shorter safe
+        // distance, and returns the single best. A hex only survives the pre-scoring filter if it's
+        // worth reconnoitring at all: genuinely unexplored, or stale-but-with-a-reason (known enemy
+        // intel on it, or it still borders never-seen ground); NOT flown to by an AirRecon sortie in
+        // the last AiConfig.airReconTargetCooldownTurns turns (unless enemy intel is on it); NOT
+        // already claimed by another air army this Decide; and strictly making forward progress
+        // toward some known enemy army/citadel — a hex "away from" every known enemy, or any hex at
+        // all when nothing enemy is known, is never a target, and an empty result means AirRecon
+        // simply doesn't launch (project owner's own spec). Never targets a known enemy army for
+        // damage the way AirStrikeTask does — a discovered enemy along the way is a free
+        // opportunistic strike the shared resolver already offers (AviationCombatPresenter.
         // ResolveStep), not something this method goes looking for.
-        public static ReconTarget? FindReconHex(PlayerSetupData actor, AirStrikeTask.LaunchCandidate candidate, HexMap map)
+        // `currentTurn` — this Decide's own turn number (AiTurnContext.TurnNumber), for the
+        // AiConfig.airReconTargetCooldownTurns anti-loop check. `reservedThisDecide` — recon hexes
+        // already claimed by another air army earlier in this SAME Decide pass (see
+        // AiScoutPlanner.TryStartAirReconCandidates); never re-offered here, so two sorties can't
+        // converge on one hex. Null when there's nothing to deconflict against.
+        public static ReconTarget? FindReconHex(PlayerSetupData actor, AirStrikeTask.LaunchCandidate candidate, HexMap map,
+            int currentTurn, HashSet<HexCoord> reservedThisDecide = null)
         {
             if (actor == null || map == null)
                 return null;
@@ -74,6 +88,39 @@ namespace Game.Ai
                 bool visible = VisionSystem.IsVisible(actor, hex);
                 if (everSeen && visible)
                     continue; // nothing to learn right now — currently visible AND already known
+
+                // A hex already claimed by another air army earlier in this same Decide is off the
+                // table — two sorties must never converge on the identical recon hex.
+                if (reservedThisDecide != null && reservedThisDecide.Contains(hex))
+                    continue;
+
+                // A known enemy army or (non-neutral) building still on this hex is live intel
+                // worth re-checking — it exempts the hex from both the "a stale hex isn't
+                // automatically useful" filter and the recent-sortie cooldown below.
+                bool knownEnemyHere = HasKnownEnemyOrBuildingAt(actor, hex);
+
+                // A hex we've merely SEEN once before, but can't see right now, is NOT by itself a
+                // useful recon target (project owner's own spec — otherwise AirRecon flies the same
+                // stale fog corner forever). It earns its place only if there's a concrete reason to
+                // look again: known enemy intel sits on it, or it still borders genuinely
+                // unexplored (never-seen) ground a flight there would actually reveal.
+                if (everSeen && !visible && !knownEnemyHere && !BordersUnexplored(actor, hex, map))
+                    continue;
+
+                // Anti-loop cooldown — a hex an AirRecon sortie was sent toward in the last
+                // AiConfig.airReconTargetCooldownTurns turns is not offered again (unless known
+                // enemy intel is on it), so a stale hex can't be re-picked turn after turn.
+                if (!knownEnemyHere
+                    && AiMapMemory.WasAirReconnedWithin(actor, hex, currentTurn, AiConfig.airReconTargetCooldownTurns))
+                    continue;
+
+                // Regular AirRecon only flies TOWARD known enemy territory — a hex that makes no
+                // forward progress toward any known enemy army/citadel (or when nothing enemy is
+                // known at all) is not a recon target. "Гексы в сторону от врага не предлагать;
+                // если подходящей цели нет — не запускать авиаразведку" (FindReconHex returning
+                // null makes AiScoutPlanner.TryStartAirReconCandidates skip the launch entirely).
+                if (!HasForwardProgressTowardKnownEnemy(actor, start, hex))
+                    continue;
 
                 // Route-level AA safety: AiAviationSupport.PlanSortieCore (behind TryPlanSortie/
                 // TryPlanSortieFromStorage below) now hard-filters every candidate landing by known
@@ -204,6 +251,48 @@ namespace Game.Ai
             }
 
             return totalWeight > 0f ? weightedProgress / totalWeight : 0f;
+        }
+
+        // Hard directional gate (project owner's own spec point — distinct from
+        // EnemyConcentrationForwardBonus above, which is only a soft SCORE nudge): true iff
+        // `candidate` is strictly closer than `start` to at least one known enemy reference — the
+        // enemy starting citadel, or any known enemy army sighting. Returns false when nothing
+        // hostile is known at all, so regular AirRecon never flies off into fog with no enemy
+        // direction to aim at.
+        private static bool HasForwardProgressTowardKnownEnemy(PlayerSetupData actor, HexCoord start, HexCoord candidate)
+        {
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(actor))
+                if (building.IsStartingCitadel && building.Owner != null && building.Owner != actor && !building.Owner.IsNeutral
+                    && HexGridMath.Distance(candidate, building.Hex) < HexGridMath.Distance(start, building.Hex))
+                    return true;
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
+                if (HexGridMath.Distance(candidate, sighting.Hex) < HexGridMath.Distance(start, sighting.Hex))
+                    return true;
+            return false;
+        }
+
+        // A known enemy army, or a known building whose last-observed owner is another (non-neutral)
+        // player, sitting on `hex` right now in this actor's own map memory — exempts the hex from
+        // the stale-hex filter and the recent-sortie cooldown in FindReconHex, since its contents
+        // may have changed since last seen and are worth another look.
+        private static bool HasKnownEnemyOrBuildingAt(PlayerSetupData actor, HexCoord hex)
+        {
+            if (AiMapMemory.KnownEnemySightingAt(actor, hex).HasValue)
+                return true;
+            AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(actor, hex);
+            return building.HasValue && building.Value.Owner != null
+                && building.Value.Owner != actor && !building.Value.Owner.IsNeutral;
+        }
+
+        // True if any on-map neighbour of `hex` has never been seen by `actor` — i.e. flying a
+        // recon sortie to `hex` would actually lift fog somewhere, rather than just re-covering
+        // ground already mapped.
+        private static bool BordersUnexplored(PlayerSetupData actor, HexCoord hex, HexMap map)
+        {
+            foreach (HexCoord neighbour in HexGridMath.Neighbors(hex))
+                if (map.TryGetTerrainAt(neighbour, out _) && !VisionSystem.HasEverSeen(actor, neighbour))
+                    return true;
+            return false;
         }
     }
 }
