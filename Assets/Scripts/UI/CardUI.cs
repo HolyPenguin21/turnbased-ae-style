@@ -114,8 +114,12 @@ namespace Game.UI
                 // Abilities only — no card type prefix (matches ArmyUnitCardUI's own SkillsText
                 // slot). Abbreviated per GameConfig.abilityAbbreviations (see
                 // GameConfig.FormatAbilities) — falls back to the raw tag name for anything not
-                // listed there.
-                string formatted = definition != null ? _hand?.GameConfig?.FormatAbilities(definition.grantedAbilities) : null;
+                // listed there. An Equipment card has no grantedAbilities of its own — show the
+                // abilities its EquipmentGrant would ADD instead, so the card face isn't blank.
+                var abilityTags = definition == null ? null
+                    : definition.cardType == CardType.Equipment ? definition.equipment?.addAbilities
+                    : definition.grantedAbilities;
+                string formatted = _hand?.GameConfig?.FormatAbilities(abilityTags);
                 typeText.text = formatted ?? string.Empty;
             }
 
@@ -142,15 +146,16 @@ namespace Game.UI
             equipmentArtToggle?.Configure(definition != null ? definition.art : null, Data?.Equipment?.art);
         }
 
-        // See the field block's own comment for the fixed per-slot stat mapping. Facility and
-        // Tactic cards have no unit/hero/building identity of their own to show stats for, so
-        // the whole row is hidden for them rather than showing 5 zeroes.
+        // See the field block's own comment for the fixed per-slot stat mapping. Facility,
+        // Tactic and Equipment cards have no unit/hero/building identity of their own to show
+        // stats for, so the whole row is hidden for them rather than showing 5 zeroes.
         private void RefreshStatsRow(CardDefinition definition)
         {
             if (statsRow == null)
                 return;
 
-            bool show = definition != null && definition.cardType != CardType.Facility && definition.cardType != CardType.Tactic;
+            bool show = definition != null && definition.cardType != CardType.Facility
+                && definition.cardType != CardType.Tactic && definition.cardType != CardType.Equipment;
             statsRow.SetActive(show);
             if (!show)
                 return;

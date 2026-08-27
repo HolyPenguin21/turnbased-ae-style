@@ -293,7 +293,7 @@ namespace Game.Map
             if (cardHandUI == null || owner == null || card == null)
                 return;
             if (owner.IsHuman)
-                cardHandUI.AddCard(new CardData(card));
+                cardHandUI.AddCardToHand(card);
             else
                 AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.Hand.Add(new CardData(card));
         }

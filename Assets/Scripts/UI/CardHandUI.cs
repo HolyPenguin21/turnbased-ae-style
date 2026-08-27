@@ -407,6 +407,24 @@ namespace Game.UI
             Relayout(animated: false);
         }
 
+        // Single entry point for a card entering the human's hand from OUTSIDE the normal draw —
+        // challenge rewards, event rewards (via HexSelectionController.GrantCard), returned
+        // aircraft. Enforces the hand cap; returns false (card lost, hint shown) if the hand is
+        // already full. Equipment cards reach the hand only through here (temporarily also via a
+        // StartingDeck entry for testing — see StartingDeckCatalog).
+        public bool AddCardToHand(CardDefinition definition)
+        {
+            if (definition == null)
+                return false;
+            if (_cards.Count >= maxHandSize)
+            {
+                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) — {definition.displayName} was lost.");
+                return false;
+            }
+            AddCard(new CardData(definition));
+            return true;
+        }
+
         public void AddCard(CardData data)
         {
             if (cardPrefab == null || handContainer == null)
