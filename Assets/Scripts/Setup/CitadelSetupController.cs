@@ -118,6 +118,14 @@ namespace Game.Setup
             // need to already be known by then, not set afterward.
             VisionSystem.Clear();
             VisionSystem.Configure(gameConfig);
+            // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
+            // hide-dice bump; hand StealthSystem a lookup into the live map here, same
+            // ordering rationale as VisionSystem.Configure above.
+            StealthSystem.Clear();
+            StealthSystem.TerrainMoveCostProvider = hex =>
+                map.TryGetTerrainAt(hex, out TerrainTypeEntry terrainEntry) && terrainEntry != null
+                    ? Mathf.Max(1, terrainEntry.moveCost)
+                    : 1;
             // Same ordering requirement as VisionSystem.Configure above — AiMapMemory listens to
             // VisionSystem.VisibilityChanged, which the very first Register call below can
             // already fire, so the subscription (and a clean slate from any previous game) both

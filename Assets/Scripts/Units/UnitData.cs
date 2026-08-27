@@ -20,6 +20,14 @@ namespace Game.Units
         public readonly HashSet<string> Abilities = new HashSet<string>();
         public bool HasAbility(string ability) => Abilities.Contains(ability);
 
+        // Individual stealth (see Game.Map.StealthSystem) — set/cleared ONLY through
+        // StealthSystem.EnterStealth/ExitStealth so its detection table and change
+        // notifications stay in sync. Owner-facing "this unit is in stealth"; whether a
+        // given enemy currently sees it is a separate per-observer question
+        // (StealthSystem.IsHiddenFrom). Only a unit carrying a StealthN ability
+        // (AbilityParams.GetStealthLevel > 0) can ever be put into it.
+        public bool IsHidden;
+
         // Carried over from CardDefinition.unitTypeTags at spawn time, same as Abilities —
         // classification (Bio/Mechanical/Armored/...), shown only in ArmyViewerModalUI's
         // detail panel (ShowUnitDetail), right after the unit's name. Only some tags affect

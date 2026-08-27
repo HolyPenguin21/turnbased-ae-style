@@ -100,6 +100,7 @@ namespace Game.Aviation
             foreach (UnitData aircraft in army.Members.ToList())
             {
                 army.Members.Remove(aircraft);
+                Game.Map.StealthSystem.OnUnitRemoved(aircraft);
                 if (aircraft.OriginatingCard != null)
                     hexSelection?.GrantCard(army.Owner, aircraft.OriginatingCard);
             }

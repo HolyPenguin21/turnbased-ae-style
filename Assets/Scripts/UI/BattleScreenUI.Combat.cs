@@ -158,6 +158,9 @@ namespace Game.UI
                 _grid.Set(row, col, null);
             _attacker?.Members.Remove(unit);
             _defender?.Members.Remove(unit);
+            // Drop any stealth/personal-detection state before this UnitData reference goes
+            // stale (see Game.Map.StealthSystem).
+            Game.Map.StealthSystem.OnUnitRemoved(unit);
 
             // Whichever side `unit` belonged to reacts with UnitDied; the OTHER side (if
             // AI-controlled) gets a small EnemyKilled reaction instead. Works the same whether
@@ -385,14 +388,15 @@ namespace Game.UI
             // handles that empty-army case instead).
             bool moreForThisArmy = pending.Any(e => e.heroArmy == heroArmy);
             if (!moreForThisArmy && heroArmy != null && heroArmy.Members.Count > 0
-                && !BattleInitiator.IsCombatCapable(heroArmy) && attackPopup != null)
+                && !BattleInitiator.IsCombatCapable(heroArmy))
             {
-                PerformRetreat(heroArmy, hunterArmy, out bool destroyed);
-                string message = destroyed
-                    ? (_localArmy == heroArmy ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
-                    : (_localArmy == heroArmy ? "Your army retreats." : "The enemy retreats.");
-                attackPopup.ShowAnnouncement(message, () => RunNextCaptureKillChallenge(pending, onAllResolved, suppressAiThoughts));
-                return;
+                // The surviving hero(es) can't keep fighting, so their army just leaves the
+                // battle — but no announcement popup for it (per the project owner, 2026-08-27):
+                // the Capture/Kill result screen the player already clicked through IS the last
+                // screen of this challenge. The old "The enemy retreats." / "Your army retreats."
+                // (and the two "destroyed retreating" variants) only added a dead click. The
+                // relocation itself still has to happen.
+                PerformRetreat(heroArmy, hunterArmy, out _);
             }
 
             RunNextCaptureKillChallenge(pending, onAllResolved, suppressAiThoughts);

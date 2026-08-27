@@ -220,6 +220,16 @@ namespace Game.Turns
         public event Action TurnStateChanged;
 
         private int _currentPlayerIndex;
+
+        // How many of THIS player's own turns have fully ended so far this game — incremented
+        // in AdvanceToNextPlayer for the outgoing CurrentPlayer. Not derivable from
+        // TurnNumber: turn order is re-rolled every round, so "the observer's next turn" is
+        // not "current round + 1". Game.Map.StealthSystem compares a detection's snapshot of
+        // this against the live value to decide when a personal detection lapses (design §4).
+        private readonly Dictionary<PlayerSetupData, long> _completedTurns = new Dictionary<PlayerSetupData, long>();
+        public long CompletedTurnsFor(PlayerSetupData player)
+            => player != null && _completedTurns.TryGetValue(player, out long n) ? n : 0L;
+
         private readonly Dictionary<PlayerSetupData, List<string>> _pendingAviationMessages = new Dictionary<PlayerSetupData, List<string>>();
         private readonly Queue<string> _aviationMessageQueue = new Queue<string>();
 
@@ -425,6 +435,10 @@ namespace Game.Turns
                 endTurnButton.onClick.AddListener(OnEndTurnClicked);
             }
             TurnNumber = 0;
+            _completedTurns.Clear();
+            // StealthSystem is otherwise turn-controller-agnostic (the stealth sim drives it
+            // by hand) — hand it the live completed-turn count now that a real game is starting.
+            Game.Map.StealthSystem.CompletedTurnsProvider = CompletedTurnsFor;
             BeginNewTurn();
         }
 
@@ -979,6 +993,16 @@ namespace Game.Turns
             var aviationMessages = AviationTurnLifecycle.ResolveEndOfTurn(CurrentPlayer, hexSelectionController);
             if (aviationMessages.Count > 0)
                 _pendingAviationMessages[CurrentPlayer] = aviationMessages;
+
+            // The outgoing player's turn has now fully ended — bump their completed-turn
+            // count and lapse any personal detections that were only valid "through the end
+            // of this player's next turn" (see _completedTurns / StealthSystem).
+            if (CurrentPlayer != null)
+            {
+                _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
+                Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);
+            }
+
             BeginPlayerTurn(_currentPlayerIndex + 1);
         }
 

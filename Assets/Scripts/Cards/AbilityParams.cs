@@ -77,6 +77,30 @@ namespace Game.Cards
             return best;
         }
 
+        // Overloads over a raw ability-tag collection — for vision sources that aren't a
+        // UnitData/ArmyData: a BuildingData / FacilityData / a not-yet-spawned card.
+        public static int GetBestRecceRadius(System.Collections.Generic.IEnumerable<string> abilities)
+        {
+            int best = 0;
+            if (abilities == null)
+                return best;
+            foreach (string ability in abilities)
+                if (TryGetRecce(ability, out int radius, out _))
+                    best = System.Math.Max(best, radius);
+            return best;
+        }
+
+        public static int GetBestRecceSpotStrength(System.Collections.Generic.IEnumerable<string> abilities)
+        {
+            int best = 0;
+            if (abilities == null)
+                return best;
+            foreach (string ability in abilities)
+                if (TryGetRecce(ability, out _, out int spot))
+                    best = System.Math.Max(best, spot);
+            return best;
+        }
+
         public static int GetBestRecceRadius(UnitData unit)
         {
             int best = 0;

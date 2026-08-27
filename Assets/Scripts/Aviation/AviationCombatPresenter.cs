@@ -166,7 +166,10 @@ namespace Game.Aviation
                 {
                     resolved = true;
                     if (died)
+                    {
                         airArmy.Members.Remove(target);
+                        Game.Map.StealthSystem.OnUnitRemoved(target);
+                    }
                 },
                 // The manual's AA rule: double dice against an air target, never against the
                 // defender's own Defense — see BattleAttackPopupUI.Begin's own attackerPoolSize.
@@ -203,7 +206,10 @@ namespace Game.Aviation
                     {
                         resolved = true;
                         if (died)
+                        {
                             targetArmy.Members.Remove(target);
+                            Game.Map.StealthSystem.OnUnitRemoved(target);
+                        }
                     },
                     defenderPoolSize: defenderPoolOverride);
                 yield return new WaitUntil(() => resolved);
