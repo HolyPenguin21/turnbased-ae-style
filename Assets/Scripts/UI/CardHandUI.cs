@@ -11,6 +11,7 @@ using Game.Turns;
 using Game.Units;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -96,6 +97,15 @@ namespace Game.UI
         [SerializeField] private int maxHandSize = 10;
 
         private readonly List<CardUI> _cards = new List<CardUI>();
+
+        // Equipment attach mode (see EquipmentSystem / the project owner's spec): a
+        // CardType.Equipment card was right-clicked in hand and is now waiting for the player to
+        // left-click a Unit/Hero card to hang it on — either another card in this hand, or a
+        // live unit's card in the open Army Viewer. The equipment card stays IN the hand the
+        // whole time (this is a pending selection, not a drag). A second right-click, or Esc,
+        // cancels; a failed attach shows the reason and also ends the mode, card left in hand.
+        private CardData _pendingEquipment;
+        public bool IsAttachMode => _pendingEquipment != null;
         // Dev-only mirror of _cards for GameTurnController's debugFollowAiVision toggle (see
         // ShowAiHandDebug) — kept fully separate so swapping the display never touches the
         // human's own real hand/deck state underneath.
@@ -143,6 +153,11 @@ namespace Game.UI
                 scrollRightButton.onClick.AddListener(OnScrollRightClicked);
 
             CreateSlotBackgrounds();
+
+            // Reverse link so ArmyUnitCardUI's own click can route into equipment attach mode
+            // (see BeginAttachMode) without every card prefab needing its own hand reference.
+            if (armyViewerModal != null)
+                armyViewerModal.SetCardHand(this);
 
             if (startingDeckCatalog != null)
             {
@@ -274,6 +289,19 @@ namespace Game.UI
         }
 
         private void OnCardDraggingBlockedChanged(bool _) => RefreshDrawButtonInteractable();
+
+        // Esc cancels an in-progress equipment attach (see BeginAttachMode) — but only when the
+        // Army Viewer isn't open: that modal owns Esc while it's showing and forwards the
+        // attach-cancel itself first (see ArmyViewerModalUI.Update), so this would double-fire.
+        // Unity's Input System has no key-pressed event, so this is a genuine per-frame poll.
+        private void Update()
+        {
+            if (_pendingEquipment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+                return;
+            if (armyViewerModal != null && armyViewerModal.IsShowing)
+                return;
+            CancelAttachMode();
+        }
 
         private void RefreshDeckCountText()
         {
@@ -914,6 +942,86 @@ namespace Game.UI
             Destroy(card.gameObject);
             Relayout(animated: true);
             RestoreSiblingOrder();
+        }
+
+        // Same, addressed by the CardData rather than its CardUI — used by the equipment attach
+        // flow, which only holds the pending _pendingEquipment CardData.
+        private void RemoveCardData(CardData data)
+        {
+            CardUI card = _cards.Find(c => c != null && c.Data == data);
+            if (card != null)
+                RemoveCard(card);
+        }
+
+        // --- equipment attach mode (see _pendingEquipment) ---------------------------------
+
+        // Right-clicked a CardType.Equipment card in hand. From here the player left-clicks a
+        // Unit/Hero card (in this hand or the open Army Viewer). Only during the human's own
+        // confirmed turn, same gate as playing a card.
+        public void BeginAttachMode(CardData equipmentCard)
+        {
+            if (equipmentCard?.Definition == null || equipmentCard.Definition.cardType != CardType.Equipment)
+                return;
+            if (!CanDragCards())
+            {
+                turnController?.ShowSpawnHint("You can only attach equipment on your own turn.");
+                return;
+            }
+            _pendingEquipment = equipmentCard;
+            turnController?.ShowSpawnHint(
+                $"Attaching {equipmentCard.Definition.displayName} — left-click a unit or hero. Right-click or Esc to cancel.");
+        }
+
+        public void CancelAttachMode()
+        {
+            if (_pendingEquipment == null)
+                return;
+            _pendingEquipment = null;
+            turnController?.ShowSpawnHint("Attach cancelled.");
+        }
+
+        // Left-clicked a Unit/Hero card still in this hand — attach to it before it's ever
+        // deployed (the grant rides along on CardData.Equipment; see ArmyActions.DeployUnitFromCard).
+        public void TryAttachToHandCard(CardData targetCard)
+        {
+            if (_pendingEquipment == null || targetCard == null || targetCard == _pendingEquipment)
+                return;
+            PlayerRoot root = PlayerRootRegistry.FindFor(FindHumanPlayer());
+            if (EquipmentSystem.TryAttach(_pendingEquipment.Definition, targetCard, root, out string reason))
+            {
+                turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {targetCard.Definition.displayName}.");
+                RemoveCardData(_pendingEquipment);
+            }
+            else
+            {
+                turnController?.ShowSpawnHint(reason);
+            }
+            _pendingEquipment = null;
+        }
+
+        // Left-clicked a live unit's card in the open Army Viewer (routed via
+        // ArmyViewerModalUI.TryConsumeAttachClick). Returns true if a pending attach was
+        // handled at all (so the caller can suppress its normal detail-view click).
+        public bool TryAttachToUnit(UnitData unit)
+        {
+            if (_pendingEquipment == null)
+                return false;
+            PlayerSetupData human = FindHumanPlayer();
+            if (unit == null || unit.Owner != human)
+            {
+                turnController?.ShowSpawnHint("You can only attach equipment to your own units.");
+            }
+            else if (EquipmentSystem.TryAttach(_pendingEquipment.Definition, unit, PlayerRootRegistry.FindFor(human), out string reason))
+            {
+                turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {unit.Name}.");
+                RemoveCardData(_pendingEquipment);
+            }
+            else
+            {
+                turnController?.ShowSpawnHint(reason);
+            }
+            _pendingEquipment = null;
+            return true;
         }
 
         // Sibling order = hand order = left-to-right stacking (later siblings render on top of

@@ -168,6 +168,36 @@ namespace Game.UI
             ShowArmySummary();
         }
 
+        // Set once by CardHandUI.Awake — lets a unit card's own click route into an in-progress
+        // equipment attach (see CardHandUI's attach mode) without every ArmyUnitCardUI prefab
+        // carrying its own hand reference.
+        private CardHandUI _cardHand;
+        public void SetCardHand(CardHandUI hand) => _cardHand = hand;
+
+        // Called by ArmyUnitCardUI on a left click. True = the click was consumed by an
+        // equipment attach in progress (so the card should NOT also open its detail view).
+        public bool TryConsumeAttachClick(UnitData unit)
+        {
+            if (_cardHand == null || !_cardHand.IsAttachMode)
+                return false;
+            bool handled = _cardHand.TryAttachToUnit(unit);
+            // The unit's ability list / stats may have changed — refresh both the grid card and
+            // the detail panel for it.
+            RefreshGrid();
+            ShowUnitDetail(unit);
+            return handled;
+        }
+
+        // Called by ArmyUnitCardUI on a right click (and from Update's Esc handling). True = an
+        // attach was pending and has been cancelled (so the right click did something).
+        public bool TryCancelAttach()
+        {
+            if (_cardHand == null || !_cardHand.IsAttachMode)
+                return false;
+            _cardHand.CancelAttachMode();
+            return true;
+        }
+
         private void Awake()
         {
             armyButtonRow?.SetMaxVisible(8);
@@ -285,6 +315,10 @@ namespace Game.UI
         private void Update()
         {
             if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+                return;
+
+            // Esc cancels an in-progress equipment attach before it does anything to this modal.
+            if (TryCancelAttach())
                 return;
 
             if (renamePopup != null && renamePopup.IsShowing)

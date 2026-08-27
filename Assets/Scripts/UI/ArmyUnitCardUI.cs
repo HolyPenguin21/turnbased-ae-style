@@ -229,6 +229,19 @@ namespace Game.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            // Equipment attach mode (see CardHandUI): right-click cancels a pending attach,
+            // left-click makes this unit the host. Either consumes the click instead of the
+            // normal detail view.
+            if (eventData.button == PointerEventData.InputButton.Right)
+            {
+                if (_modal != null && _modal.TryCancelAttach())
+                    return;
+            }
+            else if (_modal != null && _modal.TryConsumeAttachClick(Unit))
+            {
+                return;
+            }
+
             _modal?.ShowUnitDetail(Unit);
         }
 

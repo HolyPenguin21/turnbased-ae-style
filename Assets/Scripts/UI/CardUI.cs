@@ -12,7 +12,7 @@ namespace Game.UI
     // the rest of the hand LIVE as it's dragged (see PreviewDrag), not just on release, so
     // the hand visibly makes room for it while it's still being held.
     public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler,
-        IBeginDragHandler, IDragHandler, IEndDragHandler
+        IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
@@ -215,6 +215,28 @@ namespace Game.UI
             _isHovered = false;
             Retarget(animated: true);
             _hand.RestoreSiblingOrder();
+        }
+
+        // Right/left click routing for equipment attach mode (see CardHandUI, and the project
+        // owner's own spec: right-click an Equipment card to start attaching, left-click a
+        // Unit/Hero card to be its host, right-click again anywhere to cancel). A plain click
+        // that isn't part of a drag; deploying a card is still the drag gesture, untouched.
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (IsDragging || _hand == null || Data?.Definition == null)
+                return;
+
+            if (eventData.button == PointerEventData.InputButton.Right)
+            {
+                if (_hand.IsAttachMode)
+                    _hand.CancelAttachMode();
+                else if (Data.Definition.cardType == CardType.Equipment)
+                    _hand.BeginAttachMode(Data);
+                return;
+            }
+
+            if (eventData.button == PointerEventData.InputButton.Left && _hand.IsAttachMode)
+                _hand.TryAttachToHandCard(Data);
         }
 
         // Hover and hand-scrolling always work regardless of whose turn it is (see
