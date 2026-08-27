@@ -324,9 +324,15 @@ namespace Game.Map
             if (IsDetectedBy(unit, observer))
                 return true; // already personally visible to this observer — no re-roll
 
+            (int col, int row) = hex.ToOffset();
             int spot = SpotPoolAgainst(observer, hex);
             if (spot <= 0)
+            {
+                if (DebugLog)
+                    Game.Ai.AiDebugLog.Write($"[STEALTH] {observer.Nickname} could not challenge hidden "
+                        + $"{unit.Name} @ ({col}, {row}) — spot pool 0 (no source close enough / strong enough).");
                 return false;
+            }
 
             int hide = HideDiceFor(unit, hex);
             ChallengeResult result = ChallengeRoller(spot, hide);
@@ -334,8 +340,8 @@ namespace Game.Map
             bool detected = result.AttackerSuccesses > result.DefenderSuccesses;
 
             if (DebugLog)
-                Game.Ai.AiDebugLog.Write($"[STEALTH] {observer.Nickname} vs hidden {unit.Name} @ ({hex.Q},{hex.R}): "
-                    + $"spot {spot} ({result.AttackerSuccesses}) vs hide {hide} ({result.DefenderSuccesses}) "
+                Game.Ai.AiDebugLog.Write($"[STEALTH] {observer.Nickname} vs hidden {unit.Name} @ ({col}, {row}): "
+                    + $"spot {spot} ({result.AttackerSuccesses} hits) vs hide {hide} ({result.DefenderSuccesses} hits) "
                     + $"-> {(detected ? "DETECTED" : "still hidden")}");
 
             if (detected)

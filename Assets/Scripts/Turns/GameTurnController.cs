@@ -66,9 +66,18 @@ namespace Game.Turns
         // AI turn — flip it on only to actually watch one army's own popup update live.
         [SerializeField] private bool debugShowAiArmyModal;
 
+        // Dev-only: writes one line per stealth-detection challenge to Logs/AiDebug.log (also
+        // mirrored to the Console) — observer, hidden unit, hex, spot vs hide dice/hits, and
+        // the outcome; plus a line when a check couldn't roll at all (spot pool 0). Off by
+        // default and never player-facing (stealth design §3/§9 — the challenge itself stays
+        // silent in the combat log / turn popups); flip this on only to trace detection while
+        // testing. Same Inspector-checkbox convention as debugRevealFogOfWar above.
+        [SerializeField] private bool debugLogStealthChallenges;
+
         private void OnValidate()
         {
             VisionSystem.DebugRevealAll = debugRevealFogOfWar;
+            Game.Map.StealthSystem.DebugLog = debugLogStealthChallenges;
         }
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
@@ -248,6 +257,7 @@ namespace Game.Turns
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
             VisionSystem.DebugRevealAll = debugRevealFogOfWar;
+            StealthSystem.DebugLog = debugLogStealthChallenges;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
             if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
