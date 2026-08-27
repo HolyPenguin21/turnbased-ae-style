@@ -449,6 +449,10 @@ namespace Game.Turns
             // StealthSystem is otherwise turn-controller-agnostic (the stealth sim drives it
             // by hand) — hand it the live completed-turn count now that a real game is starting.
             Game.Map.StealthSystem.CompletedTurnsProvider = CompletedTurnsFor;
+            // A detection scored during the observer's OWN turn must last through the end of
+            // their NEXT turn — their completed-turn count isn't bumped until the current turn
+            // ends, so MarkDetected needs to know "is this observer the one acting right now".
+            Game.Map.StealthSystem.ObserverTakingTurnProvider = p => p != null && p == CurrentPlayer;
             BeginNewTurn();
         }
 

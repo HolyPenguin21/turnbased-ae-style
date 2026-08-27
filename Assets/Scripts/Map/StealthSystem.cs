@@ -18,12 +18,20 @@ namespace Game.Map
     // State split:
     //   UnitData.IsHidden          — owner-facing "this unit is in stealth" (set only via
     //                                EnterStealth/ExitStealth here).
-    //   _detected[unit][observer]  — the observer's CompletedTurnsFor(observer) snapshot at
-    //                                the moment a hidden challenge succeeded. The detection
-    //                                is live while CompletedTurnsProvider(observer) <= that
-    //                                snapshot, i.e. through the end of the observer's next
-    //                                own turn (see the design's acceptance example — this is
-    //                                NOT TurnNumber+1, turn order is re-rolled each round).
+    //   _detected[unit][observer]  — the observer's completed-turn ordinal THROUGH which the
+    //                                detection stays live (an "expiry ordinal", not a raw
+    //                                snapshot). The detection is live while
+    //                                CompletedTurnsProvider(observer) <= that value; it lapses
+    //                                once the observer finishes a turn past it. This is NOT
+    //                                TurnNumber+1 — turn order is re-rolled each round.
+    //                                When the challenge succeeds on the OBSERVER'S OWN turn the
+    //                                expiry is CompletedTurnsFor(observer) + 1 (their own
+    //                                completed-turn count isn't bumped until that turn ends, so
+    //                                a bare snapshot would already read "expired" one turn
+    //                                early); on anyone else's turn it is the bare
+    //                                CompletedTurnsFor(observer), which already means "through
+    //                                the end of the observer's next turn". See
+    //                                ObserverTakingTurnProvider.
     //
     // The hidden challenge itself reuses Game.Combat.ChallengeResolver (the one deterministic/
     // testable dice path) and is SILENT: no popup, no combat UI, no player-facing or owner-
@@ -34,6 +42,15 @@ namespace Game.Map
         // simulation (Tools/stealth-sim) can drive detection expiry by hand without a live
         // turn controller.
         public static Func<PlayerSetupData, long> CompletedTurnsProvider = _ => 0L;
+
+        // True while `observer` is the player whose turn is being taken RIGHT NOW. Set by
+        // GameTurnController.BeginGame; default false so the standalone stealth simulation (and
+        // any pre-game call) treats every detection as happening on someone else's turn. A
+        // detection scored during the observer's own turn must still last through the end of
+        // their NEXT turn — but the active player's completed-turn counter isn't incremented
+        // until that turn ends, so without this flag MarkDetected would record an expiry that
+        // PurgeExpiredFor lapses at the end of the very same turn (project owner's own P1).
+        public static Func<PlayerSetupData, bool> ObserverTakingTurnProvider = _ => false;
 
         // Terrain move cost at a hex — hideDice = stealthLevel + (moveCost - 1). Set by
         // whoever owns the HexMap at setup; default flat 1 (no terrain bump) for the sim.
@@ -139,9 +156,9 @@ namespace Game.Map
             if (unit == null || observer == null)
                 return false;
             if (!_detected.TryGetValue(unit, out Dictionary<PlayerSetupData, long> byObserver)
-                || !byObserver.TryGetValue(observer, out long snapshot))
+                || !byObserver.TryGetValue(observer, out long expiry))
                 return false;
-            if (CompletedTurnsProvider(observer) <= snapshot)
+            if (CompletedTurnsProvider(observer) <= expiry)
                 return true;
             // Expired — drop lazily so a later re-detection starts clean.
             byObserver.Remove(observer);
@@ -159,7 +176,11 @@ namespace Game.Map
                 byObserver = new Dictionary<PlayerSetupData, long>();
                 _detected[unit] = byObserver;
             }
-            byObserver[observer] = CompletedTurnsProvider(observer);
+            long expiry = CompletedTurnsProvider(observer);
+            if (ObserverTakingTurnProvider(observer))
+                expiry += 1; // scored on the observer's own turn — must survive through the
+                             // end of their NEXT turn, not the current one (see class comment).
+            byObserver[observer] = expiry;
             // A new personal detection changes what `observer` can see — refresh UI rosters/
             // markers and AiMapMemory (spec §4).
             StealthChanged?.Invoke();
@@ -178,7 +199,7 @@ namespace Game.Map
             var emptied = new List<UnitData>();
             foreach (KeyValuePair<UnitData, Dictionary<PlayerSetupData, long>> pair in _detected)
             {
-                if (pair.Value.TryGetValue(observer, out long snapshot) && now > snapshot)
+                if (pair.Value.TryGetValue(observer, out long expiry) && now > expiry)
                 {
                     pair.Value.Remove(observer);
                     anyLapsed = true;
@@ -281,7 +302,13 @@ namespace Game.Map
             {
                 if (army.Members.Count == 0)
                     continue;
-                best = Math.Max(best, SourcePool(army.Hex, hiddenHex,
+                // ArmyData.Hex only updates once a whole move finishes (ArmyRegistry.MoveArmy) —
+                // mid-move the live per-step position is ArmyController.CurrentHex instead, same
+                // read VisionSystem.RecomputeFor already uses. Matters for the per-step arrival
+                // checks: a moving Recce source must challenge from where it actually is on THIS
+                // step, not from its stale origin hex (project owner's own P1).
+                HexCoord fromHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
+                best = Math.Max(best, SourcePool(fromHex, hiddenHex,
                     AbilityParams.GetBestRecceSpotStrength(army),
                     AbilityParams.GetBestRecceRadius(army) > 0));
             }

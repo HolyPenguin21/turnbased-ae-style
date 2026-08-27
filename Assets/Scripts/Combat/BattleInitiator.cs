@@ -85,7 +85,13 @@ namespace Game.Combat
         // Defense+Attack (WorthIt.DefenseSum/AttackSum, non-hero members only, no hex bonus —
         // same flat power read GarrisonReorgTask.TotalNonHeroPower/AiDefencePlanner.
         // CheatEstimateRaiderThreat already use elsewhere) rather than whichever army the
-        // registry happens to enumerate first (2026-08-21 fix, project owner's own report: an
+        // registry happens to enumerate first. Individual stealth (2026-08-27): the power read
+        // sums only the members TARGETABLE by `mover` — a member hidden from them isn't on the
+        // hex as far as they know, so an invisible heavy unit inside a mixed army must not
+        // decide which army the mover ends up fighting. Once a battle actually starts,
+        // StealthSystem.RevealArmy drops stealth on every member, so the in-battle roster is the
+        // full one again — no separate post-start rule needed here (2026-08-21 fix, project
+        // owner's own report: an
         // attacking army moving onto a multi-army hex — e.g. a citadel with the garrison PLUS a
         // still-forming raid/patrol force sitting beside it — used to fight whatever ArmyRegistry
         // returned first, which could easily be the weakest, freshly-recruited force instead of
@@ -102,7 +108,8 @@ namespace Game.Combat
                 // the mover is not a contact target (see this method's own stealth note).
                 if (army.Owner == mover || !IsEngageable(army, mover))
                     continue;
-                float power = WorthIt.DefenseSum(army) + WorthIt.AttackSum(army);
+                var visibleMembers = Game.Map.StealthSystem.TargetableMembersFor(army, mover);
+                float power = WorthIt.DefenseSum(visibleMembers) + WorthIt.AttackSum(visibleMembers);
                 if (strongest == null || power > strongestPower)
                 {
                     strongest = army;

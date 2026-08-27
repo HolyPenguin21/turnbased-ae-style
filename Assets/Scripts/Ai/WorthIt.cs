@@ -60,12 +60,21 @@ namespace Game.Ai
         // Attack-sum of `army`'s own non-hero members — the same side of the comparison every
         // caller here always uses for the ATTACKING army (heroes never counted, matching every
         // other flat Attack/Defense sum already in this codebase).
-        public static float AttackSum(ArmyData army) => army?.Members.Where(m => !m.IsHero).Sum(m => m.Attack) ?? 0f;
+        public static float AttackSum(ArmyData army) => AttackSum(army?.Members);
 
         // Own non-hero Defense sum, no hex bonus — used both as DefenseAt's own first term and,
         // on its own, as the ATTACKER's side of Score's return-fire read (an attacking army isn't
         // standing on a defensible hex it gets credit for, it's marching onto the defender's).
-        public static float DefenseSum(ArmyData army) => army?.Members.Where(m => !m.IsHero).Sum(m => m.Defense) ?? 0f;
+        public static float DefenseSum(ArmyData army) => DefenseSum(army?.Members);
+
+        // Roster-scoped overloads — same non-hero flat sum against an explicit member set rather
+        // than a whole ArmyData. Needed where the caller must rank/measure only the members it is
+        // actually allowed to know about: a defender's members that are HIDDEN from the observer
+        // must not feed the "which army do I contact" power read (BattleInitiator.FindEnemyAt),
+        // or an invisible heavy unit inside a mixed army would still steer the enemy's target
+        // pick (project owner's own P1).
+        public static float AttackSum(IEnumerable<UnitData> members) => members?.Where(m => !m.IsHero).Sum(m => m.Attack) ?? 0f;
+        public static float DefenseSum(IEnumerable<UnitData> members) => members?.Where(m => !m.IsHero).Sum(m => m.Defense) ?? 0f;
 
         // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
         // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is

@@ -509,6 +509,11 @@ namespace Game.Map
             // unmodified instead).
             bool eventStopClaimed = false;
 
+            // Last hex the per-step stealth arrival check already covered (set in onStepCompleted
+            // below) — so onComplete doesn't run a second, redundant challenge on the final hex
+            // for the same (unit, observer) pairs it just checked one step ago.
+            HexCoord? lastStealthCheckedHex = null;
+
             // Let the idle hover/pulse animation ease back to its resting pose first — jumping
             // straight from mid-bob/mid-pulse into the move animation was what made movement
             // look jerky right as it started. SettleThen already claims IsMoving immediately,
@@ -531,9 +536,14 @@ namespace Game.Map
                     // Stealth trigger A (see Game.Map.StealthSystem): both sides' vision has
                     // just been recomputed for this final position — check this army's own
                     // hidden members against enemy observers of the hex, and enemy hidden
-                    // units now inside this army's vision against its owner. Once per completed
-                    // move, not per animation step.
-                    StealthSystem.RunChecksForArrival(army, actualHex);
+                    // units now inside this army's vision against its owner. onStepCompleted
+                    // below already ran this per ACTUAL hex entered (the design's "check on
+                    // arrival in each new hex" — a multi-hex order must not let a hidden unit
+                    // slip past an intermediate observer); this final call only covers the
+                    // case where the last entered hex wasn't the one just checked (e.g. no
+                    // steps ran at all).
+                    if (!lastStealthCheckedHex.HasValue || !lastStealthCheckedHex.Value.Equals(actualHex))
+                        StealthSystem.RunChecksForArrival(army, actualHex);
 
                     // Create the container as soon as aircraft reach their own barracks. They
                     // do not merge into it: landing is only the end-turn refuel condition.
@@ -638,7 +648,20 @@ namespace Game.Map
                         eventStopClaimed = true;
                         return true;
                     }
-                    return HandleVisionStep(army, hex);
+                    bool stopForContact = HandleVisionStep(army, hex);
+                    // Stealth trigger A, per ACTUAL hex entered (design: a check on arrival in
+                    // each NEW hex, not once for the whole order — a multi-hex move must not let
+                    // a hidden unit slip past an observer sitting on a mid-route hex). Runs here,
+                    // AFTER HandleVisionStep has recomputed the mover's vision for this step, and
+                    // SpotPoolAgainst reads the mover's live CurrentHex. Air armies never stealth
+                    // and resolve their own AA/strike path instead. The clean-Hex-Event stop
+                    // above returns before this — that hex is covered by onComplete's own call.
+                    if (!AviationRules.IsAirArmy(army))
+                    {
+                        StealthSystem.RunChecksForArrival(army, hex);
+                        lastStealthCheckedHex = hex;
+                    }
+                    return stopForContact;
                 },
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
                 onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),

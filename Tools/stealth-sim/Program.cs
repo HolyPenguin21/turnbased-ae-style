@@ -64,6 +64,7 @@ namespace StealthSim
             Scenario18_AiMemoryStaysHonest();
             Scenario19_AiSoloScoutStealthGate();
             Scenario20_EnterCostsGatedExitFree();
+            Scenario21_DetectedOnOwnTurnLastsThroughNextTurn();
 
             Console.WriteLine();
             Console.WriteLine($"stealth-sim: {_passed} passed, {_failed} failed");
@@ -470,6 +471,35 @@ namespace StealthSim
                 canEnterOnce && cannotEnterAgain && exitedClean && plainCannotStealth);
         }
 
+        private static void Scenario21_DetectedOnOwnTurnLastsThroughNextTurn()
+        {
+            Reset();
+            var a = Player("A"); // the observer
+            var owner = Player("O");
+            var unit = Unit("x", "Stealth4");
+            ArmyRegistry.Register(Army("x", At(0, 0), owner, unit));
+            StealthSystem.EnterStealth(unit);
+
+            // A scores the detection DURING its own turn — A's completed-turn count is not
+            // bumped until that turn ends, so a bare snapshot (== 4) would lapse the instant
+            // the count reaches 5 at this turn's end. The design says it must survive through
+            // the end of A's NEXT turn (count 6).
+            StealthSystem.ObserverTakingTurnProvider = p => p == a;
+            CompletedTurns[a] = 4;
+            StealthSystem.MarkDetected(unit, a);
+            bool visibleNow = !StealthSystem.IsHiddenFrom(unit, a);      // count 4 <= expiry 5
+
+            StealthSystem.ObserverTakingTurnProvider = _ => false;       // A's turn ended
+            CompletedTurns[a] = 5;
+            bool stillVisibleNextTurn = !StealthSystem.IsHiddenFrom(unit, a); // count 5 <= expiry 5
+            CompletedTurns[a] = 6;                                       // A's NEXT turn now ended
+            bool hiddenAgain = StealthSystem.IsHiddenFrom(unit, a);      // count 6 > expiry 5
+
+            StealthSystem.ObserverTakingTurnProvider = _ => false;
+            Check("21 detected on the observer's own turn -> lasts through the end of their NEXT turn",
+                visibleNow && stillVisibleNextTurn && hiddenAgain);
+        }
+
         // ---------------------------------------------------------------- helpers ----
 
         private static void Reset()
@@ -481,6 +511,7 @@ namespace StealthSim
             CompletedTurns.Clear();
             TerrainCost.Clear();
             GameSession.Players = new List<PlayerSetupData>();
+            StealthSystem.ObserverTakingTurnProvider = _ => false;
             _stubSpotSuccesses = 0;
             _stubHideSuccesses = 0;
             _challengeRolls = 0;
