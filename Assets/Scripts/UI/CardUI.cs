@@ -139,8 +139,7 @@ namespace Game.UI
         // card (which doesn't rebuild the CardUI).
         public void RefreshEquipmentToggle()
         {
-            CardDefinition definition = Data?.Definition;
-            equipmentArtToggle?.Configure(definition != null ? definition.art : null, Data?.Equipment, _hand?.GameConfig);
+            equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig);
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility,
