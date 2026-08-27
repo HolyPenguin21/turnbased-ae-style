@@ -156,7 +156,7 @@ namespace Game.UI
             if (hiddenBadgeRoot != null)
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
 
-            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment?.art);
+            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment, _modal != null ? _modal.GameConfig : null);
         }
 
         // See the field block's own comment for the fixed per-slot mapping. Hidden entirely for

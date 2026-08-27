@@ -113,14 +113,11 @@ namespace Game.UI
             {
                 // Abilities only — no card type prefix (matches ArmyUnitCardUI's own SkillsText
                 // slot). Abbreviated per GameConfig.abilityAbbreviations (see
-                // GameConfig.FormatAbilities) — falls back to the raw tag name for anything not
-                // listed there. An Equipment card has no grantedAbilities of its own — show the
-                // abilities its EquipmentGrant would ADD instead, so the card face isn't blank.
-                var abilityTags = definition == null ? null
-                    : definition.cardType == CardType.Equipment ? definition.equipment?.addAbilities
-                    : definition.grantedAbilities;
-                string formatted = _hand?.GameConfig?.FormatAbilities(abilityTags);
-                typeText.text = formatted ?? string.Empty;
+                // GameConfig.FormatAbilities). An Equipment card shows, in order, who it fits,
+                // the abilities its grant adds, then its stat changes (see EquipmentCardText).
+                typeText.text = definition != null && definition.cardType == CardType.Equipment
+                    ? EquipmentCardText.CardFace(definition, _hand?.GameConfig)
+                    : _hand?.GameConfig?.FormatAbilities(definition?.grantedAbilities) ?? string.Empty;
             }
 
             RefreshStatsRow(definition);
@@ -143,7 +140,7 @@ namespace Game.UI
         public void RefreshEquipmentToggle()
         {
             CardDefinition definition = Data?.Definition;
-            equipmentArtToggle?.Configure(definition != null ? definition.art : null, Data?.Equipment?.art);
+            equipmentArtToggle?.Configure(definition != null ? definition.art : null, Data?.Equipment, _hand?.GameConfig);
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility,

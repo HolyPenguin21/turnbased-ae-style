@@ -224,6 +224,10 @@ namespace Game.UI
         // GameConfig rather than baked into the prefab, per the user's own spec.
         public HexHighlightStyle ActingHighlightStyle => gameConfig != null ? gameConfig.battleActingUnitHighlightStyle : null;
 
+        // Read by BattleGridCellUI so a cell's EquipmentArtToggle can abbreviate ability tags
+        // the same way the rest of the UI does (see EquipmentCardText).
+        public GameConfig GameConfig => gameConfig;
+
         // Owner is never null for a real army/unit (see PlayerSetupData/CitadelSetupController's
         // own _neutralPlayer — even a neutral side has a real owner profile, just Faction.Neutral)
         // — this only returns null when startingDeckCatalog has no catalog registered for that

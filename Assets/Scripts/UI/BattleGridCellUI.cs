@@ -107,7 +107,7 @@ namespace Game.UI
                 artImage.sprite = unit != null ? unit.Art : null;
                 artImage.gameObject.SetActive(unit != null);
             }
-            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment?.art);
+            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment, _screen != null ? _screen.GameConfig : null);
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
             if (background != null)
