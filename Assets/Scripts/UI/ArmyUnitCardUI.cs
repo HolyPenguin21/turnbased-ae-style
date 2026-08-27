@@ -54,6 +54,15 @@ namespace Game.UI
         // repairButton/costPreviewRoot (Improve there, Repair here; see UnitRepair for the cost
         // math). Order: AP, Human, Energy, Materials, Tech.
         [SerializeField] private Button repairButton;
+        // Hover-revealed "Enter/Exit stealth" toggle (see ArmyViewerModalUI.CanEnter/Exit
+        // StealthUnit) — same hover-only shape as repairButton. Optional prefab ref: a null
+        // button just means the stealth action isn't offered on the card until it's wired.
+        [SerializeField] private Button stealthButton;
+        [SerializeField] private TMP_Text stealthButtonLabel;
+        // Always-on "this unit is in stealth" marker the OWNER sees on their own hidden units
+        // (the enemy never gets a card for a hidden unit at all — see ArmyViewerModalUI.
+        // RefreshGrid). Optional.
+        [SerializeField] private GameObject hiddenBadgeRoot;
         [SerializeField] private GameObject costPreviewRoot;
         [SerializeField] private Image[] costBadgeIcons;
         [SerializeField] private TMP_Text[] costBadgeAmounts;
@@ -125,6 +134,22 @@ namespace Game.UI
             }
             if (costPreviewRoot != null)
                 costPreviewRoot.SetActive(false);
+
+            if (stealthButton != null)
+            {
+                stealthButton.gameObject.SetActive(false);
+                stealthButton.onClick.RemoveAllListeners();
+                if (unit != null)
+                    stealthButton.onClick.AddListener(() =>
+                    {
+                        if (unit.IsHidden)
+                            _modal.ExitStealthUnit(unit);
+                        else
+                            _modal.EnterStealthUnit(unit);
+                    });
+            }
+            if (hiddenBadgeRoot != null)
+                hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
         }
 
         // See the field block's own comment for the fixed per-slot mapping. Hidden entirely for
@@ -216,12 +241,29 @@ namespace Game.UI
                 ShowRepairCostPreview();
             else
                 HideRepairCostPreview();
+
+            RefreshStealthButton();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
             repairButton?.gameObject.SetActive(false);
             HideRepairCostPreview();
+            stealthButton?.gameObject.SetActive(false);
+        }
+
+        // "Enter stealth (1 AP)" for an eligible Stealth-tagged unit not yet hidden,
+        // "Exit stealth" (free) for the owner on a hidden one — re-checked live on hover,
+        // same shape as the Repair button above.
+        private void RefreshStealthButton()
+        {
+            if (stealthButton == null || Unit == null || _modal == null)
+                return;
+            bool canEnter = _modal.CanEnterStealthUnit(Unit);
+            bool canExit = _modal.CanExitStealthUnit(Unit);
+            stealthButton.gameObject.SetActive(canEnter || canExit);
+            if (stealthButtonLabel != null && (canEnter || canExit))
+                stealthButtonLabel.text = canExit ? "Exit stealth" : "Enter stealth (1 AP)";
         }
 
         // One coloured circle badge per non-zero cost component, AP first — same convention as

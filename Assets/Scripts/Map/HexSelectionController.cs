@@ -147,6 +147,7 @@ namespace Game.Map
                 baseViewerModal.Closed += OnBaseModalClosed;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
+            StealthSystem.StealthChanged += OnStealthChanged;
             BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
             RefreshAllVisibility();
         }
@@ -165,6 +166,7 @@ namespace Game.Map
                 baseViewerModal.Closed -= OnBaseModalClosed;
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
+            StealthSystem.StealthChanged -= OnStealthChanged;
             BuildingRegistry.VisualStateChanged -= OnBuildingVisualStateChanged;
             SetRememberedBuildingVisualsVisible(false);
             SetRememberedArmyVisualsVisible(false);
@@ -215,13 +217,23 @@ namespace Game.Map
                 RefreshAllVisibility();
         }
 
+        // A hidden unit toggling stealth (or a personal detection lapsing) changes what the
+        // current viewer can see with no vision-radius change — refresh markers + memory.
+        private void OnStealthChanged()
+        {
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (viewer != null && viewer.IsHuman)
+                RememberCurrentlyVisibleContent(viewer);
+            RefreshAllVisibility();
+        }
+
         private void RememberCurrentlyVisibleContent(PlayerSetupData viewer)
         {
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(viewer))
             {
                 List<ArmyData> enemies = ArmyRegistry.AllAt(hex)
                     .FindAll(army => army.Owner != viewer && army.Owner != null && !army.Owner.IsNeutral
-                        && BattleInitiator.IsEngageable(army));
+                        && BattleInitiator.IsEngageable(army, viewer));
                 HumanVisualMemory.ReconcileVisibleHex(viewer, hex, enemies.ConvertAll(army => army.Id));
                 foreach (ArmyData army in enemies)
                 {
@@ -1308,7 +1320,12 @@ namespace Game.Map
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
                 bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
                     && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex)
-                        || everSeenNeutral);
+                        || everSeenNeutral)
+                    // An enemy army every member of which is hidden from the current viewer
+                    // (and undetected) shows no marker at all (see Game.Map.StealthSystem). A
+                    // mixed army still shows — its visible members are real.
+                    && !(army.Owner != VisionSystem.CurrentViewer
+                         && StealthSystem.ArmyFullyHiddenFrom(army, VisionSystem.CurrentViewer));
                 if (controller.Visual != null)
                 {
                     controller.Visual.SetVisible(visible);

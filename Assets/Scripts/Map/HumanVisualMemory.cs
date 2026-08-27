@@ -47,7 +47,7 @@ namespace Game.Map
                 sightings = new Dictionary<int, ArmySighting>();
                 ArmySightings[viewer] = sightings;
             }
-            sightings[army.Id] = new ArmySighting(army.Id, observedHex, SnapshotArmy(army, observedHex));
+            sightings[army.Id] = new ArmySighting(army.Id, observedHex, SnapshotArmy(army, observedHex, viewer));
         }
 
         public static bool TryGetArmySighting(PlayerSetupData viewer, int armyId, out ArmySighting sighting)
@@ -79,7 +79,7 @@ namespace Game.Map
                 ArmySightings.Remove(viewer);
         }
 
-        private static ArmyData SnapshotArmy(ArmyData source, HexCoord observedHex)
+        private static ArmyData SnapshotArmy(ArmyData source, HexCoord observedHex, PlayerSetupData viewer)
         {
             ArmyData snapshot = ArmyData.CreateVisualSnapshot();
             snapshot.Name = source.Name;
@@ -93,8 +93,12 @@ namespace Game.Map
             // read back as a plain empty army.
             snapshot.IsAirfield = source.IsAirfield;
             snapshot.HasActivatedThisTurn = source.HasActivatedThisTurn;
+            // Individual stealth (see Game.Map.StealthSystem): the "last seen" roster only
+            // remembers the members this viewer could actually see — a member still hidden
+            // from them was never part of what they observed.
             foreach (UnitData member in source.Members)
-                snapshot.Members.Add(SnapshotUnit(member));
+                if (!StealthSystem.IsHiddenFrom(member, viewer))
+                    snapshot.Members.Add(SnapshotUnit(member));
             return snapshot;
         }
 

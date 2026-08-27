@@ -378,6 +378,45 @@ namespace Game.UI
             ShowUnitDetail(unit);
         }
 
+        // Individual stealth actions (see Game.Map.StealthSystem) — same "query gates a
+        // hover button, action spends + refreshes" shape as CanRepairUnit/RepairUnit above.
+        // Entering costs 1 AP per unit; a voluntary exit by the owner is free. Only ever the
+        // owner's own army (never IsReadOnly), and only a unit carrying a StealthN ability.
+
+        public bool CanEnterStealthUnit(UnitData unit)
+        {
+            if (IsReadOnly || _currentArmy == null || !Game.Map.StealthSystem.CanEnterStealth(unit))
+                return false;
+            PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
+            return root != null && root.CanSpendActionPoints(1);
+        }
+
+        public bool CanExitStealthUnit(UnitData unit)
+            => !IsReadOnly && _currentArmy != null && unit != null && unit.IsHidden;
+
+        public void EnterStealthUnit(UnitData unit)
+        {
+            if (!CanEnterStealthUnit(unit))
+                return;
+            PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
+            root.SpendActionPoints(1);
+            Game.Map.StealthSystem.EnterStealth(unit);
+            // Trigger C — a hidden unit's state changed via the shared hex action menu; the
+            // action here is not a move, so re-check detection now (design §3.C).
+            Game.Map.StealthSystem.RunChecksAfterHiddenUnitAction(unit, _currentArmy.Hex, _currentArmy.Owner);
+            RefreshGrid();
+            ShowUnitDetail(unit);
+        }
+
+        public void ExitStealthUnit(UnitData unit)
+        {
+            if (!CanExitStealthUnit(unit))
+                return;
+            Game.Map.StealthSystem.ExitStealth(unit);
+            RefreshGrid();
+            ShowUnitDetail(unit);
+        }
+
         // Called by ArmyUnitCardUI.OnBeginDrag, before the card starts following the pointer —
         // snapshots the current roster order as the scratch list PreviewReorder live-edits, so
         // dragging can show the eventual result without touching _currentArmy.Members until the
@@ -704,9 +743,21 @@ namespace Game.UI
             if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null || _currentArmy == null)
                 return;
 
-            for (int i = 0; i < _currentArmy.EffectiveCapacity; i++)
+            // Individual stealth (see Game.Map.StealthSystem): when inspecting SOMEONE ELSE's
+            // army, only the members this viewer can actually see are shown — a still-hidden
+            // member simply isn't in the roster. The owner always sees their own full roster
+            // (hidden members included, flagged by ArmyUnitCardUI).
+            List<UnitData> shown = _currentArmy.Members;
+            if (_readOnly)
             {
-                UnitData member = i < _currentArmy.Members.Count ? _currentArmy.Members[i] : null;
+                Game.Players.PlayerSetupData viewer = Game.Map.VisionSystem.CurrentViewer;
+                shown = _currentArmy.Members.Where(m => !Game.Map.StealthSystem.IsHiddenFrom(m, viewer)).ToList();
+            }
+
+            int slots = System.Math.Max(_currentArmy.EffectiveCapacity, shown.Count);
+            for (int i = 0; i < slots; i++)
+            {
+                UnitData member = i < shown.Count ? shown[i] : null;
                 ArmyUnitCardUI card = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
                 card.Setup(this, member);
                 card.SetSlot(SlotPosition(i), animated: false);
