@@ -41,6 +41,28 @@ namespace Game.Ai
     {
         public static bool IsEligibleComposition(ArmyData army) => AiArmyRoles.IsSoloRecce(army);
 
+        // A solo Recce scout counts as "stealth-capable for its next VisitHex move" if it is
+        // EITHER already hidden OR still able to slip into stealth first — the exact gate
+        // AiTurnController.MoveArmyRoutine applies right before EnterStealth: not yet activated
+        // this turn, IsSoloRecce, its sole member can enter stealth, and the turn can still
+        // afford ActivationApCost + 1 AP. ScoreCandidate keys its hidden-scout detection-risk
+        // handling on this (not bare unit.IsHidden) so a scout that WILL be hidden by the time it
+        // actually moves is offered near-enemy frontier with a soft penalty now, instead of the
+        // hard refusal meant for a scout that stays visible.
+        public static bool IsStealthCapableForNextMove(PlayerSetupData actor, ArmyData army)
+        {
+            if (army == null || army.Members.Count == 0)
+                return false;
+            if (army.Members.Any(m => m.IsHidden))
+                return true;
+            if (army.HasActivatedThisTurn || !AiArmyRoles.IsSoloRecce(army))
+                return false;
+            if (!Game.Map.StealthSystem.CanEnterStealth(army.Members[0]))
+                return false;
+            PlayerRoot root = PlayerRootRegistry.FindFor(actor);
+            return root != null && root.CanSpendActionPoints(army.ActivationApCost + 1);
+        }
+
         // Известная НЕ-нейтральная армия (AiMapMemory — честная память, не живое зрение) в
         // радиусе scoutFleeRadius от текущего хекса `army` → отступление в гарнизон на один ход
         // вместо обычной цели FindTarget. Нет отдельной проверки "своя армия достаточно сильна,
@@ -279,23 +301,28 @@ namespace Game.Ai
             // — see the user's own report of a scout walking up to a hex next to an enemy
             // citadel it already knew about, only to immediately retreat.
             //
-            // Стелс · Задача 3 — that hard exclusion holds only for an ORDINARY (visible) scout.
-            // A scout CURRENTLY IN STEALTH is instead softly penalised per nearby sighting
-            // (scoutStealthRiskPenalty): it can still slip in close when every safer frontier hex
-            // scores clearly worse, but an equal one elsewhere wins. Detection status is
-            // deliberately NOT consulted here — unlike TryFlee (which reacts after the fact), the
-            // scout's owner has no honest way to know whether a planned move will get it spotted;
-            // "is the scout hidden at all" is the only gate. Risk is read only from honest
-            // AiMapMemory, never live stealth-side vision.
-            bool scoutHidden = army.Members.Any(m => m.IsHidden);
+            // Стелс · Задача 3 — that hard exclusion holds only for a scout that will STAY
+            // VISIBLE. A scout already in stealth, OR still able to enter it before this move
+            // (IsStealthCapableForNextMove — mirrors the MoveArmyRoutine AP gate), is instead
+            // softly penalised: it can slip in close when every safer frontier hex scores clearly
+            // worse, but an equal one elsewhere wins. Two honesty limits: detection STATUS is
+            // never consulted (unlike TryFlee, which reacts after the fact — the scout's owner
+            // can't know in advance whether a planned move gets it spotted); and the penalty
+            // lands only where the remembered army could ACTUALLY roll a stealth challenge from
+            // its last-seen hex (CanDetectStealthAt — co-located, or adjacent with real Recce),
+            // never for an ordinary army merely within scoutFleeRadius. Risk is read only from
+            // honest AiMapMemory.
+            bool scoutStealthy = IsStealthCapableForNextMove(actor, army);
             float stealthRiskPenalty = 0f;
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(actor, new[] { candidate }, AiConfig.scoutFleeRadius))
             {
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue;
-                if (!scoutHidden)
+                if (!scoutStealthy)
                     return null;
+                if (!sighting.CanDetectStealthAt(candidate))
+                    continue;
                 stealthRiskPenalty += AiConfig.scoutStealthRiskPenalty;
             }
 
@@ -328,8 +355,9 @@ namespace Game.Ai
             if (citadelHex.HasValue)
                 score -= HexGridMath.Distance(citadelHex.Value, candidate) * AiConfig.visitTargetCitadelWeight;
 
-            // Стелс · Задача 3 — soft detection-risk penalty for a hidden scout (see the
-            // scoutHidden loop above); zero for a visible one (it was excluded outright there).
+            // Стелс · Задача 3 — soft detection-risk penalty for a stealth-capable scout (see the
+            // scoutStealthy loop above); zero for a stay-visible one (it was excluded outright
+            // there) and zero where no remembered army can actually see stealth on this hex.
             score -= stealthRiskPenalty;
 
             string reason = $"{distanceFromScout} hexes away, opens {freshNeighbors} adjacent unvisited hex(es)";

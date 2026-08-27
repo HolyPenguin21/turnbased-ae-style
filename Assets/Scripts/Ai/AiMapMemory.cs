@@ -71,6 +71,16 @@ namespace Game.Ai
             // (initial army placement) — that default (0) is exactly right, since turn numbering
             // itself starts at 1 (see GameTurnController.TurnNumber).
             public int SeenTurn;
+            // Best Recce radius / spot strength observed among this sighting's VISIBLE members
+            // (2026-08-27, стелс §2) — lets VisitHexTask.ScoreCandidate apply its hidden-scout
+            // detection-risk penalty only where this army could ACTUALLY roll a stealth
+            // challenge (co-located, or adjacent with radius>0 AND spot>0 — mirrors
+            // StealthSystem.SourcePool), instead of penalising every enemy army within
+            // scoutFleeRadius regardless of whether it can see stealth at all. Same "видимость с
+            // памятью" honesty rule as every other field here — a hidden member's own Recce is
+            // simply unknown.
+            public int RecceRadius;
+            public int RecceSpotStrength;
         }
 
         public readonly struct KnownEnemySighting
@@ -83,9 +93,13 @@ namespace Game.Ai
             public readonly float AttackSum;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> Defenders;
             public readonly bool HasAntiAir;
+            // Best Recce radius / spot strength among the sighting's visible members (стелс §2) —
+            // see EnemySighting.RecceRadius' own comment. 0/0 for an army with no Recce at all.
+            public readonly int RecceRadius;
+            public readonly int RecceSpotStrength;
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
-                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false)
+                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0)
             {
                 Hex = hex;
                 Owner = owner;
@@ -95,6 +109,22 @@ namespace Game.Ai
                 AttackSum = attackSum;
                 Defenders = defenders;
                 HasAntiAir = hasAntiAir;
+                RecceRadius = recceRadius;
+                RecceSpotStrength = recceSpotStrength;
+            }
+
+            // Could this remembered army actually roll a stealth-detection challenge against a
+            // hidden unit standing on `hex`? Mirrors StealthSystem.SourcePool: co-located →
+            // always (pool ≥ 1); exactly adjacent → only with radius>0 AND spot>0 (an r1s0
+            // source reveals the hex but never detects stealth); 2+ hexes → never.
+            public bool CanDetectStealthAt(HexCoord hex)
+            {
+                int dist = HexGridMath.Distance(Hex, hex);
+                if (dist == 0)
+                    return true;
+                if (dist == 1)
+                    return RecceRadius > 0 && RecceSpotStrength > 0;
+                return false;
             }
         }
 
@@ -466,6 +496,10 @@ namespace Game.Ai
                         // there's no reason to narrow it the way the DefenderProfile list above does.
                         HasAntiAir = enemy.Members.Any(m => !StealthSystem.IsHiddenFrom(m, player) && AntiAirRules.TryGetRadius(m, out _)),
                         SeenTurn = _currentTurn,
+                        RecceRadius = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
+                            .Select(m => AbilityParams.GetBestRecceRadius(m)).DefaultIfEmpty(0).Max(),
+                        RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
+                            .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
                     };
                 }
                 else
@@ -613,7 +647,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -628,7 +662,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && !sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -644,7 +678,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -660,7 +694,7 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
             return null;
         }
 

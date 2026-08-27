@@ -436,22 +436,30 @@ namespace Game.Map
         // A. An army finished arriving on `arrivalHex`. Both directions:
         //   - each hidden member of the moved army vs every enemy whose vision covers the hex;
         //   - each enemy hidden unit now inside the moved army's vision vs the mover's owner.
-        public static void RunChecksForArrival(ArmyData movedArmy, HexCoord arrivalHex)
+        //
+        // `moveEventSeen` (2026-08-27, стелс §3) — a dedupe set the CALLER owns for the whole
+        // movement event, keyed (hidden unit, observer, hex). A multi-hex order calls this once
+        // per hex entered (HexSelectionController.Movement): for the mover's own hidden members
+        // the hex is `arrivalHex`, which changes every step, so they're still challenged by every
+        // observer along the route (deliberate — a hidden unit must not slip past a mid-route
+        // observer). But the SECOND loop re-scans every enemy hidden unit the mover can see on
+        // EVERY step; without an event-spanning set each of those (enemy unit, mover owner,
+        // enemyHex) pairs got a fresh roll per step — several bites at one atomic event, against
+        // §3. Passing the same set to all per-hex calls collapses those to one. Falls back to a
+        // local per-call set (retreat landing, stealth-sim) when null.
+        public static void RunChecksForArrival(ArmyData movedArmy, HexCoord arrivalHex,
+            HashSet<(UnitData, PlayerSetupData, HexCoord)> moveEventSeen = null)
         {
             if (movedArmy?.Owner == null)
                 return;
-            // One challenge per (hidden unit, observer) for THIS arrival hex — both directions
-            // below share the set (§4). A multi-hex move still calls this once per hex actually
-            // entered (see HexSelectionController.Movement) — that is deliberate and NOT deduped
-            // across hexes: a hidden unit must not slip past a mid-route observer.
-            var done = new HashSet<(UnitData, PlayerSetupData)>();
+            var seen = moveEventSeen ?? new HashSet<(UnitData, PlayerSetupData, HexCoord)>();
 
             foreach (UnitData member in movedArmy.Members)
             {
                 if (!member.IsHidden)
                     continue;
                 foreach (PlayerSetupData observer in EnemiesWithVisionOf(movedArmy.Owner, arrivalHex))
-                    if (done.Add((member, observer)))
+                    if (seen.Add((member, observer, arrivalHex)))
                         ResolveDetection(member, observer, arrivalHex, "arrival", movedArmy);
             }
 
@@ -461,7 +469,7 @@ namespace Game.Map
                     if (other.Owner == null || other.Owner == movedArmy.Owner)
                         continue;
                     foreach (UnitData member in other.Members)
-                        if (member.IsHidden && done.Add((member, movedArmy.Owner)))
+                        if (member.IsHidden && seen.Add((member, movedArmy.Owner, hex)))
                             ResolveDetection(member, movedArmy.Owner, hex, "arrival", other);
                 }
         }

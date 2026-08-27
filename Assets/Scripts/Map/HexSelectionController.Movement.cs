@@ -514,6 +514,13 @@ namespace Game.Map
             // for the same (unit, observer) pairs it just checked one step ago.
             HexCoord? lastStealthCheckedHex = null;
 
+            // Dedupe set spanning THIS whole movement order — shared by every per-hex
+            // RunChecksForArrival call below so an enemy hidden unit the mover keeps in view
+            // across several steps is challenged once, not once per step (стелс §3). Keyed
+            // (hidden unit, observer, hex); the mover's own hidden members still get one check
+            // per hex entered because their key's hex advances each step.
+            var stealthMoveEventSeen = new HashSet<(UnitData, PlayerSetupData, HexCoord)>();
+
             // Let the idle hover/pulse animation ease back to its resting pose first — jumping
             // straight from mid-bob/mid-pulse into the move animation was what made movement
             // look jerky right as it started. SettleThen already claims IsMoving immediately,
@@ -544,7 +551,7 @@ namespace Game.Map
                     // an air step broke out early via resolveStepAsync (StopMovement / army
                     // wiped) before shouldStopEarly.
                     if (!lastStealthCheckedHex.HasValue || !lastStealthCheckedHex.Value.Equals(actualHex))
-                        StealthSystem.RunChecksForArrival(army, actualHex);
+                        StealthSystem.RunChecksForArrival(army, actualHex, stealthMoveEventSeen);
 
                     // Create the container as soon as aircraft reach their own barracks. They
                     // do not merge into it: landing is only the end-turn refuel condition.
@@ -661,7 +668,7 @@ namespace Game.Map
                     // become a target of a strike that already resolved this step.
                     // SpotPoolAgainst reads the mover's live CurrentHex. The clean-Hex-Event
                     // stop above returns before this — that hex is covered by onComplete's call.
-                    StealthSystem.RunChecksForArrival(army, hex);
+                    StealthSystem.RunChecksForArrival(army, hex, stealthMoveEventSeen);
                     lastStealthCheckedHex = hex;
                     return stopForContact;
                 },
