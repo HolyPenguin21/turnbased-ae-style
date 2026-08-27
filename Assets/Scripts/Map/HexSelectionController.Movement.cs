@@ -536,12 +536,13 @@ namespace Game.Map
                     // Stealth trigger A (see Game.Map.StealthSystem): both sides' vision has
                     // just been recomputed for this final position — check this army's own
                     // hidden members against enemy observers of the hex, and enemy hidden
-                    // units now inside this army's vision against its owner. onStepCompleted
-                    // below already ran this per ACTUAL hex entered (the design's "check on
-                    // arrival in each new hex" — a multi-hex order must not let a hidden unit
-                    // slip past an intermediate observer); this final call only covers the
-                    // case where the last entered hex wasn't the one just checked (e.g. no
-                    // steps ran at all).
+                    // units now inside this army's vision against its owner. shouldStopEarly
+                    // below already ran this per ACTUAL hex entered (ground and air alike —
+                    // the design's "check on arrival in each new hex", so a multi-hex order
+                    // can't slip a hidden unit past an intermediate observer); this final call
+                    // only covers a hex shouldStopEarly never got to — no steps ran at all, or
+                    // an air step broke out early via resolveStepAsync (StopMovement / army
+                    // wiped) before shouldStopEarly.
                     if (!lastStealthCheckedHex.HasValue || !lastStealthCheckedHex.Value.Equals(actualHex))
                         StealthSystem.RunChecksForArrival(army, actualHex);
 
@@ -651,16 +652,17 @@ namespace Game.Map
                     bool stopForContact = HandleVisionStep(army, hex);
                     // Stealth trigger A, per ACTUAL hex entered (design: a check on arrival in
                     // each NEW hex, not once for the whole order — a multi-hex move must not let
-                    // a hidden unit slip past an observer sitting on a mid-route hex). Runs here,
-                    // AFTER HandleVisionStep has recomputed the mover's vision for this step, and
-                    // SpotPoolAgainst reads the mover's live CurrentHex. Air armies never stealth
-                    // and resolve their own AA/strike path instead. The clean-Hex-Event stop
-                    // above returns before this — that hex is covered by onComplete's own call.
-                    if (!AviationRules.IsAirArmy(army))
-                    {
-                        StealthSystem.RunChecksForArrival(army, hex);
-                        lastStealthCheckedHex = hex;
-                    }
+                    // a hidden unit slip past an observer sitting on a mid-route hex, and an
+                    // air-recon / r1sX aircraft must get to challenge hidden units all along its
+                    // route, not only in the final hex). Runs here, AFTER HandleVisionStep has
+                    // recomputed the mover's vision for this step and — for an air army — AFTER
+                    // resolveStepAsync's own AA reaction / air strike (MoveRoutine calls that
+                    // before shouldStopEarly): a hidden target revealed by this check must not
+                    // become a target of a strike that already resolved this step.
+                    // SpotPoolAgainst reads the mover's live CurrentHex. The clean-Hex-Event
+                    // stop above returns before this — that hex is covered by onComplete's call.
+                    StealthSystem.RunChecksForArrival(army, hex);
+                    lastStealthCheckedHex = hex;
                     return stopForContact;
                 },
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
