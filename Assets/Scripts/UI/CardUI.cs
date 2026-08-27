@@ -32,6 +32,11 @@ namespace Game.UI
         // Base Level are shown as their eventual starting values (max/max, Level 1) rather than
         // tracking anything real — see ArmyUnitCardUI/BaseSlotCardUI for the versions of this
         // that show the REAL current values once something's actually on the map.
+        // Press-and-hold to preview the art of an Equipment card attached to this Unit/Hero
+        // card while it's still in hand (see CardData.Equipment / EquipmentArtToggle). Hidden
+        // by that component itself when nothing's attached. Optional prefab ref.
+        [SerializeField] private EquipmentArtToggle equipmentArtToggle;
+
         [SerializeField] private GameObject statsRow;
         [SerializeField] private TMP_Text attackStatText;
         [SerializeField] private TMP_Text defenseStatText;
@@ -123,7 +128,18 @@ namespace Game.UI
             SetBadge(materialsBadgeRoot, materialsBadgeText, cost != null ? cost.materials : 0);
             SetBadge(techBadgeRoot, techBadgeText, cost != null ? cost.tech : 0);
 
+            RefreshEquipmentToggle();
+
             rectTransform.localScale = Vector3.one * _restingScale;
+        }
+
+        // Re-point the equipment-art toggle at this card's current attached equipment (if any)
+        // — called from Setup, and again by CardHandUI right after an attach lands on a hand
+        // card (which doesn't rebuild the CardUI).
+        public void RefreshEquipmentToggle()
+        {
+            CardDefinition definition = Data?.Definition;
+            equipmentArtToggle?.Configure(definition != null ? definition.art : null, Data?.Equipment?.art);
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility and
@@ -213,6 +229,7 @@ namespace Game.UI
             if (IsDragging)
                 return;
             _isHovered = false;
+            equipmentArtToggle?.Revert();
             Retarget(animated: true);
             _hand.RestoreSiblingOrder();
         }

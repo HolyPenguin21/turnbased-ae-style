@@ -24,11 +24,15 @@ namespace Game.UI
     // The Round phase's own move action instead moves the real card itself (see AnimateMoveTo,
     // called by BattleScreenUI.AnimateThenMove) — a quick slide from source to destination cell
     // before the grid rebuild, rather than an instant teleport.
-    public class BattleGridCellUI : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
+    public class BattleGridCellUI : MonoBehaviour, IPointerClickHandler, IPointerExitHandler,
+        IBeginDragHandler, IDragHandler, IEndDragHandler
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
         [SerializeField] private TMP_Text nameText;
+        // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
+        // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
+        [SerializeField] private EquipmentArtToggle equipmentArtToggle;
         // Same faint tint everywhere — occupied, empty, or the shared neutral row alike (see
         // the user's own spec: alpha 15/255, no special-casing) — a unit's own art/name/stats
         // are what actually distinguish an occupied cell, not the background.
@@ -103,6 +107,7 @@ namespace Game.UI
                 artImage.sprite = unit != null ? unit.Art : null;
                 artImage.gameObject.SetActive(unit != null);
             }
+            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment?.art);
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
             if (background != null)
@@ -180,6 +185,10 @@ namespace Game.UI
             if (Unit != null)
                 _screen?.ShowUnitDetail(Unit);
         }
+
+        // Restore the portrait if the pointer leaves the cell mid press-and-hold of the
+        // equipment-art toggle (per the spec — reverts on leaving the card, not only on release).
+        public void OnPointerExit(PointerEventData eventData) => equipmentArtToggle?.Revert();
 
         // Shared by the drag-ghost (OnBeginDrag, follows the pointer) and the move-animation
         // ghost (AnimateMoveTo, slides to a fixed destination) — same floating, half-transparent,

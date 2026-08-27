@@ -990,6 +990,7 @@ namespace Game.UI
             if (EquipmentSystem.TryAttach(_pendingEquipment.Definition, targetCard, root, out string reason))
             {
                 turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {targetCard.Definition.displayName}.");
+                _cards.Find(c => c != null && c.Data == targetCard)?.RefreshEquipmentToggle();
                 RemoveCardData(_pendingEquipment);
             }
             else

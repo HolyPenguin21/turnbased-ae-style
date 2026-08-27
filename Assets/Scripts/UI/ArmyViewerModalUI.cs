@@ -385,6 +385,10 @@ namespace Game.UI
                 string abilities = gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null;
                 if (!string.IsNullOrEmpty(abilities))
                     text += $"\n{abilities}";
+                // The attached Equipment card's own name — its effect is already folded into
+                // the abilities/stats above by EquipmentSystem.Apply, this just names the source.
+                if (unit.Equipment != null)
+                    text += $"\nEquipment: {unit.Equipment.displayName}";
                 detailText.text = text;
             }
         }

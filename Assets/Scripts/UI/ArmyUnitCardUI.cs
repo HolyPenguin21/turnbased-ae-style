@@ -68,6 +68,9 @@ namespace Game.UI
         [SerializeField] private GameObject costPreviewRoot;
         [SerializeField] private Image[] costBadgeIcons;
         [SerializeField] private TMP_Text[] costBadgeAmounts;
+        // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
+        // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
+        [SerializeField] private EquipmentArtToggle equipmentArtToggle;
 
         public UnitData Unit { get; private set; }
         public bool IsDragging { get; private set; }
@@ -152,6 +155,8 @@ namespace Game.UI
             }
             if (hiddenBadgeRoot != null)
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
+
+            equipmentArtToggle?.Configure(unit != null ? unit.Art : null, unit?.Equipment?.art);
         }
 
         // See the field block's own comment for the fixed per-slot mapping. Hidden entirely for
@@ -270,6 +275,7 @@ namespace Game.UI
         {
             repairButton?.gameObject.SetActive(false);
             stealthButton?.gameObject.SetActive(false);
+            equipmentArtToggle?.Revert();
             HideCostPreview();
         }
 
