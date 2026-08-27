@@ -198,7 +198,8 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
-    - r1s0
+    - r1s6
+    - Stealth4
     resourceYield:
       human: 0
       energy: 0
@@ -304,8 +305,9 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 00000000
     grantedAbilities:
-    - r1s0
+    - r1s4
     - RapidReaction
+    - Stealth4
     resourceYield:
       human: 0
       energy: 0
@@ -341,7 +343,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
-    - r1s0
+    - r1s5
     resourceYield:
       human: 0
       energy: 0
@@ -909,7 +911,7 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 01000000
     grantedAbilities:
-    - r1s0
+    - r1s4
     resourceYield:
       human: 0
       energy: 0

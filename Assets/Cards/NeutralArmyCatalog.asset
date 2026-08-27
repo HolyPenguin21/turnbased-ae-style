@@ -33,10 +33,10 @@ MonoBehaviour:
       count: 3
   - name: Ridge Patrol
     members:
-    - cardKey: Neutral/Scav
-      count: 2
+    - cardKey: Neutral/Slasher
+      count: 1
     - cardKey: Neutral/Trapper
-      count: 2
+      count: 1
   - name: 'Scrap-Haulers '
     members:
     - cardKey: Neutral/Scav
@@ -47,36 +47,28 @@ MonoBehaviour:
     members:
     - cardKey: Neutral/Gunner
       count: 2
-    - cardKey: Iron Concord/Iron guards
-      count: 1
   - name: Deserters squad
     members:
     - cardKey: Iron Concord/AA Crawler
       count: 1
-    - cardKey: Neutral/Scav
-      count: 2
     - cardKey: Iron Concord/Flamer
-      count: 2
+      count: 1
   - name: 'Brutes '
     members:
     - cardKey: Neutral/Brute
       count: 2
-    - cardKey: Neutral/Scav
-      count: 1
   - name: Dust-Breathers
     members:
     - cardKey: The Ashen/Dust Runner
       count: 1
     - cardKey: Neutral/Scav
       count: 2
-    - cardKey: Neutral/Slasher
-      count: 1
   - name: Cactus-Pickers
     members:
     - cardKey: Neutral/Slasher
-      count: 2
+      count: 1
     - cardKey: Neutral/Scav
-      count: 2
+      count: 1
     - cardKey: Neutral/Brute
       count: 1
   - name: Wrecker
@@ -88,4 +80,4 @@ MonoBehaviour:
     - cardKey: Neutral/AA Relic Crawler
       count: 1
     - cardKey: The Ashen/Dust Runner
-      count: 2
+      count: 1
