@@ -62,7 +62,8 @@ namespace Game.Map
         // call returns false) without spending anything on any of the checked failure paths —
         // callers that want a human-readable hint (CardHandUI) show it; AI callers just log it.
         public static bool DeployUnitFromCard(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy,
-            PlayerRoot root, HexSelectionController hexSelectionController, out string failReason)
+            PlayerRoot root, HexSelectionController hexSelectionController, out string failReason,
+            CardDefinition attachedEquipment = null)
         {
             failReason = null;
             if (definition == null || owner == null || targetArmy == null || root == null || hexSelectionController == null)
@@ -114,6 +115,15 @@ namespace Game.Map
             {
                 failReason = $"Could not spawn {definition.displayName}.";
                 return false;
+            }
+
+            // Equipment attached to this card while it was still in hand (see EquipmentSystem /
+            // the attach flow in CardHandUI) rides along onto the spawned unit now — its cost
+            // was already paid at attach time, so this only applies the grant.
+            if (attachedEquipment != null)
+            {
+                EquipmentSystem.Apply(attachedEquipment.equipment, spawned);
+                spawned.Equipment = attachedEquipment;
             }
 
             targetArmy.AddMemberSorted(spawned);

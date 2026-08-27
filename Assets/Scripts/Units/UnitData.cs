@@ -34,6 +34,14 @@ namespace Game.Units
         // combat so far (see UnitAbilities.Hyperkinetic).
         public readonly HashSet<UnitTypeTag> TypeTags = new HashSet<UnitTypeTag>();
 
+        // The CardType.Equipment card hung on this unit (see EquipmentSystem) — one slot, per
+        // the project owner's own call; null when nothing's attached. Its effect (added/
+        // overwritten abilities and stats) is already baked into Abilities/TypeTags/the stat
+        // fields below by EquipmentSystem.Apply — this reference is kept only so the detail
+        // panel can name it and so a second attach can be refused. There is no un-attach (the
+        // manual: "Once placed an attachment card can never be removed").
+        public CardDefinition Equipment;
+
         // How many times UnitAbilities.Berserk has triggered so far THIS battle — Attack/
         // Defense above already carry the +1/-1 per stack (see BattleAttackPopupUI.
         // ResolveDamage), this is only kept so BattleScreenUI.Combat.cs's FinishBattleEnd can

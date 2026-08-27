@@ -649,7 +649,7 @@ namespace Game.UI
                 return false;
             }
 
-            if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human)))
+            if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human), card.Data?.Equipment))
                 return false;
 
             RemoveCard(card);
@@ -788,7 +788,7 @@ namespace Game.UI
                 return false;
             }
 
-            if (!DeployUnit(definition, human, targetArmy, PlayerRootRegistry.FindFor(human)))
+            if (!DeployUnit(definition, human, targetArmy, PlayerRootRegistry.FindFor(human), card.Data?.Equipment))
                 return false;
 
             armyViewerModal.RefreshAfterExternalDeploy();
@@ -888,12 +888,16 @@ namespace Game.UI
         // Shared by both drop paths above — thin wrapper over Game.Map.ArmyActions.
         // DeployUnitFromCard (the same player-agnostic core Game.Ai.AiTurnController calls for
         // an AI player), just turning a failure into this player's own hint popup.
-        private bool DeployUnit(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy, PlayerRoot root)
+        // attachedEquipment: a CardType.Equipment card hung on this card while it was in hand
+        // (see EquipmentSystem) — carried onto the spawned unit by DeployUnitFromCard.
+        private bool DeployUnit(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy, PlayerRoot root,
+            CardDefinition attachedEquipment = null)
         {
             if (hexSelection == null || root == null)
                 return false;
 
-            if (!ArmyActions.DeployUnitFromCard(definition, owner, targetArmy, root, hexSelection, out string failReason))
+            if (!ArmyActions.DeployUnitFromCard(definition, owner, targetArmy, root, hexSelection, out string failReason,
+                    attachedEquipment))
             {
                 if (failReason != null)
                     turnController.ShowSpawnHint(failReason);
