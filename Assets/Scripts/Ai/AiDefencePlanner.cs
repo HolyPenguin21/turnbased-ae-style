@@ -326,6 +326,11 @@ namespace Game.Ai
                     continue;
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(other))
                 {
+                    // The sanctioned cheat may read a VISIBLE enemy's live stats, never a
+                    // hidden-and-undetected unit's (spec §8) — an army with no member `player`
+                    // can currently see is simply not here as far as this scan is concerned.
+                    if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, player))
+                        continue;
                     if (army.IsGarrison || army.IsPrison || army.Members.Count == 0
                         || army.Members.Count > AiConfig.makeshiftScoutMinMembers)
                         continue; // only scout/raid-shaped compositions, never the enemy's whole main force
@@ -392,6 +397,10 @@ namespace Game.Ai
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(other))
                 {
                     if (army.IsGarrison || army.IsPrison || army.Members.Count == 0)
+                        continue;
+                    // Proximity-based urgency still only counts an enemy `player` can actually
+                    // see — a hidden-and-undetected scout builds no patrol urgency (spec §8).
+                    if (!Game.Map.StealthSystem.HasAnyTargetableMember(army, player))
                         continue;
 
                     // Single radius for every real enemy army regardless of shape (2026-08-22,

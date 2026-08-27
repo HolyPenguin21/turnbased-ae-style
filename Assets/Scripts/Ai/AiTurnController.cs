@@ -1000,6 +1000,38 @@ namespace Game.Ai
             int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
+            // Safe-first stealth rule (stealth design §8): a solo reconnaissance army whose
+            // sole member carries Stealth4 slips into stealth before it ever moves, provided
+            // it still has 1 AP to spend and isn't already committed to a job a hidden unit
+            // can't finish (raid/defence/capture — those tasks are never IsSoloRecce anyway,
+            // but the Kind check keeps it explicit). Entry is 1 AP per unit; voluntary exit
+            // later (immediately before an action stealth forbids) is free.
+            if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army)
+                && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
+                && root != null && root.CanSpendActionPoints(1))
+            {
+                UnitData scout = army.Members[0];
+                if (Game.Map.StealthSystem.CanEnterStealth(scout))
+                {
+                    root.SpendActionPoints(1);
+                    Game.Map.StealthSystem.EnterStealth(scout);
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
+                }
+            }
+            // The mirror: this army is being moved for a job a hidden unit can't finish
+            // (a raid/capture/patrol move ending in contact or a building takeover) — drop
+            // stealth on any hidden member now, immediately before the action, never earlier
+            // (stealth design §8). Free.
+            else if (decision.Task != null && decision.Task.Kind != AiTaskKind.VisitHex)
+            {
+                foreach (UnitData member in army.Members.ToList())
+                    if (member.IsHidden)
+                    {
+                        Game.Map.StealthSystem.ExitStealth(member);
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" leaves stealth before a {decision.Task.Kind} action.");
+                    }
+            }
+
             HexCoord before = army.Hex;
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination)

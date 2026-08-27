@@ -172,7 +172,7 @@ namespace Game.Ai
             {
                 if (sighting.Owner == null || sighting.Owner.IsNeutral)
                     continue;
-                if (!ArmyRegistry.AllAt(sighting.Hex).Any(a => a.Owner != null && !a.Owner.IsNeutral && BattleInitiator.IsEngageable(a)))
+                if (!ArmyRegistry.AllAt(sighting.Hex).Any(a => a.Owner != null && !a.Owner.IsNeutral && BattleInitiator.IsEngageable(a, player)))
                     continue;
                 if (WorthIt.WinChance(ourAttack, ourDefense, sighting.AttackSum, sighting.DefenseSum) < AiConfig.buildBaseMinWinChance)
                     return true;

@@ -226,6 +226,11 @@ namespace Game.Ai
                 return;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
+            // A hidden unit entering/leaving stealth, or a personal detection lapsing, changes
+            // what each player can honestly see without any vision-radius change — re-snapshot
+            // so a now-hidden enemy drops out of current sightings and a freshly-revealed one
+            // enters (spec §8: no stale-memory targeting of a unit that's hidden again now).
+            StealthSystem.StealthChanged += OnStealthChanged;
             // The event's own guard just got beaten for real — only a player CURRENTLY watching
             // the hex gets its memory corrected right here; everyone else only learns about it by
             // actually re-observing the hex later (see OnEventConsumed's own comment, 2026-08-24
@@ -241,6 +246,12 @@ namespace Game.Ai
         private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
             OnVisibilityChanged(player);
+        }
+
+        private static void OnStealthChanged()
+        {
+            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+                OnVisibilityChanged(player);
         }
 
         public static void Clear()
@@ -370,10 +381,14 @@ namespace Game.Ai
                 if (dominant.HasValue)
                     resources[hex] = dominant.Value;
 
-                ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player && BattleInitiator.IsEngageable(a));
+                // IsEngageable(a, player) — a hidden-from-`player` enemy (an army every member
+                // of which is in stealth and undetected) is not a current sighting at all
+                // (spec §8), and a mixed army is remembered by its VISIBLE members only.
+                ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player && BattleInitiator.IsEngageable(a, player));
                 if (enemy != null)
                 {
-                    List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero).ToList();
+                    List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero && !StealthSystem.IsHiddenFrom(m, player)).ToList();
+                    int visibleMemberCount = enemy.Members.Count(m => !StealthSystem.IsHiddenFrom(m, player));
                     // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
                     // same army was last recorded at a DIFFERENT hex, this overwrites that record in
                     // place instead of leaving it behind as an orphan under its old Hex.
@@ -388,7 +403,7 @@ namespace Game.Ai
                         Hex = hex,
                         Owner = enemy.Owner,
                         Name = enemy.Name,
-                        MemberCount = enemy.Members.Count,
+                        MemberCount = visibleMemberCount,
                         DefenseSum = nonHero.Sum(m => m.Defense),
                         AttackSum = nonHero.Sum(m => m.Attack),
                         // Full per-unit snapshot (2026-08-22, project owner's own call: "если мы
@@ -413,7 +428,7 @@ namespace Game.Ai
                         // a hero carrying an AA ability, and this flag only ever feeds a
                         // conservative "don't fly recon here" gate, never a combat estimate, so
                         // there's no reason to narrow it the way the DefenderProfile list above does.
-                        HasAntiAir = enemy.Members.Any(m => AntiAirRules.TryGetRadius(m, out _)),
+                        HasAntiAir = enemy.Members.Any(m => !StealthSystem.IsHiddenFrom(m, player) && AntiAirRules.TryGetRadius(m, out _)),
                         SeenTurn = _currentTurn,
                     };
                 }
