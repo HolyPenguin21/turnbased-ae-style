@@ -51,6 +51,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 1
     displayName: Slasher
     art: {fileID: 21300000, guid: 9d45e641dbae83f47a88167d96a5b3f3, type: 3}
@@ -86,6 +93,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 2
     displayName: Gunner
     art: {fileID: 21300000, guid: b663fbb85ceb18e4293e94862966cc68, type: 3}
@@ -121,6 +135,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 3
     displayName: Trapper
     art: {fileID: 21300000, guid: 8daf08096ddbf70478e4389d50f0fe18, type: 3}
@@ -157,6 +178,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 4
     displayName: Brute
     art: {fileID: 21300000, guid: 4e671a9bfb9ffce41acd974b2c4c752e, type: 3}
@@ -192,6 +220,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 5
     displayName: Wrecker
     art: {fileID: 21300000, guid: 41b146a0401e7d74f889a059ffd0985a, type: 3}
@@ -228,6 +263,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 6
     displayName: AA Relic Crawler
     art: {fileID: 21300000, guid: 7437df6f5d6cdc147835a6674fda940f, type: 3}
@@ -264,6 +306,110 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 7
+    displayName: it_Flamer
+    art: {fileID: 21300000, guid: 722a979b88144404f8ddf52f8f25d938, type: 3}
+    detailArt: {fileID: 21300000, guid: 98dfb02c37bc8254da5551d4882fe668, type: 3}
+    faction: 3
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities:
+      - Pyrokinetic
+      statChanges:
+      - stat: 0
+        amount: 1
+        isOverride: 0
+  - id: 8
+    displayName: it_Plasma Gun
+    art: {fileID: 21300000, guid: de22b0baefe9b8843aa700aeb2bb47c5, type: 3}
+    detailArt: {fileID: 21300000, guid: 6c3eee8aa3cb483458cb1cadc6c2b7d9, type: 3}
+    faction: 3
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
