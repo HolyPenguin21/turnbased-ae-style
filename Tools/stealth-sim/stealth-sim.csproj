@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone verification harness for parameterized Recce + individual Stealth.
+       Runs the 20 acceptance scenarios against the real game logic; see README.md.
+       ProjectReferences the Unity-generated Assembly-CSharp.csproj so it always tests
+       current code. Only the pure model layer is exercised (no MonoBehaviour code). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>stealth-sim</AssemblyName>
+    <RootNamespace>StealthSim</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <UnityManaged>D:\Unity\Editor\6000.5.4f1\Editor\Data\Managed\UnityEngine</UnityManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Assembly-CSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="UnityEngine">
+      <HintPath>$(UnityManaged)\UnityEngine.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(UnityManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -43,6 +43,11 @@ namespace Game.Map
         // owner-facing signal. Off by default.
         public static bool DebugLog;
 
+        // The hidden challenge's dice roll — the shared ChallengeResolver path by default
+        // (project owner's spec §2). A single injectable seam so the standalone stealth
+        // simulation can drive exact spot/hide-success counts without UnityEngine.Random.
+        public static Func<int, int, ChallengeResult> ChallengeRoller = ChallengeResolver.Resolve;
+
         private static readonly Dictionary<UnitData, Dictionary<PlayerSetupData, long>> _detected
             = new Dictionary<UnitData, Dictionary<PlayerSetupData, long>>();
 
@@ -122,6 +127,9 @@ namespace Game.Map
                 _detected[unit] = byObserver;
             }
             byObserver[observer] = CompletedTurnsProvider(observer);
+            // A new personal detection changes what `observer` can see — refresh UI rosters/
+            // markers and AiMapMemory (spec §4).
+            StealthChanged?.Invoke();
         }
 
         // Drop every now-expired detection whose observer is `observer` and fire one change
@@ -288,7 +296,7 @@ namespace Game.Map
                 return false;
 
             int hide = HideDiceFor(unit, hex);
-            ChallengeResult result = ChallengeResolver.Resolve(spot, hide);
+            ChallengeResult result = ChallengeRoller(spot, hide);
             // Tie keeps stealth — strictly more spot successes than hide successes to detect.
             bool detected = result.AttackerSuccesses > result.DefenderSuccesses;
 
@@ -299,9 +307,8 @@ namespace Game.Map
 
             if (detected)
             {
-                MarkDetected(unit, observer);
+                MarkDetected(unit, observer); // fires StealthChanged itself
                 StealthChangedAt?.Invoke(hex);
-                StealthChanged?.Invoke();
             }
             return detected;
         }

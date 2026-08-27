@@ -58,7 +58,12 @@ namespace Game.Ai
             string source = string.IsNullOrEmpty(callerFile) ? "?" : Path.GetFileNameWithoutExtension(callerFile);
             string tagged = $"[{source}.{callerMember}:{callerLine}] {message}";
 
-            Debug.Log(tagged);
+            // Same "cosmetic, must not break the real thing" rule as the file write below — and
+            // UnityEngine.Debug.Log itself throws when there's no player/editor loaded at all
+            // (the Tools/stealth-sim harness runs the game logic headless), which must not abort
+            // whatever gameplay path happened to log.
+            try { Debug.Log(tagged); }
+            catch { /* no Unity log sink available */ }
             if (_path == null)
                 return;
             try
