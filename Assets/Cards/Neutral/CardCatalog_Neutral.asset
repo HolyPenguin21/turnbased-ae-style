@@ -410,6 +410,248 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
+  - id: 9
+    displayName: b_Tactical Center
+    art: {fileID: 21300000, guid: a846d3acfe1babe41af3d28b5db5cd41, type: 3}
+    detailArt: {fileID: 21300000, guid: 0a114f99bb64e304ea3a1b40f64c80e9, type: 3}
+    faction: 3
+    cardType: 2
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 3
+    resistanceRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
+  - id: 10
+    displayName: b_Lab
+    art: {fileID: 21300000, guid: 811f5ad6698994149a6a0eb0bf1e2dd5, type: 3}
+    detailArt: {fileID: 21300000, guid: df5d9133e8198ad4cae4bb693c6ccae4, type: 3}
+    faction: 3
+    cardType: 2
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 3
+    resistanceRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
+  - id: 11
+    displayName: b_Factory
+    art: {fileID: 21300000, guid: a8b7b846b5129fb43b590a25bea3ae05, type: 3}
+    detailArt: {fileID: 21300000, guid: d58d3f29ab617aa4ab0f3a6e7185bf50, type: 3}
+    faction: 3
+    cardType: 2
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 3
+    resistanceRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
+  - id: 12
+    displayName: b_Intel
+    art: {fileID: 21300000, guid: 48553a56418e1834c82e7f39678eb97d, type: 3}
+    detailArt: {fileID: 21300000, guid: 68cf31d4e83a522489971ea254388db4, type: 3}
+    faction: 3
+    cardType: 2
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 0
+    defenseRating: 3
+    resistanceRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - ApBonus
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
+  - id: 13
+    displayName: b_AA Defence
+    art: {fileID: 21300000, guid: 3fcdd73d2e75a924a887f36c8ebb1f59, type: 3}
+    detailArt: {fileID: 21300000, guid: e1283bbd7bd96d441af157b0fbcb9822, type: 3}
+    faction: 3
+    cardType: 2
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 3
+    resistanceRating: 3
+    range: 0
+    hitPoints: 6
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 8
+        isOverride: 1
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
