@@ -641,18 +641,31 @@ namespace Game.Ai
             // more candidates onto the same value, that hidden dependency on planner call order
             // would otherwise decide an increasing share of steps). Decisions with different Scores
             // are completely unaffected.
-            AiDecision best = null;
+            // Pass is a real baseline candidate, not just the empty-list fallback (2026-08-28, see
+            // AiConfig.passScore) — the arbiter is seeded with it, and a routine candidate takes
+            // the step only by scoring STRICTLY above passScore. An exact tie at the baseline stays
+            // Pass: the CompareTieBreak branch is guarded on `best.Kind != Pass` so a candidate
+            // scored exactly at the floor can't displace the seed. Before this, a Pass was only
+            // ever synthesized when `candidates` was literally empty, so any candidate at all —
+            // including ones driven well below zero by the strategic tilt / AP-budget penalty —
+            // still beat the non-existent alternative.
+            AiDecision best = AiDecision.None("placeholder — replaced below", AiConfig.passScore);
             foreach (AiDecision candidate in candidates)
-                if (best == null || candidate.Score > best.Score
-                    || (candidate.Score == best.Score && CompareTieBreak(candidate, best) < 0))
+                if (candidate.Score > best.Score
+                    || (candidate.Score == best.Score && best.Kind != AiActionKind.Pass
+                        && CompareTieBreak(candidate, best) < 0))
                     best = candidate;
 
-            if (best == null)
+            if (best.Kind == AiActionKind.Pass)
             {
                 bool anyCardInHand = hand != null && hand.Hand.Count > 0;
-                return AiDecision.None(anyCardInHand
-                    ? "not enough AP for anything available"
-                    : "nothing to do — armies busy, hand/AP has nothing to offer");
+                return AiDecision.None(
+                    candidates.Count == 0
+                        ? (anyCardInHand
+                            ? "not enough AP for anything available"
+                            : "nothing to do — armies busy, hand/AP has nothing to offer")
+                        : "every available action scored at or below pass utility",
+                    AiConfig.passScore);
             }
 
             Commit(player, best, pool, ctx.Map);

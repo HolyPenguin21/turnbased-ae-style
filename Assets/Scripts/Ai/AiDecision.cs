@@ -583,6 +583,12 @@ namespace Game.Ai
             Reason = reason,
         };
 
-        public static AiDecision None(string reason) => new AiDecision { Kind = AiActionKind.Pass, Reason = reason };
+        // `score` — normally left at AiConfig.passScore (0), the utility floor of doing nothing.
+        // AiTurnController.Decide seeds its arbiter with one of these so a routine candidate has to
+        // clear the baseline to run at all (see AiConfig.passScore's own comment); the parameter
+        // exists so that seed carries an explicit, greppable score rather than relying on the
+        // Score-field default.
+        public static AiDecision None(string reason, float score = 0f) =>
+            new AiDecision { Kind = AiActionKind.Pass, Reason = reason, Score = score, Category = null };
     }
 }

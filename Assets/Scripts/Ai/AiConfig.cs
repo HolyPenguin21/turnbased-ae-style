@@ -1273,8 +1273,19 @@ namespace Game.Ai
         public const float managementFallbackHighScore = 15f;
         public const float managementFallbackLowScore = 5f;
         // An arrived BuildFacility task that still can't build (short on AP/still saving up) — a
-        // deliberately tiny score so real work always wins, but this still beats a silent Pass.
+        // deliberately tiny score so real work always wins, but this still beats a silent Pass
+        // (passScore below).
         public const float economyWaitScore = 1f;
+        // Utility floor of doing nothing (2026-08-28, "Pass отсутствует как baseline utility" — an
+        // audit run committed 21 negative-final-score DrawCard steps plus a ReserveArmy at -18.6
+        // purely because AiTurnController.Decide only ever synthesized a Pass when the candidate
+        // list was literally empty, so ANY candidate — even one scored well below zero — beat the
+        // non-existent alternative). Decide now seeds its arbiter with an AiDecision.None at this
+        // score: a routine candidate must be STRICTLY better than this to execute, and an exact tie
+        // at the baseline goes to Pass. economyWaitScore (1) deliberately sits one point above this
+        // so a genuine "arrived but can't build yet" Wait still beats a silent Pass, exactly as its
+        // own comment always claimed.
+        public const float passScore = 0f;
 
         // ---- Army Roles (AiArmyRoles) ----
         // AiArmyRoles.IsMakeshiftScoutCapable's own lower bound — filled to at least Hero+2 (or as
