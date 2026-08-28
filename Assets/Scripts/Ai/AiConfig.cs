@@ -1128,7 +1128,7 @@ namespace Game.Ai
         public const int managementBacklogSoftLimit = 3;
         public const float managementBacklogPerCardBonus = 5f;
         public const float managementBacklogBonusCap = 40f;
-        public const float managementDeploymentScoreCap = 95f;
+        public const float managementDeploymentScoreCap = 105f;
         // Unit card composition-fit — see AiManagementPlanner.UnitCompositionFitBonus's own
         // comment for the full list of gaps this checks (Defense/Attack imbalance, melee/ranged
         // imbalance, too many ability-heavy units, a critically wounded raid-force member of a
