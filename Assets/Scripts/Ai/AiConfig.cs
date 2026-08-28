@@ -1561,6 +1561,20 @@ namespace Game.Ai
         // DerivePosture). Guards against an opening-game false positive.
         public const int strategyAllInMinTurn = 14;
 
+        // ---- Development axis (P0, 2026-08-28, project owner's own spec) ----
+        // Sixth strategic vector — Research + Production combined, a peer of Aggression / Defence /
+        // Economy / Reconnaissance / Management at the strategy level (AiStrategyDirector). It takes
+        // the per-candidate axis tilt in AiStrategyLayer.Adjust but is deliberately NOT a sixth
+        // equal share of AiTurnBudget's fixed AP pool (see AiTurnBudget.Categories) — adding it
+        // there would shrink every existing category's budget even on turns R&D is idle.
+        // The axis is computed from the STATE of the economy, never the turn number: capability to
+        // do any R&D at all (a placed Lab/Factory + a deployed Researcher/Assembler hero) scaling a
+        // blend of economy maturity, free resource surplus and frontier safety. A well-developed AI
+        // can invest early; an economically weak one won't start just because the game ran long.
+        // Free-stockpile normalization window (sum of all four resources) for the surplus term.
+        public const int strategyDevelopmentSurplusLo = 16;
+        public const int strategyDevelopmentSurplusHi = 60;
+
         // ---- Operations layer (2026-08-27, project owner's own redesign) ----
         // A multi-turn campaign with an objective, coordinated across several assets, that persists
         // and drives the lower layers until it completes or aborts (AiOperation / AiOperationPlanner).

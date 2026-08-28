@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai
@@ -37,16 +39,21 @@ namespace Game.Ai
         public readonly float Economy;
         public readonly float Reconnaissance;
         public readonly float Management;
+        // Development (P0, 2026-08-28) — Research + Production combined. A peer axis of the five
+        // above; see AiTaskCategory.Development. Feeds AiStrategyLayer.Adjust's per-candidate tilt
+        // but is intentionally absent from AiTurnBudget's AP split.
+        public readonly float Development;
         public readonly AiStrategyPosture Posture;
 
         public AiStrategyAssessment(float aggression, float defence, float economy, float reconnaissance,
-            float management, AiStrategyPosture posture)
+            float management, float development, AiStrategyPosture posture)
         {
             Aggression = aggression;
             Defence = defence;
             Economy = economy;
             Reconnaissance = reconnaissance;
             Management = management;
+            Development = development;
             Posture = posture;
         }
 
@@ -59,6 +66,7 @@ namespace Game.Ai
                 case AiTaskCategory.Economy: return Economy;
                 case AiTaskCategory.Reconnaissance: return Reconnaissance;
                 case AiTaskCategory.Management: return Management;
+                case AiTaskCategory.Development: return Development;
                 default: return 0.5f;
             }
         }
@@ -66,7 +74,7 @@ namespace Game.Ai
         // Neutral fallback — every axis 0.5 (no tilt), used when the layer is disabled or a player
         // has no citadel yet.
         public static AiStrategyAssessment Neutral =>
-            new AiStrategyAssessment(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, AiStrategyPosture.Expand);
+            new AiStrategyAssessment(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, AiStrategyPosture.Expand);
     }
 
     // Per-player persistent AI blackboard for the strategic layer — same static
@@ -79,6 +87,7 @@ namespace Game.Ai
         public float Economy = 0.5f;
         public float Reconnaissance = 0.5f;
         public float Management = 0.35f;
+        public float Development = 0.3f;
         public AiStrategyPosture Posture = AiStrategyPosture.Expand;
         public int LastEvaluatedTurn = -1;
     }
@@ -222,12 +231,35 @@ namespace Game.Ai
             float handPressure = Norm(handCount, 4f, 9f);
             float rawManagement = Mathf.Clamp(0.15f + 0.4f * handPressure, 0.2f, 0.7f);
 
+            // ---- Development axis ---- (P0, 2026-08-28, project owner's own spec — Research +
+            // Production combined). Driven by the STATE of the economy, never the turn number: a
+            // well-developed AI should be able to invest in R&D early, and an economically weak one
+            // must not start spending resources on it just because the game has run long.
+            //   • devCapability — do the means to do any R&D at all even exist? A placed Lab/Factory
+            //     (Research/Production facility) is worth half, a deployed Researcher/Assembler hero
+            //     the other half. With neither, the whole axis multiplies to ~0.
+            //   • the blend it scales — mature economy (can spare the output), a real free resource
+            //     surplus, and a safe frontier (1 - Defence; don't retool while under threat).
+            bool hasDevFacility = BuildingRegistry.AllBuildings().Any(b => b != null && b.Owner == player
+                && (b.HasFacilityWithAbility(UnitAbilities.Research) || b.HasFacilityWithAbility(UnitAbilities.Production)));
+            bool hasDevOperator = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && !a.IsPrison)
+                .SelectMany(a => a.Members)
+                .Any(m => m != null && m.IsHero
+                    && (m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)));
+            float devCapability = (hasDevFacility ? 0.5f : 0f) + (hasDevOperator ? 0.5f : 0f);
+            float devEcoMature = ecoMature ? 1f : 0.2f;
+            float devSurplus = Norm(stockpile, AiConfig.strategyDevelopmentSurplusLo, AiConfig.strategyDevelopmentSurplusHi);
+            float devFrontierSafe = 1f - rawDefence;
+            float rawDevelopment = devCapability * (0.4f * devEcoMature + 0.3f * devSurplus + 0.3f * devFrontierSafe);
+
             // ---- smoothing ----
             float s0 = AiConfig.strategyAxisSmoothing;
             float aggression = Smooth(rawAggression, state.Aggression, s0);
             float economy = Smooth(rawEconomy, state.Economy, s0);
             float recon = Smooth(rawRecon, state.Reconnaissance, s0);
             float management = Smooth(rawManagement, state.Management, s0);
+            float development = Smooth(rawDevelopment, state.Development, s0);
             // Defence reacts fast, relaxes slow — a rising threat barely gets smoothed (snap up),
             // a fading one decays gently so the AI doesn't drop its guard the instant an enemy
             // steps out of sight. Siege bypasses it entirely.
@@ -248,6 +280,7 @@ namespace Game.Ai
             state.Economy = economy;
             state.Reconnaissance = recon;
             state.Management = management;
+            state.Development = development;
             state.Posture = posture;
             state.LastEvaluatedTurn = turn;
 
@@ -256,9 +289,10 @@ namespace Game.Ai
                 + $"DEF {F(defence)} (prox {F(threatProximity)}, ratio {F(threatRatio)}{(underSiege ? ", SIEGE" : "")}) | "
                 + $"ECO {F(economy)} (mature {(ecoMature ? 1 : 0)}, early {F(earlyGame)}) | "
                 + $"RCN {F(recon)} (unknown {F(unknownFrac)}) | "
-                + $"MGT {F(management)} → {posture}");
+                + $"MGT {F(management)} | "
+                + $"DEV {F(development)} (cap {F(devCapability)}, mature {(ecoMature ? 1 : 0)}, surplus {F(devSurplus)}) → {posture}");
 
-            return new AiStrategyAssessment(aggression, defence, economy, recon, management, posture);
+            return new AiStrategyAssessment(aggression, defence, economy, recon, management, development, posture);
         }
 
         private static AiStrategyPosture DerivePosture(float aggression, float defence, float economy, int turn, bool ecoMature)
@@ -293,6 +327,11 @@ namespace Game.Ai
     // RecordSpend after each executed decision.
     public sealed class AiTurnBudget
     {
+        // Five categories only — Development (P0, 2026-08-28) is deliberately NOT here. It is a
+        // full strategy axis and gets the per-candidate tilt in AiStrategyLayer.Adjust, but if it
+        // were a sixth equal share of this fixed AP pool it would shrink every other category's
+        // budget even on turns R&D is barely used. Its candidates get an axis nudge and no
+        // over-budget penalty (OverBudgetRatio returns 0 for any category absent from _alloc).
         private static readonly AiTaskCategory[] Categories =
         {
             AiTaskCategory.Reconnaissance, AiTaskCategory.Economy, AiTaskCategory.Management,
@@ -349,6 +388,11 @@ namespace Game.Ai
         // over 1 is what AiStrategyLayer.Adjust turns into a score penalty.
         public float OverBudgetRatio(AiTaskCategory category)
         {
+            // A category outside the AP split (Development) never carries an over-budget penalty —
+            // it has no allocation to overrun. Returning 0 keeps AiStrategyLayer.Adjust's penalty
+            // term at zero for it while its axis tilt still applies.
+            if (!_alloc.ContainsKey(category))
+                return 0f;
             _alloc.TryGetValue(category, out float a);
             _spent.TryGetValue(category, out float sp);
             return sp / Mathf.Max(0.5f, a);

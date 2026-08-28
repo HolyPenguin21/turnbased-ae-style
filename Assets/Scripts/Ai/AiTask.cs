@@ -23,6 +23,13 @@ namespace Game.Ai
         Management,
         Aggression,
         Defence,
+        // Development (P0, 2026-08-28, project owner's own spec) — Research + Production combined,
+        // a single strategic vector standing at the same level as the five above so R&D never
+        // competes as if it were Management. Future Research/Production AiTaskKinds map here in
+        // CategoryOf. It is a full strategy-layer axis (AiStrategyDirector) and takes the
+        // per-candidate axis tilt in AiStrategyLayer.Adjust, but is deliberately NOT a sixth equal
+        // share of AiTurnBudget's fixed AP pool — see AiTurnBudget.Categories / OverBudgetRatio.
+        Development,
     }
 
     // One concrete subtask type per the AI architecture doc's "название, состав армии, цель,
