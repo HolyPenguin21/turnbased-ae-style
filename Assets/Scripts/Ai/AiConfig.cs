@@ -1593,12 +1593,12 @@ namespace Game.Ai
         // candidates take a penalty of (spent/alloc - 1) * this, capped at strategyBudgetPenaltyCap.
         public const float strategyBudgetOverGain = 20f;
         public const float strategyBudgetPenaltyCap = 30f;
-        // Raw-score ceiling above which the over-budget penalty is skipped entirely (the axis
-        // offset still applies). Tactical/emergency candidates score at or above this by design —
-        // Defence Active 120, Scout Flee 125, Turtle 130 — and must not be dragged below routine
-        // Economy/Recon just because their category already spent its AP allocation this turn.
-        // The budget still governs everything scoring below this line.
-        public const float strategyBudgetExemptScore = 120f;
+        // Raw-score line above which a candidate is fully exempt from the strategic layer — the
+        // axis tilt AND the over-budget penalty are both skipped. Tactical/emergency candidates
+        // score at or above this by design (Defence Active 120, Scout Flee 125, Turtle 130); the
+        // ladder 120 tactical → 125 retreat → 130 emergency must survive intact no matter the
+        // axis weights or AP spent this turn. The strategic layer still governs everything below.
+        public const float strategyExemptScore = 120f;
         // Floor on any one category's AP allocation (so a near-zero-desire category isn't
         // infinitely penalised the instant it spends its first AP), plus a higher floor for
         // Management specifically — housekeeping (card draw, garrison tidy) must never fully starve.

@@ -379,12 +379,14 @@ namespace Game.Ai
     {
         public static float Adjust(float rawScore, AiTaskCategory category, AiStrategyAssessment strategy, AiTurnBudget budget)
         {
+            // Tactical/emergency candidates (rawScore >= strategyExemptScore) are fully exempt
+            // from the strategic layer — neither the axis tilt nor the over-budget penalty may
+            // touch them. They score at/above this line by design (Defence Active 120, Scout Flee
+            // 125, Turtle 130) and the intended ladder 120 tactical → 125 retreat → 130 emergency
+            // must survive intact regardless of the axis weights or AP spend this turn.
+            if (rawScore >= AiConfig.strategyExemptScore)
+                return rawScore;
             float axisOffset = (strategy.AxisFor(category) - 0.5f) * AiConfig.strategyAxisGain;
-            // Tactical/emergency candidates (rawScore >= strategyBudgetExemptScore) keep the axis
-            // tilt but are exempt from the over-budget penalty — the budget shapes routine work,
-            // it must never sink a retreat/intercept below ordinary Economy/Recon.
-            if (rawScore >= AiConfig.strategyBudgetExemptScore)
-                return rawScore + axisOffset;
             float over = Mathf.Max(0f, (budget?.OverBudgetRatio(category) ?? 0f) - 1f);
             float budgetPenalty = Mathf.Min(over * AiConfig.strategyBudgetOverGain, AiConfig.strategyBudgetPenaltyCap);
             return rawScore + axisOffset - budgetPenalty;
