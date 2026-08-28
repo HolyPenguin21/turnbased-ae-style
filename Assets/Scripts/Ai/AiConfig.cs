@@ -55,7 +55,10 @@ namespace Game.Ai
         // managementReturnHomeScore (105) instead of sitting 5 above them on its own; see
         // BuildFacilityTask.TravelScore's own comment for how ScoreHex's modifiers (income deficit,
         // citadel distance) still move off this base, now capped at economyTravelScoreCap.
-        public const float economyBaseWeight = 105f;
+        // 105 → 100 (2026-08-28) — the strategic layer's Economy axis now carries cross-category
+        // priority, so the old baked-in +5 head start over Recon/Aggression just double-counts it.
+        // All three routine baselines sit at 100; the axis alone decides who leads at equal desire.
+        public const float economyBaseWeight = 100f;
         public const float reconBaseWeight = 100f;
         public const float aggressionBaseWeight = 100f;
         public const float managementBaseWeight = 50f;
@@ -89,12 +92,13 @@ namespace Game.Ai
         // reasoning AiConfig.defencePreemptScore's own comment already gives for its own reuse):
         // BuildFacilityTask's arrival "build now" step, a counter-attack against a known weaker
         // army encountered en route to a build/collect site, and a Scrap collector's own final
-        // arrival step. Deliberately a flat economyBaseWeight+15 — NEVER modified by ScoreHex/
-        // IncomeBehindBonus the way ordinary Economy travel still is (project owner's own explicit
-        // spec: "BuildFacility Execute = 120 фиксированно, а не 115 + IncomeBonus. Так шкала будет
-        // проще и предсказуемее") — so completing/reacting right now always outranks merely being
-        // further behind on income, instead of the two effects competing.
-        public const float economyExecuteScore = economyBaseWeight + 15f;
+        // arrival step. Deliberately a flat 120 — NEVER modified by ScoreHex/IncomeBehindBonus the
+        // way ordinary Economy travel still is (project owner's own explicit spec: "BuildFacility
+        // Execute = 120 фиксированно, а не 115 + IncomeBonus. Так шкала будет проще и предсказуемее")
+        // — so completing/reacting right now always outranks merely being further behind on income,
+        // instead of the two effects competing. Pinned to a literal (was economyBaseWeight+15) so
+        // dropping the base to 100 does not drag this tactical tier down with it.
+        public const float economyExecuteScore = 120f;
 
         // ---- Разведка — Задача 1 (Посещение хекса) ----
         // 2026-08-23 (project owner's own call): 3 → 2 — fewer scouts wandering at once.
@@ -695,7 +699,7 @@ namespace Game.Ai
         // AiTurnController.Decide's `candidate.Score > best.Score` — are gathered EARLIER in
         // Decide's own candidate list, so on a tie Оборона silently lost to routine scouting/raiding
         // instead of the "гарантированная немедленная реакция" the project owner asked for. Bumped
-        // clear of economyBaseWeight (105) too, same shape Агрессия's own raidCounterAttackBonus
+        // clear of economyBaseWeight (100) too, same shape Агрессия's own raidCounterAttackBonus
         // already uses for "react to a nearby known army" (aggressionBaseWeight + 20).
         public const float defenceActiveScore = 120f;
         // 1.1b — Active's own assembly/strengthen score, split out 2026-08-23 (project owner's own
@@ -717,7 +721,7 @@ namespace Game.Ai
         // engagement) it's scoring — see that method's own comment.
         public const float defenceActiveAssemblyScore = 120f;
         // 1.2 — Patrol's own routine movement score, deliberately BELOW the real-work tier
-        // (economyBaseWeight 105, reconBaseWeight/aggressionBaseWeight 100) — patrol is proactive
+        // (economyBaseWeight/reconBaseWeight/aggressionBaseWeight all 100) — patrol is proactive
         // background coverage, not urgent, but still comfortably above every Менеджмент idle
         // fallback (managementFallbackHighScore 15). Known open question (simulation report): at
         // 90 Patrol can lose arbitration to Economy/Recon/Aggression on essentially every busy
@@ -886,7 +890,7 @@ namespace Game.Ai
         public const int economyCommitmentMarginReserved = 15;
         // buildFacilityReadyBonus/economyHeroDetachScore/economyReturnHomeScore all removed
         // 2026-08-19 (project owner's own call) — a task standing at its own base score
-        // (economyBaseWeight, now 105) already reliably wins arbitration on its own; none of these
+        // (economyBaseWeight, now 100) already reliably wins arbitration on its own; none of these
         // sub-steps needs its own inflated top-up any more the way they did stacked on the old
         // 200-point base.
 
@@ -980,8 +984,8 @@ namespace Game.Ai
         // now (project owner's own 2026-08-19 rebalance: 20 → 5, was winning arbitration too
         // reliably).
         // 5 → 0 (2026-08-23, project owner's own ladder spec): "базовый Scrap Travel" now reads at
-        // the exact same 105 tier as "базовый BuildFacility Travel"/BuildBase Travel, no separate
-        // edge — the two Экономика sub-tasks no longer need to out-rank each other at the travel
+        // the exact same tier as "базовый BuildFacility Travel" (economyBaseWeight, now 100), no
+        // separate edge — the two Экономика sub-tasks no longer need to out-rank each other at travel
         // stage now that ScoreHex's own modifiers (and the shared economyExecuteScore tier once
         // either one is ready to finish) already give real work its own priority.
         public const float resourceScrapBaseWeightBonus = 0f;
@@ -1280,7 +1284,7 @@ namespace Game.Ai
         // this rework adds no second combat model, just reweights how their outputs turn into score.
         //
         // Collapsed from 108 to a low floor — a launch candidate must no longer outscore ordinary,
-        // non-urgent Economy/Recon travel (economyBaseWeight 105/reconBaseWeight, aggressionBaseWeight
+        // non-urgent Economy/Recon travel (economyBaseWeight/reconBaseWeight/aggressionBaseWeight all
         // 100) purely for being technically reachable; every point of real priority now has to come
         // from the additive terms below.
         public const float airStrikeBaseWeight = 80f;
