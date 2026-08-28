@@ -548,11 +548,17 @@ namespace Game.Ai
             // and its category's over-budget penalty BEFORE the dump log and the arbiter, so both
             // see the same adjusted numbers. Additive and bounded (see AiStrategyLayer.Adjust) —
             // never a hard gate, a genuinely urgent candidate still wins. Pass (Category null) is
-            // untouched.
+            // untouched. Operation-owned candidates are exempted from the AP-budget penalty (pass
+            // budget: null) but still ride the axis tilt: the operation already cleared its own
+            // feasibility / siege / deadline / hopelessness checks and is a durable multi-turn
+            // commitment, so the shared Aggression over-budget penalty (up to -30) must not be
+            // able to sink it below routine work before the operation boost is even applied.
             if (AiConfig.strategyLayerEnabled)
                 foreach (AiDecision candidate in candidates)
                     if (candidate.Category.HasValue)
-                        candidate.Score = AiStrategyLayer.Adjust(candidate.Score, candidate.Category.Value, strategy, budget);
+                        candidate.Score = AiStrategyLayer.Adjust(
+                            candidate.Score, candidate.Category.Value, strategy,
+                            AiOperationPlanner.IsOperationTask(candidate.Task) ? null : budget);
 
             // Operations boost (2026-08-27) — a candidate advancing an operation-owned task rides a
             // flat bump on top of the strategic tilt so the campaign's own work stays reliably
