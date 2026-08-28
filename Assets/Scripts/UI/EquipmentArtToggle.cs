@@ -12,12 +12,14 @@ namespace Game.UI
     // OR the left button is held down on it, the card shows the equipment instead of the unit:
     //   - portrait swapped to the equipment's art
     //   - the host's own stat row hidden (statsToHideOnHover)
-    //   - a text element (infoText) replaced with the equipment's name, added abilities, then
-    //     stat changes (see EquipmentCardText.HoverInfo)
-    // Each of the three overridden elements has its previous value captured on the first change
-    // and restored when neither hover nor press holds, so statsToHideOnHover / infoText can
-    // point straight at the card's own existing stat row / ability-text element — no dedicated
-    // overlay objects needed. The owning card also calls Revert() from its own OnPointerExit.
+    //   - the name element replaced with the equipment's name (nameOverrideText)
+    //   - the info element replaced with the equipment's added abilities + stat changes
+    //     (infoText — see EquipmentCardText.EffectSummary)
+    // Each overridden element's previous value is captured on the first change and restored
+    // when neither hover nor press holds, so nameOverrideText / infoText / statsToHideOnHover
+    // can point straight at the card's own existing elements — no dedicated overlay objects.
+    // BattleGridCell has no ability-text element, so there only nameOverrideText is wired and
+    // the name alone changes. The owning card also calls Revert() from its own OnPointerExit.
     //
     // The owning card drives this via Configure(equipmentCard, config) every time it (re)binds
     // a unit — that also shows/hides this button (hidden when nothing's attached).
@@ -31,8 +33,11 @@ namespace Game.UI
         [SerializeField] private GameObject buttonVisual;
         // The card's own stat row/badges — hidden while the equipment is being shown.
         [SerializeField] private GameObject statsToHideOnHover;
-        // A text element whose content is swapped for the equipment description while shown
-        // (typically the card's own ability/name text — its text is restored afterwards).
+        // The card's name text — shows the equipment's name while shown, restored afterwards.
+        [SerializeField] private TMP_Text nameOverrideText;
+        // The card's ability/description text — shows the equipment's effect summary while
+        // shown, restored afterwards. Leave empty where the card has no such element (the
+        // battle grid cell): the name alone then carries the disclosure.
         [SerializeField] private TMP_Text infoText;
 
         private CardDefinition _equipment;
@@ -40,12 +45,11 @@ namespace Game.UI
         private bool _hovering;
         private bool _pressed;
 
-        // Captured-on-first-change / restored-when-done state for each overridden element.
         private bool _showing;
         private Sprite _savedArt;
-        private string _savedInfoText;
-        private bool _savedInfoActive;
         private bool _savedStatsActive;
+        private readonly TextSwap _nameSwap = new TextSwap();
+        private readonly TextSwap _infoSwap = new TextSwap();
 
         public void Configure(CardDefinition equipment, GameConfig config)
         {
@@ -56,8 +60,8 @@ namespace Game.UI
             _pressed = false;
 
             GameObject target = buttonVisual != null ? buttonVisual : gameObject;
-            // Shown whenever equipment is attached — the info text works with no art; only the
-            // portrait swap needs equipment.art (and no-ops without it).
+            // Shown whenever equipment is attached — the text overrides work with no art; only
+            // the portrait swap needs equipment.art (and no-ops without it).
             target.SetActive(_equipment != null);
         }
 
@@ -76,8 +80,7 @@ namespace Game.UI
 
         private void Apply()
         {
-            bool show = _equipment != null && (_hovering || _pressed);
-            if (show)
+            if (_equipment != null && (_hovering || _pressed))
                 ShowNow();
             else
                 RestoreNow();
@@ -99,13 +102,8 @@ namespace Game.UI
                 _savedStatsActive = statsToHideOnHover.activeSelf;
                 statsToHideOnHover.SetActive(false);
             }
-            if (infoText != null)
-            {
-                _savedInfoText = infoText.text;
-                _savedInfoActive = infoText.gameObject.activeSelf;
-                infoText.text = EquipmentCardText.HoverInfo(_equipment, _config);
-                infoText.gameObject.SetActive(true);
-            }
+            _nameSwap.Show(nameOverrideText, _equipment.displayName);
+            _infoSwap.Show(infoText, EquipmentCardText.EffectSummary(_equipment, _config));
         }
 
         private void RestoreNow()
@@ -118,10 +116,38 @@ namespace Game.UI
                 cardArtImage.sprite = _savedArt;
             if (statsToHideOnHover != null)
                 statsToHideOnHover.SetActive(_savedStatsActive);
-            if (infoText != null)
+            _nameSwap.Restore();
+            _infoSwap.Restore();
+        }
+
+        // Captures a TMP element's text + active state on Show and puts them back on Restore —
+        // so a swap target can be the card's own existing name/description text.
+        private sealed class TextSwap
+        {
+            private TMP_Text _target;
+            private string _savedText;
+            private bool _savedActive;
+            private bool _active;
+
+            public void Show(TMP_Text target, string value)
             {
-                infoText.text = _savedInfoText;
-                infoText.gameObject.SetActive(_savedInfoActive);
+                if (target == null || _active)
+                    return;
+                _target = target;
+                _savedText = target.text;
+                _savedActive = target.gameObject.activeSelf;
+                _active = true;
+                target.text = value;
+                target.gameObject.SetActive(true);
+            }
+
+            public void Restore()
+            {
+                if (!_active || _target == null)
+                    return;
+                _active = false;
+                _target.text = _savedText;
+                _target.gameObject.SetActive(_savedActive);
             }
         }
     }

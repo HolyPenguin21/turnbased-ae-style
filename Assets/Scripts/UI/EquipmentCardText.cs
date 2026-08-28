@@ -50,13 +50,14 @@ namespace Game.UI
             return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
         }
 
-        // Hover panel over a unit card's equipment button: name, then added abilities, then
-        // stat changes (the order the project owner asked for).
-        public static string HoverInfo(CardDefinition equip, GameConfig config)
+        // What an attached equipment DOES — added abilities then stat changes, no name (the
+        // card's own name element is overridden separately, see EquipmentArtToggle). Empty when
+        // the grant neither adds an ability nor changes a stat.
+        public static string EffectSummary(CardDefinition equip, GameConfig config)
         {
             if (equip == null)
                 return string.Empty;
-            return Join(equip.displayName, AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
+            return Join(AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
         }
 
         // The equipment card's own face in hand: who it fits, then added abilities, then stat
