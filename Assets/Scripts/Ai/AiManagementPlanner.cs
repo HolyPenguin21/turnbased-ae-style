@@ -1607,62 +1607,102 @@ namespace Game.Ai
             return false;
         }
 
-        // Internal-only host-ranking key (never added to AiDecision.Score) — replays
-        // EquipmentSystem.Apply's own math on a stat snapshot of the prospective host: every additive
-        // statChange first, then every override, summing the POSITIVE net change per touched stat (so an
-        // override 3 -> 8 scores its real +5, beating 7 -> 8's +1, and an exact no-op scores 0). Plus a
-        // flat weight per ability the grant genuinely adds that the host lacks, and per ability it
-        // actually removes/clears from the host. Exactly one of `unit` / `def` is non-null.
+        // Internal-only host-ranking key (never added to AiDecision.Score) — scores the REAL end
+        // state a host would be in after this grant, computed by replaying EquipmentSystem.Apply's
+        // own order, never by rewarding individual clear/remove/add/stat operations in isolation:
+        //
+        //  Abilities — copy the host's current set, then clearAbilityFamilies -> removeAbilities ->
+        //  addAbilities (exactly Apply's sequence), then diff against the original: each genuinely
+        //  new ability is +unitCompositionGapBonus, each ability actually lost is
+        //  -unitCompositionGapBonus. A remove-then-re-add of the same tag (it_Flamer stripping and
+        //  restoring Pyrokinetic) nets 0; an untouched set nets 0; destroying an ability the host
+        //  wanted (it_Plasma Gun clearing ShockAttack/Hyperkinetic/Pyrokinetic) is a real minus,
+        //  not a bonus.
+        //
+        //  Stats — replay every additive change, then every override, applying the same per-stat
+        //  min-clamp EquipmentSystem.Combine uses (see StatFloor), then score the real net change
+        //  from the original value: `after - before` for ordinary stats (so a real downgrade also
+        //  lowers the score rather than being ignored), inverted to `before - after` for
+        //  ActivationApCost, where lower is the improvement (1 -> 0).
+        //
+        // Exactly one of `unit` / `def` is non-null. The `benefit > 0` gate at the call site then
+        // keeps the AI from spending an Equipment card on a host it would not, on balance, help.
         private static float EquipmentBenefitScore(EquipmentGrant grant, UnitData unit, CardDefinition def)
         {
             float score = 0f;
 
             if (grant.statChanges != null && grant.statChanges.Count > 0)
             {
-                var touched = new HashSet<EquipmentStat>();
+                var before = new Dictionary<EquipmentStat, int>();
                 var work = new Dictionary<EquipmentStat, int>();
                 foreach (EquipmentStatChange change in grant.statChanges)
                 {
-                    if (change == null)
+                    if (change == null || before.ContainsKey(change.stat))
                         continue;
-                    touched.Add(change.stat);
-                    if (!work.ContainsKey(change.stat))
-                        work[change.stat] = HostStat(change.stat, unit, def);
+                    int b = HostStat(change.stat, unit, def);
+                    before[change.stat] = b;
+                    work[change.stat] = b;
                 }
                 foreach (EquipmentStatChange change in grant.statChanges)
                     if (change != null && !change.isOverride)
-                        work[change.stat] = work[change.stat] + change.amount;
+                        work[change.stat] = System.Math.Max(StatFloor(change.stat), work[change.stat] + change.amount);
                 foreach (EquipmentStatChange change in grant.statChanges)
                     if (change != null && change.isOverride)
-                        work[change.stat] = change.amount;
-                foreach (EquipmentStat stat in touched)
-                    score += System.Math.Max(0, work[stat] - HostStat(stat, unit, def));
+                        work[change.stat] = System.Math.Max(StatFloor(change.stat), change.amount);
+                foreach (KeyValuePair<EquipmentStat, int> kv in before)
+                {
+                    int delta = work[kv.Key] - kv.Value;
+                    score += kv.Key == EquipmentStat.ActivationApCost ? -delta : delta;
+                }
             }
 
-            ICollection<string> before = unit != null ? (ICollection<string>)unit.Abilities
-                : def?.grantedAbilities;
+            var beforeAbilities = new HashSet<string>();
+            if (unit != null)
+                foreach (string a in unit.Abilities)
+                    beforeAbilities.Add(a);
+            else if (def?.grantedAbilities != null)
+                foreach (string a in def.grantedAbilities)
+                    beforeAbilities.Add(a);
+
+            var finalAbilities = new HashSet<string>(beforeAbilities);
+            if (grant.clearAbilityFamilies != null)
+                foreach (AbilityFamily family in grant.clearAbilityFamilies)
+                    if (family != AbilityFamily.None)
+                        finalAbilities.RemoveWhere(a => EquipmentSystem.IsFamilyMember(a, family));
+            if (grant.removeAbilities != null)
+                foreach (string tag in grant.removeAbilities)
+                    if (!string.IsNullOrEmpty(tag))
+                        finalAbilities.Remove(tag);
             if (grant.addAbilities != null)
                 foreach (string tag in grant.addAbilities)
-                    if (!string.IsNullOrEmpty(tag) && (before == null || !before.Contains(tag)))
-                        score += AiConfig.unitCompositionGapBonus; // "a genuinely new ability" — reuse the same small flat tier
-            if (before != null)
-            {
-                if (grant.removeAbilities != null)
-                    foreach (string tag in grant.removeAbilities)
-                        if (!string.IsNullOrEmpty(tag) && before.Contains(tag))
-                            score += AiConfig.unitCompositionGapBonus;
-                if (grant.clearAbilityFamilies != null)
-                    foreach (AbilityFamily family in grant.clearAbilityFamilies)
-                    {
-                        if (family == AbilityFamily.None)
-                            continue;
-                        foreach (string tag in before)
-                            if (EquipmentSystem.IsFamilyMember(tag, family))
-                                score += AiConfig.unitCompositionGapBonus;
-                    }
-            }
+                    if (!string.IsNullOrEmpty(tag))
+                        finalAbilities.Add(tag);
+
+            foreach (string tag in finalAbilities)
+                if (!beforeAbilities.Contains(tag))
+                    score += AiConfig.unitCompositionGapBonus; // a genuinely new ability
+            foreach (string tag in beforeAbilities)
+                if (!finalAbilities.Contains(tag))
+                    score -= AiConfig.unitCompositionGapBonus; // an ability really lost
 
             return score;
+        }
+
+        // EquipmentSystem.Combine's own per-stat floor (see EquipmentSystem.ApplyStat's Combine
+        // calls) — replicated here so the sim above ranks the exact value an attach would produce.
+        private static int StatFloor(EquipmentStat stat)
+        {
+            switch (stat)
+            {
+                case EquipmentStat.Defense:
+                case EquipmentStat.Range:
+                case EquipmentStat.Initiative:
+                case EquipmentStat.HitPoints:
+                case EquipmentStat.MoveMax:
+                    return 1;
+                default:
+                    return 0;
+            }
         }
 
         // The host's own current value for `stat` — a live UnitData's runtime field, or a hand card's
