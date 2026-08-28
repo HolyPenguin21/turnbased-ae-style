@@ -556,10 +556,16 @@ namespace Game.Ai
 
             // Operations boost (2026-08-27) — a candidate advancing an operation-owned task rides a
             // flat bump on top of the strategic tilt so the campaign's own work stays reliably
-            // ahead of unrelated routine candidates.
+            // ahead of unrelated routine candidates. Routine only, and capped at strategyExemptScore-1
+            // (119): the boost must never push operation work into the tactical/emergency band and
+            // swamp a genuine Defence Active / Scout Flee / Turtle. Candidates already at/above the
+            // exempt line are tactical themselves and are left untouched.
             foreach (AiDecision candidate in candidates)
-                if (AiOperationPlanner.IsOperationTask(candidate.Task))
-                    candidate.Score += AiConfig.operationDirectiveBoost;
+                if (AiOperationPlanner.IsOperationTask(candidate.Task)
+                    && candidate.Score < AiConfig.strategyExemptScore)
+                    candidate.Score = Mathf.Min(
+                        candidate.Score + AiConfig.operationDirectiveBoost,
+                        AiConfig.strategyExemptScore - 1f);
 
             AiDebugLog.Write($"[AI] {player.Nickname}: {candidates.Count} candidate(s) — {DescribeCandidates(candidates)}");
 
