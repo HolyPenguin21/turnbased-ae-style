@@ -632,6 +632,18 @@ namespace Game.Ai
                         candidate.Score + AiConfig.operationDirectiveBoost,
                         AiConfig.strategyExemptScore - 1f);
 
+            // Recovery floor (2026-08-28 P0) — the LAST word on a candidate's Score, applied after
+            // every common modifier above (strategic tilt, Management AP-budget penalty, commitment
+            // layer, operations boost). A DrawCard flagged IsRecoveryDraw is the AI's only way out
+            // of an empty-hand soft-lock (see AiManagementPlanner.GatherFallbackCandidates' own
+            // invariant); those shared modifiers can otherwise sink it below AiConfig.passScore and
+            // the AI then passes every remaining step this turn with cards still in the deck. Raises
+            // it just above the Pass baseline — never lowers a draw that somehow scored higher, and
+            // deliberately a small value so a genuine Defence/Scout emergency still outranks it.
+            foreach (AiDecision candidate in candidates)
+                if (candidate.IsRecoveryDraw && candidate.Score < AiConfig.recoveryDrawMinScore)
+                    candidate.Score = AiConfig.recoveryDrawMinScore;
+
             AiDebugLog.Write($"[AI] {player.Nickname}: {candidates.Count} candidate(s) — {DescribeCandidates(candidates)}");
 
             // Unified arbiter (see Decide's own class comment). Strictly-greater Score wins outright;

@@ -151,6 +151,14 @@ namespace Game.Ai
         // competes against anything — it's only ever produced when the candidate list is empty).
         public float Score;
 
+        // DrawCard only (2026-08-28 P0) — set when this draw is the AI's sole way out of an
+        // empty-hand soft-lock (see AiDecision.Draw's own `isRecovery` comment and
+        // AiManagementPlanner.GatherFallbackCandidates). AiTurnController.Decide re-floors such a
+        // candidate's Score to AiConfig.recoveryDrawMinScore after the strategic tilt / AP-budget
+        // penalty, so a recovering draw can never be sunk below Pass by the same common modifiers a
+        // routine leftover-AP draw rightly rides. Always false for any other decision.
+        public bool IsRecoveryDraw;
+
         // Economy-start candidates only (see AiEconomyPlanner.TryStartEconomyCandidates) — the
         // OTHER task the hero this candidate wants would have to give up. Removed only if THIS
         // candidate actually wins Decide's own arbitration (see AiTurnController.Commit) — generating
@@ -517,12 +525,20 @@ namespace Game.Ai
             Reason = $"spare reserve army ({currentSpare + 1}/{AiConfig.maxSpareArmies})",
         };
 
-        public static AiDecision Draw(float score) => new AiDecision
+        // `isRecovery` (2026-08-28 P0) — true only when this draw is the AI's one way out of an
+        // empty-hand soft-lock (hand.Count == 0, deck non-empty, AP to draw — see
+        // AiManagementPlanner.GatherFallbackCandidates). Carried on the decision so
+        // AiTurnController.Decide can re-floor its Score to AiConfig.recoveryDrawMinScore AFTER the
+        // strategic tilt / AP-budget penalty have run, rather than letting those common modifiers
+        // sink the recovering action below Pass. Left false for an ordinary leftover-AP draw, which
+        // stays fully subject to those modifiers like every other routine candidate.
+        public static AiDecision Draw(float score, bool isRecovery = false) => new AiDecision
         {
             Kind = AiActionKind.DrawCard,
             Score = score,
             Category = AiTaskCategory.Management,
-            Reason = "hand is played out",
+            IsRecoveryDraw = isRecovery,
+            Reason = isRecovery ? "hand empty — recovery draw to unblock" : "hand is played out",
         };
 
         // Агрессия · Авиация, шаг 1 — see AiAggressionPlanner.TryStartAirStrikeCandidates/

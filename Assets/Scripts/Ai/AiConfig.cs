@@ -1287,6 +1287,19 @@ namespace Game.Ai
         // own comment always claimed.
         public const float passScore = 0f;
 
+        // Recovery / unblocking floor for a DrawCard candidate that is the ONLY thing standing
+        // between the AI and a genuine soft-lock — hand empty, deck still holds cards, AP on hand
+        // to pay the draw (see AiManagementPlanner.GatherFallbackCandidates' own isRecoveryDraw and
+        // AiTurnController.Decide's own post-modifier floor pass). An ordinary leftover-AP draw is
+        // routine busywork and rightly rides the Management AP-budget penalty / strategic tilt like
+        // everything else — but once the hand is empty those same common modifiers can drive the
+        // one recovering action below passScore, and the AI then passes every step for the rest of
+        // the turn with cards sitting in the deck. This is the floor that action gets AFTER every
+        // shared score modifier: small on purpose — just enough to clear passScore so a routine
+        // draw beats a silent Pass — never a tactical-band number (a real Defence/Scout emergency
+        // still outscores it by a wide margin).
+        public const float recoveryDrawMinScore = 1f;
+
         // ---- Army Roles (AiArmyRoles) ----
         // AiArmyRoles.IsMakeshiftScoutCapable's own lower bound — filled to at least Hero+2 (or as
         // full as a lower-CommandRating hero's own Capacity allows).

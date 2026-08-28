@@ -1160,8 +1160,19 @@ namespace Game.Ai
             // Management scoring one step later reads the correct (unchanged) hand count. Same
             // capacity semantics Research/Production/Development already gate on.
             if (hand != null && hand.HasFreeSlot && hand.HasCardsLeftToDraw && root.CanSpendActionPoints(ctx.DrawApCost))
+            {
+                // Recovery / unblocking invariant (2026-08-28 P0): an EMPTY hand with cards still
+                // in the deck and AP to draw is a soft-lock, not routine leftover-AP work — the
+                // draw is the only action that can restore the AI's ability to do anything with its
+                // hand at all. Flagged so AiTurnController.Decide floors its final Score to
+                // AiConfig.recoveryDrawMinScore after the shared tilt / AP-budget penalty (which
+                // otherwise drive it below Pass, and the AI then idles the rest of the turn with a
+                // full deck). HasFreeSlot is always true at Hand.Count == 0; the deck / AP halves
+                // of the invariant are exactly the two conditions already gating this block.
+                bool isRecoveryDraw = hand.Hand.Count == 0;
                 results.Add(AiDecision.Draw(reservePreferred
-                    ? AiConfig.managementFallbackLowScore : AiConfig.managementFallbackHighScore));
+                    ? AiConfig.managementFallbackLowScore : AiConfig.managementFallbackHighScore, isRecoveryDraw));
+            }
             return results;
         }
 
