@@ -1049,7 +1049,7 @@ namespace Game.Ai
         // Менеджмент score (PlayCard ~65-90, managementReorgScore 80, managementBaseWeight 50) —
         // this fallback still fires as soon as nothing else wants the hero this step, exactly the
         // "not a real fallback tier" case it exists for.
-        public const float managementReturnHomeScore = 104f;
+        public const float managementReturnHomeScore = 99f;
         // Экономика · Задача 2's own detach-prerequisite base (see ResourcesScrapTask.TravelScore,
         // now called directly at the one AiEconomyPlanner call site instead of through a dedicated
         // AiConfig score) —
