@@ -437,12 +437,24 @@ namespace Game.UI
         {
             if (definition == null)
                 return false;
+            return AddCardToHand(new CardData(definition));
+        }
+
+        // Same, but for a card instance that already exists and must be preserved as-is rather
+        // than rebuilt from its definition — an aircraft returning from an airfield/air army
+        // still carries its attached Equipment on the CardData (see AviationActions.
+        // ReturnAircraftToDeck). The Equipment's cost was already paid when it was attached, so
+        // this is a restore, not a fresh attach — nothing is charged here.
+        public bool AddCardToHand(CardData data)
+        {
+            if (data?.Definition == null)
+                return false;
             if (_cards.Count >= maxHandSize)
             {
-                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) — {definition.displayName} was lost.");
+                turnController?.ShowSpawnHint($"Hand is full ({maxHandSize}) — {data.Definition.displayName} was lost.");
                 return false;
             }
-            AddCard(new CardData(definition));
+            AddCard(data);
             return true;
         }
 

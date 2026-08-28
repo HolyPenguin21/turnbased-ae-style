@@ -103,7 +103,14 @@ namespace Game.Aviation
                 army.Members.Remove(aircraft);
                 Game.Map.StealthSystem.OnUnitRemoved(aircraft);
                 if (aircraft.OriginatingCard != null)
-                    hexSelection?.GrantCard(army.Owner, aircraft.OriginatingCard);
+                {
+                    // Hand back a CardData, not just the definition, so any Equipment attached
+                    // to this aircraft rides home with its card — replaying it then respawns the
+                    // plane fully kitted. Its cost isn't re-charged: this is the same card
+                    // instance's gear, restored, not a fresh attach (see CardHandUI.AddCardToHand).
+                    var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment };
+                    hexSelection?.GrantCard(army.Owner, returnedCard);
+                }
             }
             hexSelection?.DeleteArmyIfEmptied(army);
         }

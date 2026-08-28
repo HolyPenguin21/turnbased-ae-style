@@ -290,12 +290,23 @@ namespace Game.Map
         // human/AI hand routing either way, no separate "returned" destination of its own.
         public void GrantCard(PlayerSetupData owner, CardDefinition card)
         {
-            if (cardHandUI == null || owner == null || card == null)
+            if (card == null)
+                return;
+            GrantCard(owner, new CardData(card));
+        }
+
+        // Overload that keeps an already-built CardData intact — used when a returning aircraft's
+        // card carries attached Equipment that must survive the round-trip back to hand (see
+        // AviationActions.ReturnAircraftToDeck). The Equipment was paid for at attach time, so
+        // handing the same instance back is a restore, not a new attach — no cost is re-applied.
+        public void GrantCard(PlayerSetupData owner, CardData card)
+        {
+            if (cardHandUI == null || owner == null || card?.Definition == null)
                 return;
             if (owner.IsHuman)
                 cardHandUI.AddCardToHand(card);
             else
-                AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.Hand.Add(new CardData(card));
+                AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.Hand.Add(card);
         }
     }
 }
