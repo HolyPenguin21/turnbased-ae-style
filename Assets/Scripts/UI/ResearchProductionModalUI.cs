@@ -82,10 +82,12 @@ namespace Game.UI
                 scrollLeftButton.onClick.AddListener(PrevPage);
             if (scrollRightButton != null)
                 scrollRightButton.onClick.AddListener(NextPage);
-            if (panelRoot != null)
-                panelRoot.SetActive(false);
-            if (createButton != null)
-                createButton.interactable = false;
+            // The panel is authored inactive in the scene (Modal_ResearchProduction.m_IsActive: 0),
+            // and panelRoot IS this component's own GameObject — so Awake() itself only runs the
+            // first time Show() flips it active. Re-disabling panelRoot here would run synchronously
+            // inside that first Show()'s SetActive(true) and cancel it, so the modal needed a second
+            // click to open. Leave the initial hidden state to the scene, same as ArmyViewerModalUI
+            // and BaseViewerModalUI. createButton starts non-interactable via RefreshResultPanel().
         }
 
         // Opened by HexSelectionController once Research/Production eligibility already passed.

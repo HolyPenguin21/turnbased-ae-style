@@ -182,6 +182,11 @@ namespace Game.Turns
                 || (aaChoicePopup != null && aaChoicePopup.IsShowing);
             bool newCardDraggingBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
+                // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
+                // which take Unit/Hero and Facility drops respectively), so the hand must be
+                // fully locked out — no draw, no drag, no play — while it's open, same as the
+                // battle/event modals.
+                || (researchProductionModal != null && researchProductionModal.IsShowing)
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
                 || (battleScreen != null && battleScreen.IsShowing)
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
