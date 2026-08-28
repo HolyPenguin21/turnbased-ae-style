@@ -127,7 +127,7 @@ namespace Game.UI
         // just differ in how dice-pool sizes are computed and what the result means. See
         // BeginCaptureKill for the second one; add further Begin*/Resolve* pairs here rather than
         // a whole new popup component per challenge type.
-        private enum ChallengeKind { GroundCombat, CaptureKill, Announcement }
+        private enum ChallengeKind { GroundCombat, CaptureKill, Announcement, ResearchProduction }
         private ChallengeKind _kind;
 
         private UnitData _attacker;
@@ -181,6 +181,23 @@ namespace Game.UI
         private Action<CaptureKillOutcome> _onCaptureKillResolved;
         private Action _onAnnouncementAcknowledged;
         private Action<UnitData, AiThoughtCategory, string> _onAiThought;
+
+        // ---- Research/Production Challenge state (see BeginResearchProduction) — ENTIRELY
+        // separate from the Ground Combat / Capture Kill duel plumbing above. Only ever touched
+        // on the ResearchProduction code path; the shared Begin/RunDuel/Resolve never read these.
+        // The defender is a CardDefinition, never a fake UnitData (per the spec). ----
+        private UnitData _rpHero;
+        private CardDefinition _rpCard;
+        private int _rpRequiredSuccesses;
+        private bool[] _rpDice;
+        // hero.Fate as it was the instant BeginResearchProduction ran — restored verbatim once
+        // the Challenge ends, win or lose, so a Research/Production attempt never permanently
+        // costs Fate (spec §3/§15). NOT hero.FateMax — a hero that walked in on 2/4 leaves on
+        // 2/4, and battle Fate replenishment (ReplenishFateForNewBattle) is never called here.
+        private int _rpFateSnapshot;
+        private bool _rpActive;
+        private bool _rpResultSuccess;
+        private Action<bool> _onResearchProductionResolved;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -258,6 +275,9 @@ namespace Game.UI
             // this same (pooled/reused) popup instance — otherwise its delayed WaitUntil callbacks
             // could fire against the fields this call is about to overwrite.
             StopAllCoroutines();
+            // If a Research/Production Challenge was somehow torn down without resolving, put its
+            // hero's Fate back before this popup is reused for anything else (spec §15).
+            CleanupResearchProduction();
 
             _kind = ChallengeKind.GroundCombat;
             _attacker = attacker;
@@ -416,6 +436,7 @@ namespace Game.UI
         // ResultStateRoot) rather than a brand new popup for what's a one-line acknowledgement.
         public void ShowAnnouncement(string message, Action onAcknowledged)
         {
+            CleanupResearchProduction();
             _kind = ChallengeKind.Announcement;
             _onAnnouncementAcknowledged = onAcknowledged;
             // Never goes through Begin (no attacker/defender roll of its own) — the ONE other
@@ -453,6 +474,262 @@ namespace Game.UI
 
             if (NoHumanInvolved || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
+        }
+
+        // ============================ Research / Production Challenge ============================
+        // A new, separate entry point (per the spec): it does NOT go through Begin(), never runs
+        // RunRollAndDuel/RunDuel/Resolve, and never touches Ground Combat / Capture Kill / Aviation
+        // rules. Attacker = the producing Hero, rolling a fixed pool of 5 (see ChallengeResolver.
+        // RollDice) with unchanged per-die success probability. Defender = the chosen card: a
+        // fixed CardDefinition.fate guaranteed successes, no dice, no Fate. Win = attacker
+        // successes >= card.fate. The Fate the Hero spends here is temporary — restored to its
+        // pre-Challenge value on the way out (RestoreResearchProductionFate).
+        //
+        // The caller (HexSelectionController) has already: revalidated eligibility, checked hand
+        // capacity, and PAID the card's ResourceCost. This method only runs the roll and reports
+        // success/failure through onResolved.
+        public void BeginResearchProduction(UnitData hero, CardDefinition card, ResearchProductionMode mode,
+            Sprite heroLogo, Sprite cardLogo, Action<bool> onResolved)
+        {
+            StopAllCoroutines();
+            // A prior R/P state that never resolved (should not happen — the modal blocks input
+            // for the whole Challenge — but be safe, per spec §15).
+            CleanupResearchProduction();
+
+            _kind = ChallengeKind.ResearchProduction;
+            _rpHero = hero;
+            _rpCard = card;
+            _rpRequiredSuccesses = card != null ? Mathf.Max(0, card.fate) : 0;
+            _rpFateSnapshot = hero != null ? hero.Fate : 0;
+            _rpActive = true;
+            _rpResultSuccess = false;
+            _rpDice = null;
+            _onResearchProductionResolved = onResolved;
+
+            // The Hero is a real UnitData and a legitimate attacker (only the DEFENDER must not
+            // be a fake unit). Setting _attacker lets NoHumanInvolved / the AI-thought hooks read
+            // correctly; _defender stays null (there is no defender unit).
+            _attacker = hero;
+            _defender = null;
+            _attackerHero = hero;
+            _defenderHero = null;
+            _attackerDice = null;
+            _defenderDice = null;
+            _phase = Phase.InProgress;
+            _okAlreadyHandled = false;
+            _awaitingHumanDecision = false;
+            _humanSpent = false;
+            _humanDeclined = false;
+
+            if (panelRoot != null)
+            {
+                panelRoot.SetActive(true);
+                panelRoot.transform.SetAsLastSibling();
+            }
+            VisibilityChanged?.Invoke();
+            if (rollStateRoot != null)
+                rollStateRoot.SetActive(true);
+            if (resultStateRoot != null)
+                resultStateRoot.SetActive(false);
+            if (titleText != null)
+                titleText.text = mode == ResearchProductionMode.Research
+                    ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
+
+            attackerRow?.Setup(hero, hero, heroLogo);
+            attackerRow?.SetDicePoolSize(5);
+            attackerRow?.SetSpendInteractable(false);
+            defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, cardLogo);
+
+            if (rollButton != null)
+                rollButton.interactable = false;
+            if (acceptButton != null)
+                acceptButton.interactable = false;
+
+            StartCoroutine(RunResearchProductionChallenge());
+        }
+
+        // Defender shows its fixed successes up front; attacker rolls 5; then the attacker (only)
+        // gets a Spend-or-Accept loop. Spend, per spec §2: if a miss exists → reroll it (existing
+        // RerollOneMiss, unchanged); otherwise, if still short of target → append and roll ONE new
+        // die (overflow). Loop ends on Accept, on Fate == 0, or when there's no miss AND the
+        // target is already met.
+        private IEnumerator RunResearchProductionChallenge()
+        {
+            defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
+
+            _rpDice = ChallengeResolver.RollDice(5);
+            bool animDone = attackerRow == null;
+            attackerRow?.SetDice(_rpDice, onComplete: () => animDone = true);
+            yield return new WaitUntil(() => animDone);
+
+            BattleDebugLog.Write($"[RollDiag] ResearchProduction: {_rpHero?.Name} -> {_rpCard?.displayName} " +
+                $"target={_rpRequiredSuccesses}, roll={BattleDebugLog.DiceString(_rpDice)} ({CountHits(_rpDice)} hits)");
+
+            while (true)
+            {
+                int successes = CountHits(_rpDice);
+                bool canSpend = _rpHero != null && _rpHero.Fate > 0
+                    && (HasMiss(_rpDice) || successes < _rpRequiredSuccesses);
+                if (!canSpend)
+                    break;
+
+                _awaitingHumanDecision = true;
+                _defenderTurnActive = false;
+                _humanSpent = false;
+                _humanDeclined = false;
+                attackerRow?.SetSpendInteractable(true);
+                if (acceptButton != null)
+                    acceptButton.interactable = true;
+
+                yield return new WaitUntil(() => _humanSpent || _humanDeclined);
+
+                _awaitingHumanDecision = false;
+                attackerRow?.SetSpendInteractable(false);
+                if (acceptButton != null)
+                    acceptButton.interactable = false;
+
+                if (_humanDeclined)
+                    break;
+
+                // OnResearchProductionSpend already mutated _rpDice + Fate and kicked the anim —
+                // wait for it to land before re-offering Spend/Accept (same gate as the duel).
+                yield return new WaitUntil(() => _rerollAnimDone);
+            }
+
+            ResolveResearchProduction();
+        }
+
+        // The attacker's Spend for a Research/Production Challenge — reached from OnAttackerSpend,
+        // which forks here on _kind. Miss present → single reroll (RerollOneMiss, shared/unchanged).
+        // No miss but still short of target → overflow: append + roll one new die.
+        private void OnResearchProductionSpend()
+        {
+            if (!_awaitingHumanDecision || _rpHero == null || _rpHero.Fate <= 0)
+                return;
+
+            bool hasMiss = HasMiss(_rpDice);
+            int successes = CountHits(_rpDice);
+            if (!hasMiss && successes >= _rpRequiredSuccesses)
+                return; // nothing Fate can do
+
+            attackerRow?.SetSpendInteractable(false);
+            if (acceptButton != null)
+                acceptButton.interactable = false;
+            _rpHero.Fate--;
+            _rerollAnimDone = attackerRow == null;
+
+            if (hasMiss)
+            {
+                RerollOneMiss(ref _rpDice, out int rerolledIndex);
+                attackerRow?.SetDice(_rpDice, rerolledIndex, () => _rerollAnimDone = true);
+                attackerRow?.OnFateSpent();
+                BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
+                    $"rerolled slot {rerolledIndex} -> {_rpDice[rerolledIndex]}");
+            }
+            else
+            {
+                bool hit = ChallengeResolver.RollDice(1)[0];
+                var grown = new bool[_rpDice.Length + 1];
+                System.Array.Copy(_rpDice, grown, _rpDice.Length);
+                grown[grown.Length - 1] = hit;
+                _rpDice = grown;
+                attackerRow?.SetDicePoolSize(_rpDice.Length);
+                attackerRow?.AppendDie(hit, () => _rerollAnimDone = true);
+                attackerRow?.OnFateSpent();
+                BattleDebugLog.Write($"[RPChallenge] {_rpHero.Name} spent Fate (remaining={_rpHero.Fate}), " +
+                    $"added overflow die #{_rpDice.Length} -> {hit}");
+            }
+            _humanSpent = true;
+        }
+
+        private void ResolveResearchProduction()
+        {
+            _phase = Phase.Resolved;
+            attackerRow?.SetSpendInteractable(false);
+            if (acceptButton != null)
+                acceptButton.interactable = false;
+
+            int successes = CountHits(_rpDice);
+            _rpResultSuccess = successes >= _rpRequiredSuccesses;
+
+            // Central, unconditional Fate restore — success or failure, before the result screen
+            // or any callback (spec §3/§15).
+            RestoreResearchProductionFate();
+
+            BattleDebugLog.Write($"[ResolveDiag] ResearchProduction {_rpHero?.Name} -> {_rpCard?.displayName}: " +
+                $"{successes} successes vs required {_rpRequiredSuccesses} -> {(_rpResultSuccess ? "SUCCESS" : "FAILURE")}; " +
+                $"hero Fate restored to {_rpFateSnapshot}");
+
+            ShowResearchProductionResult(_rpResultSuccess, successes);
+        }
+
+        private void ShowResearchProductionResult(bool success, int successes)
+        {
+            if (rollStateRoot != null)
+                rollStateRoot.SetActive(false);
+            if (resultStateRoot != null)
+                resultStateRoot.SetActive(true);
+
+            if (resultArtImage != null)
+            {
+                Sprite art = _rpHero != null
+                    ? (_rpHero.DetailArt != null ? _rpHero.DetailArt : _rpHero.Art)
+                    : null;
+                resultArtImage.sprite = art;
+                resultArtImage.gameObject.SetActive(art != null);
+            }
+            if (resultSummaryText != null)
+            {
+                string verdict = success
+                    ? $"{_rpHero?.Name} completes {_rpCard?.displayName}."
+                    : $"{_rpHero?.Name} fails to complete {_rpCard?.displayName}.";
+                resultSummaryText.text = $"{verdict}\nSuccesses: {successes} / {_rpRequiredSuccesses}";
+            }
+            if (resultTargetArtImage != null)
+            {
+                resultTargetArtImage.sprite = _rpCard != null ? _rpCard.art : null;
+                resultTargetArtImage.gameObject.SetActive(_rpCard != null && _rpCard.art != null);
+            }
+            if (resultTargetNameText != null)
+                resultTargetNameText.text = _rpCard != null ? _rpCard.displayName : string.Empty;
+            if (resultTargetHpText != null)
+                resultTargetHpText.text = string.Empty;
+            if (destroyedStamp != null)
+                destroyedStamp.SetActive(false);
+
+            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+                StartCoroutine(AutoCloseResultIfNoHuman());
+        }
+
+        // R/P ONLY. Puts the Hero's Fate back to its pre-Challenge value. Idempotent (the
+        // snapshot isn't cleared, but re-assigning the same value is harmless) and gated so it
+        // can NEVER run for a Ground Combat / Capture Kill / Aviation resolve (spec §15/§33).
+        private void RestoreResearchProductionFate()
+        {
+            if (_kind != ChallengeKind.ResearchProduction && !_rpActive)
+                return;
+            if (_rpHero != null)
+                _rpHero.Fate = _rpFateSnapshot;
+        }
+
+        // Single R/P teardown — safe to call from anywhere the popup might be reused (Begin,
+        // ShowAnnouncement, a fresh BeginResearchProduction). Restores any Fate a previous R/P
+        // Challenge left spent, then clears the active flag.
+        private void CleanupResearchProduction()
+        {
+            if (_rpActive || _kind == ChallengeKind.ResearchProduction)
+                RestoreResearchProductionFate();
+            _rpActive = false;
+        }
+
+        private static int CountHits(bool[] dice)
+        {
+            if (dice == null)
+                return 0;
+            int hits = 0;
+            foreach (bool hit in dice)
+                if (hit) hits++;
+            return hits;
         }
 
         private void OnRollClicked()
@@ -817,6 +1094,11 @@ namespace Game.UI
 
         private void OnAttackerSpend()
         {
+            if (_kind == ChallengeKind.ResearchProduction)
+            {
+                OnResearchProductionSpend();
+                return;
+            }
             if (!_awaitingHumanDecision || _defenderTurnActive || _attackerHero == null || _attackerHero.Fate <= 0)
                 return;
             if (!RerollOneMiss(ref _attackerDice, out int rerolledIndex))
@@ -1094,6 +1376,15 @@ namespace Game.UI
                 Action callback = _onAnnouncementAcknowledged;
                 _onAnnouncementAcknowledged = null;
                 callback?.Invoke();
+            }
+            else if (_kind == ChallengeKind.ResearchProduction)
+            {
+                // Fate was already restored in ResolveResearchProduction; just clear state and
+                // report the result. The R/P modal stays open — the caller decides what's next.
+                Action<bool> callback = _onResearchProductionResolved;
+                _onResearchProductionResolved = null;
+                _rpActive = false;
+                callback?.Invoke(_rpResultSuccess);
             }
             else
             {

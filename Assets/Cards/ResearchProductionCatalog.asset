@@ -22,3 +22,21 @@ MonoBehaviour:
   productionCards:
   - cardKey: Neutral/it_Flamer
     factionRestriction: 2
+  - cardKey: Neutral/it Plasma Gun
+    factionRestriction: 2
+  - cardKey: Neutral/it AT Launcher
+    factionRestriction: 2
+  - cardKey: Neutral/it Claws
+    factionRestriction: 2
+  - cardKey: Neutral/it Heavy MG
+    factionRestriction: 2
+  - cardKey: Neutral/it Armor Plate
+    factionRestriction: 2
+  - cardKey: Neutral/it Artillery Cannon
+    factionRestriction: 2
+  - cardKey: Neutral/it Double Barrel
+    factionRestriction: 2
+  - cardKey: Neutral/it Nuclear Engine
+    factionRestriction: 2
+  - cardKey: Neutral/it Plasma Cannon
+    factionRestriction: 2

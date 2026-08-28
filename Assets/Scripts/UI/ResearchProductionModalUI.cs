@@ -65,6 +65,27 @@ namespace Game.UI
         // armyViewerModal — fired from Show/Hide whenever visibility actually changes.
         public event Action VisibilityChanged;
 
+        // Raised when Create is pressed with a card selected and the modal isn't already busy.
+        // HexSelectionController owns everything that happens next (revalidation, resource/hand
+        // checks, ResourceCost payment, the Challenge); this modal only reports the request.
+        public event Action<CardDefinition> CreateRequested;
+
+        // Set by HexSelectionController for the duration of a Research/Production Challenge:
+        // Create, the page buttons, card selection, the close button and ESC are all inert while
+        // true. The modal itself stays visible and open — the player closes it when they're done.
+        private bool _busy;
+        public bool IsBusy => _busy;
+
+        // The faction-filtered CardDefinition list currently shown (post pagination filter,
+        // pre-pagination) — HexSelectionController re-checks that the card a Create names is
+        // still in here before committing the transaction.
+        public System.Collections.Generic.IReadOnlyList<CardDefinition> CurrentCards => _cards;
+        // True if `card` is one of the currently displayed (mode + faction filtered) cards.
+        public bool Offers(CardDefinition card) => card != null && _cards.Contains(card);
+        public CardDefinition SelectedCard => _selected;
+        public UnitData Hero => _hero;
+        public ResearchProductionMode Mode => _mode;
+
         private ResearchProductionMode _mode;
         private UnitData _hero;
         // The faction-filtered card list (filter applied in ResearchProductionCatalog.ResolveFor,
@@ -77,11 +98,13 @@ namespace Game.UI
         private void Awake()
         {
             if (closeButton != null)
-                closeButton.onClick.AddListener(Hide);
+                closeButton.onClick.AddListener(OnCloseClicked);
             if (scrollLeftButton != null)
                 scrollLeftButton.onClick.AddListener(PrevPage);
             if (scrollRightButton != null)
                 scrollRightButton.onClick.AddListener(NextPage);
+            if (createButton != null)
+                createButton.onClick.AddListener(OnCreateClicked);
             // The panel is authored inactive in the scene (Modal_ResearchProduction.m_IsActive: 0),
             // and panelRoot IS this component's own GameObject — so Awake() itself only runs the
             // first time Show() flips it active. Re-disabling panelRoot here would run synchronously
@@ -106,6 +129,7 @@ namespace Game.UI
                 : new List<CardDefinition>();
             _page = 0;
             _selected = null;
+            _busy = false;
 
             if (panelRoot != null)
             {
@@ -135,6 +159,7 @@ namespace Game.UI
             _hero = null;
             _selected = null;
             _page = 0;
+            _busy = false;
             _cards = new List<CardDefinition>();
 
             RefreshResultPanel();
@@ -143,12 +168,41 @@ namespace Game.UI
                 VisibilityChanged?.Invoke();
         }
 
-        // ESC closes the modal — same shape as ArmyViewerModalUI.Update.
+        // ESC closes the modal — same shape as ArmyViewerModalUI.Update. Ignored while a
+        // Research/Production Challenge is running (_busy).
         private void Update()
         {
-            if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (_busy || !IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
             Hide();
+        }
+
+        private void OnCloseClicked()
+        {
+            if (_busy)
+                return;
+            Hide();
+        }
+
+        // Create pressed. Everything past this point is HexSelectionController's job — this only
+        // forwards the request, and only when there's a selection and no Challenge in progress.
+        private void OnCreateClicked()
+        {
+            if (_busy || _selected == null)
+                return;
+            CreateRequested?.Invoke(_selected);
+        }
+
+        // Toggled by HexSelectionController around a Challenge. Keeps the modal open and visible;
+        // just freezes every control — Create/close/pages via interactable, card selection via
+        // the _busy guard in OnCardClicked.
+        public void SetBusy(bool busy)
+        {
+            _busy = busy;
+            if (closeButton != null)
+                closeButton.interactable = !busy;
+            RefreshResultPanel();
+            RefreshPageButtons();
         }
 
         private int PageCount => Mathf.Max(1, Mathf.CeilToInt(_cards.Count / (float)PageSize));
@@ -157,7 +211,7 @@ namespace Game.UI
 
         private void PrevPage()
         {
-            if (_page <= 0)
+            if (_busy || _page <= 0)
                 return;
             _page--;
             OnPageChanged();
@@ -165,7 +219,7 @@ namespace Game.UI
 
         private void NextPage()
         {
-            if (!HasNextPage)
+            if (_busy || !HasNextPage)
                 return;
             _page++;
             OnPageChanged();
@@ -209,12 +263,12 @@ namespace Game.UI
             if (scrollLeftButton != null)
             {
                 scrollLeftButton.gameObject.SetActive(true);
-                scrollLeftButton.interactable = _page > 0;
+                scrollLeftButton.interactable = !_busy && _page > 0;
             }
             if (scrollRightButton != null)
             {
                 scrollRightButton.gameObject.SetActive(true);
-                scrollRightButton.interactable = HasNextPage;
+                scrollRightButton.interactable = !_busy && HasNextPage;
             }
         }
 
@@ -236,6 +290,8 @@ namespace Game.UI
 
         private void OnCardClicked(CardDefinition card)
         {
+            if (_busy)
+                return;
             _selected = card;
             RefreshResultPanel();
         }
@@ -267,7 +323,7 @@ namespace Game.UI
             if (detailTextResult != null)
                 detailTextResult.text = _selected != null ? DescribeCard(_selected) : string.Empty;
             if (createButton != null)
-                createButton.interactable = _selected != null;
+                createButton.interactable = _selected != null && !_busy;
         }
 
         private string DescribeHero(UnitData hero)

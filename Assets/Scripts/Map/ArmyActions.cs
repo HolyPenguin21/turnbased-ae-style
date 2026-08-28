@@ -57,13 +57,31 @@ namespace Game.Map
                 ? 0 : definition.apCost;
         }
 
+        // Instance-aware variant: a Research/Production-created CardData pays activationApCost,
+        // not apCost, when it is finally played (its Create attempt already covered the rest).
+        // RapidReaction's 0-AP override still wins over both. A null card, or an ordinary
+        // (non-produced) one, falls straight back to the CardDefinition rule above.
+        public static int EffectiveDeployApCost(CardData card)
+        {
+            if (card?.Definition == null)
+                return 0;
+            CardDefinition definition = card.Definition;
+            if (definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.RapidReaction))
+                return 0;
+            return card.ResearchProductionCreated ? definition.activationApCost : definition.apCost;
+        }
+
         // Same rule CardHandUI.DeployUnit always enforced: spend AP/resources, spawn the unit,
         // add it to targetArmy, refresh the hex's marker stack. `failReason` is set (and the
         // call returns false) without spending anything on any of the checked failure paths —
         // callers that want a human-readable hint (CardHandUI) show it; AI callers just log it.
+        // sourceCard (optional): the hand CardData this deploy came from. Supplied by the human
+        // hand paths so a Research/Production-created card pays activationApCost and skips its
+        // (already-paid) ResourceCost. AI callers pass none — every AI card is an ordinary one,
+        // so behaviour there is unchanged.
         public static bool DeployUnitFromCard(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy,
             PlayerRoot root, HexSelectionController hexSelectionController, out string failReason,
-            CardDefinition attachedEquipment = null)
+            CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
             failReason = null;
             if (definition == null || owner == null || targetArmy == null || root == null || hexSelectionController == null)
@@ -89,21 +107,23 @@ namespace Game.Map
                 return false;
             }
 
-            int apCost = EffectiveDeployApCost(definition);
+            bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
+            int apCost = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
 
             if (!root.CanSpendActionPoints(apCost))
             {
                 failReason = $"Not enough action points to deploy {definition.displayName}.";
                 return false;
             }
-            if (!definition.resourceCost.CanAfford(root))
+            if (!alreadyPaidResources && !definition.resourceCost.CanAfford(root))
             {
                 failReason = $"Not enough resources to deploy {definition.displayName}.";
                 return false;
             }
 
             root.SpendActionPoints(apCost);
-            definition.resourceCost.PayFrom(root);
+            if (!alreadyPaidResources)
+                definition.resourceCost.PayFrom(root);
             bool isHero = definition.cardType == CardType.Hero;
             var spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,

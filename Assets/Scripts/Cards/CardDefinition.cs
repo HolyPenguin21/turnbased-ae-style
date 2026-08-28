@@ -59,7 +59,11 @@ namespace Game.Cards
         // present in an army (see ArmyData.Capacity, UnitData.CommandRating). Ignored for
         // Unit/Facility cards.
         public int commandRating = 2;
-        // Same meaning as UnitData.Fate — only meaningful for CardType.Hero.
+        // For CardType.Hero: same meaning as UnitData.Fate. For ANY card listed in a
+        // ResearchProductionCatalog: reused as that card's Research/Production difficulty — the
+        // fixed number of guaranteed defender successes the producing Hero's roll must meet or
+        // beat (see BattleAttackPopupUI.BeginResearchProduction). Not auto-changed for existing
+        // cards by this task.
         public int fate;
 
         // Combat stats (see Game.Combat.ChallengeResolver) — only meaningful for Hero/Unit

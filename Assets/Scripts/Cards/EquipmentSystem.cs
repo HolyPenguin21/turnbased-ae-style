@@ -64,6 +64,18 @@ namespace Game.Cards
         // --- validation --------------------------------------------------------------------
 
         public static bool CanAttach(CardDefinition equipment, UnitData target, PlayerRoot owner, out string reason)
+            => CanAttach(equipment, equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, target, owner, out reason);
+
+        // Research/Production-created equipment: the CardData instance already paid its
+        // ResourceCost at Create, so it attaches for activationApCost and no resources. Ordinary
+        // equipment cards resolve 1:1 to apCost / resourceCost (see the CardDefinition overload).
+        public static bool CanAttach(CardData equipmentCard, UnitData target, PlayerRoot owner, out string reason)
+            => CanAttach(equipmentCard?.Definition, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, target, owner, out reason);
+
+        private static bool CanAttach(CardDefinition equipment, int apCost, ResourceCost resourceCost,
+            UnitData target, PlayerRoot owner, out string reason)
         {
             if (target == null)
             {
@@ -71,12 +83,21 @@ namespace Game.Cards
                 return false;
             }
             EquipmentHostKind kind = target.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            return CanAttachCore(equipment, kind, target.TypeTags, target.Equipment != null, owner, out reason);
+            return CanAttachCore(equipment, apCost, resourceCost, kind, target.TypeTags, target.Equipment != null, owner, out reason);
         }
 
         // Same checks against a card still in hand — host kind/tags come from the card's own
         // design (CardDefinition), not a spawned UnitData.
         public static bool CanAttach(CardDefinition equipment, CardData targetCard, PlayerRoot owner, out string reason)
+            => CanAttach(equipment, equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, targetCard, owner, out reason);
+
+        public static bool CanAttach(CardData equipmentCard, CardData targetCard, PlayerRoot owner, out string reason)
+            => CanAttach(equipmentCard?.Definition, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, targetCard, owner, out reason);
+
+        private static bool CanAttach(CardDefinition equipment, int apCost, ResourceCost resourceCost,
+            CardData targetCard, PlayerRoot owner, out string reason)
         {
             CardDefinition def = targetCard?.Definition;
             if (def == null)
@@ -90,11 +111,11 @@ namespace Game.Cards
                 return false;
             }
             EquipmentHostKind kind = def.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            return CanAttachCore(equipment, kind, def.unitTypeTags, targetCard.Equipment != null, owner, out reason);
+            return CanAttachCore(equipment, apCost, resourceCost, kind, def.unitTypeTags, targetCard.Equipment != null, owner, out reason);
         }
 
-        private static bool CanAttachCore(CardDefinition equipment, EquipmentHostKind kind,
-            ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason)
+        private static bool CanAttachCore(CardDefinition equipment, int apCost, ResourceCost resourceCost,
+            EquipmentHostKind kind, ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason)
         {
             reason = null;
             if (equipment == null || equipment.cardType != CardType.Equipment || equipment.equipment == null)
@@ -130,12 +151,12 @@ namespace Game.Cards
                 return false;
             }
 
-            if (owner == null || !owner.CanSpendActionPoints(equipment.apCost))
+            if (owner == null || !owner.CanSpendActionPoints(apCost))
             {
                 reason = $"Not enough action points to attach {equipment.displayName}.";
                 return false;
             }
-            if (equipment.resourceCost != null && !equipment.resourceCost.CanAfford(owner))
+            if (resourceCost != null && !resourceCost.CanAfford(owner))
             {
                 reason = $"Not enough resources to attach {equipment.displayName}.";
                 return false;
@@ -149,7 +170,8 @@ namespace Game.Cards
         {
             if (!CanAttach(equipment, target, owner, out reason))
                 return false;
-            PayCost(equipment, owner);
+            PayCost(equipment, equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, owner);
             Apply(equipment.equipment, target);
             target.Equipment = equipment;
             return true;
@@ -159,17 +181,45 @@ namespace Game.Cards
         {
             if (!CanAttach(equipment, targetCard, owner, out reason))
                 return false;
-            PayCost(equipment, owner);
+            PayCost(equipment, equipment != null ? equipment.apCost : 0,
+                equipment != null ? equipment.resourceCost : null, owner);
             // Not applied now — the grant is stashed on the card and applied to the spawned
             // UnitData by ArmyActions.DeployUnitFromCard when this card is finally played.
             targetCard.Equipment = equipment;
             return true;
         }
 
-        private static void PayCost(CardDefinition equipment, PlayerRoot owner)
+        // CardData variants — used by CardHandUI's hand attach flow so a Research/Production-
+        // created equipment card is charged its effective (instance) cost: activationApCost and
+        // no ResourceCost, since Create already paid it. An ordinary equipment card behaves
+        // exactly as the CardDefinition overloads above.
+        public static bool TryAttach(CardData equipmentCard, UnitData target, PlayerRoot owner, out string reason)
         {
-            owner.SpendActionPoints(equipment.apCost);
-            equipment.resourceCost?.PayFrom(owner);
+            CardDefinition equipment = equipmentCard?.Definition;
+            if (!CanAttach(equipmentCard, target, owner, out reason))
+                return false;
+            PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
+            Apply(equipment.equipment, target);
+            target.Equipment = equipment;
+            return true;
+        }
+
+        public static bool TryAttach(CardData equipmentCard, CardData targetCard, PlayerRoot owner, out string reason)
+        {
+            CardDefinition equipment = equipmentCard?.Definition;
+            if (!CanAttach(equipmentCard, targetCard, owner, out reason))
+                return false;
+            PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
+                equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
+            targetCard.Equipment = equipment;
+            return true;
+        }
+
+        private static void PayCost(CardDefinition equipment, int apCost, ResourceCost resourceCost, PlayerRoot owner)
+        {
+            owner.SpendActionPoints(apCost);
+            resourceCost?.PayFrom(owner);
         }
 
         // --- effect application --------------------------------------------------------------

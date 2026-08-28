@@ -48,6 +48,10 @@ namespace Game.Map
         // "map input locked out while open" treatment as the two modals above (folded into
         // GameTurnController.InputBlocked via its own VisibilityChanged).
         [SerializeField] private ResearchProductionModalUI researchProductionModal;
+        // The shared Challenge popup (same scene object BattleScreenUI / AviationCombatPresenter
+        // use) — reused for the Research/Production Challenge via its own BeginResearchProduction
+        // entry point. Wired in the scene.
+        [SerializeField] private BattleAttackPopupUI attackPopup;
         // Up to 4 "build an extraction Facility" buttons, shown next to Garrison/Base — see
         // RefreshResourceActionRow.
         [SerializeField] private ResourceActionRowUI resourceActionRow;
@@ -150,6 +154,8 @@ namespace Game.Map
                 armyViewerModal.Closed += OnArmyModalClosed;
             if (baseViewerModal != null)
                 baseViewerModal.Closed += OnBaseModalClosed;
+            if (researchProductionModal != null)
+                researchProductionModal.CreateRequested += OnResearchProductionCreateRequested;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             StealthSystem.StealthChanged += OnStealthChanged;
@@ -169,6 +175,8 @@ namespace Game.Map
                 armyViewerModal.Closed -= OnArmyModalClosed;
             if (baseViewerModal != null)
                 baseViewerModal.Closed -= OnBaseModalClosed;
+            if (researchProductionModal != null)
+                researchProductionModal.CreateRequested -= OnResearchProductionCreateRequested;
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             StealthSystem.StealthChanged -= OnStealthChanged;
@@ -1136,6 +1144,16 @@ namespace Game.Map
                 UnitAbilities.Production, UnitAbilities.Assembler);
         }
 
+        // --- active Research/Production transaction context (spec §13) -----------------------
+        // Captured when the modal opens, re-validated (not trusted) when Create is pressed.
+        private bool _rpTransactionActive;
+        private HexCoord _rpHex;
+        private ResearchProductionMode _rpMode;
+        private string _rpFacilityAbility;
+        private string _rpHeroAbility;
+        private UnitData _rpHero;
+        private CardDefinition _rpPendingCard;
+
         private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode,
             string facilityAbility, string heroAbility)
         {
@@ -1147,11 +1165,116 @@ namespace Game.Map
             if (hero == null)
                 return;
 
+            _rpTransactionActive = false;
+            _rpHex = hex;
+            _rpMode = mode;
+            _rpFacilityAbility = facilityAbility;
+            _rpHeroAbility = heroAbility;
+            _rpHero = hero;
+            _rpPendingCard = null;
+
             // The three hex-side modals are mutually exclusive — same funnelling as
             // ShowArmyModal / ShowBaseModal.
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();
             researchProductionModal?.Show(mode, human, hero);
+        }
+
+        // Create pressed in the modal (spec §13). Everything here is re-validated against the
+        // live world — the hex contents can change between opening the modal and clicking Create,
+        // and the Challenge MUST be run by the exact Hero the modal is showing, not merely "some
+        // Researcher/Assembler now on the hex". ResourceCost is the only cost (spec §32: no
+        // Player AP for the attempt itself); it is paid immediately before the Challenge starts
+        // and is NOT refunded on a loss.
+        private void OnResearchProductionCreateRequested(CardDefinition card)
+        {
+            // 1. Anti-double-click.
+            if (_rpTransactionActive)
+                return;
+
+            // 3. Popup dependencies (checked early, before anything is spent).
+            if (card == null || researchProductionModal == null || !researchProductionModal.IsShowing
+                || attackPopup == null || cardHandUI == null)
+                return;
+
+            // 2. Revalidate world state.
+            PlayerSetupData human = turnController?.CurrentPlayer;
+            if (human == null || !human.IsHuman)
+                return;
+            if (_rpHero == null
+                || !IsResearchProductionEligible(_rpHex, _rpFacilityAbility, _rpHeroAbility)
+                || !HeroStillQualifiesForResearchProduction(_rpHero, _rpHex, human, _rpHeroAbility))
+                return;
+            // The card must still be one this open mode/faction offers.
+            if (!researchProductionModal.Offers(card))
+                return;
+
+            PlayerRoot root = PlayerRootRegistry.FindFor(human);
+            if (root == null)
+                return;
+
+            // 4. Hand capacity — before any ResourceCost is spent (spec §6).
+            if (!cardHandUI.HasFreeHandSlot)
+            {
+                turnController?.ShowSpawnHint($"Your hand is full — can't create {card.displayName}.");
+                return;
+            }
+
+            // 5. Resources.
+            if (card.resourceCost != null && !card.resourceCost.CanAfford(root))
+            {
+                turnController?.ShowSpawnHint($"Not enough resources to create {card.displayName}.");
+                return;
+            }
+
+            // 6. Lock the transaction (modal frozen, no second Create).
+            _rpTransactionActive = true;
+            _rpPendingCard = card;
+            researchProductionModal.SetBusy(true);
+
+            // 7. Spend resources — irreversible; not returned on a loss (spec §4).
+            card.resourceCost?.PayFrom(root);
+
+            // 8. Start the Challenge through its own dedicated entry point.
+            Sprite logo = cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(human.Faction)?.logo
+                : null;
+            attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art, OnResearchProductionResolved);
+        }
+
+        // 9/10. Challenge finished (Fate was already restored inside the popup). On success mint
+        // a produced CardData and hand it over; on failure do nothing (resources stay spent).
+        // Either way the modal reopens for interaction and stays open — the player closes it.
+        private void OnResearchProductionResolved(bool success)
+        {
+            CardDefinition card = _rpPendingCard;
+            _rpPendingCard = null;
+            _rpTransactionActive = false;
+
+            if (success && card != null)
+            {
+                var produced = new CardData(card) { ResearchProductionCreated = true };
+                cardHandUI?.AddCardToHand(produced);
+            }
+
+            researchProductionModal?.SetBusy(false);
+        }
+
+        // The Hero the modal is showing must STILL personally qualify — its army on the original
+        // hex, owned by `player`, not a prison, the member itself a non-prisoner Hero carrying
+        // `ability`. Stronger than IsResearchProductionEligible, which only asks whether *any*
+        // qualifying Hero is present.
+        private static bool HeroStillQualifiesForResearchProduction(UnitData hero, HexCoord hex,
+            PlayerSetupData player, string ability)
+        {
+            if (hero == null || player == null || hero.Owner != player)
+                return false;
+            if (!hero.IsHero || hero.IsPrisoner || !hero.HasAbility(ability))
+                return false;
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+                if (army.Owner == player && !army.IsPrison && army.Members.Contains(hero))
+                    return true;
+            return false;
         }
 
         private bool IsResearchProductionEligible(HexCoord hex, string facilityAbility, string heroAbility)

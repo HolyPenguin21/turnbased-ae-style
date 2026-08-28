@@ -113,8 +113,13 @@ namespace Game.UI
 
             RefreshStatsRow(definition);
 
-            ResourceCost cost = definition?.resourceCost;
-            SetBadge(apBadgeRoot, apBadgeText, definition != null ? definition.apCost : 0);
+            // Effective (instance-level) cost, not the raw CardDefinition: a card created
+            // through Research/Production already paid its ResourceCost at Create time, so its
+            // face shows activationApCost and no resource badges. Every ordinary card's
+            // EffectivePlayApCost/EffectivePlayResourceCost are its definition's apCost/
+            // resourceCost 1:1, so this is unchanged for them.
+            ResourceCost cost = data.EffectivePlayResourceCost;
+            SetBadge(apBadgeRoot, apBadgeText, data.EffectivePlayApCost);
             SetBadge(humanBadgeRoot, humanBadgeText, cost != null ? cost.human : 0);
             SetBadge(energyBadgeRoot, energyBadgeText, cost != null ? cost.energy : 0);
             SetBadge(materialsBadgeRoot, materialsBadgeText, cost != null ? cost.materials : 0);

@@ -28,9 +28,12 @@ namespace Game.Aviation
             return airfield;
         }
 
+        // sourceCard (optional): forwarded to ArmyActions.DeployUnitFromCard so a Research/
+        // Production-created aviation card pays activationApCost and skips its already-paid
+        // ResourceCost. AI callers pass none.
         public static bool TryDeployFromCard(CardDefinition definition, PlayerSetupData owner,
             PlayerRoot root, HexSelectionController hexSelection, Game.HexGrid.HexCoord hex, out string failReason,
-            CardDefinition attachedEquipment = null)
+            CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
             failReason = null;
             if (definition == null || !definition.isAviation)
@@ -44,7 +47,7 @@ namespace Game.Aviation
                 failReason = "Aircraft can only be deployed to your Barracks airfield.";
                 return false;
             }
-            return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason, attachedEquipment);
+            return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason, attachedEquipment, sourceCard);
         }
 
         public static bool TryLaunch(ArmyData airfield, IList<UnitData> aircraft, FactionCardCatalog catalog,

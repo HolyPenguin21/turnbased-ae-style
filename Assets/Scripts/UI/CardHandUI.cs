@@ -440,6 +440,12 @@ namespace Game.UI
             return AddCardToHand(new CardData(definition));
         }
 
+        // Read-only capacity probe — does NOT touch the hand. Used by the Research/Production
+        // transaction (see HexSelectionController) to refuse a Create BEFORE any ResourceCost is
+        // spent, so a won Challenge can never lose its produced card to a full hand. Same cap
+        // AddCardToHand enforces.
+        public bool HasFreeHandSlot => _cards.Count < maxHandSize;
+
         // Same, but for a card instance that already exists and must be preserved as-is rather
         // than rebuilt from its definition — an aircraft returning from an airfield/air army
         // still carries its attached Equipment on the CardData (see AviationActions.
@@ -712,7 +718,7 @@ namespace Game.UI
             if (definition.isAviation)
             {
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        hex.Value, out string aviationFailReason, card.Data?.Equipment))
+                        hex.Value, out string aviationFailReason, card.Data?.Equipment, card.Data))
                 {
                     turnController.ShowSpawnHint(aviationFailReason);
                     return false;
@@ -740,7 +746,7 @@ namespace Game.UI
                 return false;
             }
 
-            if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human), card.Data?.Equipment))
+            if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human), card.Data?.Equipment, card.Data))
                 return false;
 
             // A Hero landing here can change the hex's contextual actions (Research/Production)
@@ -790,19 +796,24 @@ namespace Game.UI
             if (root == null)
                 return false;
 
-            if (!root.CanSpendActionPoints(definition.apCost))
+            // Effective instance cost: a Research/Production-created card pays activationApCost
+            // and no ResourceCost (already paid at Create). Ordinary cards resolve 1:1 to
+            // definition.apCost / definition.resourceCost.
+            int apCost = card.Data.EffectivePlayApCost;
+            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
+            if (!root.CanSpendActionPoints(apCost))
             {
                 turnController.ShowSpawnHint($"Not enough action points to build {definition.displayName}.");
                 return false;
             }
-            if (!definition.resourceCost.CanAfford(root))
+            if (resourceCost != null && !resourceCost.CanAfford(root))
             {
                 turnController.ShowSpawnHint($"Not enough resources to build {definition.displayName}.");
                 return false;
             }
 
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
+            root.SpendActionPoints(apCost);
+            resourceCost?.PayFrom(root);
 
             // Absorb whatever was already built on a bare resource site into the new Base's own
             // slots (see CanMergeIntoResourceSite) before its old marker is replaced.
@@ -862,7 +873,7 @@ namespace Game.UI
                     return false;
                 }
                 if (!AviationActions.TryDeployFromCard(definition, human, PlayerRootRegistry.FindFor(human), hexSelection,
-                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment))
+                        targetArmy.Hex, out string aviationFailReason, card.Data?.Equipment, card.Data))
                 {
                     turnController.ShowSpawnHint(aviationFailReason);
                     return false;
@@ -884,7 +895,7 @@ namespace Game.UI
                 return false;
             }
 
-            if (!DeployUnit(definition, human, targetArmy, PlayerRootRegistry.FindFor(human), card.Data?.Equipment))
+            if (!DeployUnit(definition, human, targetArmy, PlayerRootRegistry.FindFor(human), card.Data?.Equipment, card.Data))
                 return false;
 
             armyViewerModal.RefreshAfterExternalDeploy();
@@ -913,12 +924,16 @@ namespace Game.UI
             if (root == null)
                 return false;
 
-            if (!root.CanSpendActionPoints(definition.apCost))
+            // Effective instance cost — see TryBuildBase. Produced cards skip the (already paid)
+            // ResourceCost and use activationApCost.
+            int apCost = card.Data.EffectivePlayApCost;
+            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
+            if (!root.CanSpendActionPoints(apCost))
             {
                 turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
                 return false;
             }
-            if (!definition.resourceCost.CanAfford(root))
+            if (resourceCost != null && !resourceCost.CanAfford(root))
             {
                 turnController.ShowSpawnHint($"Not enough resources to deploy {definition.displayName}.");
                 return false;
@@ -927,8 +942,8 @@ namespace Game.UI
             if (!baseViewerModal.TryPlaceFacility(definition, screenPosition))
                 return false;
 
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
+            root.SpendActionPoints(apCost);
+            resourceCost?.PayFrom(root);
             // A Lab/Factory Facility placed here can enable Research/Production on the selected
             // hex behind the still-open Base Viewer.
             if (hexSelection != null && targetBuilding != null)
@@ -969,19 +984,23 @@ namespace Game.UI
             if (root == null)
                 return false;
 
-            if (!root.CanSpendActionPoints(definition.apCost))
+            // Effective instance cost — see TryBuildBase. Produced cards skip the (already paid)
+            // ResourceCost and use activationApCost.
+            int apCost = card.Data.EffectivePlayApCost;
+            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
+            if (!root.CanSpendActionPoints(apCost))
             {
                 turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
                 return false;
             }
-            if (!definition.resourceCost.CanAfford(root))
+            if (resourceCost != null && !resourceCost.CanAfford(root))
             {
                 turnController.ShowSpawnHint($"Not enough resources to deploy {definition.displayName}.");
                 return false;
             }
 
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
+            root.SpendActionPoints(apCost);
+            resourceCost?.PayFrom(root);
             building.FacilitySlots[slotIndex] = FacilityData.FromDefinition(definition);
 
             // A Lab/Factory Facility dropped straight onto the hex can enable Research/Production.
@@ -996,13 +1015,13 @@ namespace Game.UI
         // attachedEquipment: a CardType.Equipment card hung on this card while it was in hand
         // (see EquipmentSystem) — carried onto the spawned unit by DeployUnitFromCard.
         private bool DeployUnit(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy, PlayerRoot root,
-            CardDefinition attachedEquipment = null)
+            CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
             if (hexSelection == null || root == null)
                 return false;
 
             if (!ArmyActions.DeployUnitFromCard(definition, owner, targetArmy, root, hexSelection, out string failReason,
-                    attachedEquipment))
+                    attachedEquipment, sourceCard))
             {
                 if (failReason != null)
                     turnController.ShowSpawnHint(failReason);
@@ -1064,7 +1083,7 @@ namespace Game.UI
             if (_pendingEquipment == null || targetCard == null || targetCard == _pendingEquipment)
                 return;
             PlayerRoot root = PlayerRootRegistry.FindFor(FindHumanPlayer());
-            if (EquipmentSystem.TryAttach(_pendingEquipment.Definition, targetCard, root, out string reason))
+            if (EquipmentSystem.TryAttach(_pendingEquipment, targetCard, root, out string reason))
             {
                 turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {targetCard.Definition.displayName}.");
                 _cards.Find(c => c != null && c.Data == targetCard)?.RefreshEquipmentToggle();
@@ -1089,7 +1108,7 @@ namespace Game.UI
             {
                 turnController?.ShowSpawnHint("You can only attach equipment to your own units.");
             }
-            else if (EquipmentSystem.TryAttach(_pendingEquipment.Definition, unit, PlayerRootRegistry.FindFor(human), out string reason))
+            else if (EquipmentSystem.TryAttach(_pendingEquipment, unit, PlayerRootRegistry.FindFor(human), out string reason))
             {
                 turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {unit.Name}.");
                 RemoveCardData(_pendingEquipment);

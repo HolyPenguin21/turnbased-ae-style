@@ -439,7 +439,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - r1s4
     - Stealth4
@@ -483,7 +483,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
     - r1s5
     resourceYield:
@@ -570,7 +570,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - CollectMaterials
     resourceYield:
@@ -587,8 +587,8 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     displayName: AA Crawler
-    art: {fileID: 21300000, guid: 0710b2a7db76fab41848bd283704c766, type: 3}
-    detailArt: {fileID: 21300000, guid: 803a5e0aedc809b4ab84f79fdcfad981, type: 3}
+    art: {fileID: 21300000, guid: efb68c3e009a0c3449c7a7c1c139bba4, type: 3}
+    detailArt: {fileID: 21300000, guid: b2aae6c570e9b8c4da5a1c04314666ed, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -613,7 +613,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
     - AA
     resourceYield:
@@ -698,7 +698,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - Berserk
     resourceYield:
@@ -741,7 +741,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -783,7 +783,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - Pyrokinetic
     resourceYield:
@@ -869,7 +869,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - Berserk
     resourceYield:
@@ -1039,7 +1039,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000400000002000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1081,7 +1081,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000400000002000000
     grantedAbilities:
     - CeramicArmor
     resourceYield:
@@ -1141,8 +1141,8 @@ MonoBehaviour:
       statChanges: []
   - id: 26
     displayName: Artillery Tank
-    art: {fileID: 21300000, guid: 4810b69d90fbc5d4c83b205220cebfd4, type: 3}
-    detailArt: {fileID: 21300000, guid: a9c00334f55db484ea0252056de0f7cd, type: 3}
+    art: {fileID: 21300000, guid: 9fa4995b6ddf22940b0441796514f9af, type: 3}
+    detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
@@ -1167,7 +1167,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1183,8 +1183,8 @@ MonoBehaviour:
       statChanges: []
   - id: 27
     displayName: Pulse Cannon
-    art: {fileID: 21300000, guid: e6e5088baf044414f8218f7ec96c6180, type: 3}
-    detailArt: {fileID: 21300000, guid: 77fc96088558ff3499ebcf37fbfe288a, type: 3}
+    art: {fileID: 21300000, guid: 922554905e778d64aa9735b3060079e2, type: 3}
+    detailArt: {fileID: 21300000, guid: ed24d56984537524a9b3f15b51c757ee, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
@@ -1209,7 +1209,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -1252,7 +1252,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s0
     resourceYield:
@@ -1295,7 +1295,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 2
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s4
     resourceYield:

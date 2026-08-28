@@ -154,6 +154,113 @@ namespace Game.UI
         // every later Fate-spend reroll (RunHumanTurn/RunAiTurn's own _rerollAnimDone wait), so
         // nothing becomes available to click, and no side reacts, before the dice have actually
         // landed (per the user's own request, 2026-08-24).
+        // --- Research/Production Challenge helpers (see BattleAttackPopupUI.BeginResearchProduction) ---
+        // Deliberately isolated from SetDice so its behaviour is untouched for Ground Combat /
+        // Capture Kill / Aviation.
+
+        // A Research/Production DEFENDER is a card, not a UnitData — just a name + logo, no HP,
+        // no Fate row, no Spend button. Follow with SetFixedSuccesses.
+        public void SetupCardDefender(string displayName, Sprite factionLogo)
+        {
+            _sideHero = null;
+            if (logoImage != null)
+            {
+                logoImage.sprite = factionLogo;
+                logoImage.gameObject.SetActive(factionLogo != null);
+            }
+            if (nameText != null)
+            {
+                nameText.text = displayName ?? string.Empty;
+                nameText.color = Color.white;
+            }
+            if (hpText != null)
+                hpText.text = string.Empty;
+            if (fateRoot != null)
+                fateRoot.SetActive(false);
+            if (spendButton != null)
+                spendButton.interactable = false;
+            UIListUtility.DestroyAndClear(_diceSlots);
+            _lastDice = null;
+            if (successText != null)
+                successText.text = string.Empty;
+            if (diceCountText != null)
+                diceCountText.text = string.Empty;
+        }
+
+        // The card defender's fixed defence: CardDefinition.fate guaranteed successes, shown at
+        // full immediately with NO roll animation (a card doesn't roll its own defence). Rebuilds
+        // the strip like SetDice's count-changed branch, but every slot lands on hit via
+        // DiceSlotUI.SetImmediate.
+        public void SetFixedSuccesses(int count)
+        {
+            count = Mathf.Max(0, count);
+            UIListUtility.DestroyAndClear(_diceSlots);
+            if (diceContainer != null && diceSlotPrefab != null)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    slot.gameObject.SetActive(true);
+                    slot.SetImmediate(true);
+                    _diceSlots.Add(slot);
+                }
+            }
+            _lastDice = new bool[count];
+            for (int i = 0; i < count; i++)
+                _lastDice[i] = true;
+            if (successText != null)
+                successText.text = count.ToString();
+            if (diceCountText != null)
+                diceCountText.text = $"Defense: {count}";
+        }
+
+        // The R/P Fate-overflow rule: when every existing attacker die is already a hit but the
+        // success count is still below target, a spent Fate ADDS a die instead of rerolling one.
+        // Appends exactly one new slot, rolls only it, leaves every existing slot untouched, then
+        // refreshes _lastDice / the success counter. onComplete fires when the new die lands.
+        public void AppendDie(bool hit, System.Action onComplete = null)
+        {
+            if (diceContainer == null || diceSlotPrefab == null)
+            {
+                if (_lastDice != null)
+                {
+                    var grown = new bool[_lastDice.Length + 1];
+                    System.Array.Copy(_lastDice, grown, _lastDice.Length);
+                    grown[grown.Length - 1] = hit;
+                    _lastDice = grown;
+                }
+                onComplete?.Invoke();
+                return;
+            }
+
+            DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+            slot.gameObject.SetActive(true);
+            _diceSlots.Add(slot);
+
+            int prevLen = _lastDice != null ? _lastDice.Length : 0;
+            var next = new bool[prevLen + 1];
+            if (_lastDice != null)
+                System.Array.Copy(_lastDice, next, prevLen);
+            next[prevLen] = hit;
+            _lastDice = next;
+
+            if (diceCountText != null)
+                diceCountText.text = $"Dice: {next.Length}";
+
+            void Done()
+            {
+                if (successText != null)
+                {
+                    int successes = 0;
+                    foreach (bool h in _lastDice)
+                        if (h) successes++;
+                    successText.text = successes.ToString();
+                }
+                onComplete?.Invoke();
+            }
+            slot.PlayRoll(hit, 0, 1, DiceSlotUI.FateRerollDuration, Done);
+        }
+
         public void SetDice(bool[] dice, int rerolledIndex = -1, System.Action onComplete = null)
         {
             if (dice == null)
