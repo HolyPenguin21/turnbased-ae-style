@@ -600,6 +600,15 @@ namespace Game.Ai
                             candidate.Score, candidate.Category.Value, strategy,
                             AiOperationPlanner.IsOperationTask(candidate.Task) ? null : budget);
 
+            // Commitment layer (2026-08-28) — a narrow, per-task sunk-cost bump for an already
+            // registered, non-operation RaidWeakerArmy task that has finished assembling: it must
+            // not keep losing the step to routine reconnaissance scoring a few points above a raid
+            // the AI already paid to build and is cleared to launch. Runs AFTER the strategic tilt
+            // (it operates on the tilted score) and BEFORE the operations boost. No-op for
+            // everything else — see AiCommitmentLayer.Adjust.
+            foreach (AiDecision candidate in candidates)
+                candidate.Score = AiCommitmentLayer.Adjust(player, candidate);
+
             // Operations boost (2026-08-27) — a candidate advancing an operation-owned task rides a
             // flat bump on top of the strategic tilt so the campaign's own work stays reliably
             // ahead of unrelated routine candidates. Routine only, and capped at strategyExemptScore-1

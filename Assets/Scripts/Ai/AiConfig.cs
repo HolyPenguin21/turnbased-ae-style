@@ -1609,6 +1609,17 @@ namespace Game.Ai
         // of the strategic tilt — keeps the operation's own work reliably ahead of unrelated
         // routine candidates without swamping a genuine emergency.
         public const float operationDirectiveBoost = 16f;
+        // Commitment layer (2026-08-28, project owner's own "committed Raid has no commitment
+        // priority" spec) — a flat sunk-cost bump for an already-registered, non-operation
+        // RaidWeakerArmy task that has FINISHED assembling (StillAssembling == false) and isn't
+        // retreating: a raid the AI already paid to build and that the aggression planner itself
+        // says is allowed to attack must not keep losing the step to routine reconnaissance a few
+        // points above it. Deliberately small — the observed gap was ~5 (Recon 109.9 vs ready Raid
+        // 104.9), so +8 clears it decisively while staying far below the tactical ladder
+        // (strategyExemptScore 120). Does NOT touch a StillAssembling raid — undoing
+        // raidAssembleMinBonusFactor's anti-starvation decay for a 0-20%-win-chance force is
+        // exactly what this must not do. See AiCommitmentLayer.
+        public const float committedRaidContinuationBonus = 8f;
         // The Offensive operation's own "march the strike force to the objective" directive score
         // (an AiDecision.Move built from the shared path primitive) — above a raid's ordinary
         // travel continuation so the advance stays decisive, at the raidCounterAttackBonus tier.
