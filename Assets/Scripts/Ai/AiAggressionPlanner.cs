@@ -728,16 +728,28 @@ namespace Game.Ai
                 return results;
             }
 
+            // Задача 5 (2026-08-28 P1) — everything above this point is a raid that costs no fresh
+            // assembly campaign: continuing an already-registered task, or dispatching an idle army
+            // that alone already beats the target (the readyArmy fast path, which always returns).
+            // THIS is where a genuinely new raid investment would begin — a hero-led force grown one
+            // recruit at a time, or an AP-paid RequestRaidArmy. Suppress that entirely while a
+            // BuildBase task is still building the base it founded by dissolving a forming raid —
+            // see FreshRaidAssemblySuppressed's own comment.
+            if (FreshRaidAssemblySuppressed(player))
+                return results;
+
             ArmyData forming = pool.AvailableArmies().FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(garrisonHex));
             if (forming == null)
             {
-                // Don't spend AP on a brand new empty army if an idle one already exists ANYWHERE
-                // on the map (2026-08-20 fix, project owner's own report: this used to request a
-                // fresh army even with spare reserve armies just sitting idle elsewhere) —
-                // TryRaidRecallCandidates below is the one that walks such an army home; this tier
-                // just needs to stay out of its way rather than spend AP redundantly.
-                bool idleEmptyArmyExistsElsewhere = pool.AvailableArmies().Any(a => AiArmyRoles.IsEmptyDeployableArmy(a));
-                if (!idleEmptyArmyExistsElsewhere && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
+                // No empty deployable shell AT the garrison to grow. A remote one doesn't count:
+                // ArmyData gives a zero-member army CurrentMovement/MaxMovement == 0, so it can
+                // never walk here to become `forming` — TryRaidRecallCandidates only ever recalls
+                // MANNED armies now (2026-08-28 spec). The old guard here skipped RequestRaidArmy
+                // whenever ANY idle empty army existed anywhere, which combined with the immovable
+                // remote shell into a temporary deadlock (blocked the request AND never arrived).
+                // A manned army already walking home carries its own ReturnForRaidAssembly task and
+                // is claimed out of the pool, so it can't reach this scan either.
+                if (root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
                     results.Add(AiDecision.RequestRaidArmy(AiConfig.aggressionBaseWeight + AiConfig.raidRequestArmyPenalty));
                 return results;
             }
@@ -815,47 +827,89 @@ namespace Game.Ai
             return null;
         }
 
-        // An idle army anywhere else on the map, while at least one Агрессия task is currently
-        // assembling (needs recruits) — walks toward the garrison so TryRaidAssembleCandidates can
-        // fold its members in once it arrives (same-hex only, like every reorg move in this
-        // codebase). No Task of its own (same shape as AiScoutPlanner.TryReturnHomeCandidates) —
-        // it's prep work for whichever raid task happens to still need bodies once it gets there,
-        // not committed to one in particular.
+        // True while at least one Агрессия raid task is registered, live, and still short of the
+        // force it needs (RaidWeakerArmyTask.IsReady false against its target's current threat) —
+        // i.e. a raid that would actually make use of more bodies folded in at the garrison.
+        // Shared by TryRaidRecallCandidates (should an idle army be walked home?) and
+        // AdvanceReturnForRaidAssemblyTask (is the walk still worth finishing?), so the two never
+        // disagree about whether an assembly is in progress.
+        internal static bool HasRaidAssemblyNeed(PlayerSetupData player, AiTurnContext ctx)
+        {
+            return AiTaskRegistry.TasksFor(player).Any(t => t.Kind == AiTaskKind.RaidWeakerArmy && !t.Retreating
+                && t.Army != null && !RaidWeakerArmyTask.IsReady(t.Army,
+                    RaidWeakerArmyTask.RequiredStrengthAt(player, t.TargetHex, ctx.Map), AiConfig.raidMinimumWinChance));
+        }
+
+        // Задача 5 (2026-08-28 P1, project owner's own spec) — true while at least one BuildBase
+        // task that was founded by preempting a forming raid's builder (AiTask.
+        // PreemptedRaidForBuildBase) is still genuinely building. While that holds, Агрессия must
+        // NOT begin a brand-new raid assembly from scratch — otherwise the AI pays fresh AP to
+        // recreate the exact raid it just voluntarily dissolved for the base (the Korrin/Blackfang
+        // → Sandreavers report). Deliberately scoped as narrowly as possible:
+        //   • it only suppresses starting a FROM-SCRATCH assembly — existing raids, a ready idle
+        //     army that can strike with no new investment, Defence and Operations are all untouched
+        //     (see the individual call sites, which each gate on this AFTER their own
+        //     existing-raid / ready-force paths);
+        //   • once the building itself lands (AwaitingGarrisonSeed) the strategic investment has
+        //     been realized, so garrison-seeding no longer holds the whole offensive pipeline
+        //     hostage — suppression ends there, well before the task is finally removed.
+        private static bool FreshRaidAssemblySuppressed(PlayerSetupData player)
+        {
+            return AiTaskRegistry.TasksFor(player).Any(t =>
+                t.Kind == AiTaskKind.BuildBase
+                && t.PreemptedRaidForBuildBase
+                && !t.AwaitingGarrisonSeed);
+        }
+
+        // A MANNED idle army anywhere else on the map, while at least one Агрессия raid is
+        // assembling (or there's a raid-worthy target and none started yet) — registers a real
+        // AiTaskKind.ReturnForRaidAssembly task and walks toward the garrison so
+        // TryRaidAssembleCandidates can fold its members in once it arrives (same-hex only, like
+        // every reorg move in this codebase). The task exists for lifecycle/ownership (2026-08-28,
+        // project owner's own spec): before it, the recall issued a Move with `null` Task, so the
+        // very next Decide saw the army untasked again and re-picked it as Recon after a single
+        // step home. With the task, Decide claims the army every step, no other tier can see it,
+        // and AdvanceReturnForRaidAssemblyTask owns the walk end-to-end (arrival, siege abort,
+        // "raid need vanished" abort — see its own comment).
         //
-        // Also covers an EMPTY deployable army sitting away from the garrison (2026-08-20 fix,
-        // project owner's own report — see TryRaidAssembleCandidates' own idle-empty-army guard):
-        // that guard skips RequestRaidArmy whenever one exists anywhere, so without this, an empty
-        // reserve army stranded off-hex would never actually reach the garrison to become the
-        // `forming` army TryRaidAssembleCandidates looks for — it would just block the request AND
-        // never itself get used, stalling the raid. Walking it home the same way a manned army
-        // gets recalled closes that gap; once it lands on garrisonHex, the very next step's
-        // `forming` lookup picks it up automatically, no special-casing needed here beyond letting
-        // it through.
+        // An EMPTY deployable shell is deliberately NOT recalled any more (was, 2026-08-20 →
+        // 2026-08-28 spec): ArmyData sets CurrentMovement/MaxMovement to 0 for a zero-member army,
+        // so it physically cannot walk home — the old branch was architecturally dead, and worse,
+        // TryRaidAssembleCandidates' own "empty army exists elsewhere" guard treated that immovable
+        // shell as a reason not to request a usable army, producing a temporary deadlock. Both
+        // halves are fixed together: this method skips empty armies, and that guard no longer
+        // looks for remote shells (see TryRaidAssembleCandidates). A stranded empty shell is left
+        // to ordinary empty-army cleanup.
         public static List<AiDecision> TryRaidRecallCandidates(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiResourcePool pool, HashSet<ArmyData> stuckScouts)
         {
             var results = new List<AiDecision>();
-            bool anyAssembling = AiTaskRegistry.TasksFor(player).Any(t => t.Kind == AiTaskKind.RaidWeakerArmy && !t.Retreating
-                && t.Army != null && !RaidWeakerArmyTask.IsReady(t.Army, RaidWeakerArmyTask.RequiredStrengthAt(player, t.TargetHex, ctx.Map),
-                    AiConfig.raidMinimumWinChance));
-            // Broadened 2026-08-20 (project owner's own fix) — an idle army now also drifts home
+            // Broadened 2026-08-20 (project owner's own fix) — an idle army also drifts home
             // whenever there's ANY raid-worthy target on the map at all, not just once a task has
             // already started assembling. Keeps a spare reserve army from sitting idle while a
             // fresh one gets requested (and paid for in AP) for a raid that hasn't even started yet.
-            if (!anyAssembling && !RaidWeakerArmyTask.HasAnythingToRaid(player))
+            if (!HasRaidAssemblyNeed(player, ctx) && !RaidWeakerArmyTask.HasAnythingToRaid(player))
+                return results;
+
+            // Задача 5 (2026-08-28 P1) — if no existing raid still needs bodies AND a
+            // builder-preempting BuildBase is suppressing fresh assemblies, dragging idle armies
+            // home would only feed a raid TryRaidAssembleCandidates won't be allowed to start. An
+            // existing still-short raid (HasRaidAssemblyNeed true) keeps its recruits — that path
+            // isn't a fresh assembly. See FreshRaidAssemblySuppressed's own comment.
+            if (!HasRaidAssemblyNeed(player, ctx) && FreshRaidAssemblySuppressed(player))
                 return results;
 
             HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
             foreach (ArmyData army in pool.AvailableArmies())
             {
-                if (army.IsGarrison || army.IsPrison || army.Hex.Equals(garrisonHex)
-                    || army.Controller == null || stuckScouts.Contains(army))
+                if (army.IsGarrison || army.IsPrison || army.Members.Count == 0 // empty armies have 0 movement — cannot walk home
+                    || army.Hex.Equals(garrisonHex) || army.Controller == null || stuckScouts.Contains(army))
                     continue;
                 // Feature 3 (2026-08-24) — same capture-step nudge TryContinueRaidTask's own ordinary
                 // continuation gets (see RaidWeakerArmyTask.FindCaptureStepDestination's own comment):
-                // an untasked army walking home to assemble may as well grab a known unguarded/
-                // beatable enemy building it happens to pass close by first, without changing where
-                // it's actually headed (still the garrison) for next step's own fresh re-evaluation.
+                // an army walking home to assemble may as well grab a known unguarded/beatable enemy
+                // building it happens to pass close by first, without changing where it's actually
+                // headed (still the garrison) for next step's own fresh re-evaluation.
                 HexCoord destination = garrisonHex;
                 string reason = "returns to the garrison to assemble the force";
                 RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
@@ -868,10 +922,90 @@ namespace Game.Ai
                 else if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, garrisonHex))
                     continue;
 
+                var task = new AiTask { Kind = AiTaskKind.ReturnForRaidAssembly, Army = army, TargetHex = garrisonHex };
                 var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
-                results.Add(AiDecision.Move(army, target, null, AiConfig.raidRecallScore, AiTaskCategory.Aggression));
+                results.Add(AiDecision.Move(army, target, task, AiConfig.raidRecallScore, AiTaskCategory.Aggression));
             }
             return results;
+        }
+
+        // Continuation for AiTaskKind.ReturnForRaidAssembly — a manned army walking itself home to
+        // feed a forming raid (see TryRaidRecallCandidates). Cancels the task (and releases the
+        // army back to the pool for THIS SAME Decide's raid tiers) the moment any of its premises
+        // stops holding: army lost/emptied, citadel under siege (Defence takes priority), no raid
+        // assembling and nothing left worth raiding, or the army has reached the garrison.
+        // Otherwise re-points at the garrison and issues the next step, with the same opportunistic
+        // capture-step nudge the recall itself uses.
+        public static AiDecision AdvanceReturnForRaidAssemblyTask(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, AiTask task, AiResourcePool pool)
+        {
+            ArmyData army = task.Army;
+
+            if (army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(army) || army.Members.Count == 0)
+            {
+                AiTaskRegistry.Remove(player, task);
+                pool.ReleaseArmy(army);
+                return null;
+            }
+
+            // A real siege invalidates the raid-preparation intent outright — Defence gets the
+            // army back immediately (same priority AiAggressionPlanner already gives IsUnderSiege
+            // everywhere else — force-recalled raids, suppressed new ones).
+            if (AiDefencePlanner.IsUnderSiege(player, ctx))
+            {
+                AiTaskRegistry.Remove(player, task);
+                pool.ReleaseArmy(army);
+                return null;
+            }
+
+            // No raid is assembling and nothing remains worth raiding — the walk has no purpose.
+            if (!HasRaidAssemblyNeed(player, ctx) && !RaidWeakerArmyTask.HasAnythingToRaid(player))
+            {
+                AiTaskRegistry.Remove(player, task);
+                pool.ReleaseArmy(army);
+                return null;
+            }
+
+            // Задача 5 (2026-08-28 P1) — same suppression as TryRaidRecallCandidates: no existing
+            // raid still needs bodies AND a builder-preempting BuildBase is blocking fresh
+            // assemblies, so this ReturnForRaidAssembly walk is feeding a raid that won't be
+            // started. Abandon it and hand the army straight back to this Decide's own pool.
+            if (!HasRaidAssemblyNeed(player, ctx) && FreshRaidAssemblySuppressed(player))
+            {
+                AiTaskRegistry.Remove(player, task);
+                pool.ReleaseArmy(army);
+                return null;
+            }
+
+            HexCoord garrisonHex = AiTurnController.GarrisonHexFor(player);
+            task.TargetHex = garrisonHex;
+
+            if (army.Hex.Equals(garrisonHex))
+            {
+                AiTaskRegistry.Remove(player, task);
+                // Important: free the arrived army so the raid-assemble tiers later in THIS SAME
+                // Decide can consume it (fold its members into a forming raid, or dispatch it
+                // outright if it alone already beats a target) — one step sooner than waiting for
+                // next Decide's up-front claim to lapse.
+                pool.ReleaseArmy(army);
+                return null;
+            }
+
+            if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, garrisonHex))
+                return null;
+
+            HexCoord destination = garrisonHex;
+            string reason = "returns to the garrison to assemble the force";
+            RaidWeakerArmyTask.CaptureStepOpportunity? captureStep =
+                RaidWeakerArmyTask.FindCaptureStepDestination(player, army, garrisonHex, ctx.Map);
+            if (captureStep.HasValue && AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, captureStep.Value.NextHex))
+            {
+                destination = captureStep.Value.NextHex;
+                reason = FormatCaptureStepReason(captureStep.Value, "on the way home");
+            }
+
+            var target = new AiScoutPlanner.ScoutTarget(destination, 0f, reason);
+            return AiDecision.Move(army, target, task, AiConfig.raidRecallScore, AiTaskCategory.Aggression);
         }
 
         // Оборона цитадели's own emergency reinforcement moved out entirely 2026-08-20 — see
@@ -1479,7 +1613,19 @@ namespace Game.Ai
             if (!AiTurnController.CanIssueMoveNow(root, player, army, ctx.Map, targetHex.Value))
                 return results;
 
-            var task = new AiTask { Kind = AiTaskKind.BuildBase, Army = army, TargetHex = targetHex.Value };
+            var task = new AiTask
+            {
+                Kind = AiTaskKind.BuildBase,
+                Army = army,
+                TargetHex = targetHex.Value,
+
+                // Задача 5 (2026-08-28 P1) — remember if this base is being founded at the cost of
+                // a forming raid's own builder (FindBuildBaseArmy only ever sets `preempted` for a
+                // StillAssembling RaidWeakerArmy). FreshRaidAssemblySuppressed reads this to stop
+                // Агрессия immediately spinning up a replacement raid from scratch. See
+                // AiTask.PreemptedRaidForBuildBase's own comment.
+                PreemptedRaidForBuildBase = preempted != null && preempted.Kind == AiTaskKind.RaidWeakerArmy,
+            };
             AiDecision decision = AiDecision.Move(army, targetHex.Value,
                 $"heads out to found a new base at ({targetHex.Value.Q},{targetHex.Value.R})",
                 task, AiConfig.aggressionBaseWeight + AiConfig.buildBaseTravelBonus, AiTaskCategory.Aggression);

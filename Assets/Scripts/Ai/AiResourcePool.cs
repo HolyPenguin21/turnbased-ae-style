@@ -51,6 +51,19 @@ namespace Game.Ai
                 _claimedArmies.Add(army);
         }
 
+        // Give a claimed army back to AvailableArmies() mid-Decide. Decide() claims every
+        // in-flight task's army up front (see AiTurnController.Decide) — but a persistent-task
+        // continuation that ENDS its task during that same Decide (its army has arrived, the task
+        // is cancelled) leaves the army claimed for the rest of the step unless it's explicitly
+        // released. Used by AiAggressionPlanner.AdvanceReturnForRaidAssemblyTask so the arriving
+        // army can be consumed by the raid-assemble tiers that run later in the SAME Decide,
+        // rather than idling one extra step.
+        public void ReleaseArmy(ArmyData army)
+        {
+            if (army != null)
+                _claimedArmies.Remove(army);
+        }
+
         public IEnumerable<ArmyData> AvailableArmies() =>
             ArmyRegistry.AllForOwner(Player).Where(a => !IsClaimed(a));
 

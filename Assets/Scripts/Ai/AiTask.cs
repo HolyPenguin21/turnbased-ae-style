@@ -54,6 +54,17 @@ namespace Game.Ai
         RaidWeakerArmy, // Агрессия · Задача 1 — see RaidWeakerArmyTask
         RaidReinforce, // Агрессия — critically wounded field army waits for a courier instead of
                         // marching home itself, see AiAggressionPlanner.TryRaidRegroupCandidates
+        ReturnForRaidAssembly, // Агрессия — a MANNED idle field army walking itself home so
+                        // TryRaidAssembleCandidates can fold its members into a forming raid once
+                        // it arrives. Real lifecycle/ownership (2026-08-28, project owner's own
+                        // spec — "RaidRecall не имеет lifecycle/ownership"): registered so the
+                        // army is claimed every Decide and can't be re-picked as Recon mid-walk;
+                        // cancels itself on siege, on the raid need vanishing, or on arrival (which
+                        // also releases the army back to the pool for the SAME Decide's raid
+                        // tiers). An empty deployable shell never gets this task — ArmyData gives
+                        // empty armies 0 movement, so it physically can't walk home; ordinary
+                        // empty-army cleanup disposes of a stranded one instead. See
+                        // AiAggressionPlanner.AdvanceReturnForRaidAssemblyTask / TryRaidRecallCandidates.
         BuildBase, // Агрессия · Задача 2 — found an additional base toward the known enemy
                     // citadels (2026-08-21, project owner's own spec) — see BuildBaseTask's own
                     // class comment for target selection, AiAggressionPlanner.
@@ -175,6 +186,7 @@ namespace Game.Ai
                 // Management case below.
                 case AiTaskKind.RaidWeakerArmy:
                 case AiTaskKind.RaidReinforce:
+                case AiTaskKind.ReturnForRaidAssembly:
                 case AiTaskKind.BuildBase:
                     return AiTaskCategory.Aggression;
                 case AiTaskKind.DefendCitadel:
@@ -460,6 +472,22 @@ namespace Game.Ai
         // the same turn-boundary simplification AiTask.AssemblyProgressTurn already uses for its
         // own stall clock instead of an incrementing counter.
         public int GarrisonSeedStartedTurn = -1;
+
+        // BuildBase only (Задача 5, 2026-08-28 P1, project owner's own spec) — true when this task
+        // was allowed to consume a StillAssembling RaidWeakerArmy (fold its hero-led builder out
+        // from under a forming raid — see AiAggressionPlanner.FindBuildBaseArmy's own `preempted`)
+        // in order to get its own army. A pure score penalty on the BuildBase candidate isn't
+        // enough on its own: if BuildBase still wins the arbitration, the old raid is gone by the
+        // time the next step runs, so nothing stops Агрессия paying fresh AP to spin up a brand-new
+        // raid seconds after voluntarily destroying the last one (the project owner's own Korrin/
+        // Blackfang → Sandreavers report). This flag is the state that survives the step boundary:
+        // while a BuildBase task carrying it is still genuinely building (NOT yet AwaitingGarrisonSeed
+        // — once the building exists the strategic investment has landed and the offensive pipeline
+        // is free again), AiAggressionPlanner.FreshRaidAssemblySuppressed refuses to begin a
+        // FROM-SCRATCH raid assembly. It never blocks an already-existing raid, a ready idle army
+        // that can attack with no fresh investment, Defence, or Operations — see that method and its
+        // call sites in TryRaidAssembleCandidates/TryRaidRecallCandidates/AdvanceReturnForRaidAssemblyTask.
+        public bool PreemptedRaidForBuildBase;
 
         // AirStrike/AirRecon only — the owned airfield the sortie is currently committed to
         // landing at, chosen fresh by AiAviationSupport.TryPlanSortie/TryPlanSortiePreferForward

@@ -492,6 +492,16 @@ namespace Game.Ai
                 if (decision != null)
                     candidates.Add(decision);
             }
+            // Before the raid-assemble tiers below (TryRaidAssembleCandidates) so an army that
+            // arrives home this step is released back into the pool in time for them to fold it in.
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.ReturnForRaidAssembly).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiAggressionPlanner.AdvanceReturnForRaidAssemblyTask(player, root, ctx, task, pool);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
             foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.BuildBase).ToList())
             {
                 if (stuckScouts.Contains(task.Army))
@@ -779,7 +789,10 @@ namespace Game.Ai
                     // registered here.
                     float strength = WorthIt.AttackSum(decision.ExistingArmy) + WorthIt.DefenseSum(decision.ExistingArmy);
                     string preemptedNote = decision.PreemptedTask != null
-                        ? $", preempted its own \"{decision.PreemptedTask.Kind}\" task" : "";
+                        ? $", preempted its own \"{decision.PreemptedTask.Kind}\" task"
+                          + (decision.Task.PreemptedRaidForBuildBase
+                              ? " — fresh raid assembly now suppressed until this base is built (Задача 5)" : "")
+                        : "";
                     AiDebugLog.Write($"[AI] {player.Nickname}: BuildBase actor selected — \"{decision.ExistingArmy.Name}\" "
                         + $"(strength={strength:0.#}, weakest eligible) heads to "
                         + $"({decision.Task.TargetHex.Q},{decision.Task.TargetHex.R}){preemptedNote}.");

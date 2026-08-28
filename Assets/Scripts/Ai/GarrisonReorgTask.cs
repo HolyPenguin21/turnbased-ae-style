@@ -358,6 +358,13 @@ namespace Game.Ai
             // some other field army at the hex instead of the garrison itself.
             if (task.Kind == AiTaskKind.RaidWeakerArmy || task.Kind == AiTaskKind.SecureBase)
                 return true;
+            // ReturnForRaidAssembly (2026-08-28) — safety for the edge case where the army lands
+            // on the garrison hex on its last allowed step and hasn't yet had the next Decide that
+            // would clear the task: without this it reads as an ordinary lone army "at base" and a
+            // generic fold could swallow task.Army before AdvanceReturnForRaidAssemblyTask ends it
+            // cleanly. The continuation releases it to the raid tiers itself one step later anyway.
+            if (task.Kind == AiTaskKind.ReturnForRaidAssembly)
+                return true;
             if (task.Kind != AiTaskKind.DefendCitadel)
                 return false;
             // 2026-08-24 fix (project owner's own root-cause report): a Patrol-postured DefendCitadel
