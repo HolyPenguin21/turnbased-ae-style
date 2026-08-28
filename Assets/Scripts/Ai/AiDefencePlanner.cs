@@ -1045,14 +1045,12 @@ namespace Game.Ai
             {
                 var readyTask = new AiTask { Kind = AiTaskKind.DefendCitadel, Army = readyDefender, Posture = AiDefencePosture.Patrol, HomeHex = homeHex };
 
-                UnitData mergeRecruit = RaidWeakerArmyTask.FindCoLocatedMergeRecruit(readyDefender, pool, out ArmyData mergeSource);
-                if (mergeRecruit != null && mergeSource != null && readyDefender.HasRoom && !ctx.WouldRevisitArmy(mergeRecruit, readyDefender)
-                    && CanAffordSwapInto(readyDefender, mergeRecruit))
-                {
-                    results.Add(AiDecision.ActiveDefenceForce(mergeSource, mergeRecruit, readyDefender, readyTask, assemblyScore));
-                    return results;
-                }
-
+                // FindReadyIdleDefender only returns an army that already satisfies the current
+                // composition requirement (IsComposedReady). Pulling one more unit into it here
+                // just re-runs an assembly-tier ActiveDefenceForce recruit and defers the
+                // intercept by at least one arbiter step — for Active the army could instead move
+                // now at defenceActiveScore. A still-forming army is untouched: it never reaches
+                // this branch and keeps its normal FindRecruitAt / TryStrengthenCandidate path.
                 AiDecision first = BuildPostureDecision(player, root, ctx, readyTask);
                 if (first != null)
                     results.Add(first);
