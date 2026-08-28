@@ -126,7 +126,7 @@ namespace Game.Ai
                     return null; // boxed in avoiding the threat — wait rather than walk into it
 
                 string reason = underSiege ? "citadel under siege — recalled to the garrison" : "regrouping — returns to base";
-                float score = underSiege ? AiConfig.defencePreemptScore : AiConfig.aggressionBaseWeight;
+                float score = underSiege ? AiConfig.defencePreemptScore : AiConfig.defenceRetreatScore;
                 return AiDecision.Move(task.Army, nextStep.Value, reason, task, score, AiTaskCategory.Aggression);
             }
 
@@ -164,7 +164,7 @@ namespace Game.Ai
                     if (firstStep == null)
                         return null;
                     return AiDecision.Move(task.Army, firstStep.Value, "enemy is stronger — retreating",
-                        task, AiConfig.aggressionBaseWeight, AiTaskCategory.Aggression);
+                        task, AiConfig.defenceRetreatScore, AiTaskCategory.Aggression);
                 }
 
                 if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, threat.Value.Hex))
