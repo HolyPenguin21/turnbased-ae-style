@@ -1,7 +1,5 @@
-using System;
 using Game.Cards;
-using Game.Economy;
-using Game.Map;
+using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -9,11 +7,14 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One "build an extraction Facility" button on HexInfoPanelUI's resource-action row (see
-    // ResourceActionRowUI) — mirrors ArmyButtonUI's Setup/click pattern. Icon appearance comes
-    // straight from the prefab, not tinted per-resource at runtime. On hover, swaps the label
-    // for the definition's cost badges (AP + non-zero resources) — same "icon + number" row
-    // convention as ResourceBarUI/BaseSlotCardUI's own upgrade-cost preview.
+    // One button on HexInfoPanelUI's hex-action row (see ResourceActionRowUI) — mirrors
+    // ArmyButtonUI's Setup/click pattern. Two modes, chosen by HexActionDescriptor.CostSource:
+    //   - Cost action (extraction Facilities): CostSource set. On hover, swaps the label for
+    //     the definition's cost badges (AP + non-zero resources) — same "icon + number" row
+    //     convention as ResourceBarUI/BaseSlotCardUI's own upgrade-cost preview.
+    //   - Simple action (Research / Production): CostSource null. Label stays visible, no
+    //     hover preview — these carry no AP/resource cost at this stage.
+    // Icon appearance comes straight from the prefab, not tinted per-action at runtime.
     public class ResourceActionButtonUI : MonoBehaviour
     {
         [SerializeField] private Image icon;
@@ -24,24 +25,37 @@ namespace Game.UI
         [SerializeField] private Image[] costBadgeIcons;
         [SerializeField] private TMP_Text[] costBadgeAmounts;
 
+        // Set from the descriptor's CostSource — a null one leaves the button in label-only
+        // mode and makes the hover handlers below no-ops.
+        private bool _hasCostPreview;
+
         private void Awake()
         {
             AddHoverTrigger(button, ShowCostPreview, HideCostPreview);
         }
 
-        public void Setup(ResourceType type, CardDefinition definition, Action<ResourceType> onClick)
+        public void Setup(HexActionDescriptor action)
         {
+            if (action == null)
+                return;
+
             if (label != null)
-                label.text = definition != null ? $"Build {definition.displayName}" : string.Empty;
+                label.text = action.Label ?? string.Empty;
             if (button != null)
             {
                 button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(() => onClick?.Invoke(type));
+                Action onClick = action.OnClick;
+                button.onClick.AddListener(() => onClick?.Invoke());
             }
 
+            CardDefinition definition = action.CostSource;
+            _hasCostPreview = definition != null;
+
+            if (label != null)
+                label.gameObject.SetActive(true);
             if (costPreviewRoot != null)
                 costPreviewRoot.SetActive(false);
-            if (definition == null)
+            if (!_hasCostPreview)
                 return;
 
             ResourceCost cost = definition.resourceCost;
@@ -64,6 +78,8 @@ namespace Game.UI
 
         private void ShowCostPreview()
         {
+            if (!_hasCostPreview)
+                return;
             if (label != null)
                 label.gameObject.SetActive(false);
             if (costPreviewRoot != null)
@@ -72,6 +88,8 @@ namespace Game.UI
 
         private void HideCostPreview()
         {
+            if (!_hasCostPreview)
+                return;
             if (label != null)
                 label.gameObject.SetActive(true);
             if (costPreviewRoot != null)

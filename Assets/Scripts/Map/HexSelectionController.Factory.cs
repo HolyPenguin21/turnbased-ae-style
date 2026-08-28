@@ -226,6 +226,26 @@ namespace Game.Map
             return false;
         }
 
+        // Role-aware companion to HasOwnHeroArmyAt, for the Research/Production contextual hex
+        // actions (see RefreshResourceActionRow) — deliberately separate so the plain
+        // HasOwnHeroArmyAt (Base founding / extraction) keeps its existing, looser meaning
+        // untouched. A Hero qualifies only if its army is ON this exact hex, owned by `player`,
+        // not a Prison, and the member itself IsHero, not a prisoner, and carries `ability`
+        // (UnitAbilities.Researcher / Assembler). A garrison is a normal location here; so is an
+        // ordinary named army.
+        public static bool HasOwnHeroWithAbilityAt(HexCoord hex, PlayerSetupData player, string ability)
+        {
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+            {
+                if (army.Owner != player || army.IsPrison)
+                    continue;
+                foreach (UnitData member in army.Members)
+                    if (member.IsHero && !member.IsPrisoner && member.HasAbility(ability))
+                        return true;
+            }
+            return false;
+        }
+
         // The hero action behind each of HexInfoPanelUI's up-to-4 resource buttons (see
         // RefreshResourceActionRow) — builds `definition` (one of GameConfig.
         // extractionFacilityCards) directly into whatever building already sits on `hex`,

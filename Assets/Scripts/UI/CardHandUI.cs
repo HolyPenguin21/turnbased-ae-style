@@ -743,6 +743,9 @@ namespace Game.UI
             if (!DeployUnit(definition, human, garrison, PlayerRootRegistry.FindFor(human), card.Data?.Equipment))
                 return false;
 
+            // A Hero landing here can change the hex's contextual actions (Research/Production)
+            // without a fresh hex click — refresh the selected hex if it's this one.
+            hexSelection.RefreshSelectedHexIf(hex.Value);
             RemoveCard(card);
             return true;
         }
@@ -824,6 +827,8 @@ namespace Game.UI
                 }
             }
 
+            // Founding/merging a Base here can enable Research/Production on the selected hex.
+            hexSelection.RefreshSelectedHexIf(hex.Value);
             RemoveCard(card);
             return true;
         }
@@ -883,6 +888,9 @@ namespace Game.UI
                 return false;
 
             armyViewerModal.RefreshAfterExternalDeploy();
+            // A Researcher/Assembler Hero dropped straight into this army changes the hex's
+            // contextual actions behind the still-open modal — refresh if it's the selected hex.
+            hexSelection.RefreshSelectedHexIf(targetArmy.Hex);
             RemoveCard(card);
             return true;
         }
@@ -921,6 +929,10 @@ namespace Game.UI
 
             root.SpendActionPoints(definition.apCost);
             definition.resourceCost.PayFrom(root);
+            // A Lab/Factory Facility placed here can enable Research/Production on the selected
+            // hex behind the still-open Base Viewer.
+            if (hexSelection != null && targetBuilding != null)
+                hexSelection.RefreshSelectedHexIf(targetBuilding.Hex);
             RemoveCard(card);
             return true;
         }
@@ -972,6 +984,8 @@ namespace Game.UI
             definition.resourceCost.PayFrom(root);
             building.FacilitySlots[slotIndex] = FacilityData.FromDefinition(definition);
 
+            // A Lab/Factory Facility dropped straight onto the hex can enable Research/Production.
+            hexSelection.RefreshSelectedHexIf(hex.Value);
             RemoveCard(card);
             return true;
         }

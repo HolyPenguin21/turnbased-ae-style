@@ -1031,23 +1031,29 @@ namespace Game.Map
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // Up to 4 "build an extraction Facility" buttons — one per resource type `coord`
-        // actually yields that ISN'T ALREADY FULLY COLLECTED (building's own baked-in ability +
-        // whatever Facilities are already placed, see BuildingData.CollectedAmount — e.g. a
-        // citadel alone already fully covers a 1-of-each hex, only a richer hex still needs a
-        // button), and that doesn't already have a Facility built for it (only one per resource
-        // type per building — see HasFacilityWithAbility; closing the remaining gap on a richer
-        // hex is done by upgrading that Facility, not building a second one) — while one of the
-        // current player's own Hero armies stands here. Independent of who owns whatever
-        // building already sits on the hex being shown elsewhere — TryBuildExtractionFacility
-        // itself rejects a foreign building silently, same as any other irrelevant target.
+        // The selected hex's contextual first-level actions, in display order: Research /
+        // Production (see AddResearchProductionActions) first, then up to 4 "build an extraction
+        // Facility" buttons — one per resource type `coord` actually yields that ISN'T ALREADY
+        // FULLY COLLECTED (building's own baked-in ability + whatever Facilities are already
+        // placed, see BuildingData.CollectedAmount — e.g. a citadel alone already fully covers a
+        // 1-of-each hex, only a richer hex still needs a button), and that doesn't already have
+        // a Facility built for it (only one per resource type per building — see
+        // HasFacilityWithAbility; closing the remaining gap on a richer hex is done by upgrading
+        // that Facility, not building a second one) — while one of the current player's own Hero
+        // armies stands here. Independent of who owns whatever building already sits on the hex
+        // being shown elsewhere — TryBuildExtractionFacility itself rejects a foreign building
+        // silently, same as any other irrelevant target. Every entry shown is a genuinely
+        // available action; there is no paging — the row is sized for all 6 at once.
         private void RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
         {
             if (resourceActionRow == null)
                 return;
 
             PlayerSetupData human = turnController?.CurrentPlayer;
-            var actions = new List<(ResourceType type, CardDefinition definition)>();
+            var actions = new List<HexActionDescriptor>();
+
+            AddResearchProductionActions(actions, coord, buildingHere, human);
+
             // No building here — regardless of who it belongs to — can be worked while a
             // combat-capable enemy army stands on the hex (see Game.Combat.BattleInitiator).
             if (human != null && human.IsHuman && gameConfig.extractionFacilityCards != null
@@ -1070,14 +1076,85 @@ namespace Game.Map
                     CardDefinition definition = index < gameConfig.extractionFacilityCards.Length ? gameConfig.extractionFacilityCards[index] : null;
                     if (definition == null)
                         continue;
-                    actions.Add((type, definition));
+                    CardDefinition captured = definition;
+                    actions.Add(new HexActionDescriptor($"Build {definition.displayName}",
+                        () => TryBuildExtractionFacility(captured, coord, human), captured));
                 }
             }
 
             if (actions.Count > 0)
-                resourceActionRow.Show(actions, type => TryBuildExtractionFacility(gameConfig.extractionFacilityCards[(int)type], coord, human));
+                resourceActionRow.Show(actions);
             else
                 resourceActionRow.Hide();
+        }
+
+        // Research and Production are independent first-level hex actions (no cost source yet —
+        // the click handlers are stubs until the next milestone wires up their modals). Each is
+        // shown only when, on the human's own turn, an OWN building on `coord` holds a Facility
+        // granting the capability (UnitAbilities.Research / Production — never a Lab/Factory name
+        // or card id), no combat-capable enemy stands on the hex, and one of this player's own
+        // eligible Heroes with the matching role ability (Researcher / Assembler) is present in
+        // an army on this exact hex — garrison included. The two are fully symmetric and can
+        // appear together; a single Hero carrying both role abilities, or two different own
+        // armies each carrying one, satisfies both.
+        private void AddResearchProductionActions(List<HexActionDescriptor> actions, HexCoord coord,
+            BuildingData buildingHere, PlayerSetupData human)
+        {
+            if (human == null || !human.IsHuman || buildingHere == null || buildingHere.Owner != human)
+                return;
+            if (BattleInitiator.FindEnemyAt(coord, human) != null)
+                return;
+
+            if (buildingHere.HasFacilityWithAbility(UnitAbilities.Research)
+                && HasOwnHeroWithAbilityAt(coord, human, UnitAbilities.Researcher))
+                actions.Add(new HexActionDescriptor("Research", () => OnResearchActionClicked(coord)));
+
+            if (buildingHere.HasFacilityWithAbility(UnitAbilities.Production)
+                && HasOwnHeroWithAbilityAt(coord, human, UnitAbilities.Assembler))
+                actions.Add(new HexActionDescriptor("Production", () => OnProductionActionClicked(coord)));
+        }
+
+        // Stubs for the next milestone (the available-research / available-production modals).
+        // Eligibility is re-checked here rather than trusted from the button's mere existence —
+        // the hex contents could have changed between render and click.
+        private void OnResearchActionClicked(HexCoord hex)
+        {
+            if (!IsResearchProductionEligible(hex, UnitAbilities.Research, UnitAbilities.Researcher))
+                return;
+            turnController?.ShowSpawnHint("Research UI is not implemented yet.");
+        }
+
+        private void OnProductionActionClicked(HexCoord hex)
+        {
+            if (!IsResearchProductionEligible(hex, UnitAbilities.Production, UnitAbilities.Assembler))
+                return;
+            turnController?.ShowSpawnHint("Production UI is not implemented yet.");
+        }
+
+        private bool IsResearchProductionEligible(HexCoord hex, string facilityAbility, string heroAbility)
+        {
+            PlayerSetupData human = turnController?.CurrentPlayer;
+            if (human == null || !human.IsHuman)
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != human)
+                return false;
+            if (BattleInitiator.FindEnemyAt(hex, human) != null)
+                return false;
+            return building.HasFacilityWithAbility(facilityAbility)
+                && HasOwnHeroWithAbilityAt(hex, human, heroAbility);
+        }
+
+        // Re-runs the full SelectHex pipeline for `changedHex` ONLY if it's the hex currently
+        // selected — so a direct card deploy that can change the contextual hex actions (a Lab
+        // onto the selected Base, a Researcher into its garrison) shows the new Research/
+        // Production button immediately instead of waiting for the next hex re-click. No
+        // separate "is the button visible" flag is kept anywhere; SelectHex ->
+        // RefreshResourceActionRow stays the single source of truth.
+        public void RefreshSelectedHexIf(HexCoord changedHex)
+        {
+            if (_selectedHex.HasValue && _selectedHex.Value.Equals(changedHex))
+                SelectHex(_selectedHex.Value, preserveSelection: true);
         }
 
         // The two hex-side modals are mutually exclusive — only one of them makes sense open at
