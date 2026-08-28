@@ -589,13 +589,21 @@ namespace Game.Ai
                 // whenever the winning placement genuinely IS that garrison — never a blanket bump
                 // for every Unit card, only the one actually relieving an insecure base.
                 float score = unitScore;
+                AiTaskCategory category = AiTaskCategory.Management;
                 ArmyData targetGarrison = bestUnitPlacement.Value.ExistingArmy;
                 if (targetGarrison != null && targetGarrison.IsGarrison
                     && !targetGarrison.Hex.Equals(AiTurnController.GarrisonHexFor(player))
                     && !AiArmyRoles.IsBaseGarrisonSecure(player, targetGarrison.Hex))
+                {
+                    // Same axis/budget as SecureBase's own courier (Defence) so the deliberate
+                    // 110 > 100 ordering can't be flipped by Strategy applying different per-axis
+                    // tilts / AP-budget penalties to the two candidates independently. CardRole
+                    // stays Unit — placement, cost and PlayCard execution are unchanged.
                     score = AiConfig.secureBaseCardPlacementScore;
+                    category = AiTaskCategory.Defence;
+                }
 
-                AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, score, AiTaskCategory.Management);
+                AiDecision decision = AiDecision.PlayCard(bestUnitPlacement.Value.ExistingArmy, bestUnitCard, CardRole.Unit, score, category);
                 decision.Reason += roleBalance;
                 results.Add(decision);
             }
