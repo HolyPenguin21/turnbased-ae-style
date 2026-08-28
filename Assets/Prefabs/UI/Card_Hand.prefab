@@ -364,6 +364,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EquipmentArtToggle
   cardArtImage: {fileID: 7770000000000000004}
   buttonVisual: {fileID: 1288438340295221923}
+  statsToHideOnHover: {fileID: 2820781930590140767}
+  infoText: {fileID: 7770000000000000018}
 --- !u!1 &2660903223350420155
 GameObject:
   m_ObjectHideFlags: 0

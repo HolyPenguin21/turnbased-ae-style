@@ -173,7 +173,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 4fc5885688c762640bbaafb4e3529bad, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 28100ed5b3524b246a6152dace64a840, type: 3}
   m_Type: 0
   m_PreserveAspect: 1
   m_FillCenter: 1
@@ -208,7 +208,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4970000000000000021}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -1575,7 +1575,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &4970000000000000101
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1813,3 +1813,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EquipmentArtToggle
   cardArtImage: {fileID: 4970000000000000014}
   buttonVisual: {fileID: 6997627862166668911}
+  statsToHideOnHover: {fileID: 4970000000000000041}
+  infoText: {fileID: 4970000000000000024}
