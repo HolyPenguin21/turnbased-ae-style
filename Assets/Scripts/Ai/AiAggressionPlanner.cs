@@ -738,6 +738,31 @@ namespace Game.Ai
             if (FreshRaidAssemblySuppressed(player))
                 return results;
 
+            // P1/P2 (2026-08-28, project owner's own report) — pre-allocation viability gate. Prove
+            // a viable force can actually be assembled BEFORE claiming an empty army / spending AP
+            // on RequestRaidArmy. Without this the AI created the empty army first, fed it a recruit
+            // or two, and only THEN discovered "winChance 0% < raidMinimumWinChance, waits for
+            // reinforcement" — freezing the sole raid slot and a hero + combat cards for 3+ turns
+            // until the stall watchdog force-retargeted. EvaluateAssemblablePlan simulates the
+            // strongest force we could realistically converge here (garrison stock + idle armies
+            // within raidPlanRecallRadius + an obtainable hero) and runs it through the SAME
+            // win-chance / coverage math IsReady gates on. A rejected target is left alone for
+            // raidPlanRejectCooldownTurns so this projection (and its log line) doesn't repeat every
+            // Decide step. Existing raid tasks and the ready-idle-army fast path above are never
+            // gated by this — only a brand-new from-scratch assembly is.
+            if (AiMapMemory.WasRaidPlanRejectedWithin(player, target.Value.Hex, ctx.TurnNumber, AiConfig.raidPlanRejectCooldownTurns))
+                return results;
+            RaidWeakerArmyTask.RaidPlan plan = RaidWeakerArmyTask.EvaluateAssemblablePlan(
+                player, garrison, garrisonHex, target.Value.Threat, pool, hand);
+            if (!plan.IsViable)
+            {
+                AiMapMemory.MarkRaidPlanRejected(player, target.Value.Hex, ctx.TurnNumber);
+                AiDebugLog.Write($"[AI] {player.Nickname}: raid-worthy target at "
+                    + $"({target.Value.Hex.Q},{target.Value.Hex.R}) discovered, but {plan.ShortfallReason} "
+                    + $"— no raid assembly started (re-checks in {AiConfig.raidPlanRejectCooldownTurns} turns).");
+                return results;
+            }
+
             ArmyData forming = pool.AvailableArmies().FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(garrisonHex));
             if (forming == null)
             {

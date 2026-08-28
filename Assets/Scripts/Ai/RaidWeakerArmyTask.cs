@@ -217,6 +217,131 @@ namespace Game.Ai
             return new WorthIt.BattleEstimate(chance, 1f, 0f);
         }
 
+        // Projected verdict on "could we realistically assemble a viable raid force against this
+        // target from scratch, starting now" — see EvaluateAssemblablePlan below.
+        public readonly struct RaidPlan
+        {
+            // A raid MUST be hero-led (see NeedsHero) — false means no hero is obtainable at all
+            // (none spare at/near the garrison, none deployable from hand), which alone kills the
+            // plan regardless of how many bodies are available.
+            public readonly bool HasHero;
+            // The projected roster can land damage on every known defender (WorthIt.CanDamageAll).
+            public readonly bool CanCoverAllDefenders;
+            // Monte-Carlo win fraction of that projected roster against the target (same math
+            // IsReady itself gates on, just run against a hypothetical roster instead of a real
+            // army).
+            public readonly float ExpectedWinChance;
+            // Hero + non-hero bodies the projection actually managed to gather.
+            public readonly int ProjectedSize;
+            // Human-readable "why not" for the debug log — null exactly when the plan is viable.
+            public readonly string ShortfallReason;
+
+            public RaidPlan(bool hasHero, bool canCoverAllDefenders, float expectedWinChance,
+                int projectedSize, string shortfallReason)
+            {
+                HasHero = hasHero;
+                CanCoverAllDefenders = canCoverAllDefenders;
+                ExpectedWinChance = expectedWinChance;
+                ProjectedSize = projectedSize;
+                ShortfallReason = shortfallReason;
+            }
+
+            public bool IsViable => ShortfallReason == null;
+        }
+
+        // P1/P2 (2026-08-28, project owner's own report) — "raid force выделяется до доказательства
+        // возможности собрать жизнеспособную армию". Before AiAggressionPlanner.
+        // TryRaidAssembleCandidates spends AP on RequestRaidArmy or claims an empty shell for a
+        // from-scratch raid, it asks this: simulate the STRONGEST force we could realistically
+        // converge on the garrison and check it the same way IsReady would — if it still can't
+        // clear raidMinimumWinChance / cover every defender / even field a hero, don't start the
+        // raid at all (the old order allocated first, then spent 3+ turns logging "winChance 0% <
+        // 65%, waits for reinforcement" until the stall watchdog force-retargeted).
+        //
+        // The projected roster:
+        //   • an obligatory hero — a Hero-role card in `hand` deployable at the garrison, OR a live
+        //     hero unit spare at/near the garrison (CanLeaveWithoutOvercrowding + CanSpareGarrison-
+        //     Member, same gates FindRecruitAt's own hero pull applies). Its CommandRating sets the
+        //     roster cap, exactly as it would on the real forming army (see ArmyData.ComputeCapacity).
+        //   • the strongest non-hero bodies that could reach the garrison in time: everything parked
+        //     there now PLUS any manned idle army within AiConfig.raidPlanRecallRadius hexes (close
+        //     enough to walk in well before raidAssembleMaxTurns) — same per-unit eligibility
+        //     FindRecruitAt enforces (non-Recce, non-aviation, spare-able).
+        // Deliberately does NOT gate on this turn's AP/resources for the hero card — viability is a
+        // multi-turn question and AP comes around; only the bodies and the win-chance math decide
+        // here. Slightly optimistic on CanLeaveWithoutOvercrowding (checked per-unit, like
+        // FindRecruitAt itself — pulling several compounds), acceptable for a go/no-go projection.
+        public static RaidPlan EvaluateAssemblablePlan(PlayerSetupData player, ArmyData garrisonArmy,
+            HexCoord garrisonHex, ThreatStrength threat, AiResourcePool pool, AiHandData hand)
+        {
+            if (threat.IsUndefended)
+                return new RaidPlan(true, true, 1f, 1, null); // nothing to fight — a mover just walks in
+
+            bool hasHero = false;
+            int heroCommand = 0;
+            var bodyPool = new List<UnitData>();
+
+            foreach (ArmyData candidate in pool.AvailableArmies())
+            {
+                if (candidate.IsPrison || candidate.IsAirfield || candidate.Members.Count == 0)
+                    continue;
+                if (HexGridMath.Distance(candidate.Hex, garrisonHex) > AiConfig.raidPlanRecallRadius)
+                    continue;
+                foreach (UnitData unit in candidate.Members)
+                {
+                    if (AbilityParams.UnitHasAnyRecce(unit) || unit.IsAviation)
+                        continue;
+                    if (!candidate.CanLeaveWithoutOvercrowding(unit))
+                        continue;
+                    if (!AiArmyRoles.CanSpareGarrisonMember(player, candidate, unit))
+                        continue;
+                    if (unit.IsHero)
+                    {
+                        hasHero = true;
+                        heroCommand = System.Math.Max(heroCommand, unit.CommandRating);
+                    }
+                    else
+                    {
+                        bodyPool.Add(unit);
+                    }
+                }
+            }
+
+            foreach (CardData card in hand?.Hand ?? Enumerable.Empty<CardData>())
+            {
+                if (!AiManagementPlanner.IsUnitOrHeroCard(card) || AiManagementPlanner.IsRecceCard(card)
+                    || AiManagementPlanner.RoleOf(card) != AiManagementPlanner.CardRole.Hero)
+                    continue;
+                if (garrisonArmy != null && !AiManagementPlanner.IsAtRequiredBuilding(garrisonArmy, player, card.Definition))
+                    continue;
+                hasHero = true;
+                heroCommand = System.Math.Max(heroCommand, card.Definition.commandRating);
+            }
+
+            if (!hasHero)
+                return new RaidPlan(false, false, 0f, 0, "no hero is available to lead a fresh raid");
+
+            int nonHeroSlots = System.Math.Max(0, heroCommand - 1);
+            List<UnitData> roster = bodyPool
+                .OrderByDescending(u => u.Attack)
+                .Take(nonHeroSlots)
+                .ToList();
+
+            bool canCover = WorthIt.CanDamageAll(roster, threat.Defenders, threat.HexBonus);
+            float winChance = threat.Defenders != null && threat.Defenders.Count > 0
+                ? WorthIt.WinChance(roster.Select(WorthIt.FromLiveUnit).ToList(), threat.Defenders, threat.HexBonus)
+                : WorthIt.WinChance(WorthIt.AttackSum(roster), WorthIt.DefenseSum(roster), threat.Attack, threat.Defense);
+
+            string shortfall = null;
+            if (!canCover)
+                shortfall = $"the strongest assemblable force ({roster.Count} bodies + hero) still can't damage every defender";
+            else if (winChance < AiConfig.raidMinimumWinChance)
+                shortfall = $"the strongest assemblable force ({roster.Count} bodies + hero) wins only "
+                    + $"{winChance:P0} (min {AiConfig.raidMinimumWinChance:P0})";
+
+            return new RaidPlan(true, canCover, winChance, roster.Count + 1, shortfall);
+        }
+
         // "Strategically important" exception to the cost-of-victory gate below (2026-08-26 P1,
         // "RaidWeakerArmy не оценивает цену победы") — an enemy building capture denies the enemy
         // a base/facility for good, not just a one-time reward the way a neutral/event target is,

@@ -258,6 +258,19 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> AirReconTargets =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
 
+        // Агрессия · from-scratch raid — hex -> the global turn a fresh raid assembly against it
+        // was last rejected as non-viable (RaidWeakerArmyTask.EvaluateAssemblablePlan: no hero
+        // obtainable, composition can't cover every defender, or the strongest force we could
+        // realistically assemble still wins below raidMinimumWinChance). Purpose-built for
+        // AiAggressionPlanner.TryRaidAssembleCandidates' own pre-allocation gate — within
+        // AiConfig.raidPlanRejectCooldownTurns turns the hex is not re-projected (or re-logged) as
+        // a new-raid target, so the AI doesn't burn a Decide step every turn re-deriving the same
+        // "0% win chance" verdict it already reached. One entry per hex, re-stamped on a repeat
+        // rejection. Never auto-expired here — WasRaidPlanRejectedWithin compares against the
+        // current turn. Existing raid tasks and a ready idle army are never gated by this.
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> RaidPlanRejected =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
+
         private static bool _subscribed;
         // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
         // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
@@ -310,6 +323,7 @@ namespace Game.Ai
             KnownBuildings.Clear();
             ScoutDangerZones.Clear();
             AirReconTargets.Clear();
+            RaidPlanRejected.Clear();
             _currentTurn = 0;
         }
 
@@ -419,6 +433,28 @@ namespace Game.Ai
         {
             return AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets)
                 && targets.TryGetValue(hex, out int turn)
+                && currentTurn - turn < cooldownTurns;
+        }
+
+        // Stamps `hex` as a from-scratch raid target that failed AiAggressionPlanner's own
+        // pre-allocation viability gate this turn — see RaidPlanRejected's own comment.
+        public static void MarkRaidPlanRejected(PlayerSetupData actor, HexCoord hex, int turnNumber)
+        {
+            if (actor == null)
+                return;
+            if (!RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes))
+                RaidPlanRejected[actor] = hexes = new Dictionary<HexCoord, int>();
+            hexes[hex] = turnNumber;
+        }
+
+        // True if a fresh raid assembly against `hex` was rejected as non-viable fewer than
+        // `cooldownTurns` turns ago (relative to `currentTurn`). TryRaidAssembleCandidates checks
+        // this before re-projecting the target, so it doesn't re-run the same doomed math (and
+        // re-log it) every Decide step within the cooldown window.
+        public static bool WasRaidPlanRejectedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
+        {
+            return RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes)
+                && hexes.TryGetValue(hex, out int turn)
                 && currentTurn - turn < cooldownTurns;
         }
 

@@ -327,6 +327,22 @@ namespace Game.Ai
         // Deliberately well above raidStallTurns — a slowly-growing force IS making progress, it
         // just needs a ceiling so it can't grow forever against an unwinnable target.
         public const int raidAssembleMaxTurns = 6;
+        // P1/P2 (2026-08-28, project owner's own report) — pre-allocation viability gate for a
+        // FROM-SCRATCH raid (RaidWeakerArmyTask.EvaluateAssemblablePlan, called by
+        // AiAggressionPlanner.TryRaidAssembleCandidates before it ever allocates an empty army or
+        // spends AP on RequestRaidArmy). How far out (raw HexGridMath.Distance from the garrison
+        // hex) a manned idle army still counts toward the "maximum force we could realistically
+        // assemble" projection: close enough that its bodies could walk in and be folded in well
+        // before raidAssembleMaxTurns(6). A unit farther than this is treated as unavailable for
+        // the projection — better to not start the raid than to start one banking on reinforcements
+        // that are half the map away.
+        public const int raidPlanRecallRadius = 5;
+        // How many turns a raid target rejected by that viability gate is left alone before
+        // TryRaidAssembleCandidates re-projects it (AiMapMemory.MarkRaidPlanRejected /
+        // WasRaidPlanRejectedWithin). Same purpose and value as airReconTargetCooldownTurns — stop
+        // re-running (and re-logging) the identical doomed projection every Decide step. Existing
+        // raid tasks and a ready idle army that can strike with no new investment are unaffected.
+        public const int raidPlanRejectCooldownTurns = 3;
         // Above how many known defenders a hex stops being a "raid" target at all (2026-08-27,
         // project owner's own log audit — a garrison-seeded raid kept picking 5-unit neutral camps
         // like "Cactus-Pickers" it could never realistically clear, then starved its own garrison
