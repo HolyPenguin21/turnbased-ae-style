@@ -273,9 +273,11 @@ namespace Game.Ai
             // whole loop below, not just some of it, sees the same freshly-expired memory.
             AiMapMemory.OnTurnStarted(player, ctx.TurnNumber);
 
-            AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
-            if (hand != null)
-                hand.Capacity = ctx.HandCapacity; // shared hand cap (spec §10)
+            // Pass the shared hand cap (spec §10) straight into GetOrCreate — it applies it on
+            // creation AND re-applies it (SetCapacity) on every later turn, so the cap is a real
+            // invariant from the hand's first card, never a window between construction and a
+            // post-hoc field assignment where a starting-hand draw could overflow it.
+            AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize, ctx.HandCapacity);
             int startArmies = ArmyRegistry.AllForOwner(player).Count(a => !a.IsGarrison && !a.IsPrison);
             int startHuman = root.GetResource(ResourceType.Human);
             int startEnergy = root.GetResource(ResourceType.Energy);

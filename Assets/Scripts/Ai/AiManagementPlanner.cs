@@ -1155,7 +1155,11 @@ namespace Game.Ai
                 results.Add(AiDecision.Reserve(MostActiveOwnGarrisonHex(player), spareArmies, reservePreferred
                     ? AiConfig.managementFallbackHighScore : AiConfig.managementFallbackLowScore));
 
-            if (hand != null && hand.HasCardsLeftToDraw && root.CanSpendActionPoints(ctx.DrawApCost))
+            // hand.HasFreeSlot gate (2026-08-28 P1) — a full hand has nothing a Draw can achieve:
+            // no candidate is proposed, so no AP is spent, no deck card is consumed, and the
+            // Management scoring one step later reads the correct (unchanged) hand count. Same
+            // capacity semantics Research/Production/Development already gate on.
+            if (hand != null && hand.HasFreeSlot && hand.HasCardsLeftToDraw && root.CanSpendActionPoints(ctx.DrawApCost))
                 results.Add(AiDecision.Draw(reservePreferred
                     ? AiConfig.managementFallbackLowScore : AiConfig.managementFallbackHighScore));
             return results;
@@ -1193,7 +1197,11 @@ namespace Game.Ai
         {
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
-            if (root != null && hand != null && root.CanSpendActionPoints(ctx.DrawApCost))
+            // Execution-side recheck of the same invariant GatherFallbackCandidates already gates
+            // on — state could have changed between this candidate being scored and it running.
+            // DrawOne itself would also return null on a full hand now, but bailing here keeps the
+            // AP unspent instead of charging for a no-op draw.
+            if (root != null && hand != null && hand.HasFreeSlot && root.CanSpendActionPoints(ctx.DrawApCost))
             {
                 int ap0 = root.ActionPoints;
                 int human0 = root.GetResource(ResourceType.Human);
