@@ -1519,7 +1519,7 @@ namespace Game.Ai
         // Default OFF: turned on and measured during calibration, once real attack-heavy games
         // exist to A/B against (project owner's own call — the strategic layer lands first, the
         // legacy couplings come out only once the axes are proven in combat).
-        public const bool strategyRetireLegacyCouplings = false;
+        public const bool strategyRetireLegacyCouplings = true;
         // Score offset span from the axis: (axis - 0.5) * this. Sized well under the ~100 base
         // weights so it decides ties and near-calls, never overrides a genuinely urgent candidate
         // (a 120 Defence intercept still beats a 100+12 Economy move).
