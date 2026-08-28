@@ -1263,13 +1263,33 @@ namespace Game.Ai
             {
                 if (unit == promotedHero)
                     continue;
-                if (ArmyActions.TransferMember(unit, garrison, destination, ctx.HexSelection, out string failReason))
+                bool transferred = ArmyActions.TransferMember(unit, garrison, destination, ctx.HexSelection, out string failReason);
+                // Same transfer-oscillation contract Raid/Recon assembly already uses (see
+                // AiTurnContext.WouldRevisitArmy) — record the attempt whether it landed or not,
+                // so an identical doomed transfer can't keep winning arbitration this same turn if
+                // planner and execution ever disagree again (2026-08-28 P0 backstop, on top of
+                // AiEconomyPlanner's own CanLeaveWithoutOvercrowding preflight).
+                ctx.RecordArmyVisit(unit, garrison, destination);
+                if (transferred)
                     moved++;
                 else
                     AiDebugLog.Write($"[AI] {player.Nickname}: couldn't transfer {unit.Name} out of the garrison — {failReason}");
             }
             string splitDelta = root != null ? AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0) : null;
             AiDebugLog.Write($"[AI] {player.Nickname}: garrison was full — {moved} unit(s) moved into \"{destination.Name}\".{splitDelta}");
+
+            // Made no progress at all AND left a freshly-created, empty destination behind — clean
+            // it up rather than leave a never-reused army shell on the garrison hex (the exact
+            // litter the reuse-scan in FindGarrisonOverflowDestination / AiEconomyPlanner is meant
+            // to avoid). A reused, already-existing destination (decision.MergeTarget != null) is
+            // left alone — deleting someone else's reserve army is not this routine's call.
+            if (decision.MergeTarget == null && !destination.IsGarrison && destination.Members.Count == 0)
+            {
+                ctx.HexSelection?.DeleteArmyIfEmptied(destination);
+                AiDebugLog.Write($"[AI] {player.Nickname}: garrison split made no progress — empty destination removed.");
+                yield return AiTurnController.WaitStep(ctx);
+                yield break;
+            }
 
             // Экономика's own hero-detach case (see AiDecision.EconomyBuildHex's own comment) —
             // register the BuildFacility task right here, the moment "destination" is actually a

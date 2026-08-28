@@ -329,39 +329,60 @@ namespace Game.Ai
                 // solo-collector prep. The NEXT Decide() step finds the resulting hero-led army
                 // through the normal FindNearestHero path and picks up the actual build/travel from
                 // there.
-                // Same HasEnemyThreat gate BuildFacilityTask already applies to the TARGET hex
-                // — a hero stepping out of the garrison solo, escort-less, is exactly as
-                // vulnerable as one already travelling, so a known enemy sitting right next to
-                // the garrison itself must block the detach too (the project owner's own
-                // "герой застрял в гарнизоне... опять таки имеет смысл если рядом нет врагов"
-                // qualifier) — better left safely stockpiled than handed to the enemy.
                 //
-                // Reuses an already-idle, empty deployable army sitting at the garrison hex when one
-                // exists — same AiArmyRoles.IsEmptyDeployableArmy scan every other planner's own
-                // "forming" lookup already uses (see AiAggressionPlanner/AiDefencePlanner's own
-                // TryStart*Candidates) — rather than always spawning a brand-new one (2026-08-21 fix,
-                // project owner's own report: a hex that gets picked, detached into, then cancelled
-                // again — see AiConfig.neutralBuildTriggerRadius's own comment on the matching radius
-                // fix — used to leave a fresh, never-reused empty army shell behind EVERY time,
-                // instead of recycling the one the last attempt already abandoned).
-                //
+                // Same HasEnemyThreat gate BuildFacilityTask already applies to the TARGET hex — a
+                // hero stepping out of the garrison solo, escort-less, is exactly as vulnerable as
+                // one already travelling, so a known enemy sitting right next to the garrison
+                // itself must block the detach too (the project owner's own "герой застрял в
+                // гарнизоне... опять таки имеет смысл если рядом нет врагов" qualifier).
+                if (atCap || BuildFacilityTask.HasEnemyThreat(player, pick.Garrison.Hex))
+                    return results;
+
+                // Mandatory preflight (2026-08-28 P0 fix, project owner's own report) — pulling
+                // THIS specific hero out must not collapse the garrison's own remaining roster
+                // over capacity (see ArmyData.CanLeaveWithoutOvercrowding: a hero standing in the
+                // garrison can be the only thing keeping an over-stuffed roster legal, since
+                // ComputeCapacity falls back to GarrisonBaseCapacity once it leaves). Without this
+                // the candidate was regenerated every single step — ArmyActions.TransferMember
+                // rejected it in execution ("Moving X out would leave Garrison without room for
+                // everyone else"), so the BuildFacility task never registered and SplitGarrisonArmy
+                // won arbitration 36× in one turn, ending it at 40/40 AP with the hero still
+                // benched. This is the canonical source-side gameplay rule, so settle it here,
+                // before the candidate ever reaches the arbiter, not after.
+                if (!pick.Garrison.CanLeaveWithoutOvercrowding(pick.GarrisonHero))
+                    return results;
+
+                // Reuses an already-idle, empty deployable army sitting at the garrison hex when
+                // one exists — same AiArmyRoles.IsEmptyDeployableArmy scan every other planner's
+                // own "forming" lookup already uses — rather than always spawning a brand-new one
+                // (2026-08-21 fix: a hex picked, detached into, then cancelled again used to leave
+                // a fresh, never-reused empty army shell behind every time). A reused army can
+                // itself carry AP / same-turn oscillation constraints if it already activated this
+                // turn, so it's re-validated here (CanAffordTransferInto + WouldRevisitArmy) before
+                // being trusted as the destination — a future planner/execution divergence of any
+                // kind, not just capacity, is caught this same turn (Level B backstop).
+                ArmyData reuse = pool.AvailableArmies()
+                    .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(pick.Garrison.Hex));
+                if (reuse != null && (!GarrisonReorgTask.CanAffordTransferInto(reuse, pick.GarrisonHero)
+                    || ctx.WouldRevisitArmy(pick.GarrisonHero, reuse)))
+                    reuse = null;
+
+                // CreateArmyApCost only matters when we ACTUALLY have to spawn a fresh army — the
+                // old code required it even when a reusable empty army already existed.
+                if (reuse == null && !root.CanSpendActionPoints(ArmyActions.CreateArmyApCost))
+                    return results;
+
                 // Scored the same as every other travelling Задача 1 step now (BuildFacilityTask.
                 // TravelScore, see economyHeroDetachScore's own removal note in AiConfig) — the
                 // base task score alone already reliably wins arbitration, no separate dedicated
                 // number needed.
-                if (!atCap && root.CanSpendActionPoints(ArmyActions.CreateArmyApCost)
-                    && !BuildFacilityTask.HasEnemyThreat(player, pick.Garrison.Hex))
-                {
-                    ArmyData reuse = pool.AvailableArmies()
-                        .FirstOrDefault(a => AiArmyRoles.IsEmptyDeployableArmy(a) && a.Hex.Equals(pick.Garrison.Hex));
-                    AiDecision detach = AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, reuse,
-                        BuildFacilityTask.TravelScore(player, root, hex, resourceType, ctx.Map),
-                        $"{pick.GarrisonHero.Name} — pulled out of the garrison to lead a build at ({hex.Q},{hex.R})",
-                        AiTaskCategory.Economy);
-                    detach.EconomyBuildHex = hex;
-                    detach.EconomyResourceType = resourceType;
-                    results.Add(detach);
-                }
+                AiDecision detach = AiDecision.SplitGarrison(pick.Garrison, new[] { pick.GarrisonHero }, reuse,
+                    BuildFacilityTask.TravelScore(player, root, hex, resourceType, ctx.Map),
+                    $"{pick.GarrisonHero.Name} — pulled out of the garrison to lead a build at ({hex.Q},{hex.R})",
+                    AiTaskCategory.Economy);
+                detach.EconomyBuildHex = hex;
+                detach.EconomyResourceType = resourceType;
+                results.Add(detach);
                 return results;
             }
 
