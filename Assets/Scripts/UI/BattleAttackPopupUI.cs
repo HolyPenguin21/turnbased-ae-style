@@ -712,15 +712,52 @@ namespace Game.UI
                 _rpHero.Fate = _rpFateSnapshot;
         }
 
-        // Single R/P teardown — safe to call from anywhere the popup might be reused (Begin,
-        // ShowAnnouncement, a fresh BeginResearchProduction). Restores any Fate a previous R/P
-        // Challenge left spent, then clears the active flag.
-        private void CleanupResearchProduction()
+        // THE single teardown/finalization path for a Research/Production Challenge — used by
+        // BOTH the normal Result -> OK flow (OnOkClicked) and every abnormal exit: a forced
+        // Hide() from elsewhere, this popup being grabbed for another Challenge (Begin /
+        // BeginCaptureKill / ShowAnnouncement / a fresh BeginResearchProduction), any other
+        // teardown of an active R/P state. Idempotent: the pending callback is captured-then-
+        // nulled and _rpActive cleared on the first call, so any later call (e.g. Hide()
+        // running right after OnOkClicked already finalized) is a no-op — the R/P callback can
+        // never fire twice.
+        //
+        //   - stops the running R/P coroutine (roll / reroll waits),
+        //   - restores the Hero's Fate to its pre-Challenge snapshot (spec §3/§15) — always,
+        //     success or failure,
+        //   - clears this popup's R/P state,
+        //   - invokes the R/P callback exactly once with `success`.
+        //
+        // Does NOT refund the card's ResourceCost — that was paid by HexSelectionController
+        // before the Challenge and is deliberately never returned (spec §4). An interrupted
+        // Challenge is finalized with success == false, so the caller
+        // (HexSelectionController.OnResearchProductionResolved) mints no card and unwinds its
+        // own _rpTransactionActive / _rpPendingCard and the modal's Busy state.
+        private void FinalizeResearchProduction(bool success)
         {
-            if (_rpActive || _kind == ChallengeKind.ResearchProduction)
-                RestoreResearchProductionFate();
+            if (!_rpActive && _onResearchProductionResolved == null)
+                return;
+
+            if (_kind == ChallengeKind.ResearchProduction)
+                StopAllCoroutines();
+
+            RestoreResearchProductionFate();
+
+            Action<bool> callback = _onResearchProductionResolved;
+            _onResearchProductionResolved = null;
             _rpActive = false;
+            _rpResultSuccess = success;
+            _awaitingHumanDecision = false;
+            _rpHero = null;
+            _rpCard = null;
+            _rpDice = null;
+
+            callback?.Invoke(success);
         }
+
+        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowAnnouncement /
+        // BeginResearchProduction): a reused popup abandons any in-flight R/P Challenge as a
+        // failure — no card minted, Fate restored, callback fired exactly once.
+        private void CleanupResearchProduction() => FinalizeResearchProduction(false);
 
         private static int CountHits(bool[] dice)
         {
@@ -1364,6 +1401,19 @@ namespace Game.UI
             if (_phase != Phase.Resolved || _okAlreadyHandled)
                 return;
             _okAlreadyHandled = true;
+
+            // Research/Production reports through the shared finalization path — the SAME one a
+            // forced Hide() uses. Run it BEFORE Hide() (which calls it again as a safety net)
+            // so the pass with the real success/failure wins and Hide()'s call no-ops instead
+            // of reporting a second time. The R/P modal itself stays open; the caller decides
+            // what happens next.
+            if (_kind == ChallengeKind.ResearchProduction)
+            {
+                FinalizeResearchProduction(_rpResultSuccess);
+                Hide();
+                return;
+            }
+
             Hide();
             if (_kind == ChallengeKind.CaptureKill)
             {
@@ -1377,17 +1427,10 @@ namespace Game.UI
                 _onAnnouncementAcknowledged = null;
                 callback?.Invoke();
             }
-            else if (_kind == ChallengeKind.ResearchProduction)
-            {
-                // Fate was already restored in ResolveResearchProduction; just clear state and
-                // report the result. The R/P modal stays open — the caller decides what's next.
-                Action<bool> callback = _onResearchProductionResolved;
-                _onResearchProductionResolved = null;
-                _rpActive = false;
-                callback?.Invoke(_rpResultSuccess);
-            }
             else
             {
+                // ChallengeKind.ResearchProduction is handled earlier (before Hide) via
+                // FinalizeResearchProduction and never reaches here.
                 Action<int, bool> callback = _onResolved;
                 _onResolved = null;
                 callback?.Invoke(_resultDamage, _resultDied);
@@ -1398,6 +1441,14 @@ namespace Game.UI
         {
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
+            // Any close that ISN'T the normal R/P Result -> OK (an explicit Hide() from
+            // HexSelectionController, this popup being reused for another Challenge, any other
+            // teardown) still has to finalize an in-flight Research/Production Challenge:
+            // restore the Hero's Fate to snapshot, clear R/P state and report the attempt as a
+            // FAILURE exactly once — so no card is minted and the caller unwinds its own
+            // transaction (_rpTransactionActive, _rpPendingCard) and drops the modal's Busy
+            // state. No-op once OnOkClicked already finalized. ResourceCost stays spent (§4).
+            FinalizeResearchProduction(false);
             panelRoot.SetActive(false);
             VisibilityChanged?.Invoke();
         }

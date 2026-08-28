@@ -30,9 +30,29 @@ namespace Game.UI
 
         private HexHighlightStyle _style = new HexHighlightStyle();
         private Material _material;
+        private bool _initialized;
 
         private void Awake()
         {
+            EnsureInitialized();
+        }
+
+        // Idempotent one-time setup — resolve the RectTransform/Image, find the shader, build
+        // the unique Material and clear the sprite. Deliberately does NOT touch visibility.
+        //
+        // BattleGridCell authors its ActingHighlight child inactive (prefab m_IsActive: 0), and
+        // the Battle grid constantly re-instantiates those cells, so the FIRST call on a fresh
+        // instance is ShowAt() — its own gameObject.SetActive(true) is what finally runs this
+        // component's Awake(), synchronously, mid-ShowAt(). If Awake() also hid the object here
+        // (the old behaviour), that first ShowAt() switched itself straight back off and the
+        // acting-unit glow never appeared. Initial hidden state now comes only from the prefab;
+        // both Awake() and ShowAt() route through this so init never depends on call order.
+        private void EnsureInitialized()
+        {
+            if (_initialized)
+                return;
+            _initialized = true;
+
             if (rectTransform == null)
                 rectTransform = (RectTransform)transform;
             if (image == null)
@@ -50,8 +70,6 @@ namespace Game.UI
             // convention as ArmyUnitCardUI's EmptySlotColor), which is all the shader needs:
             // it only reads the mesh's own UV, not any texture.
             image.sprite = null;
-
-            Hide();
         }
 
         // Copies the values rather than keeping the reference — see HexShaderHighlight.
@@ -85,6 +103,10 @@ namespace Game.UI
         // the style's margin so the ragged edge/glow has room to render past the crisp ring.
         public void ShowAt(Vector2 trueSize)
         {
+            // May be the very first thing to run on a freshly instantiated (prefab-inactive)
+            // cell — build the Material before touching it (see EnsureInitialized).
+            EnsureInitialized();
+
             Vector2 rectSize = trueSize + Vector2.one * (2f * _style.margin);
             if (rectTransform != null)
                 rectTransform.sizeDelta = rectSize;

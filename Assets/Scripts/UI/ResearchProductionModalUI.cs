@@ -347,6 +347,15 @@ namespace Game.UI
             var sb = new StringBuilder();
             sb.AppendLine(card.displayName);
 
+            // The upcoming Research/Production Challenge's difficulty — the SAME value the
+            // Challenge itself uses as the card's fixed defender successes (see
+            // BattleAttackPopupUI.BeginResearchProduction: Mathf.Max(0, card.fate)). Read
+            // straight from CardDefinition.fate so UI and gameplay can never drift; shown up
+            // front, before the stat/effect block, so it's visible before Create is pressed.
+            // One line here covers both Research and Production (shared DescribeCard) and every
+            // card type, Equipment included.
+            sb.AppendLine($"Challenge Difficulty: {Mathf.Max(0, card.fate)} Successes");
+
             switch (card.cardType)
             {
                 case CardType.Hero:

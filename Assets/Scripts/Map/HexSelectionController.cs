@@ -1165,6 +1165,18 @@ namespace Game.Map
             if (hero == null)
                 return;
 
+            // Choosing Research reveals the participating Researcher, here and now — it's the
+            // cost/consequence of deciding to Research, not of Create and not of the Challenge.
+            // Order: eligibility validated -> exact Researcher found -> reveal -> store _rpHero
+            // -> open modal. Only THIS hero loses Stealth (other hidden Researchers on the hex
+            // stay hidden); a hidden hero still passes eligibility and still shows the Research
+            // button (FindOwnHeroWithAbilityAt never filtered on IsHidden). Never rolled back:
+            // closing the modal without Create, insufficient resources, a full hand, a lost or
+            // cancelled Challenge all leave the hero revealed. Production is intentionally not
+            // included in this rule for now.
+            if (mode == ResearchProductionMode.Research)
+                StealthSystem.ExitStealth(hero);
+
             _rpTransactionActive = false;
             _rpHex = hex;
             _rpMode = mode;

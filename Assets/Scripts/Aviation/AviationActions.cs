@@ -111,6 +111,15 @@ namespace Game.Aviation
                     // to this aircraft rides home with its card — replaying it then respawns the
                     // plane fully kitted. Its cost isn't re-charged: this is the same card
                     // instance's gear, restored, not a fresh attach (see CardHandUI.AddCardToHand).
+                    //
+                    // INTENTIONAL: this is a fresh, ordinary CardData — ResearchProductionCreated
+                    // is left at its default false even if the aircraft was originally minted by a
+                    // Research/Production Challenge. Once a produced card has been played, the
+                    // "first activation" concessions (activationApCost instead of apCost, no
+                    // ResourceCost) are spent for good; a unit the game hands back to hand is an
+                    // ordinary card and pays full apCost + ResourceCost on its next play. Do NOT
+                    // thread the production flag through UnitData / OriginatingCard to "preserve"
+                    // it here — that is not a bug (see CardData.ResearchProductionCreated).
                     var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment };
                     hexSelection?.GrantCard(army.Owner, returnedCard);
                 }
