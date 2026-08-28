@@ -499,7 +499,7 @@ namespace Game.UI
             _kind = ChallengeKind.ResearchProduction;
             _rpHero = hero;
             _rpCard = card;
-            _rpRequiredSuccesses = card != null ? Mathf.Max(0, card.fate) : 0;
+            _rpRequiredSuccesses = ResearchProductionSystem.RequiredSuccesses(card);
             _rpFateSnapshot = hero != null ? hero.Fate : 0;
             _rpActive = true;
             _rpResultSuccess = false;
@@ -536,7 +536,7 @@ namespace Game.UI
                     ? "RESEARCH CHALLENGE" : "PRODUCTION CHALLENGE";
 
             attackerRow?.Setup(hero, hero, heroLogo);
-            attackerRow?.SetDicePoolSize(5);
+            attackerRow?.SetDicePoolSize(ResearchProductionSystem.DicePoolSize);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, cardLogo);
 
@@ -557,7 +557,7 @@ namespace Game.UI
         {
             defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
 
-            _rpDice = ChallengeResolver.RollDice(5);
+            _rpDice = ChallengeResolver.RollDice(ResearchProductionSystem.DicePoolSize);
             bool animDone = attackerRow == null;
             attackerRow?.SetDice(_rpDice, onComplete: () => animDone = true);
             yield return new WaitUntil(() => animDone);
@@ -567,9 +567,8 @@ namespace Game.UI
 
             while (true)
             {
-                int successes = CountHits(_rpDice);
-                bool canSpend = _rpHero != null && _rpHero.Fate > 0
-                    && (HasMiss(_rpDice) || successes < _rpRequiredSuccesses);
+                bool canSpend = _rpHero != null
+                    && ResearchProductionSystem.CanSpendFate(_rpDice, _rpHero.Fate, _rpRequiredSuccesses);
                 if (!canSpend)
                     break;
 

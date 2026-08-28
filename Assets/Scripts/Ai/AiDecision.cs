@@ -60,6 +60,15 @@ namespace Game.Ai
         // RepeatAirStrikeRoutine. Never used to launch or move anything; TargetHex on this decision
         // is just the army's own current hex (for logging/UI), not a destination.
         ExecuteAirStrikeAtCurrentHex,
+        // Development (P0, 2026-08-28) — run one headless Research or Production Challenge
+        // (ResearchProductionSystem.RollChallenge) with DevelopHero at DevelopMode against
+        // DevelopCard, on the Facility hex carried in TargetHex; on success the produced card is
+        // minted into AiHandData. Costs the player NO AP (spec §6 — Development is outside the
+        // AP budget), only DevelopCard's ResourceCost. Produced by AiDevelopmentPlanner, executed
+        // by AiDevelopmentPlanner.RunResearchProductionRoutine. Carries the Develop AiTask when it
+        // resolves an arrived positioning task (the routine removes that task afterward), or a
+        // null Task when a co-located hero runs it directly.
+        RunResearchProduction,
         Wait,
         Pass,
     }
@@ -122,6 +131,14 @@ namespace Game.Ai
         // without re-deriving the plan a second time.
         public HexCoord AirActionHex;
         public HexCoord AirLandingHex;
+        // RunResearchProduction only (2026-08-28) — the acting Researcher/Assembler Hero, which
+        // of the two flows to run, and the catalog CardDefinition to Research/Produce. Carried
+        // explicitly rather than through Card (that field is a CardData instance; an R/P card
+        // does not exist as one until the Challenge succeeds and MintCard runs).
+        public UnitData DevelopHero;
+        public ResearchProductionMode DevelopMode;
+        public CardDefinition DevelopCard;
+
         // Set whenever this decision advances/starts a persistent AiTask (every MoveArmy
         // decision under Разведка/Экономика, and every BuildFacility decision) — null for
         // PlayCard/ReserveArmy/DrawCard/Pass, which never persist one (see AiTaskKind's own
@@ -545,6 +562,25 @@ namespace Game.Ai
         {
             Kind = AiActionKind.ExecuteAirStrikeAtCurrentHex, ExistingArmy = task.Army, TargetHex = task.Army.Hex,
             Task = task, Score = score, Category = AiTaskCategory.Aggression, Reason = reason,
+        };
+
+        // Development (P0, 2026-08-28) — see AiActionKind.RunResearchProduction's own comment.
+        // `task` is the arrived Develop positioning task when this resolves one, else null (a
+        // hero already standing on the Facility hex). `reason` is composed by the caller
+        // (AiDevelopmentPlanner) since only it knows the utility/success-chance breakdown.
+        public static AiDecision RunResearchProduction(UnitData hero, HexCoord facilityHex, ResearchProductionMode mode,
+            CardDefinition card, AiTask task, float score, string reason) => new AiDecision
+        {
+            Kind = AiActionKind.RunResearchProduction,
+            ExistingArmy = task?.Army,
+            TargetHex = facilityHex,
+            DevelopHero = hero,
+            DevelopMode = mode,
+            DevelopCard = card,
+            Task = task,
+            Score = score,
+            Category = AiTaskCategory.Development,
+            Reason = reason,
         };
 
         public static AiDecision None(string reason) => new AiDecision { Kind = AiActionKind.Pass, Reason = reason };

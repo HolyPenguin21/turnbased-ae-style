@@ -226,33 +226,9 @@ namespace Game.Map
             return false;
         }
 
-        // Role-aware companion to HasOwnHeroArmyAt, for the Research/Production contextual hex
-        // actions (see RefreshResourceActionRow) — deliberately separate so the plain
-        // HasOwnHeroArmyAt (Base founding / extraction) keeps its existing, looser meaning
-        // untouched. A Hero qualifies only if its army is ON this exact hex, owned by `player`,
-        // not a Prison, and the member itself IsHero, not a prisoner, and carries `ability`
-        // (UnitAbilities.Researcher / Assembler). A garrison is a normal location here; so is an
-        // ordinary named army.
-        public static bool HasOwnHeroWithAbilityAt(HexCoord hex, PlayerSetupData player, string ability)
-            => FindOwnHeroWithAbilityAt(hex, player, ability) != null;
-
-        // The actual Hero the Research/Production contextual action found (see
-        // HasOwnHeroWithAbilityAt for the eligibility rule) — HexSelectionController hands this
-        // straight to ResearchProductionModalUI so its left panel can show which Hero qualifies.
-        // First match wins, in ArmyRegistry order then Members order; no picker UI yet when more
-        // than one Hero qualifies.
-        public static UnitData FindOwnHeroWithAbilityAt(HexCoord hex, PlayerSetupData player, string ability)
-        {
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-            {
-                if (army.Owner != player || army.IsPrison)
-                    continue;
-                foreach (UnitData member in army.Members)
-                    if (member.IsHero && !member.IsPrisoner && member.HasAbility(ability))
-                        return member;
-            }
-            return null;
-        }
+        // The role-aware "which Hero on this hex qualifies for Research/Production" rule moved to
+        // Game.Cards.ResearchProductionSystem.FindActor (spec P0 §4 — one rule source shared by
+        // the human UI and the AI Development planner). Nothing outside that module needs it.
 
         // The hero action behind each of HexInfoPanelUI's up-to-4 resource buttons (see
         // RefreshResourceActionRow) — builds `definition` (one of GameConfig.

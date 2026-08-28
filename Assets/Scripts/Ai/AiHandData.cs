@@ -15,6 +15,16 @@ namespace Game.Ai
     {
         public readonly List<CardData> Hand = new List<CardData>();
 
+        // Shared hand capacity (spec P0 §10) — set from CardHandUI.MaxHandSize via AiTurnContext
+        // (AiHandRegistry can't reach the scene, so the value is pushed in on first use — see
+        // AiTurnController.RunTurn). Defaults to CardHandUI's own default of 10 so a hand created
+        // before that push still caps somewhere sane. DrawOne does NOT enforce this yet (the AI
+        // draw path is unchanged); only the Development planner checks HasFreeSlot before a
+        // Research/Production Create, so a won Challenge can never mint a card into a full hand.
+        public int Capacity = 10;
+
+        public bool HasFreeSlot => Hand.Count < Capacity;
+
         // Consumed (RemoveAt), not cycled — mirrors CardHandUI's _remainingDeck: every card in
         // the deck is one-time-use for the whole game.
         private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();

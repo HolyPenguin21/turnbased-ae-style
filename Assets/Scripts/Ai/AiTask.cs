@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -110,6 +111,17 @@ namespace Game.Ai
         // any other in-flight task, and removed the moment the army actually reaches its home hex
         // — see that method's own comment.
         ReturnForConsolidation,
+
+        // Development (P0, 2026-08-28, project owner's own spec) — Research + Production combined
+        // under one Level-1 planner (AiDevelopmentPlanner). A positioning task: it binds the
+        // chosen Researcher/Assembler hero's army, walks it to the chosen Lab/Factory hex
+        // (TargetHex), and once co-located hands off to a RunResearchProduction decision that
+        // runs the headless Challenge (ResearchProductionSystem.RollChallenge) and, on success,
+        // mints the produced card into AiHandData. The task is removed as soon as one Challenge
+        // has been attempted (win or lose) or the hero/facility stops qualifying — a fresh
+        // evaluation next turn re-decides whether to develop again. Maps to
+        // AiTaskCategory.Development in AiTaskCatalog.CategoryOf.
+        Develop,
     }
 
     // DefendCitadel-only — which of the three behaviors this turn's continuation resolves to,
@@ -164,6 +176,8 @@ namespace Game.Ai
                     return AiTaskCategory.Aggression;
                 case AiTaskKind.AirRecon:
                     return AiTaskCategory.Reconnaissance;
+                case AiTaskKind.Develop:
+                    return AiTaskCategory.Development;
                 default:
                     return AiTaskCategory.Management;
             }
@@ -490,6 +504,12 @@ namespace Game.Ai
         // trusted to decide anything, same "recomputed live, never stale" rule every other
         // AiAviationSupport-owned field on this task already follows.
         public bool IsMultiTurnSortie;
+
+        // Develop only (P0, 2026-08-28) — which of the two flows this positioning task runs once
+        // the hero reaches TargetHex. Pinned at creation (a hero carrying BOTH Researcher and
+        // Assembler could serve either Facility, so this isn't re-derived from the hero's tags),
+        // read by AiDevelopmentPlanner.TryContinueDevelopTask. Null for every other Kind.
+        public ResearchProductionMode? DevelopMode;
 
         public AiTaskCategory Category => AiTaskCatalog.CategoryOf(Kind);
     }

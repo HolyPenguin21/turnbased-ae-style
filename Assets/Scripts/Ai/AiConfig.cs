@@ -1633,5 +1633,69 @@ namespace Game.Ai
         // Management specifically — housekeeping (card draw, garrison tidy) must never fully starve.
         public const float strategyBudgetMinAllocAp = 1f;
         public const float strategyBudgetManagementMinAllocAp = 2f;
+
+        // ---- Development · Research / Production (P0, 2026-08-28, project owner's own spec) ----
+        // AiDevelopmentPlanner is the single Level-1 planner for both mechanics (spec §6). All of
+        // the below feed its per-candidate Score (spec §8); the global desire to develop at all
+        // is the separate AiStrategyAssessment.Development axis, applied on top by
+        // AiStrategyLayer.Adjust — these numbers only rank one concrete card against another.
+
+        // Base weight of a Development candidate, before the card-utility terms below. Between
+        // Management (50) and Economy/Recon/Aggression (100) — R&D is a real investment but must
+        // sit below routine economy/scouting so it only wins when the Development axis is
+        // genuinely high (calm frontier + mature economy + free surplus) or the specific card is
+        // exceptionally good.
+        public const float developmentBaseWeight = 62f;
+
+        // Flat utility credited to any successfully-producible card, on top of the stat terms —
+        // "a card in hand is worth something regardless of its raw stats".
+        public const float developmentCardBaseValue = 10f;
+
+        // Per-point weight on a Unit/Hero card's summed combat stats (attack + hitPoints +
+        // defense + commandRating) — the crude "card power" proxy the rest of this AI's card
+        // scoring already lives without (see AiManagementPlanner.WouldBlockAffordableCard's own
+        // comment). Facility/Base cards skip this and take developmentNonUnitCardValue instead.
+        public const float developmentCardStatWeight = 0.6f;
+        public const float developmentNonUnitCardValue = 18f;
+
+        // The whole utility (base + stats − resource term) is multiplied by the estimated
+        // Challenge success chance (ResearchProductionSystem.EstimateSuccessChance). A card whose
+        // estimated chance is below this is not proposed at all — burning resources on a coin-flip
+        // the AI will probably lose is worse than not developing.
+        public const float developmentMinSuccessChance = 0.45f;
+
+        // Per-unit-of-total-ResourceCost penalty subtracted from a card's utility — a pricier
+        // card must clear a higher stat bar to be worth Research/Production.
+        public const float developmentResourceCostWeight = 0.5f;
+
+        // Resource-surplus guard (spec §9): a card is only eligible if, for EVERY resource type,
+        // AiResourceReservation.Available (free surplus after BuildFacility/BuildBase/air
+        // reservations) minus the card's own cost stays at or above this floor. Keeps Development
+        // from draining resources Economy/BuildBase will need next turn.
+        public const int developmentMinResourceKeep = 4;
+
+        // Score of the "walk the Researcher/Assembler to the Lab/Factory" move step (spec §7) —
+        // an ordinary scored MoveArmy that competes with Defence / retreat / everything else, so
+        // it is deliberately modest: near Economy travel, well under any tactical band.
+        public const float developmentPositioningMoveScore = 70f;
+
+        // Max radius (hexes) from a qualifying free Researcher/Assembler hero to a candidate
+        // Lab/Factory for a positioning task to be worth starting — a hero on the far side of the
+        // map is not going to meaningfully develop before the game moves on.
+        public const int developmentPositioningMaxDistance = 8;
+
+        // Research-only Stealth-loss penalty (spec §12): running Research reveals a hidden
+        // Researcher (Production does not). Subtracted from the Research candidate's utility,
+        // scaled by local danger — full penalty when a known enemy sits within
+        // developmentStealthDangerRadius of the Facility hex, tapering to
+        // developmentStealthLossPenaltyBase * developmentStealthCalmFactor when the frontier is
+        // quiet. Never applied to Production.
+        public const float developmentStealthLossPenaltyBase = 26f;
+        public const float developmentStealthCalmFactor = 0.25f;
+        public const int developmentStealthDangerRadius = 4;
+
+        // Concurrency cap — at most this many Develop tasks (positioning + pending Challenge)
+        // active at once, so Development can't monopolise the AI's heroes.
+        public const int maxConcurrentDevelop = 1;
     }
 }

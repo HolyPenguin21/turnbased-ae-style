@@ -955,7 +955,8 @@ namespace Game.Turns
                 if (debugFollowAiVision)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
-                    armyViewerModal, cardHand, aiStepDelay, gameConfig, TurnNumber, debugShowAiArmyModal);
+                    armyViewerModal, cardHand, aiStepDelay, gameConfig, TurnNumber, debugShowAiArmyModal,
+                    researchProductionModal != null ? researchProductionModal.Catalog : null);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
         }

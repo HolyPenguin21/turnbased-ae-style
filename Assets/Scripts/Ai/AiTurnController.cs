@@ -40,6 +40,14 @@ namespace Game.Ai
         public StartingDeckCatalog StartingDeckCatalog;
         public int StartingHandSize;
         public int DrawApCost;
+        // Research/Production catalog (P0, 2026-08-28) — the same ScriptableObject
+        // ResearchProductionModalUI pages through for the human, threaded in so
+        // AiDevelopmentPlanner can read the offered card lists headlessly. Null when the scene has
+        // no modal wired — Development then simply never fires.
+        public ResearchProductionCatalog ResearchProductionCatalog;
+        // Shared hand capacity (spec §10) — CardHandUI.MaxHandSize, pushed onto each AI player's
+        // AiHandData in RunTurn so a won Research/Production Challenge can't mint into a full hand.
+        public int HandCapacity = 10;
         public float StepDelay = 0.5f;
         // Dev-only: gates every ArmyViewerModal.ShowReadOnly/Hide call below (see GameTurnController.
         // debugShowAiArmyModal's own comment) — off by default because the modal popping open/closed
@@ -121,9 +129,25 @@ namespace Game.Ai
         // PlayCardRoutine adds to it the moment its own deploy call reports failure.
         public readonly HashSet<CardData> FailedPlayCardsThisTurn = new HashSet<CardData>();
 
+        // Turn-scoped Research/Production attempts (spec §11) — one entry per (hero, mode, card)
+        // combination already Challenged this turn, win or lose. AiDevelopmentPlanner skips any
+        // combination in here, so a failed Challenge's spent resources can't be burned again by
+        // the same combination re-winning arbitration on a later step this same turn. Fresh and
+        // empty every turn (From builds a new AiTurnContext per RunTurn), so the option returns
+        // automatically next turn.
+        public readonly HashSet<(UnitData Hero, ResearchProductionMode Mode, CardDefinition Card)> DevelopmentAttemptsThisTurn
+            = new HashSet<(UnitData, ResearchProductionMode, CardDefinition)>();
+
+        public bool HasTriedDevelopment(UnitData hero, ResearchProductionMode mode, CardDefinition card)
+            => DevelopmentAttemptsThisTurn.Contains((hero, mode, card));
+
+        public void RecordDevelopmentAttempt(UnitData hero, ResearchProductionMode mode, CardDefinition card)
+            => DevelopmentAttemptsThisTurn.Add((hero, mode, card));
+
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
             ArmyViewerModalUI armyViewerModal, CardHandUI humanCardHand, float stepDelay,
-            GameConfig gameConfig, int turnNumber, bool showArmyModal)
+            GameConfig gameConfig, int turnNumber, bool showArmyModal,
+            ResearchProductionCatalog researchProductionCatalog = null)
         {
             return new AiTurnContext
             {
@@ -135,6 +159,8 @@ namespace Game.Ai
                 StartingDeckCatalog = humanCardHand != null ? humanCardHand.StartingDeckCatalog : null,
                 StartingHandSize = humanCardHand != null ? humanCardHand.StartingHandSize : 0,
                 DrawApCost = humanCardHand != null ? humanCardHand.DrawApCost : 2,
+                ResearchProductionCatalog = researchProductionCatalog,
+                HandCapacity = humanCardHand != null ? humanCardHand.MaxHandSize : 10,
                 StepDelay = stepDelay,
                 GameConfig = gameConfig,
                 TurnNumber = turnNumber,
@@ -248,6 +274,8 @@ namespace Game.Ai
             AiMapMemory.OnTurnStarted(player, ctx.TurnNumber);
 
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
+            if (hand != null)
+                hand.Capacity = ctx.HandCapacity; // shared hand cap (spec §10)
             int startArmies = ArmyRegistry.AllForOwner(player).Count(a => !a.IsGarrison && !a.IsPrison);
             int startHuman = root.GetResource(ResourceType.Human);
             int startEnergy = root.GetResource(ResourceType.Energy);
@@ -510,6 +538,14 @@ namespace Game.Ai
                 if (decision != null)
                     candidates.Add(decision);
             }
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player).Where(t => t.Kind == AiTaskKind.Develop).ToList())
+            {
+                if (stuckScouts.Contains(task.Army))
+                    continue;
+                AiDecision decision = AiDevelopmentPlanner.TryContinueDevelopTask(player, root, ctx, hand, task);
+                if (decision != null)
+                    candidates.Add(decision);
+            }
 
             candidates.AddRange(AiScoutPlanner.TryReturnHomeCandidates(player, root, ctx, stuckScouts));
             candidates.AddRange(AiEconomyPlanner.TryEconomyReturnHomeCandidates(player, root, ctx, stuckScouts));
@@ -540,6 +576,7 @@ namespace Game.Ai
                 if (decision != null)
                     candidates.Add(decision);
             }
+            candidates.AddRange(AiDevelopmentPlanner.TryStartDevelopmentCandidates(player, root, ctx, hand, pool));
             candidates.AddRange(AiManagementPlanner.TryStartRepairCandidates(player, root, hand));
             candidates.AddRange(AiManagementPlanner.TryPlayCardCandidates(player, root, hand, ctx));
             candidates.AddRange(AiManagementPlanner.TrySupportCardCandidates(player, root, hand, ctx));
@@ -1014,6 +1051,9 @@ namespace Game.Ai
                 case AiActionKind.LaunchAirRecon:
                     yield return AiAviationSupport.LaunchRoutine(player, decision, ctx, AiTaskKind.AirRecon);
                     break;
+                case AiActionKind.RunResearchProduction:
+                    yield return AiDevelopmentPlanner.RunResearchProductionRoutine(player, decision, ctx);
+                    break;
                 case AiActionKind.ExecuteAirStrikeAtCurrentHex:
                     yield return AiAggressionPlanner.RepeatAirStrikeRoutine(player, decision, ctx);
                     break;
@@ -1116,7 +1156,12 @@ namespace Game.Ai
             // (a raid/capture/patrol move ending in contact, or an undefended building
             // takeover on arrival) — drop stealth on any hidden member now, immediately
             // before the action, never earlier (stealth design §8). Free.
-            else if (wantsBuildingTakeover || (decision.Task != null && decision.Task.Kind != AiTaskKind.VisitHex))
+            // Develop is excluded alongside VisitHex (P0, 2026-08-28): walking a Researcher/
+            // Assembler toward a Lab/Factory is a plain repositioning march, not a contact action
+            // — the reveal (Research only; never Production) happens at the Challenge itself, in
+            // AiDevelopmentPlanner.RunResearchProductionRoutine (spec §12), not here.
+            else if (wantsBuildingTakeover || (decision.Task != null
+                && decision.Task.Kind != AiTaskKind.VisitHex && decision.Task.Kind != AiTaskKind.Develop))
             {
                 foreach (UnitData member in army.Members.ToList())
                     if (member.IsHidden)
@@ -1223,8 +1268,11 @@ namespace Game.Ai
                 int materialsAv0 = root.GetResource(ResourceType.Materials);
                 int techAv0 = root.GetResource(ResourceType.Tech);
 
+                // sourceCard: the hand instance — a Research/Production-created card then pays
+                // activationApCost and skips its already-paid ResourceCost (spec §5); an ordinary
+                // card is unaffected.
                 bool aviationDeployed = AviationActions.TryDeployFromCard(decision.Card.Definition, player, root, ctx.HexSelection,
-                    decision.TargetHex, out string aviationFailReason, decision.Card.Equipment);
+                    decision.TargetHex, out string aviationFailReason, decision.Card.Equipment, decision.Card);
                 if (aviationDeployed)
                 {
                     AiHandData aviationHand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
@@ -1271,8 +1319,11 @@ namespace Game.Ai
                 ctx.ArmyViewerModal.ShowReadOnly(targetArmy);
             yield return WaitStep(ctx);
 
+            // sourceCard: the hand instance — a Research/Production-created card then pays
+            // activationApCost and skips its already-paid ResourceCost (spec §5); an ordinary
+            // card behaves exactly as before.
             bool deployed = ArmyActions.DeployUnitFromCard(decision.Card.Definition, player, targetArmy, root, ctx.HexSelection,
-                out string failReason, decision.Card.Equipment);
+                out string failReason, decision.Card.Equipment, decision.Card);
             if (deployed)
             {
                 AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);

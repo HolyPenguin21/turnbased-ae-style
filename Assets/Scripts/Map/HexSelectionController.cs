@@ -1118,12 +1118,13 @@ namespace Game.Map
             if (BattleInitiator.FindEnemyAt(coord, human) != null)
                 return;
 
-            if (buildingHere.HasFacilityWithAbility(UnitAbilities.Research)
-                && HasOwnHeroWithAbilityAt(coord, human, UnitAbilities.Researcher))
+            // Eligibility is the shared rule now (ResearchProductionSystem.IsEligible) — same
+            // Facility-ability / no-enemy / own-qualifying-Hero check the AI's Development planner
+            // runs, instead of this class re-spelling it.
+            if (ResearchProductionSystem.IsEligible(human, coord, ResearchProductionMode.Research, out _))
                 actions.Add(new HexActionDescriptor("Research", () => OnResearchActionClicked(coord)));
 
-            if (buildingHere.HasFacilityWithAbility(UnitAbilities.Production)
-                && HasOwnHeroWithAbilityAt(coord, human, UnitAbilities.Assembler))
+            if (ResearchProductionSystem.IsEligible(human, coord, ResearchProductionMode.Production, out _))
                 actions.Add(new HexActionDescriptor("Production", () => OnProductionActionClicked(coord)));
         }
 
@@ -1134,34 +1135,33 @@ namespace Game.Map
         // live inside the modal. The Research/Production action itself is the next milestone.
         private void OnResearchActionClicked(HexCoord hex)
         {
-            OpenResearchProductionModal(hex, ResearchProductionMode.Research,
-                UnitAbilities.Research, UnitAbilities.Researcher);
+            OpenResearchProductionModal(hex, ResearchProductionMode.Research);
         }
 
         private void OnProductionActionClicked(HexCoord hex)
         {
-            OpenResearchProductionModal(hex, ResearchProductionMode.Production,
-                UnitAbilities.Production, UnitAbilities.Assembler);
+            OpenResearchProductionModal(hex, ResearchProductionMode.Production);
         }
 
         // --- active Research/Production transaction context (spec §13) -----------------------
-        // Captured when the modal opens, re-validated (not trusted) when Create is pressed.
+        // Captured when the modal opens, re-validated (not trusted) when Create is pressed. The
+        // mode alone identifies the rule set now — ResearchProductionSystem derives the Facility/
+        // role abilities from it, so the two ability strings this used to also stash are gone.
         private bool _rpTransactionActive;
         private HexCoord _rpHex;
         private ResearchProductionMode _rpMode;
-        private string _rpFacilityAbility;
-        private string _rpHeroAbility;
         private UnitData _rpHero;
         private CardDefinition _rpPendingCard;
 
-        private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode,
-            string facilityAbility, string heroAbility)
+        private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode)
         {
-            if (!IsResearchProductionEligible(hex, facilityAbility, heroAbility))
+            PlayerSetupData human = turnController?.CurrentPlayer;
+            if (human == null || !human.IsHuman)
+                return;
+            if (!ResearchProductionSystem.IsEligible(human, hex, mode, out _))
                 return;
 
-            PlayerSetupData human = turnController?.CurrentPlayer;
-            UnitData hero = FindOwnHeroWithAbilityAt(hex, human, heroAbility);
+            UnitData hero = ResearchProductionSystem.FindActor(human, hex, mode);
             if (hero == null)
                 return;
 
@@ -1170,18 +1170,14 @@ namespace Game.Map
             // Order: eligibility validated -> exact Researcher found -> reveal -> store _rpHero
             // -> open modal. Only THIS hero loses Stealth (other hidden Researchers on the hex
             // stay hidden); a hidden hero still passes eligibility and still shows the Research
-            // button (FindOwnHeroWithAbilityAt never filtered on IsHidden). Never rolled back:
-            // closing the modal without Create, insufficient resources, a full hand, a lost or
-            // cancelled Challenge all leave the hero revealed. Production is intentionally not
-            // included in this rule for now.
-            if (mode == ResearchProductionMode.Research)
-                StealthSystem.ExitStealth(hero);
+            // button (FindActor never filtered on IsHidden). Never rolled back: closing the modal
+            // without Create, insufficient resources, a full hand, a lost or cancelled Challenge
+            // all leave the hero revealed. Production is intentionally not included in this rule.
+            ResearchProductionSystem.ApplyResearchReveal(mode, hero);
 
             _rpTransactionActive = false;
             _rpHex = hex;
             _rpMode = mode;
-            _rpFacilityAbility = facilityAbility;
-            _rpHeroAbility = heroAbility;
             _rpHero = hero;
             _rpPendingCard = null;
 
@@ -1214,8 +1210,8 @@ namespace Game.Map
             if (human == null || !human.IsHuman)
                 return;
             if (_rpHero == null
-                || !IsResearchProductionEligible(_rpHex, _rpFacilityAbility, _rpHeroAbility)
-                || !HeroStillQualifiesForResearchProduction(_rpHero, _rpHex, human, _rpHeroAbility))
+                || !ResearchProductionSystem.IsEligible(human, _rpHex, _rpMode, out _)
+                || !ResearchProductionSystem.ActorStillQualifies(human, _rpHero, _rpHex, _rpMode))
                 return;
             // The card must still be one this open mode/faction offers.
             if (!researchProductionModal.Offers(card))
@@ -1233,7 +1229,7 @@ namespace Game.Map
             }
 
             // 5. Resources.
-            if (card.resourceCost != null && !card.resourceCost.CanAfford(root))
+            if (!ResearchProductionSystem.CanAffordCard(root, card))
             {
                 turnController?.ShowSpawnHint($"Not enough resources to create {card.displayName}.");
                 return;
@@ -1245,7 +1241,7 @@ namespace Game.Map
             researchProductionModal.SetBusy(true);
 
             // 7. Spend resources — irreversible; not returned on a loss (spec §4).
-            card.resourceCost?.PayFrom(root);
+            ResearchProductionSystem.PayCardCost(root, card);
 
             // 8. Start the Challenge through its own dedicated entry point.
             Sprite logo = cardHandUI.StartingDeckCatalog != null
@@ -1264,43 +1260,9 @@ namespace Game.Map
             _rpTransactionActive = false;
 
             if (success && card != null)
-            {
-                var produced = new CardData(card) { ResearchProductionCreated = true };
-                cardHandUI?.AddCardToHand(produced);
-            }
+                cardHandUI?.AddCardToHand(ResearchProductionSystem.MintCard(card));
 
             researchProductionModal?.SetBusy(false);
-        }
-
-        // The Hero the modal is showing must STILL personally qualify — its army on the original
-        // hex, owned by `player`, not a prison, the member itself a non-prisoner Hero carrying
-        // `ability`. Stronger than IsResearchProductionEligible, which only asks whether *any*
-        // qualifying Hero is present.
-        private static bool HeroStillQualifiesForResearchProduction(UnitData hero, HexCoord hex,
-            PlayerSetupData player, string ability)
-        {
-            if (hero == null || player == null || hero.Owner != player)
-                return false;
-            if (!hero.IsHero || hero.IsPrisoner || !hero.HasAbility(ability))
-                return false;
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (army.Owner == player && !army.IsPrison && army.Members.Contains(hero))
-                    return true;
-            return false;
-        }
-
-        private bool IsResearchProductionEligible(HexCoord hex, string facilityAbility, string heroAbility)
-        {
-            PlayerSetupData human = turnController?.CurrentPlayer;
-            if (human == null || !human.IsHuman)
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner != human)
-                return false;
-            if (BattleInitiator.FindEnemyAt(hex, human) != null)
-                return false;
-            return building.HasFacilityWithAbility(facilityAbility)
-                && HasOwnHeroWithAbilityAt(hex, human, heroAbility);
         }
 
         // Re-runs the full SelectHex pipeline for `changedHex` ONLY if it's the hex currently

@@ -455,9 +455,10 @@ namespace Game.Ai
                 CardData recceCard = FindMatchingRecceCard(hand, wantHero, ctx);
                 if (recceCard != null)
                 {
-                    CardDefinition definition = recceCard.Definition;
-                    int totalApCost = ArmyActions.CreateArmyApCost + ArmyActions.EffectiveDeployApCost(definition);
-                    if (root.ActionPoints >= totalApCost && AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                    // Effective (instance) cost — a Research/Production-created Recce card plays at
+                    // activationApCost with its resources already paid (spec §5).
+                    int totalApCost = ArmyActions.CreateArmyApCost + AiCardCost.PlayAp(recceCard);
+                    if (root.ActionPoints >= totalApCost && AiCardCost.CanAffordPlayResources(root, player, recceCard))
                         results.Add(AiDecision.RequestReconArmy(ReconMoveWeight(ctx) + AiConfig.reconRequestArmyPenalty));
                 }
                 return results;
@@ -478,8 +479,8 @@ namespace Game.Ai
             // SAME empty army this method already found above (`emptyArmy`), never routed through
             // AiManagementPlanner.FindPlacement (see this method's own class comment).
             CardDefinition cardDefinition = card.Definition;
-            int deployApCost = ArmyActions.EffectiveDeployApCost(cardDefinition);
-            if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, cardDefinition.resourceCost)
+            int deployApCost = AiCardCost.PlayAp(card);
+            if (!root.CanSpendActionPoints(deployApCost) || !AiCardCost.CanAffordPlayResources(root, player, card)
                 || !AiManagementPlanner.IsAtRequiredBuilding(emptyArmy, player, cardDefinition))
                 return results;
 

@@ -802,8 +802,10 @@ namespace Game.Ai
                 CardDefinition definition = card.Definition;
                 if (!AiManagementPlanner.IsAtRequiredBuilding(formingArmy, player, definition))
                     continue;
-                int deployApCost = ArmyActions.EffectiveDeployApCost(definition);
-                if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                // Effective (instance) cost — a Research/Production-created Hero card plays at
+                // activationApCost with its resources already paid (spec §5).
+                int deployApCost = AiCardCost.PlayAp(card);
+                if (!root.CanSpendActionPoints(deployApCost) || !AiCardCost.CanAffordPlayResources(root, player, card))
                     continue;
 
                 AiDecision decision = AiDecision.PlayCard(formingArmy, card, AiManagementPlanner.CardRole.Hero, score, task.Category);
@@ -1636,10 +1638,11 @@ namespace Game.Ai
             // trip; any later leaves the stockpile fully exposed right up to the one turn arrival is
             // actually guaranteed.
             CardData card = hand?.Hand.FirstOrDefault(c => c.Definition.cardType == CardType.Base);
-            CardDefinition definition = card?.Definition;
             bool willArriveThisTurn = HexGridMath.Distance(task.Army.Hex, task.TargetHex) <= task.Army.MaxMovement;
-            if (definition != null && willArriveThisTurn)
-                AiResourceReservation.TopUp(root, player, task, definition.resourceCost);
+            // Effective (instance) resource cost — null for a Research/Production-created Base card,
+            // in which case TopUp no-ops (its resources were paid at Create, spec §5).
+            if (card != null && willArriveThisTurn)
+                AiResourceReservation.TopUp(root, player, task, card.EffectivePlayResourceCost);
 
             if (!task.Army.Hex.Equals(task.TargetHex))
                 return AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, task.TargetHex)
@@ -1667,9 +1670,13 @@ namespace Game.Ai
             }
 
             // Belt-and-suspenders on top of IsFullyReserved's own virtual ledger — same reasoning
-            // AiEconomyPlanner.AdvanceEconomyTask's own matching check documents.
-            bool shortOnResources = !AiResourceReservation.IsFullyReserved(task, definition.resourceCost) || !definition.resourceCost.CanAfford(root);
-            bool shortOnAp = !root.CanSpendActionPoints(definition.apCost);
+            // AiEconomyPlanner.AdvanceEconomyTask's own matching check documents. Effective
+            // (instance) cost — a Research/Production-created Base card has no resource cost left
+            // to reserve or pay (spec §5), so it is never "short on resources".
+            ResourceCost playCost = card.EffectivePlayResourceCost;
+            bool shortOnResources = playCost != null
+                && (!AiResourceReservation.IsFullyReserved(task, playCost) || !playCost.CanAfford(root));
+            bool shortOnAp = !root.CanSpendActionPoints(card.EffectivePlayApCost);
             if (shortOnResources || shortOnAp)
             {
                 // Stale-plan timeout (2026-08-23, project owner's own report/spec; turn-boundary fix
@@ -1729,8 +1736,10 @@ namespace Game.Ai
             int materials0 = root.GetResource(ResourceType.Materials);
             int tech0 = root.GetResource(ResourceType.Tech);
 
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
+            // Effective (instance) cost — a Research/Production-created Base card pays
+            // activationApCost and skips its already-paid ResourceCost (spec §5).
+            root.SpendActionPoints(card.EffectivePlayApCost);
+            card.EffectivePlayResourceCost?.PayFrom(root);
 
             // Absorb whatever was already built on a bare resource site into the new Base's own
             // slots (see BuildBaseTask.CanMergeIntoResourceSite) before its old marker is replaced

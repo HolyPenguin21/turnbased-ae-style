@@ -185,11 +185,13 @@ namespace Game.Ai
         public static CardPlacement? FindPlacement(PlayerSetupData player, PlayerRoot root, CardData card)
         {
             CardDefinition definition = card.Definition;
-            int deployApCost = ArmyActions.EffectiveDeployApCost(definition);
-            // AiResourceReservation.CanAfford, not definition.resourceCost.CanAfford(root)
-            // directly — a card must never spend what an active BuildFacility task has already
-            // claimed toward its own facility (see the owner's own "все траты ИИ" call).
-            if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+            // Effective (instance) cost, not the raw definition's — a Research/Production-created
+            // card plays at activationApCost with its ResourceCost already paid (spec §5); 1:1
+            // with the definition for every ordinary card. AiCardCost.CanAffordPlayResources is
+            // reservation-aware (not the raw stockpile) — a card must never spend what an active
+            // BuildFacility task has already claimed toward its own facility ("все траты ИИ").
+            int deployApCost = AiCardCost.PlayAp(card);
+            if (!root.CanSpendActionPoints(deployApCost) || !AiCardCost.CanAffordPlayResources(root, player, card))
                 return null;
 
             foreach (HexCoord homeHex in GarrisonHexesForPlacement(player, definition.cardType))
@@ -234,9 +236,8 @@ namespace Game.Ai
         // own extra caution about a landed sortie sharing the hex.
         public static HexCoord? FindAviationPlacement(PlayerSetupData player, PlayerRoot root, CardData card)
         {
-            CardDefinition definition = card.Definition;
-            int deployApCost = ArmyActions.EffectiveDeployApCost(definition);
-            if (!root.CanSpendActionPoints(deployApCost) || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+            int deployApCost = AiCardCost.PlayAp(card);
+            if (!root.CanSpendActionPoints(deployApCost) || !AiCardCost.CanAffordPlayResources(root, player, card))
                 return null;
 
             foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
@@ -339,7 +340,11 @@ namespace Game.Ai
                 // cares about the way an ordinary Unit/Hero card does).
                 if (!IsUnitOrHeroCard(card) || IsRecceCard(card) || IsAviationCard(card))
                     continue;
-                ResourceCost cost = card.Definition.resourceCost;
+                // Effective (instance) resource cost — null for a Research/Production-created card,
+                // whose resources were already spent at Create (spec §5), so it adds no demand.
+                ResourceCost cost = card.EffectivePlayResourceCost;
+                if (cost == null)
+                    continue;
                 AddCappedDeficit(demand, ResourceType.Human, cost.human, root, player);
                 AddCappedDeficit(demand, ResourceType.Energy, cost.energy, root, player);
                 AddCappedDeficit(demand, ResourceType.Materials, cost.materials, root, player);
@@ -998,21 +1003,27 @@ namespace Game.Ai
             {
                 if (!IsUnitOrHeroCard(card))
                     continue;
-                CardDefinition definition = card.Definition;
-                if (!root.CanSpendActionPoints(definition.apCost) || !definition.resourceCost.CanAfford(root))
+                // Effective (instance) cost — a Research/Production card plays at activationApCost
+                // with no resource cost left (spec §5); 1:1 with the definition otherwise.
+                int cardAp = AiCardCost.PlayAp(card);
+                int cardHuman = AiCardCost.PlayResource(card, ResourceType.Human);
+                int cardEnergy = AiCardCost.PlayResource(card, ResourceType.Energy);
+                int cardMaterials = AiCardCost.PlayResource(card, ResourceType.Materials);
+                int cardTech = AiCardCost.PlayResource(card, ResourceType.Tech);
+                ResourceCost cardCost = AiCardCost.PlayResources(card);
+                if (!root.CanSpendActionPoints(cardAp) || (cardCost != null && !cardCost.CanAfford(root)))
                     continue; // not affordable even without the repair — repair isn't what's blocking it
 
-                int cardTotal = definition.apCost + definition.resourceCost.human + definition.resourceCost.energy
-                    + definition.resourceCost.materials + definition.resourceCost.tech;
+                int cardTotal = cardAp + cardHuman + cardEnergy + cardMaterials + cardTech;
                 if (cardTotal <= repairTotal)
                     continue;
 
                 bool stillAffordableAfterRepair =
-                    root.ActionPoints - repairApCost >= definition.apCost
-                    && root.GetResource(ResourceType.Human) - repairCost.human >= definition.resourceCost.human
-                    && root.GetResource(ResourceType.Energy) - repairCost.energy >= definition.resourceCost.energy
-                    && root.GetResource(ResourceType.Materials) - repairCost.materials >= definition.resourceCost.materials
-                    && root.GetResource(ResourceType.Tech) - repairCost.tech >= definition.resourceCost.tech;
+                    root.ActionPoints - repairApCost >= cardAp
+                    && root.GetResource(ResourceType.Human) - repairCost.human >= cardHuman
+                    && root.GetResource(ResourceType.Energy) - repairCost.energy >= cardEnergy
+                    && root.GetResource(ResourceType.Materials) - repairCost.materials >= cardMaterials
+                    && root.GetResource(ResourceType.Tech) - repairCost.tech >= cardTech;
                 if (!stillAffordableAfterRepair)
                     return true;
             }
@@ -1500,8 +1511,10 @@ namespace Game.Ai
                 CardDefinition definition = card.Definition;
                 if (definition == null || definition.cardType != CardType.Facility || ctx.FailedPlayCardsThisTurn.Contains(card))
                     continue;
-                if (!root.CanSpendActionPoints(definition.apCost)
-                    || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                // Effective (instance) cost — a Research/Production-created Facility card plays at
+                // activationApCost with its resources already paid (spec §5).
+                if (!root.CanSpendActionPoints(AiCardCost.PlayAp(card))
+                    || !AiCardCost.CanAffordPlayResources(root, player, card))
                     continue;
 
                 foreach (HexCoord baseHex in OwnGarrisonHexesByActivity(player))
@@ -1547,8 +1560,10 @@ namespace Game.Ai
 
                 foreach (UnitData unit in liveUnits)
                 {
-                    if (!EquipmentSystem.CanAttach(definition, unit, root, out _)
-                        || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                    // CardData overloads so a Research/Production-created Equipment card is costed
+                    // at its effective (activation, resources-already-paid) price (spec §5).
+                    if (!EquipmentSystem.CanAttach(card, unit, root, out _)
+                        || !AiCardCost.CanAffordPlayResources(root, player, card))
                         continue;
                     float benefit = EquipmentBenefitScore(grant, unit, null);
                     if (benefit <= 0f)
@@ -1567,8 +1582,8 @@ namespace Game.Ai
                 {
                     if (hostCard == card || !IsUnitOrHeroCard(hostCard))
                         continue;
-                    if (!EquipmentSystem.CanAttach(definition, hostCard, root, out _)
-                        || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                    if (!EquipmentSystem.CanAttach(card, hostCard, root, out _)
+                        || !AiCardCost.CanAffordPlayResources(root, player, card))
                         continue;
                     float benefit = EquipmentBenefitScore(grant, null, hostCard.Definition);
                     if (benefit <= 0f)
@@ -1766,6 +1781,12 @@ namespace Game.Ai
             int materials0 = root.GetResource(ResourceType.Materials);
             int tech0 = root.GetResource(ResourceType.Tech);
 
+            // Effective (instance) cost — mirrors CardHandUI.TryDeployFacilityToHex: a Research/
+            // Production-created Facility card pays activationApCost and skips its already-paid
+            // ResourceCost (spec §5); 1:1 with the definition for an ordinary card.
+            int playAp = card.EffectivePlayApCost;
+            ResourceCost playCost = card.EffectivePlayResourceCost;
+
             BuildingData building = BuildingRegistry.FindAt(decision.TargetHex);
             int slot = building != null ? building.FindFirstAvailableFacilitySlot() : -1;
             string failReason = null;
@@ -1773,9 +1794,9 @@ namespace Game.Ai
                 failReason = "no owned base at the target hex any more";
             else if (slot < 0)
                 failReason = "no free unlocked Facility slot";
-            else if (!root.CanSpendActionPoints(definition.apCost))
+            else if (!root.CanSpendActionPoints(playAp))
                 failReason = "not enough action points";
-            else if (!definition.resourceCost.CanAfford(root))
+            else if (playCost != null && !playCost.CanAfford(root))
                 failReason = "not enough resources";
 
             if (failReason != null)
@@ -1786,8 +1807,8 @@ namespace Game.Ai
                 yield break;
             }
 
-            root.SpendActionPoints(definition.apCost);
-            definition.resourceCost.PayFrom(root);
+            root.SpendActionPoints(playAp);
+            playCost?.PayFrom(root);
             building.FacilitySlots[slot] = FacilityData.FromDefinition(definition);
             AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize)?.Hand.Remove(card);
 
@@ -1833,7 +1854,7 @@ namespace Game.Ai
                 hostName = liveHost.Name;
                 if (hostArmy == null)
                     failReason = "target unit is gone";
-                else if (!EquipmentSystem.TryAttach(definition, liveHost, root, out failReason))
+                else if (!EquipmentSystem.TryAttach(card, liveHost, root, out failReason))
                     failReason = failReason ?? "attach rejected";
                 else
                     attached = true;
@@ -1844,7 +1865,7 @@ namespace Game.Ai
                 hostName = $"{hostCard?.Definition.displayName} card";
                 if (hand == null || !hand.Hand.Contains(hostCard))
                     failReason = "target card no longer in hand";
-                else if (!EquipmentSystem.TryAttach(definition, hostCard, root, out failReason))
+                else if (!EquipmentSystem.TryAttach(card, hostCard, root, out failReason))
                     failReason = failReason ?? "attach rejected";
                 else
                     attached = true;

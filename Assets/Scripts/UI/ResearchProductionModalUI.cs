@@ -56,6 +56,11 @@ namespace Game.UI
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private ResearchProductionCatalog catalog;
 
+        // The AI's Development planner reads the offered card lists headlessly from the same
+        // asset the human pages through (spec P0 §4 — one rule/data source). Threaded into
+        // AiTurnContext by GameTurnController.
+        public ResearchProductionCatalog Catalog => catalog;
+
         // Exactly 8 cards per page, per the spec's pagination rules.
         private const int PageSize = 8;
 

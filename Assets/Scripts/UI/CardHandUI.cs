@@ -446,6 +446,11 @@ namespace Game.UI
         // AddCardToHand enforces.
         public bool HasFreeHandSlot => _cards.Count < maxHandSize;
 
+        // The shared hand capacity (spec P0 §10 — one hand cap for human and AI). Read once into
+        // AiTurnContext.HandCapacity the same way StartingHandSize/DrawApCost already are, so the
+        // AI's Development planner refuses a Research/Production Create into a full AiHandData.
+        public int MaxHandSize => maxHandSize;
+
         // Same, but for a card instance that already exists and must be preserved as-is rather
         // than rebuilt from its definition — an aircraft returning from an airfield/air army
         // still carries its attached Equipment on the CardData (see AviationActions.
