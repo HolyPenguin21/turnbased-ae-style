@@ -136,10 +136,14 @@ namespace Game.UI
 
         // Re-point the equipment-art toggle at this card's current attached equipment (if any)
         // — called from Setup, and again by CardHandUI right after an attach lands on a hand
-        // card (which doesn't rebuild the CardUI).
+        // card (which doesn't rebuild the CardUI). Attaching gear to an in-hand card also
+        // changes the stat numbers shown on its face (Range -> 1, Defense +2, ...), so the
+        // stat row is re-folded here too — matching what EquipmentSystem.Apply will do to the
+        // unit once it finally spawns.
         public void RefreshEquipmentToggle()
         {
             equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig);
+            RefreshStatsRow(Data?.Definition);
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility,
@@ -182,11 +186,76 @@ namespace Game.UI
                     break;
             }
 
+            ApplyAttachedEquipment(definition.cardType, ref slot1, ref slot2, ref hp, ref slot4, ref slot5);
+
             if (attackStatText != null) attackStatText.text = slot1.ToString();
             if (defenseStatText != null) defenseStatText.text = slot2.ToString();
             if (hpStatText != null) hpStatText.text = $"{hp}/{hp}";
             if (moveStatText != null) moveStatText.text = slot4.ToString();
             if (rangeStatText != null) rangeStatText.text = slot5.ToString();
+        }
+
+        // Folds the stat changes of an Equipment card attached to this in-hand card (see
+        // CardData.Equipment) into the badge values just computed from the base CardDefinition,
+        // so the hand preview matches what EquipmentSystem.Apply will produce on the spawned
+        // unit: all additive changes first, then all overrides, then the same per-stat floor.
+        // The slot->EquipmentStat mapping mirrors RefreshStatsRow's own per-card-type mapping;
+        // Base cards can't take equipment (EquipmentSystem.CanAttach), so they're left alone.
+        private void ApplyAttachedEquipment(CardType cardType, ref int slot1, ref int slot2,
+            ref int hp, ref int slot4, ref int slot5)
+        {
+            EquipmentGrant grant = Data?.Equipment != null ? Data.Equipment.equipment : null;
+            if (grant?.statChanges == null || grant.statChanges.Count == 0)
+                return;
+
+            EquipmentStat s1, s2, s4, s5;
+            switch (cardType)
+            {
+                case CardType.Hero:
+                    s1 = EquipmentStat.CommandRating; s2 = EquipmentStat.Fate;
+                    s4 = EquipmentStat.MoveMax;       s5 = EquipmentStat.Initiative;
+                    break;
+                case CardType.Base:
+                    return;
+                default: // Unit
+                    s1 = EquipmentStat.Attack;  s2 = EquipmentStat.Defense;
+                    s4 = EquipmentStat.MoveMax; s5 = EquipmentStat.Range;
+                    break;
+            }
+
+            slot1 = FoldStat(grant, s1, slot1);
+            slot2 = FoldStat(grant, s2, slot2);
+            hp = FoldStat(grant, EquipmentStat.HitPoints, hp);
+            slot4 = FoldStat(grant, s4, slot4);
+            slot5 = FoldStat(grant, s5, slot5);
+        }
+
+        private static int FoldStat(EquipmentGrant grant, EquipmentStat stat, int current)
+        {
+            int result = current;
+            foreach (EquipmentStatChange change in grant.statChanges)
+                if (change != null && change.stat == stat && !change.isOverride)
+                    result += change.amount;
+            foreach (EquipmentStatChange change in grant.statChanges)
+                if (change != null && change.stat == stat && change.isOverride)
+                    result = change.amount;
+            return Mathf.Max(StatFloor(stat), result);
+        }
+
+        // Same per-stat lower bounds EquipmentSystem.ApplyStat enforces.
+        private static int StatFloor(EquipmentStat stat)
+        {
+            switch (stat)
+            {
+                case EquipmentStat.Defense:
+                case EquipmentStat.Range:
+                case EquipmentStat.Initiative:
+                case EquipmentStat.HitPoints:
+                case EquipmentStat.MoveMax:
+                    return 1;
+                default:
+                    return 0;
+            }
         }
 
         // Hides the badge entirely for a 0 cost rather than showing "0" — most cards don't

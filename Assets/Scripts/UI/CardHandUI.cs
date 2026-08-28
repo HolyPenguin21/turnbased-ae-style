@@ -133,11 +133,32 @@ namespace Game.UI
         // runs once per hex actually changed under the cursor, not every frame.
         private HexCoord? _lastDragHex;
         private bool _dragHexKnown;
+        // Screen position at which the last hex raycast was actually fired. OnDrag can tick
+        // several times per frame; RaycastHex is a physics raycast against the hex grid, and
+        // the hex under the cursor can't have changed unless the cursor itself moved a few
+        // pixels — so the raycast is skipped entirely until the pointer has moved past
+        // HoverRaycastMoveThreshold from here. -1 means "no raycast fired yet this stretch".
+        private Vector2 _lastHoverRaycastScreenPos = new Vector2(-1f, -1f);
+        private const float HoverRaycastMoveThreshold = 4f;
         // Resolved once and cached rather than re-looked-up via GameSession.FindHumanRoot()
         // every Update() — same fix as ResourceBarUI's own _humanRoot (see its comment); the
         // human's PlayerRoot never changes once registered. Falls back to re-resolving if still
         // null (Update can run before setup registers it).
         private PlayerRoot _humanRoot;
+        // Cached the same way as _humanRoot above, and for the same reason: the human's
+        // PlayerSetupData is fixed once the match is running, but UpdateDragHoverValidity used
+        // to re-run the FindHumanPlayer() list scan on every hex change during a drag. Lazily
+        // (re)resolved via HumanPlayer since Awake can run before the session registers it.
+        private PlayerSetupData _humanPlayer;
+        private PlayerSetupData HumanPlayer
+        {
+            get
+            {
+                if (_humanPlayer == null)
+                    _humanPlayer = FindHumanPlayer();
+                return _humanPlayer;
+            }
+        }
         // Guards deckCountText's per-frame text set — the deck count only actually changes on a
         // draw, not every frame, so re-formatting and re-assigning the string when nothing
         // changed was pure waste.
@@ -468,7 +489,7 @@ namespace Game.UI
             if (currentIndex < 0)
                 return;
 
-            int newIndex = IndexForDropX(card, localPosition.x);
+            int newIndex = IndexForDropX(card, currentIndex, localPosition.x);
             if (newIndex != currentIndex)
             {
                 _cards.RemoveAt(currentIndex);
@@ -478,8 +499,12 @@ namespace Game.UI
                 // actually changed — while nothing's changing between ticks, this used to run
                 // every single frame for no visible effect.
                 RestoreSiblingOrder();
+                // Re-assert the dragged card on top, but ONLY here — RestoreSiblingOrder just
+                // put it back at its list index. Calling this every OnDrag tick (as it used to)
+                // dirtied the parent canvas's sort/batch every single frame; the card is already
+                // last-sibling from OnBeginDrag and stays there until the next reorder.
+                card.transform.SetAsLastSibling();
             }
-            card.transform.SetAsLastSibling(); // dragged card always renders above the rest
         }
 
         // Re-checks "could this card actually be dropped on the hex under the cursor right
@@ -498,6 +523,14 @@ namespace Game.UI
                 return;
             }
 
+            // Cursor hasn't moved far enough since the last raycast for the hex under it to
+            // have changed — keep the previous validity, skip the physics raycast.
+            if (_dragHexKnown
+                && (screenPosition - _lastHoverRaycastScreenPos).sqrMagnitude
+                   < HoverRaycastMoveThreshold * HoverRaycastMoveThreshold)
+                return;
+            _lastHoverRaycastScreenPos = screenPosition;
+
             HexCoord? hex = hexSelection != null ? hexSelection.RaycastHex(screenPosition) : null;
             if (_dragHexKnown && Equals(_lastDragHex, hex))
                 return;
@@ -505,7 +538,7 @@ namespace Game.UI
             _lastDragHex = hex;
 
             CardDefinition definition = card.Data?.Definition;
-            PlayerSetupData human = FindHumanPlayer();
+            PlayerSetupData human = HumanPlayer;
             bool valid = hex.HasValue && human != null
                 && (IsValidDropTarget(definition, human, hex.Value)
                     || IsValidBaseDropTarget(definition, human, hex.Value)
@@ -1063,7 +1096,15 @@ namespace Game.UI
         // edge instead makes a neighbour give way right as the dragged card crosses into its slot,
         // symmetrically on both sides — dragged card excluded via _scratchVisible, and only visible
         // cards are considered since the dragged card is always visible while held.
-        private int IndexForDropX(CardUI dragged, float dropX)
+        //
+        // Hysteresis (IndexHysteresis): the card keeps its current slot until dropX moves more
+        // than that fraction of a slot PAST the boundary into the next one — and won't come back
+        // until it crosses the same margin the other way. Without this dead band, a cursor
+        // resting right on a slot boundary flip-flops the index every few pixels (and every time
+        // the neighbours' 0.12s shuffle nudges things), which read as the cards twitching.
+        private const float IndexHysteresis = 0.35f;
+
+        private int IndexForDropX(CardUI dragged, int currentIndex, float dropX)
         {
             _scratchVisible.Clear();
             foreach (CardUI c in _cards)
@@ -1076,7 +1117,15 @@ namespace Game.UI
 
             float totalWidth = MaxVisible > 0 ? (MaxVisible - 1) * step : 0f;
             float slot0LeftEdge = -totalWidth * 0.5f - step * 0.5f;
-            int slot = Mathf.FloorToInt((dropX - slot0LeftEdge) / step);
+            float raw = (dropX - slot0LeftEdge) / step;
+
+            // Slot the card currently sits in, in the same visible-slot space as `raw` (raw is
+            // in [k, k+1) while the card is over visible slot k). Stay put unless raw has left
+            // [cur - H, cur + 1 + H); only then re-floor to wherever it actually landed.
+            int cur = Mathf.Clamp(currentIndex - _scrollOffset, 0, _scratchVisible.Count);
+            int slot = (raw >= cur + 1f + IndexHysteresis || raw < cur - IndexHysteresis)
+                ? Mathf.FloorToInt(raw)
+                : cur;
             return _scrollOffset + Mathf.Clamp(slot, 0, _scratchVisible.Count);
         }
 
