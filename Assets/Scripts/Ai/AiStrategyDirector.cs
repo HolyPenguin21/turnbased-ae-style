@@ -314,14 +314,21 @@ namespace Game.Ai
             foreach (AiTaskCategory c in Categories)
                 floorSum += FloorFor(c);
             float afterReserve = _totalAp * (1f - AiConfig.strategyBudgetReserveFrac);
-            float distributable = Mathf.Max(0f, afterReserve - floorSum);
+            // On a poor-AP turn afterReserve can be below the sum of the fixed floors (6 AP:
+            // Recon/Eco/Agg/Def 1 + Management 2). Scale the floors down proportionally in that
+            // case so sum(alloc) stays exactly totalAp*(1-reserveFrac) instead of the floors
+            // overrunning it — the floor ratios (Management still 2× the rest) are preserved.
+            // When afterReserve >= floorSum, floorScale is 1 and behaviour is unchanged.
+            float floorScale = floorSum > 0f ? Mathf.Min(1f, afterReserve / floorSum) : 1f;
+            float effectiveFloorSum = floorSum * floorScale;
+            float distributable = Mathf.Max(0f, afterReserve - effectiveFloorSum);
             float axisSum = Categories.Sum(c => strategy.AxisFor(c));
             if (axisSum < 0.0001f)
                 axisSum = 1f;
 
             foreach (AiTaskCategory c in Categories)
             {
-                _alloc[c] = FloorFor(c) + distributable * (strategy.AxisFor(c) / axisSum);
+                _alloc[c] = FloorFor(c) * floorScale + distributable * (strategy.AxisFor(c) / axisSum);
                 _spent[c] = 0f;
             }
         }
