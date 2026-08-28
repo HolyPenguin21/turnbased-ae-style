@@ -28,11 +28,15 @@ MonoBehaviour:
       count: 1
     - cardKey: The Ashen/Hank Mercer
       count: 1
+    - cardKey: The Ashen/Rusty Miller
+      count: 1
     - cardKey: The Ashen/Nora Blackwell
       count: 1
     - cardKey: The Ashen/Vera Sterling
       count: 1
     - cardKey: The Ashen/Elena Hayes
+      count: 1
+    - cardKey: The Ashen/Nova Sterling
       count: 1
     - cardKey: The Ashen/Hooded
       count: 3
@@ -80,6 +84,10 @@ MonoBehaviour:
     - cardKey: Iron Concord/Dorian Kesh
       count: 1
     - cardKey: Iron Concord/Aldric Voss
+      count: 1
+    - cardKey: Iron Concord/Vector Vance
+      count: 1
+    - cardKey: Iron Concord/Bolt Jax
       count: 1
     - cardKey: Iron Concord/Nadia Thorne
       count: 1

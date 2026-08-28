@@ -1599,8 +1599,8 @@ namespace Game.Ai
                     continue;
                 if (task.Kind != AiTaskKind.RaidWeakerArmy && task.Kind != AiTaskKind.DefendCitadel
                     && task.Kind != AiTaskKind.RaidReinforce && task.Kind != AiTaskKind.SecureBase
-                    && task.Kind != AiTaskKind.BuildBase)
-                    continue;
+                    && task.Kind != AiTaskKind.BuildBase && task.Kind != AiTaskKind.AirStrike)
+                    continue; // AirRecon deliberately excluded — a scouting sortie, not a combat one
                 if (task.Army.Members.Contains(unit))
                     return true;
             }

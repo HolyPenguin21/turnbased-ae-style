@@ -139,7 +139,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -181,7 +181,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - ApBonus
     resourceYield:
@@ -197,6 +197,90 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 4
+    displayName: Vector Vance
+    art: {fileID: 21300000, guid: 1ee024c8651845945a0fc99d9a00b216, type: 3}
+    detailArt: {fileID: 21300000, guid: 0631deb5f60ad604688ab66e3f212eda, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 08000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 5
+    displayName: Bolt Jax
+    art: {fileID: 21300000, guid: 062378205ca3d4d49951c7547900e907, type: 3}
+    detailArt: {fileID: 21300000, guid: 8784b0b760c09ba4285276bdc1d66ae6, type: 3}
+    faction: 0
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 08000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 6
     displayName: Nadia Thorne
     art: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
     detailArt: {fileID: 21300000, guid: 61636f53d0b54db47a62f6fbffe2b9c8, type: 3}
@@ -224,7 +308,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - RapidReaction
     resourceYield:
@@ -239,7 +323,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 5
+  - id: 7
     displayName: Kessa Vrail
     art: {fileID: 21300000, guid: cc4787e37aa8ed04eb111dcd564de512, type: 3}
     detailArt: {fileID: 21300000, guid: 7141bd2242b632c469a3c81ee250382c, type: 3}
@@ -267,7 +351,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - Stealth4
     resourceYield:
@@ -282,7 +366,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 6
+  - id: 8
     displayName: Lira Sable
     art: {fileID: 21300000, guid: 36aa1715422b00c47995b2a802d4b470, type: 3}
     detailArt: {fileID: 21300000, guid: 2bfbdbfe359d3f542b8c19b3c77fd3a8, type: 3}
@@ -310,7 +394,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - r1s6
     - Stealth4
@@ -326,7 +410,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 7
+  - id: 9
     displayName: Scout
     art: {fileID: 21300000, guid: 7e65b43206e25644a92f7a085751e399, type: 3}
     detailArt: {fileID: 21300000, guid: feecf6b864fc56146a95a2db56533466, type: 3}
@@ -370,7 +454,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 8
+  - id: 10
     displayName: RC Vehicle
     art: {fileID: 21300000, guid: 1045d74c3da1d834cb79582813054193, type: 3}
     detailArt: {fileID: 21300000, guid: cc1844df7f78c8a449adf0d76a8afe81, type: 3}
@@ -413,7 +497,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 9
+  - id: 11
     displayName: Watcher Drone
     art: {fileID: 21300000, guid: a857076aaa3bd2a4ead8b3d56a1b52cf, type: 3}
     detailArt: {fileID: 21300000, guid: 261462f902994374c86b849bfc579bd9, type: 3}
@@ -457,7 +541,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 10
+  - id: 12
     displayName: Scrapper
     art: {fileID: 21300000, guid: d1449874bf410124b903c1b7bdc65064, type: 3}
     detailArt: {fileID: 21300000, guid: dc56310fd0e88ce4ab44b5a2269f4d84, type: 3}
@@ -500,7 +584,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 11
+  - id: 13
     displayName: AA Crawler
     art: {fileID: 21300000, guid: 0710b2a7db76fab41848bd283704c766, type: 3}
     detailArt: {fileID: 21300000, guid: 803a5e0aedc809b4ab84f79fdcfad981, type: 3}
@@ -543,7 +627,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 12
+  - id: 14
     displayName: Light Infantry
     art: {fileID: 21300000, guid: 31193e8e1a6072b47b1970e84241463f, type: 3}
     detailArt: {fileID: 21300000, guid: bb7ce7e9597b25646a9800c17c6ebdc9, type: 3}
@@ -585,7 +669,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 13
+  - id: 15
     displayName: Iron guards
     art: {fileID: 21300000, guid: d947f00e53dba894898a7c929bd64aa1, type: 3}
     detailArt: {fileID: 21300000, guid: 71b9a21e35ca278418585b647419d6ed, type: 3}
@@ -628,7 +712,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 14
+  - id: 16
     displayName: Medium infantry
     art: {fileID: 21300000, guid: 57c7f5684c2dddb42b56b4e565c14bfa, type: 3}
     detailArt: {fileID: 21300000, guid: 4b9dfd8f9f12a4242b73fd54ad42173b, type: 3}
@@ -670,7 +754,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 15
+  - id: 17
     displayName: Flamer
     art: {fileID: 21300000, guid: f53f9a67de751f747bb14826fc647b28, type: 3}
     detailArt: {fileID: 21300000, guid: 27f894ddddeff384090d3bf35fbdbc74, type: 3}
@@ -713,7 +797,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 16
+  - id: 18
     displayName: AT Infantry
     art: {fileID: 21300000, guid: 5bd54449712263f4f9080efa19fb81a5, type: 3}
     detailArt: {fileID: 21300000, guid: f6313bed1de65754d9b350fc6f8d6d51, type: 3}
@@ -756,7 +840,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 17
+  - id: 19
     displayName: Heavy Infantry
     art: {fileID: 21300000, guid: ddd99a3f644357f42ad690fcf22dafa6, type: 3}
     detailArt: {fileID: 21300000, guid: e5047807d847ee342b209c8a78223453, type: 3}
@@ -799,7 +883,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
+  - id: 20
     displayName: BS Melee
     art: {fileID: 21300000, guid: 992c55f4f43cb43479e179dd46d1586b, type: 3}
     detailArt: {fileID: 21300000, guid: 4fc5885688c762640bbaafb4e3529bad, type: 3}
@@ -842,7 +926,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 19
+  - id: 21
     displayName: BS Ranged
     art: {fileID: 21300000, guid: 8f05f333148e2614cb1f8c82b8bfdc50, type: 3}
     detailArt: {fileID: 21300000, guid: 028a4389a5d69854988fa7d61eb2299e, type: 3}
@@ -884,7 +968,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 22
     displayName: Light Tank
     art: {fileID: 21300000, guid: 4ad88a83fb2be2f479bab36a43d07e2f, type: 3}
     detailArt: {fileID: 21300000, guid: 0a53a7a6c8028fc45b63942635e2dfbc, type: 3}
@@ -926,7 +1010,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 23
     displayName: Medium Tank
     art: {fileID: 21300000, guid: 724c990830d2de349811dd18b22fe79d, type: 3}
     detailArt: {fileID: 21300000, guid: aba1f1203a5932e468dca31b04c838bd, type: 3}
@@ -968,7 +1052,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 24
     displayName: Heavy Tank
     art: {fileID: 21300000, guid: 64e09054709fb25488a74fba6e8f08ed, type: 3}
     detailArt: {fileID: 21300000, guid: 2250c13c9ffa42247bcc9a3ee6e5fabb, type: 3}
@@ -1011,7 +1095,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 25
     displayName: Artillery Cannon
     art: {fileID: 21300000, guid: 8405a142c2690cf4f829caa14e4a6a03, type: 3}
     detailArt: {fileID: 21300000, guid: d66eb5642ca7d0a42b7adedbf3c2f04e, type: 3}
@@ -1054,7 +1138,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 26
     displayName: Artillery Tank
     art: {fileID: 21300000, guid: 4810b69d90fbc5d4c83b205220cebfd4, type: 3}
     detailArt: {fileID: 21300000, guid: a9c00334f55db484ea0252056de0f7cd, type: 3}
@@ -1096,7 +1180,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 27
     displayName: Pulse Cannon
     art: {fileID: 21300000, guid: e6e5088baf044414f8218f7ec96c6180, type: 3}
     detailArt: {fileID: 21300000, guid: 77fc96088558ff3499ebcf37fbfe288a, type: 3}
@@ -1139,7 +1223,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 28
     displayName: Wasp
     art: {fileID: 21300000, guid: 0582081bc468587498a85a13b5b174e1, type: 3}
     detailArt: {fileID: 21300000, guid: bdaf62ff179c5cc488dff9bbd18e1c49, type: 3}
@@ -1182,7 +1266,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 29
     displayName: Rusty Vulture
     art: {fileID: 21300000, guid: 561d3ea5c445ffb4c8037400a6b5c810, type: 3}
     detailArt: {fileID: 21300000, guid: 2a8c873ddb383d447b6f045e4f44f453, type: 3}

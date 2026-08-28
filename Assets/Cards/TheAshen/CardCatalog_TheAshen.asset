@@ -56,6 +56,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 1
     displayName: Ashen Base
     art: {fileID: 21300000, guid: 882d551fb3812794bb04035681af5cd2, type: 3}
@@ -97,6 +104,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 2
     displayName: Miller Hayes
     art: {fileID: 21300000, guid: 635be53d8df3f854faf16b0258ba7866, type: 3}
@@ -125,13 +139,20 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 3
     displayName: Hank Mercer
     art: {fileID: 21300000, guid: 0785c4685b5c641448644f9c2e538736, type: 3}
@@ -160,7 +181,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - ApBonus
     resourceYield:
@@ -168,7 +189,57 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 4
+    displayName: Dust Runner
+    art: {fileID: 21300000, guid: 6c8777d1b75ec1e4686d389be6be3b4f, type: 3}
+    detailArt: {fileID: 21300000, guid: 7ae764e72b70df140b17b980599843b5, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - r1s5
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 5
     displayName: Nora Blackwell
     art: {fileID: 21300000, guid: 6adf37dce67aeb74b94e117adabc35e6, type: 3}
     detailArt: {fileID: 21300000, guid: 68b16f15d508251409ca5ac767d6c3e7, type: 3}
@@ -196,7 +267,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities:
     - r1s6
     - Stealth4
@@ -205,7 +276,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 5
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 6
     displayName: Vera Sterling
     art: {fileID: 21300000, guid: 6ae26c3c6892ece42a6eb11e8d5f6f88, type: 3}
     detailArt: {fileID: 21300000, guid: 0469a30d682d2f04b96278a9193adbb2, type: 3}
@@ -233,14 +311,21 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
-  - id: 6
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 7
     displayName: Elena Hayes
     art: {fileID: 21300000, guid: 866c080e6078278498ffe58939d48f6f, type: 3}
     detailArt: {fileID: 21300000, guid: fe7ef4ff3a145d341af27b432029dd4f, type: 3}
@@ -268,14 +353,63 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 08000000
     grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
-  - id: 7
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 8
+    displayName: Nova Sterling
+    art: {fileID: 21300000, guid: 8a4ccc1987fe3644a8cf2d5cd6777f55, type: 3}
+    detailArt: {fileID: 21300000, guid: 9b83848cdb64b984caf6b0f50d913103, type: 3}
+    faction: 4
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 08000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 9
     displayName: Hooded
     art: {fileID: 21300000, guid: 735824846a4304645a8b477d61e13d9e, type: 3}
     detailArt: {fileID: 21300000, guid: eb23825e602b7ec4aa14e02fbf5bb72b, type: 3}
@@ -313,43 +447,56 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 8
-    displayName: Dust Runner
-    art: {fileID: 21300000, guid: 6c8777d1b75ec1e4686d389be6be3b4f, type: 3}
-    detailArt: {fileID: 21300000, guid: 7ae764e72b70df140b17b980599843b5, type: 3}
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 10
+    displayName: Rusty Miller
+    art: {fileID: 21300000, guid: 7d977972b96b70641af85d6112c9fe3e, type: 3}
+    detailArt: {fileID: 21300000, guid: f4e0cf679015d6a4f898951b54dc6e12, type: 3}
     faction: 4
-    cardType: 1
+    cardType: 0
     apCost: 1
     resourceCost:
-      human: 0
+      human: 1
       energy: 0
-      materials: 2
+      materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 2
     activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    resistanceRating: 2
-    range: 2
-    hitPoints: 4
+    commandRating: 3
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 01000000
-    grantedAbilities:
-    - r1s5
+    unitTypeTags: 08000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
-  - id: 9
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 11
     displayName: Tech Scrapper
     art: {fileID: 21300000, guid: 6c828ebd159427246b7b028ed2d6a336, type: 3}
     detailArt: {fileID: 21300000, guid: b47fc4d3dec26bc48aa4ac74e68689ee, type: 3}
@@ -385,7 +532,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 10
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 12
     displayName: AA Rad Hunter
     art: {fileID: 21300000, guid: 9927ae6eeb12f804a880e87f411f29dd, type: 3}
     detailArt: {fileID: 21300000, guid: edc3d80d8adeccd4aa22b214fff7b239, type: 3}
@@ -421,7 +575,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 11
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 13
     displayName: LI Ash Drifter
     art: {fileID: 21300000, guid: d340d646803302c4b820dc327a0583d4, type: 3}
     detailArt: {fileID: 21300000, guid: a3bd25c8086e1ec46ad654b92346f23f, type: 3}
@@ -456,7 +617,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 12
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 14
     displayName: LI Ash Runner
     art: {fileID: 21300000, guid: 65c89f7c095128e42919a46bcfcf35b1, type: 3}
     detailArt: {fileID: 21300000, guid: b16ac6f2510ac7445a8264545e3e3abd, type: 3}
@@ -491,7 +659,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 13
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 15
     displayName: MI Iron Husk
     art: {fileID: 21300000, guid: 416e13f1b10664146a6ef2b5e0390660, type: 3}
     detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
@@ -526,7 +701,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 14
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 16
     displayName: Scav Carrier
     art: {fileID: 21300000, guid: 50ea9173e748b7044892089a3e8d0430, type: 3}
     detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
@@ -561,7 +743,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 15
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 17
     displayName: Rad Brute
     art: {fileID: 21300000, guid: d4fecf0dfb18ce34f9c5bc3f3ce2abc2, type: 3}
     detailArt: {fileID: 21300000, guid: 16a15e076d001c8499e6a7c1149058d0, type: 3}
@@ -598,7 +787,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 16
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
     displayName: HI Ash Walker
     art: {fileID: 21300000, guid: a3318c5139165c94fb81a5e940cef118, type: 3}
     detailArt: {fileID: 21300000, guid: 3ea59d657101a8a4ab53926d9e1aeacc, type: 3}
@@ -633,7 +829,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 17
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 19
     displayName: BS Grave Engine
     art: {fileID: 21300000, guid: fdc14e08d3ffe0940bce1a2ef9da540e, type: 3}
     detailArt: {fileID: 21300000, guid: 5ce8e35ac974f3347a15a5f564224da9, type: 3}
@@ -668,7 +871,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 18
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 20
     displayName: MT Rust Tank
     art: {fileID: 21300000, guid: 026bfcfa33cd247478012438377fb5f0, type: 3}
     detailArt: {fileID: 21300000, guid: 239cccefd5ea78344adba7ac0ef70dfe, type: 3}
@@ -703,7 +913,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 19
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 21
     displayName: Leviathan
     art: {fileID: 21300000, guid: 45b07eefadb6f5348911c8d573ff5a63, type: 3}
     detailArt: {fileID: 21300000, guid: 49a1362e66c8c3f41863504915a07e8f, type: 3}
@@ -738,7 +955,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 20
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 22
     displayName: Scrap Mortar
     art: {fileID: 21300000, guid: 28100ed5b3524b246a6152dace64a840, type: 3}
     detailArt: {fileID: 21300000, guid: 3d2689852cf6a674c82e8854e1dc27b1, type: 3}
@@ -773,7 +997,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 21
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 23
     displayName: Colossus
     art: {fileID: 21300000, guid: a1c5c512a5300c2429f7a1a0ec2fca42, type: 3}
     detailArt: {fileID: 21300000, guid: 8abc5f26f3a782a48b216f264ea732cf, type: 3}
@@ -809,7 +1040,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 22
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 24
     displayName: Ash Howitzer
     art: {fileID: 21300000, guid: abff434567eaa434f956f1b5cae6acde, type: 3}
     detailArt: {fileID: 21300000, guid: d74666f79453083478b02daf45396343, type: 3}
@@ -845,7 +1083,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 23
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 25
     displayName: Striker
     art: {fileID: 21300000, guid: c5e00d5b15e757444a012ee9b326e3e1, type: 3}
     detailArt: {fileID: 21300000, guid: e129ac4dab53f3b46b9fef9258fef7df, type: 3}
@@ -881,7 +1126,14 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-  - id: 24
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 26
     displayName: Scrapwing
     art: {fileID: 21300000, guid: 117b0fcd4b429a946a3048ea1bfbae8f, type: 3}
     detailArt: {fileID: 21300000, guid: 4ace6849b2cf1bb4b9369042df22ddb3, type: 3}
@@ -917,6 +1169,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: af7f2ad35e7686c4bad4ff88fe20ebfd, type: 3}
