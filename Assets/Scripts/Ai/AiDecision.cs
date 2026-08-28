@@ -17,6 +17,13 @@ namespace Game.Ai
     {
         MoveArmy,
         PlayCard,
+        // Менеджмент · спец-карты (2026-08-28) — a Facility card placed into an owned Base's free
+        // unlocked slot, or an Equipment card attached onto a compatible host. Deliberately their
+        // OWN kinds rather than more CardRole values on PlayCard: they never touch the Hero/Unit
+        // alternation/backlog machinery (see AiManagementPlanner.TrySupportCardCandidates) and run
+        // through their own execution routines, not PlayCardRoutine.
+        PlayFacilityCard,
+        AttachEquipment,
         ReserveArmy,
         DrawCard,
         BuildFacility,
@@ -90,6 +97,10 @@ namespace Game.Ai
         // destination — see GarrisonReorgTask.FindGarrisonOverflowDestination.
         public UnitData CollectorUnit;
         public ArmyData MergeTarget;
+        // AttachEquipment only (2026-08-28) — the still-in-hand Unit/Hero CardData the Equipment
+        // (carried in Card) should be hung on, when the chosen host is a card rather than a live
+        // unit. A live-unit host reuses CollectorUnit instead; exactly one of the two is set.
+        public CardData EquipmentHostCard;
         // SplitGarrisonArmy (Economy hero-detach only, see AiEconomyPlanner.TryStartEconomyCandidates'
         // own GarrisonHero branch) — where/what the split-off hero should build, once her new army
         // actually exists. SplitGarrisonArmyRoutine registers her BuildFacility task itself the
@@ -377,6 +388,32 @@ namespace Game.Ai
                 default: return "";
             }
         }
+
+        // Менеджмент · спец-карты (2026-08-28) — see AiManagementPlanner.TrySupportCardCandidates.
+        // `baseHex` (carried via TargetHex) — the owned Base/Citadel hex whose first free unlocked
+        // Facility slot the card goes into; PlayFacilityCardRoutine re-resolves the building and
+        // re-picks the slot (via BuildingData.FindFirstAvailableFacilitySlot) at execution time,
+        // so nothing but the hex needs carrying here.
+        public static AiDecision PlayFacilityCard(CardData card, HexCoord baseHex, float score) => new AiDecision
+        {
+            Kind = AiActionKind.PlayFacilityCard, Card = card, TargetHex = baseHex, Score = score,
+            Category = AiTaskCategory.Management,
+            Reason = $"places Facility {card.Definition.displayName} into the base at ({baseHex.Q},{baseHex.R})",
+        };
+
+        // Менеджмент · спец-карты (2026-08-28) — `equipment` is the CardType.Equipment card;
+        // exactly one of `liveHost` / `hostCard` is non-null (the chosen attach target — a live
+        // own UnitData, or a still-in-hand Unit/Hero CardData). AttachEquipmentRoutine re-validates
+        // the host and calls EquipmentSystem.TryAttach, which pays the equipment's own AP+resource
+        // cost once.
+        public static AiDecision AttachEquipment(CardData equipment, UnitData liveHost, CardData hostCard, float score) => new AiDecision
+        {
+            Kind = AiActionKind.AttachEquipment, Card = equipment, CollectorUnit = liveHost, EquipmentHostCard = hostCard,
+            Score = score, Category = AiTaskCategory.Management,
+            Reason = liveHost != null
+                ? $"attaches {equipment.Definition.displayName} to {liveHost.Name}"
+                : $"attaches {equipment.Definition.displayName} to the {hostCard?.Definition.displayName} card in hand",
+        };
 
         // Менеджмент · капасити гарнизона — see GarrisonReorgTask.FindGarrisonOverflow/
         // FindGarrisonOverflowDestination. `destination` null means SplitGarrisonArmyRoutine

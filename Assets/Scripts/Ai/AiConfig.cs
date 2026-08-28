@@ -1058,6 +1058,17 @@ namespace Game.Ai
         // Economy collector detach is a real
         // in-progress task, not idle housekeeping.
         public const float managementReorgScore = 80f;
+        // Менеджмент · спец-карты (Facility / Equipment) — 2026-08-28, project owner's own spec.
+        // ONE shared flat EXTERNAL score for both card kinds in this first pass (Facility placement
+        // into an owned Base's free unlocked slot; Equipment attach onto a compatible live unit or
+        // in-hand Unit/Hero card). Every internal "which card / which base+slot / which host"
+        // ranking (EquipmentBenefitScore, base-activity order, combat-task host preference) stays
+        // internal to AiManagementPlanner and is NEVER added to this — same "internal ranking must
+        // not leak into the cross-category arbiter" rule UnitCompositionFitBonus/BuildFacilityTask.
+        // RankHex already follow. Ordinary Management tier: above managementAviationCardScore(60)
+        // and the idle fallbacks(15), below repairUnitBaseWeight(90), managementReturnHomeScore(99),
+        // routine Economy/Recon/Aggression(100+) and every tactical/safety tier(120+).
+        public const float managementSupportCardScore = 80f;
         // Recce cards never reach TryPlayCardCandidates at all any more (2026-08-19, project
         // owner's own call — "ScoutPlanner должен сам решить куда положить своего скаута,
         // менеджеру об этом знать не обязательно") — AiScoutPlanner.

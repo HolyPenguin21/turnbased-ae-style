@@ -542,6 +542,7 @@ namespace Game.Ai
             }
             candidates.AddRange(AiManagementPlanner.TryStartRepairCandidates(player, root, hand));
             candidates.AddRange(AiManagementPlanner.TryPlayCardCandidates(player, root, hand, ctx));
+            candidates.AddRange(AiManagementPlanner.TrySupportCardCandidates(player, root, hand, ctx));
             candidates.AddRange(AiManagementPlanner.GatherFallbackCandidates(player, root, hand, ctx));
 
             // Strategic tilt (2026-08-27) — nudge every categorized candidate by its desire axis
@@ -933,6 +934,12 @@ namespace Game.Ai
                 case AiActionKind.PlayCard:
                     yield return PlayCardRoutine(player, decision, ctx);
                     break;
+                case AiActionKind.PlayFacilityCard:
+                    yield return AiManagementPlanner.PlayFacilityCardRoutine(player, decision, ctx);
+                    break;
+                case AiActionKind.AttachEquipment:
+                    yield return AiManagementPlanner.AttachEquipmentRoutine(player, decision, ctx);
+                    break;
                 case AiActionKind.ReserveArmy:
                     yield return AiManagementPlanner.ReserveArmyRoutine(player, ctx, decision.TargetHex);
                     break;
@@ -1217,7 +1224,7 @@ namespace Game.Ai
                 int techAv0 = root.GetResource(ResourceType.Tech);
 
                 bool aviationDeployed = AviationActions.TryDeployFromCard(decision.Card.Definition, player, root, ctx.HexSelection,
-                    decision.TargetHex, out string aviationFailReason);
+                    decision.TargetHex, out string aviationFailReason, decision.Card.Equipment);
                 if (aviationDeployed)
                 {
                     AiHandData aviationHand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
@@ -1264,7 +1271,8 @@ namespace Game.Ai
                 ctx.ArmyViewerModal.ShowReadOnly(targetArmy);
             yield return WaitStep(ctx);
 
-            bool deployed = ArmyActions.DeployUnitFromCard(decision.Card.Definition, player, targetArmy, root, ctx.HexSelection, out string failReason);
+            bool deployed = ArmyActions.DeployUnitFromCard(decision.Card.Definition, player, targetArmy, root, ctx.HexSelection,
+                out string failReason, decision.Card.Equipment);
             if (deployed)
             {
                 AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);

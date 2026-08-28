@@ -1449,5 +1449,379 @@ namespace Game.Ai
                 ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
+
+        // ---- Менеджмент · спец-карты — Facility / Equipment (2026-08-28, project owner's own spec) ----
+        // A dedicated pipeline for the two card kinds AiHandData can now hold that TryPlayCardCandidates
+        // deliberately never touches (Base cards stay in Агрессия's own BuildBase flow, not here):
+        //  · Facility — placed into an owned Base/Citadel's first free unlocked Facility slot, reusing
+        //    the exact BuildingData.IsBase + FindFirstAvailableFacilitySlot() + FacilityData.FromDefinition()
+        //    primitives the human hex-drop path (CardHandUI.TryDeployFacilityToHex) already uses.
+        //  · Equipment — attached onto the best compatible host (a live own UnitData, or a still-in-hand
+        //    Unit/Hero CardData) via the existing EquipmentSystem, which stays the sole validator/applier.
+        //
+        // FULLY isolated from the Hero/Unit alternation/backlog machinery above — neither kind is a
+        // CardRole, neither feeds unplayedHeroCards/unplayedUnitCards/cardRoleBacklogShareWeight/
+        // NotifyCardRolePlayed, and every internal "which card / which base / which host" preference
+        // (EquipmentBenefitScore, base-activity order, combat-task host tie-break) stays private here and
+        // is NEVER added to the cross-category AiDecision.Score: both kinds compete at a flat
+        // AiConfig.managementSupportCardScore, AiTaskCategory.Management (same "internal ranking must not
+        // leak into the arbiter" rule UnitCompositionFitBonus already keeps).
+        //
+        // A card that fails to execute this turn is added to ctx.FailedPlayCardsThisTurn (keyed by
+        // CardData, same set the PlayCard pipeline uses) so the same doomed action isn't re-proposed and
+        // re-failed every remaining step — it gets a fresh look next turn once conditions may have changed.
+        public static List<AiDecision> TrySupportCardCandidates(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            var results = new List<AiDecision>();
+            if (hand == null || root == null)
+                return results;
+
+            AiDecision facility = TryFacilityCardCandidate(player, root, hand, ctx);
+            if (facility != null)
+                results.Add(facility);
+
+            AiDecision equipment = TryEquipmentCardCandidate(player, root, hand, ctx);
+            if (equipment != null)
+                results.Add(equipment);
+
+            return results;
+        }
+
+        // First affordable Facility card in hand for which the player owns a Base with a free unlocked
+        // slot wins — bases tried in the same busiest-first, citadel-tie-break multi-base order every
+        // other Менеджмент router uses (OwnGarrisonHexesByActivity). Hero-built resource sites are
+        // excluded for free (BuildingData.IsBase == false). Affordability is reservation-aware
+        // (AiResourceReservation.CanAfford, not the raw stockpile) so a Facility can't spend what an
+        // active BuildFacility/BuildBase task has already claimed.
+        private static AiDecision TryFacilityCardCandidate(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            foreach (CardData card in hand.Hand)
+            {
+                CardDefinition definition = card.Definition;
+                if (definition == null || definition.cardType != CardType.Facility || ctx.FailedPlayCardsThisTurn.Contains(card))
+                    continue;
+                if (!root.CanSpendActionPoints(definition.apCost)
+                    || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                    continue;
+
+                foreach (HexCoord baseHex in OwnGarrisonHexesByActivity(player))
+                {
+                    BuildingData building = BuildingRegistry.FindAt(baseHex);
+                    if (building == null || building.Owner != player || !building.IsBase
+                        || building.FindFirstAvailableFacilitySlot() < 0)
+                        continue;
+                    return AiDecision.PlayFacilityCard(card, baseHex, AiConfig.managementSupportCardScore);
+                }
+            }
+            return null;
+        }
+
+        // Best (equipment card, host) pair — hosts are every live own non-Prison UnitData plus every
+        // still-in-hand Unit/Hero card. A host must pass EquipmentSystem.CanAttach (host kind/tags, the
+        // one free slot, AP + raw resources, exactly the human rules) AND the reservation-aware
+        // affordability gate on top (CanAttach only sees the raw stockpile). Among the passers, the
+        // host with the highest EquipmentBenefitScore wins — never "first compatible"; ties go to a live
+        // unit in an active combat task, then any other live unit, then a hand card, so a grant lands
+        // where it pays off soonest. A grant that would do literally nothing to a host (benefit 0) is
+        // never proposed — the card waits instead.
+        private static AiDecision TryEquipmentCardCandidate(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            List<UnitData> liveUnits = ArmyRegistry.AllForOwner(player)
+                .Where(a => !a.IsPrison)
+                .SelectMany(a => a.Members)
+                .ToList();
+
+            foreach (CardData card in hand.Hand)
+            {
+                CardDefinition definition = card.Definition;
+                if (definition == null || definition.cardType != CardType.Equipment || ctx.FailedPlayCardsThisTurn.Contains(card))
+                    continue;
+                EquipmentGrant grant = definition.equipment;
+                if (grant == null)
+                    continue;
+
+                UnitData bestLive = null;
+                CardData bestCard = null;
+                float bestBenefit = 0f;
+                int bestTier = -1;
+
+                foreach (UnitData unit in liveUnits)
+                {
+                    if (!EquipmentSystem.CanAttach(definition, unit, root, out _)
+                        || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                        continue;
+                    float benefit = EquipmentBenefitScore(grant, unit, null);
+                    if (benefit <= 0f)
+                        continue;
+                    int tier = IsInActiveCombatTask(player, unit) ? 2 : 1;
+                    if (benefit > bestBenefit || (benefit == bestBenefit && tier > bestTier))
+                    {
+                        bestBenefit = benefit;
+                        bestTier = tier;
+                        bestLive = unit;
+                        bestCard = null;
+                    }
+                }
+
+                foreach (CardData hostCard in hand.Hand)
+                {
+                    if (hostCard == card || !IsUnitOrHeroCard(hostCard))
+                        continue;
+                    if (!EquipmentSystem.CanAttach(definition, hostCard, root, out _)
+                        || !AiResourceReservation.CanAfford(root, player, definition.resourceCost))
+                        continue;
+                    float benefit = EquipmentBenefitScore(grant, null, hostCard.Definition);
+                    if (benefit <= 0f)
+                        continue;
+                    const int tier = 0;
+                    if (benefit > bestBenefit || (benefit == bestBenefit && tier > bestTier))
+                    {
+                        bestBenefit = benefit;
+                        bestTier = tier;
+                        bestLive = null;
+                        bestCard = hostCard;
+                    }
+                }
+
+                if (bestLive != null || bestCard != null)
+                    return AiDecision.AttachEquipment(card, bestLive, bestCard, AiConfig.managementSupportCardScore);
+            }
+            return null;
+        }
+
+        // Whether `unit` is currently a member of an army committed to an active combat task — the
+        // Equipment host tie-break's top tier (a grant on a unit about to fight has immediate value).
+        private static bool IsInActiveCombatTask(PlayerSetupData player, UnitData unit)
+        {
+            foreach (AiTask task in AiTaskRegistry.TasksFor(player))
+            {
+                if (task.Army == null)
+                    continue;
+                if (task.Kind != AiTaskKind.RaidWeakerArmy && task.Kind != AiTaskKind.DefendCitadel
+                    && task.Kind != AiTaskKind.RaidReinforce && task.Kind != AiTaskKind.SecureBase
+                    && task.Kind != AiTaskKind.BuildBase)
+                    continue;
+                if (task.Army.Members.Contains(unit))
+                    return true;
+            }
+            return false;
+        }
+
+        // Internal-only host-ranking key (never added to AiDecision.Score) — replays
+        // EquipmentSystem.Apply's own math on a stat snapshot of the prospective host: every additive
+        // statChange first, then every override, summing the POSITIVE net change per touched stat (so an
+        // override 3 -> 8 scores its real +5, beating 7 -> 8's +1, and an exact no-op scores 0). Plus a
+        // flat weight per ability the grant genuinely adds that the host lacks, and per ability it
+        // actually removes/clears from the host. Exactly one of `unit` / `def` is non-null.
+        private static float EquipmentBenefitScore(EquipmentGrant grant, UnitData unit, CardDefinition def)
+        {
+            float score = 0f;
+
+            if (grant.statChanges != null && grant.statChanges.Count > 0)
+            {
+                var touched = new HashSet<EquipmentStat>();
+                var work = new Dictionary<EquipmentStat, int>();
+                foreach (EquipmentStatChange change in grant.statChanges)
+                {
+                    if (change == null)
+                        continue;
+                    touched.Add(change.stat);
+                    if (!work.ContainsKey(change.stat))
+                        work[change.stat] = HostStat(change.stat, unit, def);
+                }
+                foreach (EquipmentStatChange change in grant.statChanges)
+                    if (change != null && !change.isOverride)
+                        work[change.stat] = work[change.stat] + change.amount;
+                foreach (EquipmentStatChange change in grant.statChanges)
+                    if (change != null && change.isOverride)
+                        work[change.stat] = change.amount;
+                foreach (EquipmentStat stat in touched)
+                    score += System.Math.Max(0, work[stat] - HostStat(stat, unit, def));
+            }
+
+            ICollection<string> before = unit != null ? (ICollection<string>)unit.Abilities
+                : def?.grantedAbilities;
+            if (grant.addAbilities != null)
+                foreach (string tag in grant.addAbilities)
+                    if (!string.IsNullOrEmpty(tag) && (before == null || !before.Contains(tag)))
+                        score += AiConfig.unitCompositionGapBonus; // "a genuinely new ability" — reuse the same small flat tier
+            if (before != null)
+            {
+                if (grant.removeAbilities != null)
+                    foreach (string tag in grant.removeAbilities)
+                        if (!string.IsNullOrEmpty(tag) && before.Contains(tag))
+                            score += AiConfig.unitCompositionGapBonus;
+                if (grant.clearAbilityFamilies != null)
+                    foreach (AbilityFamily family in grant.clearAbilityFamilies)
+                    {
+                        if (family == AbilityFamily.None)
+                            continue;
+                        foreach (string tag in before)
+                            if (EquipmentSystem.IsFamilyMember(tag, family))
+                                score += AiConfig.unitCompositionGapBonus;
+                    }
+            }
+
+            return score;
+        }
+
+        // The host's own current value for `stat` — a live UnitData's runtime field, or a hand card's
+        // design-time CardDefinition field (same fields ArmyActions.DeployUnitFromCard spawns from).
+        private static int HostStat(EquipmentStat stat, UnitData unit, CardDefinition def)
+        {
+            if (unit != null)
+            {
+                switch (stat)
+                {
+                    case EquipmentStat.Attack: return unit.Attack;
+                    case EquipmentStat.Defense: return unit.Defense;
+                    case EquipmentStat.Resistance: return unit.Resistance;
+                    case EquipmentStat.Range: return unit.Range;
+                    case EquipmentStat.HitPoints: return unit.HitPointsMax;
+                    case EquipmentStat.MoveMax: return unit.MoveMax;
+                    case EquipmentStat.Initiative: return unit.Initiative;
+                    case EquipmentStat.ActivationApCost: return unit.ActivationApCost;
+                    case EquipmentStat.CommandRating: return unit.CommandRating;
+                    case EquipmentStat.Fate: return unit.FateMax;
+                    default: return 0;
+                }
+            }
+            if (def != null)
+            {
+                switch (stat)
+                {
+                    case EquipmentStat.Attack: return def.attack;
+                    case EquipmentStat.Defense: return def.defenseRating;
+                    case EquipmentStat.Resistance: return def.resistanceRating;
+                    case EquipmentStat.Range: return def.range;
+                    case EquipmentStat.HitPoints: return def.hitPoints;
+                    case EquipmentStat.MoveMax: return def.moveMax;
+                    case EquipmentStat.Initiative: return def.initiative;
+                    case EquipmentStat.ActivationApCost: return def.activationApCost;
+                    case EquipmentStat.CommandRating: return def.commandRating;
+                    case EquipmentStat.Fate: return def.fate;
+                    default: return 0;
+                }
+            }
+            return 0;
+        }
+
+        // Менеджмент · спец-карты — Facility execution. Re-validates EVERYTHING fresh (the base still
+        // owned + IsBase, a slot still free, AP + resources still affordable) before spending anything,
+        // then mirrors CardHandUI.TryDeployFacilityToHex's own spend/place order exactly. On any failure
+        // the card stays in hand and is parked in ctx.FailedPlayCardsThisTurn so it isn't retried this turn.
+        public static IEnumerator PlayFacilityCardRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            CardData card = decision.Card;
+            CardDefinition definition = card?.Definition;
+            if (root == null || definition == null)
+                yield break;
+
+            yield return AiTurnController.PanTo(ctx, decision.TargetHex);
+
+            int ap0 = root.ActionPoints;
+            int human0 = root.GetResource(ResourceType.Human);
+            int energy0 = root.GetResource(ResourceType.Energy);
+            int materials0 = root.GetResource(ResourceType.Materials);
+            int tech0 = root.GetResource(ResourceType.Tech);
+
+            BuildingData building = BuildingRegistry.FindAt(decision.TargetHex);
+            int slot = building != null ? building.FindFirstAvailableFacilitySlot() : -1;
+            string failReason = null;
+            if (building == null || building.Owner != player || !building.IsBase)
+                failReason = "no owned base at the target hex any more";
+            else if (slot < 0)
+                failReason = "no free unlocked Facility slot";
+            else if (!root.CanSpendActionPoints(definition.apCost))
+                failReason = "not enough action points";
+            else if (!definition.resourceCost.CanAfford(root))
+                failReason = "not enough resources";
+
+            if (failReason != null)
+            {
+                ctx.FailedPlayCardsThisTurn.Add(card);
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't place Facility {definition.displayName} — {failReason}.");
+                yield return AiTurnController.WaitStep(ctx);
+                yield break;
+            }
+
+            root.SpendActionPoints(definition.apCost);
+            definition.resourceCost.PayFrom(root);
+            building.FacilitySlots[slot] = FacilityData.FromDefinition(definition);
+            AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize)?.Hand.Remove(card);
+
+            string delta = AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
+            AiDebugLog.Write($"[AI] {player.Nickname}: placed Facility {definition.displayName} into "
+                + $"\"{building.Name}\" at ({decision.TargetHex.Q},{decision.TargetHex.R}) slot {slot} — Management task complete.{delta}");
+            yield return AiTurnController.WaitStep(ctx);
+        }
+
+        // Менеджмент · спец-карты — Equipment execution. Re-resolves the chosen host (a live unit still
+        // in a non-Prison own army, or the host card still in hand) and hands it to
+        // EquipmentSystem.TryAttach, which pays the equipment's own AP + resource cost ONCE and applies
+        // the grant (a live unit gets the stats/abilities now; a hand card carries CardData.Equipment
+        // until it deploys — see ArmyActions.DeployUnitFromCard). On any failure the equipment card
+        // stays in hand and is parked in ctx.FailedPlayCardsThisTurn.
+        public static IEnumerator AttachEquipmentRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        {
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            CardData card = decision.Card;
+            CardDefinition definition = card?.Definition;
+            if (root == null || definition == null)
+                yield break;
+
+            UnitData liveHost = decision.CollectorUnit;
+            CardData hostCard = decision.EquipmentHostCard;
+            ArmyData hostArmy = liveHost != null
+                ? ArmyRegistry.AllForOwner(player).FirstOrDefault(a => !a.IsPrison && a.Members.Contains(liveHost))
+                : null;
+            HexCoord panHex = hostArmy != null ? hostArmy.Hex : AiTurnController.GarrisonHexFor(player);
+            yield return AiTurnController.PanTo(ctx, panHex);
+
+            int ap0 = root.ActionPoints;
+            int human0 = root.GetResource(ResourceType.Human);
+            int energy0 = root.GetResource(ResourceType.Energy);
+            int materials0 = root.GetResource(ResourceType.Materials);
+            int tech0 = root.GetResource(ResourceType.Tech);
+
+            bool attached = false;
+            string failReason = null;
+            string hostName;
+            if (liveHost != null)
+            {
+                hostName = liveHost.Name;
+                if (hostArmy == null)
+                    failReason = "target unit is gone";
+                else if (!EquipmentSystem.TryAttach(definition, liveHost, root, out failReason))
+                    failReason = failReason ?? "attach rejected";
+                else
+                    attached = true;
+            }
+            else
+            {
+                AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize);
+                hostName = $"{hostCard?.Definition.displayName} card";
+                if (hand == null || !hand.Hand.Contains(hostCard))
+                    failReason = "target card no longer in hand";
+                else if (!EquipmentSystem.TryAttach(definition, hostCard, root, out failReason))
+                    failReason = failReason ?? "attach rejected";
+                else
+                    attached = true;
+            }
+
+            if (attached)
+            {
+                AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize)?.Hand.Remove(card);
+                string delta = AiTurnController.ResourceDeltaSuffix(root, ap0, human0, energy0, materials0, tech0);
+                AiDebugLog.Write($"[AI] {player.Nickname}: attached {definition.displayName} to {hostName} — Management task complete.{delta}");
+            }
+            else
+            {
+                ctx.FailedPlayCardsThisTurn.Add(card);
+                AiDebugLog.Write($"[AI] {player.Nickname}: couldn't attach {definition.displayName} to {hostName} — {failReason}.");
+            }
+            yield return AiTurnController.WaitStep(ctx);
+        }
     }
 }
