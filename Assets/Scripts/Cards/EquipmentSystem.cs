@@ -29,6 +29,38 @@ namespace Game.Cards
             }
         }
 
+        // The host's ability tag list AFTER this grant is applied, without mutating anything —
+        // same order as EquipmentGrant's doc / Apply below: clear families, then remove exact,
+        // then add. Used by the hand & catalog-preview UI to show what a card's abilities will
+        // become once an in-hand equipment attach reaches the spawned unit. `grant` null just
+        // returns a fresh copy of baseAbilities.
+        public static List<string> EffectiveAbilities(IEnumerable<string> baseAbilities, EquipmentGrant grant)
+        {
+            var result = baseAbilities != null ? new List<string>(baseAbilities) : new List<string>();
+            if (grant == null)
+                return result;
+
+            if (grant.clearAbilityFamilies != null)
+                foreach (AbilityFamily family in grant.clearAbilityFamilies)
+                {
+                    if (family == AbilityFamily.None)
+                        continue;
+                    result.RemoveAll(a => IsFamilyMember(a, family));
+                }
+
+            if (grant.removeAbilities != null)
+                foreach (string tag in grant.removeAbilities)
+                    if (!string.IsNullOrEmpty(tag))
+                        result.RemoveAll(a => a == tag);
+
+            if (grant.addAbilities != null)
+                foreach (string tag in grant.addAbilities)
+                    if (!string.IsNullOrEmpty(tag) && !result.Contains(tag))
+                        result.Add(tag);
+
+            return result;
+        }
+
         // --- validation --------------------------------------------------------------------
 
         public static bool CanAttach(CardDefinition equipment, UnitData target, PlayerRoot owner, out string reason)

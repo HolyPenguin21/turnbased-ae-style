@@ -43,6 +43,11 @@ namespace Game.Map
         [SerializeField] private ArmyButtonRowUI armyButtonRow;
         [SerializeField] private ArmyViewerModalUI armyViewerModal;
         [SerializeField] private BaseViewerModalUI baseViewerModal;
+        // Opened by the Research / Production contextual hex actions once their eligibility check
+        // passes (see OnResearchActionClicked / OnProductionActionClicked). Shares the same
+        // "map input locked out while open" treatment as the two modals above (folded into
+        // GameTurnController.InputBlocked via its own VisibilityChanged).
+        [SerializeField] private ResearchProductionModalUI researchProductionModal;
         // Up to 4 "build an extraction Facility" buttons, shown next to Garrison/Base — see
         // RefreshResourceActionRow.
         [SerializeField] private ResourceActionRowUI resourceActionRow;
@@ -1114,21 +1119,39 @@ namespace Game.Map
                 actions.Add(new HexActionDescriptor("Production", () => OnProductionActionClicked(coord)));
         }
 
-        // Stubs for the next milestone (the available-research / available-production modals).
         // Eligibility is re-checked here rather than trusted from the button's mere existence —
-        // the hex contents could have changed between render and click.
+        // the hex contents could have changed between render and click. On success, the shared
+        // ResearchProductionModalUI opens in the matching mode with the qualifying Hero; the
+        // catalog list, faction filtering, pagination and the (still inert) Create button all
+        // live inside the modal. The Research/Production action itself is the next milestone.
         private void OnResearchActionClicked(HexCoord hex)
         {
-            if (!IsResearchProductionEligible(hex, UnitAbilities.Research, UnitAbilities.Researcher))
-                return;
-            turnController?.ShowSpawnHint("Research UI is not implemented yet.");
+            OpenResearchProductionModal(hex, ResearchProductionMode.Research,
+                UnitAbilities.Research, UnitAbilities.Researcher);
         }
 
         private void OnProductionActionClicked(HexCoord hex)
         {
-            if (!IsResearchProductionEligible(hex, UnitAbilities.Production, UnitAbilities.Assembler))
+            OpenResearchProductionModal(hex, ResearchProductionMode.Production,
+                UnitAbilities.Production, UnitAbilities.Assembler);
+        }
+
+        private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode,
+            string facilityAbility, string heroAbility)
+        {
+            if (!IsResearchProductionEligible(hex, facilityAbility, heroAbility))
                 return;
-            turnController?.ShowSpawnHint("Production UI is not implemented yet.");
+
+            PlayerSetupData human = turnController?.CurrentPlayer;
+            UnitData hero = FindOwnHeroWithAbilityAt(hex, human, heroAbility);
+            if (hero == null)
+                return;
+
+            // The three hex-side modals are mutually exclusive — same funnelling as
+            // ShowArmyModal / ShowBaseModal.
+            if (armyViewerModal != null) armyViewerModal.Hide();
+            if (baseViewerModal != null) baseViewerModal.Hide();
+            researchProductionModal?.Show(mode, human, hero);
         }
 
         private bool IsResearchProductionEligible(HexCoord hex, string facilityAbility, string heroAbility)
@@ -1165,6 +1188,8 @@ namespace Game.Map
         {
             if (baseViewerModal != null)
                 baseViewerModal.Hide();
+            if (researchProductionModal != null)
+                researchProductionModal.Hide();
             armyViewerModal?.Show(army);
         }
 
@@ -1172,6 +1197,8 @@ namespace Game.Map
         {
             if (armyViewerModal != null)
                 armyViewerModal.Hide();
+            if (researchProductionModal != null)
+                researchProductionModal.Hide();
             baseViewerModal?.Show(building);
         }
 
@@ -1188,6 +1215,7 @@ namespace Game.Map
             if (armyButtonRow != null) armyButtonRow.Hide();
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();
+            if (researchProductionModal != null) researchProductionModal.Hide();
             if (resourceActionRow != null) resourceActionRow.Hide();
             SetSelectedArmy(null);
         }

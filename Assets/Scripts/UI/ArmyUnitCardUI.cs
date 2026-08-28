@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using Game.Cards;
+using Game.Core;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -71,9 +73,22 @@ namespace Game.UI
         // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
         // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
         [SerializeField] private EquipmentArtToggle equipmentArtToggle;
+        // Preview mode only (see SetupPreview): for a research/production catalog card, the text
+        // describing what it does — who it fits, the skills it grants, the stats it changes (see
+        // EquipmentCardText for an Equipment card; the ability list otherwise). Kept hidden in
+        // the normal Army Viewer flow so that view is unchanged. Optional prefab ref.
+        [SerializeField] private TMP_Text skillsText;
 
         public UnitData Unit { get; private set; }
         public bool IsDragging { get; private set; }
+
+        // Preview mode (see SetupPreview) — this card is showing a static CardDefinition inside
+        // ResearchProductionModalUI, not a live army member. In this mode every Army-specific
+        // behaviour is switched off (no drag/reorder, no repair/stealth/equipment hover, no
+        // ArmyViewerModalUI callbacks); a click just reports the card back through _previewClick.
+        private bool _previewMode;
+        private CardDefinition _previewCard;
+        private Action<CardDefinition> _previewClick;
 
         private ArmyViewerModalUI _modal;
         private Vector2 _homeSlot;
@@ -157,6 +172,123 @@ namespace Game.UI
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
 
             equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null);
+
+            // Preview-only element — never part of the Army Viewer's own card face.
+            if (skillsText != null)
+                skillsText.gameObject.SetActive(false);
+        }
+
+        // Static-catalog preview: show a CardDefinition (image, name, abilities, and the stat
+        // block its CardType actually uses) with no army behind it. Used by
+        // ResearchProductionModalUI's grid — the shared armyUnitCardPrefab, none of the Army
+        // Viewer flow. `onClick` is invoked with `card` on a left click; every drag/hover action
+        // is inert while _previewMode is set.
+        public void SetupPreview(CardDefinition card, GameConfig config, Action<CardDefinition> onClick)
+        {
+            _previewMode = true;
+            _previewCard = card;
+            _previewClick = onClick;
+            _modal = null;
+            Unit = null;
+
+            if (artImage != null)
+            {
+                artImage.sprite = card != null ? card.art : null;
+                artImage.color = Color.white;
+            }
+            if (nameText != null)
+                nameText.text = card != null ? card.displayName : string.Empty;
+            if (moveText != null)
+            {
+                string formatted = card != null && config != null
+                    ? config.FormatAbilities(card.grantedAbilities)
+                    : null;
+                moveText.text = formatted ?? string.Empty;
+            }
+
+            RefreshStatsRowForCard(card);
+
+            if (commandBadgeRoot != null) commandBadgeRoot.SetActive(false);
+            if (repairButton != null) repairButton.gameObject.SetActive(false);
+            if (stealthButton != null) stealthButton.gameObject.SetActive(false);
+            if (hiddenBadgeRoot != null) hiddenBadgeRoot.SetActive(false);
+            equipmentArtToggle?.Configure(null, null);
+
+            ShowCardCostPreview(card);
+            RefreshSkillsText(card, config);
+        }
+
+        // Preview mode: the card's own attach/deploy cost shown permanently on the shared badge
+        // strip — AP first, then Human/Energy/Materials/Tech, same slot order as
+        // ShowRepairCostPreview (which is hover-only; this one stays visible).
+        private void ShowCardCostPreview(CardDefinition card)
+        {
+            if (costPreviewRoot == null)
+                return;
+            if (card == null)
+            {
+                costPreviewRoot.SetActive(false);
+                return;
+            }
+            costPreviewRoot.SetActive(true);
+            ResourceCost cost = card.resourceCost;
+            SetBadge(0, card.apCost);
+            SetBadge(1, cost != null ? cost.human : 0);
+            SetBadge(2, cost != null ? cost.energy : 0);
+            SetBadge(3, cost != null ? cost.materials : 0);
+            SetBadge(4, cost != null ? cost.tech : 0);
+        }
+
+        // Preview mode: who the card fits, the skills it grants and the stats it changes. An
+        // Equipment card reads its grant via EquipmentCardText (host tags, added abilities, stat
+        // changes); any other card lists its own abilities. Hidden when there's nothing to say.
+        private void RefreshSkillsText(CardDefinition card, GameConfig config)
+        {
+            if (skillsText == null)
+                return;
+            string text;
+            if (card == null)
+                text = string.Empty;
+            else if (card.cardType == CardType.Equipment)
+                text = EquipmentCardText.CardFace(card, config);
+            else
+                text = config != null ? config.FormatAbilitiesDetailed(card.grantedAbilities) : string.Empty;
+            skillsText.text = text;
+            skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
+        }
+
+        // Preview-mode counterpart to RefreshStatsRow — same 5-slot mapping, read from a
+        // CardDefinition. Only Hero/Unit cards carry a meaningful stat block; every other
+        // CardType hides the row entirely.
+        private void RefreshStatsRowForCard(CardDefinition card)
+        {
+            if (statsRow == null)
+                return;
+
+            bool show = card != null && (card.cardType == CardType.Hero || card.cardType == CardType.Unit);
+            statsRow.SetActive(show);
+            if (!show)
+                return;
+
+            int slot1, slot2, slot5;
+            if (card.cardType == CardType.Hero)
+            {
+                slot1 = card.commandRating;
+                slot2 = card.fate;
+                slot5 = card.initiative;
+            }
+            else
+            {
+                slot1 = card.attack;
+                slot2 = card.defenseRating;
+                slot5 = card.range;
+            }
+
+            if (attackStatText != null) attackStatText.text = slot1.ToString();
+            if (defenseStatText != null) defenseStatText.text = slot2.ToString();
+            if (hpStatText != null) hpStatText.text = card.hitPoints.ToString();
+            if (moveStatText != null) moveStatText.text = card.moveMax.ToString();
+            if (rangeStatText != null) rangeStatText.text = slot5.ToString();
         }
 
         // See the field block's own comment for the fixed per-slot mapping. Hidden entirely for
@@ -234,6 +366,15 @@ namespace Game.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            // Preview mode: a left click just reports the card back to the owning modal; no
+            // detail view, no equipment-attach routing.
+            if (_previewMode)
+            {
+                if (eventData.button == PointerEventData.InputButton.Left)
+                    _previewClick?.Invoke(_previewCard);
+                return;
+            }
+
             // Equipment attach mode (see CardHandUI): right-click cancels a pending attach,
             // left-click makes this unit the host. Either consumes the click instead of the
             // normal detail view.
@@ -255,6 +396,8 @@ namespace Game.UI
         // same "hover-only, condition re-checked live" shape as BaseSlotCardUI's own Repair.
         public void OnPointerEnter(PointerEventData eventData)
         {
+            if (_previewMode)
+                return;
             bool repair = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
             repairButton?.gameObject.SetActive(repair);
 
@@ -273,6 +416,8 @@ namespace Game.UI
 
         public void OnPointerExit(PointerEventData eventData)
         {
+            if (_previewMode)
+                return;
             repairButton?.gameObject.SetActive(false);
             stealthButton?.gameObject.SetActive(false);
             equipmentArtToggle?.Revert();
@@ -351,7 +496,7 @@ namespace Game.UI
         // OnPointerClick's detail view stays available regardless.
         public void OnBeginDrag(PointerEventData eventData)
         {
-            if (Unit == null || (_modal != null && _modal.IsReadOnly))
+            if (_previewMode || Unit == null || (_modal != null && _modal.IsReadOnly))
                 return;
             IsDragging = true;
             if (_slotAnim != null)

@@ -119,6 +119,11 @@ namespace Game.Turns
         // CardHandUI.TryDeployIntoBaseModal). No rename popup of its own, so it never needs to
         // extend CardDraggingBlocked the way armyViewerModal's does.
         [SerializeField] private BaseViewerModalUI baseViewerModal;
+        // Same "map input locked out while open, card dragging left on" treatment as
+        // armyViewerModal — the Research / Production catalog picker (see
+        // HexSelectionController's Research/Production hex actions). No card-drop target of its
+        // own, so it only feeds InputBlocked, not CardDraggingBlocked.
+        [SerializeField] private ResearchProductionModalUI researchProductionModal;
         // Same "map input locked out entirely" treatment as the other modals above — see
         // HexSelectionController's own battleContactPopup/battleScreen fields (this controller
         // additionally drives their read-only ShowResolved form for delayed battles — see
@@ -168,6 +173,7 @@ namespace Game.Turns
             bool newInputBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
+                || (researchProductionModal != null && researchProductionModal.IsShowing)
                 || (battleContactPopup != null && battleContactPopup.IsShowing)
                 || (battleScreen != null && battleScreen.IsShowing)
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
@@ -263,6 +269,7 @@ namespace Game.Turns
             if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
+            if (researchProductionModal != null) researchProductionModal.VisibilityChanged += RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged += RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged += RecomputeBlockedState;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged += RecomputeBlockedState;
@@ -279,6 +286,7 @@ namespace Game.Turns
             if (spawnHintPopup != null) spawnHintPopup.Hidden -= ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
+            if (researchProductionModal != null) researchProductionModal.VisibilityChanged -= RecomputeBlockedState;
             if (battleContactPopup != null) battleContactPopup.VisibilityChanged -= RecomputeBlockedState;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RecomputeBlockedState;
             if (eventChoicePopup != null) eventChoicePopup.VisibilityChanged -= RecomputeBlockedState;

@@ -321,13 +321,13 @@ MonoBehaviour:
     cardType: 5
     apCost: 1
     resourceCost:
-      human: 0
-      energy: 0
+      human: 2
+      energy: 1
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 0
@@ -371,12 +371,12 @@ MonoBehaviour:
     apCost: 1
     resourceCost:
       human: 0
-      energy: 0
-      materials: 0
-      tech: 0
+      energy: 1
+      materials: 1
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 0
     attack: 0

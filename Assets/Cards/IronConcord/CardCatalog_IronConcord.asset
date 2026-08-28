@@ -354,8 +354,7 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities:
-    - Stealth4
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0

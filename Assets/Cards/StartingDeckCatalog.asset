@@ -74,6 +74,12 @@ MonoBehaviour:
       count: 1
     - cardKey: The Ashen/Scrapwing
       count: 2
+    - cardKey: Neutral/b_Lab
+      count: 1
+    - cardKey: Neutral/b_Factory
+      count: 1
+    - cardKey: Neutral/b_Intel
+      count: 1
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -138,6 +144,12 @@ MonoBehaviour:
     - cardKey: Iron Concord/Rusty Vulture
       count: 0
     - cardKey: Neutral/it_Flamer
-      count: 2
+      count: 0
     - cardKey: Neutral/it_Plasma Gun
-      count: 2
+      count: 0
+    - cardKey: Neutral/b_Lab
+      count: 1
+    - cardKey: Neutral/b_Factory
+      count: 1
+    - cardKey: Neutral/b_Intel
+      count: 1

@@ -234,6 +234,14 @@ namespace Game.Map
         // (UnitAbilities.Researcher / Assembler). A garrison is a normal location here; so is an
         // ordinary named army.
         public static bool HasOwnHeroWithAbilityAt(HexCoord hex, PlayerSetupData player, string ability)
+            => FindOwnHeroWithAbilityAt(hex, player, ability) != null;
+
+        // The actual Hero the Research/Production contextual action found (see
+        // HasOwnHeroWithAbilityAt for the eligibility rule) — HexSelectionController hands this
+        // straight to ResearchProductionModalUI so its left panel can show which Hero qualifies.
+        // First match wins, in ArmyRegistry order then Members order; no picker UI yet when more
+        // than one Hero qualifies.
+        public static UnitData FindOwnHeroWithAbilityAt(HexCoord hex, PlayerSetupData player, string ability)
         {
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
@@ -241,9 +249,9 @@ namespace Game.Map
                     continue;
                 foreach (UnitData member in army.Members)
                     if (member.IsHero && !member.IsPrisoner && member.HasAbility(ability))
-                        return true;
+                        return member;
             }
-            return false;
+            return null;
         }
 
         // The hero action behind each of HexInfoPanelUI's up-to-4 resource buttons (see

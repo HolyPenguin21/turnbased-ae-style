@@ -109,16 +109,7 @@ namespace Game.UI
                 artImage.sprite = definition.art;
             if (nameText != null)
                 nameText.text = definition != null ? definition.displayName : string.Empty;
-            if (typeText != null)
-            {
-                // Abilities only — no card type prefix (matches ArmyUnitCardUI's own SkillsText
-                // slot). Abbreviated per GameConfig.abilityAbbreviations (see
-                // GameConfig.FormatAbilities). An Equipment card shows, in order, who it fits,
-                // the abilities its grant adds, then its stat changes (see EquipmentCardText).
-                typeText.text = definition != null && definition.cardType == CardType.Equipment
-                    ? EquipmentCardText.CardFace(definition, _hand?.GameConfig)
-                    : _hand?.GameConfig?.FormatAbilities(definition?.grantedAbilities) ?? string.Empty;
-            }
+            RefreshAbilityText();
 
             RefreshStatsRow(definition);
 
@@ -144,6 +135,33 @@ namespace Game.UI
         {
             equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig);
             RefreshStatsRow(Data?.Definition);
+            RefreshAbilityText();
+        }
+
+        // typeText content. An Equipment card shows who it fits + what its grant does (see
+        // EquipmentCardText). Every other card shows its ability tags — folding in an attached
+        // in-hand equipment's added/removed abilities (see CardData.Equipment) so the face
+        // matches what EquipmentSystem.Apply will give the spawned unit. Called from Setup and
+        // again by CardHandUI right after an attach lands on this hand card.
+        private void RefreshAbilityText()
+        {
+            if (typeText == null)
+                return;
+            CardDefinition definition = Data?.Definition;
+            if (definition == null)
+            {
+                typeText.text = string.Empty;
+                return;
+            }
+            if (definition.cardType == CardType.Equipment)
+            {
+                typeText.text = EquipmentCardText.CardFace(definition, _hand?.GameConfig);
+                return;
+            }
+            var abilities = EquipmentSystem.EffectiveAbilities(
+                definition.grantedAbilities,
+                Data?.Equipment != null ? Data.Equipment.equipment : null);
+            typeText.text = _hand?.GameConfig?.FormatAbilities(abilities) ?? string.Empty;
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility,
