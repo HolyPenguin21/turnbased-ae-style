@@ -225,7 +225,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Researcher
     resourceYield:
       human: 0
       energy: 0
@@ -267,7 +268,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Assembler
     resourceYield:
       human: 0
       energy: 0

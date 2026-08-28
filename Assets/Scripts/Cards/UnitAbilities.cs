@@ -97,9 +97,34 @@ namespace Game.Cards
         // matched against BuildingData.Abilities.
 
         public const string Barracks = "Barracks";
-        // Carried by a placed FacilityData (e.g. Research Facility), not a BuildingData — same
-        // open-tag pool, no behavior wired yet.
-        public const string Lab = "Lab";
+
+        // --- Research / Production data contract (no gameplay effect yet) --------------------
+        // Four semantic capability/role tags the next milestone (Research/Production) will gate
+        // on. Nothing here changes AP, movement, combat, Facility placement, resources, AI or
+        // any current player action — these only make the "can this hero use this building"
+        // question answerable through the existing ability system, without probing displayName,
+        // card ids or new boolean fields.
+        //
+        //   Research   — carried by a placed FacilityData (b_Lab). Checked with
+        //                building.HasFacilityWithAbility(UnitAbilities.Research), which already
+        //                walks the real FacilitySlots — no Facility-name knowledge needed.
+        //   Researcher — carried by a deployed Hero (grantedAbilities -> UnitData.Abilities at
+        //                spawn). Checked with hero.IsHero && hero.HasAbility(UnitAbilities.Researcher).
+        //   Production — Facility counterpart of Research, carried by b_Factory.
+        //   Assembler  — Hero counterpart of Researcher, fully symmetric.
+        //
+        // Contract for the next task: Research is available only when a deployed Hero is in an
+        // army standing ON the building's hex — position read via ArmyData.Hex, NOT a new
+        // UnitData.Hex — and both hero.IsHero && hero.HasAbility(Researcher) and
+        // building.HasFacilityWithAbility(Research) hold. Production uses the symmetric
+        // Assembler + Production pair.
+        //
+        // Replaces the never-wired "Lab" tag: that string was a Facility *name*, not the
+        // capability the next mechanic depends on, so it is not kept as a parallel synonym.
+        public const string Research = "Research";
+        public const string Researcher = "Researcher";
+        public const string Production = "Production";
+        public const string Assembler = "Assembler";
         // Carried by an extraction Facility (see GameConfig.extractionFacilityCards) or baked
         // directly onto the citadel — each resource type collected this way contributes
         // 1 + FacilityData.UpgradeLevel toward that resource's per-turn income, capped by the
@@ -144,7 +169,8 @@ namespace Game.Cards
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
-            Barracks, Lab, CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
+            Barracks, Research, Researcher, Production, Assembler,
+            CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 
         // Human-readable form of a tag, derived purely from its own PascalCase spelling (a

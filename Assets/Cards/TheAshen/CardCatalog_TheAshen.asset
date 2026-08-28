@@ -197,36 +197,36 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 4
-    displayName: Dust Runner
-    art: {fileID: 21300000, guid: 6c8777d1b75ec1e4686d389be6be3b4f, type: 3}
-    detailArt: {fileID: 21300000, guid: 7ae764e72b70df140b17b980599843b5, type: 3}
+    displayName: Rusty Miller
+    art: {fileID: 21300000, guid: 7d977972b96b70641af85d6112c9fe3e, type: 3}
+    detailArt: {fileID: 21300000, guid: f4e0cf679015d6a4f898951b54dc6e12, type: 3}
     faction: 4
-    cardType: 1
+    cardType: 0
     apCost: 1
     resourceCost:
-      human: 0
+      human: 1
       energy: 0
-      materials: 2
+      materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 2
     activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 3
-    defenseRating: 2
-    resistanceRating: 2
-    range: 2
-    hitPoints: 4
+    commandRating: 3
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 08000000
     grantedAbilities:
-    - r1s5
+    - Assembler
     resourceYield:
       human: 0
       energy: 0
@@ -284,9 +284,9 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 6
-    displayName: Vera Sterling
-    art: {fileID: 21300000, guid: 6ae26c3c6892ece42a6eb11e8d5f6f88, type: 3}
-    detailArt: {fileID: 21300000, guid: 0469a30d682d2f04b96278a9193adbb2, type: 3}
+    displayName: Elena Hayes
+    art: {fileID: 21300000, guid: 866c080e6078278498ffe58939d48f6f, type: 3}
+    detailArt: {fileID: 21300000, guid: fe7ef4ff3a145d341af27b432029dd4f, type: 3}
     faction: 4
     cardType: 0
     apCost: 1
@@ -298,8 +298,8 @@ MonoBehaviour:
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
-    commandRating: 6
-    fate: 4
+    commandRating: 7
+    fate: 5
     attack: 0
     defenseRating: 0
     resistanceRating: 0
@@ -326,9 +326,9 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 7
-    displayName: Elena Hayes
-    art: {fileID: 21300000, guid: 866c080e6078278498ffe58939d48f6f, type: 3}
-    detailArt: {fileID: 21300000, guid: fe7ef4ff3a145d341af27b432029dd4f, type: 3}
+    displayName: Vera Sterling
+    art: {fileID: 21300000, guid: 6ae26c3c6892ece42a6eb11e8d5f6f88, type: 3}
+    detailArt: {fileID: 21300000, guid: 0469a30d682d2f04b96278a9193adbb2, type: 3}
     faction: 4
     cardType: 0
     apCost: 1
@@ -340,8 +340,8 @@ MonoBehaviour:
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
-    commandRating: 7
-    fate: 5
+    commandRating: 6
+    fate: 4
     attack: 0
     defenseRating: 0
     resistanceRating: 0
@@ -396,7 +396,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Researcher
     resourceYield:
       human: 0
       energy: 0
@@ -455,35 +456,36 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 10
-    displayName: Rusty Miller
-    art: {fileID: 21300000, guid: 7d977972b96b70641af85d6112c9fe3e, type: 3}
-    detailArt: {fileID: 21300000, guid: f4e0cf679015d6a4f898951b54dc6e12, type: 3}
+    displayName: Dust Runner
+    art: {fileID: 21300000, guid: 6c8777d1b75ec1e4686d389be6be3b4f, type: 3}
+    detailArt: {fileID: 21300000, guid: 7ae764e72b70df140b17b980599843b5, type: 3}
     faction: 4
-    cardType: 0
+    cardType: 1
     apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 0
-      materials: 0
+      materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 4
     activationApCost: 1
-    commandRating: 3
-    fate: 2
-    attack: 0
-    defenseRating: 0
-    resistanceRating: 0
-    range: 0
-    hitPoints: 6
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
     initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 0
+    antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
-    grantedAbilities: []
+    unitTypeTags: 01000000
+    grantedAbilities:
+    - r1s5
     resourceYield:
       human: 0
       energy: 0

@@ -110,7 +110,7 @@ namespace Game.Cards
 
         // Ability tags — the only skill/ability list a card has (see Game.Cards.UnitAbilities
         // for the fixed-value ones this project actually gives combat effects to, and
-        // Game.Cards.UnitAbilities for the Base-card ones like Barracks/Lab/CollectX). Still
+        // Game.Cards.UnitAbilities for the Base-card ones like Barracks/Research/CollectX). Still
         // a List<string>, not an enum like unitTypeTags — the choices are UnitAbilityCatalog.
         // knownAbilities (tunable data, not compiled code) — but [AbilityTag] (see
         // Assets/Editor/AbilityTagDrawer.cs) gives it the same per-entry dropdown in the

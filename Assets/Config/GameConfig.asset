@@ -229,8 +229,14 @@ MonoBehaviour:
     abbreviation: AP+2
   - ability: Barracks
     abbreviation: Barracks
-  - ability: Lab
-    abbreviation: Lab
+  - ability: Research
+    abbreviation: Rsch
+  - ability: Researcher
+    abbreviation: Rschr
+  - ability: Production
+    abbreviation: Prod
+  - ability: Assembler
+    abbreviation: Asmb
   - ability: CollectHuman
     abbreviation: cH
   - ability: CollectEnergy

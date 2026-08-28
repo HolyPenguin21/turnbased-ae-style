@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Game.Cards
 {
     // Single place to write a description for every ability tag in the game (see
-    // Game.Cards.UnitAbilities — Base-card ones like Barracks/Lab/CollectX and Hero/Unit
+    // Game.Cards.UnitAbilities — Base-card ones like Barracks/Research/CollectX and Hero/Unit
     // ones like RapidReaction alike) — plus the tunable magnitudes for the fixed-value combat
     // abilities below. A separate small asset (Assets/Cards/UnitAbilityCatalog.asset) rather
     // than folding these into GameConfig, same reasoning as FactionCardCatalog living on its

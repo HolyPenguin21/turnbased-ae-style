@@ -43,9 +43,14 @@ MonoBehaviour:
     description: 'Passive: +2 AP/turn'
   - tag: Barracks
     description: Accepts hand deploys
-  - tag: Lab
-    description: "Carried by a placed Facility (e.g. Research Facility) \u2014 no
-      behavior wired yet"
+  - tag: Research
+    description: Facility enables research.
+  - tag: Researcher
+    description: Hero can use Research facilities.
+  - tag: Production
+    description: Facility enables production.
+  - tag: Assembler
+    description: Hero can use Production facilities.
   - tag: CollectHuman
     description: Collects Human resource each turn
   - tag: CollectEnergy
