@@ -389,7 +389,13 @@ namespace Game.Ai
             float axisOffset = (strategy.AxisFor(category) - 0.5f) * AiConfig.strategyAxisGain;
             float over = Mathf.Max(0f, (budget?.OverBudgetRatio(category) ?? 0f) - 1f);
             float budgetPenalty = Mathf.Min(over * AiConfig.strategyBudgetOverGain, AiConfig.strategyBudgetPenaltyCap);
-            return rawScore + axisOffset - budgetPenalty;
+            float adjusted = rawScore + axisOffset - budgetPenalty;
+            // A routine candidate (rawScore < strategyExemptScore) must stay routine: the axis
+            // tilt alone can add up to +strategyAxisGain/2, which would otherwise let a strong
+            // Aggression/Defence axis push e.g. a deliberately-capped-119 AirStrike past the
+            // protected tactical/retreat/emergency ladder (120/125/130). Clamp the strategic
+            // nudge so it can re-rank the sub-120 space freely but never cross into it.
+            return Mathf.Min(adjusted, AiConfig.strategyExemptScore - 1f);
         }
     }
 }
