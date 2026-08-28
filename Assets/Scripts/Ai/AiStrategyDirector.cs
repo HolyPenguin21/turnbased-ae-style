@@ -380,6 +380,11 @@ namespace Game.Ai
         public static float Adjust(float rawScore, AiTaskCategory category, AiStrategyAssessment strategy, AiTurnBudget budget)
         {
             float axisOffset = (strategy.AxisFor(category) - 0.5f) * AiConfig.strategyAxisGain;
+            // Tactical/emergency candidates (rawScore >= strategyBudgetExemptScore) keep the axis
+            // tilt but are exempt from the over-budget penalty — the budget shapes routine work,
+            // it must never sink a retreat/intercept below ordinary Economy/Recon.
+            if (rawScore >= AiConfig.strategyBudgetExemptScore)
+                return rawScore + axisOffset;
             float over = Mathf.Max(0f, (budget?.OverBudgetRatio(category) ?? 0f) - 1f);
             float budgetPenalty = Mathf.Min(over * AiConfig.strategyBudgetOverGain, AiConfig.strategyBudgetPenaltyCap);
             return rawScore + axisOffset - budgetPenalty;
