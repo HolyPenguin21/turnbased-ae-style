@@ -532,7 +532,7 @@ namespace Game.Ai
                         return null;
                     var fleeTarget = new AiScoutPlanner.ScoutTarget(garrisonHex, 0f,
                         "a known enemy army is too strong — retreats to the citadel");
-                    return AiDecision.Move(task.Army, fleeTarget, null, AiConfig.economyBaseWeight, AiTaskCategory.Economy);
+                    return AiDecision.Move(task.Army, fleeTarget, null, AiConfig.defenceRetreatScore, AiTaskCategory.Economy);
                 }
 
                 if (HexGridMath.Distance(task.Army.Hex, enemyThreat.Value.Hex) <= task.Army.CurrentMovement)
