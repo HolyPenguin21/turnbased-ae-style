@@ -110,6 +110,14 @@ namespace Game.Ai
         // AdvanceReturnForConsolidationTask via AiTurnController.Decide's own per-step loop like
         // any other in-flight task, and removed the moment the army actually reaches its home hex
         // — see that method's own comment.
+        //
+        // Architectural boundary (2026-08-28 P1, project owner's own spec item 14): this task is
+        // ONLY ever a MoveArmy toward home — it competes for AP in Decide's own arbiter exactly
+        // like any other travel task and does NOTHING else. Every local, AP-free reorg primitive
+        // (Collapse / garrison Overflow-split / Consolidate / Swap) lives EXCLUSIVELY in
+        // AiTurnController.RunGarrisonReorgPhase, which runs once as the very last thing a turn
+        // does. The two never overlap: ReturnForConsolidation only brings a stray army to the
+        // hex where RunGarrisonReorgPhase's own lone-army-fold tier will absorb it on a later turn.
         ReturnForConsolidation,
 
         // Development (P0, 2026-08-28, project owner's own spec) — Research + Production combined

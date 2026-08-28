@@ -165,7 +165,16 @@ namespace Game.Ai
 
         // Active's own TRIGGER (2026-08-22, project owner's own spec — "видел или видит армию", in
         // radius) — strongest known sighting within AiConfig.defenceReactionRadius of ANY of this
-        // player's own Base-tagged hexes. No beatable/reachable filter any more (that used to make
+        // player's own Base-tagged hexes.
+        //
+        // Spec item 18 boundary (2026-08-28 P1): this — an honest AiMapMemory.KnownEnemySighting,
+        // fog-of-war-respecting — is the ONLY source of a concrete интercept TARGET for Active
+        // Defence. The sanctioned live-ArmyData cheats (CheatEstimateRaiderThreat,
+        // DynamicPatrolUrgencyScore) may raise the FACT and STRENGTH of a Patrol alert but never
+        // feed a hex here: the AI may know a sector is suspicious without gaining an unearned fix
+        // on an invisible army's exact position.
+        //
+        // No beatable/reachable filter any more (that used to make
         // this the SAME check as "is Active ready to move"; those are now two separate questions —
         // see this class's own header comment).
         //
@@ -307,6 +316,12 @@ namespace Game.Ai
         // the enemy fields anywhere on the whole map. Recomputed on every new patrol assembly
         // (never cached) — accounts for the enemy strengthening, or simply moving into or out of
         // range, over the course of the match.
+        // Spec item 18 boundary (2026-08-28 P1): the return type is deliberately hex-free — a
+        // ThreatStrength (presence + Defense/Attack sums + a composition roster for sizing the
+        // response), never a position. This cheat may raise the FACT that a patrol is warranted
+        // and the STRENGTH it should be built to; it must never hand any caller the coordinates of
+        // a hidden army. The concrete intercept target comes only from FindActiveThreatSighting
+        // (honest AiMapMemory) — see its own boundary note.
         // Scoped to a single `homeHex` since 2026-08-23 (project owner's own report) — used to scan
         // ALL of this player's own base hexes at once regardless of which home's task was asking, so
         // a scout sitting near Base2 could make PatrolThreatPresent read true for the Citadel's own
@@ -372,6 +387,10 @@ namespace Game.Ai
         // (something real is right on top of one) — deliberately never reaches defenceActiveScore's
         // own tier, which stays reserved for an ACTUALLY-CONFIRMED engagement (BuildPostureDecision's
         // own Active/Turtle branches, all gated on a real AiMapMemory sighting, never this cheat).
+        // Spec item 18 boundary (2026-08-28 P1): the return is a single scalar — the STRENGTH of a
+        // general Patrol alert — with no hex anywhere in it. A hidden army raising this score is
+        // the AI sensing a suspicious sector, not learning where the army is; the intercept target
+        // still only ever comes from FindActiveThreatSighting (honest AiMapMemory).
         // Scoped to a single `homeHex` since 2026-08-23 (project owner's own report, same fix as
         // CheatEstimateRaiderThreat's own — see that method's own comment) — used to pool EVERY base
         // hex plus EVERY patrol-facility hex this player owns into one shared `guardedHexes` set

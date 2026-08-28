@@ -1111,6 +1111,11 @@ namespace Game.Ai
         // the now-arrived lone unit up automatically on a LATER pass/turn — this method never folds
         // it in itself, per the project owner's own original spec (no new consolidation logic
         // needed here at all).
+        //
+        // Architectural boundary (2026-08-28 P1, spec item 14): the ONLY decision this method ever
+        // returns is a plain AiDecision.Move toward homeHex (or null). It must never emit a
+        // Collapse/Consolidate/Swap/SplitGarrison decision — those local, AP-free reorg primitives
+        // belong exclusively to AiTurnController.RunGarrisonReorgPhase's own end-of-turn drain.
         public static AiDecision AdvanceReturnForConsolidationTask(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task)
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army))
@@ -1472,11 +1477,12 @@ namespace Game.Ai
         //
         // FULLY isolated from the Hero/Unit alternation/backlog machinery above — neither kind is a
         // CardRole, neither feeds unplayedHeroCards/unplayedUnitCards/cardRoleBacklogShareWeight/
-        // NotifyCardRolePlayed, and every internal "which card / which base / which host" preference
-        // (EquipmentBenefitScore, base-activity order, combat-task host tie-break) stays private here and
-        // is NEVER added to the cross-category AiDecision.Score: both kinds compete at a flat
-        // AiConfig.managementSupportCardScore, AiTaskCategory.Management (same "internal ranking must not
-        // leak into the arbiter" rule UnitCompositionFitBonus already keeps).
+        // NotifyCardRolePlayed. "Which card / which base / which host" preferences stay private here.
+        // Facility competes at a flat AiConfig.managementSupportCardScore; Equipment starts there and
+        // adds a bounded bump (up to equipmentBenefitScoreBonusCap) from the winning host's
+        // EquipmentBenefitScore — spec item 15, so a strong reinforcement outranks a marginal one
+        // while Equipment as a whole stays inside the Management housekeeping band. Both kinds are
+        // AiTaskCategory.Management.
         //
         // A card that fails to execute this turn is added to ctx.FailedPlayCardsThisTurn (keyed by
         // CardData, same set the PlayCard pipeline uses) so the same doomed action isn't re-proposed and
@@ -1599,7 +1605,16 @@ namespace Game.Ai
                 }
 
                 if (bestLive != null || bestCard != null)
-                    return AiDecision.AttachEquipment(card, bestLive, bestCard, AiConfig.managementSupportCardScore);
+                {
+                    // Spec item 15 — fold the winning host's own EquipmentBenefitScore into the
+                    // EXTERNAL score as a bounded bump so a strong reinforcement of an important
+                    // army outranks a marginal attach, without Equipment ever leaving the
+                    // Management housekeeping band (see AiConfig.equipmentBenefitToScore).
+                    float bump = Mathf.Clamp(bestBenefit * AiConfig.equipmentBenefitToScore,
+                        0f, AiConfig.equipmentBenefitScoreBonusCap);
+                    return AiDecision.AttachEquipment(card, bestLive, bestCard,
+                        AiConfig.managementSupportCardScore + bump);
+                }
             }
             return null;
         }
@@ -1622,54 +1637,35 @@ namespace Game.Ai
             return false;
         }
 
-        // Internal-only host-ranking key (never added to AiDecision.Score) — scores the REAL end
-        // state a host would be in after this grant, computed by replaying EquipmentSystem.Apply's
-        // own order, never by rewarding individual clear/remove/add/stat operations in isolation:
+        // Host-ranking key for a candidate Equipment attach — scores the REAL end state a host
+        // would be in after this grant, never rewarding individual clear/remove/add/stat
+        // operations in isolation. The post-attach state itself comes straight from the gameplay
+        // helper EquipmentSystem.Predict (2026-08-28 P1, spec item 16) — this method only reads
+        // the host's current stats/abilities off the right source and scores the diff, so it can
+        // never drift from EquipmentSystem.Apply's own order/clamps:
         //
-        //  Abilities — copy the host's current set, then clearAbilityFamilies -> removeAbilities ->
-        //  addAbilities (exactly Apply's sequence), then diff against the original: each genuinely
-        //  new ability is +unitCompositionGapBonus, each ability actually lost is
+        //  Abilities — diff Predict's effective tag set against the host's current one: each
+        //  genuinely new ability is +unitCompositionGapBonus, each ability actually lost is
         //  -unitCompositionGapBonus. A remove-then-re-add of the same tag (it_Flamer stripping and
         //  restoring Pyrokinetic) nets 0; an untouched set nets 0; destroying an ability the host
-        //  wanted (it_Plasma Gun clearing ShockAttack/Hyperkinetic/Pyrokinetic) is a real minus,
-        //  not a bonus.
+        //  wanted (it_Plasma Gun clearing ShockAttack/Hyperkinetic/Pyrokinetic) is a real minus.
         //
-        //  Stats — replay every additive change, then every override, applying the same per-stat
-        //  min-clamp EquipmentSystem.Combine uses (see StatFloor), then score the real net change
-        //  from the original value: `after - before` for ordinary stats (so a real downgrade also
+        //  Stats — for every stat the grant touches, score Predict's after-value against the
+        //  host's before-value: `after - before` for ordinary stats (so a real downgrade also
         //  lowers the score rather than being ignored), inverted to `before - after` for
         //  ActivationApCost, where lower is the improvement (1 -> 0).
         //
         // Exactly one of `unit` / `def` is non-null. The `benefit > 0` gate at the call site then
         // keeps the AI from spending an Equipment card on a host it would not, on balance, help.
+        // The returned magnitude also feeds the EXTERNAL AiDecision.Score as a bounded bump — see
+        // TryEquipmentCardCandidate / AiConfig.equipmentBenefitToScore (spec item 15).
         private static float EquipmentBenefitScore(EquipmentGrant grant, UnitData unit, CardDefinition def)
         {
-            float score = 0f;
-
-            if (grant.statChanges != null && grant.statChanges.Count > 0)
-            {
-                var before = new Dictionary<EquipmentStat, int>();
-                var work = new Dictionary<EquipmentStat, int>();
+            var before = new Dictionary<EquipmentStat, int>();
+            if (grant.statChanges != null)
                 foreach (EquipmentStatChange change in grant.statChanges)
-                {
-                    if (change == null || before.ContainsKey(change.stat))
-                        continue;
-                    int b = HostStat(change.stat, unit, def);
-                    before[change.stat] = b;
-                    work[change.stat] = b;
-                }
-                foreach (EquipmentStatChange change in grant.statChanges)
-                    if (change != null && !change.isOverride)
-                        work[change.stat] = System.Math.Max(StatFloor(change.stat), work[change.stat] + change.amount);
-                foreach (EquipmentStatChange change in grant.statChanges)
-                    if (change != null && change.isOverride)
-                        work[change.stat] = System.Math.Max(StatFloor(change.stat), change.amount);
-                foreach (KeyValuePair<EquipmentStat, int> kv in before)
-                {
-                    int delta = work[kv.Key] - kv.Value;
-                    score += kv.Key == EquipmentStat.ActivationApCost ? -delta : delta;
-                }
-            }
+                    if (change != null && !before.ContainsKey(change.stat))
+                        before[change.stat] = HostStat(change.stat, unit, def);
 
             var beforeAbilities = new HashSet<string>();
             if (unit != null)
@@ -1679,45 +1675,25 @@ namespace Game.Ai
                 foreach (string a in def.grantedAbilities)
                     beforeAbilities.Add(a);
 
-            var finalAbilities = new HashSet<string>(beforeAbilities);
-            if (grant.clearAbilityFamilies != null)
-                foreach (AbilityFamily family in grant.clearAbilityFamilies)
-                    if (family != AbilityFamily.None)
-                        finalAbilities.RemoveWhere(a => EquipmentSystem.IsFamilyMember(a, family));
-            if (grant.removeAbilities != null)
-                foreach (string tag in grant.removeAbilities)
-                    if (!string.IsNullOrEmpty(tag))
-                        finalAbilities.Remove(tag);
-            if (grant.addAbilities != null)
-                foreach (string tag in grant.addAbilities)
-                    if (!string.IsNullOrEmpty(tag))
-                        finalAbilities.Add(tag);
+            PredictedEquipmentState after = EquipmentSystem.Predict(grant, before, beforeAbilities);
 
-            foreach (string tag in finalAbilities)
+            float score = 0f;
+            foreach (KeyValuePair<EquipmentStat, int> kv in before)
+            {
+                int afterValue = after.Stats.TryGetValue(kv.Key, out int v) ? v : kv.Value;
+                int delta = afterValue - kv.Value;
+                score += kv.Key == EquipmentStat.ActivationApCost ? -delta : delta;
+            }
+
+            var afterAbilities = new HashSet<string>(after.Abilities);
+            foreach (string tag in afterAbilities)
                 if (!beforeAbilities.Contains(tag))
                     score += AiConfig.unitCompositionGapBonus; // a genuinely new ability
             foreach (string tag in beforeAbilities)
-                if (!finalAbilities.Contains(tag))
+                if (!afterAbilities.Contains(tag))
                     score -= AiConfig.unitCompositionGapBonus; // an ability really lost
 
             return score;
-        }
-
-        // EquipmentSystem.Combine's own per-stat floor (see EquipmentSystem.ApplyStat's Combine
-        // calls) — replicated here so the sim above ranks the exact value an attach would produce.
-        private static int StatFloor(EquipmentStat stat)
-        {
-            switch (stat)
-            {
-                case EquipmentStat.Defense:
-                case EquipmentStat.Range:
-                case EquipmentStat.Initiative:
-                case EquipmentStat.HitPoints:
-                case EquipmentStat.MoveMax:
-                    return 1;
-                default:
-                    return 0;
-            }
         }
 
         // The host's own current value for `stat` — a live UnitData's runtime field, or a hand card's

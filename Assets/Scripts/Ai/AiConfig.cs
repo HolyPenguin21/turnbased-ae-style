@@ -1059,16 +1059,28 @@ namespace Game.Ai
         // in-progress task, not idle housekeeping.
         public const float managementReorgScore = 80f;
         // Менеджмент · спец-карты (Facility / Equipment) — 2026-08-28, project owner's own spec.
-        // ONE shared flat EXTERNAL score for both card kinds in this first pass (Facility placement
-        // into an owned Base's free unlocked slot; Equipment attach onto a compatible live unit or
-        // in-hand Unit/Hero card). Every internal "which card / which base+slot / which host"
-        // ranking (EquipmentBenefitScore, base-activity order, combat-task host preference) stays
-        // internal to AiManagementPlanner and is NEVER added to this — same "internal ranking must
-        // not leak into the cross-category arbiter" rule UnitCompositionFitBonus/BuildFacilityTask.
-        // RankHex already follow. Ordinary Management tier: above managementAviationCardScore(60)
+        // The base EXTERNAL score for both card kinds (Facility placement into an owned Base's free
+        // unlocked slot; Equipment attach onto a compatible live unit or in-hand Unit/Hero card).
+        // Facility uses this flat. Equipment adds a bounded benefit-driven bump on top (spec item
+        // 15 — see equipmentBenefitToScore just below); every OTHER internal "which card / which
+        // base+slot / which host" ranking (base-activity order, combat-task host preference) still
+        // stays internal to AiManagementPlanner and never leaks into the arbiter, same rule
+        // UnitCompositionFitBonus/BuildFacilityTask.RankHex follow.
+        // Ordinary Management tier: above managementAviationCardScore(60)
         // and the idle fallbacks(15), below repairUnitBaseWeight(90), managementReturnHomeScore(99),
         // routine Economy/Recon/Aggression(100+) and every tactical/safety tier(120+).
         public const float managementSupportCardScore = 80f;
+        // Equipment attach only — a bounded, dynamic top-up on managementSupportCardScore driven by
+        // the chosen host's own EquipmentBenefitScore (2026-08-28 P1, project owner's spec item 15).
+        // Facility placement stays flat; only Equipment reads this. equipmentBenefitToScore is the
+        // external-Score points added per point of internal benefit, equipmentBenefitScoreBonusCap
+        // the hard ceiling on that add. The cap is deliberately small: 80 + 8 = 88 keeps even the
+        // strongest attach BELOW repairUnitBaseWeight(90)/managementReturnHomeScore(99)/routine
+        // Economy-Recon-Aggression(100+), so a genuinely powerful buff on an important army sorts
+        // ahead of a marginal one, but Equipment as a whole never climbs out of the Management
+        // housekeeping band — a weak attach (benefit at/near 0) still competes at the flat 80.
+        public const float equipmentBenefitToScore = 0.5f;
+        public const float equipmentBenefitScoreBonusCap = 8f;
         // Recce cards never reach TryPlayCardCandidates at all any more (2026-08-19, project
         // owner's own call — "ScoutPlanner должен сам решить куда положить своего скаута,
         // менеджеру об этом знать не обязательно") — AiScoutPlanner.

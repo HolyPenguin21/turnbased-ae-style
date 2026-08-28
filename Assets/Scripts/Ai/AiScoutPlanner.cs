@@ -521,6 +521,35 @@ namespace Game.Ai
                    ?? hand.Hand.FirstOrDefault(Matches);
         }
 
+        // Стелс · спец-item 17 (2026-08-28 P1, project owner's own spec) — whether a solo Recce's
+        // NEXT step actually warrants paying 1 AP to slip into stealth first, instead of doing it
+        // reflexively before every first scouting move just because the turn can afford it.
+        // True only when there's a real reason to hide:
+        //  · a known, non-neutral enemy sighting within scoutFleeRadius of EITHER the scout's
+        //    current hex or the hex it's about to step onto — the actual detection-risk case
+        //    (same sighting source + neutral filter TryFlee itself trusts), and the case TryFlee's
+        //    own willEnterStealthFirstStep path already assumes will hide the scout; or
+        //  · that next step leads into a still-cooling scout-danger zone (AiMapMemory.
+        //    IsScoutDangerous) — "movement into a potentially dangerous area".
+        // A scout crossing empty, known-safe ground stays visible and keeps its AP. Detection and
+        // movement rules are untouched — this only gates the voluntary EnterStealth in
+        // AiTurnController.MoveArmyRoutine.
+        public static bool ScoutMoveWarrantsStealth(PlayerSetupData player, ArmyData army, HexCoord nextStep)
+        {
+            if (army == null)
+                return false;
+            if (AiMapMemory.IsScoutDangerous(player, nextStep))
+                return true;
+            foreach (AiMapMemory.KnownEnemySighting sighting in
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex, nextStep }, AiConfig.scoutFleeRadius))
+            {
+                if (sighting.Owner != null && sighting.Owner.IsNeutral)
+                    continue; // neutrals never threaten a scout — same rule as VisitHexTask.TryFlee
+                return true;
+            }
+            return false;
+        }
+
         // ---- Execution ----
 
         // Разведка · сборка Recce-состава, шаг 1's own execution — plain ArmyActions.CreateArmy,

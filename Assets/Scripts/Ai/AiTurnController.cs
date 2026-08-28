@@ -613,9 +613,17 @@ namespace Game.Ai
 
             AiDebugLog.Write($"[AI] {player.Nickname}: {candidates.Count} candidate(s) — {DescribeCandidates(candidates)}");
 
+            // Unified arbiter (see Decide's own class comment). Strictly-greater Score wins outright;
+            // on an EXACT Score tie the winner is decided by CompareTieBreak, a centralized
+            // deterministic key — never by which planner tier happened to AddRange its candidate
+            // first (2026-08-28 P0: with a sixth Level-1 category and the strategic clamp folding
+            // more candidates onto the same value, that hidden dependency on planner call order
+            // would otherwise decide an increasing share of steps). Decisions with different Scores
+            // are completely unaffected.
             AiDecision best = null;
             foreach (AiDecision candidate in candidates)
-                if (best == null || candidate.Score > best.Score)
+                if (best == null || candidate.Score > best.Score
+                    || (candidate.Score == best.Score && CompareTieBreak(candidate, best) < 0))
                     best = candidate;
 
             if (best == null)
@@ -628,6 +636,35 @@ namespace Game.Ai
 
             Commit(player, best, pool, ctx.Map);
             return best;
+        }
+
+        // Centralized deterministic tie-break for Decide's own arbiter (2026-08-28 P0) — invoked
+        // ONLY when two candidates carry a bit-for-bit identical Score, so it can never reorder
+        // anything the Score itself already separates. Returns <0 when `a` should be preferred over
+        // `b`. Every key component is derived purely from the candidate's own content (category,
+        // action kind, the army/hex/card it names, finally its human-readable reason) and never
+        // from list position, so the outcome is stable no matter what order the category planners
+        // were queried in. Category is compared first so a tie between, say, a Defence and a
+        // Management candidate resolves the same way every turn; the later components only matter
+        // for two same-category candidates that also happen to share a Score.
+        private static int CompareTieBreak(AiDecision a, AiDecision b)
+        {
+            int ca = a.Category.HasValue ? (int)a.Category.Value : int.MaxValue;
+            int cb = b.Category.HasValue ? (int)b.Category.Value : int.MaxValue;
+            if (ca != cb) return ca.CompareTo(cb);
+
+            if (a.Kind != b.Kind) return ((int)a.Kind).CompareTo((int)b.Kind);
+
+            int cmp = string.CompareOrdinal(a.ExistingArmy?.Name ?? "", b.ExistingArmy?.Name ?? "");
+            if (cmp != 0) return cmp;
+
+            if (a.TargetHex.Q != b.TargetHex.Q) return a.TargetHex.Q.CompareTo(b.TargetHex.Q);
+            if (a.TargetHex.R != b.TargetHex.R) return a.TargetHex.R.CompareTo(b.TargetHex.R);
+
+            cmp = string.CompareOrdinal(a.Card?.Definition?.displayName ?? "", b.Card?.Definition?.displayName ?? "");
+            if (cmp != 0) return cmp;
+
+            return string.CompareOrdinal(a.Reason ?? "", b.Reason ?? "");
         }
 
         // Deferred mutation for whichever candidate Decide's own arbiter just picked — every
@@ -774,6 +811,14 @@ namespace Game.Ai
                     // GarrisonReorgTask's own class comment for the full three-regime writeup. A
                     // fresh recompute of all three every iteration, not a cached batch — whichever
                     // one fires changes what the very next iteration itself sees.
+                    //
+                    // Architectural boundary (2026-08-28 P1, spec item 14): these three
+                    // Try*Candidate calls are the SOLE entry points for local, AP-free army
+                    // reorganization (Collapse / Overflow-split / Consolidate / Swap), and they are
+                    // reached from NOWHERE but this loop — never from Decide's own arbiter, never
+                    // from a persistent task's continuation. AiTaskKind.ReturnForConsolidation is a
+                    // plain travel task that only walks a stray army to a garrison hex; the actual
+                    // folding-in happens right here, on a later turn, once it has arrived.
                     AiDecision decision = AiManagementPlanner.TryCollapseCandidate(player, garrison, ctx)
                         ?? AiManagementPlanner.TryGarrisonSplitCandidate(player, garrison)
                         ?? AiManagementPlanner.TryConsolidationCandidate(player, garrison, ctx);
@@ -1123,14 +1168,20 @@ namespace Game.Ai
             bool wantsBuildingTakeover = WouldTakeOverBuildingAt(destination, player);
 
             // Safe-first stealth rule (stealth design §8): a solo reconnaissance army whose
-            // sole member carries Stealth4 slips into stealth before it ever moves, provided
-            // it still has 1 AP to spend and isn't already committed to a job a hidden unit
-            // can't finish (raid/defence/capture — those tasks are never IsSoloRecce anyway,
-            // but the Kind check keeps it explicit) and this specific move isn't a building
-            // takeover. Entry is 1 AP per unit; voluntary exit later is free.
+            // sole member carries Stealth4 slips into stealth before it moves, provided it still
+            // has 1 AP to spend and isn't already committed to a job a hidden unit can't finish
+            // (raid/defence/capture — those tasks are never IsSoloRecce anyway, but the Kind check
+            // keeps it explicit) and this specific move isn't a building takeover.
+            //
+            // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth now costs its 1 AP
+            // only when AiScoutPlanner.ScoutMoveWarrantsStealth says this step carries a real
+            // detection risk (a known enemy near the scout or its next hex) or heads into a
+            // cooling scout-danger zone — a scout crossing known-safe ground stays visible and
+            // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is free.
             if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
                 && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
-                && root != null)
+                && root != null
+                && AiScoutPlanner.ScoutMoveWarrantsStealth(player, army, destination))
             {
                 UnitData scout = army.Members[0];
                 if (Game.Map.StealthSystem.CanEnterStealth(scout))

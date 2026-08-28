@@ -36,6 +36,13 @@ namespace Game.Ai
     // armies, event guards). Other players' own resource stockpiles stay the project's own
     // documented cheat exception (see AiGoalScorer's own IncomeBehindBonus) and never route
     // through here.
+    //
+    // Spec item 18 boundary (2026-08-28 P1): this store is the ONLY sanctioned source of a
+    // concrete enemy POSITION for Оборона — AiDefencePlanner.FindActiveThreatSighting builds its
+    // intercept target purely from KnownEnemySightingsNear here. The live-ArmyData Defence cheats
+    // (AiDefencePlanner.CheatEstimateRaiderThreat / DynamicPatrolUrgencyScore) may sense that a
+    // sector is threatened and size the patrol response, but they return only scalars and must
+    // never turn a hidden army into a targetable hex; that always goes through this memory.
     public static class AiMapMemory
     {
         private class EnemySighting

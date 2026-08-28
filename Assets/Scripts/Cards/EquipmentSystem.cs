@@ -270,29 +270,29 @@ namespace Game.Cards
             switch (change.stat)
             {
                 case EquipmentStat.Attack:
-                    unit.Attack = Combine(unit.Attack, change, 0);
+                    unit.Attack = Combine(unit.Attack, change, FloorFor(EquipmentStat.Attack));
                     break;
                 case EquipmentStat.Defense:
-                    unit.Defense = Combine(unit.Defense, change, 1);
+                    unit.Defense = Combine(unit.Defense, change, FloorFor(EquipmentStat.Defense));
                     break;
                 case EquipmentStat.Resistance:
-                    unit.Resistance = Combine(unit.Resistance, change, 0);
+                    unit.Resistance = Combine(unit.Resistance, change, FloorFor(EquipmentStat.Resistance));
                     break;
                 case EquipmentStat.Range:
-                    unit.Range = Combine(unit.Range, change, 1);
+                    unit.Range = Combine(unit.Range, change, FloorFor(EquipmentStat.Range));
                     break;
                 case EquipmentStat.Initiative:
-                    unit.Initiative = Combine(unit.Initiative, change, 1);
+                    unit.Initiative = Combine(unit.Initiative, change, FloorFor(EquipmentStat.Initiative));
                     break;
                 case EquipmentStat.ActivationApCost:
-                    unit.ActivationApCost = Combine(unit.ActivationApCost, change, 0);
+                    unit.ActivationApCost = Combine(unit.ActivationApCost, change, FloorFor(EquipmentStat.ActivationApCost));
                     break;
                 case EquipmentStat.CommandRating:
-                    unit.CommandRating = Combine(unit.CommandRating, change, 0);
+                    unit.CommandRating = Combine(unit.CommandRating, change, FloorFor(EquipmentStat.CommandRating));
                     break;
                 case EquipmentStat.HitPoints:
                 {
-                    int newMax = Combine(unit.HitPointsMax, change, 1);
+                    int newMax = Combine(unit.HitPointsMax, change, FloorFor(EquipmentStat.HitPoints));
                     // A permanent buff raises current HP with max; an override that lowers max
                     // clamps current down to it, but never heals a wounded unit past what it had.
                     int delta = newMax - unit.HitPointsMax;
@@ -302,7 +302,7 @@ namespace Game.Cards
                 }
                 case EquipmentStat.MoveMax:
                 {
-                    int newMove = Combine(unit.MoveMax, change, 1);
+                    int newMove = Combine(unit.MoveMax, change, FloorFor(EquipmentStat.MoveMax));
                     int delta = newMove - unit.MoveMax;
                     unit.MoveMax = newMove;
                     unit.MoveCurrent = Mathf.Clamp(unit.MoveCurrent + Mathf.Max(0, delta), 0, newMove);
@@ -310,7 +310,7 @@ namespace Game.Cards
                 }
                 case EquipmentStat.Fate:
                 {
-                    int newFateMax = Combine(unit.FateMax, change, 0);
+                    int newFateMax = Combine(unit.FateMax, change, FloorFor(EquipmentStat.Fate));
                     int delta = newFateMax - unit.FateMax;
                     unit.FateMax = newFateMax;
                     unit.Fate = Mathf.Clamp(unit.Fate + Mathf.Max(0, delta), 0, newFateMax);
@@ -324,6 +324,80 @@ namespace Game.Cards
         {
             int result = change.isOverride ? change.amount : current + change.amount;
             return Mathf.Max(floor, result);
+        }
+
+        // The per-stat minimum Combine clamps to — the ONE table, read by ApplyStat above and by
+        // Predict below. Extracted from ApplyStat's own former inline literals (2026-08-28 P1,
+        // project owner's spec item 16): any evaluator that needs the post-attach value of a stat
+        // must get the same floor gameplay applies, without keeping its own copy of this list.
+        public static int FloorFor(EquipmentStat stat)
+        {
+            switch (stat)
+            {
+                case EquipmentStat.Defense:
+                case EquipmentStat.Range:
+                case EquipmentStat.Initiative:
+                case EquipmentStat.HitPoints:
+                case EquipmentStat.MoveMax:
+                    return 1;
+                default:
+                    return 0;
+            }
+        }
+
+        // The effective host state an EquipmentGrant would produce — the single gameplay-owned
+        // "what does this attach actually do" helper (2026-08-28 P1, spec item 16), so callers
+        // that must weigh an attach BEFORE committing it (AiManagementPlanner's host ranking, the
+        // hand/catalog preview UI) never re-derive Apply's arithmetic themselves and can't drift
+        // from it.
+        //
+        // Replays Apply's exact order without mutating anything: ability clear-families -> remove
+        // -> add (via EffectiveAbilities), then additive stat changes, then override stat changes,
+        // each Combine-floored by FloorFor, then the same RapidReaction activation-cost parity
+        // Apply enforces at the end. `beforeStats` supplies the host's current value for every
+        // stat the grant touches; a stat missing from it is treated as 0. `grant` null yields the
+        // untouched inputs back.
+        public static PredictedEquipmentState Predict(EquipmentGrant grant,
+            IReadOnlyDictionary<EquipmentStat, int> beforeStats, IEnumerable<string> beforeAbilities)
+        {
+            var abilities = EffectiveAbilities(beforeAbilities, grant);
+            var stats = new Dictionary<EquipmentStat, int>();
+
+            if (grant?.statChanges != null)
+            {
+                foreach (EquipmentStatChange change in grant.statChanges)
+                {
+                    if (change == null || stats.ContainsKey(change.stat))
+                        continue;
+                    stats[change.stat] = beforeStats != null && beforeStats.TryGetValue(change.stat, out int b) ? b : 0;
+                }
+                foreach (EquipmentStatChange change in grant.statChanges)
+                    if (change != null && !change.isOverride)
+                        stats[change.stat] = Combine(stats[change.stat], change, FloorFor(change.stat));
+                foreach (EquipmentStatChange change in grant.statChanges)
+                    if (change != null && change.isOverride)
+                        stats[change.stat] = Combine(stats[change.stat], change, FloorFor(change.stat));
+            }
+
+            if (abilities.Contains(UnitAbilities.RapidReaction))
+                stats[EquipmentStat.ActivationApCost] = 0;
+
+            return new PredictedEquipmentState(stats, abilities);
+        }
+    }
+
+    // Return value of EquipmentSystem.Predict — the post-attach snapshot an evaluator scores.
+    // Stats holds an after-value only for the stats the grant actually changes; Abilities is the
+    // host's full effective tag set once the grant's clear/remove/add have been replayed.
+    public readonly struct PredictedEquipmentState
+    {
+        public readonly IReadOnlyDictionary<EquipmentStat, int> Stats;
+        public readonly IReadOnlyList<string> Abilities;
+
+        public PredictedEquipmentState(IReadOnlyDictionary<EquipmentStat, int> stats, IReadOnlyList<string> abilities)
+        {
+            Stats = stats;
+            Abilities = abilities;
         }
     }
 }
