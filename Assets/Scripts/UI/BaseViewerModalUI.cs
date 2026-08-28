@@ -223,6 +223,13 @@ namespace Game.UI
             if (_currentBuilding == null || definition == null)
                 return false;
 
+            // Only a Base/Citadel takes Facility cards — matches the direct hex-drop path's own
+            // IsValidFacilityHexDropTarget check (see CardHandUI). A hero-built resource site can
+            // be shown in this viewer too, and without this its FacilitySlots could be filled
+            // through the modal even though the hex-drop path forbids it.
+            if (!_currentBuilding.IsBase)
+                return false;
+
             int? cellIndex = ResolveGridSlotIndex(screenPosition);
             if (!cellIndex.HasValue)
                 return false;
