@@ -61,6 +61,11 @@ namespace Game.Ai.V2
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 
+            // ACCUMULATIVE follow-up reservation, per axis, across every demand this phase. Each
+            // prepared executor needs its own follow-up AP left in the axis entitlement / real AP;
+            // reserving only for "the next one" starves the mission allocator when DesiredAmount > 1.
+            var reservedFollowupByAxis = new Dictionary<DesireAxis, float>();
+
             int actions = 0;
             foreach (AxisDemand demand in demands
                 .OrderByDescending(d => d.Value)
@@ -69,16 +74,18 @@ namespace Game.Ai.V2
                 float deficit = demand.DesiredAmount;
                 while (deficit > 0f && actions < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
                 {
-                    CardPlayPlan? plan = CardCandidateEvaluator.BestForDemand(
-                        snap, player, root, hand, ctx, demand, ledger, commitments);
-                    if (plan == null)
+                    reservedFollowupByAxis.TryGetValue(demand.RequestingAxis, out float reserved);
+                    (CardPlayPlan plan, float followupAp)? pick = CardCandidateEvaluator.BestForDemand(
+                        snap, player, root, hand, ctx, demand, ledger, commitments, reserved);
+                    if (pick == null)
                     {
                         AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: no feasible useful card "
-                            + $"({DesireAxes.Abbrev(demand.RequestingAxis)} entitlement {F(ledger.Balance(demand.RequestingAxis))})");
+                            + $"({DesireAxes.Abbrev(demand.RequestingAxis)} entitlement "
+                            + $"{F(ledger.Balance(demand.RequestingAxis))}, followup reserved {F(reserved)})");
                         break;
                     }
 
-                    CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, plan.Value);
+                    CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, pick.Value.plan);
                     if (play.StateChanged)
                         result.StateChanged = true;
                     if (play.ApSpent > 0f)
@@ -94,12 +101,14 @@ namespace Game.Ai.V2
                         break;
                     }
 
+                    reservedFollowupByAxis[demand.RequestingAxis] = reserved + pick.Value.followupAp;
                     actions++;
                     result.CardsPlayed++;
                     deficit -= 1f;
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: played \"{plan.Value.Card.Definition?.displayName}\" "
-                        + $"@{plan.Value.DeploymentHex.Q},{plan.Value.DeploymentHex.R} "
-                        + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(demand.RequestingAxis)}, {plan.Value.Kind})");
+                    AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: played \"{pick.Value.plan.Card.Definition?.displayName}\" "
+                        + $"@{pick.Value.plan.DeploymentHex.Q},{pick.Value.plan.DeploymentHex.R} "
+                        + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(demand.RequestingAxis)}, {pick.Value.plan.Kind}, "
+                        + $"followup {F(pick.Value.followupAp)}ap reserved)");
                 }
             }
 
@@ -215,14 +224,16 @@ namespace Game.Ai.V2
 
                 foreach (ArmyData a in own)
                 {
-                    if (!a.Hex.Equals(hex) || !a.HasRoom || a.IsPrison)
+                    if (!a.Hex.Equals(hex) || a.IsPrison)
                         continue;
                     if (a.IsGarrison)
                     {
-                        plans.Add(CardPlayPlan.Into(card, hex, DeploymentKind.Garrison, a));
+                        // stricter than HasRoom — keep garrisonReservedSlots free for ops / reorg.
+                        if (PlacementRules.CanDepositIntoGarrison(a))
+                            plans.Add(CardPlayPlan.Into(card, hex, DeploymentKind.Garrison, a));
                         continue;
                     }
-                    if (a.Members.Count == 0)
+                    if (!a.HasRoom || a.Members.Count == 0)
                         continue; // an empty non-garrison army is a shell — handled above
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
                         || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a));
@@ -243,16 +254,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class CardCandidateEvaluator
     {
-        // ---- Phase A: best FEASIBLE plan to satisfy one demand, or null ----
-        public static CardPlayPlan? BestForDemand(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            AxisBudgetLedger ledger, ActorCommitments commitments)
+        // ---- Phase A: best FEASIBLE (plan, followupAp) to satisfy one demand, or null ----
+        //  reservedFollowupAp = follow-up AP already reserved for executors this demand's axis
+        //  prepared earlier this phase — the check is cumulative, not "room for one more".
+        public static (CardPlayPlan plan, float followupAp)? BestForDemand(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             float axisBudget = ledger.Balance(demand.RequestingAxis);
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
+            int stealthPortion = (demand.RequiredTraits & TraitPreference.Stealth) != 0
+                ? AiConfigV2.scoutOptionalStealthAp : 0;
 
-            CardPlayPlan? best = null;
+            (CardPlayPlan plan, float followupAp)? best = null;
             float bestScore = float.NegativeInfinity;
 
             foreach (CardData card in hand.Hand.ToList())
@@ -263,15 +278,20 @@ namespace Game.Ai.V2
                     continue;
                 float traitBonus = TraitBonus(card, demand.PreferredTraits);
 
+                // Real follow-up cost of THIS specific executor: the deployed unit's own
+                // activation AP + any stealth surcharge the demand implies (not a global notional).
+                float followupAp = Mathf.Max(demand.MinimumFollowupAp,
+                    (card.Definition?.activationApCost ?? AiConfigV2.scoutNotionalActivationAp) + stealthPortion);
+
                 foreach (CardPlayPlan plan in PlacementSelector.BuildPlans(snap, player, card, commitments, soloOnly))
                 {
                     if (!CardPlayExecutor.Preflight(player, root, hand, ctx, plan, out _))
                         continue;
 
-                    // Feasibility BEFORE ranking: the demand's follow-up AP must survive, in the
-                    // requesting axis's entitlement AND in real AP (on top of the housekeeping
-                    // reserve). Reserved, not spent.
-                    float needWithFollowup = plan.TotalApCost + demand.MinimumFollowupAp;
+                    // Feasibility BEFORE ranking: preparation cost + ALL follow-up AP (already
+                    // reserved + this one) must survive, in the axis entitlement AND in real AP on
+                    // top of the housekeeping reserve. Reserved, not spent.
+                    float needWithFollowup = plan.TotalApCost + reservedFollowupAp + followupAp;
                     if (needWithFollowup > axisBudget + eps)
                         continue;
                     if (root.ActionPoints - needWithFollowup - AiConfigV2.housekeepingApReserve < -eps)
@@ -280,12 +300,12 @@ namespace Game.Ai.V2
                     float fit = TargetFit(plan.DeploymentHex, demand.TargetHex);
                     float costFactor = 1f + AiConfigV2.stratCardApCostWeight * plan.TotalApCost;
                     float score = (1f + traitBonus) * (0.5f + 0.5f * fit) / Mathf.Max(0.0001f, costFactor);
-                    score += ReuseBonus(plan.Kind);
+                    score += PlacementBonus(plan.Kind);
 
                     if (score > bestScore)
                     {
                         bestScore = score;
-                        best = plan;
+                        best = (plan, followupAp);
                     }
                 }
             }
@@ -329,7 +349,7 @@ namespace Game.Ai.V2
                     float util = scarcity + versatility + traits + handPressure
                         - AiConfigV2.surplusApCostWeight * plan.TotalApCost
                         - resCost - oversupply
-                        + ReuseBonus(plan.Kind);
+                        + PlacementBonus(plan.Kind);
 
                     if (best == null || util > best.Value.utility)
                         best = (plan, util);
@@ -339,8 +359,18 @@ namespace Game.Ai.V2
         }
 
         // ---------------------------------------------------------------- helpers ----
-        private static float ReuseBonus(DeploymentKind k) =>
-            k == DeploymentKind.NewArmy ? 0f : AiConfigV2.stratReuseShellBonus;
+        // Graded placement preference (V1 principle): fill an existing suitable army / the
+        // garrison before founding a fresh one. Garrison > existing army > reusable shell > new.
+        private static float PlacementBonus(DeploymentKind k)
+        {
+            switch (k)
+            {
+                case DeploymentKind.Garrison:      return AiConfigV2.stratPlacementGarrisonBonus;
+                case DeploymentKind.ExistingArmy:  return AiConfigV2.stratPlacementExistingArmyBonus;
+                case DeploymentKind.ReusableShell: return AiConfigV2.stratPlacementReusableShellBonus;
+                default:                           return 0f; // NewArmy
+            }
+        }
 
         private static bool MatchesCapability(CardData card, CapabilityKind kind)
         {

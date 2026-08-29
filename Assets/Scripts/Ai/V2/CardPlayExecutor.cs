@@ -105,9 +105,16 @@ namespace Game.Ai.V2
                         || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex) || !plan.TargetArmy.HasRoom)
                     { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
                     break;
-                default: // ExistingArmy / Garrison
+                case DeploymentKind.Garrison:
                     if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
-                        || plan.TargetArmy.IsPrison || !plan.TargetArmy.HasRoom)
+                        || !plan.TargetArmy.IsGarrison
+                        || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy))
+                    { reason = "garrison no longer a valid deposit target (reserved slots)"; return false; }
+                    break;
+                default: // ExistingArmy
+                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                        || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count == 0
+                        || !plan.TargetArmy.HasRoom)
                     { reason = "target army no longer valid / has no room"; return false; }
                     break;
             }
@@ -153,7 +160,7 @@ namespace Game.Ai.V2
                 attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
 
             // Real mutation, measured — DeployUnitFromCard spends AP/resources before it spawns, so
-            // a false return can still have moved the books.
+            // even a FALSE return can have moved the books.
             result.ApSpent = apStart - root.ActionPoints;
             bool resChanged = !SameResources(resStart, Snapshot(root));
             result.StateChanged = result.ApSpent > 0f || resChanged || result.ArmyCreated;
@@ -166,6 +173,9 @@ namespace Game.Ai.V2
 
             hand.Hand.Remove(plan.Card);   // exactly once, only on success — the canonical V2 boundary
             result.Deployed = true;
+            // A successful deploy ALWAYS changed the world: a new unit exists, the target army
+            // grew, the hand shrank, capability supply moved — even for a 0-AP / 0-resource card.
+            result.StateChanged = true;
             return result;
         }
 

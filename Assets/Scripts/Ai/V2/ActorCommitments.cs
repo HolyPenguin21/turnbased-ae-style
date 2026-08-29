@@ -59,5 +59,28 @@ namespace Game.Ai.V2
         public static bool HasLiveActor(MissionIntent intent, PlayerSetupData player) =>
             intent?.PreferredMoverArmyId.HasValue == true && player != null
             && ArmyRegistry.AllForOwner(player).Any(a => a != null && a.Id == intent.PreferredMoverArmyId.Value);
+
+        // Stronger check for "this objective is covered": the committed actor must not only exist,
+        // it must still be STRUCTURALLY able to run the intent — a solo Recce, and for a stealth
+        // intent (Surveil, or an exposed Explore) also stealth-capable. Read from the snapshot's
+        // own-army list (populated with IsSoloRecce / IsHidden / CanEnterStealth / StealthLevel),
+        // so no live game-system call. A live-but-incapable actor (folded into a combat army,
+        // lost its stealth unit) leaves the objective genuinely uncovered.
+        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap)
+        {
+            if (intent?.PreferredMoverArmyId == null || snap?.Self?.Armies == null)
+                return false;
+            int id = intent.PreferredMoverArmyId.Value;
+            ArmySnapshot a = null;
+            foreach (ArmySnapshot s in snap.Self.Armies)
+                if (s != null && s.ArmyId == id) { a = s; break; }
+            if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                return false;
+
+            bool needsStealth = intent.Scout?.Kind == ScoutTargetKind.Surveil;
+            if (needsStealth && !(a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0))
+                return false;
+            return true;
+        }
     }
 }

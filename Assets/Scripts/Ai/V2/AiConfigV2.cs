@@ -340,13 +340,20 @@ namespace Game.Ai.V2
 
         // Card-candidate scoring, shared by Phase A + Phase B.
         //   costFactor  = 1 + stratCardApCostWeight * plan.TotalApCost   (higher AP -> lower score)
-        //   reuse bonus = a flat add for reusing an empty shell instead of paying CreateArmy AP
         //   trait bonus = a flat add when a demand's preferred trait (e.g. Stealth) is on the card
         //   TargetFit   = 1 at the demand's TargetHex, decaying linearly to 0 at stratTargetFitRange
         public const float stratCardApCostWeight = 0.15f;
-        public const float stratReuseShellBonus = 0.10f;
         public const float stratTraitMatchBonus = 0.35f;
         public const int stratTargetFitRange = 10;
+
+        // GRADED placement preference (add to the candidate score). Mirrors V1's card-placement
+        // principle — fill an existing suitable army / the garrison before founding a new one:
+        //   Garrison  >  Existing suitable army  >  Reusable empty shell  >  new army (0).
+        // A solo (Recce / ScoutCapability) card is shell-or-new only, so the top two never apply
+        // to it. Garrison respects garrisonReservedSlots (PlacementRules.CanDepositIntoGarrison).
+        public const float stratPlacementGarrisonBonus = 0.30f;
+        public const float stratPlacementExistingArmyBonus = 0.20f;
+        public const float stratPlacementReusableShellBonus = 0.10f;
 
         // Phase B — surplus preparation. Bounded greedy; no look-ahead simulation.
         public const int maxSurplusActionsPerTurn = 2;      // bounds play/draw/play/draw draining the deck/economy

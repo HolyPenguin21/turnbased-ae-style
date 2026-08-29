@@ -44,15 +44,16 @@ namespace Game.Ai.V2
             if (snap?.Self?.Armies == null || objectives == null || objectives.Count == 0)
                 yield break;
 
-            // An objective is only COVERED when a live intent tracks it AND that intent still has a
-            // live, owned committed actor — an intent whose scout was destroyed leaves its
-            // objective genuinely uncovered (netted back out below by available spare scouts).
+            // An objective is only COVERED when a live intent tracks it AND that intent's committed
+            // actor is still STRUCTURALLY capable of running it (solo Recce, stealth-capable for a
+            // Surveil). A destroyed / folded / de-stealthed scout leaves its objective genuinely
+            // uncovered — netted back out below by spare eligible scouts.
             var coveredKeys = new HashSet<MissionIntentKey>();
             int activeReconExecutions = 0;
             if (activeIntents != null)
                 foreach (MissionIntent i in activeIntents)
                 {
-                    if (i.Scout == null || !ActorCommitments.HasLiveActor(i, player))
+                    if (i.Scout == null || !ActorCommitments.HasCapableActor(i, snap))
                         continue;
                     coveredKeys.Add(i.IntentKey);
                     activeReconExecutions++;
@@ -71,49 +72,67 @@ namespace Game.Ai.V2
                 yield break;
 
             int requiredNewExecutions = Mathf.Min(remainingConcurrency, uncovered.Count);
+            List<ReconObjective> topN = uncovered.Take(requiredNewExecutions).ToList();
 
-            // Does the work we would newly fund actually need stealth? If any of the top
-            // requiredNewExecutions uncovered objectives is stealth-Required, treat the whole
-            // demand as stealth-Required — conservative (may over-request when the AI holds
-            // non-stealth scouts against a mix of jobs) but it removes the estimator divergence:
-            // never count a plain scout toward a job it cannot execute.
-            bool stealthRequired = uncovered
-                .Take(requiredNewExecutions)
-                .Any(o => o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+            // Split by capability PROFILE — a stealth-Required objective needs a stealth scout; a
+            // plain Explore is fine with any scout. Emitting one blanket stealth demand would make
+            // the AI build stealth scouts to cover plain jobs an ordinary existing scout already
+            // handles.
+            int stealthNeeded = topN.Count(o =>
+                o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+            int genericNeeded = requiredNewExecutions - stealthNeeded;
 
-            // Available supply via the SHARED eligibility primitive — the exact rule provisioning
-            // applies (solo Recce, can act now, and for a stealth job: hidden or able to enter
-            // stealth before its first move), minus armies already claimed by an operation.
-            var probe = new ScoutMissionTarget
+            var claimed = commitments?.ClaimedArmyIdSet;
+            int stealthSupply = ScoutMoverSelector.Eligible(snap,
+                new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed).Count;
+            int anySupply = ScoutMoverSelector.Eligible(snap,
+                new ScoutMissionTarget { Stealth = StealthRequirement.None }, claimed).Count;
+
+            // Stealth jobs consume stealth scouts first; whatever stealth scouts are left plus the
+            // non-stealth eligible scouts cover the generic jobs.
+            int missStealth = Mathf.Max(0, stealthNeeded - stealthSupply);
+            int stealthLeftover = Mathf.Max(0, stealthSupply - stealthNeeded);
+            int genericSupply = Mathf.Max(0, anySupply - stealthSupply) + stealthLeftover;
+            int missGeneric = Mathf.Max(0, genericNeeded - genericSupply);
+
+            float stealthFollowup = AiConfigV2.scoutNotionalActivationAp + AiConfigV2.scoutOptionalStealthAp;
+            float genericFollowup = AiConfigV2.scoutNotionalActivationAp;
+
+            if (missStealth > 0)
             {
-                Stealth = stealthRequired ? StealthRequirement.Required : StealthRequirement.None,
-            };
-            int availableUncommittedScouts = ScoutMoverSelector
-                .Eligible(snap, probe, commitments?.ClaimedArmyIdSet)
-                .Count;
+                ReconObjective best = topN.FirstOrDefault(o =>
+                    o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f) ?? uncovered[0];
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Recon,
+                    Capability = CapabilityKind.ScoutCapability,
+                    DesiredAmount = missStealth,
+                    RequiredTraits = TraitPreference.Stealth,
+                    MinimumFollowupAp = stealthFollowup,
+                    TargetHex = best.FocusHex,
+                    Value = best.BaseValue,
+                    Explain = $"{stealthNeeded} stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}",
+                };
+            }
 
-            int desiredAmount = Mathf.Max(0, requiredNewExecutions - availableUncommittedScouts);
-            if (desiredAmount <= 0)
-                yield break;
-
-            ReconObjective best = uncovered[0];
-            float minFollowup = AiConfigV2.scoutNotionalActivationAp
-                + (stealthRequired ? AiConfigV2.scoutOptionalStealthAp : 0);
-
-            yield return new AxisDemand
+            if (missGeneric > 0)
             {
-                RequestingAxis = DesireAxis.Recon,
-                Capability = CapabilityKind.ScoutCapability,
-                DesiredAmount = desiredAmount,
-                RequiredTraits = stealthRequired ? TraitPreference.Stealth : TraitPreference.None,
-                PreferredTraits = stealthRequired ? TraitPreference.None : TraitPreference.Stealth,
-                MinimumFollowupAp = minFollowup,
-                TargetHex = best.FocusHex,
-                Value = best.BaseValue,
-                Explain = $"{uncovered.Count} uncovered obj, want {requiredNewExecutions} exec "
-                    + $"(rem concurrency {remainingConcurrency}), have {availableUncommittedScouts} eligible "
-                    + $"{(stealthRequired ? "stealth-" : "")}scout(s), miss {desiredAmount}, followup {minFollowup}ap",
-            };
+                ReconObjective best = topN.FirstOrDefault(o =>
+                    o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f)) ?? uncovered[0];
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Recon,
+                    Capability = CapabilityKind.ScoutCapability,
+                    DesiredAmount = missGeneric,
+                    RequiredTraits = TraitPreference.None,
+                    PreferredTraits = TraitPreference.Stealth,   // nice-to-have, never a filter
+                    MinimumFollowupAp = genericFollowup,
+                    TargetHex = best.FocusHex,
+                    Value = best.BaseValue,
+                    Explain = $"{genericNeeded} generic job(s), {genericSupply} scout(s) free "
+                        + $"(any {anySupply}, stealth {stealthSupply}), miss {missGeneric}",
+                };
+            }
         }
 
         // ------------------------------------------------------- extensible axis hooks ----

@@ -22,5 +22,12 @@ namespace Game.Ai.V2
             BuildingData b = BuildingRegistry.FindAt(hex);
             return b != null && b.Owner == player && b.HasAbility(def.requiredBuildingAbility);
         }
+
+        // Same stricter rule V1 AiManagementPlanner.HasGarrisonDepositRoom enforces — an ordinary
+        // card must not fill a garrison's last slots, part of capacity is kept for later
+        // operations / reorganisation. Neutral primitive so V1 and V2 stay in step on the number.
+        public static bool CanDepositIntoGarrison(ArmyData garrison) =>
+            garrison != null && garrison.IsGarrison
+            && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
     }
 }
