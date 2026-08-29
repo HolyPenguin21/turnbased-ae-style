@@ -58,15 +58,11 @@ namespace Game.Ai.V2
                 return est;
             }
 
-            bool needStealth = target.Stealth == StealthRequirement.Required;
+            // Mover selection is the shared ScoutMoverSelector (step 6) — the estimate takes the
+            // top-ranked candidate; ProvisioningManager takes the whole list and assigns across
+            // missions. No exclusions at estimate time (no mover is claimed yet this cycle).
+            var ranked = ScoutMoverSelector.Rank(snap, target, null);
 
-            // ---- eligible fielded movers (a dedicated solo scout), stealth-filtered if Required --
-            var movers = snap.Self.Armies
-                .Where(a => a != null && a.IsSoloRecce && !a.IsPrison && !a.IsAir && a.MemberCount > 0)
-                .Where(a => !needStealth || a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn))
-                .ToList();
-
-            // ---- distance basis + move budget ----
             int fleetBudget = snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max();
             if (fleetBudget <= 0) fleetBudget = 1;
 
@@ -75,32 +71,16 @@ namespace Game.Ai.V2
                 ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
                 : target.FocusHex;
 
-            int EtaFor(HexCoord from, int currentMovement, int maxMovement)
-            {
-                int dist = DistFrom(from);
-                int budget = maxMovement > 0 ? maxMovement : fleetBudget;
-                if (currentMovement >= dist) return 1;
-                return 1 + CeilDiv(dist - currentMovement, budget);
-            }
-            int EffActivationAp(ArmySnapshot a) => a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
-            int DistFromArmy(ArmySnapshot a) => DistFrom(a.Hex);
-
-            ArmySnapshot mover = movers
-                .OrderBy(EffActivationAp)
-                .ThenBy(a => EtaFor(a.Hex, a.CurrentMovement, a.MaxMovement))
-                .ThenBy(DistFromArmy)
-                .ThenBy(a => a.ArmyId)
-                .FirstOrDefault();
-
             float activationAp;
-            if (mover != null)
+            if (ranked.Count > 0)
             {
+                ScoutMoverCandidate top = ranked[0];
                 est.MoverKnown = true;
-                est.MoverAlreadyHidden = mover.IsHidden;
-                activationAp = EffActivationAp(mover);
-                est.ActivationEnergy = mover.HasActivatedThisTurn ? 0 : mover.ActivationEnergyCost;
-                est.EstimatedDistance = DistFrom(mover.Hex);
-                est.EtaTurns = EtaFor(mover.Hex, mover.CurrentMovement, mover.MaxMovement);
+                est.MoverAlreadyHidden = top.AlreadyHidden;
+                activationAp = top.EffActivationAp;
+                est.ActivationEnergy = top.Army.HasActivatedThisTurn ? 0 : top.Army.ActivationEnergyCost;
+                est.EstimatedDistance = top.Distance;
+                est.EtaTurns = top.EtaTurns;
             }
             else
             {

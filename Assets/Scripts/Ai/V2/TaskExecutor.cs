@@ -1,0 +1,187 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using Game.HexGrid;
+using Game.Map;
+using Game.Players;
+using UnityEngine;
+
+namespace Game.Ai.V2
+{
+    // ===========================================================================================
+    //  TASK EXECUTOR  (Strategy V2 build-order step 6a — Explore end to end)
+    // ===========================================================================================
+    //  Runs each ProvisionedMission on the real map through the SAME movement path V1 and the
+    //  human use (AiTurnController.MoveArmyRoutine -> HexSelectionController.IssueMoveOrder). No V2
+    //  AiTaskRegistry entry, no persistent task object — the ProvisionedMission plus the live
+    //  world IS the state, exactly as the stateless-recon design intends.
+    //
+    //  PER-HEX LOOP  (Q3 — "uses the whole movement budget, one hex per iteration")
+    //    pick 1 safe next hex -> move it -> wait for MoveArmyRoutine to fully settle (vision,
+    //    stealth, contact, event, any chained battle) -> re-read live state -> decide whether to
+    //    continue. This reproduces V1's Decide -> move -> Decide cadence, scoped to one mover.
+    //
+    //  A STEP ENDS THE MISSION FOR THIS TURN (never a strategic re-target here — the frontier is
+    //  stale the moment the mover moves; picking a new FocusHex is MissionLayer's job next turn):
+    //    ReachedGoal        — arrived at ExecutionHex, or it got visited underneath us
+    //    OutOfMovement      — no movement points left
+    //    NoSafeStep         — FindNextSafeStep == null this instant (retry next turn)
+    //    EnemyDiscovered    — a new known non-neutral sighting appeared near the mover
+    //    NeutralDiscovered  — a new known neutral sighting appeared near the mover
+    //    BattleStarted      — a contact pulled the mover into a fight
+    //    MoverLost          — the army is gone / no longer ours / no longer a solo Recce
+    //    TargetInvalidated  — ExecutionHex now holds a known army
+    //    MoveRejected       — an issued order made zero progress (loop-guard: never spin)
+    //
+    //  EnemyDiscovered / NeutralDiscovered / OutOfMovement are PRODUCTIVE stops, not failures —
+    //  the scout brought back information, it just stopped short of ExecutionHex. Nothing
+    //  downstream (CommitmentLayer / Manager, step 7+) may read them as a provisioning/mission
+    //  failure. (ExecutionOutcome { Completed / ProductiveStop / Blocked / Failed } is a step-7
+    //  concept; the mapping is fixed now — see the pipeline design record.)
+    // ===========================================================================================
+    public enum ExecutionStopReason
+    {
+        ReachedGoal,
+        OutOfMovement,
+        NoSafeStep,
+        EnemyDiscovered,
+        NeutralDiscovered,
+        BattleStarted,
+        HexEventStarted,   // reserved — MoveArmyRoutine already settles events before it returns in 6a
+        MoverLost,
+        TargetInvalidated,
+        MoveRejected,
+    }
+
+    public sealed class ExecutionResult
+    {
+        public StableMissionKey Key;
+        public HexCoord StartHex;
+        public HexCoord FinalHex;
+        public int StepsMoved;
+        public bool ReachedGoal;
+        public float ApSpent;
+        public ExecutionStopReason StopReason;
+    }
+
+    internal static class TaskExecutor
+    {
+        public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results)
+        {
+            if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
+                yield break;
+
+            foreach (ProvisionedMission pm in provisioned)
+            {
+                var result = new ExecutionResult { Key = pm.Key };
+
+                ArmyData army = Resolve(player, pm.MoverArmyId);
+                if (army == null)
+                {
+                    result.StartHex = pm.ExecutionHex;
+                    result.FinalHex = pm.ExecutionHex;
+                    result.StopReason = ExecutionStopReason.MoverLost;
+                    results.Add(result);
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+                    continue;
+                }
+
+                result.StartHex = army.Hex;
+                result.FinalHex = army.Hex;
+                int apBefore = root != null ? root.ActionPoints : 0;
+                int maxIterations = army.CurrentMovement + 1; // loop guard (NOT a cross-turn stall watchdog)
+                int iterations = 0;
+                ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
+
+                // Map-wide known-sighting ids (NOT radius-bounded to the mover) so "new" means
+                // "honestly discovered this step", never "an already-known army we walked closer to".
+                HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+                HashSet<int> knownNeutralIds = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+
+                while (true)
+                {
+                    if (++iterations > maxIterations)
+                    {
+                        stop = ExecutionStopReason.MoveRejected;
+                        break;
+                    }
+
+                    army = Resolve(player, pm.MoverArmyId);
+                    if (army == null || army.Owner != player) { stop = ExecutionStopReason.MoverLost; break; }
+                    if (!AiArmyRoles.IsSoloRecce(army)) { stop = ExecutionStopReason.MoverLost; break; }
+                    if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
+                    if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
+
+                    if (army.Hex.Equals(pm.ExecutionHex) || VisionSystem.IsVisited(player, pm.ExecutionHex))
+                    {
+                        result.ReachedGoal = true;
+                        stop = ExecutionStopReason.ReachedGoal;
+                        break;
+                    }
+                    if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
+                    {
+                        stop = ExecutionStopReason.TargetInvalidated;
+                        break;
+                    }
+
+                    HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, pm.ExecutionHex);
+                    if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }
+
+                    HexCoord before = army.Hex;
+                    var decision = AiDecision.Move(army, next.Value,
+                        $"V2 recon — {pm.Kind} toward ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
+                        null, 0f, AiTaskCategory.Reconnaissance);
+                    yield return AiTurnController.MoveArmyRoutine(player, decision, ctx);
+
+                    army = Resolve(player, pm.MoverArmyId);
+                    if (army == null) { stop = ExecutionStopReason.MoverLost; break; }
+                    result.FinalHex = army.Hex;
+
+                    if (army.Hex.Equals(before))
+                    {
+                        // the order was rejected outright this instant — never re-issue the same one
+                        stop = ExecutionStopReason.MoveRejected;
+                        break;
+                    }
+                    result.StepsMoved++;
+
+                    if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
+
+                    // A step that revealed a previously-unknown army ends the turn — a non-neutral
+                    // one outranks a neutral one. Both are PRODUCTIVE stops (recon delivered).
+                    HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+                    HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+                    bool newEnemy = enemyNow.Any(id => !knownEnemyIds.Contains(id));
+                    bool newNeutral = neutralNow.Any(id => !knownNeutralIds.Contains(id));
+                    knownEnemyIds = enemyNow;
+                    knownNeutralIds = neutralNow;
+                    if (newEnemy) { stop = ExecutionStopReason.EnemyDiscovered; break; }
+                    if (newNeutral) { stop = ExecutionStopReason.NeutralDiscovered; break; }
+                }
+
+                result.FinalHex = army?.Hex ?? result.FinalHex;
+                result.StopReason = stop;
+                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                results.Add(result);
+
+                AiDebugLog.Write($"[AI][V2] exec {pm.Key} — ({result.StartHex.Q},{result.StartHex.R})→"
+                    + $"({result.FinalHex.Q},{result.FinalHex.R}) steps {result.StepsMoved} "
+                    + $"ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} stop {stop}"
+                    + (result.ReachedGoal ? " (goal)" : ""));
+            }
+        }
+
+        private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
+            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+
+        private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            var set = new HashSet<int>();
+            foreach (AiMapMemory.KnownEnemySighting s in sightings)
+                set.Add(s.ArmyId);
+            return set;
+        }
+    }
+}

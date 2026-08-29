@@ -1238,14 +1238,16 @@ namespace Game.Ai
             // keeps it explicit) and this specific move isn't a building takeover.
             //
             // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth now costs its 1 AP
-            // only when AiScoutPlanner.ScoutMoveWarrantsStealth says this step carries a real
+            // only when AiScoutStealthPolicy.MoveWarrantsStealth says this step carries a real
             // detection risk (a known enemy near the scout or its next hex) or heads into a
             // cooling scout-danger zone — a scout crossing known-safe ground stays visible and
-            // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is free.
+            // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is
+            // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
+            // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
             if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
                 && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
                 && root != null
-                && AiScoutPlanner.ScoutMoveWarrantsStealth(player, army, destination))
+                && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
             {
                 UnitData scout = army.Members[0];
                 if (Game.Map.StealthSystem.CanEnterStealth(scout))

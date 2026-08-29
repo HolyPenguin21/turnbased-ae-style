@@ -302,23 +302,11 @@ namespace Game.Ai.V2
     //     AiAllocatorState / AllocationSession) live in ResourceAllocator.cs — the whole stage
     //     grew out of a stub into its own file (build-order step 5).
 
-    // --- Stage 6 output.
-    public sealed class ProvisioningResult
-    {
-        public MissionProposal Mission;
-        public bool Success;
-
-        // On success: the AP actually claimed (may sit below the granted envelope if the integer
-        // claim rounded down). AllocationSession.RegisterProvisionSuccess locks THIS in so a later
-        // re-pack treats it as already-spent. Step 9 adds the reserved army/units/hero/cards/
-        // equipment + H/E/M/T + assembly plan alongside it.
-        public float ClaimedAp;
-
-        // On failure: WHY, so the allocator's reject state machine can tell a transient AP shortfall
-        // (retry the rest of the turn) from a structural dead end (cross-turn cooldown). Filled by
-        // ProvisioningManager in build-order step 6; consumed by AllocationSession.RegisterProvisionFailure.
-        public ProvisionFailureKind FailureKind;
-    }
+    // --- Stage 6 output (ProvisioningResult / ProvisionedMission / ProvisionFailure /
+    //     ProvisioningSession) lives in ProvisioningManager.cs — the stage grew into its own file
+    //     (build-order step 6a). ProvisionFailureKind / ProvisionDisposition live in
+    //     ResourceAllocator.cs beside the AllocationSession that consumes them. ExecutionResult /
+    //     ExecutionStopReason live in TaskExecutor.cs.
 
     // ===========================================================================================
     //  THE PIPELINE — walking skeleton. Every stage below is a stub that returns empty/neutral and
@@ -372,38 +360,65 @@ namespace Game.Ai.V2
             List<Commitment> commitments = CommitmentLayer.Active(player);
 
             // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
-            //    AllocationSession already owns rejected/cooldown/pass/fingerprint state, but step 5
-            //    deliberately executes ONE Pack only. Step 6 activates RegisterProvisionFailure ->
-            //    bounded re-Pack after ProvisioningManager becomes real.
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player);
+            var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
 
-            // 6. Provisioning is still a stub in step 5. Consume the first allocation once; do NOT
-            //    treat the stub's null result as a provisioning failure and do NOT run retry yet.
-            var provisioned = new List<ProvisioningResult>();
-            foreach (FundedEntry fe in allocation.Funded)
+            // 6. Provision the funded missions through the ONE atomic door, with the bounded
+            //    pack -> provision -> re-pack loop (risk 2). Mover assignment across the funded set
+            //    is a per-pass batch step (PreparePass) so a single Provision() call carries no
+            //    hidden cross-mission responsibility. Re-pack is bounded by maxReallocIterations +
+            //    the AllocationSession's own rejected/cooldown/repriced/fingerprint state.
+            var provisioned = new List<ProvisionedMission>();
+            int reallocPass = 0;
+            while (true)
             {
-                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe);
-                if (result != null && result.Success)
-                    provisioned.Add(result);
-                // Step 6: feed the outcome back, then bounded re-Pack —
-                //   success -> session.RegisterProvisionSuccess(fe, result.ClaimedAp)
-                //   fail    -> session.RegisterProvisionFailure(fe.Mission, result.FailureKind)
-                //   while (session.HasNewFailures && session.PassCount < AiConfigV2.maxReallocIterations
-                //          && !session.Converged) { allocation = session.Pack(); /* provision new Funded */ }
+                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                foreach (FundedEntry fe in allocation.Funded)
+                {
+                    if (fe?.Mission == null)
+                        continue;
+                    StableMissionKey key = StableMissionKey.For(fe.Mission);
+                    if (provSession.AlreadyProvisioned(key))
+                        continue; // locked by an earlier pass this turn
+
+                    ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
+                    if (result.Success)
+                    {
+                        provSession.RegisterSuccess(key, result.Provisioned);
+                        session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
+                        provisioned.Add(result.Provisioned);
+                        AiDebugLog.Write($"[AI][V2]   provision {key} — OK mover #{result.Provisioned.MoverArmyId} "
+                            + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
+                            + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
+                            + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
+                    }
+                    else
+                    {
+                        session.RegisterProvisionFailure(fe, result.Failure);
+                        AiDebugLog.Write($"[AI][V2]   provision {key} — FAIL {result.Failure.Kind} "
+                            + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
+                    }
+                }
+
+                if (!session.HasNewFailures || session.Converged || ++reallocPass >= AiConfigV2.maxReallocIterations)
+                    break;
+                allocation = session.Pack();
             }
 
-            // Tasks -> execution on the map.
-            yield return TaskExecutor.Execute(player, ctx, provisioned);
+            // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
+            var executed = new List<ExecutionResult>();
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
 
-            // Commitment bookkeeping for next turn.
-            CommitmentLayer.UpdateAfterExecution(player, provisioned);
+            // 7. Commitment bookkeeping for next turn (stub until build-order step 7).
+            CommitmentLayer.UpdateAfterExecution(player, provisioned, executed);
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
             yield return Manager.RunHousekeeping(player, ctx);
 
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
-                + $"(missions {missions.Count}, funded {allocation.Funded.Count}, provisioned {provisioned.Count}) ===");
+                + $"(missions {missions.Count}, funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
+                + $"executed {executed.Count}) ===");
             yield return null;
         }
 
@@ -430,39 +445,18 @@ namespace Game.Ai.V2
         // Start simple: commitments are honoured to completion; allocator pre-emption comes later.
         public static List<Commitment> Active(PlayerSetupData player) => new List<Commitment>();
 
-        public static void UpdateAfterExecution(PlayerSetupData player, List<ProvisioningResult> provisioned) { }
+        // Step 6a passes both the provisioned plans and their ExecutionResults so step 7 has the
+        // seam it needs. A ProductiveStop (EnemyDiscovered / NeutralDiscovered / OutOfMovement) is
+        // NOT a failure — see TaskExecutor's own comment before reading these.
+        public static void UpdateAfterExecution(PlayerSetupData player,
+            IReadOnlyList<ProvisionedMission> provisioned, IReadOnlyList<ExecutionResult> executed) { }
     }
 
-    // ResourceAllocator (build-order step 5) now lives in its own file, ResourceAllocator.cs:
-    // ResourceAllocator.BeginTurn -> AllocationSession.Pack (radar -> per-axis BudgetSlices ->
-    // many-to-many packing -> ordered TentativeAllocation). AllocationSession already contains the
-    // HARD-BOUNDED re-allocation state machine; Pipeline activates it in build-order step 6.
-
-    internal static class ProvisioningManager
-    {
-        // Build-order step 6 (AP-only for Scout) then step 9 (Army/Card/Equipment logic for Raid).
-        // ONE entry, ONE exit, ATOMIC: feasibility validation uses the same estimator as
-        // MissionRequirements (risk 3); on success reserve/claim/spend all-or-nothing; on failure
-        // change nothing. No partial-commit state may exist between the two doors.
-        //
-        // Takes the whole FundedEntry, not just the mission: `funded.Tentative` is the AP envelope
-        // the allocator granted (with `funded.PerAxisDraw` / `RemainderTopUp` / `Stage` saying how
-        // it was made up), so provisioning knows whether the mission got Min, Desired or a partial
-        // and can hold that budget instead of re-deriving a cost.
-        public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, FundedEntry funded) => null;
-    }
-
-    internal static class TaskExecutor
-    {
-        // Turns each ProvisioningResult into a concrete V2 Task (step list) and runs it through the
-        // same ArmyActions / HexSelectionController paths V1 and the human use. Reuse V1 execution
-        // routines where an equivalent AiActionKind already exists.
-        public static IEnumerator Execute(PlayerSetupData player, AiTurnContext ctx, List<ProvisioningResult> provisioned)
-        {
-            yield break;
-        }
-    }
+    // ResourceAllocator (build-order step 5) lives in ResourceAllocator.cs. ProvisioningManager /
+    // ProvisioningSession / ProvisionedMission / ProvisionFailure / ProvisioningResult (build-order
+    // step 6a) live in ProvisioningManager.cs, with the shared ScoutMoverSelector. TaskExecutor /
+    // ExecutionResult / ExecutionStopReason (step 6a) live in TaskExecutor.cs. AiScoutStealthPolicy
+    // (the shared V1+V2 stealth-warrant primitive) lives in Assets/Scripts/Ai/AiScoutStealthPolicy.cs.
 
     internal static class Manager
     {

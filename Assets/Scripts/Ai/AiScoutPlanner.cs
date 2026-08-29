@@ -522,33 +522,13 @@ namespace Game.Ai
         }
 
         // Стелс · спец-item 17 (2026-08-28 P1, project owner's own spec) — whether a solo Recce's
-        // NEXT step actually warrants paying 1 AP to slip into stealth first, instead of doing it
-        // reflexively before every first scouting move just because the turn can afford it.
-        // True only when there's a real reason to hide:
-        //  · a known, non-neutral enemy sighting within scoutFleeRadius of EITHER the scout's
-        //    current hex or the hex it's about to step onto — the actual detection-risk case
-        //    (same sighting source + neutral filter TryFlee itself trusts), and the case TryFlee's
-        //    own willEnterStealthFirstStep path already assumes will hide the scout; or
-        //  · that next step leads into a still-cooling scout-danger zone (AiMapMemory.
-        //    IsScoutDangerous) — "movement into a potentially dangerous area".
-        // A scout crossing empty, known-safe ground stays visible and keeps its AP. Detection and
-        // movement rules are untouched — this only gates the voluntary EnterStealth in
-        // AiTurnController.MoveArmyRoutine.
-        public static bool ScoutMoveWarrantsStealth(PlayerSetupData player, ArmyData army, HexCoord nextStep)
-        {
-            if (army == null)
-                return false;
-            if (AiMapMemory.IsScoutDangerous(player, nextStep))
-                return true;
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex, nextStep }, AiConfig.scoutFleeRadius))
-            {
-                if (sighting.Owner != null && sighting.Owner.IsNeutral)
-                    continue; // neutrals never threaten a scout — same rule as VisitHexTask.TryFlee
-                return true;
-            }
-            return false;
-        }
+        // NEXT step actually warrants paying 1 AP to slip into stealth first. The rule itself lives
+        // in the shared, layer-neutral AiScoutStealthPolicy so V1 (here / AiTurnController.
+        // MoveArmyRoutine) and V2 (ProvisioningManager / TaskExecutor) evaluate the SAME condition
+        // — the estimate-vs-execution drift class of bug V2 exists to kill. This thin forwarder is
+        // kept so V1 call sites and their doc trails don't churn.
+        public static bool ScoutMoveWarrantsStealth(PlayerSetupData player, ArmyData army, HexCoord nextStep) =>
+            AiScoutStealthPolicy.MoveWarrantsStealth(player, army, nextStep);
 
         // ---- Execution ----
 

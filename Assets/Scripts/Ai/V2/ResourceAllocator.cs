@@ -57,15 +57,31 @@ namespace Game.Ai.V2
         public string Fmt() => Ap.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
-    // Declared in step 5; ProvisioningManager fills it in step 6.
+    // Declared in step 5; ProvisioningManager fills it in step 6. The concrete REASON a mission
+    // could not be provisioned. Retry policy is a SEPARATE axis (ProvisionDisposition) so the
+    // allocator branches on "what do I do about it" without a special-case per reason, and
+    // telemetry keeps the "why" at full resolution — e.g. TargetSatisfied ("another scout already
+    // opened that hex, the work is simply no longer needed") must never read back as a failure
+    // that wants retrying.
     public enum ProvisionFailureKind
     {
         None,
-        TransientBudget,
-        ImpossibleMover,
-        InvalidTarget,
-        AssemblyInfeasible,
-        PersistentObjective,
+        MoverContended,      // a capable mover exists, but this allocation cycle handed every one to a higher-priority mission
+        NoMoverExists,       // no eligible executor on the map at all (or none that can satisfy a stealth-Required leg)
+        EnvelopeTooSmall,    // the funded AP envelope cannot cover the real mover's cost — carries RequiredAp for repricing
+        NoExecutableStep,    // mover + budget are fine, but no safe first step toward the target exists right now
+        TargetSatisfied,     // the objective is already met (Explore focus hex already visited) — drop, not fail
+        TargetInvalidated,   // the world changed under the mission (focus hex now holds a known army)
+        AssemblyInfeasible,  // structural: the mission cannot be made executable by any assemblable means
+    }
+
+    // The retry semantics the allocator applies to a ProvisionFailure, kept orthogonal to Kind.
+    public enum ProvisionDisposition
+    {
+        RetryNextTurn,       // out of the running THIS turn; a fresh snapshot re-proposes it next turn. No cooldown.
+        DropThisTurn,        // same mechanics as RetryNextTurn, but semantically "no longer wanted" (telemetry only).
+        RepriceThisTurn,     // re-fund THIS turn at a raised AP floor (ProvisionFailure.RequiredAp), still <= funded.Tentative.
+        RejectWithCooldown,  // structural dead end — reject and suppress the mission key for allocatorRejectCooldownTurns.
     }
 
     // Stable across turns so ordering/reject/cooldown/fingerprint all address the same mission.
@@ -238,6 +254,15 @@ namespace Game.Ai.V2
         private readonly AiAllocatorState _state;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
+        // Step 6 repricing feedback (risk 2). A mission that failed provisioning with
+        // EnvelopeTooSmall(requiredAp) is NOT rejected — instead its AP minimum is raised to
+        // requiredAp for every later Pack() this turn, so the next pass either funds it at the
+        // real cost or defers it honestly on budget. Never lowers a floor; cleared each turn with
+        // the session. Provisioning still refuses to claim above funded.Tentative, so the raised
+        // floor can only ever move a mission from "funded too low to execute" to "funded at cost"
+        // or "deferred — the axis slice genuinely can't afford this mover".
+        private readonly Dictionary<StableMissionKey, float> _repricedFloors =
+            new Dictionary<StableMissionKey, float>();
         // Missions physically provisioned in an earlier pass THIS turn, with their FUNDING
         // PROVENANCE (which axis slices the strict part drew from + the fungible remainder part),
         // scaled to what provisioning actually claimed. A re-pack rebuilds the original radar
@@ -309,18 +334,39 @@ namespace Game.Ai.V2
             _state = state;
         }
 
-        // Step 6 calls this after a real atomic provisioning failure.
-        public void RegisterProvisionFailure(MissionProposal mission, ProvisionFailureKind kind)
+        // Step 6 calls this after a real atomic provisioning failure. Takes the whole FundedEntry
+        // (not just the mission) so the allocator sees the envelope it granted, and the typed
+        // ProvisionFailure so it branches on Disposition alone — never a switch on Kind.
+        public void RegisterProvisionFailure(FundedEntry funded, ProvisionFailure failure)
         {
-            if (mission == null)
+            if (funded?.Mission == null)
                 return;
 
-            StableMissionKey key = StableMissionKey.For(mission);
-            _rejectedThisTurn.Add(key);
+            StableMissionKey key = StableMissionKey.For(funded.Mission);
             HasNewFailures = true;
+            // Any provisioning failure means the NEXT Pack() is solving a genuinely different
+            // allocation problem (a mission dropped, or a floor raised) — force it to be treated
+            // as new even if the funded/deferred/slice fingerprint would otherwise match.
+            _lastFingerprint = null;
 
-            if (kind != ProvisionFailureKind.None && kind != ProvisionFailureKind.TransientBudget)
-                _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + AiConfigV2.allocatorRejectCooldownTurns);
+            switch (failure.Disposition)
+            {
+                case ProvisionDisposition.RepriceThisTurn:
+                {
+                    float cur = _repricedFloors.TryGetValue(key, out float f) ? f : 0f;
+                    _repricedFloors[key] = Mathf.Max(cur, failure.RequiredAp);
+                    // Deliberately NOT added to _rejectedThisTurn — it must return next pass at
+                    // the raised floor.
+                    break;
+                }
+                case ProvisionDisposition.RejectWithCooldown:
+                    _rejectedThisTurn.Add(key);
+                    _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + AiConfigV2.allocatorRejectCooldownTurns);
+                    break;
+                default: // RetryNextTurn / DropThisTurn — out this turn, re-proposed fresh next turn, no cooldown
+                    _rejectedThisTurn.Add(key);
+                    break;
+            }
         }
 
         // Step 6 calls this after a real atomic provisioning success — locks in the funding
@@ -656,10 +702,18 @@ namespace Game.Ai.V2
             });
         }
 
-        private static float ApMinimum(MissionProposal m) => Mathf.Max(0f, m.Requirements?.ApMinimum ?? 0f);
-        private static float ApDesired(MissionProposal m) =>
+        // Instance (not static) since step 6: ApMinimum folds in any step-6 repricing floor for
+        // this mission key. ApDesired/ApMaximum float up with it automatically.
+        private float ApMinimum(MissionProposal m)
+        {
+            float baseMin = Mathf.Max(0f, m.Requirements?.ApMinimum ?? 0f);
+            return _repricedFloors.TryGetValue(StableMissionKey.For(m), out float floor)
+                ? Mathf.Max(baseMin, floor)
+                : baseMin;
+        }
+        private float ApDesired(MissionProposal m) =>
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
-        private static float ApMaximum(MissionProposal m) =>
+        private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
 
         private sealed class MissionKeyComparer : IComparer<StableMissionKey>
@@ -668,7 +722,10 @@ namespace Game.Ai.V2
             public int Compare(StableMissionKey a, StableMissionKey b) => a.CompareTo(b);
         }
 
-        private static string Fingerprint(TentativeAllocation a)
+        // Instance since step 6 — the repriced floors are part of "which allocation problem is
+        // this", so two passes that funded/deferred the same set but at different floors must not
+        // read as converged.
+        private string Fingerprint(TentativeAllocation a)
         {
             string funded = string.Join(",", a.Funded
                 .Select(fe => $"{StableMissionKey.For(fe.Mission)}={fe.Tentative.Ap.ToString("0.00", CultureInfo.InvariantCulture)}"));
@@ -677,8 +734,12 @@ namespace Game.Ai.V2
                 .OrderBy(x => x, StringComparer.Ordinal));
             string slices = string.Join(",", a.Slices
                 .Select(s => $"{DesireAxes.Abbrev(s.Axis)}={s.Remaining.Ap.ToString("0.00", CultureInfo.InvariantCulture)}"));
+            string repriced = string.Join(",", _repricedFloors
+                .OrderBy(kv => kv.Key, MissionKeyComparer.Instance)
+                .Select(kv => $"{kv.Key}:{kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"));
             return funded + "|" + deferred + "|" + slices
-                + "|unused=" + a.Unused.Ap.ToString("0.00", CultureInfo.InvariantCulture);
+                + "|unused=" + a.Unused.Ap.ToString("0.00", CultureInfo.InvariantCulture)
+                + "|repriced=" + repriced;
         }
 
         private static string LogNum(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
