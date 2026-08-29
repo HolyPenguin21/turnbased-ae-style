@@ -169,6 +169,20 @@ namespace Game.Ai
         }
     }
 
+    // Optional out-channel for MoveArmyRoutine, filled BEFORE it awaits async battle/event
+    // resolution. A caller that needs to know "did a fight / hex event actually happen on this
+    // step" cannot recover it from world state afterwards: MoveArmyRoutine only returns once
+    // IsBattleActive has gone false again, and an AI mover's hex events resolve synchronously
+    // (no popup), so by return time every trace of the contact may be gone. V2's TaskExecutor
+    // passes one of these; every V1 call site leaves it null and is unaffected.
+    public sealed class AiMoveExecutionTrace
+    {
+        public MoveOrderResult MoveResult;   // exactly what IssueMoveOrder returned
+        public bool BattleOccurred;          // a fight was open (or the post-move safety net opened one) on this step
+        public bool ReachedDestination;      // the mover ended on decision.TargetHex
+        public HexCoord EndHex;              // where the mover actually ended
+    }
+
     // Level 0 of the AI architecture (see AI_ARCHITECTURE.html section 01 and the project owner's
     // own 3-level split): map data + orchestrator with common methods + task ordering. This class
     // owns the turn loop (RunTurn) and the unified per-step arbiter (Decide/Commit — "common
@@ -1192,7 +1206,8 @@ namespace Game.Ai
             return true;
         }
 
-        internal static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx)
+        internal static IEnumerator MoveArmyRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx,
+            AiMoveExecutionTrace trace = null)
         {
             ArmyData army = decision.ExistingArmy;
             if (army?.Controller == null)
@@ -1293,6 +1308,8 @@ namespace Game.Ai
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination)
                 : MoveOrderResult.CannotMove;
+            if (trace != null)
+                trace.MoveResult = moveResult;
 
             // The launch-Energy reservation AiAviationSupport.LaunchRoutine placed on this task
             // (2026-08-26 P1 fix) only ever needs to survive until this exact moment — IssueMoveOrder
@@ -1319,13 +1336,24 @@ namespace Game.Ai
             // moment ago may have already cleared this same pass, closes that gap without waiting
             // for the round boundary. A no-op (Pending/NoContact/MoverCannotFight) whenever
             // onComplete already fully handled it, which is still the overwhelmingly common case.
+            // Capture "did a fight actually happen" HERE, while it is still observable — before the
+            // WaitUntil(!IsBattleActive) below spins until every trace of it is gone. For an AI
+            // mover a contact-triggered fight is already open by this point (onComplete ran
+            // synchronously before IsMoving flipped false), and hex events resolve synchronously
+            // with no popup, so this is the last moment a caller can learn a contact occurred.
+            bool battleObserved = ctx.HexSelection != null && ctx.HexSelection.IsBattleActive;
             if (ctx.HexSelection != null && army.Controller != null && !ctx.HexSelection.IsBattleActive)
             {
                 BattleStartResult safetyResult = ctx.HexSelection.TryBeginBattleAt(army.Hex, army);
                 if (safetyResult == BattleStartResult.Started)
+                {
+                    battleObserved = true;
                     AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" had unresolved contact at "
                         + $"({army.Hex.Q}, {army.Hex.R}) after moving — battle started by the post-move safety check.");
+                }
             }
+            if (trace != null)
+                trace.BattleOccurred = battleObserved;
 
             // A contact-triggered fight has already been kicked off synchronously by this point
             // (ArmyController.MoveRoutine runs its own onComplete callback — which is where
@@ -1359,6 +1387,12 @@ namespace Game.Ai
             // resets the clock, a no-op order (moveResult != success, army.Hex == before) never does.
             if (!army.Hex.Equals(before) && decision.Task != null && decision.Task.Kind == AiTaskKind.VisitHex)
                 decision.Task.VisitLastProgressTurn = ctx.TurnNumber;
+
+            if (trace != null)
+            {
+                trace.EndHex = army.Hex;
+                trace.ReachedDestination = army.Hex.Equals(destination);
+            }
 
             yield return WaitStep(ctx);
         }

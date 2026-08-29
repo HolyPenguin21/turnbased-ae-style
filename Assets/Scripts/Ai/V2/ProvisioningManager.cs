@@ -166,6 +166,8 @@ namespace Game.Ai.V2
                 {
                     if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Scout)
                         continue; // 6a: Scout only — Raid provisioning is step 9
+                    if (!(fe.Mission.Target is ScoutMissionTarget t) || t.Kind != ScoutTargetKind.Explore)
+                        continue; // 6a: Explore only — Surveil execution is step 6b (belt-and-braces; MissionLayer already withholds it)
                     if (session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue; // locked by an earlier pass — not re-assigned
                     open.Add(fe);
@@ -294,18 +296,24 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("no mission / map / root"));
             if (m.Kind != MissionKind.Scout || !(m.Target is ScoutMissionTarget target))
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("6a provisions Scout missions only"));
+            if (target.Kind != ScoutTargetKind.Explore)
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                    "Surveil execution is build-order step 6b (needs SurveilVantageSelector)"));
 
             StableMissionKey key = StableMissionKey.For(m);
 
-            // 1. concrete mover from the per-pass assignment.
+            // 1. concrete mover from the per-pass assignment. No assignment => distinguish a
+            //    STRUCTURAL dead end (no such Recce owned at all — cooldown) from THIS-turn
+            //    contention (a capable Recce exists but is spent / already activated / taken by a
+            //    higher-priority mission this cycle — retry next turn, no cooldown). The structural
+            //    probe ignores CurrentMovement / current-turn activation on purpose.
             if (!session.TryGetAssignedMover(key, out int moverArmyId))
             {
-                var raw = ScoutMoverSelector.Rank(session.Snapshot, target, session.ClaimedArmyIds);
-                return raw.Count == 0
-                    ? ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                        "no eligible solo Recce on the map" + (target.Stealth == StealthRequirement.Required ? " that can go stealth" : "")))
-                    : ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"{raw.Count} capable mover(s), all taken by higher-priority missions this cycle"));
+                return ScoutMoverSelector.HasStructuralCandidate(session.Snapshot, target)
+                    ? ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        "a capable solo Recce exists but is spent / activated / taken this cycle"))
+                    : ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                        "no solo Recce" + (target.Stealth == StealthRequirement.Required ? " with stealth capability" : "") + " on the map"));
             }
 
             ArmyData army = ResolveArmy(player, moverArmyId);
@@ -331,11 +339,16 @@ namespace Game.Ai.V2
                     $"no safe first step from ({army.Hex.Q},{army.Hex.R}) toward ({executionHex.Q},{executionHex.R})"));
 
             // 4. AP: the REAL cost of this mover, computed with the same rules execution applies.
+            //    Required stealth is STRICT here (not the optional MoveWarrantsStealth "is this
+            //    step risky" policy): a Required mission whose mover is not already hidden ALWAYS
+            //    reserves the 1 AP and ALWAYS enters stealth before its first move. The gameplay
+            //    layer can only enter stealth while !HasActivatedThisTurn, so "reserve now, decide
+            //    the step later" is not deliverable — Required means Required, up front. Matches
+            //    ScoutCostModel's own Required envelope (activation + 1 unless already hidden).
+            //    MoveWarrantsStealth stays the rule for V1 / the future Preferred tier.
             int activationAp = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
             bool alreadyHidden = army.Members.Any(mem => mem.IsHidden);
-            bool reserveStealth = target.Stealth == StealthRequirement.Required
-                && !alreadyHidden
-                && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, firstStep.Value);
+            bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             int stealthAp = reserveStealth ? StealthTransitionApCost : 0;
             float realNeed = activationAp + stealthAp;
 

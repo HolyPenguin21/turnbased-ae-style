@@ -91,6 +91,24 @@ namespace Game.Ai.V2
                 result.StartHex = army.Hex;
                 result.FinalHex = army.Hex;
                 int apBefore = root != null ? root.ActionPoints : 0;
+
+                // A stealth-Required mission (ProvisionedMission.StealthApReserved) enters stealth
+                // BEFORE its first move, unconditionally — provisioning already reserved the 1 AP
+                // and the gameplay layer can only enter stealth while the mover is not yet
+                // activated. If it can't be delivered (should be impossible — the mover was
+                // eligibility-checked for exactly this), abort rather than send a Required mission
+                // out visible.
+                if (pm.StealthApReserved && !TryEnterRequiredStealth(root, army))
+                {
+                    result.FinalHex = army.Hex;
+                    result.StopReason = ExecutionStopReason.MoverLost;
+                    result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                    results.Add(result);
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter "
+                        + "required stealth; mission aborted for this turn");
+                    continue;
+                }
+
                 int maxIterations = army.CurrentMovement + 1; // loop guard (NOT a cross-turn stall watchdog)
                 int iterations = 0;
                 ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
@@ -133,21 +151,26 @@ namespace Game.Ai.V2
                     var decision = AiDecision.Move(army, next.Value,
                         $"V2 recon — {pm.Kind} toward ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
                         null, 0f, AiTaskCategory.Reconnaissance);
-                    yield return AiTurnController.MoveArmyRoutine(player, decision, ctx);
+                    var trace = new AiMoveExecutionTrace();
+                    yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
                     army = Resolve(player, pm.MoverArmyId);
                     if (army == null) { stop = ExecutionStopReason.MoverLost; break; }
                     result.FinalHex = army.Hex;
 
+                    // A fight this step ends the mission for the turn — read it from the trace, NOT
+                    // from IsBattleActive (MoveArmyRoutine only returns once that has gone false
+                    // again, and an AI mover's dead opponent + refreshed memory can hide the
+                    // contact from the sighting diff below).
+                    if (trace.BattleOccurred) { stop = ExecutionStopReason.BattleStarted; break; }
+
                     if (army.Hex.Equals(before))
                     {
-                        // the order was rejected outright this instant — never re-issue the same one
+                        // the order made zero progress this instant — never re-issue the same one
                         stop = ExecutionStopReason.MoveRejected;
                         break;
                     }
                     result.StepsMoved++;
-
-                    if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
 
                     // A step that revealed a previously-unknown army ends the turn — a non-neutral
                     // one outranks a neutral one. Both are PRODUCTIVE stops (recon delivered).
@@ -175,6 +198,29 @@ namespace Game.Ai.V2
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+
+        // Mirror of MoveArmyRoutine's own voluntary-stealth entry (1 AP per member, solo Recce =
+        // 1), but STRICT: a stealth-Required V2 mission calls this before its first move instead
+        // of relying on the optional "is this step risky" policy. True if the mover ends up hidden
+        // (already was, or entered now); false only if the state that provisioning verified has
+        // since changed.
+        private static bool TryEnterRequiredStealth(PlayerRoot root, ArmyData army)
+        {
+            if (army == null || army.Members.Count == 0)
+                return false;
+            if (army.Members.Any(m => m.IsHidden))
+                return true; // already hidden — Required satisfied, nothing to spend
+            if (army.HasActivatedThisTurn)
+                return false;
+            var scout = army.Members[0];
+            if (!StealthSystem.CanEnterStealth(scout))
+                return false;
+            if (root == null || !root.CanSpendActionPoints(army.ActivationApCost + 1))
+                return false;
+            root.SpendActionPoints(1);
+            StealthSystem.EnterStealth(scout);
+            return true;
+        }
 
         private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
         {

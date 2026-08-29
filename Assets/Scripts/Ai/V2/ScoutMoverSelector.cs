@@ -91,6 +91,29 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // STRUCTURAL capability probe — does the player own ANY solo Recce that could, in
+        // principle, serve a mission of this stealth requirement? Deliberately ignores the
+        // turn-transient filters Rank applies (CurrentMovement > 0, and for a Required mission the
+        // "visible + already activated" exclusion): those change next turn, so their absence is
+        // "spent / contended THIS turn" (MoverContended, no cooldown), NOT "no such executor
+        // exists" (NoMoverExists, cooldown). Stealth capability IS structural: a Required mission
+        // needs a Recce that is hidden or carries a stealth ability at all.
+        public static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target)
+        {
+            if (snap?.Self?.Armies == null)
+                return false;
+            bool needStealth = target.Stealth == StealthRequirement.Required;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                    continue;
+                if (needStealth && !(a.IsHidden || a.StealthLevel > 0))
+                    continue;
+                return true;
+            }
+            return false;
+        }
+
         private static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
     }
 }
