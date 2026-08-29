@@ -280,14 +280,19 @@ namespace Game.Ai.V2
                 + AiConfigV2.reconStaleShareWeight * staleShare);
         }
 
-        // "We know an opponent is fielded but have zero honest eyes on it." Binary magnitude for
-        // step 3 — a with-error scouting direction is the step-4 planner's job.
+        // "We know an opponent is fielded but have zero honest CONCRETE position on it." Binary
+        // magnitude. Must read the SAME contract ReconSurveillance does — snap.Threat.Contacts,
+        // which since build-order step 4 also carries AiReconMemory's historical LastKnown entries.
+        // Reading snap.Known.EnemySightings instead would double-count: a contact that has aged out
+        // of V1's 2-turn memory but still has an honest last-known hex would raise Surveillance
+        // ("I know a stale position") AND Blindness ("I know no position") at the same time.
         private static float ReconEnemyBlindness(WorldSnapshot snap)
         {
             bool opponentFielded = snap.TrueWorld?.Opponents != null
                 && snap.TrueWorld.Opponents.Any(o => o != null && o.ArmyCount > 0);
-            bool anyHonestSighting = snap.Known?.EnemySightings != null && snap.Known.EnemySightings.Count > 0;
-            return (opponentFielded && !anyHonestSighting) ? AiConfigV2.reconBlindnessMagnitude : 0f;
+            bool hasConcreteHonestPosition = snap.Threat?.Contacts != null
+                && snap.Threat.Contacts.Any(c => c.Source == ContactSource.Honest && c.Position.HasValue);
+            return (opponentFielded && !hasConcreteHonestPosition) ? AiConfigV2.reconBlindnessMagnitude : 0f;
         }
 
         // ---------------------------------------------------------------- Aggression ----

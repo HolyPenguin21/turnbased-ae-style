@@ -57,12 +57,13 @@ namespace Game.Ai.V2
 
         // Called once per V2 scan with the current honest (non-neutral) sightings (V1's memory,
         // which itself keeps a sighting up to enemySightingMemoryTurns after it was last SEEN).
-        // Each entry is stamped with the sighting's real SeenTurn — NOT the current turn — so a
-        // sighting merely lingering in V1's tactical memory does not keep rejuvenating the
-        // observation age. Then: reconcile (drop an entry whose last-known hex we can now see is
-        // empty — we looked, it is not there / it went stealth, so there is no honest concrete
-        // position to send a Surveil to any more; a still-existing enemy feeds enemyBlindness
-        // instead), and purge past the retention window.
+        // Each entry is stamped with the sighting's real SeenTurn (`s.SeenTurn`) — NOT the current
+        // turn — so a sighting merely lingering in V1's tactical memory does not keep rejuvenating
+        // the observation age (that produced an age sequence like 0,1,2,1,2,3...). Then: reconcile
+        // (drop an entry whose last-known hex we can now see is empty — we looked, it is not there
+        // / it went stealth, so there is no honest concrete position to send a Surveil to any
+        // more; a still-existing enemy feeds enemyBlindness instead), and purge past the retention
+        // window (measured from that real SeenTurn).
         public static void Observe(PlayerSetupData player, int turn,
             IEnumerable<AiMapMemory.KnownEnemySighting> currentSightings)
         {
