@@ -231,6 +231,7 @@ namespace Game.Ai.V2
                 IsAir = a.IsAirArmy,
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
+                HeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
                 IsHiddenFromUs = allHidden,
                 AttackSum = WorthIt.AttackSum(a),

@@ -71,6 +71,20 @@ namespace Game.Ai.V2
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;
 
+        // A not-yet-played military CardDefinition as the same per-combatant snapshot WorthIt's
+        // Monte Carlo consumes — the card-side counterpart of WorthIt.FromLiveUnit, so the
+        // CombatOpportunityAnalyzer can fold hand cards into an assemblable roster and run the
+        // SAME CanDamageAll / WinChance a real forming army would. Uses the card's printed stat
+        // line (a fresh, undamaged unit) — HitPoints = hitPoints, not a current value.
+        public static WorthIt.DefenderProfile ToDefenderProfile(CardDefinition c) =>
+            new WorthIt.DefenderProfile(
+                c.defenseRating,
+                c.grantedAbilities != null && c.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
+                c.unitTypeTags,
+                c.attack,
+                c.hitPoints,
+                c.initiative);
+
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage
         // and hero-count only, not front/reach balance). Used for enemy contacts in the

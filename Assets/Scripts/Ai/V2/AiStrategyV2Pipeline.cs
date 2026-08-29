@@ -303,9 +303,12 @@ namespace Game.Ai.V2
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
 
-            // 3. Strategy: independent raw desires -> normalize once -> radar.
-            DesireVector desires = StrategyLayer.Evaluate(snapshot);
-            Radar radar = Radar.Normalize(desires);
+            // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
+            //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
+            AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
+            RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
+            DesireVector desires = assessment.Desires;
+            Radar radar = assessment.Radar;
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
@@ -351,13 +354,9 @@ namespace Game.Ai.V2
 
     // WorldAnalysis (build-order step 2) now lives in its own file, WorldAnalysis.cs.
 
-    internal static class StrategyLayer
-    {
-        // Build-order step 3. One response-curve evaluator per axis (Recon + Aggression first,
-        // then Defence / Economy / Development). Independent raw [0..1] out; normalisation is
-        // Radar.Normalize's job, not this one's.
-        public static DesireVector Evaluate(WorldSnapshot snapshot) => DesireVector.Neutral();
-    }
+    // StrategyLayer (build-order step 3) now lives in its own file, DesireEvaluators.cs, together
+    // with ReconEvaluator / AggressionEvaluator, the AiRadarState cross-turn registry, and the
+    // RadarAssessment / DesireBreakdown contract it returns.
 
     internal static class MissionLayer
     {

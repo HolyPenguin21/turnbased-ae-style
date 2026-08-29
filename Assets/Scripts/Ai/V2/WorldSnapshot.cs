@@ -89,6 +89,11 @@ namespace Game.Ai.V2
         public bool IsAir;
         public int MemberCount;
         public bool HasHero;
+        // Best CommandRating among this army's hero members (0 = no hero). Sets a real forming
+        // army's slot cap (ArmyData.ComputeCapacity) — the CombatOpportunityAnalyzer reads it to
+        // size an assemblable raid roster the way EvaluateAssemblablePlan does. Own armies only in
+        // practice (a fog/cheat-read enemy army never exposes its hero's rating).
+        public int HeroCommandRating;
         public bool HasAntiAir;
         public bool IsHiddenFromUs;
 

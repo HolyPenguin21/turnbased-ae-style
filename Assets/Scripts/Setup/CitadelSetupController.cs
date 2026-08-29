@@ -135,6 +135,7 @@ namespace Game.Setup
             AiTaskRegistry.Clear();
             AiOperationRegistry.Clear();
             AiStrategyRegistry.Clear();
+            Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
             AiResourceReservation.Clear();
             AiManagementPlanner.Clear();
             AssignStartingHexes(GameSession.Players);
