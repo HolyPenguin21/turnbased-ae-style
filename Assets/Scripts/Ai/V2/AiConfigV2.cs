@@ -355,6 +355,34 @@ namespace Game.Ai.V2
         public const float stratPlacementExistingArmyBonus = 0.20f;
         public const float stratPlacementReusableShellBonus = 0.10f;
 
+        // ---- Step 8B: generated cards + equipment chains ---------------------------------
+        //  StrategicManager reasons about the COMPLETE action chain (MaterializationPlan): at most
+        //  one Research/Production generation step + one Equipment attachment + one final deploy.
+        //  RequiredTraits stay a hard feasibility gate on the projected end result; these knobs
+        //  only shape RANKING between feasible chains — a cheap sufficient Direct must still be
+        //  able to win against a generation / equipment chain (spec §30 / AC #36).
+        //   costFactor += stratChainResCostWeight * Σ(chain R/H/M/T)
+        //   score      -= per-extra-step penalty (attach / generation)
+        //   score      *= Lerp(stratChainGenerationChanceFloor, 1, SuccessChance)   when a chain generates
+        //   score      -= stratChainScarcityPenalty   when a chain would spend a unique Stealth item
+        //                                              on a Demand that does not require Stealth
+        public const float stratChainResCostWeight = 0.05f;
+        public const float stratChainAttachStepPenalty = 0.08f;
+        public const float stratChainGenerationStepPenalty = 0.15f;
+        public const float stratChainGenerationChanceFloor = 0.35f;
+        public const int stratChainStealthScarceAt = 1;   // StealthScouts <= this -> preserve a unique Stealth item
+        public const float stratChainScarcityPenalty = 0.40f;
+        // Hard bound on Research/Production Challenges the Strategic Manager may ATTEMPT per AI turn
+        // (Phase A + Phase B share it). Generation is resource-expensive and probabilistic — one is
+        // a safe first pass; raise only against real AiDebug.log runs.
+        public const int maxGenerationActionsPerTurn = 1;
+
+        // Phase B may proactively generate / attach with GENUINELY remaining resources, behind
+        // every existing reserve + the Phase-A generator claim. Bounded, never a production planner.
+        public const bool surplusAllowGeneration = true;
+        public const bool surplusAllowAttach = true;
+        public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
+
         // Phase B — surplus preparation. Bounded greedy; no look-ahead simulation.
         public const int maxSurplusActionsPerTurn = 2;      // bounds play/draw/play/draw draining the deck/economy
         public const bool surplusAllowDraw = true;
