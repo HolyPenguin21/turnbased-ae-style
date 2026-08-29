@@ -297,22 +297,10 @@ namespace Game.Ai.V2
         public float ReservedValue;         // -> cancellation cost
     }
 
-    // --- Stage 5 intermediate: per-axis share of the global resource pool.
-    public sealed class BudgetSlice
-    {
-        public DesireAxis Axis;
-        public float ApShare;
-        // TODO: H/E/M/T shares, army/card/hero headroom.
-    }
-
-    // --- Stage 5 output: ordered list of missions the allocator is willing to fund, plus the
-    //     tentative (not yet committed) resources each. Priority order is explicit — provisioning
-    //     consumes it sequentially.
-    public sealed class TentativeAllocation
-    {
-        public readonly List<(MissionProposal Mission, float TentativeAp)> Funded =
-            new List<(MissionProposal, float)>();
-    }
+    // --- Stage 5 types (BudgetSlice / FundingStage / FundedEntry / DeferReason / DeferredEntry /
+    //     TentativeAllocation / StableMissionKey / ResourceVector / ProvisionFailureKind /
+    //     AiAllocatorState / AllocationSession) live in ResourceAllocator.cs — the whole stage
+    //     grew out of a stub into its own file (build-order step 5).
 
     // --- Stage 6 output.
     public sealed class ProvisioningResult
@@ -320,6 +308,11 @@ namespace Game.Ai.V2
         public MissionProposal Mission;
         public bool Success;
         // On success: allocated AP + H/E/M/T, reserved army/units/hero/cards/equipment, assembly plan.
+
+        // On failure: WHY, so the allocator's reject state machine can tell a transient AP shortfall
+        // (retry the rest of the turn) from a structural dead end (cross-turn cooldown). Filled by
+        // ProvisioningManager in build-order step 6; consumed by AllocationSession.RegisterProvisionFailure.
+        public ProvisionFailureKind FailureKind;
     }
 
     // ===========================================================================================
@@ -373,19 +366,34 @@ namespace Game.Ai.V2
             // 7. In-flight missions as sunk cost, seen by the allocator.
             List<Commitment> commitments = CommitmentLayer.Active(player);
 
-            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
-            //    (Bounded re-allocate-on-fail loop lives inside, wired to provisioning in step 5/6.)
-            TentativeAllocation allocation = ResourceAllocator.Allocate(radar, missions, commitments, root);
+            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation. The
+            //    per-turn AllocationSession owns the bounded re-allocate-on-fail policy; the
+            //    allocator itself never calls ProvisioningManager.
+            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player);
+            TentativeAllocation allocation = session.Pack();
 
-            // 6. Atomic provisioning, one mission at a time in priority order.
+            // 6. Atomic provisioning, one mission at a time in priority order, then re-pack the
+            //    remainder on any failure — HARD-BOUNDED (AiConfigV2.maxReallocIterations passes +
+            //    per-turn rejected set + structural cooldown + fingerprint early-stop).
             var provisioned = new List<ProvisioningResult>();
-            foreach ((MissionProposal mission, float _) in allocation.Funded)
+            var provisionedKeys = new HashSet<StableMissionKey>();
+            while (true)
             {
-                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, mission);
-                if (result != null && result.Success)
-                    provisioned.Add(result);
-                // else: allocator releases the tentative budget and re-allocates the remainder —
-                //       bounded loop, wired in build-order step 5/6.
+                foreach (FundedEntry fe in allocation.Funded)
+                {
+                    StableMissionKey key = StableMissionKey.For(fe.Mission);
+                    if (!provisionedKeys.Add(key))
+                        continue; // already provisioned in an earlier pass
+                    ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe.Mission);
+                    if (result != null && result.Success)
+                        provisioned.Add(result);
+                    else
+                        session.RegisterProvisionFailure(fe.Mission, result?.FailureKind ?? ProvisionFailureKind.TransientBudget);
+                }
+
+                if (!session.HasNewFailures || session.PassCount >= AiConfigV2.maxReallocIterations || session.Converged)
+                    break;
+                allocation = session.Pack();
             }
 
             // Tasks -> execution on the map.
@@ -428,15 +436,10 @@ namespace Game.Ai.V2
         public static void UpdateAfterExecution(PlayerSetupData player, List<ProvisioningResult> provisioned) { }
     }
 
-    internal static class ResourceAllocator
-    {
-        // Build-order step 5. Radar -> per-axis BudgetSlices from the global pool -> many-to-many
-        // packing (a multi-axis mission draws proportionally from several slices) -> ordered
-        // TentativeAllocation. The re-allocate-on-fail loop is HERE and is HARD-BOUNDED
-        // (max iterations + rejected-this-turn set + cooldown — risk 2).
-        public static TentativeAllocation Allocate(Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, PlayerRoot root) => new TentativeAllocation();
-    }
+    // ResourceAllocator (build-order step 5) now lives in its own file, ResourceAllocator.cs:
+    // ResourceAllocator.BeginTurn -> AllocationSession.Pack (radar -> per-axis BudgetSlices ->
+    // many-to-many packing -> ordered TentativeAllocation), with the HARD-BOUNDED re-allocate-on-
+    // fail loop driven from RunTurn via AllocationSession.RegisterProvisionFailure (risk 2).
 
     internal static class ProvisioningManager
     {

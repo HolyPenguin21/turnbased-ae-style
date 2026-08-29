@@ -266,5 +266,24 @@ namespace Game.Ai.V2
         // opt-in 1 AP, only when the route carries real detection risk.
         public const int scoutNotionalActivationAp = 1;  // used when no concrete mover exists yet (Provisioning, step 6, resolves it)
         public const int scoutOptionalStealthAp = 1;
+
+        // =======================================================================================
+        //  RESOURCE ALLOCATOR  (Strategy V2 build-order step 5)
+        //  radar -> per-axis BudgetSlices of the shared pool -> many-to-many packing -> ordered
+        //  TentativeAllocation. AP is the only live resource dimension; Energy / Human / Materials
+        //  / Tech fold into the same slice machinery in step 9 with the first Raid.
+        // =======================================================================================
+        // AP held OUT of the sliceable pool for the off-budget Manager (housekeeping, step 8). 0
+        // for now — reservation cleanup does not spend AP; raise this only when garrison-reorg with
+        // a real AP cost lands in the Manager stage.
+        public const float allocatorManagerApReserve = 0f;
+        // Hard bound on the pack -> provision -> re-pack loop (risk 2). One pass is the norm; a
+        // second/third only happens when provisioning actually fails a funded mission.
+        public const int maxReallocIterations = 3;
+        // A mission whose provisioning failed for a STRUCTURAL reason (impossible mover, invalid
+        // target, infeasible assembly) is left alone this many turns before the allocator offers
+        // it again — parity with AiConfig.raidPlanRejectCooldownTurns. A transient AP shortfall
+        // gets NO cooldown (only a this-turn reject).
+        public const int allocatorRejectCooldownTurns = 3;
     }
 }
