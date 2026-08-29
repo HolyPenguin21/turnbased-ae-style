@@ -48,7 +48,7 @@ namespace Game.Ai.V2
 
             // The current stealth requirement of each intent's objective, from the ONE Recon
             // objective enumeration (an exposed Explore is Stealth.Required too — never infer the
-            // requirement from ScoutTargetKind). No matching objective -> treat as no requirement.
+            // requirement from ScoutTargetKind).
             var reqByKey = new Dictionary<MissionIntentKey, StealthRequirement>();
             if (reconObjectives != null)
                 foreach (ReconObjective o in reconObjectives)
@@ -58,8 +58,29 @@ namespace Game.Ai.V2
             {
                 if (i?.PreferredMoverArmyId == null)
                     continue;
-                StealthRequirement req = reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r)
-                    ? r : StealthRequirement.None;
+
+                StealthRequirement req;
+                if (reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r))
+                {
+                    req = r;
+                }
+                else
+                {
+                    // A still-valid incumbent Explore whose hex has fallen out of the frozen
+                    // frontier (wave band moved) has NO entry here — MissionLayer re-materialises
+                    // it via ReconObjectiveEvaluator.ExploreAt, which recomputes exposure and can
+                    // return Stealth.Required. Materialise that ONE incumbent objective the same
+                    // way (not a re-scan for new opportunities) so the requirement matches what
+                    // the planner will actually demand.
+                    ReconObjective o = null;
+                    if (i.Scout != null)
+                        o = i.Scout.Kind == ScoutTargetKind.Explore
+                            ? ReconObjectiveEvaluator.ExploreAt(snap, i.Scout.FocusHex)
+                            : ReconObjectiveEvaluator.SurveilOf(snap,
+                                ScoutObjectiveEvaluator.SurveilContact(snap, i.Scout.TrackedArmyId));
+                    req = o?.Stealth ?? StealthRequirement.None;
+                }
+
                 if (HasCapableActor(i, snap, req))
                     c.Claim(i.PreferredMoverArmyId.Value);
             }
