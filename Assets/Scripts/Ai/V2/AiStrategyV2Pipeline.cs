@@ -366,34 +366,23 @@ namespace Game.Ai.V2
             // 7. In-flight missions as sunk cost, seen by the allocator.
             List<Commitment> commitments = CommitmentLayer.Active(player);
 
-            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation. The
-            //    per-turn AllocationSession owns the bounded re-allocate-on-fail policy; the
-            //    allocator itself never calls ProvisioningManager.
+            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
+            //    AllocationSession already owns rejected/cooldown/pass/fingerprint state, but step 5
+            //    deliberately executes ONE Pack only. Step 6 activates RegisterProvisionFailure ->
+            //    bounded re-Pack after ProvisioningManager becomes real.
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player);
             TentativeAllocation allocation = session.Pack();
 
-            // 6. Atomic provisioning, one mission at a time in priority order, then re-pack the
-            //    remainder on any failure — HARD-BOUNDED (AiConfigV2.maxReallocIterations passes +
-            //    per-turn rejected set + structural cooldown + fingerprint early-stop).
+            // 6. Provisioning is still a stub in step 5. Consume the first allocation once; do NOT
+            //    treat the stub's null result as a provisioning failure and do NOT run retry yet.
             var provisioned = new List<ProvisioningResult>();
-            var provisionedKeys = new HashSet<StableMissionKey>();
-            while (true)
+            foreach (FundedEntry fe in allocation.Funded)
             {
-                foreach (FundedEntry fe in allocation.Funded)
-                {
-                    StableMissionKey key = StableMissionKey.For(fe.Mission);
-                    if (!provisionedKeys.Add(key))
-                        continue; // already provisioned in an earlier pass
-                    ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe.Mission);
-                    if (result != null && result.Success)
-                        provisioned.Add(result);
-                    else
-                        session.RegisterProvisionFailure(fe.Mission, result?.FailureKind ?? ProvisionFailureKind.TransientBudget);
-                }
-
-                if (!session.HasNewFailures || session.PassCount >= AiConfigV2.maxReallocIterations || session.Converged)
-                    break;
-                allocation = session.Pack();
+                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe.Mission);
+                if (result != null && result.Success)
+                    provisioned.Add(result);
+                // Step 6: on a real FAIL, call session.RegisterProvisionFailure(result.FailureKind)
+                // and re-Pack while PassCount < maxReallocIterations && !Converged.
             }
 
             // Tasks -> execution on the map.
@@ -438,8 +427,8 @@ namespace Game.Ai.V2
 
     // ResourceAllocator (build-order step 5) now lives in its own file, ResourceAllocator.cs:
     // ResourceAllocator.BeginTurn -> AllocationSession.Pack (radar -> per-axis BudgetSlices ->
-    // many-to-many packing -> ordered TentativeAllocation), with the HARD-BOUNDED re-allocate-on-
-    // fail loop driven from RunTurn via AllocationSession.RegisterProvisionFailure (risk 2).
+    // many-to-many packing -> ordered TentativeAllocation). AllocationSession already contains the
+    // HARD-BOUNDED re-allocation state machine; Pipeline activates it in build-order step 6.
 
     internal static class ProvisioningManager
     {
