@@ -44,11 +44,17 @@ namespace Game.Ai.V2
     //  of the shared resource pool goes here". Independent [0..1] axes were rejected: every action
     //  draws on the same pool, so unbacked independent desires are a false model.
     //    Final axes: Recon, Aggression, Defence, Economy, Development.  (DesireAxis enum below.)
-    //    Management is NOT an axis. It is a servicing layer (Manager stage) that keeps the AI's
-    //    own state healthy in service of whatever the radar funded — reservation cleanup, garrison
-    //    reorganisation, hand upkeep. It runs OFF-BUDGET with a guaranteed minimum, the same way
-    //    garrison reorg already sits outside V1's arbiter. It must never have to "win" priority
-    //    against Aggression to happen.
+    //    Management is NOT an axis — there is no DesireAxis.Management and no ManagementEvaluator.
+    //    Card play + capability preparation is a SERVICE, split across two managers:
+    //      · StrategicManager (StrategicManager.cs) — the single owner of V2 Unit/Hero/Recce card
+    //        play. Axes expose AxisDemand[] ("what capability is missing"); StrategicManager decides
+    //        how (which card, where, reuse vs. create an army, whether it is worth it). Phase A
+    //        (FulfillDemands, before mission planning) is charged to demand.RequestingAxis via the
+    //        shared AxisBudgetLedger — the axis that needs the capability pays. Phase B (UseSurplus,
+    //        after mission execution) spends only genuinely-remaining real AP/resources, no slice.
+    //      · HousekeepingManager (below) — the OFF-BUDGET post-mission army/garrison reorganisation
+    //        + cleanup pass, guaranteed minimum (housekeepingApReserve), same way garrison reorg
+    //        sits outside V1's arbiter. Never has to "win" priority against Aggression to happen.
     //  Two ABSOLUTE scalars are kept OUTSIDE the simplex (DesireVector.MilitaryThreat /
     //  .EconomicRunway): the normalised vector alone can't tell "calm, 40% to defence because
     //  nothing else competed" from "existential threat, 40% is nowhere near enough". These two
@@ -372,16 +378,50 @@ namespace Game.Ai.V2
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
 
+            // 3c. The ONE Recon-opportunity enumeration for the turn — shared by DemandLayer and
+            //     MissionLayer. FROZEN here (before StrategicManager touches own forces): Strategic
+            //     Manager changes which SCOUT can execute, never which objectives exist.
+            List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+
             // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, so the planner
             //     can re-materialise them from this snapshot (one place still owns proposal
             //     creation) and retarget hysteresis holds a multi-turn chain steady through Radar
             //     noise. Purges dead intents, suspends Soft funding under siege.
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
+            // Normalized "which of my armies are already committed to an operation" view — so
+            // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
+            // from an AVAILABLE one without knowing how continuity stores mover ownership.
+            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents);
+
+            // S1. Demand Layer — capability SHORTAGES (no card selection). Axes say what is missing.
+            List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                reconObjectives, activeIntents, actorCommitments);
+
+            // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
+            //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
+            //     debits the requesting axis here; the mission allocator then seeds its slices from
+            //     this same ledger — NO second radar split.
+            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(snapshot.Self?.ActionPoints ?? 0, radar);
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
+
+            // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
+            //     Costs are charged to demand.RequestingAxis (no Management co-pay — Strategic
+            //     Manager is a service, not an axis).
+            StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
+                ctx, apLedger, demands, actorCommitments);
+
+            // S4. Operational self-state refresh — ONLY if StrategicManager changed gameplay state
+            //     (a partial CreateArmy + failed deploy still counts). Rebuilds Self + Economy;
+            //     keeps the frozen strategic observations (Known / TrueWorld / MapKnowledge / Threat
+            //     / radar / breakdown / reconObjectives).
+            if (phaseA.StateChanged)
+                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
             // 4. Planners -> mission proposals (+ requirements via the shared estimator). Reads the
-            //    DesireBreakdown, never re-derives the analysis behind it (risk of drift). Also
-            //    materialises every active intent and applies the retarget margin.
-            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown, activeIntents);
+            //    DesireBreakdown + the FROZEN Recon objectives, never re-derives the analysis behind
+            //    them. Also materialises every active intent and applies the retarget margin.
+            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown,
+                activeIntents, reconObjectives);
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
@@ -405,8 +445,9 @@ namespace Game.Ai.V2
             ledger.RegisterProposals(missions);
             ledger.RegisterCommitments(commitments);
 
-            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
-            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player);
+            // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
+            //    many packing -> ordered tentative allocation. No second radar split.
+            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player, apLedger);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
 
@@ -470,12 +511,23 @@ namespace Game.Ai.V2
             //     advances/retires the rest, keeps a preferred mover.
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
 
+            // S5. Strategic Manager Phase B — Surplus Preparation. Rebuild actor ownership from the
+            //     RECONCILED registry (do not reuse beginning-of-turn claims), then spend GENUINELY
+            //     remaining real AP/resources on proactive card play + hand cycling. No radar slice;
+            //     bounded by maxSurplusActionsPerTurn; every configured reserve respected.
+            ActorCommitments postCommitments =
+                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All);
+            StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx, postCommitments);
+            if (phaseB.StateChanged)
+                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
-            yield return Manager.RunHousekeeping(player, ctx);
+            yield return HousekeepingManager.RunHousekeeping(player, ctx);
 
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
-                + $"(missions {missions.Count}, funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
-                + $"executed {executed.Count}) ===");
+                + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
+                + $"funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
+                + $"executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
             yield return null;
         }
 
@@ -510,12 +562,14 @@ namespace Game.Ai.V2
     // ExecutionResult / ExecutionStopReason (step 6a) live in TaskExecutor.cs. AiScoutStealthPolicy
     // (the shared V1+V2 stealth-warrant primitive) lives in Assets/Scripts/Ai/AiScoutStealthPolicy.cs.
 
-    internal static class Manager
+    // HousekeepingManager (renamed from Manager) — build-order step 8. A SEPARATE, post-mission
+    // system from StrategicManager: it owns army/garrison REORGANIZATION and cleanup, not card
+    // play. NOT a radar axis — off-budget, guaranteed minimum (housekeepingApReserve). Reservation
+    // cleanup, garrison reorganisation (the V1 GarrisonReorgTask pass), weak-army consolidation,
+    // invariant repair, last-garrison-defender guard. Its detailed behaviour is a separate task;
+    // the stub is unchanged here.
+    internal static class HousekeepingManager
     {
-        // Build-order step 8. NOT a radar axis — off-budget, guaranteed minimum. Reservation
-        // cleanup (release stale/orphaned), garrison reorganisation (the V1 GarrisonReorgTask
-        // pass), hand upkeep, last-garrison-defender guard. Services the consequences of whatever
-        // the radar funded; never competes with it for priority.
         public static IEnumerator RunHousekeeping(PlayerSetupData player, AiTurnContext ctx)
         {
             yield break;

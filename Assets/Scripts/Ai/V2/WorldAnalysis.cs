@@ -56,6 +56,49 @@ namespace Game.Ai.V2
         }
 
         // =======================================================================================
+        //  OPERATIONAL SELF-STATE REFRESH  (Strategy V2 — after StrategicManager mutations)
+        // =======================================================================================
+        //  StrategicManager can change AP / Human / Energy / Materials / Tech / hand / armies /
+        //  army composition. Mission planning must not keep using the beginning-of-turn own-force
+        //  state. This rebuilds ONLY the layers derived from own force / own stockpile — Self and
+        //  Economy — and REUSES the frozen strategic observations (Known / TrueWorld / MapKnowledge
+        //  / Threat) unchanged: a card play does not change what the AI knows about the enemy or
+        //  the map, and the turn's radar / breakdown / Recon objectives must stay stable so the
+        //  AI does not recompute its strategic personality mid-turn.
+        //
+        //  Threat is kept frozen because the only card type wired this task (a solo Recce into its
+        //  own empty army) alters no garrison roster and no field combat force. When defensive /
+        //  offensive card play lands, the own-state-derived parts of BuildThreat (ResponseEta,
+        //  AttackWinChance vs. our roster, UnderSiege) must be refreshed or split out here.
+        //
+        //  Not a second full Scan — the expensive parts (TrueWorld cheat reads, the MapKnowledge
+        //  frontier flood) are deliberately not repeated.
+        public static WorldSnapshot RefreshOperationalState(WorldSnapshot prev, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (prev == null)
+                return Scan(player, root, hand, ctx);
+
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = prev.TurnNumber,
+                Known = prev.Known,
+                TrueWorld = prev.TrueWorld,
+                MapKnowledge = prev.MapKnowledge,
+                Threat = prev.Threat,
+            };
+            snap.Self = BuildSelf(player, root, hand, ctx);
+            snap.Economy = BuildEconomy(player, ctx, snap);
+
+            SelfSnapshot s = snap.Self;
+            AiDebugLog.Write($"[AI][V2] {player?.Nickname} op-refresh — AP {s.ActionPoints} "
+                + $"hand {s.Hand.Count}/{s.HandCapacity} armies {s.Armies.Count} "
+                + $"field {F(s.FieldPower)} garrison {F(s.GarrisonPower)} "
+                + $"bestStack {F(s.BestStackPotential)}");
+            return snap;
+        }
+
+        // =======================================================================================
         //  "WHY" LOG  — the reasoning trace the downstream evaluators/planners act on. Written
         //  once per AI turn to Logs/AiDebug.log (via AiDebugLog). Deliberately verbose: strength
         //  is a derived number (breaks down as raw stat line * composition), economic health is

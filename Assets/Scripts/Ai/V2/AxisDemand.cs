@@ -1,0 +1,64 @@
+using Game.HexGrid;
+
+namespace Game.Ai.V2
+{
+    // ===========================================================================================
+    //  AXIS DEMAND  (Strategy V2 — Strategic Manager)
+    // ===========================================================================================
+    //  The generic contract a strategic axis (Recon / Aggression / Defence / Economy /
+    //  Development) uses to report a MISSING CAPABILITY — never a concrete card. Axes describe
+    //  WHAT is missing; StrategicManager decides HOW (which card, where, reuse vs. create an
+    //  army, whether it is worth doing at all). Deliberately extensible: new CapabilityKind /
+    //  TraitPreference values are added as later axes need them, without reshaping this contract.
+    //
+    //  Strategic Manager is NOT a DesireAxis and gets NO radar slice. A demand-driven card play
+    //  is charged to demand.RequestingAxis's AP entitlement (AxisBudgetLedger) — the axis that
+    //  needed the capability pays for it.
+    // ===========================================================================================
+
+    public enum CapabilityKind
+    {
+        ScoutCapability,       // a solo Recce able to run a Scout mission (the only one wired now)
+        GarrisonCombatPower,   // defensive body at a specific base            (future)
+        FieldCombatPower,      // offensive body for a field force             (future)
+        Hero,                  // a hero to lead / research / build            (future)
+    }
+
+    // Optional preferred characteristics of the capability. Flags so a demand can want several.
+    [System.Flags]
+    public enum TraitPreference
+    {
+        None       = 0,
+        Stealth    = 1 << 0,
+        AntiArmour = 1 << 1,
+        Ranged     = 1 << 2,
+        Melee      = 1 << 3,
+    }
+
+    public sealed class AxisDemand
+    {
+        public DesireAxis RequestingAxis;
+
+        // Strategic merit of the UNMET opportunity behind this demand, on the same 0..100 scale
+        // as MissionProposal.BaseValue (for Recon: the BaseValue of the best uncovered objective).
+        public float Value;
+
+        // Where the capability is wanted, when that is meaningful (biases placement / card fit).
+        public HexCoord? TargetHex;
+
+        public CapabilityKind Capability;
+
+        // How many units of the capability are still MISSING (already-available supply subtracted).
+        public float DesiredAmount;
+
+        public TraitPreference PreferredTraits;
+
+        public string Explain;
+
+        public override string ToString() =>
+            $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
+            + (PreferredTraits != TraitPreference.None ? $" [{PreferredTraits}]" : "")
+            + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")
+            + $" val {Value:0.0}";
+    }
+}

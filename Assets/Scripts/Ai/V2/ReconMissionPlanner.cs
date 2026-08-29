@@ -75,16 +75,20 @@ namespace Game.Ai.V2
         }
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<ReconObjective> frozenObjectives = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || snap.MapKnowledge == null || breakdown == null)
                 return proposals;
 
-            // Fresh candidates from the current world.
+            // Fresh candidates from the turn's FROZEN Recon objectives (ReconObjectiveEvaluator ran
+            // once, right after the radar, BEFORE StrategicManager touched own forces). The list is
+            // passed in by the pipeline; a bare test / sim that omits it gets a fresh enumeration.
+            IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
             var fresh = new List<ScoutCandidate>();
-            fresh.AddRange(ExploreCandidates(snap, breakdown.ReconExploration));
-            fresh.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
+            foreach (ReconObjective o in objectives)
+                fresh.Add(ToCandidate(o, breakdown));
 
             // Incumbent candidates — every still-valid durable intent, re-materialised here.
             var incumbents = new List<ScoutCandidate>();
@@ -162,167 +166,33 @@ namespace Game.Ai.V2
             if (si == null)
                 return null;
 
-            if (si.Kind == ScoutTargetKind.Explore)
-            {
-                int fresh = ScoutObjectiveEvaluator.ExploreStillOpen(snap, si.FocusHex);
-                if (fresh <= 0)
-                    return null;
-                int distBase = snap.Self.BaseHexes != null && snap.Self.BaseHexes.Count > 0
-                    ? snap.Self.BaseHexes.Min(b => HexGridMath.Distance(b, si.FocusHex))
-                    : 0;
-                bool exposed = EnemyExposedAt(snap, si.FocusHex);
-                bool stealthRisk = exposed && DetectorsAt(snap, si.FocusHex) > 0;
-                return MakeExploreCandidate(snap, si.FocusHex, fresh, distBase, exposed, stealthRisk, bd.ReconExploration)
-                    .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
-            }
-
-            EnemyContactSnapshot contact = ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId);
-            if (contact == null)
+            // Re-materialise the intent from the ONE Recon-objective evaluator — never a second
+            // proposal-builder, never a re-scan for new opportunities.
+            ReconObjective o = si.Kind == ScoutTargetKind.Explore
+                ? ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex)
+                : ReconObjectiveEvaluator.SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
+            if (o == null)
                 return null;
-            return MakeSurveilCandidate(snap, contact, bd.ReconSurveillance)
-                .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
+            return ToCandidate(o, bd).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
         }
 
-        // Inline mirrors of the frontier scan's enemy-exposure annotation — a materialised Explore
-        // intent's focus hex may have dropped out of MapKnowledge.Frontier (the wave band moved),
-        // so the precomputed flag is not available. Same constants, same CanDetectStealthAt call.
-        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
+        // --------------------------------------------------------------------------- shared ----
+
+        // One ReconObjective -> one ScoutCandidate. BaseValue / target / risk come straight from
+        // the objective; only the mission-planning-specific LocalAdmissionScore (BaseValue x the
+        // relevant Recon sub-desire x a risk factor) is applied here.
+        private static ScoutCandidate ToCandidate(ReconObjective o, DesireBreakdown bd)
         {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = snap.Known?.EnemySightings;
-            if (sightings == null) return false;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            foreach (AiMapMemory.KnownEnemySighting e in sightings)
-                if (HexGridMath.Distance(e.Hex, hex) <= r) return true;
-            return false;
+            bool explore = o.Kind == ReconObjectiveKind.Explore;
+            float subDesire = explore ? bd.ReconExploration : bd.ReconSurveillance;
+            string explain = explore
+                ? $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase}"
+                  + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(subDesire)}"
+                : $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)}"
+                  + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x surv {F(subDesire)}";
+            return new ScoutCandidate(o.ToTarget(), o.BaseValue,
+                ComputeLocalAdmissionScore(o.BaseValue, subDesire, o.DetectionRisk), explain);
         }
-
-        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = snap.Known?.EnemySightings;
-            if (sightings == null) return 0;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            int n = 0;
-            foreach (AiMapMemory.KnownEnemySighting e in sightings)
-                if (HexGridMath.Distance(e.Hex, hex) <= r && e.CanDetectStealthAt(hex)) n++;
-            return n;
-        }
-
-        // --------------------------------------------------------------------------- Explore ----
-        private static IEnumerable<ScoutCandidate> ExploreCandidates(WorldSnapshot snap, float reconExploration)
-        {
-            IReadOnlyList<FrontierHexSnapshot> frontier = snap.MapKnowledge.Frontier;
-            if (frontier == null)
-                yield break;
-
-            foreach (FrontierHexSnapshot f in frontier)
-                yield return MakeExploreCandidate(snap, f.Hex, f.FreshNeighbors, f.DistanceFromNearestBase,
-                    f.EnemyExposure, f.StealthDetectionRisk, reconExploration);
-        }
-
-        private static ScoutCandidate MakeExploreCandidate(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
-            int distFromBase, bool enemyExposure, bool stealthDetectionRisk, float reconExploration)
-        {
-            float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
-            float proximity = Proximity(distFromBase);
-
-            float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutStrategicProximityWeight;
-            float quality = Mathf.Clamp01(
-                (AiConfigV2.scoutInfoGainWeight * infoGain
-                 + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
-            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
-            StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
-            float risk = enemyExposure
-                ? Mathf.Max(stealthDetectionRisk ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
-                    CurrentDetectorRisk(snap, hex))
-                : 0f;
-
-            var target = new ScoutMissionTarget
-            {
-                FocusHex = hex,
-                Kind = ScoutTargetKind.Explore,
-                Contact = null,
-                Stealth = req,
-                DetectionRisk = risk,
-            };
-            string explain = $"Explore @{hex.Q},{hex.R} opens {freshNeighbors} "
-                + $"(info {F(infoGain)} prox {F(proximity)} d{distFromBase}{StealthTag(req, risk)}) "
-                + $"base {F(baseValue)} x explore {F(reconExploration)}";
-            return new ScoutCandidate(target, baseValue,
-                ComputeLocalAdmissionScore(baseValue, reconExploration, risk), explain);
-        }
-
-        // --------------------------------------------------------------------------- Surveil ----
-        private static IEnumerable<ScoutCandidate> SurveilCandidates(WorldSnapshot snap, float reconSurveillance)
-        {
-            IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
-            if (contacts == null)
-                yield break;
-
-            foreach (EnemyContactSnapshot c in contacts)
-            {
-                if (c.Source != ContactSource.Honest || c.Knowledge != ContactKnowledge.LastKnown || !c.Position.HasValue)
-                    continue;
-                yield return MakeSurveilCandidate(snap, c, reconSurveillance);
-            }
-        }
-
-        private static ScoutCandidate MakeSurveilCandidate(WorldSnapshot snap, EnemyContactSnapshot c, float reconSurveillance)
-        {
-            IReadOnlyList<AssetThreatSnapshot> threats = snap.Threat?.Threats;
-            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
-
-            HexCoord pos = c.Position.Value;
-            int age = c.AgeTurns(snap.TurnNumber);
-            float staleness = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
-
-            float maxSeverity = 0f;
-            if (threats != null)
-                foreach (AssetThreatSnapshot t in threats)
-                    if (ReferenceEquals(t.Contact, c) && t.Severity > maxSeverity)
-                        maxSeverity = t.Severity;
-
-            float threatRelevance = Mathf.Clamp01(staleness * maxSeverity);
-            float proximity = bases != null && bases.Count > 0
-                ? Proximity(bases.Min(b => HexGridMath.Distance(b, pos)))
-                : 0f;
-
-            float wSum = AiConfigV2.scoutStrategicProximityWeight + AiConfigV2.scoutThreatWeight;
-            float quality = Mathf.Clamp01(
-                (AiConfigV2.scoutStrategicProximityWeight * proximity
-                 + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
-            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
-            StealthRequirement req = StealthRequirement.Required;
-            float risk = Mathf.Clamp01(Mathf.Max(
-                c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
-                CurrentDetectorRisk(snap, pos)));
-
-            var target = new ScoutMissionTarget
-            {
-                FocusHex = pos,
-                Kind = ScoutTargetKind.Surveil,
-                Contact = c,
-                Stealth = req,
-                DetectionRisk = risk,
-            };
-            string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
-                + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
-                + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
-            return new ScoutCandidate(target, baseValue,
-                ComputeLocalAdmissionScore(baseValue, reconSurveillance, risk), explain);
-        }
-
-        // ------------------------------------------------------------------------------ shared ----
-
-        private static float Proximity(int distanceFromNearestBase) =>
-            Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
-
-        // [0..1] risk from CURRENTLY known non-neutral forces that could actually roll a stealth
-        // challenge on `hex`. The implementation is the shared ScoutRiskModel (step 6b) so a
-        // Surveil vantage is scored identically — do not re-inline it here.
-        private static float CurrentDetectorRisk(WorldSnapshot snap, HexCoord hex) =>
-            ScoutRiskModel.DetectorRisk(snap, hex);
 
         // LocalAdmissionScore = BaseValue * the relevant Recon sub-desire * an execution-risk
         // factor. The risk factor stays OUT of BaseValue (and therefore out of the radar) — it is

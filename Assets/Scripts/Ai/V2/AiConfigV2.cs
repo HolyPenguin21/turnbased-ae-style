@@ -286,10 +286,12 @@ namespace Game.Ai.V2
         //  TentativeAllocation. AP is the only live resource dimension; Energy / Human / Materials
         //  / Tech stay out of allocation until step 9.
         // =======================================================================================
-        // AP held OUT of the sliceable pool for the off-budget Manager (housekeeping, step 8). 0
-        // for now — reservation cleanup does not spend AP; raise this only when garrison-reorg with
-        // a real AP cost lands in the Manager stage.
-        public const float allocatorManagerApReserve = 0f;
+        // AP held OUT of the whole turn's allocatable pool for the off-budget HousekeepingManager
+        // (step 8). Renamed from allocatorManagerApReserve — same role, clearer owner. 0 for now —
+        // reservation cleanup does not spend AP; raise this only when garrison-reorg with a real AP
+        // cost lands in the HousekeepingManager stage. Strategic Manager (Phase A + Phase B) and
+        // mission allocation must all leave this amount untouched.
+        public const float housekeepingApReserve = 0f;
         // Hard bound for the step-6 pack -> provision -> re-pack loop. Step 5 only builds the
         // AllocationSession/retry seam and executes one pack per turn.
         public const int maxReallocIterations = 3;
@@ -323,5 +325,50 @@ namespace Game.Ai.V2
         // Consecutive turns an intent may make NO forward progress (no step, no stealth entry, no
         // productive stop) before it is retired and its key put on the allocator reject cooldown.
         public const int commitmentStallTurns = 2;
+
+        // =======================================================================================
+        //  STRATEGIC MANAGER  (Strategy V2 — centralized card play + capability preparation)
+        //  NOT a DesireAxis and NOT radar-sliced. Two phases:
+        //    Phase A — FulfillDemands: before mission planning, satisfies AxisDemands with cards.
+        //              AP is charged to demand.RequestingAxis via the shared AxisBudgetLedger.
+        //    Phase B — UseSurplus: after mission execution, spends GENUINELY remaining real
+        //              AP/resources on proactive preparation + hand cycling. No radar slice.
+        //  Both play cards ONLY through V2 CardPlayExecutor (the single authoritative V2 path).
+        // =======================================================================================
+        // Phase A — hard safety bound on demand-fulfilment card plays per AI turn.
+        public const int maxDemandFulfillmentActionsPerTurn = 3;
+
+        // Card-candidate scoring, shared by Phase A + Phase B.
+        //   costFactor  = 1 + stratCardApCostWeight * plan.TotalApCost   (higher AP -> lower score)
+        //   reuse bonus = a flat add for reusing an empty shell instead of paying CreateArmy AP
+        //   trait bonus = a flat add when a demand's preferred trait (e.g. Stealth) is on the card
+        //   TargetFit   = 1 at the demand's TargetHex, decaying linearly to 0 at stratTargetFitRange
+        public const float stratCardApCostWeight = 0.15f;
+        public const float stratReuseShellBonus = 0.10f;
+        public const float stratTraitMatchBonus = 0.35f;
+        public const int stratTargetFitRange = 10;
+
+        // Phase B — surplus preparation. Bounded greedy; no look-ahead simulation.
+        public const int maxSurplusActionsPerTurn = 2;      // bounds play/draw/play/draw draining the deck/economy
+        public const bool surplusAllowDraw = true;
+        public const float surplusUtilityThreshold = 0.60f; // a candidate below this FutureUtility is not worth playing
+        // Real AP kept back ON TOP of housekeepingApReserve so surplus play never starves late work.
+        public const float surplusApReserve = 2f;
+        // Per-resource floors surplus play must leave intact (Energy non-zero for aviation head-room).
+        public const int surplusHumanReserve = 0;
+        public const int surplusEnergyReserve = 2;
+        public const int surplusMaterialsReserve = 0;
+        public const int surplusTechReserve = 0;
+        // FutureUtility term weights / values.
+        public const float surplusApCostWeight = 0.20f;
+        public const float surplusResourceCostWeight = 0.05f;
+        public const float surplusHeroVersatility = 0.35f;
+        public const float surplusUnitVersatility = 0.25f;
+        public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
+        public const float surplusScarcityHigh = 1.0f;
+        public const float surplusScarcityMed = 0.5f;
+        public const float surplusScarcityLow = 0.15f;
+        public const int surplusScoutOversupplyAt = 3;       // ReadyScouts >= this -> another Recce is oversupply
+        public const float surplusOversupplyPenalty = 0.8f;
     }
 }

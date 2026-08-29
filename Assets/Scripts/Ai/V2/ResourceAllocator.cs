@@ -271,12 +271,13 @@ namespace Game.Ai.V2
     internal static class ResourceAllocator
     {
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
-            List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player)
+            List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
+            AxisBudgetLedger ledger = null)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
-                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state);
+                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger);
         }
     }
 
@@ -287,6 +288,12 @@ namespace Game.Ai.V2
         private readonly List<MissionProposal> _missions;
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
+
+        // Strategy V2 Strategic Manager — the shared per-turn AP entitlement split. When present,
+        // per-axis slice size comes from this (already net of Phase-A demand-fulfilment spend)
+        // instead of re-splitting current AP by the radar (NO second radar split). Null in a bare
+        // unit test / sim -> fall back to radar * pool as before.
+        private readonly AxisBudgetLedger _ledger;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         // Step 6 repricing feedback (risk 2). A mission that failed provisioning with
@@ -365,13 +372,14 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state)
+            List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null)
         {
             _snap = snap;
             _radar = radar;
             _missions = missions;
             _commitments = commitments;
             _state = state;
+            _ledger = ledger;
         }
 
         // Step 6 calls this after a real atomic provisioning failure. Takes the whole FundedEntry
@@ -438,8 +446,11 @@ namespace Game.Ai.V2
             //    slice is an axis's budget for the cycle, not a figure that re-slices a shrinking
             //    pool after every provisioning success. Locked spend is applied to the slices
             //    (strict part) and to the fungible remainder (remainder part) below instead.
+            // Physical remaining AP this turn (post Strategic-Manager Phase A via the operational
+            // refresh) minus the protected HousekeepingManager reserve. The commitment / global
+            // overdraft checks below cap against THIS, never raw AP.
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
-            float reserve = Mathf.Max(0f, AiConfigV2.allocatorManagerApReserve);
+            float reserve = Mathf.Max(0f, AiConfigV2.housekeepingApReserve);
             var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
             alloc.InitialPool = pool;
             alloc.ManagerReserve = new ResourceVector(reserve);
@@ -468,13 +479,19 @@ namespace Game.Ai.V2
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
-            // 2. Radar cuts the pool into per-axis slices; each slice then loses the strict AP a
-            //    locked mission already drew from it. Radar has no role in mission ordering.
+            // 2. Per-axis slices. WITH a shared AxisBudgetLedger (the normal V2 path) the slice
+            //    size IS ledger.Balance(axis) — the radar was already applied once when the ledger
+            //    was created, and Strategic Manager Phase A has since debited the requesting axis
+            //    for any demand-driven card play. NO second radar split. Without a ledger (bare
+            //    test / sim) fall back to radar * pool. Each slice then also loses the strict AP a
+            //    locked mission already drew from it (the re-pack mechanism, unchanged).
             var slices = new Dictionary<DesireAxis, BudgetSlice>();
             foreach (DesireAxis axis in DesireAxes.All)
             {
                 float w = _radar.Weight.TryGetValue(axis, out float ww) ? Mathf.Max(0f, ww) : 0f;
-                ResourceVector budget = pool * w;
+                ResourceVector budget = _ledger != null
+                    ? new ResourceVector(Mathf.Max(0f, _ledger.Balance(axis)))
+                    : pool * w;
                 lockedStrictByAxis.TryGetValue(axis, out float lockedHere);
                 var s = new BudgetSlice
                 {
