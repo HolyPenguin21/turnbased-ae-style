@@ -279,9 +279,11 @@ namespace Game.Ai.V2
                 float traitBonus = TraitBonus(card, demand.PreferredTraits);
 
                 // Real follow-up cost of THIS specific executor: the deployed unit's own
-                // activation AP + any stealth surcharge the demand implies (not a global notional).
-                float followupAp = Mathf.Max(demand.MinimumFollowupAp,
-                    (card.Definition?.activationApCost ?? AiConfigV2.scoutNotionalActivationAp) + stealthPortion);
+                // activation AP + the demand's action surcharge (stealth) + the demand's FIXED
+                // actor-independent overhead. Not a global notional, and not floored by one — a
+                // 0-activation unit on a no-surcharge job reserves 0.
+                float followupAp = (card.Definition?.activationApCost ?? AiConfigV2.scoutNotionalActivationAp)
+                    + stealthPortion + demand.MinimumFollowupAp;
 
                 foreach (CardPlayPlan plan in PlacementSelector.BuildPlans(snap, player, card, commitments, soloOnly))
                 {

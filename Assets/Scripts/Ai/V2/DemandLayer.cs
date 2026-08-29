@@ -45,15 +45,17 @@ namespace Game.Ai.V2
                 yield break;
 
             // An objective is only COVERED when a live intent tracks it AND that intent's committed
-            // actor is still STRUCTURALLY capable of running it (solo Recce, stealth-capable for a
-            // Surveil). A destroyed / folded / de-stealthed scout leaves its objective genuinely
-            // uncovered — netted back out below by spare eligible scouts.
+            // actor is still STRUCTURALLY capable of running it. ActorCommitments already encodes
+            // exactly that test (it only claims a mover whose actor is a solo Recce still capable
+            // of the intent's real stealth requirement), so "is this objective covered" reduces to
+            // "is the intent's mover claimed" — one source of truth, no second capability check.
             var coveredKeys = new HashSet<MissionIntentKey>();
             int activeReconExecutions = 0;
-            if (activeIntents != null)
+            if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                 {
-                    if (i.Scout == null || !ActorCommitments.HasCapableActor(i, snap))
+                    if (i.Scout == null || i.PreferredMoverArmyId == null
+                        || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
                         continue;
                     coveredKeys.Add(i.IntentKey);
                     activeReconExecutions++;
@@ -95,8 +97,10 @@ namespace Game.Ai.V2
             int genericSupply = Mathf.Max(0, anySupply - stealthSupply) + stealthLeftover;
             int missGeneric = Mathf.Max(0, genericNeeded - genericSupply);
 
-            float stealthFollowup = AiConfigV2.scoutNotionalActivationAp + AiConfigV2.scoutOptionalStealthAp;
-            float genericFollowup = AiConfigV2.scoutNotionalActivationAp;
+            // FIXED mission overhead only (actor-independent). Recon has none — the deployed
+            // scout's own activation AP and the stealth surcharge are added per candidate by
+            // StrategicManager from the card + RequiredTraits.
+            const float reconFixedOverheadAp = 0f;
 
             if (missStealth > 0)
             {
@@ -108,7 +112,7 @@ namespace Game.Ai.V2
                     Capability = CapabilityKind.ScoutCapability,
                     DesiredAmount = missStealth,
                     RequiredTraits = TraitPreference.Stealth,
-                    MinimumFollowupAp = stealthFollowup,
+                    MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     Explain = $"{stealthNeeded} stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}",
@@ -126,7 +130,7 @@ namespace Game.Ai.V2
                     DesiredAmount = missGeneric,
                     RequiredTraits = TraitPreference.None,
                     PreferredTraits = TraitPreference.Stealth,   // nice-to-have, never a filter
-                    MinimumFollowupAp = genericFollowup,
+                    MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     Explain = $"{genericNeeded} generic job(s), {genericSupply} scout(s) free "

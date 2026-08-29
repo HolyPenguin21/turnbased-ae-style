@@ -61,10 +61,13 @@ namespace Game.Ai.V2
         // RequiredTraits. Never a filter.
         public TraitPreference PreferredTraits;
 
-        // AP the newly prepared capability needs to actually EXECUTE its mission THIS turn, on top
-        // of the preparation cost. StrategicManager must not let Phase A spend the requesting
-        // axis's entitlement (or real AP) down past this — otherwise it creates a capability the
-        // mission allocator can no longer fund the same turn. A reservation, not a spend.
+        // FIXED mission overhead AP that does NOT depend on which actor / card fulfils the demand
+        // (0 for Recon today; e.g. a raid's fixed assembly overhead later). StrategicManager adds
+        // the ACTOR-dependent part per candidate — the deployed unit's own activation AP plus any
+        // action surcharge the demand's RequiredTraits imply — on top of this. The full follow-up
+        // total is RESERVED, never spent: Phase A must not spend the requesting axis's entitlement
+        // (or real AP) down past it, or it creates a capability the mission allocator can no
+        // longer fund the same turn.
         public float MinimumFollowupAp;
 
         public string Explain;

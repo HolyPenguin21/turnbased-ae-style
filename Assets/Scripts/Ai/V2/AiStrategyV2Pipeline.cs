@@ -391,7 +391,7 @@ namespace Game.Ai.V2
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
-            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, player);
+            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). Axes say what is missing.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
@@ -519,7 +519,7 @@ namespace Game.Ai.V2
             //     maxSurplusActionsPerTurn; every configured reserve respected.
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments =
-                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, player);
+                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
             StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx, postCommitments);
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);

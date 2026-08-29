@@ -1,7 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
-using Game.Map;
-using Game.Players;
 
 namespace Game.Ai.V2
 {
@@ -16,9 +13,14 @@ namespace Game.Ai.V2
     //  from "available Scout", and it extends unchanged to Raid / Defence / Assembly when those
     //  gain persistent missions.
     //
-    //  An intent's PreferredMoverArmyId only counts as a claim when it still resolves to a LIVE
-    //  army owned by this player — a claim on a destroyed / transferred army is meaningless and
-    //  would wrongly suppress a replacement request (the objective is really uncovered).
+    //  An intent's PreferredMoverArmyId is only claimed while the actor is STILL VALID for that
+    //  intent — a live solo Recce that still meets the intent's real stealth requirement. A live
+    //  army that has been folded into a combat force, or lost its stealth unit, is NOT claimed:
+    //  its objective is genuinely uncovered AND the army is free to be reassigned to a job it can
+    //  still do (a plain Explore).
+    //
+    //  TODO (when Raid / Defence land): replace the Recon-shaped (snap, ReconObjective[]) inputs
+    //  with a per-intent CapabilityRequirement + IsClaimStillValid(snapshot, intent) contract.
     // ===========================================================================================
     public sealed class ActorCommitments
     {
@@ -37,48 +39,50 @@ namespace Game.Ai.V2
                 _claimedArmyIds.Add(armyId);
         }
 
-        // For the current Scout implementation an intent's committed mover is its
-        // PreferredMoverArmyId — the army that carried the intent last turn. That is an INPUT
-        // here, not a contract: raids / defence assemblies will add their own claim sources.
-        public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents, PlayerSetupData player)
+        public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
             var c = new ActorCommitments();
-            if (intents == null || player == null)
+            if (intents == null || snap?.Self?.Armies == null)
                 return c;
 
-            HashSet<int> liveOwn = new HashSet<int>(
-                ArmyRegistry.AllForOwner(player).Where(a => a != null).Select(a => a.Id));
+            // The current stealth requirement of each intent's objective, from the ONE Recon
+            // objective enumeration (an exposed Explore is Stealth.Required too — never infer the
+            // requirement from ScoutTargetKind). No matching objective -> treat as no requirement.
+            var reqByKey = new Dictionary<MissionIntentKey, StealthRequirement>();
+            if (reconObjectives != null)
+                foreach (ReconObjective o in reconObjectives)
+                    reqByKey[o.IntentKey] = o.Stealth;
 
             foreach (MissionIntent i in intents)
-                if (i?.PreferredMoverArmyId.HasValue == true && liveOwn.Contains(i.PreferredMoverArmyId.Value))
+            {
+                if (i?.PreferredMoverArmyId == null)
+                    continue;
+                StealthRequirement req = reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r)
+                    ? r : StealthRequirement.None;
+                if (HasCapableActor(i, snap, req))
                     c.Claim(i.PreferredMoverArmyId.Value);
+            }
             return c;
         }
 
-        // Does this intent still have a live, owned committed actor?
-        public static bool HasLiveActor(MissionIntent intent, PlayerSetupData player) =>
-            intent?.PreferredMoverArmyId.HasValue == true && player != null
-            && ArmyRegistry.AllForOwner(player).Any(a => a != null && a.Id == intent.PreferredMoverArmyId.Value);
-
-        // Stronger check for "this objective is covered": the committed actor must not only exist,
-        // it must still be STRUCTURALLY able to run the intent — a solo Recce, and for a stealth
-        // intent (Surveil, or an exposed Explore) also stealth-capable. Read from the snapshot's
-        // own-army list (populated with IsSoloRecce / IsHidden / CanEnterStealth / StealthLevel),
-        // so no live game-system call. A live-but-incapable actor (folded into a combat army,
-        // lost its stealth unit) leaves the objective genuinely uncovered.
-        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap)
+        // Is the intent's committed mover a live own army STRUCTURALLY able to run it — a solo
+        // Recce, and (when the objective requires stealth) hidden or able to enter stealth? Read
+        // from the snapshot's own-army list; no live game-system call.
+        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement)
         {
             if (intent?.PreferredMoverArmyId == null || snap?.Self?.Armies == null)
                 return false;
             int id = intent.PreferredMoverArmyId.Value;
+
             ArmySnapshot a = null;
             foreach (ArmySnapshot s in snap.Self.Armies)
                 if (s != null && s.ArmyId == id) { a = s; break; }
             if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
                 return false;
 
-            bool needsStealth = intent.Scout?.Kind == ScoutTargetKind.Surveil;
-            if (needsStealth && !(a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0))
+            if (requirement == StealthRequirement.Required
+                && !(a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0))
                 return false;
             return true;
         }
