@@ -1305,26 +1305,18 @@ namespace Game.Ai
                     }
             }
 
+            // Hex Event seam (V2 TaskExecutor only). IssueMoveOrder calls back the instant THIS
+            // move claims its stop for a clean Hex Event — the one place that knows for certain
+            // "this step walked into an event", ownership-scoped to this move and this hex. Not
+            // recoverable afterwards: an AI mover's event resolves synchronously with no popup,
+            // and a Skip fires no registry state change on a re-visit.
             HexCoord before = army.Hex;
             MoveOrderResult moveResult = ctx.HexSelection != null
-                ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination)
+                ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
+                    trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null)
                 : MoveOrderResult.CannotMove;
             if (trace != null)
                 trace.MoveResult = moveResult;
-
-            // Hex Event seam (V2 TaskExecutor only — trace non-null). eventStopClaimed lives deep
-            // inside IssueMoveOrder's own move coroutine and BeginCleanHexEvent resolves an AI
-            // mover's event synchronously with no popup, so by the time control returns here every
-            // sign of it can be gone. Listen for the registry's own skip/consume signals for the
-            // duration of the move instead. Unsubscribed right after the battle wait below.
-            bool hexEventObserved = false;
-            System.Action<HexCoord> onHexEvent = null;
-            if (trace != null)
-            {
-                onHexEvent = _ => hexEventObserved = true;
-                Game.Map.HexEventRegistry.EventSkipped += onHexEvent;
-                Game.Map.HexEventRegistry.EventConsumed += onHexEvent;
-            }
 
             // The launch-Energy reservation AiAviationSupport.LaunchRoutine placed on this task
             // (2026-08-26 P1 fix) only ever needs to survive until this exact moment — IssueMoveOrder
@@ -1388,14 +1380,6 @@ namespace Game.Ai
             // still playing out (see HexSelectionController.IsBattleActive's own comment).
             if (ctx.HexSelection != null)
                 yield return new WaitUntil(() => !ctx.HexSelection.IsBattleActive);
-
-            if (onHexEvent != null)
-            {
-                Game.Map.HexEventRegistry.EventSkipped -= onHexEvent;
-                Game.Map.HexEventRegistry.EventConsumed -= onHexEvent;
-                if (trace != null)
-                    trace.HexEventOccurred = hexEventObserved;
-            }
 
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();

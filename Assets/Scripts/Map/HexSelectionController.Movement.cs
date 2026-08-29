@@ -404,7 +404,14 @@ namespace Game.Map
         // reading _selectedArmy. Used by Game.Ai.AiTurnController so an AI-controlled army's
         // move looks and behaves exactly like a human's, with no separate/duplicated movement
         // logic anywhere.
-        public MoveOrderResult IssueMoveOrder(ArmyController controller, HexCoord destination)
+        // onHexEventEncountered — invoked (with the hex) the instant this move claims its stop for
+        // a clean Hex Event, BEFORE the event resolves. The AI's TaskExecutor needs this exact
+        // fact ("this move walked into an event") and cannot recover it afterwards: an AI mover's
+        // event resolves synchronously with no popup, a Skip does not consume the event (so no
+        // registry state change fires on a re-visit), and the whole thing is done by the time
+        // IssueMoveOrder's caller regains control. Left null by the human path.
+        public MoveOrderResult IssueMoveOrder(ArmyController controller, HexCoord destination,
+            System.Action<HexCoord> onHexEventEncountered = null)
         {
             if (controller == null || controller.IsMoving)
                 return MoveOrderResult.AlreadyMoving;
@@ -654,6 +661,7 @@ namespace Game.Map
                     if (!AviationRules.IsAirArmy(army) && HasUnclaimedCleanEventHex(army, hex))
                     {
                         eventStopClaimed = true;
+                        onHexEventEncountered?.Invoke(hex);
                         return true;
                     }
                     bool stopForContact = HandleVisionStep(army, hex);
