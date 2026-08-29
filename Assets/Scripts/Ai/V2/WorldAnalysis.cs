@@ -368,19 +368,19 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  MAP KNOWLEDGE
         // =======================================================================================
-        // Build-order step 4. A real frontier and a real "explorable dark region" measure, both
-        // from one pass of BFS over the map:
-        //   1. REACHABLE VISITED GROUND — visited, on-map, safe hexes flood-connected to an own
-        //      base (bases seed the flood unconditionally). "Safe" = not a cooling scout-danger
-        //      zone, no known neutral on the hex, not within frontierEnemyAvoidRadius of a known
-        //      non-neutral sighting. This is the ground a scout can actually stand on today.
-        //   2. FRONTIER — unvisited safe on-map hexes touching that reachable ground, trimmed to a
-        //      wave band around the leading edge (nearest unvisited hex's own min-base distance +
-        //      frontierWaveBand) so coverage grows as rings around every base, not a dash across
-        //      the map. Each frontier hex carries FreshNeighbors + DistanceFromNearestBase.
-        //   3. ExplorableUnknownFrac — flood the dark side (unvisited safe on-map) outward from
-        //      the frontier; its size / TotalHexes is how much map is still discoverable on foot.
-        //      0 exactly when the frontier is empty. Replaces V1's flat reconUnreachableFloor.
+        // Build-order step 4. A real frontier and a real "explorable dark region" measure:
+        //   1. REACHABLE VISITED GROUND — visited, non-HardBlocked hexes flood-connected to an own
+        //      base (bases seed the flood). HardBlocked = off-map, a known neutral on the hex, or
+        //      an active scout-danger zone. Enemy PROXIMITY is not a block — it only annotates.
+        //   2. FRONTIER — unvisited, non-HardBlocked hexes touching that reachable ground. The
+        //      wave band is measured off THIS set's own nearest hex (+ frontierWaveBand), never
+        //      off an arbitrary unvisited hex, so a HardBlocked hole next to a base can't cut the
+        //      real frontier. Each hex carries FreshNeighbors (non-HardBlocked unvisited only) +
+        //      DistanceFromNearestBase + the EnemyExposure / StealthDetectionRisk annotation.
+        //   3. ExplorableUnknownFrac — flood the dark side (unvisited, non-HardBlocked) outward
+        //      from the frontier; size / TotalHexes is how much map is still discoverable on foot
+        //      (a stealth scout can cross exposure). 0 exactly when the frontier is empty.
+        //      Replaces V1's flat reconUnreachableFloor.
         private static MapKnowledgeSnapshot BuildMapKnowledge(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
             HexMap map = ctx.Map;
@@ -442,42 +442,45 @@ namespace Game.Ai.V2
                 }
             }
 
-            // ---- leading edge: nearest unvisited hex's own min-base distance ----
-            int nearestUnvisitedBaseDist = int.MaxValue;
+            // ---- 2a. RAW frontier — every unvisited, non-HardBlocked hex touching reachable
+            //          ground. The wave band comes from THIS set's own leading edge, never from an
+            //          arbitrary unvisited hex: a HardBlocked hole right next to a base must not
+            //          drag the band in and cut off the real explorable frontier five hexes out.
+            var raw = new List<FrontierHexSnapshot>();
             foreach (HexCoord c in all)
-                if (!VisionSystem.IsVisited(player, c))
-                    nearestUnvisitedBaseDist = System.Math.Min(nearestUnvisitedBaseDist, NearestBaseDist(c));
-            int waveBandLimit = nearestUnvisitedBaseDist == int.MaxValue
-                ? -1
-                : nearestUnvisitedBaseDist + AiConfigV2.frontierWaveBand;
+            {
+                if (VisionSystem.IsVisited(player, c) || HardBlocked(c)) continue;
+                bool touchesReachable = false;
+                int fresh = 0;
+                foreach (HexCoord n in HexGridMath.Neighbors(c))
+                {
+                    if (reachableVisited.Contains(n)) touchesReachable = true;
+                    if (!VisionSystem.IsVisited(player, n) && !HardBlocked(n)) fresh++;
+                }
+                if (!touchesReachable) continue;
+                bool exposed = EnemyExposed(c);
+                raw.Add(new FrontierHexSnapshot
+                {
+                    Hex = c,
+                    FreshNeighbors = fresh,
+                    DistanceFromNearestBase = NearestBaseDist(c),
+                    EnemyExposure = exposed,
+                    StealthDetectionRisk = exposed && DetectorsAt(c) > 0,
+                });
+            }
 
-            // ---- 2. frontier (unvisited, non-HardBlocked, touching reachable ground, in band) ----
+            // ---- 2b. keep only the wave-band ring off the real frontier's leading edge ----
             var frontier = new List<FrontierHexSnapshot>();
             var frontierSet = new HashSet<HexCoord>();
-            if (waveBandLimit >= 0)
+            if (raw.Count > 0)
             {
-                foreach (HexCoord c in all)
+                int nearestFrontierDist = raw.Min(f => f.DistanceFromNearestBase);
+                int bandLimit = nearestFrontierDist + AiConfigV2.frontierWaveBand;
+                foreach (FrontierHexSnapshot f in raw)
                 {
-                    if (VisionSystem.IsVisited(player, c) || HardBlocked(c)) continue;
-                    if (NearestBaseDist(c) > waveBandLimit) continue;
-                    bool touchesReachable = false;
-                    int fresh = 0;
-                    foreach (HexCoord n in HexGridMath.Neighbors(c))
-                    {
-                        if (reachableVisited.Contains(n)) touchesReachable = true;
-                        if (OnMap(n) && !VisionSystem.IsVisited(player, n)) fresh++;
-                    }
-                    if (!touchesReachable) continue;
-                    bool exposed = EnemyExposed(c);
-                    frontier.Add(new FrontierHexSnapshot
-                    {
-                        Hex = c,
-                        FreshNeighbors = fresh,
-                        DistanceFromNearestBase = NearestBaseDist(c),
-                        EnemyExposure = exposed,
-                        StealthDetectionRisk = exposed && DetectorsAt(c) > 0,
-                    });
-                    frontierSet.Add(c);
+                    if (f.DistanceFromNearestBase > bandLimit) continue;
+                    frontier.Add(f);
+                    frontierSet.Add(f.Hex);
                 }
             }
 

@@ -234,6 +234,14 @@ namespace Game.Ai.V2
         public const int frontierWaveBand = 2;             // ring width past the leading edge (V1 visitRingBand kin)
         public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close ANNOTATES a frontier hex EnemyExposure (does NOT drop it; V1 scoutFleeRadius kin)
         public const float scoutDetectionRiskNorm = 2f;    // this many stealth-capable detectors near the focus -> DetectionRisk 1
+        // A Surveil target IS a (stale) enemy contact — always stealth-Required, and its own
+        // last-known hex carries at least this much detection risk (scaled by contact confidence)
+        // before any currently-known detectors nearby are added on top.
+        public const float scoutSurveilBaseDetectionRisk = 0.5f;
+        // Planner-local only: SelectionScore *= (1 - this * DetectionRisk). Keeps BaseValue / the
+        // radar clean (execution risk is not intrinsic information value) while still making the
+        // planner prefer the safer of two equally valuable recon jobs.
+        public const float scoutDetectionRiskSelectionPenalty = 0.30f;
 
         // Recon observation history (AiReconMemory) — longer than V1's 2-turn tactical enemy
         // memory so the Surveil staleness ramp (scoutSurveilStaleTurns*) is actually reachable.

@@ -117,7 +117,11 @@ namespace Game.Ai.V2
                      + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
                 float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
 
-                (StealthRequirement req, float risk) = StealthFor(snap, f.Hex, f.EnemyExposure, f.StealthDetectionRisk);
+                StealthRequirement req = f.EnemyExposure ? StealthRequirement.Required : StealthRequirement.None;
+                float risk = f.EnemyExposure
+                    ? Mathf.Max(f.StealthDetectionRisk ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
+                        CurrentDetectorRisk(snap, f.Hex))
+                    : 0f;
 
                 var target = new ScoutMissionTarget
                 {
@@ -130,7 +134,7 @@ namespace Game.Ai.V2
                 string explain = $"Explore @{f.Hex.Q},{f.Hex.R} opens {f.FreshNeighbors} "
                     + $"(info {F(infoGain)} prox {F(proximity)} d{f.DistanceFromNearestBase}{StealthTag(req, risk)}) "
                     + $"base {F(baseValue)} x explore {F(reconExploration)}";
-                yield return new ScoutCandidate(target, baseValue, baseValue * reconExploration, explain);
+                yield return new ScoutCandidate(target, baseValue, Selection(baseValue, reconExploration, risk), explain);
             }
         }
 
@@ -170,7 +174,13 @@ namespace Game.Ai.V2
                      + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
                 float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
 
-                (StealthRequirement req, float risk) = StealthFor(snap, pos, null, null);
+                // A Surveil target IS a (stale) enemy contact — always stealth-Required. Its own
+                // last-known hex carries a confidence-scaled base risk (if the army is still there,
+                // co-located it can detect stealth); any currently-known detectors add on top.
+                StealthRequirement req = StealthRequirement.Required;
+                float risk = Mathf.Clamp01(Mathf.Max(
+                    c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
+                    CurrentDetectorRisk(snap, pos)));
 
                 var target = new ScoutMissionTarget
                 {
@@ -183,7 +193,7 @@ namespace Game.Ai.V2
                 string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
                     + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
                     + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
-                yield return new ScoutCandidate(target, baseValue, baseValue * reconSurveillance, explain);
+                yield return new ScoutCandidate(target, baseValue, Selection(baseValue, reconSurveillance, risk), explain);
             }
         }
 
@@ -192,34 +202,27 @@ namespace Game.Ai.V2
         private static float Proximity(int distanceFromNearestBase) =>
             Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
 
-        // Enemy exposure -> Required, always (a visible scout is not a valid executor near a known
-        // non-neutral — parity with V1). DetectionRisk is non-zero only where a known force could
-        // actually roll a stealth challenge on this hex. `exposureHint` / `detectHint` are the
-        // frontier scan's pre-computed bools for an Explore hex; null for a Surveil hex, computed
-        // here from the same current honest sightings.
-        private static (StealthRequirement, float) StealthFor(WorldSnapshot snap, HexCoord hex,
-            bool? exposureHint, bool? detectHint)
+        // [0..1] risk from CURRENTLY known non-neutral forces that could actually roll a stealth
+        // challenge on `hex` (KnownEnemySighting.CanDetectStealthAt). Count-based for now;
+        // RecceSpotStrength-weighted pressure is a later refinement.
+        private static float CurrentDetectorRisk(WorldSnapshot snap, HexCoord hex)
         {
             var sightings = snap.Known?.EnemySightings;
+            if (sightings == null) return 0f;
             int r = AiConfigV2.frontierEnemyExposureRadius;
-
-            bool exposed = exposureHint ?? (sightings != null
-                && sightings.Any(s => HexGridMath.Distance(s.Hex, hex) <= r));
-            if (!exposed)
-                return (StealthRequirement.None, 0f);
-
             int detectors = 0;
-            if (sightings != null)
-                foreach (var s in sightings)
-                    if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
-                        detectors++;
-            // detectHint (true) means the scan already found >=1; keep at least that.
-            if ((detectHint ?? false) && detectors == 0)
-                detectors = 1;
-
-            float risk = Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
-            return (StealthRequirement.Required, risk);
+            foreach (var s in sightings)
+                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
+                    detectors++;
+            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
         }
+
+        // SelectionScore = BaseValue * the relevant Recon sub-desire * an execution-risk factor.
+        // The risk factor stays OUT of BaseValue (and therefore out of the radar) — it is not
+        // intrinsic information value, just a tie-breaker toward the safer of two equal jobs.
+        private static float Selection(float baseValue, float subDesire, float detectionRisk) =>
+            baseValue * subDesire
+            * Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectionRisk);
 
         private static string StealthTag(StealthRequirement req, float risk) =>
             req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";

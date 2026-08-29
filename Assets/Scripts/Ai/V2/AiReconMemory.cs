@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -54,8 +55,14 @@ namespace Game.Ai.V2
 
         public static void Clear() => ByPlayer.Clear();
 
-        // Called once per V2 scan with the current honest (non-neutral) sightings. Overwrites each
-        // matching entry with `turn`, then purges anything past the retention window.
+        // Called once per V2 scan with the current honest (non-neutral) sightings (V1's memory,
+        // which itself keeps a sighting up to enemySightingMemoryTurns after it was last SEEN).
+        // Each entry is stamped with the sighting's real SeenTurn — NOT the current turn — so a
+        // sighting merely lingering in V1's tactical memory does not keep rejuvenating the
+        // observation age. Then: reconcile (drop an entry whose last-known hex we can now see is
+        // empty — we looked, it is not there / it went stealth, so there is no honest concrete
+        // position to send a Surveil to any more; a still-existing enemy feeds enemyBlindness
+        // instead), and purge past the retention window.
         public static void Observe(PlayerSetupData player, int turn,
             IEnumerable<AiMapMemory.KnownEnemySighting> currentSightings)
         {
@@ -64,16 +71,18 @@ namespace Game.Ai.V2
             if (!ByPlayer.TryGetValue(player, out Dictionary<int, ReconObservation> store))
                 ByPlayer[player] = store = new Dictionary<int, ReconObservation>();
 
+            var liveIds = new HashSet<int>();
             if (currentSightings != null)
             {
                 foreach (AiMapMemory.KnownEnemySighting s in currentSightings)
                 {
+                    liveIds.Add(s.ArmyId);
                     store[s.ArmyId] = new ReconObservation
                     {
                         ArmyId = s.ArmyId,
                         Owner = s.Owner,
                         LastObservedHex = s.Hex,
-                        LastObservedTurn = turn,
+                        LastObservedTurn = s.SeenTurn,
                         MemberCount = s.MemberCount,
                         AttackSum = s.AttackSum,
                         DefenseSum = s.DefenseSum,
@@ -86,8 +95,12 @@ namespace Game.Ai.V2
             }
 
             int cutoff = turn - AiConfigV2.reconObservationMemoryTurns;
-            var stale = store.Where(kv => kv.Value.LastObservedTurn < cutoff).Select(kv => kv.Key).ToList();
-            foreach (int id in stale)
+            var drop = store
+                .Where(kv => kv.Value.LastObservedTurn < cutoff
+                    || (!liveIds.Contains(kv.Key) && VisionSystem.IsVisible(player, kv.Value.LastObservedHex)))
+                .Select(kv => kv.Key)
+                .ToList();
+            foreach (int id in drop)
                 store.Remove(id);
         }
 
