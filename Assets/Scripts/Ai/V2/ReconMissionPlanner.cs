@@ -90,10 +90,12 @@ namespace Game.Ai.V2
             var picked = new List<ScoutCandidate>();
 
             // 1. Soft/Hard incumbents hold a slot unconditionally (funding-protected — see
-            //    MissionContinuityLayer). Score only orders them against each other.
+            //    MissionContinuityLayer). Score only orders them against each other; the stable
+            //    key breaks ties so the pick never depends on registry iteration order.
             foreach (ScoutCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
-                .OrderByDescending(x => x.SelectionScore))
+                .OrderByDescending(x => x.SelectionScore)
+                .ThenBy(x => CandidateKey(x)))
             {
                 if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
                 if (picked.Any(p => Conflicts(p, c))) continue;
@@ -108,7 +110,8 @@ namespace Game.Ai.V2
             IEnumerable<ScoutCandidate> contenders = incumbents
                 .Where(x => x.Tier == CommitmentTier.None)
                 .Concat(fresh)
-                .OrderByDescending(x => x.SelectionScore * (x.IsIncumbent ? mult : 1f));
+                .OrderByDescending(x => x.SelectionScore * (x.IsIncumbent ? mult : 1f))
+                .ThenBy(x => CandidateKey(x));
             foreach (ScoutCandidate c in contenders)
             {
                 if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
@@ -121,6 +124,11 @@ namespace Game.Ai.V2
                 proposals.Add(BuildProposal(snap, c));
             return proposals;
         }
+
+        // Deterministic tie-break for candidate ranking: (kind, focus hex). Keeps a slot pick from
+        // depending on LINQ's input order (which for incumbents is registry iteration order).
+        private static (int, int, int) CandidateKey(ScoutCandidate c) =>
+            ((int)c.Target.Kind, c.Target.FocusHex.Q, c.Target.FocusHex.R);
 
         // Identical hex is never allowed. Two Explores must be spread out. An Explore and a
         // Surveil (or two Surveils) on nearby-but-different hexes are genuinely different jobs.

@@ -48,15 +48,22 @@ namespace Game.Ai.V2
 
         // Is a durable intent still a coherent thing to pursue against THIS snapshot? Not
         // "satisfied" (that retires it as a win); "still valid" gates whether MissionLayer should
-        // bother re-materialising it at all.
+        // bother re-materialising it at all. NOTE this DOES fold in "already satisfied": a Surveil
+        // whose tracked army has been honestly re-observed SINCE the intent's baseline (by this
+        // scout, another scout, or any other action) is done — the snapshot knows via
+        // EnemyContactSnapshot.LastObservedTurn, so an intent must not keep chasing a fix it
+        // already has. ResolveActive purges what this rejects; the retirement is logged there.
         public static bool IsIntentStillValid(WorldSnapshot snap, ScoutIntent intent)
         {
             if (snap == null || intent == null)
                 return false;
 
-            return intent.Kind == ScoutTargetKind.Surveil
-                ? SurveilContact(snap, intent.TrackedArmyId) != null
-                : ExploreStillOpen(snap, intent.FocusHex) > 0;
+            if (intent.Kind == ScoutTargetKind.Surveil)
+            {
+                EnemyContactSnapshot contact = SurveilContact(snap, intent.TrackedArmyId);
+                return contact != null && contact.LastObservedTurn <= intent.BaselineObservedTurn;
+            }
+            return ExploreStillOpen(snap, intent.FocusHex) > 0;
         }
 
         // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no

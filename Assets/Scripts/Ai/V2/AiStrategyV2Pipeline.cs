@@ -448,6 +448,11 @@ namespace Game.Ai.V2
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
             foreach (ExecutionResult er in executed)
                 ledger.RecordExecution(er);
+            ledger.RecordDeferrals(allocation.Deferred);
+            // Post-execution LIVE pass — a mission run later this turn may have met an earlier
+            // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the
+            // ledger via ScoutObjectiveEvaluator; ReconcileAfterTurn below stays pure.
+            ledger.RefreshObjectiveStatesLive(player);
 
             // 7c. Update durable intent state for next turn — a PURE transition over the ledger's
             //     facts (no world reads). Creates intents for started-but-unfinished recon,

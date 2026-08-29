@@ -29,6 +29,9 @@ namespace CommitmentSim
             Scenario06_ExploreProgress_HysteresisHolds();
             Scenario07_SoftCommitmentUnderSiege_Suspended();
             Scenario08_RepricePass1FailPass2Success_LedgerReportsFinalState();
+            Scenario09_SurveilAlreadyReObserved_Retired();
+            Scenario10_CommitmentOrderingIsDeterministic();
+            Scenario11_PoolExhaustedIsDistinctFromAProvisioningBlock();
 
             Console.WriteLine();
             Console.WriteLine($"commitment-sim: {_passed} passed, {_failed} failed");
@@ -259,7 +262,125 @@ namespace CommitmentSim
                 && MissionIntentRegistry.GetOrCreate(me).All.Single().Funding == CommitmentTier.Soft);
         }
 
+        // ------------------------------------------------------- 09 already re-observed ----
+        private static void Scenario09_SurveilAlreadyReObserved_Retired()
+        {
+            // A different scout / action honestly re-observed the tracked army AFTER the intent's
+            // baseline. The old Surveil is already done — the snapshot knows via LastObservedTurn.
+            PlayerSetupData done = Fresh("S9a");
+            PutSurveilIntent(done, tracked: 42, focus: H(9, 3), tier: CommitmentTier.Soft, createdTurn: 5, baseline: 5);
+            WorldSnapshot fresher = Snap(turn: 8, actionPoints: 6);
+            fresher.Threat.ReconContactByArmyId = new Dictionary<int, EnemyContactSnapshot>
+            {
+                [42] = ContactObservedAt(H(9, 3), 42, lastObservedTurn: 7),
+            };
+            List<MissionIntent> a9 = MissionContinuityLayer.ResolveActive(done, fresher);
+            Check("09a Surveil re-observed past its baseline -> intent retired at turn start",
+                a9.Count == 0 && MissionIntentRegistry.GetOrCreate(done).Count == 0);
+
+            // Contrast: the only fix we have is still no fresher than the baseline -> keep chasing.
+            PlayerSetupData chasing = Fresh("S9b");
+            PutSurveilIntent(chasing, tracked: 42, focus: H(9, 3), tier: CommitmentTier.Soft, createdTurn: 5, baseline: 5);
+            WorldSnapshot stale = Snap(turn: 8, actionPoints: 6);
+            stale.Threat.ReconContactByArmyId = new Dictionary<int, EnemyContactSnapshot>
+            {
+                [42] = ContactObservedAt(H(9, 3), 42, lastObservedTurn: 3),
+            };
+            Check("09b no fresher fix than the baseline -> intent still active",
+                MissionContinuityLayer.ResolveActive(chasing, stale).Count == 1);
+        }
+
+        // ------------------------------------------------------- 10 deterministic order ----
+        private static void Scenario10_CommitmentOrderingIsDeterministic()
+        {
+            PlayerSetupData me = Fresh("S10");
+            PutSurveilIntent(me, tracked: 20, focus: H(2, 0), tier: CommitmentTier.Soft, createdTurn: 2, baseline: 0);
+            PutSurveilIntent(me, tracked: 50, focus: H(5, 0), tier: CommitmentTier.Hard, createdTurn: 5, baseline: 0);
+            PutSurveilIntent(me, tracked: 10, focus: H(1, 0), tier: CommitmentTier.Soft, createdTurn: 1, baseline: 0);
+
+            WorldSnapshot s = Snap(turn: 9, actionPoints: 6);
+            s.Threat.ReconContactByArmyId = new Dictionary<int, EnemyContactSnapshot>
+            {
+                [20] = ContactObservedAt(H(2, 0), 20, 0),
+                [50] = ContactObservedAt(H(5, 0), 50, 0),
+                [10] = ContactObservedAt(H(1, 0), 10, 0),
+            };
+
+            List<int> order = MissionContinuityLayer.ResolveActive(me, s)
+                .Select(i => i.Scout.TrackedArmyId.Value).ToList();
+            // Hard before Soft; within a tier, the older intent first.
+            Check("10 commitments resolve in a fixed order (Tier desc, CreatedTurn asc)",
+                order.SequenceEqual(new[] { 50, 10, 20 }));
+        }
+
+        // ------------------------------------------- 11 pool cap != provisioning block ----
+        private static void Scenario11_PoolExhaustedIsDistinctFromAProvisioningBlock()
+        {
+            // Real pool cap -> Suspended(PoolExhausted), stall NOT ticked.
+            PlayerSetupData pe = Fresh("S11a");
+            MissionProposal p1 = SurveilProp(H(3, 3), 601, 30f, 2f);
+            MissionContinuityLayer.ReconcileAfterTurn(pe, 1,
+                new[] { ExecOutcome(p1, ExecutionStopReason.OutOfMovement, steps: 2, false, false, 4) });
+
+            var led = new MissionOutcomeLedger();
+            led.RegisterProposals(new[] { p1 });
+            led.RegisterCommitments(new[] { new Commitment { IntentKey = MissionIntentKey.For(p1), Mission = p1, Tier = CommitmentTier.Soft, ContinuationValue = p1.BaseValue } });
+            led.RecordDeferrals(new[] { new DeferredEntry { Mission = p1, Reason = DeferReason.CommitmentPoolExhausted } });
+            MissionTurnOutcome poolOut = led.Finalize().Single();
+            Check("11a CommitmentPoolExhausted classifies as Blocked with the defer reason kept",
+                poolOut.Outcome == ExecutionOutcome.Blocked && poolOut.AllocationDeferReason == DeferReason.CommitmentPoolExhausted);
+            MissionContinuityLayer.ReconcileAfterTurn(pe, 2, new[] { poolOut });
+            MissionIntent afterPool = MissionIntentRegistry.GetOrCreate(pe).All.Single();
+            Check("11b -> Suspended(PoolExhausted), stall not ticked",
+                afterPool.Status == IntentStatus.Suspended && afterPool.Suspended == SuspendReason.PoolExhausted
+                && afterPool.StallTurns == 0);
+
+            // An ordinary provisioning block (NoExecutableStep) is ALSO Blocked, but must NOT be
+            // read as a pool cap -> no suspension, stall DOES tick.
+            PlayerSetupData nb = Fresh("S11b");
+            MissionProposal p2 = SurveilProp(H(4, 4), 701, 30f, 1f);
+            MissionContinuityLayer.ReconcileAfterTurn(nb, 1,
+                new[] { ExecOutcome(p2, ExecutionStopReason.OutOfMovement, steps: 2, false, false, 4) });
+            MissionTurnOutcome blockOut = FailOutcome(p2, ProvisionFailure.NoExecutableStep("no safe first step"));
+            Check("11c NoExecutableStep is Blocked but carries no pool-defer reason",
+                blockOut.Outcome == ExecutionOutcome.Blocked && blockOut.AllocationDeferReason == null
+                && blockOut.ProvisionFailureKindValue == ProvisionFailureKind.NoExecutableStep);
+            MissionContinuityLayer.ReconcileAfterTurn(nb, 2, new[] { blockOut });
+            MissionIntent afterBlock = MissionIntentRegistry.GetOrCreate(nb).All.Single();
+            Check("11d -> not suspended, stall ticked",
+                afterBlock.Status == IntentStatus.Active && afterBlock.StallTurns == 1);
+        }
+
         // ================================================================ builders ====
+
+        private static void PutSurveilIntent(PlayerSetupData player, int tracked, HexCoord focus,
+            CommitmentTier tier, int createdTurn, int baseline)
+        {
+            MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent
+            {
+                IntentKey = new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, tracked, 0, 0),
+                LastAttemptKey = default,
+                Kind = MissionKind.Scout,
+                Funding = tier,
+                Status = IntentStatus.Active,
+                Suspended = SuspendReason.None,
+                Objective = new ScoutIntent
+                {
+                    Kind = ScoutTargetKind.Surveil, FocusHex = focus,
+                    TrackedArmyId = tracked, BaselineObservedTurn = baseline,
+                },
+                CreatedTurn = createdTurn,
+                TurnsActive = 1,
+                LastProgressTurn = createdTurn,
+            });
+        }
+
+        private static EnemyContactSnapshot ContactObservedAt(HexCoord focus, int armyId, int lastObservedTurn)
+        {
+            EnemyContactSnapshot c = SurveilContact(focus, armyId);
+            c.LastObservedTurn = lastObservedTurn;
+            return c;
+        }
 
         private static HexCoord H(int q, int r) => new HexCoord(q, r);
 

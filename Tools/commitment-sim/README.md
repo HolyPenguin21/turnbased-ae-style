@@ -30,5 +30,8 @@ Exit code `0` = all scenarios passed.
 | 04 | in-flight Surveil, then `TargetSatisfied` (another scout re-observed it) | intent retired as complete, no cooldown |
 | 05 | in-flight Surveil, then `NoObservationVantage` (structural) | intent retired **and** the attempt key put on the allocator reject cooldown |
 | 06 | Explore progress → intent kept with `Funding == None`; retarget hysteresis | a marginally-better fresh frontier hex does NOT flip the heading; a hex past the `commitmentRetargetMargin` does |
-| 07 | Soft commitment while `UnderSiege` | `ResolveActive` suspends it (`Siege`), binds no funding; it re-activates when the siege lifts |
+| 07 | Soft commitment while `UnderSiege` | `ResolveActive` suspends it (`Siege`), binds no funding; it re-activates when the siege lifts. (Hard is deliberately NOT auto-suspended — step-9 concern.) |
 | 08 | reprice: provision fails on pass 1 (`EnvelopeTooSmall`), succeeds on pass 2, then executes | the ledger reports the FINAL state (`ProductiveStop`), never the stale intermediate failure |
+| 09 | the tracked army is honestly re-observed after the intent's baseline | `IsIntentStillValid` (via `LastObservedTurn <= BaselineObservedTurn`) retires it — a completed surveillance is not chased again; a no-fresher-than-baseline fix keeps it active |
+| 10 | three commitments (Hard@t5, Soft@t1, Soft@t2) | `ResolveActive` returns them in a fixed order — Tier desc, then CreatedTurn asc — so `Dictionary` iteration never decides who the capped allocator funds |
+| 11 | `CommitmentPoolExhausted` vs an ordinary `NoExecutableStep` block | only the real pool cap suspends the intent (`PoolExhausted`, stall not ticked); the provisioning block leaves it active and ticks stall |

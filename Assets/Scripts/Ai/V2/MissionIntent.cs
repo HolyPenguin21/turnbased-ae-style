@@ -60,7 +60,7 @@ namespace Game.Ai.V2
     // cooldown on Surveil(#42) never lands on Surveil(#77). Explore is keyed by its focus hex
     // (the hex IS the objective). Everything else: kind only, until step 9 gives raids an
     // ObjectiveId (target building / army id).
-    public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>
+    public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {
         public readonly MissionKind Kind;
         public readonly int SubKind;      // (int)ScoutTargetKind for Scout
@@ -97,6 +97,17 @@ namespace Game.Ai.V2
             Kind == o.Kind && SubKind == o.SubKind && ObjectiveId == o.ObjectiveId && Q == o.Q && R == o.R;
         public override bool Equals(object obj) => obj is MissionIntentKey o && Equals(o);
         public override int GetHashCode() => ((int)Kind, SubKind, ObjectiveId, Q, R).GetHashCode();
+
+        // Deterministic total order — the layer sorts commitments and incumbents by this so
+        // Dictionary iteration order never influences an AI decision.
+        public int CompareTo(MissionIntentKey o)
+        {
+            int c = Kind.CompareTo(o.Kind); if (c != 0) return c;
+            c = SubKind.CompareTo(o.SubKind); if (c != 0) return c;
+            c = ObjectiveId.CompareTo(o.ObjectiveId); if (c != 0) return c;
+            c = Q.CompareTo(o.Q); if (c != 0) return c;
+            return R.CompareTo(o.R);
+        }
         public override string ToString() =>
             Kind == MissionKind.Scout
                 ? (SubKind == (int)ScoutTargetKind.Surveil
@@ -204,6 +215,12 @@ namespace Game.Ai.V2
         public float ApSpent;
         public int? MoverArmyId;
 
+        // Why the mission got no real attempt this turn, when it didn't. Kept precise so
+        // ReconcileAfterTurn suspends a commitment as PoolExhausted ONLY on the real pool cap, not
+        // on any Blocked-classified provisioning failure (MoverContended / NoExecutableStep / ...).
+        public DeferReason? AllocationDeferReason;
+        public ProvisionFailureKind? ProvisionFailureKindValue;
+
         // Surveil identity refresh for the next turn (from the provisioned plan, if any).
         public ScoutTargetKind ScoutKind;
         public HexCoord FocusHex;
@@ -221,6 +238,8 @@ namespace Game.Ai.V2
             public ProvisionedMission Provisioned;
             public ProvisionFailure? PendingFailure;   // superseded by a later success
             public ExecutionResult Execution;
+            public DeferReason? Deferred;
+            public bool LiveSatisfiedOverride;         // a post-execution live pass found the objective met
         }
 
         private readonly Dictionary<StableMissionKey, Row> _rows = new Dictionary<StableMissionKey, Row>();
@@ -275,6 +294,43 @@ namespace Game.Ai.V2
             r.Execution = result;
         }
 
+        // The allocator's Deferred list for the settled pack. Records WHY a mission got no attempt
+        // so ReconcileAfterTurn can tell a real pool cap from an ordinary provisioning block.
+        public void RecordDeferrals(IEnumerable<DeferredEntry> deferred)
+        {
+            if (deferred == null) return;
+            foreach (DeferredEntry d in deferred)
+            {
+                if (d?.Mission == null) continue;
+                if (_rows.TryGetValue(StableMissionKey.For(d.Mission), out Row r) && r.Provisioned == null)
+                    r.Deferred = d.Reason;
+            }
+        }
+
+        // Post-execution LIVE pass (closes decision B): a mission executed later this turn may have
+        // satisfied an earlier Surveil's objective. The ledger is a per-turn scratch object, and it
+        // touches the world ONLY through ScoutObjectiveEvaluator — ReconcileAfterTurn stays pure.
+        public void RefreshObjectiveStatesLive(PlayerSetupData player)
+        {
+            foreach (Row r in _rows.Values)
+            {
+                if (r.Proposal == null || r.Provisioned == null)
+                    continue;
+                if (r.Execution != null && r.Execution.ReachedGoal)
+                    continue;
+                ProvisionedMission pm = r.Provisioned;
+                bool satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
+                    ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
+                    : ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                if (satisfied)
+                {
+                    r.LiveSatisfiedOverride = true;
+                    AiDebugLog.Write($"[AI][V2] ledger — {MissionIntentKey.For(r.Proposal)} objective met by "
+                        + "another action this turn (post-execution live pass)");
+                }
+            }
+        }
+
         public List<MissionTurnOutcome> Finalize()
         {
             var list = new List<MissionTurnOutcome>();
@@ -312,13 +368,24 @@ namespace Game.Ai.V2
                 }
                 else if (r.PendingFailure.HasValue)
                 {
+                    o.ProvisionFailureKindValue = r.PendingFailure.Value.Kind;
                     ClassifyProvisionFailure(r.PendingFailure.Value, o);
                 }
                 else
                 {
                     // Funded but never got a real attempt (deferred on a re-pack, or a commitment
                     // the pool could not cover). The intent survives; its stall counter ticks.
+                    o.AllocationDeferReason = r.Deferred;
                     o.Outcome = ExecutionOutcome.Blocked;
+                }
+
+                // A later mission this turn met the objective — outranks whatever this row's own
+                // attempt did (or didn't).
+                if (r.LiveSatisfiedOverride)
+                {
+                    o.Outcome = ExecutionOutcome.Completed;
+                    o.ObjectiveSatisfied = true;
+                    o.StructuralFailure = false;
                 }
 
                 list.Add(o);
@@ -412,8 +479,11 @@ namespace Game.Ai.V2
                     intent.Suspended = SuspendReason.None;
                 }
 
-                // Siege outranks any Soft/Hard funding: keep the intent, drop the funding, wait it out.
-                if (intent.Funding != CommitmentTier.None && underSiege)
+                // Siege drops SOFT funding: keep the intent, wait it out. Hard is deliberately NOT
+                // auto-suspended here — a raid the AI has paid to assemble (equipment attached,
+                // hero assigned, one hex from the target) may well be the right answer TO a siege.
+                // Its emergency policy is a step-9 concern; Soft/Hard must not stay concept-equal.
+                if (intent.Funding == CommitmentTier.Soft && underSiege)
                 {
                     intent.Status = IntentStatus.Suspended;
                     intent.Suspended = SuspendReason.Siege;
@@ -431,6 +501,16 @@ namespace Game.Ai.V2
 
             foreach (MissionIntentKey k in dead)
                 state.Remove(k);
+
+            // Deterministic order for BindFunding + the allocator's now-capped commitment loop:
+            // Hard before Soft before None, then the older intent, then a stable key. Pre-emption
+            // (step 9) replaces this with a real ProtectedValue policy.
+            active.Sort((x, y) =>
+            {
+                int c = y.Funding.CompareTo(x.Funding); if (c != 0) return c;
+                c = x.CreatedTurn.CompareTo(y.CreatedTurn); if (c != 0) return c;
+                return x.IntentKey.CompareTo(y.IntentKey);
+            });
 
             if (state.Count > 0)
                 AiDebugLog.Write($"[AI][V2] continuity — {state.Count} intent(s): "
@@ -576,20 +656,24 @@ namespace Game.Ai.V2
                     intent.Scout.TrackedArmyId = o.TrackedArmyId;
             }
 
+            bool poolExhausted = o.AllocationDeferReason == DeferReason.CommitmentPoolExhausted;
+
             if (o.MadeProgress)
             {
                 intent.LastProgressTurn = turn;
                 intent.StallTurns = 0;
             }
-            else
+            else if (!poolExhausted)
             {
                 intent.StallTurns++;
             }
 
-            if (o.Outcome == ExecutionOutcome.Blocked && o.WasCommitment && !o.MadeProgress)
+            if (poolExhausted)
             {
-                // A commitment the allocator could not cover this turn (pool exhausted) — keep the
-                // intent, mark it so ResolveActive gives it a fresh shot, don't tick stall as hard.
+                // A commitment the allocator genuinely could not fit in the real AP pool (NOT an
+                // ordinary provisioning block that also classifies as Blocked) — keep the intent,
+                // mark it so ResolveActive gives it a fresh shot, and don't tick stall for it. The
+                // commitmentMaxTurns absolute cap still applies via TurnsActive.
                 intent.Status = IntentStatus.Suspended;
                 intent.Suspended = SuspendReason.PoolExhausted;
             }
