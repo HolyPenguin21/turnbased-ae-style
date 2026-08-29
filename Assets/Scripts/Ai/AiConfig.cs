@@ -1574,6 +1574,20 @@ namespace Game.Ai
         // phases flatten the base weights toward parity and let the axes carry cross-category
         // priority (retiring AggressionSuppressionPenalty / reconPriorityDecay etc.).
         public const bool strategyLayerEnabled = true;
+
+        // ---- AI Strategy V2 — parallel pipeline (2026-08-29, project owner's own redesign) ----
+        // Master switch for the V2 architecture (Game.Ai.V2.Pipeline). Default OFF: V1 — the
+        // strategy/operations/Decide stack above, plus everything in AiTurnController below the
+        // fork — stays the shipping AI. When true, AiTurnController.RunTurn hands the ENTIRE AI
+        // turn to Game.Ai.V2.Pipeline and returns; V1 and V2 never both run in one AI turn. V1 is
+        // kept fully intact on purpose — its planners/estimators/guards are ported into V2 one
+        // method at a time, not rewritten from memory. See AiStrategyV2Pipeline.cs's file header
+        // for the full design record (radar = normalised sum-to-1, axes Recon/Aggression/Defence/
+        // Economy/Development, Management is a servicing layer not an axis, the four middle-band
+        // risks, and the recon-first build order).
+        // static readonly, not const, on purpose: this is an A/B toggle you flip, so neither
+        // branch of the fork in AiTurnController.RunTurn should compile to unreachable code.
+        public static readonly bool aiStrategyV2Enabled = false;
         // Step 5 (2026-08-27) — retire the hand-rolled cross-category couplings the strategic axes
         // now subsume, so a new behavior no longer needs a fresh constant threaded between two old
         // ones. When true:

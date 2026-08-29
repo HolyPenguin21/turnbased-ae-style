@@ -1,0 +1,427 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using Game.Map;
+using Game.Players;
+
+namespace Game.Ai.V2
+{
+    // ===========================================================================================
+    //  AI STRATEGY V2 — PARALLEL PIPELINE  (design record, 2026-08-29)
+    // ===========================================================================================
+    //
+    //  WHY THIS EXISTS
+    //  --------------------------------------------------------------------------------------------
+    //  V1 (AiStrategyDirector + AiOperationPlanner + AiTurnController.Decide + the Level-1
+    //  planners) picks actions well enough, but its *state* keeps corrupting itself: half-reserved
+    //  armies, locked raid slots, orphaned field armies, reservation leaks, estimate-vs-execution
+    //  desync, oscillation between half-built plans. The project's AiDebug.log history is ~20
+    //  rounds of fixes plus follow-ups all against that same class of bug — evidence it is
+    //  ARCHITECTURAL, not incidental. V2's job is to make that class of bug impossible *by
+    //  construction*, not patchable.
+    //
+    //  WHAT "SOLID" MEANS HERE — and what it does NOT mean
+    //  --------------------------------------------------------------------------------------------
+    //  V2 is plumbing that cannot corrupt its own state and cannot thrash. It does NOT, on its
+    //  own, make the AI play better. Decision quality still lives entirely in the response curves
+    //  inside the evaluators and in mission Base Value scoring — those are ported from V1 and
+    //  tuned exactly as before. "Plays smarter" is separate work in the same evaluators.
+    //
+    //  THE SWITCH  (hard rule)
+    //  --------------------------------------------------------------------------------------------
+    //  V1 stays the shipping default. V2 is enabled only by AiConfig.aiStrategyV2Enabled. The two
+    //  NEVER both run in one AI turn — AiTurnController.RunTurn forks at the top: flag set => this
+    //  pipeline owns the whole turn and RunTurn returns immediately after it; flag clear => V1
+    //  runs untouched and this file is dead code. V1 is deliberately NOT deleted: its planners,
+    //  estimators and guards are ported into V2 one method at a time, adapted, never rewritten
+    //  from memory.
+    //
+    //  THE RADAR  (settled — do not re-litigate)
+    //  --------------------------------------------------------------------------------------------
+    //  Normalised: sum of all axes == 1. It is an *allocation vector* — each axis is "what share
+    //  of the shared resource pool goes here". Independent [0..1] axes were rejected: every action
+    //  draws on the same pool, so unbacked independent desires are a false model.
+    //    Final axes: Recon, Aggression, Defence, Economy, Development.  (DesireAxis enum below.)
+    //    Management is NOT an axis. It is a servicing layer (Manager stage) that keeps the AI's
+    //    own state healthy in service of whatever the radar funded — reservation cleanup, garrison
+    //    reorganisation, hand upkeep. It runs OFF-BUDGET with a guaranteed minimum, the same way
+    //    garrison reorg already sits outside V1's arbiter. It must never have to "win" priority
+    //    against Aggression to happen.
+    //  Two ABSOLUTE scalars are kept OUTSIDE the simplex (DesireVector.MilitaryThreat /
+    //  .EconomicRunway): the normalised vector alone can't tell "calm, 40% to defence because
+    //  nothing else competed" from "existential threat, 40% is nowhere near enough". These two
+    //  scalars measure world state, are not a share of anything, and act as modifiers (widen
+    //  aggression thresholds, permit risky trades, force turtle). Nothing beyond these two.
+    //
+    //  RAW DESIRES -> NORMALIZER -> RADAR
+    //  --------------------------------------------------------------------------------------------
+    //  Evaluators produce an independent raw intensity per axis in [0..1] (interpretable,
+    //  per-axis-tunable). Normalisation to sum==1 happens ONCE, here, at the boundary into
+    //  allocation. Evaluators use RESPONSE CURVES (one curve per input factor -> contribution,
+    //  summed), the V1 AiStrategyDirector style. NOT fuzzy logic — fuzzy gives the same result but
+    //  is harder to tune (membership-function shapes, rule-conflict resolution).
+    //
+    //  THE FOUR MIDDLE-BAND RISKS  (must be designed in, never patched on later)
+    //  --------------------------------------------------------------------------------------------
+    //  1. Mission<->axis is MANY-TO-MANY. A raid on a neutral guarding a factory serves
+    //     Aggression + Economy + Development at once. Every MissionProposal carries an
+    //     AxisContribution vector, never a single category. The allocator cuts per-axis budget
+    //     SLICES from the radar first, then packs missions into slices, a multi-axis mission
+    //     drawing proportionally from several.
+    //  2. RE-ALLOCATE ON FAIL is a loop with a HARD BOUND. Provisioning FAIL -> release tentative
+    //     budget -> mark mission rejected-this-turn -> re-allocate remainder. Bounded by a max
+    //     iteration count + a per-mission rejected set + a cooldown (reuse the
+    //     raidPlanRejectCooldownTurns pattern). Without the bound this is the V1 stall-watchdog
+    //     bug class all over again.
+    //  3. ONE ESTIMATOR, TWO STAGES. MissionRequirements ("raid needs CombatPower >= X") and
+    //     Provisioning feasibility validation MUST call the same estimator module (WorthIt /
+    //     battle-estimate). Two different estimates => "allocator approves, provisioning can't
+    //     deliver" thrash (V1 hit this exact bug: raid diagnostics desynced from
+    //     raidMinimumWinChance).
+    //  4. COMMITMENT IS FIRST-CLASS. The pipeline recomputes everything each cycle; without a
+    //     commitment layer a half-assembled raid is dropped on a 0.05 radar wobble. In-flight
+    //     missions reach the allocator as "already funded, cancellation cost = reserved value +
+    //     sunk turns", their reservations are sticky, retarget hysteresis applies. Start simple:
+    //     commitments honoured to completion; add allocator-driven pre-emption later.
+    //
+    //  PROVISIONING MANAGER
+    //  --------------------------------------------------------------------------------------------
+    //  ONE entry point, ONE exit point, ATOMIC. Consumes the tentative allocation in priority
+    //  order, one mission at a time, so mission N sees the resources mission N-1 already claimed.
+    //  Per mission: Army/Card/Equipment logic -> Assembly Plan -> feasibility validation (same
+    //  estimator as risk 3) -> SUCCESS: reserve/claim/spend all-or-nothing, emit ProvisioningResult
+    //  / FAIL: change nothing, return FAIL. No partial-commit state can exist between the doors.
+    //  This is the single biggest reason V2 is worth building.
+    //
+    //  BUILD ORDER  (recon end-to-end first, aggression second)
+    //  --------------------------------------------------------------------------------------------
+    //   1. Contracts + walking skeleton (THIS FILE) — every stage a stub, full loop runs, zero
+    //      tasks, no throw, no game-state mutation. V1/V2 switch + fork.
+    //   2. WorldAnalysis — one shared scan (threat map, opportunity map, map knowledge, army /
+    //      garrison state, resource pool). Port V1 scans. Everything downstream reads only this.
+    //   3. Recon + Aggression evaluators -> raw desires -> Normalizer -> Radar. Response curves.
+    //      N-axis normalizer from the start even though only 2 axes are live.
+    //   4. Recon planner -> one Scout MissionProposal -> MissionRequirements. Establish the shared
+    //      Base Value scale (0..100) and the shared estimator module now.
+    //   5. ResourceAllocator — radar -> slices -> many-to-many packing -> ordered TentativeAllocation.
+    //      Bake in the iteration bound + rejected set + cooldown (risk 2).
+    //   6. ProvisioningManager (Scout needs no Army Logic — just atomic AP claim) + TaskExecutor.
+    //      >>> FIRST TEST STATE: AI actually scouts, end to end, in game. <<<
+    //   7. CommitmentLayer + commitment-state update — multi-turn recon survives radar noise.
+    //   8. Manager — off-budget housekeeping (reservation cleanup, garrison reorg, last-defender
+    //      guard). Its safety-net half may land as early as step 6.
+    //   9. Aggression as the second mission type — Raid planner, CombatPower/Army/Hero
+    //      requirements via the shared estimator, Army Logic in provisioning (ready army ->
+    //      garrison detach -> assemble, with V1 preflight guards).
+    //      >>> TARGET TEST STATE: scout + raid concurrently, allocator splits the pool by radar,
+    //      20-turn run with no reservation leaks and no oscillation. <<<
+    //
+    //  GLOSSARY  (V2 term -> V1 type — they are similar-but-different; do not conflate on port)
+    //  --------------------------------------------------------------------------------------------
+    //    V2 "Planner"     : NOT AiScoutPlanner / AiAggressionPlanner / AiDevelopmentPlanner —
+    //                       those are V1 Level-1 category planners. V2 planners only emit
+    //                       MissionProposals; they never score cross-category or touch registries.
+    //    V2 "Task"        : NOT AiTaskKind / AiTaskRegistry — a V2 Task is the concrete executable
+    //                       step list produced AFTER provisioning succeeds.
+    //    V2 "Radar/axis"  : conceptually V1's AiStrategyAssessment, but normalised (sum==1) and
+    //                       without a Management axis.
+    //    Reused as-is     : AiResourcePool, AiResourceReservation, WorthIt, AiMapMemory,
+    //                       VisionSystem, ArmyActions, HexSelectionController — V2 mutates game
+    //                       state only through the same player-agnostic paths V1 (and the human)
+    //                       already use.
+    // ===========================================================================================
+
+    // Normalised radar axes. Order is the canonical iteration order for every Dictionary<DesireAxis,*>
+    // and every log line below. Management is intentionally absent — see the file header.
+    public enum DesireAxis { Recon, Aggression, Defence, Economy, Development }
+
+    public static class DesireAxes
+    {
+        public static readonly DesireAxis[] All =
+        {
+            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Defence,
+            DesireAxis.Economy, DesireAxis.Development,
+        };
+
+        public static string Abbrev(DesireAxis a)
+        {
+            switch (a)
+            {
+                case DesireAxis.Recon: return "RCN";
+                case DesireAxis.Aggression: return "AGG";
+                case DesireAxis.Defence: return "DEF";
+                case DesireAxis.Economy: return "ECO";
+                default: return "DEV";
+            }
+        }
+    }
+
+    // --- Stage 2 output: the single shared world scan. Every later stage reads ONLY this, never
+    //     raw game state. Stub for now — fields land in build-order step 2.
+    public sealed class WorldSnapshot
+    {
+        public int TurnNumber;
+        // TODO(step 2): threat map, opportunity map, map knowledge, army/garrison state,
+        // available resource pool, economy state. Port the scans currently scattered across
+        // AiStrategyDirector.Evaluate and the V1 planners.
+    }
+
+    // --- Stage 3a output: INDEPENDENT raw desire intensities in [0..1], one per axis, plus the
+    //     two out-of-simplex absolute scalars. Not yet normalised.
+    public sealed class DesireVector
+    {
+        public readonly Dictionary<DesireAxis, float> Raw = new Dictionary<DesireAxis, float>();
+        // Absolute, NOT a share of anything. Modifiers only (see file header).
+        public float MilitaryThreat;   // 0 = no known threat ... 1 = existential
+        public float EconomicRunway;   // 0 = broke/stalled ... 1 = deep surplus
+
+        public static DesireVector Neutral()
+        {
+            var v = new DesireVector();
+            foreach (DesireAxis a in DesireAxes.All)
+                v.Raw[a] = 0.5f;
+            return v;
+        }
+    }
+
+    // --- Stage 3b output: the normalised allocation vector (sum of Weight == 1).
+    public sealed class Radar
+    {
+        public readonly Dictionary<DesireAxis, float> Weight = new Dictionary<DesireAxis, float>();
+
+        public static Radar Even()
+        {
+            var r = new Radar();
+            foreach (DesireAxis a in DesireAxes.All)
+                r.Weight[a] = 1f / DesireAxes.All.Length;
+            return r;
+        }
+
+        // The ONLY normalisation point in the pipeline. Raw independent intensities in, an
+        // allocation vector summing to 1 out.
+        public static Radar Normalize(DesireVector desires)
+        {
+            var r = new Radar();
+            float sum = 0f;
+            foreach (DesireAxis a in DesireAxes.All)
+                sum += UnityEngine.Mathf.Max(0f, desires.Raw.TryGetValue(a, out float w) ? w : 0f);
+            if (sum < 0.0001f)
+                return Even();
+            foreach (DesireAxis a in DesireAxes.All)
+                r.Weight[a] = UnityEngine.Mathf.Max(0f, desires.Raw[a]) / sum;
+            return r;
+        }
+
+        public string DebugLine()
+        {
+            return string.Join(" ", DesireAxes.All.Select(a =>
+                $"{DesireAxes.Abbrev(a)} {Weight[a].ToString("0.00", CultureInfo.InvariantCulture)}"));
+        }
+    }
+
+    // --- How much each axis a single mission serves. MANY-TO-MANY (risk 1): never collapse to one
+    //     category. Values are 0..1 "relevance", not required to sum to anything.
+    public sealed class AxisContribution
+    {
+        public readonly Dictionary<DesireAxis, float> Value = new Dictionary<DesireAxis, float>();
+    }
+
+    // --- Stage 4 output: a concrete thing the AI could do, with the resources it would need.
+    public sealed class MissionProposal
+    {
+        public string Kind;                 // "Scout", "Raid", ... (maps to a V2 Task builder)
+        public object Target;               // hex / army / building — typed in later steps
+        public float BaseValue;             // shared 0..100 scale across ALL mission kinds
+        public readonly AxisContribution Axes = new AxisContribution();
+        public MissionRequirements Requirements;
+        public CommitmentState Commitment = CommitmentState.None;
+    }
+
+    // Min / Desired / Max resource envelope. Computed with the SAME estimator provisioning will
+    // use (risk 3). Stub — fields land in build-order step 4 / 9.
+    public sealed class MissionRequirements
+    {
+        // TODO: AP, H/E/M/T, CombatPower, Army, Hero, Cards, Equipment — each Minimum/Desired/Maximum.
+    }
+
+    public enum CommitmentState { None, InFlight, Completing }
+
+    // --- Stage 7: in-flight missions carried across turns, seen by the allocator as sunk cost.
+    public sealed class Commitment
+    {
+        public MissionProposal Mission;
+        public int TurnsInvested;
+        public float ReservedValue;         // -> cancellation cost
+    }
+
+    // --- Stage 5 intermediate: per-axis share of the global resource pool.
+    public sealed class BudgetSlice
+    {
+        public DesireAxis Axis;
+        public float ApShare;
+        // TODO: H/E/M/T shares, army/card/hero headroom.
+    }
+
+    // --- Stage 5 output: ordered list of missions the allocator is willing to fund, plus the
+    //     tentative (not yet committed) resources each. Priority order is explicit — provisioning
+    //     consumes it sequentially.
+    public sealed class TentativeAllocation
+    {
+        public readonly List<(MissionProposal Mission, float TentativeAp)> Funded =
+            new List<(MissionProposal, float)>();
+    }
+
+    // --- Stage 6 output.
+    public sealed class ProvisioningResult
+    {
+        public MissionProposal Mission;
+        public bool Success;
+        // On success: allocated AP + H/E/M/T, reserved army/units/hero/cards/equipment, assembly plan.
+    }
+
+    // ===========================================================================================
+    //  THE PIPELINE — walking skeleton. Every stage below is a stub that returns empty/neutral and
+    //  mutates NOTHING. Toggling AiConfig.aiStrategyV2Enabled on right now yields an AI that logs
+    //  one full pipeline pass and then passes its turn. That is the intended build-order step 1
+    //  end state: full loop runs, zero tasks, no throw.
+    // ===========================================================================================
+    public static class Pipeline
+    {
+        public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            AiDebugLog.Write($"[AI][V2] === {player?.Nickname} — Strategy V2 pipeline owns this turn "
+                + $"(turn {ctx?.TurnNumber}) ===");
+
+            if (player == null || root == null || ctx == null || ctx.Map == null)
+            {
+                AiDebugLog.Write("[AI][V2] missing player/root/ctx/map — nothing to do.");
+                yield break;
+            }
+
+            // 2. One shared scan.
+            WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+
+            // 3. Strategy: independent raw desires -> normalize once -> radar.
+            DesireVector desires = StrategyLayer.Evaluate(snapshot);
+            Radar radar = Radar.Normalize(desires);
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
+                + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
+
+            // 4. Planners -> mission proposals (+ requirements via the shared estimator).
+            List<MissionProposal> missions = MissionLayer.Propose(snapshot);
+
+            // 7. In-flight missions as sunk cost, seen by the allocator.
+            List<Commitment> commitments = CommitmentLayer.Active(player);
+
+            // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
+            //    (Bounded re-allocate-on-fail loop lives inside, wired to provisioning in step 5/6.)
+            TentativeAllocation allocation = ResourceAllocator.Allocate(radar, missions, commitments, root);
+
+            // 6. Atomic provisioning, one mission at a time in priority order.
+            var provisioned = new List<ProvisioningResult>();
+            foreach ((MissionProposal mission, float _) in allocation.Funded)
+            {
+                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, mission);
+                if (result != null && result.Success)
+                    provisioned.Add(result);
+                // else: allocator releases the tentative budget and re-allocates the remainder —
+                //       bounded loop, wired in build-order step 5/6.
+            }
+
+            // Tasks -> execution on the map.
+            yield return TaskExecutor.Execute(player, ctx, provisioned);
+
+            // Commitment bookkeeping for next turn.
+            CommitmentLayer.UpdateAfterExecution(player, provisioned);
+
+            // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
+            yield return Manager.RunHousekeeping(player, ctx);
+
+            AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
+                + $"(missions {missions.Count}, funded {allocation.Funded.Count}, provisioned {provisioned.Count}) ===");
+            yield return null;
+        }
+    }
+
+    // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own
+    //      file. Signatures are deliberate seams; fill the bodies, don't reshape the flow.
+
+    internal static class WorldAnalysis
+    {
+        // Build-order step 2. Port the scans from AiStrategyDirector.Evaluate + V1 planners into
+        // ONE pass. Shares a threat map and an opportunity map so StrategyLayer and MissionLayer
+        // never each re-scan the board.
+        public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            => new WorldSnapshot { TurnNumber = ctx.TurnNumber };
+    }
+
+    internal static class StrategyLayer
+    {
+        // Build-order step 3. One response-curve evaluator per axis (Recon + Aggression first,
+        // then Defence / Economy / Development). Independent raw [0..1] out; normalisation is
+        // Radar.Normalize's job, not this one's.
+        public static DesireVector Evaluate(WorldSnapshot snapshot) => DesireVector.Neutral();
+    }
+
+    internal static class MissionLayer
+    {
+        // Build-order step 4 (Scout) then step 9 (Raid). Emits MissionProposals only — each with
+        // an AxisContribution vector (risk 1) and MissionRequirements from the shared estimator
+        // (risk 3). No scoring across categories, no registry writes.
+        public static List<MissionProposal> Propose(WorldSnapshot snapshot) => new List<MissionProposal>();
+    }
+
+    internal static class CommitmentLayer
+    {
+        // Build-order step 7. Sticky reservations, cancellation cost, retarget hysteresis.
+        // Start simple: commitments are honoured to completion; allocator pre-emption comes later.
+        public static List<Commitment> Active(PlayerSetupData player) => new List<Commitment>();
+
+        public static void UpdateAfterExecution(PlayerSetupData player, List<ProvisioningResult> provisioned) { }
+    }
+
+    internal static class ResourceAllocator
+    {
+        // Build-order step 5. Radar -> per-axis BudgetSlices from the global pool -> many-to-many
+        // packing (a multi-axis mission draws proportionally from several slices) -> ordered
+        // TentativeAllocation. The re-allocate-on-fail loop is HERE and is HARD-BOUNDED
+        // (max iterations + rejected-this-turn set + cooldown — risk 2).
+        public static TentativeAllocation Allocate(Radar radar, List<MissionProposal> missions,
+            List<Commitment> commitments, PlayerRoot root) => new TentativeAllocation();
+    }
+
+    internal static class ProvisioningManager
+    {
+        // Build-order step 6 (AP-only for Scout) then step 9 (Army/Card/Equipment logic for Raid).
+        // ONE entry, ONE exit, ATOMIC: feasibility validation uses the same estimator as
+        // MissionRequirements (risk 3); on success reserve/claim/spend all-or-nothing; on failure
+        // change nothing. No partial-commit state may exist between the two doors.
+        public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, MissionProposal mission) => null;
+    }
+
+    internal static class TaskExecutor
+    {
+        // Turns each ProvisioningResult into a concrete V2 Task (step list) and runs it through the
+        // same ArmyActions / HexSelectionController paths V1 and the human use. Reuse V1 execution
+        // routines where an equivalent AiActionKind already exists.
+        public static IEnumerator Execute(PlayerSetupData player, AiTurnContext ctx, List<ProvisioningResult> provisioned)
+        {
+            yield break;
+        }
+    }
+
+    internal static class Manager
+    {
+        // Build-order step 8. NOT a radar axis — off-budget, guaranteed minimum. Reservation
+        // cleanup (release stale/orphaned), garrison reorganisation (the V1 GarrisonReorgTask
+        // pass), hand upkeep, last-garrison-defender guard. Services the consequences of whatever
+        // the radar funded; never competes with it for priority.
+        public static IEnumerator RunHousekeeping(PlayerSetupData player, AiTurnContext ctx)
+        {
+            yield break;
+        }
+    }
+}
