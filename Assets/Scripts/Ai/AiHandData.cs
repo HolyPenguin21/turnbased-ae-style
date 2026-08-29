@@ -38,6 +38,13 @@ namespace Game.Ai
         // was otherwise invisible outside the Inspector).
         public int RemainingDeckCount => _remainingDeck.Count;
 
+        // The still-drawable draw pool itself, not just its count — read by the Strategy V2
+        // WorldAnalysis scan (Game.Ai.V2) to forecast the player's whole-game military/economic
+        // potential from the cards they can still get to. Draw order is random (see DrawOne), so
+        // this is an honest multiset the AI knows, never a peek at what comes next. Read-only
+        // view — the deck is still mutated only through DrawOne.
+        public IReadOnlyList<CardDefinition> RemainingDeck => _remainingDeck;
+
         public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize, int capacity = 10)
         {
             Capacity = Mathf.Max(0, capacity);

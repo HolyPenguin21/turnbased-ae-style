@@ -100,6 +100,13 @@ namespace Game.Ai.V2
     //      tasks, no throw, no game-state mutation. V1/V2 switch + fork.
     //   2. WorldAnalysis — one shared scan (threat map, opportunity map, map knowledge, army /
     //      garrison state, resource pool). Port V1 scans. Everything downstream reads only this.
+    //      DONE 2026-08-29 — WorldSnapshot.cs (types) + WorldAnalysis.cs (Scan) + AiPower.cs
+    //      (strength model, replaces WorthIt.AttackSum+DefenseSum) + AiConfigV2.cs. Layers:
+    //      Self / Known (honest) / TrueWorld (cheat) / MapKnowledge / EconomyStanding / ThreatModel.
+    //      Cheat/honest boundary is a type invariant on EnemyContactSnapshot (a Cheat contact
+    //      can't carry a Position). V1 CheatEstimateRaiderThreat SCOPE ported into the ThreatModel
+    //      cheat-contact loop; DynamicPatrolUrgencyScore dropped (-> continuous Severity + MissionLayer).
+    //      Frontier is still a stub until step 4.
     //   3. Recon + Aggression evaluators -> raw desires -> Normalizer -> Radar. Response curves.
     //      N-axis normalizer from the start even though only 2 axes are live.
     //   4. Recon planner -> one Scout MissionProposal -> MissionRequirements. Establish the shared
@@ -157,15 +164,9 @@ namespace Game.Ai.V2
         }
     }
 
-    // --- Stage 2 output: the single shared world scan. Every later stage reads ONLY this, never
-    //     raw game state. Stub for now — fields land in build-order step 2.
-    public sealed class WorldSnapshot
-    {
-        public int TurnNumber;
-        // TODO(step 2): threat map, opportunity map, map knowledge, army/garrison state,
-        // available resource pool, economy state. Port the scans currently scattered across
-        // AiStrategyDirector.Evaluate and the V1 planners.
-    }
+    // --- Stage 2 output: the single shared world scan (WorldSnapshot). Every later stage reads
+    //     ONLY this, never raw game state. Types live in WorldSnapshot.cs; the scan that fills it
+    //     is WorldAnalysis.Scan in WorldAnalysis.cs (build-order step 2, done 2026-08-29).
 
     // --- Stage 3a output: INDEPENDENT raw desire intensities in [0..1], one per axis, plus the
     //     two out-of-simplex absolute scalars. Not yet normalised.
@@ -348,14 +349,7 @@ namespace Game.Ai.V2
     // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own
     //      file. Signatures are deliberate seams; fill the bodies, don't reshape the flow.
 
-    internal static class WorldAnalysis
-    {
-        // Build-order step 2. Port the scans from AiStrategyDirector.Evaluate + V1 planners into
-        // ONE pass. Shares a threat map and an opportunity map so StrategyLayer and MissionLayer
-        // never each re-scan the board.
-        public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
-            => new WorldSnapshot { TurnNumber = ctx.TurnNumber };
-    }
+    // WorldAnalysis (build-order step 2) now lives in its own file, WorldAnalysis.cs.
 
     internal static class StrategyLayer
     {

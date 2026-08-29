@@ -663,6 +663,18 @@ namespace Game.Ai
             return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set) && set.ContainsKey(hex);
         }
 
+        // Every known resource hex and its last-observed dominant type — the whole-map read
+        // behind IsResourceHexKnown, for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
+        // needs the set itself (opportunity map + per-resource economy weighting), not just a
+        // per-hex membership test. Same honesty rule as everything else here — only ever hexes
+        // this player has actually seen the bonus on.
+        public static IEnumerable<KeyValuePair<HexCoord, ResourceType>> AllKnownResourceHexes(PlayerSetupData actor)
+        {
+            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set)
+                ? (IEnumerable<KeyValuePair<HexCoord, ResourceType>>)set
+                : System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>();
+        }
+
         public static bool HasKnownEnemyWithin(PlayerSetupData actor, HexCoord center, int radius)
         {
             return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)

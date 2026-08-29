@@ -147,7 +147,11 @@ namespace Game.Ai
             return total;
         }
 
-        private static int TotalIncome(PlayerSetupData player, HexMap map) => AllResourceTypes.Sum(t => IncomeFor(player, t, map));
+        // internal (was private) since the Strategy V2 EconomyStanding scan (Game.Ai.V2.
+        // WorldAnalysis) compares this player's total income against the field the same way
+        // IncomeBehindBonus does — same sanctioned "income comparison ignores fog" exception,
+        // one shared helper rather than a second copy of the per-type sum.
+        internal static int TotalIncome(PlayerSetupData player, HexMap map) => AllResourceTypes.Sum(t => IncomeFor(player, t, map));
 
         // "экономика не теряет приоритет после насыщения" fix (2026-08-24, project owner's own
         // report) — true once EVERY one of the 4 resource types clears `perTypeThreshold` on its
