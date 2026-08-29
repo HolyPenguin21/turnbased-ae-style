@@ -16,11 +16,16 @@ namespace Game.Ai.V2
     //  FOUR HARD RULES
     //  --------------------------------------------------------------------------------------------
     //   1. Radar sizes the axis BUDGET. It is NOT a BaseValue multiplier and takes NO part in
-    //      mission ordering. Ordering (step 7.1): CROSS-lane by BaseValue (intrinsic); WITHIN one
-    //      execution lane by MissionAdmissionPolicy.AdmissionRank (the planner-local
-    //      LocalAdmissionScore + the step-7 retarget hysteresis) so the Recon Explore-vs-Surveil
-    //      balance survives the N>K beam. Radar weight is never in either key. Today every mission
-    //      is ExecutionLane.Recon, so the effective fresh order is AdmissionRank + stable key.
+    //      mission ordering. Fresh ordering WITHIN one execution lane is
+    //      MissionAdmissionPolicy.AdmissionRank (the planner-local LocalAdmissionScore + the
+    //      step-7 retarget hysteresis) so the Recon Explore-vs-Surveil balance survives the N>K
+    //      beam. Radar weight is never in the key. Today there is exactly ONE fresh lane
+    //      (ExecutionLane.Recon), so the effective fresh order is AdmissionRank + stable key.
+    //      TODO step 9 (second lane / Raid): the loop below walks lanes group-at-a-time ordered
+    //      by each group's max BaseValue — that is NOT a true cross-lane interleave (a low
+    //      BaseValue Recon candidate would still be admitted before a high BaseValue Raid one).
+    //      Replace with a k-way merge: per-lane AdmissionRank-ordered queues, repeatedly admit the
+    //      queue head with the highest BaseValue.
     //   2. A mission may be funded from SEVERAL axes at once: its AxisContribution is normalised to
     //      shares, and funding it at AP C draws C*share[axis] from each slice.
     //   3. Positive slice leftovers become one fungible REMAINDER pool that can only top up
@@ -580,13 +585,15 @@ namespace Game.Ai.V2
                 alloc.CommitmentDraw += ask;
             }
 
-            // 4. Fresh missions. Grouped by EXECUTION LANE: cross-lane order is BaseValue
-            //    (intrinsic); WITHIN a lane it is MissionAdmissionPolicy.AdmissionRank
-            //    (LocalAdmissionScore + the step-7 retarget hysteresis) so the Recon
-            //    Explore-vs-Surveil balance is not lost to the N>K beam. Per candidate:
-            //    conflict -> capacity -> budget. Budget admission is still atomic: calculate ALL
-            //    draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal that is ALSO an
-            //    active commitment is funded through the commitment loop above only.
+            // 4. Fresh missions, one EXECUTION LANE at a time. WITHIN a lane the order is
+            //    MissionAdmissionPolicy.AdmissionRank (LocalAdmissionScore + the step-7 retarget
+            //    hysteresis) so the Recon Explore-vs-Surveil balance is not lost to the N>K beam.
+            //    Per candidate: conflict -> capacity -> budget. Budget admission is still atomic:
+            //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal
+            //    that is ALSO an active commitment is funded through the commitment loop above only.
+            //    NOTE lanes are walked group-at-a-time (ordered by each group's max BaseValue). With
+            //    one lane that is exactly "AdmissionRank order". It is NOT a true cross-lane
+            //    interleave — see rule 1's step-9 TODO; harmless until a second lane exists.
             var commitmentKeys = new HashSet<StableMissionKey>(_commitments
                 .Where(c => c?.Mission != null)
                 .Select(c => StableMissionKey.For(c.Mission)));
