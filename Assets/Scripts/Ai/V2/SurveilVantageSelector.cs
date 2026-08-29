@@ -17,8 +17,11 @@ namespace Game.Ai.V2
     //    * within the mover's REAL vision reach: Distance(hex, FocusHex) <= EffectiveVisionRadius
     //    * not ScoutHardBlocked (a known neutral on it / an active scout-danger cooldown)
     //    * no CURRENTLY-observed (this turn) non-neutral force standing on it
+    //    * not a known FOREIGN-OWNED building (a ground army entering one auto-captures/destroys
+    //      it — a Surveil mission must never do an Aggression action). Own buildings are fine.
     //  A stale (LastKnown) enemy position is NOT a hard block — it only raises DetectionRisk.
-    //  An own army on the hex does NOT block it.
+    //  An own army on the hex does NOT block it. See ScoutExecutionSafety for the same rule as the
+    //  live-memory check provisioning / execution apply.
     //
     //  RANK (deterministic — safety before speed)
     //    DetectionRisk ASC -> StandOff DESC -> ETA ASC -> mover->vantage Distance ASC -> (Q,R)
@@ -56,6 +59,12 @@ namespace Game.Ai.V2
             ISet<HexCoord> hardBlocked = snap.MapKnowledge.ScoutHardBlockedHexes;
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : 1;
 
+            var foreignBuildings = new HashSet<HexCoord>();
+            if (snap.Known?.Buildings != null)
+                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+                    if (b.Owner != mover.Owner)
+                        foreignBuildings.Add(b.Hex);
+
             foreach (HexCoord h in snap.MapKnowledge.AllHexes)
             {
                 if (h.Equals(focus))
@@ -64,6 +73,8 @@ namespace Game.Ai.V2
                 if (standOff > visionR)
                     continue;
                 if (hardBlocked != null && hardBlocked.Contains(h))
+                    continue;
+                if (foreignBuildings.Contains(h))
                     continue;
                 if (CurrentHostileOn(snap, h))
                     continue;

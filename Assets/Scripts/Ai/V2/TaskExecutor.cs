@@ -104,6 +104,19 @@ namespace Game.Ai.V2
                 result.FinalHex = army.Hex;
                 int apBefore = root != null ? root.ActionPoints : 0;
 
+                // Objective already met by an EARLIER mission this turn (pipeline provisions all,
+                // then executes in order)? Then this Surveil does nothing at all — no movement, no
+                // stealth AP. This check MUST precede every execution mutation.
+                if (pm.ScoutKind == ScoutTargetKind.Surveil && IsSurveilSatisfied(player, pm))
+                {
+                    result.ReachedGoal = true;
+                    result.StopReason = ExecutionStopReason.ReachedGoal;
+                    result.ApSpent = 0f;
+                    results.Add(result);
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — surveil already satisfied before start — no movement, 0 AP");
+                    continue;
+                }
+
                 // A stealth-Required mission (ProvisionedMission.StealthApReserved) enters stealth
                 // BEFORE its first move, unconditionally — provisioning already reserved the 1 AP
                 // and the gameplay layer can only enter stealth while the mover is not yet
@@ -142,10 +155,10 @@ namespace Game.Ai.V2
                     if (army == null || army.Owner != player) { stop = ExecutionStopReason.MoverLost; break; }
                     if (!AiArmyRoles.IsSoloRecce(army)) { stop = ExecutionStopReason.MoverLost; break; }
                     if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
-                    if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
 
                     // Objective already met (by us last iteration, or by another mission before we
-                    // moved)? Checked before the first step and before every later one.
+                    // moved)? BEFORE the CurrentMovement check — a spent mover must not turn an
+                    // already-achieved observation into OutOfMovement.
                     if (pm.ScoutKind == ScoutTargetKind.Surveil)
                     {
                         if (IsSurveilSatisfied(player, pm))
@@ -161,6 +174,14 @@ namespace Game.Ai.V2
                             stop = ExecutionStopReason.ObservationUnavailable;
                             break;
                         }
+                        if (ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex, ctx.TurnNumber))
+                        {
+                            // A CURRENT force / foreign building is now on the vantage — a stale
+                            // enemy position never trips this (that is the mission). Same rule
+                            // SurveilVantageSelector applied against the snapshot.
+                            stop = ExecutionStopReason.TargetInvalidated;
+                            break;
+                        }
                     }
                     else if (army.Hex.Equals(pm.ExecutionHex) || VisionSystem.IsVisited(player, pm.ExecutionHex))
                     {
@@ -168,12 +189,13 @@ namespace Game.Ai.V2
                         stop = ExecutionStopReason.ReachedGoal;
                         break;
                     }
-
-                    if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
+                    else if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
                     {
                         stop = ExecutionStopReason.TargetInvalidated;
                         break;
                     }
+
+                    if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
 
                     HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, pm.ExecutionHex);
                     if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }

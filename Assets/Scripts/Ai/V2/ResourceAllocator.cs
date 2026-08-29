@@ -86,18 +86,22 @@ namespace Game.Ai.V2
     }
 
     // Stable across turns so ordering/reject/cooldown/fingerprint all address the same mission.
-    // Scout is the only live kind in step 5; later kinds add their typed target identity here.
+    // TargetId carries the mission's typed strategic identity beyond its hex: for a Surveil it is
+    // the tracked ArmyData.Id, so Surveil(#42 @ H) and Surveil(#77 @ H) are DIFFERENT missions and
+    // a NoObservationVantage cooldown on one never lands on the other. Explore / other kinds: 0.
     public readonly struct StableMissionKey : IEquatable<StableMissionKey>
     {
         public readonly MissionKind Kind;
         public readonly int SubKind;
+        public readonly int TargetId;
         public readonly int Q;
         public readonly int R;
 
-        public StableMissionKey(MissionKind kind, int subKind, int q, int r)
+        public StableMissionKey(MissionKind kind, int subKind, int targetId, int q, int r)
         {
             Kind = kind;
             SubKind = subKind;
+            TargetId = targetId;
             Q = q;
             R = r;
         }
@@ -105,20 +109,29 @@ namespace Game.Ai.V2
         public static StableMissionKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
-                return new StableMissionKey(MissionKind.Scout, (int)t.Kind, t.FocusHex.Q, t.FocusHex.R);
-            return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0);
+            {
+                int targetId = t.Kind == ScoutTargetKind.Surveil ? (t.Contact?.Army?.ArmyId ?? 0) : 0;
+                return new StableMissionKey(MissionKind.Scout, (int)t.Kind, targetId, t.FocusHex.Q, t.FocusHex.R);
+            }
+            return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
-        public bool Equals(StableMissionKey o) => Kind == o.Kind && SubKind == o.SubKind && Q == o.Q && R == o.R;
+        public bool Equals(StableMissionKey o) =>
+            Kind == o.Kind && SubKind == o.SubKind && TargetId == o.TargetId && Q == o.Q && R == o.R;
         public override bool Equals(object obj) => obj is StableMissionKey o && Equals(o);
-        public override int GetHashCode() => ((int)Kind, SubKind, Q, R).GetHashCode();
+        public override int GetHashCode() => ((int)Kind, SubKind, TargetId, Q, R).GetHashCode();
         public override string ToString() =>
-            Kind == MissionKind.Scout ? $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})" : $"{Kind}";
+            Kind == MissionKind.Scout
+                ? (TargetId != 0
+                    ? $"{Kind}({(ScoutTargetKind)SubKind} #{TargetId} {Q},{R})"
+                    : $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})")
+                : $"{Kind}";
 
         public int CompareTo(StableMissionKey o)
         {
             int c = Kind.CompareTo(o.Kind); if (c != 0) return c;
             c = SubKind.CompareTo(o.SubKind); if (c != 0) return c;
+            c = TargetId.CompareTo(o.TargetId); if (c != 0) return c;
             c = Q.CompareTo(o.Q); if (c != 0) return c;
             return R.CompareTo(o.R);
         }
