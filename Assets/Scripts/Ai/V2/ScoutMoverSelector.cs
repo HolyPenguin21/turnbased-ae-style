@@ -47,6 +47,41 @@ namespace Game.Ai.V2
         }
     }
 
+    // The unit the assignment solver actually packs (build-order step 6b): a concrete mover PLUS
+    // the concrete hex it would execute from. Explore -> ExecutionHex == FocusHex, DetectionRisk
+    // and StandOff are 0 (the strategic risk already lives in ScoutMissionTarget.DetectionRisk /
+    // MissionLayer.SelectionScore and must not be double-counted in the solver). Surveil ->
+    // ExecutionHex is the first CURRENTLY-EXECUTABLE vantage from SurveilVantageSelector, with its
+    // own vantage-specific DetectionRisk / StandOff.
+    public readonly struct ScoutExecutionCandidate
+    {
+        public readonly ArmySnapshot Army;
+        public readonly HexCoord ExecutionHex;
+        public readonly int EffActivationAp;
+        public readonly int EtaTurns;          // mover -> ExecutionHex
+        public readonly int Distance;          // mover -> ExecutionHex
+        public readonly float DetectionRisk;   // vantage-specific; 0 for Explore
+        public readonly int StandOff;          // Distance(ExecutionHex, FocusHex); 0 for Explore
+        public readonly bool AlreadyHidden;
+        public readonly float RequiredAp;      // EffActivationAp + (stealth transition if Required && !hidden)
+
+        public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
+            int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp)
+        {
+            Army = army;
+            ExecutionHex = executionHex;
+            EffActivationAp = effActivationAp;
+            EtaTurns = etaTurns;
+            Distance = distance;
+            DetectionRisk = detectionRisk;
+            StandOff = standOff;
+            AlreadyHidden = alreadyHidden;
+            RequiredAp = requiredAp;
+        }
+
+        public bool IsStealthCapableMover => Army != null && (Army.IsHidden || Army.CanEnterStealth);
+    }
+
     public static class ScoutMoverSelector
     {
         public static List<ScoutMoverCandidate> Rank(WorldSnapshot snap, ScoutMissionTarget target,
@@ -91,17 +126,42 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // STRUCTURAL capability probe — does the player own ANY solo Recce that could, in
-        // principle, serve a mission of this stealth requirement? Deliberately ignores the
-        // turn-transient filters Rank applies (CurrentMovement > 0, and for a Required mission the
-        // "visible + already activated" exclusion): those change next turn, so their absence is
-        // "spent / contended THIS turn" (MoverContended, no cooldown), NOT "no such executor
-        // exists" (NoMoverExists, cooldown). Stealth capability IS structural: a Required mission
-        // needs a Recce that is hidden or carries a stealth ability at all.
-        public static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target)
+        // Eligibility ONLY (no ranking / no ETA toward FocusHex — that basis is wrong for Surveil).
+        // Same filter Rank applies: fielded solo Recce, not prison / air, has members, can still
+        // act this turn (CurrentMovement > 0), not in excludeArmyIds, and — for a Required mission
+        // — hidden or able to enter stealth before its first move.
+        public static List<ArmySnapshot> Eligible(WorldSnapshot snap, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+        {
+            var result = new List<ArmySnapshot>();
+            if (snap?.Self?.Armies == null)
+                return result;
+            bool needStealth = target.Stealth == StealthRequirement.Required;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                    continue;
+                if (a.CurrentMovement <= 0)
+                    continue;
+                if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
+                    continue;
+                if (needStealth && !(a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn)))
+                    continue;
+                result.Add(a);
+            }
+            return result;
+        }
+
+        // STRUCTURAL capability probe — solo Recce that could, IN PRINCIPLE, serve a mission of
+        // this stealth requirement. Deliberately ignores the turn-transient filters Eligible
+        // applies (CurrentMovement > 0, the "visible + already activated" Required exclusion,
+        // excludeArmyIds): their absence is "spent / contended THIS turn" (MoverContended, no
+        // cooldown), NOT "no such executor exists" (NoMoverExists, cooldown). Stealth capability
+        // IS structural — a Required mission needs a Recce that is hidden or carries a stealth
+        // ability at all.
+        public static IEnumerable<ArmySnapshot> StructuralCandidates(WorldSnapshot snap, ScoutMissionTarget target)
         {
             if (snap?.Self?.Armies == null)
-                return false;
+                yield break;
             bool needStealth = target.Stealth == StealthRequirement.Required;
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
@@ -109,10 +169,12 @@ namespace Game.Ai.V2
                     continue;
                 if (needStealth && !(a.IsHidden || a.StealthLevel > 0))
                     continue;
-                return true;
+                yield return a;
             }
-            return false;
         }
+
+        public static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target) =>
+            StructuralCandidates(snap, target).Any();
 
         private static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
     }

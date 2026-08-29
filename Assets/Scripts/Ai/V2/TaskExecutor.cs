@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  TASK EXECUTOR  (Strategy V2 build-order step 6a — Explore end to end)
+    //  TASK EXECUTOR  (Strategy V2 build-order step 6 — Explore 6a + Surveil 6b)
     // ===========================================================================================
     //  Runs each ProvisionedMission on the real map through the SAME movement path V1 and the
     //  human use (AiTurnController.MoveArmyRoutine -> HexSelectionController.IssueMoveOrder). No V2
@@ -18,27 +18,37 @@ namespace Game.Ai.V2
     //  world IS the state, exactly as the stateless-recon design intends.
     //
     //  PER-HEX LOOP  (Q3 — "uses the whole movement budget, one hex per iteration")
-    //    pick 1 safe next hex -> move it -> wait for MoveArmyRoutine to fully settle (vision,
-    //    stealth, contact, event, any chained battle) -> re-read live state -> decide whether to
-    //    continue. This reproduces V1's Decide -> move -> Decide cadence, scoped to one mover.
+    //    pick 1 safe next hex toward ExecutionHex -> move it -> wait for MoveArmyRoutine to fully
+    //    settle (vision, stealth, contact, event, any chained battle) -> re-read live state ->
+    //    decide whether to continue. Reproduces V1's Decide -> move -> Decide cadence, one mover.
     //
-    //  A STEP ENDS THE MISSION FOR THIS TURN (never a strategic re-target here — the frontier is
-    //  stale the moment the mover moves; picking a new FocusHex is MissionLayer's job next turn):
-    //    ReachedGoal        — arrived at ExecutionHex, or it got visited underneath us
-    //    OutOfMovement      — no movement points left
-    //    NoSafeStep         — FindNextSafeStep == null this instant (retry next turn)
-    //    EnemyDiscovered    — a new known non-neutral sighting appeared near the mover
-    //    NeutralDiscovered  — a new known neutral sighting appeared near the mover
-    //    BattleStarted      — a contact pulled the mover into a fight
-    //    MoverLost          — the army is gone / no longer ours / no longer a solo Recce
-    //    TargetInvalidated  — ExecutionHex now holds a known army
-    //    MoveRejected       — an issued order made zero progress (loop-guard: never spin)
+    //  EXPLORE vs SURVEIL — what "done" means
+    //    Explore  — ExecutionHex == FocusHex. Done = reached / visited it.
+    //    Surveil  — ExecutionHex is a safe VANTAGE; the scout NEVER steps onto FocusHex. Done is
+    //               INFORMATION: FocusHex visible again, OR TrackedArmyId re-sighted anywhere with
+    //               SeenTurn > BaselineObservedTurn. Physically reaching the vantage without that
+    //               observation is NOT success (ObservationUnavailable — an invariant canary, not
+    //               a cue to walk to FocusHex). The executor never picks a different vantage or
+    //               re-targets the tracked enemy.
+    //
+    //  A STEP ENDS THE MISSION FOR THIS TURN (never a strategic re-target here):
+    //    ReachedGoal            — Explore: reached/visited ExecutionHex. Surveil: observation made.
+    //    OutOfMovement          — no movement points left
+    //    NoSafeStep             — FindNextSafeStep == null this instant (retry next turn)
+    //    EnemyDiscovered        — a new (different) known non-neutral sighting appeared
+    //    NeutralDiscovered      — a new known neutral sighting appeared
+    //    BattleStarted          — a contact pulled the mover into a fight
+    //    HexEventStarted        — a clean Hex Event resolved on the step
+    //    MoverLost              — the army is gone / no longer ours / no longer a solo Recce
+    //    TargetInvalidated      — ExecutionHex now holds a known army
+    //    MoveRejected           — an issued order made zero progress (loop-guard: never spin)
+    //    ObservationUnavailable — Surveil: reached the vantage, still cannot observe FocusHex
     //
     //  EnemyDiscovered / NeutralDiscovered / OutOfMovement are PRODUCTIVE stops, not failures —
-    //  the scout brought back information, it just stopped short of ExecutionHex. Nothing
-    //  downstream (CommitmentLayer / Manager, step 7+) may read them as a provisioning/mission
-    //  failure. (ExecutionOutcome { Completed / ProductiveStop / Blocked / Failed } is a step-7
-    //  concept; the mapping is fixed now — see the pipeline design record.)
+    //  the scout brought back information. Nothing downstream (CommitmentLayer / Manager, step 7+)
+    //  may read them as a provisioning/mission failure. (ExecutionOutcome { Completed /
+    //  ProductiveStop / Blocked / Failed } is a step-7 concept; the mapping is fixed now — see the
+    //  pipeline design record.)
     // ===========================================================================================
     public enum ExecutionStopReason
     {
@@ -53,6 +63,7 @@ namespace Game.Ai.V2
         TargetInvalidated,
         MoveRejected,
         RequiredStealthUnavailable, // a stealth-Required mission's mover could not enter stealth before its first move
+        ObservationUnavailable,     // Surveil: mover reached the vantage but FocusHex is still not observable — invariant canary
     }
 
     public sealed class ExecutionResult
@@ -133,12 +144,31 @@ namespace Game.Ai.V2
                     if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
                     if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
 
-                    if (army.Hex.Equals(pm.ExecutionHex) || VisionSystem.IsVisited(player, pm.ExecutionHex))
+                    // Objective already met (by us last iteration, or by another mission before we
+                    // moved)? Checked before the first step and before every later one.
+                    if (pm.ScoutKind == ScoutTargetKind.Surveil)
+                    {
+                        if (IsSurveilSatisfied(player, pm))
+                        {
+                            result.ReachedGoal = true;
+                            stop = ExecutionStopReason.ReachedGoal;
+                            break;
+                        }
+                        if (army.Hex.Equals(pm.ExecutionHex))
+                        {
+                            // Reached the vantage but still can't observe FocusHex — the vantage
+                            // was wrong (vision changed / deeper fog). Do NOT walk to FocusHex.
+                            stop = ExecutionStopReason.ObservationUnavailable;
+                            break;
+                        }
+                    }
+                    else if (army.Hex.Equals(pm.ExecutionHex) || VisionSystem.IsVisited(player, pm.ExecutionHex))
                     {
                         result.ReachedGoal = true;
                         stop = ExecutionStopReason.ReachedGoal;
                         break;
                     }
+
                     if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
                     {
                         stop = ExecutionStopReason.TargetInvalidated;
@@ -150,7 +180,7 @@ namespace Game.Ai.V2
 
                     HexCoord before = army.Hex;
                     var decision = AiDecision.Move(army, next.Value,
-                        $"V2 recon — {pm.Kind} toward ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
+                        $"V2 recon — {pm.ScoutKind} toward ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
                         null, 0f, AiTaskCategory.Reconnaissance);
                     var trace = new AiMoveExecutionTrace();
                     yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
@@ -166,10 +196,23 @@ namespace Game.Ai.V2
                         result.StepsMoved++;
                     result.FinalHex = endHex;
 
-                    // (2) Now the stop reason, in priority order.
+                    // (2) Now the stop reason, in priority order:
+                    //   MoverLost -> BattleStarted -> HexEventStarted -> [Surveil: objective met]
+                    //   -> MoveRejected -> EnemyDiscovered -> NeutralDiscovered.
                     if (army == null) { stop = ExecutionStopReason.MoverLost; break; }
                     if (trace.BattleOccurred) { stop = ExecutionStopReason.BattleStarted; break; }
                     if (trace.HexEventOccurred) { stop = ExecutionStopReason.HexEventStarted; break; }
+
+                    // Surveil early success outranks both a zero-progress order and generic
+                    // discovery: re-sighting the tracked army (even at a different hex) IS the win
+                    // (D9), not an "EnemyDiscovered" side effect.
+                    if (pm.ScoutKind == ScoutTargetKind.Surveil && IsSurveilSatisfied(player, pm))
+                    {
+                        result.ReachedGoal = true;
+                        stop = ExecutionStopReason.ReachedGoal;
+                        break;
+                    }
+
                     if (!moved)
                     {
                         // the order made zero progress this instant — never re-issue the same one
@@ -178,7 +221,11 @@ namespace Game.Ai.V2
                     }
 
                     // A step that revealed a previously-unknown army ends the turn — a non-neutral
-                    // one outranks a neutral one. Both are PRODUCTIVE stops (recon delivered).
+                    // one outranks a neutral one. Both are PRODUCTIVE stops (recon delivered). A
+                    // re-sighting of the TRACKED Surveil army can look "new" here if its stale
+                    // sighting had already aged out of V1 memory — but the IsSurveilSatisfied check
+                    // above runs first and claims it as ReachedGoal, so this diff only ever labels
+                    // a genuinely different army.
                     HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
                     HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
                     bool newEnemy = enemyNow.Any(id => !knownEnemyIds.Contains(id));
@@ -203,6 +250,23 @@ namespace Game.Ai.V2
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+
+        // Surveil is an INFORMATION objective: satisfied the moment FocusHex is visible again, or
+        // the tracked army is honestly re-sighted ANYWHERE with SeenTurn past the baseline. Never
+        // reads TrueWorld — honest memory only.
+        private static bool IsSurveilSatisfied(PlayerSetupData player, ProvisionedMission pm)
+        {
+            if (pm.ScoutKind != ScoutTargetKind.Surveil)
+                return false;
+            if (VisionSystem.IsVisible(player, pm.FocusHex))
+                return true;
+            if (!pm.TrackedArmyId.HasValue)
+                return false;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (s.ArmyId == pm.TrackedArmyId.Value && s.SeenTurn > pm.BaselineObservedTurn)
+                    return true;
+            return false;
+        }
 
         // Mirror of MoveArmyRoutine's own voluntary-stealth entry (1 AP per member, solo Recce =
         // 1), but STRICT: a stealth-Required V2 mission calls this before its first move instead

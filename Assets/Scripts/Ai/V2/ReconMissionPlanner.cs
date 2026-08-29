@@ -69,14 +69,12 @@ namespace Game.Ai.V2
 
             var candidates = new List<ScoutCandidate>();
             candidates.AddRange(ExploreCandidates(snap, breakdown.ReconExploration));
-            // build-order step 6a is Explore end-to-end ONLY. Surveil has a different spatial
-            // contract (FocusHex != ExecutionHex — you observe the target hex from a safe vantage,
-            // you do NOT step onto a stale enemy's last-known hex) and needs SurveilVantageSelector
-            // in provisioning, which is step 6b. Until then Surveil must not reach the allocator /
-            // executor at all — publishing it here with ExecutionHex = FocusHex would march a solo
-            // scout straight at the enemy. SurveilCandidates() is kept (and unit-testable) but
-            // deliberately not wired in.
-            // TODO(6b): candidates.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
+            // Surveil is live as of build-order step 6b. It emits ONLY from an honest, positioned
+            // LastKnown contact (never Cheat / Region / Unknown) and is always stealth-Required;
+            // FocusHex != ExecutionHex is resolved in provisioning by SurveilVantageSelector, so a
+            // solo scout observes the target hex from a safe vantage and never steps onto a stale
+            // enemy's last-known hex.
+            candidates.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
 
             var picked = new List<ScoutCandidate>();
             foreach (ScoutCandidate c in candidates.OrderByDescending(x => x.SelectionScore))

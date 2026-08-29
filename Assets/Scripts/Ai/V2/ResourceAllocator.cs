@@ -72,6 +72,7 @@ namespace Game.Ai.V2
         NoExecutableStep,    // mover + budget are fine, but no safe first step toward the target exists right now
         TargetSatisfied,     // the objective is already met (Explore focus hex already visited) — drop, not fail
         TargetInvalidated,   // the world changed under the mission (focus hex now holds a known army)
+        NoObservationVantage,// Surveil: a capable scout exists, but NO on-map hex within any scout's vision can observe the focus
         AssemblyInfeasible,  // structural: the mission cannot be made executable by any assemblable means
     }
 

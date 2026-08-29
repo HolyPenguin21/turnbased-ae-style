@@ -43,11 +43,78 @@ namespace Game.Ai.V2
         public float EstimatedDistance;
     }
 
+    // Cost of ONE concrete (mover, executionHex) pair — the step-6 provision-stage number, used
+    // for both Explore (executionHex == FocusHex) and Surveil (executionHex == chosen vantage).
+    // Travel is MP, never AP; ETA/Distance are toward the executionHex, NOT toward a Surveil
+    // FocusHex the scout never steps on.
+    public struct ScoutPairCost
+    {
+        public int EffActivationAp;
+        public float RequiredAp;    // EffActivationAp + stealth transition when Required && !hidden
+        public int EtaTurns;
+        public int Distance;
+        public bool AlreadyHidden;
+    }
+
     public static class ScoutCostModel
     {
+        public static ScoutPairCost PairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord executionHex, bool stealthRequired)
+        {
+            int fleetBudget = snap?.Self?.Armies != null
+                ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
+            if (fleetBudget <= 0) fleetBudget = 1;
+            int budget = mover.MaxMovement > 0 ? mover.MaxMovement : fleetBudget;
+
+            int dist = HexGridMath.Distance(mover.Hex, executionHex);
+            int eta = mover.CurrentMovement >= dist ? 1 : 1 + CeilDiv(dist - mover.CurrentMovement, budget);
+            int effAp = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
+            bool hidden = mover.IsHidden;
+            float required = effAp + (stealthRequired && !hidden ? AiConfigV2.scoutOptionalStealthAp : 0f);
+
+            return new ScoutPairCost
+            {
+                EffActivationAp = effAp,
+                RequiredAp = required,
+                EtaTurns = eta,
+                Distance = dist,
+                AlreadyHidden = hidden,
+            };
+        }
+
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target)
         {
             var est = new ScoutCostEstimate();
+
+            // SURVEIL (build-order step 6b) — proposal stage sizes MONEY ONLY. The spatial cost is
+            // unknowable here: ExecutionHex (the vantage) does not exist until a concrete mover is
+            // assigned in provisioning. EstimatedDistance / EtaTurns = 0 means "not spatially
+            // estimated", NOT "already on site"; nothing may use them for commitment before step 7.
+            // The AP envelope is still real: Surveil is always stealth-Required, so it is
+            // activation + (1 unless a hidden mover exists), taken as the MINIMUM over the actually
+            // eligible scouts (Rank's stealth-AP ordering would otherwise pick a non-optimal one).
+            if (target.Kind == ScoutTargetKind.Surveil)
+            {
+                float stealthAp0 = AiConfigV2.scoutOptionalStealthAp;
+                var eligible = ScoutMoverSelector.Eligible(snap, target, null);
+                if (eligible.Count > 0)
+                {
+                    est.MoverKnown = true;
+                    est.MoverAlreadyHidden = eligible.Any(a => a.IsHidden);
+                    float minAp = eligible.Min(a =>
+                        (a.HasActivatedThisTurn ? 0 : a.ActivationApCost) + (a.IsHidden ? 0f : stealthAp0));
+                    est.ApMinimum = est.ApDesired = est.ApMaximum = minAp;
+                }
+                else
+                {
+                    est.MoverKnown = false;
+                    est.ApMinimum = est.ApDesired = est.ApMaximum = AiConfigV2.scoutNotionalActivationAp + stealthAp0;
+                }
+                est.ActivationEnergy = 0;
+                est.EstimatedDistance = 0f;
+                est.EtaTurns = 0;
+                return est;
+            }
+
             if (snap?.Self == null)
             {
                 est.MoverKnown = false;

@@ -10,57 +10,58 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  PROVISIONING MANAGER  (Strategy V2 build-order step 6a — Explore end to end)
+    //  PROVISIONING MANAGER  (Strategy V2 build-order step 6 — Explore 6a + Surveil 6b)
     // ===========================================================================================
     //  ONE entry, ONE exit, ATOMIC. Turns a funded MissionProposal into either a ProvisionedMission
-    //  (a concrete mover is assigned AND its first action is executable RIGHT NOW) or a
+    //  (a concrete mover + ExecutionHex, with its first action executable RIGHT NOW) or a
     //  ProvisionFailure (change nothing). No partial-commit state can exist between the doors.
     //
     //  TWO-STAGE, ONE PASS
-    //    PreparePass(funded[])  — batch. Builds the Mission -> MoverArmyId assignment for the whole
-    //                             current Pack once: capability-preserving (a scarce stealth scout
-    //                             is not spent on an Explore that a plain scout could do), respects
-    //                             funded priority, maximises the number of provisionable missions.
-    //                             Re-run on every re-Pack over the then-current funded remainder,
-    //                             with movers locked by earlier passes excluded.
-    //    Provision(session, fe) — per mission, in priority order. Consumes the pre-computed
-    //                             assignment: live re-validation -> target still valid ->
-    //                             first-step preflight (VisitHexTask.FindNextSafeStep, reused
-    //                             as-is) -> AP envelope check -> atomic claim. The AP the mission
-    //                             claims is bounded by funded.Tentative (allocator invariant) and
-    //                             by the turn's remaining AP net of earlier claims this cycle.
+    //    PreparePass(funded[]) — batch. Builds, per funded mission, the ranked list of executable
+    //                            (mover, ExecutionHex) pairs (ScoutExecutionCandidate), then a
+    //                            global injective assignment across missions: cover more missions
+    //                            -> cover higher-priority ones -> preserve a scarce stealth mover
+    //                            -> lower surveillance risk -> greater stand-off -> less AP -> ETA
+    //                            -> distance -> deterministic ids/coords. Re-run every re-Pack over
+    //                            the funded remainder, with earlier-locked movers excluded.
+    //    Provision(session, fe) — per mission, in priority order. Consumes the assigned pair:
+    //                            live re-validation -> objective still open -> first-step preflight
+    //                            (VisitHexTask.FindNextSafeStep) -> Surveil: vantage still sees the
+    //                            focus -> AP envelope check -> atomic claim.
+    //
+    //  EXPLORE vs SURVEIL
+    //    Explore  — ExecutionHex == FocusHex. "Done" = the frontier hex was reached / visited.
+    //    Surveil  — ExecutionHex is a safe vantage; the scout NEVER steps onto FocusHex. "Done" is
+    //               INFORMATION: FocusHex re-observed, or TrackedArmyId re-sighted anywhere fresher
+    //               than BaselineObservedTurn. Reaching the vantage is only the means.
     //
     //  SESSIONS
-    //    AllocationSession  — the money side: rejected / locked / fingerprint / repricing floors.
-    //    ProvisioningSession — the actor side: the shared WorldSnapshot, running AP claim total,
-    //                          army ids locked this turn, the per-pass assignment, successful plans.
-    //
-    //  SCOPE (6a): Explore only. FocusHex == ExecutionHex. Surveil vantage selection is 6b;
-    //  commitment lifetime is step 7; Raid army/card/equipment logic is step 9.
+    //    AllocationSession  — money: rejected / locked / fingerprint / repricing floors.
+    //    ProvisioningSession — actors: the shared WorldSnapshot, running AP claim, ids locked this
+    //                          turn, the per-pass assignment, the finished plans.
     // ===========================================================================================
 
-    // --- Stage 6 output, SUCCESS branch. Everything TaskExecutor needs, plus the claim the
-    //     AllocationSession locks. Holds MoverArmyId (not an ArmyData ref) so the executor
-    //     re-resolves the live army before every step — a later mission this same turn may have
-    //     changed the roster / position of the actor by then (matters from step 9 on).
     public sealed class ProvisionedMission
     {
         public MissionProposal Mission;
         public StableMissionKey Key;
         public MissionKind Kind;
+        public ScoutTargetKind ScoutKind;   // Explore | Surveil
 
-        public int MoverArmyId;
+        public int MoverArmyId;             // re-resolved to live ArmyData before every executor step
 
-        public HexCoord FocusHex;       // the objective
-        public HexCoord ExecutionHex;   // where the mover actually goes — == FocusHex for Explore (6a)
+        public HexCoord FocusHex;           // the information objective
+        public HexCoord ExecutionHex;       // where the mover goes — == FocusHex for Explore
 
-        public float ClaimedAp;         // activation (+ stealth transition, if reserved); <= funded.Tentative
-        public bool StealthApReserved;  // a 1-AP EnterStealth is paid for; the executor decides WHICH step spends it
+        // Surveil only (TrackedArmyId null / BaselineObservedTurn 0 for Explore). Completion =
+        // a sighting of TrackedArmyId with SeenTurn > BaselineObservedTurn, OR FocusHex visible.
+        public int? TrackedArmyId;
+        public int BaselineObservedTurn;
+
+        public float ClaimedAp;
+        public bool StealthApReserved;
     }
 
-    // --- Stage 6 output, FAILURE branch. Kind is the reason (telemetry granularity); Disposition
-    //     is what the allocator does about it (see ProvisionDisposition). RequiredAp is meaningful
-    //     only for EnvelopeTooSmall.
     public readonly struct ProvisionFailure
     {
         public readonly ProvisionFailureKind Kind;
@@ -80,6 +81,8 @@ namespace Game.Ai.V2
             new ProvisionFailure(ProvisionFailureKind.MoverContended, ProvisionDisposition.RetryNextTurn, 0f, d);
         public static ProvisionFailure NoMoverExists(string d) =>
             new ProvisionFailure(ProvisionFailureKind.NoMoverExists, ProvisionDisposition.RejectWithCooldown, 0f, d);
+        public static ProvisionFailure NoObservationVantage(string d) =>
+            new ProvisionFailure(ProvisionFailureKind.NoObservationVantage, ProvisionDisposition.RejectWithCooldown, 0f, d);
         public static ProvisionFailure EnvelopeTooSmall(float requiredAp, string d) =>
             new ProvisionFailure(ProvisionFailureKind.EnvelopeTooSmall, ProvisionDisposition.RepriceThisTurn, requiredAp, d);
         public static ProvisionFailure NoExecutableStep(string d) =>
@@ -104,10 +107,6 @@ namespace Game.Ai.V2
             new ProvisioningResult { Success = false, Failure = f };
     }
 
-    // Turn-scoped, created once in Pipeline.RunTurn and threaded through every pack/provision/
-    // re-pack iteration. Carries the ONE strategic snapshot (so provisioning never triggers a
-    // fresh WorldAnalysis.Scan), the running AP claim total, the army ids already locked this
-    // turn, the per-pass assignment, and the finished plans.
     public sealed class ProvisioningSession
     {
         public readonly WorldSnapshot Snapshot;
@@ -116,8 +115,8 @@ namespace Game.Ai.V2
 
         private readonly Dictionary<StableMissionKey, ProvisionedMission> _successful =
             new Dictionary<StableMissionKey, ProvisionedMission>();
-        private readonly Dictionary<StableMissionKey, int> _assignment =
-            new Dictionary<StableMissionKey, int>();
+        private readonly Dictionary<StableMissionKey, ScoutExecutionCandidate> _assignment =
+            new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
 
         public ProvisioningSession(WorldSnapshot snapshot)
         {
@@ -134,28 +133,23 @@ namespace Game.Ai.V2
             ClaimedArmyIds.Add(m.MoverArmyId);
         }
 
-        internal void SetAssignment(Dictionary<StableMissionKey, int> a)
+        internal void SetAssignment(Dictionary<StableMissionKey, ScoutExecutionCandidate> a)
         {
             _assignment.Clear();
-            foreach (KeyValuePair<StableMissionKey, int> kv in a)
+            foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in a)
                 _assignment[kv.Key] = kv.Value;
         }
 
-        internal bool TryGetAssignedMover(StableMissionKey k, out int armyId) =>
-            _assignment.TryGetValue(k, out armyId);
+        internal bool TryGetAssignedExecution(StableMissionKey k, out ScoutExecutionCandidate exec) =>
+            _assignment.TryGetValue(k, out exec);
     }
 
     internal static class ProvisioningManager
     {
-        // Stealth transition cost — the same 1 AP the gameplay layer charges for a voluntary
-        // EnterStealth (AiTurnController.MoveArmyRoutine hardcodes root.SpendActionPoints(1)).
-        // Read from the V2-side single source rather than a fresh literal here; TODO: fold both
-        // into one shared gameplay constant if StealthSystem ever grows one, so a rules change to
-        // the real cost can't silently desync the allocator.
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
         // =======================================================================================
-        //  BATCH: assign concrete movers to the funded missions of THIS pack.
+        //  BATCH: build (mover, ExecutionHex) candidates and assign them to the funded missions.
         // =======================================================================================
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation)
@@ -165,45 +159,77 @@ namespace Game.Ai.V2
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Scout)
-                        continue; // 6a: Scout only — Raid provisioning is step 9
-                    if (!(fe.Mission.Target is ScoutMissionTarget t) || t.Kind != ScoutTargetKind.Explore)
-                        continue; // 6a: Explore only — Surveil execution is step 6b (belt-and-braces; MissionLayer already withholds it)
+                        continue; // Scout only — Raid provisioning is step 9
+                    if (!(fe.Mission.Target is ScoutMissionTarget))
+                        continue;
                     if (session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue; // locked by an earlier pass — not re-assigned
                     open.Add(fe);
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
-            // Ranked candidate list per open mission — movers locked earlier this turn excluded.
-            var cands = new List<List<ScoutMoverCandidate>>(open.Count);
+            var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
             foreach (FundedEntry fe in open)
             {
                 var target = (ScoutMissionTarget)fe.Mission.Target;
-                cands.Add(ScoutMoverSelector.Rank(session.Snapshot, target, session.ClaimedArmyIds));
+                cands.Add(BuildExecutionCandidates(session.Snapshot, ctx, player, target, session.ClaimedArmyIds));
             }
 
-            // Brute-force the best injective assignment (N is maxConcurrentRecon-small). Criteria,
-            // most significant first: cover more missions -> cover the higher-priority ones ->
-            // don't waste a stealth-capable mover on a non-stealth mission that a plain one could
-            // take -> less AP -> shorter ETA -> shorter distance -> lower ArmyId (determinism).
             var chosen = new int[open.Count];
             var best = new int[open.Count];
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
             Recurse(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
 
-            var map = new Dictionary<StableMissionKey, int>();
+            var map = new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
             for (int i = 0; i < open.Count; i++)
                 if (best[i] >= 0)
-                    map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]].Army.ArmyId;
+                    map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
             session.SetAssignment(map);
 
             if (open.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   provision prepare — {open.Count} open, assigned ["
-                    + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
+                    + string.Join(" ", map.Select(kv =>
+                        $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]");
         }
 
-        private static void Recurse(int i, List<FundedEntry> open, List<List<ScoutMoverCandidate>> cands,
+        // One ScoutExecutionCandidate per ELIGIBLE mover. Explore -> (mover, FocusHex). Surveil ->
+        // (mover, first CURRENTLY-EXECUTABLE vantage from SurveilVantageSelector's ranking). A
+        // mover whose every geometric vantage is unreachable this turn contributes nothing here.
+        private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
+            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+        {
+            var list = new List<ScoutExecutionCandidate>();
+            bool stealthRequired = target.Stealth == StealthRequirement.Required;
+            bool surveil = target.Kind == ScoutTargetKind.Surveil;
+
+            foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, excludeArmyIds))
+            {
+                if (!surveil)
+                {
+                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
+                    list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
+                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
+                    continue;
+                }
+
+                ArmyData live = ResolveArmy(player, mover.ArmyId);
+                if (live == null)
+                    continue;
+                foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
+                {
+                    if (VisitHexTask.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
+                        continue; // not executable this turn — try the next-safest vantage
+                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired: true);
+                    list.Add(new ScoutExecutionCandidate(mover, v.ExecutionHex, pc.EffActivationAp,
+                        pc.EtaTurns, pc.Distance, v.DetectionRisk, v.StandOff, pc.AlreadyHidden, pc.RequiredAp));
+                    break; // ONE candidate per mover
+                }
+            }
+            return list;
+        }
+
+        private static void Recurse(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best)
         {
             if (i == open.Count)
@@ -217,11 +243,9 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // option: leave mission i unassigned
             chosen[i] = -1;
             Recurse(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
 
-            // option: each still-free candidate mover
             for (int c = 0; c < cands[i].Count; c++)
             {
                 int aid = cands[i][c].Army.ArmyId;
@@ -235,44 +259,63 @@ namespace Game.Ai.V2
             chosen[i] = -1;
         }
 
-        private static long[] ScoreAssignment(List<FundedEntry> open, List<List<ScoutMoverCandidate>> cands, int[] chosen)
+        // Lex key, most significant first:
+        //   coverage -> mission priority -> preserve scarce stealth -> surveillance risk ->
+        //   stand-off (bigger safer) -> AP -> ETA -> distance -> deterministic (armyId,Q,R) tuple.
+        private static long[] ScoreAssignment(List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands, int[] chosen)
         {
             int n = open.Count;
             int covered = 0;
             long priorityCoverage = 0;
             int wastedStealth = 0;
-            long effAp = 0, eta = 0, dist = 0, armyIdSum = 0;
+            long risk = 0, standOff = 0, requiredAp = 0, eta = 0, dist = 0;
 
             for (int i = 0; i < n; i++)
             {
                 if (chosen[i] < 0)
                     continue;
-                ScoutMoverCandidate cand = cands[i][chosen[i]];
+                ScoutExecutionCandidate cand = cands[i][chosen[i]];
                 covered++;
-                priorityCoverage += n - i; // earlier index == higher priority == bigger bonus
+                priorityCoverage += n - i;
 
                 var target = (ScoutMissionTarget)open[i].Mission.Target;
                 bool needStealth = target.Stealth == StealthRequirement.Required;
-                bool moverStealthy = cand.Army.IsHidden || cand.Army.CanEnterStealth;
-                if (!needStealth && moverStealthy && cands[i].Any(alt => !(alt.Army.IsHidden || alt.Army.CanEnterStealth)))
+                if (!needStealth && cand.IsStealthCapableMover
+                    && cands[i].Any(alt => !alt.IsStealthCapableMover))
                     wastedStealth++;
 
-                effAp += cand.EffActivationAp;
+                risk += Mathf.RoundToInt(cand.DetectionRisk * 1_000_000f);
+                standOff += cand.StandOff;
+                requiredAp += Mathf.RoundToInt(cand.RequiredAp);
                 eta += cand.EtaTurns;
                 dist += cand.Distance;
-                armyIdSum += cand.Army.ArmyId;
             }
 
-            return new[]
+            var key = new long[8 + 3 * n];
+            key[0] = -(long)covered;
+            key[1] = -priorityCoverage;
+            key[2] = wastedStealth;
+            key[3] = risk;
+            key[4] = -standOff;
+            key[5] = requiredAp;
+            key[6] = eta;
+            key[7] = dist;
+            for (int i = 0; i < n; i++)
             {
-                -(long)covered,
-                -priorityCoverage,
-                (long)wastedStealth,
-                effAp,
-                eta,
-                dist,
-                armyIdSum,
-            };
+                int b = 8 + 3 * i;
+                if (chosen[i] < 0)
+                {
+                    key[b] = key[b + 1] = key[b + 2] = long.MaxValue;
+                }
+                else
+                {
+                    ScoutExecutionCandidate cand = cands[i][chosen[i]];
+                    key[b] = cand.Army.ArmyId;
+                    key[b + 1] = cand.ExecutionHex.Q;
+                    key[b + 2] = cand.ExecutionHex.R;
+                }
+            }
+            return key;
         }
 
         private static int Lex(long[] a, long[] b)
@@ -295,57 +338,62 @@ namespace Game.Ai.V2
             if (m == null || ctx?.Map == null || root == null)
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("no mission / map / root"));
             if (m.Kind != MissionKind.Scout || !(m.Target is ScoutMissionTarget target))
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("6a provisions Scout missions only"));
-            if (target.Kind != ScoutTargetKind.Explore)
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                    "Surveil execution is build-order step 6b (needs SurveilVantageSelector)"));
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("provisions Scout missions only"));
 
             StableMissionKey key = StableMissionKey.For(m);
+            bool surveil = target.Kind == ScoutTargetKind.Surveil;
 
-            // 1. concrete mover from the per-pass assignment. No assignment => distinguish a
-            //    STRUCTURAL dead end (no such Recce owned at all — cooldown) from THIS-turn
-            //    contention (a capable Recce exists but is spent / already activated / taken by a
-            //    higher-priority mission this cycle — retry next turn, no cooldown). The structural
-            //    probe ignores CurrentMovement / current-turn activation on purpose.
-            if (!session.TryGetAssignedMover(key, out int moverArmyId))
-            {
-                return ScoutMoverSelector.HasStructuralCandidate(session.Snapshot, target)
-                    ? ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        "a capable solo Recce exists but is spent / activated / taken this cycle"))
-                    : ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                        "no solo Recce" + (target.Stealth == StealthRequirement.Required ? " with stealth capability" : "") + " on the map"));
-            }
+            // 1. assigned (mover, ExecutionHex) pair.
+            if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
+                return ClassifyNoAssignment(session, target, surveil);
 
+            int moverArmyId = exec.Army.ArmyId;
             ArmyData army = ResolveArmy(player, moverArmyId);
             if (army == null || army.Owner != player || army.Members.Count == 0
                 || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
 
-            // 2. target still valid (Explore: an unvisited, not-known-occupied frontier hex).
             HexCoord focus = target.FocusHex;
-            if (VisionSystem.IsVisited(player, focus))
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                    $"focus ({focus.Q},{focus.R}) already visited — nothing left to discover there"));
-            if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
-                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    $"focus ({focus.Q},{focus.R}) now holds a known army"));
+            HexCoord executionHex = exec.ExecutionHex;
 
-            // 3. first-step preflight — reuse V1's fog-safe stepper. ExecutionHex == focus in 6a.
-            HexCoord executionHex = focus;
+            // 2. objective still open?
+            if (surveil)
+            {
+                int trackedId = target.Contact?.Army?.ArmyId ?? -1;
+                if (trackedId < 0 || target.Contact.Source != ContactSource.Honest
+                    || target.Contact.Knowledge != ContactKnowledge.LastKnown)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "surveil target is no longer an honest last-known contact"));
+                int baseline = target.Contact.LastObservedTurn;
+                if (VisionSystem.IsVisible(player, focus) || HasFresherSighting(player, trackedId, baseline))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"tracked #{trackedId} already re-observed (focus ({focus.Q},{focus.R}), baseline turn {baseline})"));
+                if (executionHex.Equals(focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        "surveil ExecutionHex == FocusHex — invariant violation"));
+                if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
+            }
+            else
+            {
+                if (VisionSystem.IsVisited(player, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"focus ({focus.Q},{focus.R}) already visited — nothing left to discover there"));
+                if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"focus ({focus.Q},{focus.R}) now holds a known army"));
+            }
+
+            // 3. first-step preflight toward ExecutionHex (V1's fog-safe stepper, reused).
             HexCoord? firstStep = VisitHexTask.FindNextSafeStep(ctx.Map, army, executionHex);
             if (firstStep == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({army.Hex.Q},{army.Hex.R}) toward ({executionHex.Q},{executionHex.R})"));
 
-            // 4. AP: the REAL cost of this mover, computed with the same rules execution applies.
-            //    Required stealth is STRICT here (not the optional MoveWarrantsStealth "is this
-            //    step risky" policy): a Required mission whose mover is not already hidden ALWAYS
-            //    reserves the 1 AP and ALWAYS enters stealth before its first move. The gameplay
-            //    layer can only enter stealth while !HasActivatedThisTurn, so "reserve now, decide
-            //    the step later" is not deliverable — Required means Required, up front. Matches
-            //    ScoutCostModel's own Required envelope (activation + 1 unless already hidden).
-            //    MoveWarrantsStealth stays the rule for V1 / the future Preferred tier.
+            // 4. AP: real cost, same rules execution applies. A stealth-Required mission whose
+            //    mover is not already hidden ALWAYS reserves the 1 AP and enters stealth up front.
             int activationAp = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
             bool alreadyHidden = army.Members.Any(mem => mem.IsHidden);
             bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
@@ -360,25 +408,66 @@ namespace Game.Ai.V2
 
             float turnApLeft = root.ActionPoints - session.ApClaimed;
             if (realNeed > turnApLeft + eps)
-                // Unreachable in 6a (no commitments -> Σ Tentative <= pool <= ActionPoints), but a
-                // real guard once commitments / step 9 can overdraw the pool. Transient contention
-                // on the shared AP pool, not a structural dead end.
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: need {N(realNeed)}, {N(turnApLeft)} left after earlier claims"));
 
-            // 5. atomic claim — nothing was mutated above; emit the plan. The caller does
-            //    session.RegisterSuccess + AllocationSession.RegisterProvisionSuccess.
+            // 5. atomic claim.
             return ProvisioningResult.Ok(new ProvisionedMission
             {
                 Mission = m,
                 Key = key,
                 Kind = MissionKind.Scout,
+                ScoutKind = target.Kind,
                 MoverArmyId = moverArmyId,
                 FocusHex = focus,
                 ExecutionHex = executionHex,
+                TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
+                BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
                 ClaimedAp = realNeed,
                 StealthApReserved = stealthAp > 0,
             });
+        }
+
+        // No assignment for this mission this pass. Explore keeps the 6a two-way split. Surveil
+        // adds NoObservationVantage between "no scout at all" and "scouts busy": a capable scout
+        // exists but no on-map hex within ANY structural scout's vision can observe the focus.
+        // "Vantage exists but no safe route to it today" stays transient NoExecutableStep, NOT a
+        // structural cooldown.
+        private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
+            ScoutMissionTarget target, bool surveil)
+        {
+            WorldSnapshot snap = session.Snapshot;
+            bool needStealth = target.Stealth == StealthRequirement.Required;
+
+            if (!ScoutMoverSelector.HasStructuralCandidate(snap, target))
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
+
+            if (!surveil)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "a capable solo Recce exists but is spent / activated / taken this cycle"));
+
+            bool anyStructuralVantage = ScoutMoverSelector.StructuralCandidates(snap, target)
+                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+            if (!anyStructuralVantage)
+                return ProvisioningResult.Fail(ProvisionFailure.NoObservationVantage(
+                    $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})"));
+
+            bool anyEligibleHasVantage = ScoutMoverSelector.Eligible(snap, target, session.ClaimedArmyIds)
+                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+            return anyEligibleHasVantage
+                ? ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    "a vantage exists but no safe first step to it this turn"))
+                : ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "mover+vantage exist but every such scout is spent / claimed this cycle"));
+        }
+
+        private static bool HasFresherSighting(PlayerSetupData player, int trackedArmyId, int baselineTurn)
+        {
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (s.ArmyId == trackedArmyId && s.SeenTurn > baselineTurn)
+                    return true;
+            return false;
         }
 
         private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
