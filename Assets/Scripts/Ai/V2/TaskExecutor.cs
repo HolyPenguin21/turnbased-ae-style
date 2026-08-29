@@ -75,6 +75,11 @@ namespace Game.Ai.V2
         public bool ReachedGoal;
         public float ApSpent;
         public ExecutionStopReason StopReason;
+
+        // A stealth STATE change happened this turn (Required entry before the first move, or a
+        // voluntary mid-move entry) — a real change of the unit's readiness, not just spent AP.
+        // Step 7's "earned continuation" test is StepsMoved > 0 || EnteredStealth (never ApSpent).
+        public bool EnteredStealth;
     }
 
     internal static class TaskExecutor
@@ -123,15 +128,19 @@ namespace Game.Ai.V2
                 // activated. If it can't be delivered (should be impossible — the mover was
                 // eligibility-checked for exactly this), abort rather than send a Required mission
                 // out visible.
-                if (pm.StealthApReserved && !TryEnterRequiredStealth(root, army))
+                if (pm.StealthApReserved)
                 {
-                    result.FinalHex = army.Hex;
-                    result.StopReason = ExecutionStopReason.RequiredStealthUnavailable;
-                    result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-                    results.Add(result);
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter "
-                        + "required stealth; mission aborted for this turn");
-                    continue;
+                    if (!TryEnterRequiredStealth(root, army, out bool enteredStealth))
+                    {
+                        result.FinalHex = army.Hex;
+                        result.StopReason = ExecutionStopReason.RequiredStealthUnavailable;
+                        result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                        results.Add(result);
+                        AiDebugLog.Write($"[AI][V2] exec {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter "
+                            + "required stealth; mission aborted for this turn");
+                        continue;
+                    }
+                    result.EnteredStealth |= enteredStealth;
                 }
 
                 int maxIterations = army.CurrentMovement + 1; // loop guard (NOT a cross-turn stall watchdog)
@@ -206,6 +215,7 @@ namespace Game.Ai.V2
                         null, 0f, AiTaskCategory.Reconnaissance);
                     var trace = new AiMoveExecutionTrace();
                     yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
+                    result.EnteredStealth |= trace.EnteredStealthThisStep;
 
                     // (1) Record the physical move FIRST, before classifying why we stop. The
                     //     mover may have died in a fight this step — trace.EndHex was captured on
@@ -274,33 +284,25 @@ namespace Game.Ai.V2
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
 
         // Surveil is an INFORMATION objective: satisfied the moment FocusHex is visible again, or
-        // the tracked army is honestly re-sighted ANYWHERE with SeenTurn past the baseline. Never
-        // reads TrueWorld — honest memory only.
-        private static bool IsSurveilSatisfied(PlayerSetupData player, ProvisionedMission pm)
-        {
-            if (pm.ScoutKind != ScoutTargetKind.Surveil)
-                return false;
-            if (VisionSystem.IsVisible(player, pm.FocusHex))
-                return true;
-            if (!pm.TrackedArmyId.HasValue)
-                return false;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (s.ArmyId == pm.TrackedArmyId.Value && s.SeenTurn > pm.BaselineObservedTurn)
-                    return true;
-            return false;
-        }
+        // the tracked army is honestly re-sighted ANYWHERE with SeenTurn past the baseline. The
+        // rule lives in ScoutObjectiveEvaluator (the single completion/validity home, step 7) —
+        // provisioning and the continuity layer call the same primitive. Honest memory only.
+        private static bool IsSurveilSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
+            pm.ScoutKind == ScoutTargetKind.Surveil
+            && ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
 
         // Mirror of MoveArmyRoutine's own voluntary-stealth entry (1 AP per member, solo Recce =
         // 1), but STRICT: a stealth-Required V2 mission calls this before its first move instead
         // of relying on the optional "is this step risky" policy. True if the mover ends up hidden
         // (already was, or entered now); false only if the state that provisioning verified has
         // since changed.
-        private static bool TryEnterRequiredStealth(PlayerRoot root, ArmyData army)
+        private static bool TryEnterRequiredStealth(PlayerRoot root, ArmyData army, out bool entered)
         {
+            entered = false;
             if (army == null || army.Members.Count == 0)
                 return false;
             if (army.Members.Any(m => m.IsHidden))
-                return true; // already hidden — Required satisfied, nothing to spend
+                return true; // already hidden — Required satisfied, no state change
             if (army.HasActivatedThisTurn)
                 return false;
             var scout = army.Members[0];
@@ -310,6 +312,7 @@ namespace Game.Ai.V2
                 return false;
             root.SpendActionPoints(1);
             StealthSystem.EnterStealth(scout);
+            entered = true;
             return true;
         }
 

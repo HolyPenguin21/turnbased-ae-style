@@ -260,13 +260,15 @@ namespace Game.Ai.V2
         }
 
         // Lex key, most significant first:
-        //   coverage -> mission priority -> preserve scarce stealth -> surveillance risk ->
-        //   stand-off (bigger safer) -> AP -> ETA -> distance -> deterministic (armyId,Q,R) tuple.
+        //   coverage -> mission priority -> actor continuity (step 7: keep a multi-turn intent on
+        //   its own mover) -> preserve scarce stealth -> surveillance risk -> stand-off (bigger
+        //   safer) -> AP -> ETA -> distance -> deterministic (armyId,Q,R) tuple.
         private static long[] ScoreAssignment(List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands, int[] chosen)
         {
             int n = open.Count;
             int covered = 0;
             long priorityCoverage = 0;
+            int actorDiscontinuity = 0;
             int wastedStealth = 0;
             long risk = 0, standOff = 0, requiredAp = 0, eta = 0, dist = 0;
 
@@ -277,6 +279,14 @@ namespace Game.Ai.V2
                 ScoutExecutionCandidate cand = cands[i][chosen[i]];
                 covered++;
                 priorityCoverage += n - i;
+
+                // A re-materialised intent PREFERS the mover it used last turn — a tie-break, not a
+                // reservation. Count how many assignments hand the intent a DIFFERENT mover (only
+                // when it had a preference and that mover is an option this turn).
+                int? preferred = open[i].Mission.PreferredMoverArmyId;
+                if (preferred.HasValue && cand.Army.ArmyId != preferred.Value
+                    && cands[i].Any(alt => alt.Army.ArmyId == preferred.Value))
+                    actorDiscontinuity++;
 
                 var target = (ScoutMissionTarget)open[i].Mission.Target;
                 bool needStealth = target.Stealth == StealthRequirement.Required;
@@ -291,18 +301,19 @@ namespace Game.Ai.V2
                 dist += cand.Distance;
             }
 
-            var key = new long[8 + 3 * n];
+            var key = new long[9 + 3 * n];
             key[0] = -(long)covered;
             key[1] = -priorityCoverage;
-            key[2] = wastedStealth;
-            key[3] = risk;
-            key[4] = -standOff;
-            key[5] = requiredAp;
-            key[6] = eta;
-            key[7] = dist;
+            key[2] = actorDiscontinuity;
+            key[3] = wastedStealth;
+            key[4] = risk;
+            key[5] = -standOff;
+            key[6] = requiredAp;
+            key[7] = eta;
+            key[8] = dist;
             for (int i = 0; i < n; i++)
             {
-                int b = 8 + 3 * i;
+                int b = 9 + 3 * i;
                 if (chosen[i] < 0)
                 {
                     key[b] = key[b + 1] = key[b + 2] = long.MaxValue;

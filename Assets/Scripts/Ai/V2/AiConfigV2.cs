@@ -284,5 +284,30 @@ namespace Game.Ai.V2
         public const int allocatorRejectCooldownTurns = 2;
         // Shared tolerance for AP slice affordability / atomic draw / remainder comparisons.
         public const float allocatorSliceEpsilon = 0.01f;
+
+        // =======================================================================================
+        //  MISSION CONTINUITY  (Strategy V2 build-order step 7)
+        //  Two separated concerns:
+        //    Intent  — "I still want to finish THIS objective / keep tracking THIS army". Durable,
+        //              outlives any single MissionProposal. Drives retarget hysteresis for every
+        //              recon mission.
+        //    Commitment — a funding POLICY on an Intent: "do not drop this from the budget over a
+        //              small Radar wobble". Soft for a far Surveil that has actually started
+        //              moving; Hard (raid) lands in step 9.
+        //  Invariants held here: Intent != Proposal, Intent != Commitment, Progress != AP spent,
+        //  post-execution observation != strategic policy.
+        // =======================================================================================
+        // Retarget hysteresis. A fresh candidate only displaces the hex an in-flight intent is
+        // already heading for if it beats it by this margin on SelectionScore. One knob — no
+        // separate incumbent bonus (that stacked to ~1.5x and became a hard lock). Progress-aware
+        // margins are a later tuning pass, not a step-7 concept.
+        public const float commitmentRetargetMargin = 0.20f;
+        // Absolute emergency cap on how long a single intent may persist without completing —
+        // safety net only. The real mechanism (deadline = first-executed ETA + slack) is a later
+        // step; the ETA is unknown at intent creation because a Surveil proposal has no vantage yet.
+        public const int commitmentMaxTurns = 6;
+        // Consecutive turns an intent may make NO forward progress (no step, no stealth entry, no
+        // productive stop) before it is retired and its key put on the allocator reject cooldown.
+        public const int commitmentStallTurns = 2;
     }
 }

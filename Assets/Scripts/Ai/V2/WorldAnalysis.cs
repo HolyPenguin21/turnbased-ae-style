@@ -391,11 +391,12 @@ namespace Game.Ai.V2
         {
             HexMap map = ctx.Map;
             var all = new List<HexCoord>();
+            var visitedSet = new HashSet<HexCoord>();
             int visited = 0, visible = 0;
             foreach (HexCoord c in map.AllCoords)
             {
                 all.Add(c);
-                if (VisionSystem.IsVisited(player, c)) visited++;
+                if (VisionSystem.IsVisited(player, c)) { visited++; visitedSet.Add(c); }
                 if (VisionSystem.IsVisible(player, c)) visible++;
             }
             int total = all.Count;
@@ -525,6 +526,7 @@ namespace Game.Ai.V2
                 // scout-facing blocks (neutral on the hex / active scout-danger) — enemy
                 // proximity is not a block, exactly as the frontier scan treats it.
                 ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
+                VisitedHexSet = visitedSet,
             };
         }
 
@@ -675,6 +677,23 @@ namespace Game.Ai.V2
                     contacts.Add(MakeCheatContact(strongest, home, AiConfig.defenceReactionRadius));
             }
             model.Contacts = contacts;
+
+            // Honest, positioned contacts by tracked army id — feeds the step-7 Surveil continuity
+            // check. Only the historical (AiReconMemory) contacts carry a real ArmyId; a
+            // currently-visible sighting is stamped -1 (SightingToArmySnapshot) and is skipped
+            // here — a visible army is not a surveillance target anyway.
+            var byArmy = new Dictionary<int, EnemyContactSnapshot>();
+            foreach (EnemyContactSnapshot c in contacts)
+            {
+                if (c.Source != ContactSource.Honest || !c.Position.HasValue)
+                    continue;
+                int id = c.Army?.ArmyId ?? 0;
+                if (id <= 0)
+                    continue;
+                if (!byArmy.TryGetValue(id, out EnemyContactSnapshot cur) || c.LastObservedTurn > cur.LastObservedTurn)
+                    byArmy[id] = c;
+            }
+            model.ReconContactByArmyId = byArmy;
 
             // ---- strategic assets --------------------------------------------------------
             var assets = new List<StrategicAssetSnapshot>();

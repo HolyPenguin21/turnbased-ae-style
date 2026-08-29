@@ -182,6 +182,7 @@ namespace Game.Ai
         public bool HexEventOccurred;        // a clean Hex Event resolved (explored or skipped) during this step
         public bool ReachedDestination;      // the mover ended on decision.TargetHex
         public HexCoord EndHex;              // where the mover PHYSICALLY stopped — captured before any battle, survives the mover's death
+        public bool EnteredStealthThisStep;  // a solo Recce slipped into stealth before this move (V2 step-7 "made progress" signal)
     }
 
     // Level 0 of the AI architecture (see AI_ARCHITECTURE.html section 01 and the project owner's
@@ -1277,6 +1278,8 @@ namespace Game.Ai
                     {
                         root.SpendActionPoints(1);
                         Game.Map.StealthSystem.EnterStealth(scout);
+                        if (trace != null)
+                            trace.EnteredStealthThisStep = true;
                         AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
                     }
                     else

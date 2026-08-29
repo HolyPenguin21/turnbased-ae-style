@@ -169,6 +169,7 @@ namespace Game.Ai.V2
         InvalidContribution,
         RejectedThisTurn,
         OnCooldown,
+        CommitmentPoolExhausted,   // a commitment whose funding would push Σ commitments past the real AP pool
     }
 
     public sealed class DeferredEntry
@@ -204,6 +205,12 @@ namespace Game.Ai.V2
         public ResourceVector AxisOverdraft;
         public ResourceVector GlobalOverdraft;
         public int PassNumber;
+
+        // Telemetry breadcrumb for the future pre-emption pass (step 9+): a fresh mission worth
+        // MORE (BaseValue) than some funded commitment was deferred purely because commitments ate
+        // the pool, OR a commitment itself could not be funded within the real AP pool. Nothing
+        // acts on it yet — commitments are still honoured to completion.
+        public bool CommitmentsStarveFreshDecisions;
     }
 
     // Cross-turn state only. RejectedThisTurn/pass/fingerprint live in AllocationSession.
@@ -464,19 +471,25 @@ namespace Game.Ai.V2
             var shareCache = new Dictionary<MissionProposal, Dictionary<DesireAxis, float>>();
             int priority = 0;
 
-            // 3. Commitments first. Sticky/pre-paid: they can drive slices negative.
-            //    SEAM DEFECT — fix WITH build-order step 7. This loop gates on NEITHER
-            //    _rejectedThisTurn NOR _lockedClaims, so on a re-Pack it re-funds (and re-draws the
-            //    slices for) a commitment that already FAILED provisioning this turn AND one that
-            //    already SUCCEEDED (its locked strict draw is then double-counted — once here, once
-            //    via lockedStrictByAxis). Harmless only while CommitmentLayer.Active returns empty.
-            //    Step 7 must skip a commitment whose key is in _rejectedThisTurn or _lockedClaims
-            //    (the latter already has its provenance applied to the slices), and give a failed
-            //    commitment a release / cancellation path.
+            // 3. Commitments first. Sticky/pre-paid: they MAY drive an axis slice negative (that is
+            //    the point — a funding protection against Radar noise). Step-7 guards:
+            //      · skip a key already provisioned this turn (_lockedClaims — its provenance is
+            //        already applied to the slices) or already failed this turn (_rejectedThisTurn),
+            //        or defensively on structural cooldown (ReconcileAfterTurn should have retired
+            //        the intent, but the allocator does not depend on that);
+            //      · Σ commitment Tentative may NOT exceed the real AP pool. A commitment can
+            //        borrow another axis's budget; it can never conjure AP that isn't there
+            //        (invariant for step 9's multi-raid case). Overflow -> deferred +
+            //        CommitmentsStarveFreshDecisions.
+            float committedApSoFar = 0f;
             foreach (Commitment c in _commitments)
             {
                 MissionProposal m = c?.Mission;
                 if (m == null)
+                    continue;
+
+                StableMissionKey ckey = StableMissionKey.For(m);
+                if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;
 
                 Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
@@ -486,7 +499,16 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                var ask = new ResourceVector(ApDesired(m));
+                float askAp = ApDesired(m);
+                if (committedApSoFar + askAp > pool.Ap + eps)
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
+                    alloc.CommitmentsStarveFreshDecisions = true;
+                    continue;
+                }
+                committedApSoFar += askAp;
+
+                var ask = new ResourceVector(askAp);
                 var fe = new FundedEntry
                 {
                     Mission = m,
@@ -509,9 +531,16 @@ namespace Game.Ai.V2
             }
 
             // 4. Fresh missions — BaseValue desc + stable key. Strict admission is atomic:
-            //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE.
+            //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal
+            //    that is ALSO an active commitment (same object, re-materialised by MissionLayer)
+            //    is funded through the commitment loop above only — never a second time here.
+            var commitmentKeys = new HashSet<StableMissionKey>(_commitments
+                .Where(c => c?.Mission != null)
+                .Select(c => StableMissionKey.For(c.Mission)));
             var ordered = _missions
-                .Where(m => m != null && !_lockedClaims.ContainsKey(StableMissionKey.For(m)))
+                .Where(m => m != null
+                    && !_lockedClaims.ContainsKey(StableMissionKey.For(m))
+                    && !commitmentKeys.Contains(StableMissionKey.For(m)))
                 .OrderByDescending(m => m.BaseValue)
                 .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
                 .ToList();
@@ -597,6 +626,19 @@ namespace Game.Ai.V2
 
                 alloc.Funded.Add(funded);
                 alloc.StrictFunded += v;
+            }
+
+            // 4b. Telemetry: did a funded commitment crowd out a MORE valuable fresh decision?
+            if (!alloc.CommitmentsStarveFreshDecisions)
+            {
+                var fundedCommitBases = alloc.Funded.Where(f => f.IsCommitment).Select(f => f.Mission.BaseValue).ToList();
+                if (fundedCommitBases.Count > 0)
+                {
+                    float minCommitBase = fundedCommitBases.Min();
+                    if (alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
+                            && d.Mission != null && d.Mission.BaseValue > minCommitBase))
+                        alloc.CommitmentsStarveFreshDecisions = true;
+                }
             }
 
             // 5. Positive leftovers lose axis identity and become one fungible remainder pool. AP a
@@ -793,7 +835,8 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — funded {a.Funded.Count} "
                 + $"({a.Funded.Count(f => f.IsCommitment)} commit), deferred {a.Deferred.Count}, "
                 + $"strictAp {LogNum(a.StrictFunded.Ap)}, commitmentAp {LogNum(a.CommitmentDraw.Ap)}, "
-                + $"axisOverdraft {LogNum(a.AxisOverdraft.Ap)}, globalOverdraft {LogNum(a.GlobalOverdraft.Ap)}");
+                + $"axisOverdraft {LogNum(a.AxisOverdraft.Ap)}, globalOverdraft {LogNum(a.GlobalOverdraft.Ap)}"
+                + (a.CommitmentsStarveFreshDecisions ? " [commitments starve fresh]" : ""));
         }
     }
 }

@@ -249,6 +249,11 @@ namespace Game.Ai.V2
         // semantics the frontier scan uses: a known neutral physically on the hex, or an active
         // scout-danger cooldown. Enemy PROXIMITY is deliberately NOT here (it only annotates).
         public ISet<HexCoord> ScoutHardBlockedHexes;
+
+        // Every hex this player has ever stood on (VisionSystem.IsVisited). A byproduct of the
+        // frontier scan, exposed so the step-7 continuity layer can tell whether a durable Explore
+        // intent's focus hex is still unvisited without a live VisionSystem read.
+        public ISet<HexCoord> VisitedHexSet;
     }
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.
@@ -359,6 +364,11 @@ namespace Game.Ai.V2
         public IReadOnlyList<EnemyContactSnapshot> Contacts;
         public IReadOnlyList<StrategicAssetSnapshot> Assets;
         public IReadOnlyList<AssetThreatSnapshot> Threats;
+
+        // Honest, POSITIONED contacts indexed by the tracked army's id — the freshest one when the
+        // same army is both live-sighted and remembered. The step-7 Surveil continuity path reads
+        // this instead of querying AiReconMemory, keeping "downstream reads the snapshot" intact.
+        public IReadOnlyDictionary<int, EnemyContactSnapshot> ReconContactByArmyId;
         // AI-behaviour label ONLY — no game "siege" state exists. "A force I can't beat is at the
         // gates": an enemy within AiConfigV2.siegeRadius (3) of a Citadel/Base (or <=1 turn out)
         // whose attack would probably win, OR'd with V1 AiDefencePlanner.IsUnderSiege for parity.

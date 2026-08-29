@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  RECON MISSION PLANNER  (Strategy V2 build-order step 4)  — implements MissionLayer
+    //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7 continuity)
     // ===========================================================================================
     //  One WorldSnapshot + the Recon DesireBreakdown -> up to AiConfigV2.maxConcurrentRecon Scout
     //  MissionProposals. It NEVER re-derives the analysis behind the breakdown — it reads
@@ -15,33 +15,23 @@ namespace Game.Ai.V2
     //  hex each Scout heads for, and how hidden its executor must be.
     //
     //  TWO CANDIDATE KINDS, ONE 0..100 SCALE
-    //    Explore  — a MapKnowledge.Frontier hex (already inside the wave band + touching reachable
-    //               ground; carries FreshNeighbors, DistanceFromNearestBase, and the enemy-
-    //               exposure annotation). Valued on info gain + centrality.
+    //    Explore  — a MapKnowledge.Frontier hex. Valued on info gain + centrality.
     //    Surveil  — a stale HONEST positioned contact (Source == Honest, Knowledge == LastKnown).
-    //               Now that AiReconMemory retains contacts past V1's 2-turn tactical window, the
-    //               staleness x ThreatModel-severity term is actually reachable. Valued on
-    //               staleness x the severity already attached to that contact.
+    //               Valued on staleness x the severity already attached to that contact.
     //
-    //  STEALTH REQUIREMENT (parity with V1's hard exclusion)
-    //    !EnemyExposure                        -> None
-    //    EnemyExposure, no detector            -> Required, DetectionRisk 0
-    //    EnemyExposure, a detector can see here-> Required, DetectionRisk > 0
-    //  Required means "the executor must be hidden by the risky leg" — an already-hidden scout
-    //  satisfies it for free. A visible, already-activated scout is not a valid executor; that is
-    //  ScoutCostModel's eligibility filter, and if nothing qualifies the proposal still forms
-    //  (MoverKnown false) and Provisioning resolves or fails it — the mission is never dropped
-    //  here for lack of a mover.
+    //  STEP-7 CONTINUITY — this is the ONE place that turns a durable MissionIntent back into a
+    //  concrete proposal (Intent != Proposal). Every active intent is re-materialised from the
+    //  CURRENT snapshot (fresh cost via ScoutCostModel, fresh vantage later in provisioning), so
+    //  there is no second proposal-builder inside the continuity layer. Retarget hysteresis: an
+    //  in-flight ("incumbent") heading only yields to a fresh candidate that beats it by
+    //  AiConfigV2.commitmentRetargetMargin. Soft/Hard incumbents also hold a recon slot
+    //  unconditionally; a None-tier (Explore) incumbent can lose its slot to materially better work.
     //
     //  INTRINSIC value vs SELECTION
     //    BaseValue      = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the ONLY thing in
     //                     MissionProposal.BaseValue. The allocator packs on this + the radar slices.
-    //    SelectionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance). Used HERE
-    //                     only, to rank the pool and pick winners.
-    //
-    //  DEDUP: identical FocusHex -> never both. Explore+Explore -> at least
-    //  scoutTargetMinSeparation apart. Explore+Surveil and Surveil+Surveil -> allowed (different
-    //  information tasks; one physical army yields one Surveil contact anyway).
+    //    SelectionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance) * riskFactor.
+    //                     Used HERE only, to rank the pool and pick winners.
     // ===========================================================================================
     internal static class MissionLayer
     {
@@ -52,39 +42,78 @@ namespace Game.Ai.V2
             public readonly float SelectionScore;
             public readonly string Explain;
 
-            public ScoutCandidate(ScoutMissionTarget target, float baseValue, float selectionScore, string explain)
+            // Step 7 — set only when this candidate was re-materialised from a durable intent.
+            public readonly bool IsIncumbent;
+            public readonly CommitmentTier Tier;
+            public readonly int? PreferredMover;
+
+            public ScoutCandidate(ScoutMissionTarget target, float baseValue, float selectionScore, string explain,
+                bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None, int? preferredMover = null)
             {
                 Target = target;
                 BaseValue = baseValue;
                 SelectionScore = selectionScore;
                 Explain = explain;
+                IsIncumbent = isIncumbent;
+                Tier = tier;
+                PreferredMover = preferredMover;
             }
+
+            public ScoutCandidate AsIncumbent(CommitmentTier tier, int? preferredMover) =>
+                new ScoutCandidate(Target, BaseValue, SelectionScore, Explain + " [incumbent]", true, tier, preferredMover);
         }
 
-        public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown)
+        public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
+            IReadOnlyList<MissionIntent> activeIntents)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || snap.MapKnowledge == null || breakdown == null)
                 return proposals;
 
-            var candidates = new List<ScoutCandidate>();
-            candidates.AddRange(ExploreCandidates(snap, breakdown.ReconExploration));
-            // Surveil is live as of build-order step 6b. It emits ONLY from an honest, positioned
-            // LastKnown contact (never Cheat / Region / Unknown) and is always stealth-Required;
-            // FocusHex != ExecutionHex is resolved in provisioning by SurveilVantageSelector, so a
-            // solo scout observes the target hex from a safe vantage and never steps onto a stale
-            // enemy's last-known hex.
-            candidates.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
+            // Fresh candidates from the current world.
+            var fresh = new List<ScoutCandidate>();
+            fresh.AddRange(ExploreCandidates(snap, breakdown.ReconExploration));
+            fresh.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
+
+            // Incumbent candidates — every still-valid durable intent, re-materialised here.
+            var incumbents = new List<ScoutCandidate>();
+            if (activeIntents != null)
+                foreach (MissionIntent intent in activeIntents)
+                {
+                    ScoutCandidate? c = TryMaterializeIntent(snap, breakdown, intent);
+                    if (c.HasValue)
+                        incumbents.Add(c.Value);
+                    else
+                        AiDebugLog.Write($"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
+                }
 
             var picked = new List<ScoutCandidate>();
-            foreach (ScoutCandidate c in candidates.OrderByDescending(x => x.SelectionScore))
+
+            // 1. Soft/Hard incumbents hold a slot unconditionally (funding-protected — see
+            //    MissionContinuityLayer). Score only orders them against each other.
+            foreach (ScoutCandidate c in incumbents
+                .Where(x => x.Tier != CommitmentTier.None)
+                .OrderByDescending(x => x.SelectionScore))
             {
-                if (picked.Count >= AiConfigV2.maxConcurrentRecon)
-                    break;
-                if (c.SelectionScore <= 0f)
-                    break; // sorted — nothing better follows
-                if (picked.Any(p => Conflicts(p, c)))
-                    continue;
+                if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
+                if (picked.Any(p => Conflicts(p, c))) continue;
+                picked.Add(c);
+            }
+
+            // 2. None-tier incumbents + fresh candidates compete for the rest. The retarget margin
+            //    is applied as an incumbent-only multiplier on the ranking key — mathematically the
+            //    same as "a fresh candidate replaces an incumbent only if fresh > incumbent *
+            //    (1 + margin)". One margin, no separate bonus (that stacked into a hard lock).
+            float mult = 1f + AiConfigV2.commitmentRetargetMargin;
+            IEnumerable<ScoutCandidate> contenders = incumbents
+                .Where(x => x.Tier == CommitmentTier.None)
+                .Concat(fresh)
+                .OrderByDescending(x => x.SelectionScore * (x.IsIncumbent ? mult : 1f));
+            foreach (ScoutCandidate c in contenders)
+            {
+                if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
+                if (!c.IsIncumbent && c.SelectionScore <= 0f) continue; // fresh needs positive merit; an incumbent may ride at ~0
+                if (picked.Any(p => Conflicts(p, c))) continue;
                 picked.Add(c);
             }
 
@@ -104,6 +133,63 @@ namespace Game.Ai.V2
                 && HexGridMath.Distance(a.Target.FocusHex, b.Target.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
         }
 
+        // --------------------------------------------------------------------- continuity ----
+
+        // Turn one durable intent back into a concrete ScoutCandidate against THIS snapshot, or
+        // null if the objective is no longer coherent (focus visited / boxed in, tracked contact
+        // gone). MissionContinuityLayer.ResolveActive already purged the plainly-dead ones; this is
+        // the same check re-run against the identical snapshot object, plus a fresh cost sizing.
+        private static ScoutCandidate? TryMaterializeIntent(WorldSnapshot snap, DesireBreakdown bd, MissionIntent intent)
+        {
+            ScoutIntent si = intent?.Scout;
+            if (si == null)
+                return null;
+
+            if (si.Kind == ScoutTargetKind.Explore)
+            {
+                int fresh = ScoutObjectiveEvaluator.ExploreStillOpen(snap, si.FocusHex);
+                if (fresh <= 0)
+                    return null;
+                int distBase = snap.Self.BaseHexes != null && snap.Self.BaseHexes.Count > 0
+                    ? snap.Self.BaseHexes.Min(b => HexGridMath.Distance(b, si.FocusHex))
+                    : 0;
+                bool exposed = EnemyExposedAt(snap, si.FocusHex);
+                bool stealthRisk = exposed && DetectorsAt(snap, si.FocusHex) > 0;
+                return MakeExploreCandidate(snap, si.FocusHex, fresh, distBase, exposed, stealthRisk, bd.ReconExploration)
+                    .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
+            }
+
+            EnemyContactSnapshot contact = ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId);
+            if (contact == null)
+                return null;
+            return MakeSurveilCandidate(snap, contact, bd.ReconSurveillance)
+                .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
+        }
+
+        // Inline mirrors of the frontier scan's enemy-exposure annotation — a materialised Explore
+        // intent's focus hex may have dropped out of MapKnowledge.Frontier (the wave band moved),
+        // so the precomputed flag is not available. Same constants, same CanDetectStealthAt call.
+        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
+        {
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = snap.Known?.EnemySightings;
+            if (sightings == null) return false;
+            int r = AiConfigV2.frontierEnemyExposureRadius;
+            foreach (AiMapMemory.KnownEnemySighting e in sightings)
+                if (HexGridMath.Distance(e.Hex, hex) <= r) return true;
+            return false;
+        }
+
+        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex)
+        {
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = snap.Known?.EnemySightings;
+            if (sightings == null) return 0;
+            int r = AiConfigV2.frontierEnemyExposureRadius;
+            int n = 0;
+            foreach (AiMapMemory.KnownEnemySighting e in sightings)
+                if (HexGridMath.Distance(e.Hex, hex) <= r && e.CanDetectStealthAt(hex)) n++;
+            return n;
+        }
+
         // --------------------------------------------------------------------------- Explore ----
         private static IEnumerable<ScoutCandidate> ExploreCandidates(WorldSnapshot snap, float reconExploration)
         {
@@ -112,35 +198,40 @@ namespace Game.Ai.V2
                 yield break;
 
             foreach (FrontierHexSnapshot f in frontier)
+                yield return MakeExploreCandidate(snap, f.Hex, f.FreshNeighbors, f.DistanceFromNearestBase,
+                    f.EnemyExposure, f.StealthDetectionRisk, reconExploration);
+        }
+
+        private static ScoutCandidate MakeExploreCandidate(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
+            int distFromBase, bool enemyExposure, bool stealthDetectionRisk, float reconExploration)
+        {
+            float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
+            float proximity = Proximity(distFromBase);
+
+            float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutStrategicProximityWeight;
+            float quality = Mathf.Clamp01(
+                (AiConfigV2.scoutInfoGainWeight * infoGain
+                 + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
+            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
+
+            StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
+            float risk = enemyExposure
+                ? Mathf.Max(stealthDetectionRisk ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
+                    CurrentDetectorRisk(snap, hex))
+                : 0f;
+
+            var target = new ScoutMissionTarget
             {
-                float infoGain = Mathf.Clamp01(f.FreshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
-                float proximity = Proximity(f.DistanceFromNearestBase);
-
-                float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutStrategicProximityWeight;
-                float quality = Mathf.Clamp01(
-                    (AiConfigV2.scoutInfoGainWeight * infoGain
-                     + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
-                float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
-                StealthRequirement req = f.EnemyExposure ? StealthRequirement.Required : StealthRequirement.None;
-                float risk = f.EnemyExposure
-                    ? Mathf.Max(f.StealthDetectionRisk ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
-                        CurrentDetectorRisk(snap, f.Hex))
-                    : 0f;
-
-                var target = new ScoutMissionTarget
-                {
-                    FocusHex = f.Hex,
-                    Kind = ScoutTargetKind.Explore,
-                    Contact = null,
-                    Stealth = req,
-                    DetectionRisk = risk,
-                };
-                string explain = $"Explore @{f.Hex.Q},{f.Hex.R} opens {f.FreshNeighbors} "
-                    + $"(info {F(infoGain)} prox {F(proximity)} d{f.DistanceFromNearestBase}{StealthTag(req, risk)}) "
-                    + $"base {F(baseValue)} x explore {F(reconExploration)}";
-                yield return new ScoutCandidate(target, baseValue, Selection(baseValue, reconExploration, risk), explain);
-            }
+                FocusHex = hex,
+                Kind = ScoutTargetKind.Explore,
+                Contact = null,
+                Stealth = req,
+                DetectionRisk = risk,
+            };
+            string explain = $"Explore @{hex.Q},{hex.R} opens {freshNeighbors} "
+                + $"(info {F(infoGain)} prox {F(proximity)} d{distFromBase}{StealthTag(req, risk)}) "
+                + $"base {F(baseValue)} x explore {F(reconExploration)}";
+            return new ScoutCandidate(target, baseValue, Selection(baseValue, reconExploration, risk), explain);
         }
 
         // --------------------------------------------------------------------------- Surveil ----
@@ -150,56 +241,57 @@ namespace Game.Ai.V2
             if (contacts == null)
                 yield break;
 
-            IReadOnlyList<AssetThreatSnapshot> threats = snap.Threat.Threats;
-            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
-
             foreach (EnemyContactSnapshot c in contacts)
             {
                 if (c.Source != ContactSource.Honest || c.Knowledge != ContactKnowledge.LastKnown || !c.Position.HasValue)
                     continue;
-
-                HexCoord pos = c.Position.Value;
-                int age = c.AgeTurns(snap.TurnNumber);
-                float staleness = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
-
-                float maxSeverity = 0f;
-                if (threats != null)
-                    foreach (AssetThreatSnapshot t in threats)
-                        if (ReferenceEquals(t.Contact, c) && t.Severity > maxSeverity)
-                            maxSeverity = t.Severity;
-
-                float threatRelevance = Mathf.Clamp01(staleness * maxSeverity);
-                float proximity = bases != null && bases.Count > 0
-                    ? Proximity(bases.Min(b => HexGridMath.Distance(b, pos)))
-                    : 0f;
-
-                float wSum = AiConfigV2.scoutStrategicProximityWeight + AiConfigV2.scoutThreatWeight;
-                float quality = Mathf.Clamp01(
-                    (AiConfigV2.scoutStrategicProximityWeight * proximity
-                     + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
-                float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
-                // A Surveil target IS a (stale) enemy contact — always stealth-Required. Its own
-                // last-known hex carries a confidence-scaled base risk (if the army is still there,
-                // co-located it can detect stealth); any currently-known detectors add on top.
-                StealthRequirement req = StealthRequirement.Required;
-                float risk = Mathf.Clamp01(Mathf.Max(
-                    c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
-                    CurrentDetectorRisk(snap, pos)));
-
-                var target = new ScoutMissionTarget
-                {
-                    FocusHex = pos,
-                    Kind = ScoutTargetKind.Surveil,
-                    Contact = c,
-                    Stealth = req,
-                    DetectionRisk = risk,
-                };
-                string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
-                    + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
-                    + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
-                yield return new ScoutCandidate(target, baseValue, Selection(baseValue, reconSurveillance, risk), explain);
+                yield return MakeSurveilCandidate(snap, c, reconSurveillance);
             }
+        }
+
+        private static ScoutCandidate MakeSurveilCandidate(WorldSnapshot snap, EnemyContactSnapshot c, float reconSurveillance)
+        {
+            IReadOnlyList<AssetThreatSnapshot> threats = snap.Threat?.Threats;
+            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
+
+            HexCoord pos = c.Position.Value;
+            int age = c.AgeTurns(snap.TurnNumber);
+            float staleness = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
+
+            float maxSeverity = 0f;
+            if (threats != null)
+                foreach (AssetThreatSnapshot t in threats)
+                    if (ReferenceEquals(t.Contact, c) && t.Severity > maxSeverity)
+                        maxSeverity = t.Severity;
+
+            float threatRelevance = Mathf.Clamp01(staleness * maxSeverity);
+            float proximity = bases != null && bases.Count > 0
+                ? Proximity(bases.Min(b => HexGridMath.Distance(b, pos)))
+                : 0f;
+
+            float wSum = AiConfigV2.scoutStrategicProximityWeight + AiConfigV2.scoutThreatWeight;
+            float quality = Mathf.Clamp01(
+                (AiConfigV2.scoutStrategicProximityWeight * proximity
+                 + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
+            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
+
+            StealthRequirement req = StealthRequirement.Required;
+            float risk = Mathf.Clamp01(Mathf.Max(
+                c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
+                CurrentDetectorRisk(snap, pos)));
+
+            var target = new ScoutMissionTarget
+            {
+                FocusHex = pos,
+                Kind = ScoutTargetKind.Surveil,
+                Contact = c,
+                Stealth = req,
+                DetectionRisk = risk,
+            };
+            string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
+                + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
+                + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
+            return new ScoutCandidate(target, baseValue, Selection(baseValue, reconSurveillance, risk), explain);
         }
 
         // ------------------------------------------------------------------------------ shared ----
@@ -247,6 +339,7 @@ namespace Game.Ai.V2
                 Requirements = req,
                 SelectionScore = c.SelectionScore,
                 Explain = c.Explain,
+                PreferredMoverArmyId = c.PreferredMover,
             };
             proposal.Axes.Value[DesireAxis.Recon] = 1.0f;
             return proposal;

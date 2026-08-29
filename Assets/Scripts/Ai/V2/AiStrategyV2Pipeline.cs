@@ -116,7 +116,16 @@ namespace Game.Ai.V2
     //      Bake in the iteration bound + rejected set + cooldown (risk 2).
     //   6. ProvisioningManager (Scout needs no Army Logic — just atomic AP claim) + TaskExecutor.
     //      >>> FIRST TEST STATE: AI actually scouts, end to end, in game. <<<
-    //   7. CommitmentLayer + commitment-state update — multi-turn recon survives radar noise.
+    //   7. Mission Continuity — multi-turn recon survives radar noise.
+    //      DONE 2026-08-29 — MissionIntent.cs (MissionIntentKey / ScoutIntent / MissionIntent /
+    //      registry, CommitmentTier + IntentStatus, MissionOutcomeLedger, MissionContinuityLayer:
+    //      ResolveActive / BindFunding / ReconcileAfterTurn) + ScoutObjectiveEvaluator.cs (the one
+    //      completion/validity home). INTENT (durable objective, drives retarget hysteresis in
+    //      MissionLayer) is split from COMMITMENT (a funding policy — Soft for a far Surveil that
+    //      has started moving; funded first, sticky, but Σ commitments <= real AP pool). Explore
+    //      keeps an intent with NO funding. Pre-emption is deferred: commitments honoured to
+    //      completion, ContinuationValue / SwitchingCost recorded but not yet weighed. Verified by
+    //      Tools/commitment-sim (22/22).
     //   8. Manager — off-budget housekeeping (reservation cleanup, garrison reorg, last-defender
     //      guard). Its safety-net half may land as early as step 6.
     //   9. Aggression as the second mission type — Raid planner, CombatPower/Army/Hero
@@ -262,7 +271,11 @@ namespace Game.Ai.V2
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
         public readonly AxisContribution Axes = new AxisContribution();
         public MissionRequirements Requirements;
-        public CommitmentState Commitment = CommitmentState.None;
+
+        // Set ONLY when this proposal was re-materialised from a durable MissionIntent (step 7) —
+        // the mover that carried the intent last turn. Provisioning's assignment solver prefers it
+        // (a tie-break, not a reservation). null for a fresh proposal.
+        public int? PreferredMoverArmyId;
 
         // Debug only — how the winner was chosen (BaseValue * the relevant DesireBreakdown weight).
         // NOT read by the allocator; it packs on BaseValue + radar slices.
@@ -287,14 +300,22 @@ namespace Game.Ai.V2
         // TODO step 9: Human/Materials/Tech Min/Desired/Max; CombatPower; Army; Hero; Cards; Equipment.
     }
 
-    public enum CommitmentState { None, InFlight, Completing }
-
-    // --- Stage 7: in-flight missions carried across turns, seen by the allocator as sunk cost.
+    // --- Stage 7: an in-flight mission the allocator must fund BEFORE fresh decisions and may not
+    //     drop over a small Radar move. It is a FUNDING POLICY on a durable MissionIntent, not the
+    //     intent itself (Intent != Commitment). ContinuationValue / SwitchingCost are forward-
+    //     looking — the value of FINISHING and the cost of ABANDONING — and are recorded for a
+    //     future pre-emption pass. Sunk AP / turns invested are telemetry on MissionIntent and are
+    //     NEVER added here. Types + the MissionContinuityLayer that produces these live in
+    //     MissionIntent.cs (build-order step 7).
     public sealed class Commitment
     {
+        public MissionIntentKey IntentKey;
         public MissionProposal Mission;
-        public int TurnsInvested;
-        public float ReservedValue;         // -> cancellation cost
+        public CommitmentTier Tier;
+
+        public float ContinuationValue;     // intrinsic merit of completing (== current proposal BaseValue in step 7)
+        public float SwitchingCost;         // real loss from abandoning + restarting elsewhere (0 until pre-emption, step 9+)
+        public float ProtectedValue => ContinuationValue + SwitchingCost;
     }
 
     // --- Stage 5 types (BudgetSlice / FundingStage / FundedEntry / DeferReason / DeferredEntry /
@@ -340,9 +361,16 @@ namespace Game.Ai.V2
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
 
+            // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, so the planner
+            //     can re-materialise them from this snapshot (one place still owns proposal
+            //     creation) and retarget hysteresis holds a multi-turn chain steady through Radar
+            //     noise. Purges dead intents, suspends Soft funding under siege.
+            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
+
             // 4. Planners -> mission proposals (+ requirements via the shared estimator). Reads the
-            //    DesireBreakdown, never re-derives the analysis behind it (risk of drift).
-            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown);
+            //    DesireBreakdown, never re-derives the analysis behind it (risk of drift). Also
+            //    materialises every active intent and applies the retarget margin.
+            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown, activeIntents);
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
@@ -352,12 +380,19 @@ namespace Game.Ai.V2
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
                     + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
                     + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
-                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)} "
+                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)}"
+                    + $"{(m.PreferredMoverArmyId.HasValue ? " prefMv#" + m.PreferredMoverArmyId : "")} "
                     + $"| {m.Explain}");
             }
 
-            // 7. In-flight missions as sunk cost, seen by the allocator.
-            List<Commitment> commitments = CommitmentLayer.Active(player);
+            // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
+            //     proposal. The allocator sees these as pre-funded, sticky, drawn before fresh
+            //     decisions — but never conjuring AP past the real pool.
+            List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
+
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(missions);
+            ledger.RegisterCommitments(commitments);
 
             // 5. Radar -> slices -> many-to-many packing -> ordered tentative allocation.
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player);
@@ -387,6 +422,7 @@ namespace Game.Ai.V2
                     {
                         provSession.RegisterSuccess(key, result.Provisioned);
                         session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
+                        ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
                         provisioned.Add(result.Provisioned);
                         AiDebugLog.Write($"[AI][V2]   provision {key} — OK mover #{result.Provisioned.MoverArmyId} "
                             + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
@@ -396,6 +432,7 @@ namespace Game.Ai.V2
                     else
                     {
                         session.RegisterProvisionFailure(fe, result.Failure);
+                        ledger.RecordProvisionFailure(fe.Mission, result.Failure);
                         AiDebugLog.Write($"[AI][V2]   provision {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                     }
@@ -409,9 +446,13 @@ namespace Game.Ai.V2
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
+            foreach (ExecutionResult er in executed)
+                ledger.RecordExecution(er);
 
-            // 7. Commitment bookkeeping for next turn (stub until build-order step 7).
-            CommitmentLayer.UpdateAfterExecution(player, provisioned, executed);
+            // 7c. Update durable intent state for next turn — a PURE transition over the ledger's
+            //     facts (no world reads). Creates intents for started-but-unfinished recon,
+            //     advances/retires the rest, keeps a preferred mover.
+            MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
             yield return Manager.RunHousekeeping(player, ctx);
@@ -439,18 +480,11 @@ namespace Game.Ai.V2
     // ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3). It reads the DesireBreakdown
     // and emits up to AiConfigV2.maxConcurrentRecon Scout proposals; Raid is added in step 9.
 
-    internal static class CommitmentLayer
-    {
-        // Build-order step 7. Sticky reservations, cancellation cost, retarget hysteresis.
-        // Start simple: commitments are honoured to completion; allocator pre-emption comes later.
-        public static List<Commitment> Active(PlayerSetupData player) => new List<Commitment>();
-
-        // Step 6a passes both the provisioned plans and their ExecutionResults so step 7 has the
-        // seam it needs. A ProductiveStop (EnemyDiscovered / NeutralDiscovered / OutOfMovement) is
-        // NOT a failure — see TaskExecutor's own comment before reading these.
-        public static void UpdateAfterExecution(PlayerSetupData player,
-            IReadOnlyList<ProvisionedMission> provisioned, IReadOnlyList<ExecutionResult> executed) { }
-    }
+    // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
+    // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier
+    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionTurnOutcome
+    // (the ordered per-turn record ReconcileAfterTurn transitions on). ScoutObjectiveEvaluator (the
+    // shared completion / validity home) lives in ScoutObjectiveEvaluator.cs.
 
     // ResourceAllocator (build-order step 5) lives in ResourceAllocator.cs. ProvisioningManager /
     // ProvisioningSession / ProvisionedMission / ProvisionFailure / ProvisioningResult (build-order
