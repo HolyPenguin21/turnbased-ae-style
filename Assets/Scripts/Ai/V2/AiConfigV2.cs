@@ -231,8 +231,14 @@ namespace Game.Ai.V2
         public const int scoutTargetMinSeparation = 2;
 
         // Frontier shape (WorldAnalysis.BuildMapKnowledge).
-        public const int frontierWaveBand = 2;          // ring width past the leading edge (V1 visitRingBand kin)
-        public const int frontierEnemyAvoidRadius = 3;  // drop frontier/dark hexes this close to a known non-neutral (V1 scoutFleeRadius kin)
+        public const int frontierWaveBand = 2;             // ring width past the leading edge (V1 visitRingBand kin)
+        public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close ANNOTATES a frontier hex EnemyExposure (does NOT drop it; V1 scoutFleeRadius kin)
+        public const float scoutDetectionRiskNorm = 2f;    // this many stealth-capable detectors near the focus -> DetectionRisk 1
+
+        // Recon observation history (AiReconMemory) — longer than V1's 2-turn tactical enemy
+        // memory so the Surveil staleness ramp (scoutSurveilStaleTurns*) is actually reachable.
+        // Must exceed scoutSurveilStaleTurnsHi so the whole ramp is observable before purge.
+        public const int reconObservationMemoryTurns = 12;
 
         // Scout BaseValue = Lerp(min, max, quality); quality = Σ weighted terms / Σ weights, each term [0..1].
         public const float scoutBaseValueMin = 15f;

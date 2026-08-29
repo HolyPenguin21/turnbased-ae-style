@@ -92,6 +92,11 @@ namespace Game.Ai
 
         public readonly struct KnownEnemySighting
         {
+            // The sighted army's stable ArmyData.Id — carried through from the internal
+            // EnemySighting (which is keyed by it). Lets a consumer track one physical army across
+            // moves: Strategy V2's AiReconMemory keys its longer observation history by this so a
+            // stale last-known position is matched to the SAME army, not to a hex the army left.
+            public readonly int ArmyId;
             public readonly HexCoord Hex;
             public readonly PlayerSetupData Owner;
             public readonly string Name;
@@ -113,8 +118,9 @@ namespace Game.Ai
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
                 IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0,
-                int seenTurn = 0)
+                int seenTurn = 0, int armyId = 0)
             {
+                ArmyId = armyId;
                 Hex = hex;
                 Owner = owner;
                 Name = name;
@@ -711,7 +717,7 @@ namespace Game.Ai
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn);
+                        sighting.SeenTurn, sighting.ArmyId);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -727,7 +733,7 @@ namespace Game.Ai
                 if (sighting.Owner != null && !sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn);
+                        sighting.SeenTurn, sighting.ArmyId);
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -744,7 +750,7 @@ namespace Game.Ai
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn);
+                        sighting.SeenTurn, sighting.ArmyId);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -761,7 +767,7 @@ namespace Game.Ai
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn);
+                        sighting.SeenTurn, sighting.ArmyId);
             return null;
         }
 

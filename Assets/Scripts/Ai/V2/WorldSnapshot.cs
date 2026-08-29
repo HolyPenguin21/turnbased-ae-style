@@ -115,6 +115,14 @@ namespace Game.Ai.V2
         public int CurrentMovement;        // MP left THIS turn (MaxMovement minus what's spent)
         public bool IsSoloRecce;           // AiArmyRoles.IsSoloRecce — the cheap dedicated scout shape
 
+        // Stealth capability (own armies only — a fog/cheat-read enemy army's is unknown). Lets a
+        // stealth-Required Scout mission tell which movers can actually satisfy it: a mover is
+        // capable if it is already hidden, or can still slip into stealth (CanEnterStealth) before
+        // its first move.
+        public bool IsHidden;
+        public bool CanEnterStealth;       // StealthSystem.CanEnterStealth — !hidden AND stealthLevel > 0
+        public int StealthLevel;           // best AbilityParams.GetStealthLevel among members (0 = none)
+
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
     }
@@ -229,11 +237,21 @@ namespace Game.Ai.V2
     }
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.
+    // A frontier hex is NEVER dropped for enemy proximity — that is an annotation here, not a
+    // filter (only HardBlocked reasons — a neutral on the hex, an active scout-danger zone, off
+    // the map — keep a hex out of the frontier).
     public struct FrontierHexSnapshot
     {
         public HexCoord Hex;
         public int FreshNeighbors;            // on-map, unvisited neighbours this hex would open
         public int DistanceFromNearestBase;  // min hex distance to any Self.BaseHex (Citadel included)
+
+        // A known non-neutral force sits within AiConfigV2.frontierEnemyExposureRadius. A visible
+        // scout should not be routed here (V1 hard-excludes that); a stealth scout still can.
+        public bool EnemyExposure;
+        // At least one of those forces could actually roll a stealth-detection challenge on this
+        // hex (KnownEnemySighting.CanDetectStealthAt) — even a hidden scout runs a real risk.
+        public bool StealthDetectionRisk;
     }
 
     // =======================================================================================

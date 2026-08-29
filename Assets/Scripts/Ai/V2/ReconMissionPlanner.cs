@@ -10,37 +10,38 @@ namespace Game.Ai.V2
     //  RECON MISSION PLANNER  (Strategy V2 build-order step 4)  — implements MissionLayer
     // ===========================================================================================
     //  One WorldSnapshot + the Recon DesireBreakdown -> up to AiConfigV2.maxConcurrentRecon Scout
-    //  MissionProposals. It NEVER re-derives the analysis behind the breakdown (that drift is
-    //  risk 1 in the V2 design record) — it reads breakdown.ReconExploration / .ReconSurveillance
-    //  as given and only decides WHICH concrete hex each Scout heads for.
+    //  MissionProposals. It NEVER re-derives the analysis behind the breakdown — it reads
+    //  breakdown.ReconExploration / .ReconSurveillance as given and only decides WHICH concrete
+    //  hex each Scout heads for, and how hidden its executor must be.
     //
     //  TWO CANDIDATE KINDS, ONE 0..100 SCALE
-    //  --------------------------------------------------------------------------------------------
-    //    Explore  — a MapKnowledge.Frontier hex (already safe + reachable + inside the wave band;
-    //               carries FreshNeighbors + DistanceFromNearestBase). Valued on info gain and how
-    //               central it is.
-    //    Surveil  — a stale HONEST contact's last-known hex (Source == Honest, Knowledge ==
-    //               LastKnown, has a Position). Valued on staleness x the ThreatModel Severity
-    //               already attached to that contact — Recon leans on the exact threat picture
-    //               Defence will, no parallel model.
-    //  A Cheat Region/Unknown contact is deliberately NOT a Surveil candidate: it has no hex a
-    //  Scout could visit (type invariant on EnemyContactSnapshot). That uncertainty is
-    //  enemyBlindness's concern, answered by AirRecon in a later step, not here.
+    //    Explore  — a MapKnowledge.Frontier hex (already inside the wave band + touching reachable
+    //               ground; carries FreshNeighbors, DistanceFromNearestBase, and the enemy-
+    //               exposure annotation). Valued on info gain + centrality.
+    //    Surveil  — a stale HONEST positioned contact (Source == Honest, Knowledge == LastKnown).
+    //               Now that AiReconMemory retains contacts past V1's 2-turn tactical window, the
+    //               staleness x ThreatModel-severity term is actually reachable. Valued on
+    //               staleness x the severity already attached to that contact.
+    //
+    //  STEALTH REQUIREMENT (parity with V1's hard exclusion)
+    //    !EnemyExposure                        -> None
+    //    EnemyExposure, no detector            -> Required, DetectionRisk 0
+    //    EnemyExposure, a detector can see here-> Required, DetectionRisk > 0
+    //  Required means "the executor must be hidden by the risky leg" — an already-hidden scout
+    //  satisfies it for free. A visible, already-activated scout is not a valid executor; that is
+    //  ScoutCostModel's eligibility filter, and if nothing qualifies the proposal still forms
+    //  (MoverKnown false) and Provisioning resolves or fails it — the mission is never dropped
+    //  here for lack of a mover.
     //
     //  INTRINSIC value vs SELECTION
-    //  --------------------------------------------------------------------------------------------
-    //    BaseValue      = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the mission's merit
-    //                     on its own, and the ONLY thing written to MissionProposal.BaseValue. The
-    //                     allocator packs on this + the radar slices; it must not already contain
-    //                     the radar's Recon pull.
-    //    SelectionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance). Used HERE,
-    //                     once, to rank the pool and pick the winners. When exploration has
-    //                     decayed to ~0 the last frontier hex still has a real BaseValue but loses
-    //                     the slot to a surveil target the AI currently needs more.
+    //    BaseValue      = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the ONLY thing in
+    //                     MissionProposal.BaseValue. The allocator packs on this + the radar slices.
+    //    SelectionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance). Used HERE
+    //                     only, to rank the pool and pick winners.
     //
-    //  Two winners must be at least scoutTargetMinSeparation apart — adjacent hexes are the same
-    //  frontier, not two missions. Explore self-decays (ExplorableUnknownFrac), so two Explore
-    //  winners on an opening map is fine as long as they are genuinely apart.
+    //  DEDUP: identical FocusHex -> never both. Explore+Explore -> at least
+    //  scoutTargetMinSeparation apart. Explore+Surveil and Surveil+Surveil -> allowed (different
+    //  information tasks; one physical army yields one Surveil contact anyway).
     // ===========================================================================================
     internal static class MissionLayer
     {
@@ -70,21 +71,32 @@ namespace Game.Ai.V2
             candidates.AddRange(ExploreCandidates(snap, breakdown.ReconExploration));
             candidates.AddRange(SurveilCandidates(snap, breakdown.ReconSurveillance));
 
-            // Rank by selection score, greedily take winners that are spread out on the map.
-            var picked = new List<HexCoord>();
+            var picked = new List<ScoutCandidate>();
             foreach (ScoutCandidate c in candidates.OrderByDescending(x => x.SelectionScore))
             {
-                if (proposals.Count >= AiConfigV2.maxConcurrentRecon)
+                if (picked.Count >= AiConfigV2.maxConcurrentRecon)
                     break;
                 if (c.SelectionScore <= 0f)
-                    break; // list is sorted — nothing better follows
-                if (picked.Any(h => HexGridMath.Distance(h, c.Target.FocusHex) < AiConfigV2.scoutTargetMinSeparation))
+                    break; // sorted — nothing better follows
+                if (picked.Any(p => Conflicts(p, c)))
                     continue;
-
-                proposals.Add(BuildProposal(snap, c));
-                picked.Add(c.Target.FocusHex);
+                picked.Add(c);
             }
+
+            foreach (ScoutCandidate c in picked)
+                proposals.Add(BuildProposal(snap, c));
             return proposals;
+        }
+
+        // Identical hex is never allowed. Two Explores must be spread out. An Explore and a
+        // Surveil (or two Surveils) on nearby-but-different hexes are genuinely different jobs.
+        private static bool Conflicts(ScoutCandidate a, ScoutCandidate b)
+        {
+            if (a.Target.FocusHex.Equals(b.Target.FocusHex))
+                return true;
+            bool bothExplore = a.Target.Kind == ScoutTargetKind.Explore && b.Target.Kind == ScoutTargetKind.Explore;
+            return bothExplore
+                && HexGridMath.Distance(a.Target.FocusHex, b.Target.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
         }
 
         // --------------------------------------------------------------------------- Explore ----
@@ -105,14 +117,18 @@ namespace Game.Ai.V2
                      + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
                 float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
 
+                (StealthRequirement req, float risk) = StealthFor(snap, f.Hex, f.EnemyExposure, f.StealthDetectionRisk);
+
                 var target = new ScoutMissionTarget
                 {
                     FocusHex = f.Hex,
                     Kind = ScoutTargetKind.Explore,
                     Contact = null,
+                    Stealth = req,
+                    DetectionRisk = risk,
                 };
                 string explain = $"Explore @{f.Hex.Q},{f.Hex.R} opens {f.FreshNeighbors} "
-                    + $"(info {F(infoGain)} prox {F(proximity)} d{f.DistanceFromNearestBase}) "
+                    + $"(info {F(infoGain)} prox {F(proximity)} d{f.DistanceFromNearestBase}{StealthTag(req, risk)}) "
                     + $"base {F(baseValue)} x explore {F(reconExploration)}";
                 yield return new ScoutCandidate(target, baseValue, baseValue * reconExploration, explain);
             }
@@ -154,14 +170,18 @@ namespace Game.Ai.V2
                      + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
                 float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
 
+                (StealthRequirement req, float risk) = StealthFor(snap, pos, null, null);
+
                 var target = new ScoutMissionTarget
                 {
                     FocusHex = pos,
                     Kind = ScoutTargetKind.Surveil,
                     Contact = c,
+                    Stealth = req,
+                    DetectionRisk = risk,
                 };
                 string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
-                    + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}) "
+                    + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
                     + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
                 yield return new ScoutCandidate(target, baseValue, baseValue * reconSurveillance, explain);
             }
@@ -169,10 +189,40 @@ namespace Game.Ai.V2
 
         // ------------------------------------------------------------------------------ shared ----
 
-        // Base-distance -> [0..1], 1 close, 0 far. Distance to our OWN territory only — the cost of
-        // actually getting a mover there is ScoutCostModel's job, never folded in here.
         private static float Proximity(int distanceFromNearestBase) =>
             Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
+
+        // Enemy exposure -> Required, always (a visible scout is not a valid executor near a known
+        // non-neutral — parity with V1). DetectionRisk is non-zero only where a known force could
+        // actually roll a stealth challenge on this hex. `exposureHint` / `detectHint` are the
+        // frontier scan's pre-computed bools for an Explore hex; null for a Surveil hex, computed
+        // here from the same current honest sightings.
+        private static (StealthRequirement, float) StealthFor(WorldSnapshot snap, HexCoord hex,
+            bool? exposureHint, bool? detectHint)
+        {
+            var sightings = snap.Known?.EnemySightings;
+            int r = AiConfigV2.frontierEnemyExposureRadius;
+
+            bool exposed = exposureHint ?? (sightings != null
+                && sightings.Any(s => HexGridMath.Distance(s.Hex, hex) <= r));
+            if (!exposed)
+                return (StealthRequirement.None, 0f);
+
+            int detectors = 0;
+            if (sightings != null)
+                foreach (var s in sightings)
+                    if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
+                        detectors++;
+            // detectHint (true) means the scan already found >=1; keep at least that.
+            if ((detectHint ?? false) && detectors == 0)
+                detectors = 1;
+
+            float risk = Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
+            return (StealthRequirement.Required, risk);
+        }
+
+        private static string StealthTag(StealthRequirement req, float risk) =>
+            req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c)
         {
@@ -180,9 +230,9 @@ namespace Game.Ai.V2
             var req = new MissionRequirements
             {
                 MoverKnown = est.MoverKnown,
-                ApMinimum = est.ActivationAp,
-                ApDesired = est.ActivationAp,
-                ApMaximum = est.ActivationAp + est.OptionalStealthAp,
+                ApMinimum = est.ApMinimum,
+                ApDesired = est.ApDesired,
+                ApMaximum = est.ApMaximum,
                 EnergyMinimum = est.ActivationEnergy,
                 EnergyDesired = est.ActivationEnergy,
                 EnergyMaximum = est.ActivationEnergy,

@@ -238,11 +238,20 @@ namespace Game.Ai.V2
     // still boxes this into Target as object; the cast lives in one place (TaskExecutor / ScoutCostModel).
     public enum ScoutTargetKind { Explore, Surveil }
 
+    // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
+    // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a
+    // valid executor at all — parity with V1's hard exclusion). Preferred is reserved for a future
+    // softer tier; step 4 never emits it.
+    public enum StealthRequirement { None, Preferred, Required }
+
     public struct ScoutMissionTarget
     {
         public HexCoord FocusHex;
         public ScoutTargetKind Kind;
         public EnemyContactSnapshot Contact;   // non-null ONLY for Surveil
+
+        public StealthRequirement Stealth;
+        public float DetectionRisk;            // [0..1] — 0 unless the enemy can actually detect stealth here
     }
 
     // --- Stage 4 output: a concrete thing the AI could do, with the resources it would need.

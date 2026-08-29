@@ -44,6 +44,9 @@ namespace Game.Ai.V2
             var snap = new WorldSnapshot { TurnNumber = ctx.TurnNumber };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
+            // V2's longer recon observation history — fed the current honest sightings, retains
+            // them past V1's 2-turn tactical memory so Surveil staleness can actually build.
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, ctx, snap);
@@ -248,6 +251,12 @@ namespace Game.Ai.V2
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
+
+                IsHidden = isOwn && a.Members.Count > 0 && a.Members.All(m => m.IsHidden),
+                CanEnterStealth = isOwn && a.Members.Any(StealthSystem.CanEnterStealth),
+                StealthLevel = isOwn
+                    ? a.Members.Select(AbilityParams.GetStealthLevel).DefaultIfEmpty(0).Max()
+                    : 0,
             };
         }
 
@@ -388,23 +397,34 @@ namespace Game.Ai.V2
             IReadOnlyList<HexCoord> baseHexes = snap.Self.BaseHexes;
             var neutralHexes = new HashSet<HexCoord>(
                 (snap.Known.NeutralSightings ?? new List<AiMapMemory.KnownEnemySighting>()).Select(s => s.Hex));
-            var nonNeutralHexes = (snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>())
-                .Select(s => s.Hex).ToList();
-            int avoid = AiConfigV2.frontierEnemyAvoidRadius;
+            List<AiMapMemory.KnownEnemySighting> nonNeutral =
+                (snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>()).ToList();
+            int exposureR = AiConfigV2.frontierEnemyExposureRadius;
 
             bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
-            bool Safe(HexCoord h)
+            // HardBlocked keeps a hex out of the frontier AND out of the explorable flood: a
+            // neutral physically on it (a scout never fights), an active scout-danger cooldown
+            // (we already tried that sector and it went badly — kept hard even for a stealth
+            // scout for now), off the map. Enemy PROXIMITY is NOT here — it only annotates.
+            bool HardBlocked(HexCoord h) =>
+                !OnMap(h) || neutralHexes.Contains(h) || AiMapMemory.IsScoutDangerous(player, h);
+            bool EnemyExposed(HexCoord h)
             {
-                if (AiMapMemory.IsScoutDangerous(player, h)) return false;
-                if (neutralHexes.Contains(h)) return false;
-                foreach (HexCoord e in nonNeutralHexes)
-                    if (HexGridMath.Distance(e, h) <= avoid) return false;
-                return true;
+                foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
+                    if (HexGridMath.Distance(e.Hex, h) <= exposureR) return true;
+                return false;
+            }
+            int DetectorsAt(HexCoord h)
+            {
+                int n = 0;
+                foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
+                    if (HexGridMath.Distance(e.Hex, h) <= exposureR && e.CanDetectStealthAt(h)) n++;
+                return n;
             }
             int NearestBaseDist(HexCoord h) =>
                 baseHexes.Count > 0 ? baseHexes.Min(b => HexGridMath.Distance(b, h)) : 0;
 
-            // ---- 1. reachable visited ground (BFS from the bases) ----
+            // ---- 1. reachable visited ground (BFS from the bases, over visited non-HardBlocked) ----
             var reachableVisited = new HashSet<HexCoord>();
             var queue = new Queue<HexCoord>();
             foreach (HexCoord b in baseHexes)
@@ -415,8 +435,8 @@ namespace Game.Ai.V2
                 HexCoord cur = queue.Dequeue();
                 foreach (HexCoord n in HexGridMath.Neighbors(cur))
                 {
-                    if (reachableVisited.Contains(n) || !OnMap(n)) continue;
-                    if (!VisionSystem.IsVisited(player, n) || !Safe(n)) continue;
+                    if (reachableVisited.Contains(n) || HardBlocked(n)) continue;
+                    if (!VisionSystem.IsVisited(player, n)) continue;
                     reachableVisited.Add(n);
                     queue.Enqueue(n);
                 }
@@ -431,14 +451,14 @@ namespace Game.Ai.V2
                 ? -1
                 : nearestUnvisitedBaseDist + AiConfigV2.frontierWaveBand;
 
-            // ---- 2. frontier ----
+            // ---- 2. frontier (unvisited, non-HardBlocked, touching reachable ground, in band) ----
             var frontier = new List<FrontierHexSnapshot>();
             var frontierSet = new HashSet<HexCoord>();
             if (waveBandLimit >= 0)
             {
                 foreach (HexCoord c in all)
                 {
-                    if (VisionSystem.IsVisited(player, c) || !Safe(c)) continue;
+                    if (VisionSystem.IsVisited(player, c) || HardBlocked(c)) continue;
                     if (NearestBaseDist(c) > waveBandLimit) continue;
                     bool touchesReachable = false;
                     int fresh = 0;
@@ -448,17 +468,22 @@ namespace Game.Ai.V2
                         if (OnMap(n) && !VisionSystem.IsVisited(player, n)) fresh++;
                     }
                     if (!touchesReachable) continue;
+                    bool exposed = EnemyExposed(c);
                     frontier.Add(new FrontierHexSnapshot
                     {
                         Hex = c,
                         FreshNeighbors = fresh,
                         DistanceFromNearestBase = NearestBaseDist(c),
+                        EnemyExposure = exposed,
+                        StealthDetectionRisk = exposed && DetectorsAt(c) > 0,
                     });
                     frontierSet.Add(c);
                 }
             }
 
-            // ---- 3. explorable dark region (flood from the frontier over unvisited safe ground) ----
+            // ---- 3. explorable dark region (flood from the frontier over unvisited, non-HardBlocked
+            //         ground — enemy exposure does NOT stop the flood: a stealth scout can still get
+            //         there, so the region is genuinely discoverable and Recon must not zero out). ----
             int explorable = 0;
             if (frontierSet.Count > 0)
             {
@@ -470,8 +495,8 @@ namespace Game.Ai.V2
                     explorable++;
                     foreach (HexCoord n in HexGridMath.Neighbors(cur))
                     {
-                        if (darkSeen.Contains(n) || !OnMap(n)) continue;
-                        if (VisionSystem.IsVisited(player, n) || !Safe(n)) continue;
+                        if (darkSeen.Contains(n) || HardBlocked(n)) continue;
+                        if (VisionSystem.IsVisited(player, n)) continue;
                         darkSeen.Add(n);
                         darkQueue.Enqueue(n);
                     }
@@ -586,6 +611,26 @@ namespace Game.Ai.V2
                     Position = s.Hex,
                     Confidence = visibleNow ? AiConfigV2.threatConfidenceExact : AiConfigV2.threatConfidenceLastKnown,
                     LastObservedTurn = visibleNow ? snap.TurnNumber : s.SeenTurn,
+                });
+            }
+
+            // ---- historical honest contacts (AiReconMemory — V1's memory already dropped them) --
+            // Armies we HAD honest eyes on but no longer do, retained past V1's 2-turn tactical
+            // window. Honest + positioned (so a Surveil mission can target the last-known hex),
+            // LastKnown, with confidence decaying to 0 as the entry ages toward its purge. These
+            // are the whole reason the Surveil staleness ramp is reachable.
+            var liveArmyIds = new HashSet<int>(snap.Known.EnemySightings.Select(s => s.ArmyId));
+            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds))
+            {
+                int age = System.Math.Max(0, snap.TurnNumber - obs.LastObservedTurn);
+                contacts.Add(new EnemyContactSnapshot
+                {
+                    Army = ObservationToArmySnapshot(obs),
+                    Knowledge = ContactKnowledge.LastKnown,
+                    Source = ContactSource.Honest,
+                    Position = obs.LastObservedHex,
+                    Confidence = AiConfigV2.threatConfidenceLastKnown * AiReconMemory.ConfidenceDecay(age),
+                    LastObservedTurn = obs.LastObservedTurn,
                 });
             }
 
@@ -754,6 +799,26 @@ namespace Game.Ai.V2
                 RegionCenter = regionCenter,
                 RegionRadius = regionRadius,
                 Confidence = AiConfigV2.threatConfidenceCheatRegion,
+            };
+        }
+
+        private static ArmySnapshot ObservationToArmySnapshot(ReconObservation o)
+        {
+            var members = o.Defenders != null
+                ? new List<WorthIt.DefenderProfile>(o.Defenders)
+                : new List<WorthIt.DefenderProfile>();
+            return new ArmySnapshot
+            {
+                ArmyId = o.ArmyId,
+                Owner = o.Owner,
+                Hex = o.LastObservedHex,
+                MemberCount = o.MemberCount,
+                HasAntiAir = o.HasAntiAir,
+                AttackSum = o.AttackSum,
+                DefenseSum = o.DefenseSum,
+                EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
+                MaxMovement = 1,
+                Members = members,
             };
         }
 
