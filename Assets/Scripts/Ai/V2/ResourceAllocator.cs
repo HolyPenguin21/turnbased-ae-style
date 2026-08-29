@@ -252,22 +252,47 @@ namespace Game.Ai.V2
         private readonly struct LockedAllocation
         {
             public readonly Dictionary<DesireAxis, float> StrictDraw; // per-axis, as granted
+            public readonly float StrictAp;                           // Σ StrictDraw
             public readonly float RemainderAp;                        // fungible top-up, as granted
-            public readonly float GrantedAp;                          // Σ StrictDraw + RemainderAp (== FundedEntry.Tentative)
+            public readonly float GrantedAp;                          // StrictAp + RemainderAp (== FundedEntry.Tentative)
             public readonly float ClaimedAp;                          // what provisioning actually took
 
             public LockedAllocation(Dictionary<DesireAxis, float> strictDraw, float remainderAp,
                 float grantedAp, float claimedAp)
             {
                 StrictDraw = strictDraw;
+                StrictAp = 0f;
+                foreach (KeyValuePair<DesireAxis, float> kv in strictDraw)
+                    StrictAp += kv.Value;
                 RemainderAp = remainderAp;
                 GrantedAp = grantedAp;
                 ClaimedAp = claimedAp;
             }
 
-            // Provisioning may claim below the granted envelope (integer rounding); scale the
-            // provenance so slice + remainder bookkeeping matches what was really spent.
-            public float Scale => GrantedAp > 1e-6f ? Mathf.Clamp01(ClaimedAp / GrantedAp) : 0f;
+            // What provisioning REALLY consumed, resolved as a WATERFALL (not a flat scale): the
+            // remainder top-up — a nice-to-have that improved an already-accepted mission — is the
+            // first thing to disappear when the authoritative (often integer) claim lands below the
+            // granted (float) envelope. Strict funding only shrinks once the claim drops under the
+            // strict level itself. Claiming ABOVE the granted envelope is an invariant violation
+            // (provisioning must stay within Tentative); it is clamped and logged.
+            public void Resolve(float eps, out float strictScale, out float remainderConsumed, out bool overclaim)
+            {
+                float claimed = Mathf.Max(0f, ClaimedAp);
+                overclaim = claimed > GrantedAp + eps;
+                if (overclaim)
+                    claimed = GrantedAp;
+
+                if (claimed + eps >= StrictAp)
+                {
+                    strictScale = 1f;
+                    remainderConsumed = Mathf.Max(0f, claimed - StrictAp);
+                }
+                else
+                {
+                    strictScale = StrictAp > 1e-6f ? claimed / StrictAp : 0f;
+                    remainderConsumed = 0f;
+                }
+            }
         }
 
         public int PassCount { get; private set; }
@@ -333,21 +358,26 @@ namespace Game.Ai.V2
             alloc.InitialPool = pool;
             alloc.ManagerReserve = new ResourceVector(reserve);
 
-            // Locked funding provenance, scaled to what provisioning actually claimed: per-axis
-            // strict consumption (removed from the matching slice) + fungible remainder consumption
-            // (removed from the remainder pool in step 5).
+            // Locked funding provenance, resolved WATERFALL-style (remainder top-up disappears
+            // first when the real claim < granted envelope; strict only shrinks below the strict
+            // level): per-axis strict consumption (removed from the matching slice) + fungible
+            // remainder consumption (removed from the remainder pool in step 5).
             var lockedStrictByAxis = new Dictionary<DesireAxis, float>();
             float lockedRemainderConsumed = 0f;
             float lockedTotal = 0f;
-            foreach (LockedAllocation l in _lockedClaims.Values)
+            foreach (KeyValuePair<StableMissionKey, LockedAllocation> lc in _lockedClaims)
             {
-                float sc = l.Scale;
-                lockedTotal += l.ClaimedAp;
-                lockedRemainderConsumed += l.RemainderAp * sc;
-                foreach (KeyValuePair<DesireAxis, float> kv in l.StrictDraw)
+                lc.Value.Resolve(eps, out float strictScale, out float remainderConsumed, out bool overclaim);
+                if (overclaim)
+                    AiDebugLog.Write($"[AI][V2] allocator — WARN locked claim {LogNum(lc.Value.ClaimedAp)} "
+                        + $"exceeds granted {LogNum(lc.Value.GrantedAp)} for {lc.Key} — clamped (provisioning "
+                        + "must stay within Tentative)");
+                lockedTotal += Mathf.Min(lc.Value.ClaimedAp, lc.Value.GrantedAp);
+                lockedRemainderConsumed += remainderConsumed;
+                foreach (KeyValuePair<DesireAxis, float> kv in lc.Value.StrictDraw)
                 {
                     lockedStrictByAxis.TryGetValue(kv.Key, out float cur);
-                    lockedStrictByAxis[kv.Key] = cur + kv.Value * sc;
+                    lockedStrictByAxis[kv.Key] = cur + kv.Value * strictScale;
                 }
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
