@@ -391,11 +391,11 @@ namespace Game.Ai.V2
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
-            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents);
+            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, player);
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). Axes say what is missing.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, activeIntents, actorCommitments);
+                reconObjectives, activeIntents, actorCommitments, player);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
@@ -511,12 +511,15 @@ namespace Game.Ai.V2
             //     advances/retires the rest, keeps a preferred mover.
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
 
-            // S5. Strategic Manager Phase B — Surplus Preparation. Rebuild actor ownership from the
-            //     RECONCILED registry (do not reuse beginning-of-turn claims), then spend GENUINELY
-            //     remaining real AP/resources on proactive card play + hand cycling. No radar slice;
-            //     bounded by maxSurplusActionsPerTurn; every configured reserve respected.
+            // S5. Strategic Manager Phase B — Surplus Preparation. The snapshot is still
+            //     beginning-of-turn own-state at this point (missions have executed since), so
+            //     refresh it FIRST; then rebuild actor ownership from the RECONCILED registry (not
+            //     beginning-of-turn claims). Phase B then spends GENUINELY remaining real
+            //     AP/resources on proactive card play + hand cycling. No radar slice; bounded by
+            //     maxSurplusActionsPerTurn; every configured reserve respected.
+            snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments =
-                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All);
+                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, player);
             StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx, postCommitments);
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);

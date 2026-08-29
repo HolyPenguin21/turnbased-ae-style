@@ -1,4 +1,5 @@
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -17,26 +18,42 @@ namespace Game.Ai.V2
     //  Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
     //  transaction.
     //
-    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine. Play()
-    //  preflights the whole sequence (affordability of CreateArmy AP + deploy AP + resource cost,
-    //  capacity, required building, hand state) before spending anything. If CreateArmy succeeds
-    //  but the deploy then fails, the fresh empty ArmyData is KEPT as a reusable asset — never
-    //  rolled back or deleted as garbage (StateChanged is still true).
+    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine, and
+    //  DeployUnitFromCard itself spends AP/resources BEFORE it spawns (a null spawn returns false
+    //  with the cost already gone). Play() preflights the whole sequence, then reports the REAL
+    //  AP/resource delta measured on PlayerRoot — not the nominal card cost — so the ledger and
+    //  the refresh trigger stay honest even on a partial failure. A fresh empty ArmyData left by
+    //  CreateArmy after a failed deploy is KEPT as a reusable asset, never rolled back.
     // ===========================================================================================
+    public enum DeploymentKind
+    {
+        NewArmy,        // pay CreateArmy AP, deploy into the fresh solo army
+        ReusableShell,  // deploy into an existing zero-member army already at the hex
+        ExistingArmy,   // deploy into an existing non-empty army with room (plain reserve / hero-led)
+        Garrison,       // deploy into the base garrison at the hex
+    }
+
     public readonly struct CardPlayPlan
     {
         public readonly CardData Card;
         public readonly HexCoord DeploymentHex;
-        public readonly ArmyData ExistingShell;   // non-null -> reuse this shell; null -> CreateArmy
-        public readonly bool RequiresCreateArmy;
+        public readonly DeploymentKind Kind;
+        public readonly ArmyData TargetArmy;   // null only for NewArmy
 
-        public CardPlayPlan(CardData card, HexCoord hex, ArmyData shell)
+        public CardPlayPlan(CardData card, HexCoord hex, DeploymentKind kind, ArmyData targetArmy)
         {
             Card = card;
             DeploymentHex = hex;
-            ExistingShell = shell;
-            RequiresCreateArmy = shell == null;
+            Kind = kind;
+            TargetArmy = targetArmy;
         }
+
+        public static CardPlayPlan NewArmyAt(CardData card, HexCoord hex) =>
+            new CardPlayPlan(card, hex, DeploymentKind.NewArmy, null);
+        public static CardPlayPlan Into(CardData card, HexCoord hex, DeploymentKind kind, ArmyData army) =>
+            new CardPlayPlan(card, hex, kind, army);
+
+        public bool RequiresCreateArmy => Kind == DeploymentKind.NewArmy;
 
         public int TotalApCost =>
             (RequiresCreateArmy ? ArmyActions.CreateArmyApCost : 0) + AiCardCost.PlayAp(Card);
@@ -46,14 +63,17 @@ namespace Game.Ai.V2
     {
         public bool Deployed;
         public bool ArmyCreated;
-        public ArmyData ArmyShell;   // reused or newly created; a retained reusable asset if deploy failed
-        public float ApSpent;
+        public ArmyData ArmyShell;   // reused/created/target; a retained reusable asset if deploy failed
+        public float ApSpent;        // REAL AP delta measured on PlayerRoot
         public bool StateChanged;
         public string FailReason;
     }
 
     public static class CardPlayExecutor
     {
+        private static readonly ResourceType[] Res =
+            { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
+
         // Full preflight of the CreateArmy -> DeployUnitFromCard sequence. No spend, no mutation.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan, out string reason)
@@ -76,13 +96,20 @@ namespace Game.Ai.V2
             if (!AiCardCost.CanAffordPlayResources(root, player, plan.Card))
             { reason = "resource cost unaffordable"; return false; }
 
-            if (!plan.RequiresCreateArmy)
+            switch (plan.Kind)
             {
-                ArmyData shell = plan.ExistingShell;
-                if (shell == null || shell.Members.Count != 0 || !shell.Hex.Equals(plan.DeploymentHex))
-                { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
-                if (!shell.HasRoom)
-                { reason = "shell has no room"; return false; }
+                case DeploymentKind.NewArmy:
+                    break; // a fresh army always has room for the first member
+                case DeploymentKind.ReusableShell:
+                    if (plan.TargetArmy == null || plan.TargetArmy.Members.Count != 0
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex) || !plan.TargetArmy.HasRoom)
+                    { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
+                    break;
+                default: // ExistingArmy / Garrison
+                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                        || plan.TargetArmy.IsPrison || !plan.TargetArmy.HasRoom)
+                    { reason = "target army no longer valid / has no room"; return false; }
+                    break;
             }
 
             if (!string.IsNullOrEmpty(def.requiredBuildingAbility)
@@ -95,43 +122,66 @@ namespace Game.Ai.V2
         public static CardPlayResult Play(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan)
         {
-            var result = new CardPlayResult { ArmyShell = plan.ExistingShell };
+            var result = new CardPlayResult { ArmyShell = plan.TargetArmy };
             if (!Preflight(player, root, hand, ctx, plan, out string reason))
             {
                 result.FailReason = reason;
                 return result;
             }
 
-            ArmyData shell = plan.ExistingShell;
+            int apStart = root.ActionPoints;
+            var resStart = Snapshot(root);
+
+            ArmyData shell = plan.TargetArmy;
             if (plan.RequiresCreateArmy)
             {
                 FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
                 shell = ArmyActions.CreateArmy(player, plan.DeploymentHex, catalog, ctx.HexSelection);
                 if (shell == null)
                 {
+                    result.ApSpent = apStart - root.ActionPoints;   // real (0 on a clean refusal)
+                    result.StateChanged = result.ApSpent > 0f;
                     result.FailReason = "CreateArmy failed";
                     return result;
                 }
                 result.ArmyCreated = true;
-                result.ArmyShell = shell;
-                result.ApSpent += ArmyActions.CreateArmyApCost;
-                result.StateChanged = true;   // an empty army now exists — a retained reusable asset
+                result.ArmyShell = shell;   // an empty army now exists — a retained reusable asset
             }
 
             bool deployed = ArmyActions.DeployUnitFromCard(plan.Card.Definition, player, shell, root,
-                ctx.HexSelection, out string deployFail, sourceCard: plan.Card);
+                ctx.HexSelection, out string deployFail,
+                attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
+
+            // Real mutation, measured — DeployUnitFromCard spends AP/resources before it spawns, so
+            // a false return can still have moved the books.
+            result.ApSpent = apStart - root.ActionPoints;
+            bool resChanged = !SameResources(resStart, Snapshot(root));
+            result.StateChanged = result.ApSpent > 0f || resChanged || result.ArmyCreated;
+
             if (!deployed)
             {
-                // The newly created shell (if any) is NOT rolled back — it stays a reusable asset.
                 result.FailReason = deployFail ?? "DeployUnitFromCard failed";
                 return result;
             }
 
             hand.Hand.Remove(plan.Card);   // exactly once, only on success — the canonical V2 boundary
             result.Deployed = true;
-            result.ApSpent += AiCardCost.PlayAp(plan.Card);
-            result.StateChanged = true;
             return result;
+        }
+
+        private static int[] Snapshot(PlayerRoot root)
+        {
+            var v = new int[Res.Length];
+            for (int i = 0; i < Res.Length; i++)
+                v[i] = root.GetResource(Res[i]);
+            return v;
+        }
+
+        private static bool SameResources(int[] a, int[] b)
+        {
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i]) return false;
+            return true;
         }
     }
 }

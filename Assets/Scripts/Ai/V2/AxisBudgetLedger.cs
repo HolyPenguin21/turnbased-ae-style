@@ -20,8 +20,15 @@ namespace Game.Ai.V2
     //
     //  AP ONLY. Human / Energy / Materials / Tech are shared physical stockpiles and are NEVER
     //  axis-sliced; their scarcity is handled by affordability + reserves + opportunity cost.
-    //  This is a distinct concern from ResourceAllocator._lockedClaims (which tracks missions
-    //  already concretely claimed for the re-pack loop) — the ledger is not a replacement for it.
+    //
+    //  OWNERSHIP BOUNDARY (deliberate, not a half-finished invariant). This ledger is
+    //  "AxisEntitlementAfterPreparation": it records ONLY Strategic Manager Phase A's real
+    //  committed card-play spend against each axis. It does NOT track mission spending — once the
+    //  mission ResourceAllocator reads Balance(axis) as a slice size, the allocator owns the rest
+    //  of the lifecycle via its own _lockedClaims (provenance + re-pack). Do NOT also call
+    //  Debit() from RegisterProvisionSuccess — that would double-count against _lockedClaims. The
+    //  ledger therefore still shows pre-allocation balances after missions run; that is fine
+    //  because Phase B never reads it (it works off real remaining PlayerRoot resources).
     // ===========================================================================================
     public sealed class AxisBudgetLedger
     {

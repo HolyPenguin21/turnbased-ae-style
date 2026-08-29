@@ -51,14 +51,30 @@ namespace Game.Ai.V2
         // How many units of the capability are still MISSING (already-available supply subtracted).
         public float DesiredAmount;
 
+        // HARD constraint — a card that does not satisfy every RequiredTraits flag cannot fulfil
+        // this demand at all (e.g. a Surveil objective needs a stealth-capable scout; a plain
+        // Recce played for it would still fail provisioning — NoMoverExists). The available-supply
+        // count that produced DesiredAmount must be computed against the SAME constraint.
+        public TraitPreference RequiredTraits;
+
+        // SOFT preference — only a scoring tie-break between cards that already satisfy
+        // RequiredTraits. Never a filter.
         public TraitPreference PreferredTraits;
+
+        // AP the newly prepared capability needs to actually EXECUTE its mission THIS turn, on top
+        // of the preparation cost. StrategicManager must not let Phase A spend the requesting
+        // axis's entitlement (or real AP) down past this — otherwise it creates a capability the
+        // mission allocator can no longer fund the same turn. A reservation, not a spend.
+        public float MinimumFollowupAp;
 
         public string Explain;
 
         public override string ToString() =>
             $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
-            + (PreferredTraits != TraitPreference.None ? $" [{PreferredTraits}]" : "")
+            + (RequiredTraits != TraitPreference.None ? $" !{RequiredTraits}" : "")
+            + (PreferredTraits != TraitPreference.None ? $" ~{PreferredTraits}" : "")
             + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")
+            + (MinimumFollowupAp > 0f ? $" +{MinimumFollowupAp:0.#}fu" : "")
             + $" val {Value:0.0}";
     }
 }
