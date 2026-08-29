@@ -213,21 +213,34 @@ namespace Game.Ai.V2
         public const float opportunityScoreNorm = 0.50f;          // raw product that maps to OpportunityScore 1
 
         // =======================================================================================
-        //  RECON MISSION PLANNER  (Strategy V2 build-order step 4)
-        //  MissionLayer turns one WorldSnapshot + the Recon DesireBreakdown into up to
-        //  maxConcurrentRecon Scout proposals. Two candidate kinds, one shared 0..100 scale:
+        //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7.1 candidate beam)
+        //  MissionLayer turns one WorldSnapshot + the Recon DesireBreakdown into a CANDIDATE BEAM
+        //  of up to scoutCandidateBeamWidth Scout proposals. Two candidate kinds, one shared
+        //  0..100 scale:
         //    Explore — a MapKnowledge.Frontier hex. Value from info gain + how central it is.
         //    Surveil — a stale honest contact's last-known hex. Value from staleness x the
         //              ThreatModel severity already attached to that contact (Recon reuses the
         //              same threat picture Defence will).
         //  BaseValue is the mission's INTRINSIC merit and is what goes in MissionProposal.BaseValue.
-        //  The breakdown weights (ReconExploration / ReconSurveillance) are applied ONLY to pick
-        //  the winners (SelectionScore = BaseValue * that weight) — never folded into BaseValue,
-        //  or Recon's strategic pull would be counted twice (once in the radar, once here).
+        //  The breakdown weights (ReconExploration / ReconSurveillance) are applied ONLY to
+        //  LocalAdmissionScore (= BaseValue * that weight * risk) — never folded into BaseValue, or
+        //  Recon's strategic pull would be counted twice (once in the radar, once here).
+        //
+        //  STEP 7.1 — N (how many sensible alternatives the planner hands downstream) is separated
+        //  from K (how many Recon operations may actually execute per AI turn). MissionLayer emits
+        //  the beam; ResourceAllocator applies K + mission conflicts and selects the executable
+        //  portfolio; ProvisioningManager proves it can be delivered.
         // =======================================================================================
-        public const int maxConcurrentRecon = 2;   // parity with V1 AiConfig.maxConcurrentVisitHex
-        // Two picked Scout focus hexes must be at least this far apart — adjacent hexes are the
-        // same frontier, not two missions worth funding separately.
+        // K — the absolute cap on concurrently EXECUTING Recon missions per AI turn. Owned by the
+        // allocator (MissionAdmissionPolicy.Capacity). Parity with V1 AiConfig.maxConcurrentVisitHex.
+        public const int maxConcurrentReconExecutions = 2;
+        // N — how many ordinary Recon alternatives MissionLayer passes downstream. Tuning baseline,
+        // NOT a gameplay invariant. Must remain >= maxConcurrentReconExecutions (a wider beam only
+        // gives the allocator / re-pack more backups to fall through to).
+        public const int scoutCandidateBeamWidth = 6;
+        // Two Scout focus hexes must be at least this far apart to be two missions worth funding
+        // separately — adjacent hexes are the same frontier. Enforced by the allocator (via
+        // MissionAdmissionPolicy.Conflicts) when building the funded portfolio, NOT in the beam.
         public const int scoutTargetMinSeparation = 2;
 
         // Frontier shape (WorldAnalysis.BuildMapKnowledge).
@@ -238,8 +251,8 @@ namespace Game.Ai.V2
         // last-known hex carries at least this much detection risk (scaled by contact confidence)
         // before any currently-known detectors nearby are added on top.
         public const float scoutSurveilBaseDetectionRisk = 0.5f;
-        // Planner-local only: SelectionScore *= (1 - this * DetectionRisk). Keeps BaseValue / the
-        // radar clean (execution risk is not intrinsic information value) while still making the
+        // Planner-local only: LocalAdmissionScore *= (1 - this * DetectionRisk). Keeps BaseValue /
+        // the radar clean (execution risk is not intrinsic information value) while still making the
         // planner prefer the safer of two equally valuable recon jobs.
         public const float scoutDetectionRiskSelectionPenalty = 0.30f;
 
@@ -298,9 +311,10 @@ namespace Game.Ai.V2
         //  post-execution observation != strategic policy.
         // =======================================================================================
         // Retarget hysteresis. A fresh candidate only displaces the hex an in-flight intent is
-        // already heading for if it beats it by this margin on SelectionScore. One knob — no
-        // separate incumbent bonus (that stacked to ~1.5x and became a hard lock). Progress-aware
-        // margins are a later tuning pass, not a step-7 concept.
+        // already heading for if it beats it by this margin on LocalAdmissionScore. Applied via
+        // MissionAdmissionPolicy.AdmissionRank at BOTH pruning points — the MissionLayer beam and
+        // the allocator's K-cut (step 7.1) — one knob, one formula, no separate incumbent bonus
+        // (that stacked to ~1.5x and became a hard lock). Progress-aware margins are a later pass.
         public const float commitmentRetargetMargin = 0.20f;
         // Absolute emergency cap on how long a single intent may persist without completing —
         // safety net only. The real mechanism (deadline = first-executed ETA + slack) is a later

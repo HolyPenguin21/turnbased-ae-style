@@ -16,8 +16,11 @@ namespace Game.Ai.V2
     //  FOUR HARD RULES
     //  --------------------------------------------------------------------------------------------
     //   1. Radar sizes the axis BUDGET. It is NOT a BaseValue multiplier and takes NO part in
-    //      mission ordering — the greedy key is BaseValue alone (stable-key tie-break, never
-    //      SelectionScore, never radar weight).
+    //      mission ordering. Ordering (step 7.1): CROSS-lane by BaseValue (intrinsic); WITHIN one
+    //      execution lane by MissionAdmissionPolicy.AdmissionRank (the planner-local
+    //      LocalAdmissionScore + the step-7 retarget hysteresis) so the Recon Explore-vs-Surveil
+    //      balance survives the N>K beam. Radar weight is never in either key. Today every mission
+    //      is ExecutionLane.Recon, so the effective fresh order is AdmissionRank + stable key.
     //   2. A mission may be funded from SEVERAL axes at once: its AxisContribution is normalised to
     //      shares, and funding it at AP C draws C*share[axis] from each slice.
     //   3. Positive slice leftovers become one fungible REMAINDER pool that can only top up
@@ -170,6 +173,12 @@ namespace Game.Ai.V2
         RejectedThisTurn,
         OnCooldown,
         CommitmentPoolExhausted,   // a commitment whose funding would push Σ commitments past the real AP pool
+        // Step 7.1 — NOT a failure, NOT a cooldown, NOT a structural / provisioning problem. A good
+        // candidate existed but did not fit THIS turn's funded portfolio. Both are recomputed from
+        // scratch on every Pack(): a re-pack after a provisioning failure re-evaluates them and can
+        // fund a backup the same turn.
+        ExecutionCapacity,         // the mission's execution lane is already at K (locked + commitments + funded)
+        MissionConflict,           // pairwise-conflicts a currently funded / locked mission in the same lane
     }
 
     public sealed class DeferredEntry
@@ -302,10 +311,15 @@ namespace Game.Ai.V2
             public readonly float RemainderAp;                        // fungible top-up, as granted
             public readonly float GrantedAp;                          // StrictAp + RemainderAp (== FundedEntry.Tentative)
             public readonly float ClaimedAp;                          // what provisioning actually took
+            // Step 7.1 — the mission provisioned in an earlier pass this turn. Kept so a re-pack
+            // still charges its execution-lane slot (fundedReconCount <= K counts locked successes)
+            // and so a fresh candidate can be conflict-tested against work already under way.
+            public readonly MissionProposal Mission;
 
-            public LockedAllocation(Dictionary<DesireAxis, float> strictDraw, float remainderAp,
+            public LockedAllocation(MissionProposal mission, Dictionary<DesireAxis, float> strictDraw, float remainderAp,
                 float grantedAp, float claimedAp)
             {
+                Mission = mission;
                 StrictDraw = strictDraw;
                 StrictAp = 0f;
                 foreach (KeyValuePair<DesireAxis, float> kv in strictDraw)
@@ -402,7 +416,7 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<DesireAxis, ResourceVector> kv in funded.PerAxisDraw)
                 strict[kv.Key] = kv.Value.Ap;
             _lockedClaims[StableMissionKey.For(funded.Mission)] =
-                new LockedAllocation(strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp);
+                new LockedAllocation(funded.Mission, strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp);
         }
 
         public TentativeAllocation Pack()
@@ -471,6 +485,29 @@ namespace Game.Ai.V2
             var shareCache = new Dictionary<MissionProposal, Dictionary<DesireAxis, float>>();
             int priority = 0;
 
+            // Step 7.1 — execution-capacity admission. K is a portfolio constraint, NOT a resource:
+            // it is not in ResourceVector and does not slice. fundedCount(lane) <= Capacity(lane)
+            // for every Pack(), counting (in this order of consumption) locked successes from an
+            // earlier pass this turn, then commitments, then fresh missions. Seed it with the
+            // locked successes so a re-pack can top up to K but never past it.
+            var laneUsed = new Dictionary<ExecutionLane, int>();
+            foreach (LockedAllocation lc in _lockedClaims.Values)
+            {
+                ExecutionLane lane = MissionAdmissionPolicy.LaneFor(lc.Mission);
+                if (lane == ExecutionLane.None) continue;
+                laneUsed.TryGetValue(lane, out int u);
+                laneUsed[lane] = u + 1;
+            }
+            bool AtCapacity(ExecutionLane lane) =>
+                lane != ExecutionLane.None
+                && (laneUsed.TryGetValue(lane, out int u) ? u : 0) >= MissionAdmissionPolicy.Capacity(lane);
+            void ConsumeSlot(ExecutionLane lane)
+            {
+                if (lane == ExecutionLane.None) return;
+                laneUsed.TryGetValue(lane, out int u);
+                laneUsed[lane] = u + 1;
+            }
+
             // 3. Commitments first. Sticky/pre-paid: they MAY drive an axis slice negative (that is
             //    the point — a funding protection against Radar noise). Step-7 guards:
             //      · skip a key already provisioned this turn (_lockedClaims — its provenance is
@@ -499,6 +536,18 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // Commitments consume K before any fresh mission — but they get NO magic extra
+                // slot. Two Soft commitments on a K=2 lane leave zero fresh capacity; a third
+                // commitment defers on ExecutionCapacity (ordered Hard->Soft->older by
+                // ResolveActive, so which one loses is deterministic).
+                ExecutionLane clane = MissionAdmissionPolicy.LaneFor(m);
+                if (AtCapacity(clane))
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ExecutionCapacity });
+                    alloc.CommitmentsStarveFreshDecisions = true;
+                    continue;
+                }
+
                 float askAp = ApDesired(m);
                 if (committedApSoFar + askAp > pool.Ap + eps)
                 {
@@ -507,6 +556,7 @@ namespace Game.Ai.V2
                     continue;
                 }
                 committedApSoFar += askAp;
+                ConsumeSlot(clane);
 
                 var ask = new ResourceVector(askAp);
                 var fe = new FundedEntry
@@ -530,115 +580,155 @@ namespace Game.Ai.V2
                 alloc.CommitmentDraw += ask;
             }
 
-            // 4. Fresh missions — BaseValue desc + stable key. Strict admission is atomic:
-            //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal
-            //    that is ALSO an active commitment (same object, re-materialised by MissionLayer)
-            //    is funded through the commitment loop above only — never a second time here.
+            // 4. Fresh missions. Grouped by EXECUTION LANE: cross-lane order is BaseValue
+            //    (intrinsic); WITHIN a lane it is MissionAdmissionPolicy.AdmissionRank
+            //    (LocalAdmissionScore + the step-7 retarget hysteresis) so the Recon
+            //    Explore-vs-Surveil balance is not lost to the N>K beam. Per candidate:
+            //    conflict -> capacity -> budget. Budget admission is still atomic: calculate ALL
+            //    draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal that is ALSO an
+            //    active commitment is funded through the commitment loop above only.
             var commitmentKeys = new HashSet<StableMissionKey>(_commitments
                 .Where(c => c?.Mission != null)
                 .Select(c => StableMissionKey.For(c.Mission)));
-            var ordered = _missions
+            List<MissionProposal> freshPool = _missions
                 .Where(m => m != null
                     && !_lockedClaims.ContainsKey(StableMissionKey.For(m))
                     && !commitmentKeys.Contains(StableMissionKey.For(m)))
-                .OrderByDescending(m => m.BaseValue)
-                .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
                 .ToList();
 
-            foreach (MissionProposal m in ordered)
+            foreach (IGrouping<ExecutionLane, MissionProposal> laneGroup in freshPool
+                .GroupBy(m => MissionAdmissionPolicy.LaneFor(m))
+                .OrderByDescending(g => g.Max(m => m.BaseValue))
+                .ThenBy(g => (int)g.Key))
             {
-                StableMissionKey key = StableMissionKey.For(m);
+                ExecutionLane lane = laneGroup.Key;
+                IOrderedEnumerable<MissionProposal> ranked = lane == ExecutionLane.None
+                    ? laneGroup.OrderByDescending(m => m.BaseValue)
+                    : laneGroup.OrderByDescending(m => MissionAdmissionPolicy.AdmissionRank(m));
 
-                if (_rejectedThisTurn.Contains(key))
+                foreach (MissionProposal m in ranked.ThenBy(mm => StableMissionKey.For(mm), MissionKeyComparer.Instance))
                 {
-                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.RejectedThisTurn });
-                    continue;
-                }
-                if (_state.OnCooldown(key, turn))
-                {
-                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.OnCooldown });
-                    continue;
-                }
+                    StableMissionKey key = StableMissionKey.For(m);
 
-                Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
-                if (shares == null)
-                {
-                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
-                    continue;
-                }
-
-                float affordable = float.PositiveInfinity;
-                DesireAxis bottleneck = DesireAxis.Recon;
-                foreach (KeyValuePair<DesireAxis, float> kv in shares)
-                {
-                    float room = Mathf.Max(0f, slices[kv.Key].Remaining.Ap);
-                    float cap = room / kv.Value;
-                    if (cap < affordable)
+                    if (_rejectedThisTurn.Contains(key))
                     {
-                        affordable = cap;
-                        bottleneck = kv.Key;
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.RejectedThisTurn });
+                        continue;
                     }
-                }
-
-                float min = ApMinimum(m);
-                if (affordable + eps < min)
-                {
-                    AddBudgetDeferred(alloc, m, shares, slices, bottleneck, min);
-                    continue;
-                }
-
-                float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
-                var v = new ResourceVector(fundAp);
-                var draws = new Dictionary<DesireAxis, ResourceVector>();
-                foreach (KeyValuePair<DesireAxis, float> kv in shares)
-                    draws[kv.Key] = v * kv.Value;
-
-                DesireAxis failedAxis = bottleneck;
-                bool allFit = true;
-                foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
-                {
-                    if (slices[kv.Key].Remaining.Ap + eps < kv.Value.Ap)
+                    if (_state.OnCooldown(key, turn))
                     {
-                        failedAxis = kv.Key;
-                        allFit = false;
-                        break;
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.OnCooldown });
+                        continue;
                     }
-                }
 
-                if (!allFit)
-                {
-                    AddBudgetDeferred(alloc, m, shares, slices, failedAxis, min);
-                    continue;
-                }
+                    Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
+                    if (shares == null)
+                    {
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
+                        continue;
+                    }
 
-                var funded = new FundedEntry
-                {
-                    Mission = m,
-                    Priority = priority++,
-                    Tentative = v,
-                    IsCommitment = false,
-                    Stage = FundingStage.Strict,
-                };
-                foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
-                    funded.PerAxisDraw[kv.Key] = kv.Value;
-                foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
-                    slices[kv.Key].Remaining -= kv.Value;
+                    // Conflict BEFORE capacity: a conflicting candidate is categorically inadmissible
+                    // against the current portfolio (and consumes no slot), so the more-specific reason
+                    // is reported and a re-pack that drops the conflicting incumbent frees it. Tested
+                    // against every funded mission in this lane (commitments included) + every locked
+                    // success this turn. commitment-vs-commitment is NOT tested here — dropping an
+                    // already-bound commitment over a conflict is pre-emption (step 9).
+                    if (lane != ExecutionLane.None
+                        && (alloc.Funded.Any(fe => fe.Mission != null
+                                && MissionAdmissionPolicy.LaneFor(fe.Mission) == lane
+                                && MissionAdmissionPolicy.Conflicts(fe.Mission, m))
+                            || _lockedClaims.Values.Any(lc => MissionAdmissionPolicy.LaneFor(lc.Mission) == lane
+                                && MissionAdmissionPolicy.Conflicts(lc.Mission, m))))
+                    {
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.MissionConflict });
+                        continue;
+                    }
 
-                alloc.Funded.Add(funded);
-                alloc.StrictFunded += v;
+                    if (AtCapacity(lane))
+                    {
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ExecutionCapacity });
+                        continue;
+                    }
+
+                    float affordable = float.PositiveInfinity;
+                    DesireAxis bottleneck = DesireAxis.Recon;
+                    foreach (KeyValuePair<DesireAxis, float> kv in shares)
+                    {
+                        float room = Mathf.Max(0f, slices[kv.Key].Remaining.Ap);
+                        float cap = room / kv.Value;
+                        if (cap < affordable)
+                        {
+                            affordable = cap;
+                            bottleneck = kv.Key;
+                        }
+                    }
+
+                    float min = ApMinimum(m);
+                    if (affordable + eps < min)
+                    {
+                        AddBudgetDeferred(alloc, m, shares, slices, bottleneck, min);
+                        continue;
+                    }
+
+                    float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
+                    var v = new ResourceVector(fundAp);
+                    var draws = new Dictionary<DesireAxis, ResourceVector>();
+                    foreach (KeyValuePair<DesireAxis, float> kv in shares)
+                        draws[kv.Key] = v * kv.Value;
+
+                    DesireAxis failedAxis = bottleneck;
+                    bool allFit = true;
+                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
+                    {
+                        if (slices[kv.Key].Remaining.Ap + eps < kv.Value.Ap)
+                        {
+                            failedAxis = kv.Key;
+                            allFit = false;
+                            break;
+                        }
+                    }
+
+                    if (!allFit)
+                    {
+                        AddBudgetDeferred(alloc, m, shares, slices, failedAxis, min);
+                        continue;
+                    }
+
+                    var funded = new FundedEntry
+                    {
+                        Mission = m,
+                        Priority = priority++,
+                        Tentative = v,
+                        IsCommitment = false,
+                        Stage = FundingStage.Strict,
+                    };
+                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
+                        funded.PerAxisDraw[kv.Key] = kv.Value;
+                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
+                        slices[kv.Key].Remaining -= kv.Value;
+
+                    alloc.Funded.Add(funded);
+                    alloc.StrictFunded += v;
+                    ConsumeSlot(lane);
+                    }
             }
 
-            // 4b. Telemetry: did a funded commitment crowd out a MORE valuable fresh decision?
-            if (!alloc.CommitmentsStarveFreshDecisions)
+            // 4b. Telemetry: did a funded commitment crowd out a fresh decision — on budget (a more
+            //     valuable fresh mission deferred) or on execution capacity (commitments ate every
+            //     K slot in a lane)? Step 7.1: ExecutionCapacity is not a failure, but a fresh
+            //     recon deferred purely because commitments held all K slots is exactly the
+            //     "commitments starve fresh" signal the future pre-emption pass wants.
+            if (!alloc.CommitmentsStarveFreshDecisions && alloc.Funded.Any(f => f.IsCommitment))
             {
-                var fundedCommitBases = alloc.Funded.Where(f => f.IsCommitment).Select(f => f.Mission.BaseValue).ToList();
-                if (fundedCommitBases.Count > 0)
-                {
-                    float minCommitBase = fundedCommitBases.Min();
-                    if (alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
-                            && d.Mission != null && d.Mission.BaseValue > minCommitBase))
-                        alloc.CommitmentsStarveFreshDecisions = true;
-                }
+                float minCommitBase = alloc.Funded.Where(f => f.IsCommitment).Min(f => f.Mission.BaseValue);
+                bool starvedOnBudget = alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
+                    && d.Mission != null && d.Mission.BaseValue > minCommitBase);
+                bool starvedOnCapacity = alloc.Deferred.Any(d => d.Reason == DeferReason.ExecutionCapacity)
+                    && alloc.Funded.Any(f => f.IsCommitment
+                        && MissionAdmissionPolicy.LaneFor(f.Mission) != ExecutionLane.None);
+                if (starvedOnBudget || starvedOnCapacity)
+                    alloc.CommitmentsStarveFreshDecisions = true;
             }
 
             // 5. Positive leftovers lose axis identity and become one fungible remainder pool. AP a

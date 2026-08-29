@@ -50,7 +50,7 @@ namespace Game.Ai.V2
     // The unit the assignment solver actually packs (build-order step 6b): a concrete mover PLUS
     // the concrete hex it would execute from. Explore -> ExecutionHex == FocusHex, DetectionRisk
     // and StandOff are 0 (the strategic risk already lives in ScoutMissionTarget.DetectionRisk /
-    // MissionLayer.SelectionScore and must not be double-counted in the solver). Surveil ->
+    // MissionLayer's LocalAdmissionScore and must not be double-counted in the solver). Surveil ->
     // ExecutionHex is the first CURRENTLY-EXECUTABLE vantage from SurveilVantageSelector, with its
     // own vantage-specific DetectionRisk / StandOff.
     public readonly struct ScoutExecutionCandidate

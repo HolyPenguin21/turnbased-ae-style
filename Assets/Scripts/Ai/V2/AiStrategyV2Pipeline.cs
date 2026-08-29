@@ -277,9 +277,20 @@ namespace Game.Ai.V2
         // (a tie-break, not a reservation). null for a fresh proposal.
         public int? PreferredMoverArmyId;
 
-        // Debug only — how the winner was chosen (BaseValue * the relevant DesireBreakdown weight).
-        // NOT read by the allocator; it packs on BaseValue + radar slices.
-        public float SelectionScore;
+        // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
+        // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
+        // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments, never through the
+        // fresh loop). Together they let MissionAdmissionPolicy.AdmissionRank apply the retarget
+        // hysteresis at the allocator's K-cut, not just inside the beam.
+        public bool FromDurableIntent;
+        public CommitmentTier DurableFundingTier;
+
+        // Planner-LOCAL preference for ordering alternatives WITHIN one execution lane / mission
+        // type — LocalAdmissionScore = BaseValue * the relevant Recon sub-desire * a risk factor.
+        // The allocator uses it (via MissionAdmissionPolicy.AdmissionRank) only to pick between
+        // same-lane Recon alternatives; cross-lane ordering stays on BaseValue + radar slices, so
+        // the Recon sub-desire is never counted twice.
+        public float LocalAdmissionScore;
         public string Explain;
     }
 
@@ -376,7 +387,7 @@ namespace Game.Ai.V2
                 MissionRequirements r = m.Requirements;
                 AiDebugLog.Write($"[AI][V2]   mission — {m.Kind} baseValue "
                     + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
-                    + $"sel {m.SelectionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
                     + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
                     + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
@@ -481,9 +492,11 @@ namespace Game.Ai.V2
     // with ReconEvaluator / AggressionEvaluator, the AiRadarState cross-turn registry, and the
     // RadarAssessment / DesireBreakdown contract it returns.
 
-    // MissionLayer (build-order step 4) now lives in its own file, ReconMissionPlanner.cs, with
-    // ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3). It reads the DesireBreakdown
-    // and emits up to AiConfigV2.maxConcurrentRecon Scout proposals; Raid is added in step 9.
+    // MissionLayer (build-order step 4, + step 7.1 candidate beam) now lives in its own file,
+    // ReconMissionPlanner.cs, with ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3).
+    // It reads the DesireBreakdown and emits a CANDIDATE BEAM of up to
+    // AiConfigV2.scoutCandidateBeamWidth Scout proposals (execution capacity K and mission
+    // conflicts are the allocator's job — MissionAdmissionPolicy); Raid is added in step 9.
 
     // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
     // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier

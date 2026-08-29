@@ -3,3 +3,4 @@
 // under Tools/ (each build-order step ships one) need to drive the stage under test directly, so
 // they are named here. This widens visibility to those specific test assemblies only, nothing else.
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("commitment-sim")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("mission-selection-sim")]

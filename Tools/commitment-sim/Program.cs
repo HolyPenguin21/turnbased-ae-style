@@ -163,6 +163,13 @@ namespace CommitmentSim
         // ---------------------------------------------------------------- 06 hysteresis ----
         private static void Scenario06_ExploreProgress_HysteresisHolds()
         {
+            // Step 7.1 — MissionLayer no longer trims to K, so the retarget hysteresis is asserted
+            // on the ALLOCATOR's funded portfolio (K = maxConcurrentReconExecutions = 2), through
+            // the same pipeline order Pipeline.RunTurn uses: ResolveActive -> Propose -> BindFunding
+            // -> Pack. Radar is all-Recon and AP is ample, so the ONLY thing deciding the two
+            // funded hexes is MissionAdmissionPolicy.AdmissionRank + the K cut.
+            var bd = new DesireBreakdown { ReconExploration = 0.6f };
+
             // Case A — a marginally better fresh frontier hex must NOT flip the heading. The
             // in-flight scout is heading for H(0,9).
             PlayerSetupData a = Fresh("S6a");
@@ -173,21 +180,16 @@ namespace CommitmentSim
             Check("06a Explore progress -> intent kept, Funding == None",
                 sa.Count == 1 && sa.All.Single().Funding == CommitmentTier.None);
 
-            // Two frontier hexes: C (near base, clear slot-1 winner) and alt A. maxConcurrentRecon
-            // is 2, so the incumbent contests slot 2 against A. In case A, A's merit is above the
-            // incumbent's but within the +20% retarget margin -> incumbent keeps its heading.
-            var bd = new DesireBreakdown { ReconExploration = 0.6f };
+            // C near base (top rank), alt A better than the incumbent but within the +20% margin.
             WorldSnapshot snapA = ExploreSnap(turn: 2,
                 incumbent: H(0, 9), incumbentFreshNeighbours: 4,
                 frontier: new[] { (H(0, 2), 4, 2), (H(4, 0), 4, 7) });   // C near base ; A better-by-<20%
-            List<MissionIntent> activeA = MissionContinuityLayer.ResolveActive(a, snapA);
-            List<HexCoord> pickedA = MissionLayer.Propose(snapA, bd, activeA)
-                .Select(m => ((ScoutMissionTarget)m.Target).FocusHex).ToList();
-            Check("06b incumbent within the retarget margin is kept, the better-by-<20% alt is not",
-                pickedA.Contains(H(0, 9)) && !pickedA.Contains(H(4, 0)));
+            List<HexCoord> fundedA = FundedFocusHexes(a, snapA, bd);
+            Check("06b incumbent within the retarget margin keeps a K slot; the better-by-<20% alt does not",
+                fundedA.Count == 2 && fundedA.Contains(H(0, 9)) && fundedA.Contains(H(0, 2)) && !fundedA.Contains(H(4, 0)));
 
             // Case B — the alt is now as good as C (well past the margin): both fresh hexes take
-            // the slots and the incumbent is dropped for this turn.
+            // the K slots and the incumbent is dropped for this turn (ExecutionCapacity).
             PlayerSetupData b = Fresh("S6b");
             MissionProposal exB = FreshExploreProp(H(0, 9), 40f, 1f);
             MissionContinuityLayer.ReconcileAfterTurn(b, 1,
@@ -195,11 +197,29 @@ namespace CommitmentSim
             WorldSnapshot snapB = ExploreSnap(turn: 2,
                 incumbent: H(0, 9), incumbentFreshNeighbours: 4,
                 frontier: new[] { (H(0, 2), 4, 2), (H(4, 0), 4, 2) });   // C and A both near base
-            List<MissionIntent> activeB = MissionContinuityLayer.ResolveActive(b, snapB);
-            List<HexCoord> pickedB = MissionLayer.Propose(snapB, bd, activeB)
-                .Select(m => ((ScoutMissionTarget)m.Target).FocusHex).ToList();
-            Check("06c a fresh hex past the retarget margin displaces the incumbent",
-                pickedB.Contains(H(4, 0)) && !pickedB.Contains(H(0, 9)));
+            List<HexCoord> fundedB = FundedFocusHexes(b, snapB, bd);
+            Check("06c two fresh hexes past the retarget margin fill K; the incumbent is dropped this turn",
+                fundedB.Count == 2 && fundedB.Contains(H(0, 2)) && fundedB.Contains(H(4, 0)) && !fundedB.Contains(H(0, 9)));
+        }
+
+        // Full ResolveActive -> Propose -> BindFunding -> Pack, returning the focus hexes the
+        // allocator actually funded. All-Recon radar + ample AP so K + AdmissionRank are the only
+        // binding constraints.
+        private static List<HexCoord> FundedFocusHexes(PlayerSetupData player, WorldSnapshot snap, DesireBreakdown bd)
+        {
+            List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+            List<MissionProposal> proposals = MissionLayer.Propose(snap, bd, active);
+            List<Commitment> commitments = MissionContinuityLayer.BindFunding(active, proposals);
+            var radar = new Radar();
+            radar.Weight[DesireAxis.Recon] = 1f;
+            foreach (DesireAxis ax in DesireAxes.All)
+                if (ax != DesireAxis.Recon) radar.Weight[ax] = 0f;
+            AllocationSession session = ResourceAllocator.BeginTurn(snap, radar, proposals, commitments, player);
+            TentativeAllocation alloc = session.Pack();
+            return alloc.Funded
+                .Where(f => f.Mission?.Target is ScoutMissionTarget)
+                .Select(f => ((ScoutMissionTarget)f.Mission.Target).FocusHex)
+                .ToList();
         }
 
         // ---------------------------------------------------------------- 07 siege suspend ----
@@ -435,7 +455,7 @@ namespace CommitmentSim
                 Kind = MissionKind.Scout,
                 Target = t,
                 BaseValue = baseValue,
-                SelectionScore = baseValue,
+                LocalAdmissionScore = baseValue,
                 Requirements = new MissionRequirements
                 {
                     MoverKnown = true, ApMinimum = ap, ApDesired = ap, ApMaximum = ap,

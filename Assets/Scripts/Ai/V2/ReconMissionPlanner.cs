@@ -7,12 +7,12 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7 continuity)
+    //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7 continuity, + step 7.1 beam)
     // ===========================================================================================
-    //  One WorldSnapshot + the Recon DesireBreakdown -> up to AiConfigV2.maxConcurrentRecon Scout
-    //  MissionProposals. It NEVER re-derives the analysis behind the breakdown — it reads
-    //  breakdown.ReconExploration / .ReconSurveillance as given and only decides WHICH concrete
-    //  hex each Scout heads for, and how hidden its executor must be.
+    //  One WorldSnapshot + the Recon DesireBreakdown -> a CANDIDATE BEAM of up to
+    //  AiConfigV2.scoutCandidateBeamWidth Scout MissionProposals. It NEVER re-derives the analysis
+    //  behind the breakdown — it reads breakdown.ReconExploration / .ReconSurveillance as given and
+    //  only decides WHICH concrete hex each Scout heads for, and how hidden its executor must be.
     //
     //  TWO CANDIDATE KINDS, ONE 0..100 SCALE
     //    Explore  — a MapKnowledge.Frontier hex. Valued on info gain + centrality.
@@ -22,16 +22,27 @@ namespace Game.Ai.V2
     //  STEP-7 CONTINUITY — this is the ONE place that turns a durable MissionIntent back into a
     //  concrete proposal (Intent != Proposal). Every active intent is re-materialised from the
     //  CURRENT snapshot (fresh cost via ScoutCostModel, fresh vantage later in provisioning), so
-    //  there is no second proposal-builder inside the continuity layer. Retarget hysteresis: an
-    //  in-flight ("incumbent") heading only yields to a fresh candidate that beats it by
-    //  AiConfigV2.commitmentRetargetMargin. Soft/Hard incumbents also hold a recon slot
-    //  unconditionally; a None-tier (Explore) incumbent can lose its slot to materially better work.
+    //  there is no second proposal-builder inside the continuity layer.
     //
-    //  INTRINSIC value vs SELECTION
-    //    BaseValue      = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the ONLY thing in
-    //                     MissionProposal.BaseValue. The allocator packs on this + the radar slices.
-    //    SelectionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance) * riskFactor.
-    //                     Used HERE only, to rank the pool and pick winners.
+    //  STEP-7.1 — N (beam width) is separated from K (execution capacity). MissionLayer now emits
+    //  N alternatives, NOT K winners:
+    //    · every valid Soft/Hard incumbent materialises unconditionally, ON TOP of the beam — a
+    //      funding-protected commitment cannot vanish because the fresh beam is full;
+    //    · None-tier incumbents + fresh candidates compete for the scoutCandidateBeamWidth ordinary
+    //      slots, ranked by MissionAdmissionPolicy.AdmissionRank (retarget hysteresis for a
+    //      None-tier incumbent — one formula, shared with the allocator's K-cut);
+    //    · a fresh candidate with the same strategic identity as an incumbent is dropped (the
+    //      incumbent carries PreferredMover / continuity metadata);
+    //    · pairwise execution conflicts are NOT applied here — full alternatives must survive to
+    //      the allocator so its bounded re-pack can fall through to a backup. Conflicts + K are
+    //      MissionAdmissionPolicy's / ResourceAllocator's job.
+    //
+    //  INTRINSIC value vs LOCAL ADMISSION
+    //    BaseValue           = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the ONLY thing
+    //                          in MissionProposal.BaseValue. Cross-lane ordering + radar slices.
+    //    LocalAdmissionScore = BaseValue * (Explore ? ReconExploration : ReconSurveillance) *
+    //                          riskFactor. Ranks Recon alternatives against each other — here for
+    //                          the beam, and in the allocator for the K-cut. Never cross-lane.
     // ===========================================================================================
     internal static class MissionLayer
     {
@@ -39,7 +50,7 @@ namespace Game.Ai.V2
         {
             public readonly ScoutMissionTarget Target;
             public readonly float BaseValue;
-            public readonly float SelectionScore;
+            public readonly float LocalAdmissionScore;
             public readonly string Explain;
 
             // Step 7 — set only when this candidate was re-materialised from a durable intent.
@@ -47,12 +58,12 @@ namespace Game.Ai.V2
             public readonly CommitmentTier Tier;
             public readonly int? PreferredMover;
 
-            public ScoutCandidate(ScoutMissionTarget target, float baseValue, float selectionScore, string explain,
+            public ScoutCandidate(ScoutMissionTarget target, float baseValue, float localAdmissionScore, string explain,
                 bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None, int? preferredMover = null)
             {
                 Target = target;
                 BaseValue = baseValue;
-                SelectionScore = selectionScore;
+                LocalAdmissionScore = localAdmissionScore;
                 Explain = explain;
                 IsIncumbent = isIncumbent;
                 Tier = tier;
@@ -60,7 +71,7 @@ namespace Game.Ai.V2
             }
 
             public ScoutCandidate AsIncumbent(CommitmentTier tier, int? preferredMover) =>
-                new ScoutCandidate(Target, BaseValue, SelectionScore, Explain + " [incumbent]", true, tier, preferredMover);
+                new ScoutCandidate(Target, BaseValue, LocalAdmissionScore, Explain + " [incumbent]", true, tier, preferredMover);
         }
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
@@ -87,37 +98,44 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
                 }
 
+            // Strategic identity of every incumbent — a fresh candidate with the SAME identity is a
+            // duplicate the incumbent already covers (and covers better: it carries PreferredMover
+            // + continuity metadata), so the fresh copy is dropped before ranking.
+            var incumbentKeys = new HashSet<MissionIntentKey>();
+            foreach (ScoutCandidate c in incumbents)
+                incumbentKeys.Add(CandidateKey(c));
+
             var picked = new List<ScoutCandidate>();
 
-            // 1. Soft/Hard incumbents hold a slot unconditionally (funding-protected — see
-            //    MissionContinuityLayer). Score only orders them against each other; the stable
-            //    key breaks ties so the pick never depends on registry iteration order.
+            // 1. Every valid Soft/Hard incumbent materialises unconditionally — a funding-protected
+            //    commitment cannot disappear because the ordinary beam is full. Emitted ON TOP of
+            //    the beam (not counted against scoutCandidateBeamWidth). No conflict filtering —
+            //    the allocator (MissionAdmissionPolicy) owns execution conflicts + K now. Score
+            //    only orders them against each other; the stable key breaks ties.
             foreach (ScoutCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
-                .OrderByDescending(x => x.SelectionScore)
+                .OrderByDescending(x => x.LocalAdmissionScore)
                 .ThenBy(x => CandidateKey(x)))
-            {
-                if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
-                if (picked.Any(p => Conflicts(p, c))) continue;
                 picked.Add(c);
-            }
 
-            // 2. None-tier incumbents + fresh candidates compete for the rest. The retarget margin
-            //    is applied as an incumbent-only multiplier on the ranking key — mathematically the
-            //    same as "a fresh candidate replaces an incumbent only if fresh > incumbent *
-            //    (1 + margin)". One margin, no separate bonus (that stacked into a hard lock).
-            float mult = 1f + AiConfigV2.commitmentRetargetMargin;
-            IEnumerable<ScoutCandidate> contenders = incumbents
+            // 2. The ordinary beam: None-tier incumbents + fresh candidates (minus fresh duplicates
+            //    of ANY incumbent), ranked by the SHARED admission rank so the retarget hysteresis
+            //    for a None-tier incumbent is the exact same formula the allocator's K-cut uses,
+            //    then truncated to scoutCandidateBeamWidth. Pairwise conflicts are deliberately NOT
+            //    applied — full alternatives must reach the allocator so its bounded re-pack can
+            //    fall through to a backup when a higher pick fails provisioning.
+            IEnumerable<ScoutCandidate> ordinary = incumbents
                 .Where(x => x.Tier == CommitmentTier.None)
-                .Concat(fresh)
-                .OrderByDescending(x => x.SelectionScore * (x.IsIncumbent ? mult : 1f))
+                .Concat(fresh.Where(f => !incumbentKeys.Contains(CandidateKey(f))))
+                .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
                 .ThenBy(x => CandidateKey(x));
-            foreach (ScoutCandidate c in contenders)
+            int ordinaryCount = 0;
+            foreach (ScoutCandidate c in ordinary)
             {
-                if (picked.Count >= AiConfigV2.maxConcurrentRecon) break;
-                if (!c.IsIncumbent && c.SelectionScore <= 0f) continue; // fresh needs positive merit; an incumbent may ride at ~0
-                if (picked.Any(p => Conflicts(p, c))) continue;
+                if (ordinaryCount >= AiConfigV2.scoutCandidateBeamWidth) break;
+                if (!c.IsIncumbent && c.LocalAdmissionScore <= 0f) continue; // fresh needs positive merit; an incumbent may ride at ~0
                 picked.Add(c);
+                ordinaryCount++;
             }
 
             foreach (ScoutCandidate c in picked)
@@ -125,23 +143,12 @@ namespace Game.Ai.V2
             return proposals;
         }
 
-        // Deterministic tie-break for candidate ranking — the SAME strategic identity the intent
-        // registry and the allocator use (Surveil keyed by tracked ArmyId, so two Surveils on one
-        // hex don't collapse). Keeps a slot pick from depending on LINQ's input order (which for
-        // incumbents is registry iteration order, for Surveil is Threat.Contacts order).
+        // Deterministic tie-break for candidate ranking + the dedup key — the SAME strategic
+        // identity the intent registry and the allocator use (Surveil keyed by tracked ArmyId, so
+        // two Surveils on one hex don't collapse). Keeps beam selection from depending on LINQ's
+        // input order (registry iteration order for incumbents, Threat.Contacts order for Surveil).
         private static MissionIntentKey CandidateKey(ScoutCandidate c) =>
             MissionIntentKey.ForScoutTarget(c.Target);
-
-        // Identical hex is never allowed. Two Explores must be spread out. An Explore and a
-        // Surveil (or two Surveils) on nearby-but-different hexes are genuinely different jobs.
-        private static bool Conflicts(ScoutCandidate a, ScoutCandidate b)
-        {
-            if (a.Target.FocusHex.Equals(b.Target.FocusHex))
-                return true;
-            bool bothExplore = a.Target.Kind == ScoutTargetKind.Explore && b.Target.Kind == ScoutTargetKind.Explore;
-            return bothExplore
-                && HexGridMath.Distance(a.Target.FocusHex, b.Target.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
-        }
 
         // --------------------------------------------------------------------- continuity ----
 
@@ -241,7 +248,8 @@ namespace Game.Ai.V2
             string explain = $"Explore @{hex.Q},{hex.R} opens {freshNeighbors} "
                 + $"(info {F(infoGain)} prox {F(proximity)} d{distFromBase}{StealthTag(req, risk)}) "
                 + $"base {F(baseValue)} x explore {F(reconExploration)}";
-            return new ScoutCandidate(target, baseValue, Selection(baseValue, reconExploration, risk), explain);
+            return new ScoutCandidate(target, baseValue,
+                ComputeLocalAdmissionScore(baseValue, reconExploration, risk), explain);
         }
 
         // --------------------------------------------------------------------------- Surveil ----
@@ -301,7 +309,8 @@ namespace Game.Ai.V2
             string explain = $"Surveil @{pos.Q},{pos.R} age {age} "
                 + $"(stale {F(staleness)} sev {F(maxSeverity)} prox {F(proximity)}{StealthTag(req, risk)}) "
                 + $"base {F(baseValue)} x surv {F(reconSurveillance)}";
-            return new ScoutCandidate(target, baseValue, Selection(baseValue, reconSurveillance, risk), explain);
+            return new ScoutCandidate(target, baseValue,
+                ComputeLocalAdmissionScore(baseValue, reconSurveillance, risk), explain);
         }
 
         // ------------------------------------------------------------------------------ shared ----
@@ -315,10 +324,11 @@ namespace Game.Ai.V2
         private static float CurrentDetectorRisk(WorldSnapshot snap, HexCoord hex) =>
             ScoutRiskModel.DetectorRisk(snap, hex);
 
-        // SelectionScore = BaseValue * the relevant Recon sub-desire * an execution-risk factor.
-        // The risk factor stays OUT of BaseValue (and therefore out of the radar) — it is not
-        // intrinsic information value, just a tie-breaker toward the safer of two equal jobs.
-        private static float Selection(float baseValue, float subDesire, float detectionRisk) =>
+        // LocalAdmissionScore = BaseValue * the relevant Recon sub-desire * an execution-risk
+        // factor. The risk factor stays OUT of BaseValue (and therefore out of the radar) — it is
+        // not intrinsic information value, just a tie-breaker toward the safer of two equal jobs.
+        // Used to rank Recon alternatives against each other (beam here, K-cut in the allocator).
+        private static float ComputeLocalAdmissionScore(float baseValue, float subDesire, float detectionRisk) =>
             baseValue * subDesire
             * Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectionRisk);
 
@@ -347,7 +357,9 @@ namespace Game.Ai.V2
                 Target = c.Target,
                 BaseValue = c.BaseValue,
                 Requirements = req,
-                SelectionScore = c.SelectionScore,
+                LocalAdmissionScore = c.LocalAdmissionScore,
+                FromDurableIntent = c.IsIncumbent,
+                DurableFundingTier = c.Tier,
                 Explain = c.Explain,
                 PreferredMoverArmyId = c.PreferredMover,
             };
