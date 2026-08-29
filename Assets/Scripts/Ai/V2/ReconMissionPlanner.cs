@@ -210,19 +210,10 @@ namespace Game.Ai.V2
             Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
 
         // [0..1] risk from CURRENTLY known non-neutral forces that could actually roll a stealth
-        // challenge on `hex` (KnownEnemySighting.CanDetectStealthAt). Count-based for now;
-        // RecceSpotStrength-weighted pressure is a later refinement.
-        private static float CurrentDetectorRisk(WorldSnapshot snap, HexCoord hex)
-        {
-            var sightings = snap.Known?.EnemySightings;
-            if (sightings == null) return 0f;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            int detectors = 0;
-            foreach (var s in sightings)
-                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
-                    detectors++;
-            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
-        }
+        // challenge on `hex`. The implementation is the shared ScoutRiskModel (step 6b) so a
+        // Surveil vantage is scored identically — do not re-inline it here.
+        private static float CurrentDetectorRisk(WorldSnapshot snap, HexCoord hex) =>
+            ScoutRiskModel.DetectorRisk(snap, hex);
 
         // SelectionScore = BaseValue * the relevant Recon sub-desire * an execution-risk factor.
         // The risk factor stays OUT of BaseValue (and therefore out of the radar) — it is not

@@ -123,6 +123,12 @@ namespace Game.Ai.V2
         public bool CanEnterStealth;       // StealthSystem.CanEnterStealth — !hidden AND stealthLevel > 0
         public int StealthLevel;           // best AbilityParams.GetStealthLevel among members (0 = none)
 
+        // Vision reach for THIS army, EXACTLY VisionSystem's own formula
+        // (GameConfig.armyVisionRadius + AbilityParams.GetBestRecceRadius). Own armies only in
+        // practice — lets a Surveil vantage be chosen without a live VisionSystem read. Seeing a
+        // hex from this range is NOT visiting it (only standing on a hex marks it visited).
+        public int EffectiveVisionRadius;
+
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
     }
@@ -234,6 +240,15 @@ namespace Game.Ai.V2
         // Frontier is empty, and a single mountain pass with 40% of the map behind it still reads
         // ~0.40 (a frontier-hex COUNT could not). Drives ReconExploration directly.
         public float ExplorableUnknownFrac;
+
+        // Every on-map hex (== map.AllCoords). SurveilVantageSelector enumerates observation
+        // candidates from this instead of re-reading the map.
+        public IReadOnlyList<HexCoord> AllHexes;
+
+        // The subset of AllHexes a ground scout must never be routed ONTO — the SAME hard-block
+        // semantics the frontier scan uses: a known neutral physically on the hex, or an active
+        // scout-danger cooldown. Enemy PROXIMITY is deliberately NOT here (it only annotates).
+        public ISet<HexCoord> ScoutHardBlockedHexes;
     }
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.

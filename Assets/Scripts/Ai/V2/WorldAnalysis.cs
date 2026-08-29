@@ -149,7 +149,7 @@ namespace Game.Ai.V2
 
             self.Citadel = citadel;
             self.BaseHexes = baseHexes;
-            self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true)).ToList();
+            self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx))).ToList();
 
             self.FieldPower = self.Armies.Where(a => !a.IsGarrison).Sum(a => a.EffectiveArmyPower);
             self.GarrisonPower = self.Armies.Where(a => a.IsGarrison).Sum(a => a.EffectiveArmyPower);
@@ -219,7 +219,7 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  ARMY SNAPSHOT  (shared by Self and TrueWorld)
         // =======================================================================================
-        private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn)
+        private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {
             var nonHero = a.Members.Where(m => !m.IsHero).ToList();
             bool allHidden = !isOwn && a.Members.Count > 0
@@ -257,8 +257,14 @@ namespace Game.Ai.V2
                 StealthLevel = isOwn
                     ? a.Members.Select(AbilityParams.GetStealthLevel).DefaultIfEmpty(0).Max()
                     : 0,
+                // VisionSystem's own formula (VisionSystem.RebuildFor): flat army radius + the
+                // best Recce widening among members.
+                EffectiveVisionRadius = armyVisionRadius + AbilityParams.GetBestRecceRadius(a),
             };
         }
+
+        private static int ArmyVisionRadius(AiTurnContext ctx) =>
+            ctx != null && ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;
 
         // =======================================================================================
         //  KNOWN  (honest)
@@ -311,7 +317,7 @@ namespace Game.Ai.V2
                 List<ArmyData> armies = ArmyRegistry.AllForOwner(p)
                     .Where(a => a != null && !a.IsPrison && a.Members.Count > 0)
                     .ToList();
-                var snaps = armies.Select(a => ToArmySnapshot(a, player, isOwn: false)).ToList();
+                var snaps = armies.Select(a => ToArmySnapshot(a, player, isOwn: false, ArmyVisionRadius(ctx))).ToList();
 
                 if (p.IsNeutral)
                 {
@@ -514,6 +520,11 @@ namespace Game.Ai.V2
                 UnknownFrac = total > 0 ? 1f - (float)visited / total : 0f,
                 Frontier = frontier,
                 ExplorableUnknownFrac = total > 0 ? (float)explorable / total : 0f,
+                AllHexes = all,
+                // `all` is already only on-map hexes, so HardBlocked here reduces to the two
+                // scout-facing blocks (neutral on the hex / active scout-danger) — enemy
+                // proximity is not a block, exactly as the frontier scan treats it.
+                ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
             };
         }
 
