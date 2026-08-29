@@ -104,9 +104,16 @@ namespace Game.Ai
             // see EnemySighting.RecceRadius' own comment. 0/0 for an army with no Recce at all.
             public readonly int RecceRadius;
             public readonly int RecceSpotStrength;
+            // The global turn this sighting was last actually (re)observed — carried through from
+            // EnemySighting.SeenTurn (see its own comment). Lets a consumer age a last-known
+            // position: Strategy V2's Recon surveillance planner scores a stale contact by
+            // (currentTurn - SeenTurn). 0 for a sighting recorded before the first OnTurnStarted
+            // (initial placement) — turn numbering starts at 1, so that default reads as "very old".
+            public readonly int SeenTurn;
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
-                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0)
+                IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0,
+                int seenTurn = 0)
             {
                 Hex = hex;
                 Owner = owner;
@@ -118,6 +125,7 @@ namespace Game.Ai
                 HasAntiAir = hasAntiAir;
                 RecceRadius = recceRadius;
                 RecceSpotStrength = recceSpotStrength;
+                SeenTurn = seenTurn;
             }
 
             // Could this remembered army actually roll a stealth-detection challenge against a
@@ -702,7 +710,8 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
+                        sighting.SeenTurn);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -717,7 +726,8 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Owner != null && !sighting.Owner.IsNeutral)
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
+                        sighting.SeenTurn);
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -733,7 +743,8 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
+                        sighting.SeenTurn);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -749,7 +760,8 @@ namespace Game.Ai
             foreach (EnemySighting sighting in sightings.Values)
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
-                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength);
+                        sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
+                        sighting.SeenTurn);
             return null;
         }
 

@@ -33,4 +33,4 @@ tilts the right way. Numbers are first-pass; the harness pins **behaviour**, not
 | 07 | our own `TotalPower` drops hard across two turns | `momentum` well below neutral |
 | 08 | a real threat on a base | `RequiredDefensiveReserve` ≈ contactPower × 1.3; `surplus` collapses |
 | 09 | never seen the enemy (`EnemyKnownStrength` 0) | `relativeEdge` sits at neutral 0.5, not maxed |
-| 10 | only the unreachable map slice left (`UnknownFrac` == `reconUnreachableFloor`) | `exploration` ≈ 0; Recon held up only by `surveillance` |
+| 10 | dark hexes remain but none reachable on foot (`ExplorableUnknownFrac` == 0) | `exploration` ≈ 0; Recon held up only by `surveillance` |

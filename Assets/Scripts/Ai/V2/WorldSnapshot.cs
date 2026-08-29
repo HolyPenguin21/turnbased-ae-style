@@ -103,6 +103,18 @@ namespace Game.Ai.V2
         public float CompositionQuality;    // [0..1] the multiplier's driver, kept for the "why" log
         public int MaxMovement;             // per-turn move budget, for rough ETA
 
+        // ---- OPERATIONAL state (2026-08-29, build-order step 4) ----------------------------
+        // Frozen here so the Recon mission planner / ScoutCostModel can size a mover's cost for
+        // THIS allocation cycle without a fresh live read downstream. Only meaningful for
+        // Self.Armies — an enemy/cheat-read army's activation/movement state is NOT knowable and
+        // must never feed a strategic decision (it is populated from ArmyData all the same, but
+        // treat it as noise for a non-own army).
+        public int ActivationApCost;
+        public int ActivationEnergyCost;   // game rule: non-zero ONLY for a real air army
+        public bool HasActivatedThisTurn;
+        public int CurrentMovement;        // MP left THIS turn (MaxMovement minus what's spent)
+        public bool IsSoloRecce;           // AiArmyRoles.IsSoloRecce — the cheap dedicated scout shape
+
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
     }
@@ -199,10 +211,29 @@ namespace Game.Ai.V2
         public int TotalHexes;
         public int VisitedHexes;
         public int VisibleHexes;
-        public float UnknownFrac;
+        public float UnknownFrac;          // 1 - visited/total — every dark hex, reachable or not
 
-        // STUB until build-order step 4 (the Recon planner fills this). Empty list for now.
-        public IReadOnlyList<HexCoord> Frontier;
+        // Real frontier (build-order step 4). A frontier hex is unvisited, on-map, "safe" (not in
+        // a scout-danger zone, not within AiConfigV2.frontierEnemyAvoidRadius of a known
+        // non-neutral sighting, no known neutral standing on it) and adjacent to REACHABLE visited
+        // ground — visited+on-map+safe hexes flood-connected to at least one own base. Each entry
+        // carries the two facts the Recon planner would otherwise re-scan the map for.
+        public IReadOnlyList<FrontierHexSnapshot> Frontier;
+
+        // Fraction of the WHOLE map (of TotalHexes) that is unvisited, on-map, safe AND sits in a
+        // dark region flood-connected to the frontier — i.e. how much map is still there to be
+        // discovered by walking. Replaces V1's flat reconUnreachableFloor: this is 0 exactly when
+        // Frontier is empty, and a single mountain pass with 40% of the map behind it still reads
+        // ~0.40 (a frontier-hex COUNT could not). Drives ReconExploration directly.
+        public float ExplorableUnknownFrac;
+    }
+
+    // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.
+    public struct FrontierHexSnapshot
+    {
+        public HexCoord Hex;
+        public int FreshNeighbors;            // on-map, unvisited neighbours this hex would open
+        public int DistanceFromNearestBase;  // min hex distance to any Self.BaseHex (Citadel included)
     }
 
     // =======================================================================================
@@ -255,6 +286,14 @@ namespace Game.Ai.V2
         public int RegionRadius;
 
         public float Confidence;           // [0..1]
+
+        // Global turn this contact's position was last honestly observed. For an Exact contact
+        // that is the current turn (age 0); for LastKnown it is the sighting's SeenTurn. Only
+        // meaningful for a Honest contact that carries a Position — a Cheat contact has neither a
+        // position nor an observation history, so it is never a surveillance target.
+        public int LastObservedTurn;
+
+        public int AgeTurns(int currentTurn) => System.Math.Max(0, currentTurn - LastObservedTurn);
     }
 
     public sealed class StrategicAssetSnapshot

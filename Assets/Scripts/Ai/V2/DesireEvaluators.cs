@@ -246,26 +246,36 @@ namespace Game.Ai.V2
 
         // ---------------------------------------------------------------- Recon ----
 
-        // DECAYING contribution. effectiveUnknown discounts the map slice that will never be safely
-        // visited (a flat floor here; build-order step 4's real Frontier replaces it). No turn
-        // term — decay is state-driven.
+        // DECAYING contribution. Driven by ExplorableUnknownFrac — the share of the map that is
+        // still dark AND still reachable on foot (WorldAnalysis floods the frontier outward). The
+        // slice locked behind an enemy citadel or a hostile guard is already excluded from that
+        // number, so no separate floor is needed; it hits 0 exactly when the frontier empties.
+        // No turn term — decay is state-driven. (Build-order step 4 — replaces reconUnreachableFloor.)
         private static float ReconExploration(WorldSnapshot snap)
         {
-            float unknown = snap.MapKnowledge != null ? snap.MapKnowledge.UnknownFrac : 0f;
-            float floor = AiConfigV2.reconUnreachableFloor;
-            float effectiveUnknown = Mathf.Clamp01((unknown - floor) / Mathf.Max(0.0001f, 1f - floor));
-            return Curves.Ramp(effectiveUnknown, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
+            float explorable = snap.MapKnowledge != null ? snap.MapKnowledge.ExplorableUnknownFrac : 0f;
+            return Curves.Ramp(explorable, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
         }
 
         // SUSTAINED contribution. A non-burning baseline (there is always value in re-scanning hex
-        // content, resource sites, keeping vision current) plus a bump for the share of contacts
-        // whose knowledge has gone stale (anything below Exact).
+        // content, resource sites, keeping vision current) plus a bump for the share of TARGETABLE
+        // contacts gone stale. "Targetable" == honest AND positioned: a Cheat Region/Unknown
+        // contact has no hex a Scout could be sent to (type invariant), so counting it here would
+        // raise surveillance desire with no surveil mission able to answer it — that uncertainty
+        // is enemyBlindness's job. Stale == LastKnown (Exact means we see it right now).
         private static float ReconSurveillance(WorldSnapshot snap)
         {
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
             float staleShare = 0f;
             if (contacts != null && contacts.Count > 0)
-                staleShare = contacts.Count(c => c.Knowledge != ContactKnowledge.Exact) / (float)contacts.Count;
+            {
+                var targetable = contacts
+                    .Where(c => c.Source == ContactSource.Honest && c.Position.HasValue)
+                    .ToList();
+                if (targetable.Count > 0)
+                    staleShare = targetable.Count(c => c.Knowledge == ContactKnowledge.LastKnown)
+                        / (float)targetable.Count;
+            }
             return Mathf.Clamp01(AiConfigV2.reconSurveillanceBaseline
                 + AiConfigV2.reconStaleShareWeight * staleShare);
         }

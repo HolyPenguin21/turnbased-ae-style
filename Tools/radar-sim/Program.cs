@@ -48,6 +48,7 @@ namespace RadarSim
         {
             WorldSnapshot s = BaseSnap(turn: 2);
             s.MapKnowledge.UnknownFrac = 0.90f;
+            s.MapKnowledge.ExplorableUnknownFrac = 0.90f;
             s.Self.TotalPower = 3f; s.Self.FieldPower = 0f;
             s.Self.BestStackPotential = 2f; s.Self.TotalMilitaryPotential = 6f;
             // opponents are known to exist (game setup) but we have no honest sighting -> blindness
@@ -82,6 +83,7 @@ namespace RadarSim
         {
             WorldSnapshot s = BaseSnap(turn: 12);
             s.MapKnowledge.UnknownFrac = 0.2f;
+            s.MapKnowledge.ExplorableUnknownFrac = 0.2f;
             s.Self.TotalPower = 30f; s.Self.FieldPower = 25f;
             s.Self.BestStackPotential = 25f; s.Self.TotalMilitaryPotential = 50f;
             s.Self.Armies = new List<ArmySnapshot> { Army(H(0, 0), P("ME"), garrison: false, heroCmd: 4,
@@ -110,6 +112,7 @@ namespace RadarSim
         {
             WorldSnapshot s = BaseSnap(turn: 20);
             s.MapKnowledge.UnknownFrac = 0.16f;               // map basically open -> low exploration
+            s.MapKnowledge.ExplorableUnknownFrac = 0.16f;
             s.Self.TotalPower = 46f; s.Self.FieldPower = 40f;
             s.Self.BestStackPotential = 45f; s.Self.TotalMilitaryPotential = 50f; // ratio 0.9 -> saturated
             s.Economy.EconomicSecurity = 0.8f;
@@ -207,7 +210,10 @@ namespace RadarSim
         private static void Scenario10_MapFullyExplored_ReconFallsToFloor()
         {
             WorldSnapshot s = BaseSnap(turn: 30);
-            s.MapKnowledge.UnknownFrac = AiConfigV2.reconUnreachableFloor; // only the unreachable slice left
+            // Dark hexes remain, but none are reachable on foot (all behind hostile ground) — so
+            // the explorable measure is flat zero even though UnknownFrac is not.
+            s.MapKnowledge.UnknownFrac = 0.15f;
+            s.MapKnowledge.ExplorableUnknownFrac = 0f;
             s.Self.TotalPower = 20f;
 
             RadarAssessment a = Eval(s);
@@ -227,6 +233,7 @@ namespace RadarSim
         {
             WorldSnapshot s = BaseSnap(turn: 10);
             s.MapKnowledge.UnknownFrac = 0.20f;
+            s.MapKnowledge.ExplorableUnknownFrac = 0.20f;
             s.Self.TotalPower = 30f; s.Self.FieldPower = 25f; s.Self.GarrisonPower = 5f;
             s.Self.BestStackPotential = 25f; s.Self.TotalMilitaryPotential = 50f;
             s.Self.Armies = new List<ArmySnapshot>
@@ -281,7 +288,8 @@ namespace RadarSim
                 MapKnowledge = new MapKnowledgeSnapshot
                 {
                     TotalHexes = 200, VisitedHexes = 100, VisibleHexes = 40, UnknownFrac = 0.5f,
-                    Frontier = Array.Empty<HexCoord>(),
+                    ExplorableUnknownFrac = 0.5f,
+                    Frontier = Array.Empty<FrontierHexSnapshot>(),
                 },
                 Economy = new EconomyStanding
                 {

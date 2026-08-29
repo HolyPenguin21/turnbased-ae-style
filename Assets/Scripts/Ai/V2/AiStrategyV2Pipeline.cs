@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -228,22 +229,53 @@ namespace Game.Ai.V2
         public readonly Dictionary<DesireAxis, float> Value = new Dictionary<DesireAxis, float>();
     }
 
+    // Concrete mission kinds. Each maps to a V2 Task builder in TaskExecutor. Was a bare string
+    // until build-order step 4 — typed now, before anything downstream depends on the spelling.
+    public enum MissionKind { Scout, Raid }
+
+    // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Surveil -> a stale honest
+    // contact's last-known hex (Contact non-null). No IMissionTarget hierarchy yet — MissionProposal
+    // still boxes this into Target as object; the cast lives in one place (TaskExecutor / ScoutCostModel).
+    public enum ScoutTargetKind { Explore, Surveil }
+
+    public struct ScoutMissionTarget
+    {
+        public HexCoord FocusHex;
+        public ScoutTargetKind Kind;
+        public EnemyContactSnapshot Contact;   // non-null ONLY for Surveil
+    }
+
     // --- Stage 4 output: a concrete thing the AI could do, with the resources it would need.
     public sealed class MissionProposal
     {
-        public string Kind;                 // "Scout", "Raid", ... (maps to a V2 Task builder)
-        public object Target;               // hex / army / building — typed in later steps
-        public float BaseValue;             // shared 0..100 scale across ALL mission kinds
+        public MissionKind Kind;
+        public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
+        public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
         public readonly AxisContribution Axes = new AxisContribution();
         public MissionRequirements Requirements;
         public CommitmentState Commitment = CommitmentState.None;
+
+        // Debug only — how the winner was chosen (BaseValue * the relevant DesireBreakdown weight).
+        // NOT read by the allocator; it packs on BaseValue + radar slices.
+        public float SelectionScore;
+        public string Explain;
     }
 
-    // Min / Desired / Max resource envelope. Computed with the SAME estimator provisioning will
-    // use (risk 3). Stub — fields land in build-order step 4 / 9.
+    // Resources to fund THIS allocation cycle (NOT a multi-turn projection — a mission that needs
+    // another turn comes back through the allocator next turn as a commitment and re-pays then).
+    // Computed with the SAME estimator provisioning will use (risk 3) — ScoutCostModel here.
+    // Build-order step 4 fills the AP + Energy envelope for Scout; step 9 adds the rest.
     public sealed class MissionRequirements
     {
-        // TODO: AP, H/E/M/T, CombatPower, Army, Hero, Cards, Equipment — each Minimum/Desired/Maximum.
+        public bool MoverKnown;              // false -> sized off a notional cheap mover; Provisioning (step 6) resolves the real one
+
+        public float ApMinimum, ApDesired, ApMaximum;
+        public float EnergyMinimum, EnergyDesired, EnergyMaximum;
+
+        public int EtaTurns;                 // ceil(distance / move budget) — informational, not a resource
+        public float EstimatedDistance;
+
+        // TODO step 9: Human/Materials/Tech Min/Desired/Max; CombatPower; Army; Hero; Cards; Equipment.
     }
 
     public enum CommitmentState { None, InFlight, Completing }
@@ -313,8 +345,21 @@ namespace Game.Ai.V2
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
 
-            // 4. Planners -> mission proposals (+ requirements via the shared estimator).
-            List<MissionProposal> missions = MissionLayer.Propose(snapshot);
+            // 4. Planners -> mission proposals (+ requirements via the shared estimator). Reads the
+            //    DesireBreakdown, never re-derives the analysis behind it (risk of drift).
+            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown);
+            foreach (MissionProposal m in missions)
+            {
+                MissionRequirements r = m.Requirements;
+                AiDebugLog.Write($"[AI][V2]   mission — {m.Kind} baseValue "
+                    + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"sel {m.SelectionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
+                    + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
+                    + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
+                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)} "
+                    + $"| {m.Explain}");
+            }
 
             // 7. In-flight missions as sunk cost, seen by the allocator.
             List<Commitment> commitments = CommitmentLayer.Active(player);
@@ -347,6 +392,9 @@ namespace Game.Ai.V2
                 + $"(missions {missions.Count}, funded {allocation.Funded.Count}, provisioned {provisioned.Count}) ===");
             yield return null;
         }
+
+        private static string Fmt(float? v) =>
+            v.HasValue ? v.Value.ToString("0.0", CultureInfo.InvariantCulture) : "-";
     }
 
     // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own
@@ -358,13 +406,9 @@ namespace Game.Ai.V2
     // with ReconEvaluator / AggressionEvaluator, the AiRadarState cross-turn registry, and the
     // RadarAssessment / DesireBreakdown contract it returns.
 
-    internal static class MissionLayer
-    {
-        // Build-order step 4 (Scout) then step 9 (Raid). Emits MissionProposals only — each with
-        // an AxisContribution vector (risk 1) and MissionRequirements from the shared estimator
-        // (risk 3). No scoring across categories, no registry writes.
-        public static List<MissionProposal> Propose(WorldSnapshot snapshot) => new List<MissionProposal>();
-    }
+    // MissionLayer (build-order step 4) now lives in its own file, ReconMissionPlanner.cs, with
+    // ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3). It reads the DesireBreakdown
+    // and emits up to AiConfigV2.maxConcurrentRecon Scout proposals; Raid is added in step 9.
 
     internal static class CommitmentLayer
     {

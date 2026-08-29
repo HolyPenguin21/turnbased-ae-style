@@ -45,7 +45,7 @@ namespace Game.Ai.V2
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
-            snap.MapKnowledge = BuildMapKnowledge(player, ctx);
+            snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
@@ -69,7 +69,8 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2] {nick} worldscan turn {s.TurnNumber} — "
                 + $"map {P(s.MapKnowledge.UnknownFrac)} dark (visited {s.MapKnowledge.VisitedHexes}/{s.MapKnowledge.TotalHexes}, "
-                + $"visible {s.MapKnowledge.VisibleHexes})");
+                + $"visible {s.MapKnowledge.VisibleHexes}) | frontier {s.MapKnowledge.Frontier.Count} hexes, "
+                + $"explorable {P(s.MapKnowledge.ExplorableUnknownFrac)}");
 
             AiDebugLog.Write($"[AI][V2]   self.power field={F(self.FieldPower)} garrison={F(self.GarrisonPower)} total={F(self.TotalPower)} "
                 + $"| bestStack={F(self.BestStackPotential)} totalPotential={F(self.TotalMilitaryPotential)} "
@@ -240,6 +241,13 @@ namespace Game.Ai.V2
                 CompositionQuality = AiPower.CompositionQualityOf(a.Members),
                 MaxMovement = a.MaxMovement,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
+
+                // Operational fields — see ArmySnapshot's own comment: only trustworthy for isOwn.
+                ActivationApCost = a.ActivationApCost,
+                ActivationEnergyCost = a.ActivationEnergyCost,
+                HasActivatedThisTurn = a.HasActivatedThisTurn,
+                CurrentMovement = a.CurrentMovement,
+                IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
             };
         }
 
@@ -351,22 +359,133 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  MAP KNOWLEDGE
         // =======================================================================================
-        private static MapKnowledgeSnapshot BuildMapKnowledge(PlayerSetupData player, AiTurnContext ctx)
+        // Build-order step 4. A real frontier and a real "explorable dark region" measure, both
+        // from one pass of BFS over the map:
+        //   1. REACHABLE VISITED GROUND — visited, on-map, safe hexes flood-connected to an own
+        //      base (bases seed the flood unconditionally). "Safe" = not a cooling scout-danger
+        //      zone, no known neutral on the hex, not within frontierEnemyAvoidRadius of a known
+        //      non-neutral sighting. This is the ground a scout can actually stand on today.
+        //   2. FRONTIER — unvisited safe on-map hexes touching that reachable ground, trimmed to a
+        //      wave band around the leading edge (nearest unvisited hex's own min-base distance +
+        //      frontierWaveBand) so coverage grows as rings around every base, not a dash across
+        //      the map. Each frontier hex carries FreshNeighbors + DistanceFromNearestBase.
+        //   3. ExplorableUnknownFrac — flood the dark side (unvisited safe on-map) outward from
+        //      the frontier; its size / TotalHexes is how much map is still discoverable on foot.
+        //      0 exactly when the frontier is empty. Replaces V1's flat reconUnreachableFloor.
+        private static MapKnowledgeSnapshot BuildMapKnowledge(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
-            int total = 0, visited = 0, visible = 0;
-            foreach (HexCoord c in ctx.Map.AllCoords)
+            HexMap map = ctx.Map;
+            var all = new List<HexCoord>();
+            int visited = 0, visible = 0;
+            foreach (HexCoord c in map.AllCoords)
             {
-                total++;
+                all.Add(c);
                 if (VisionSystem.IsVisited(player, c)) visited++;
                 if (VisionSystem.IsVisible(player, c)) visible++;
             }
+            int total = all.Count;
+
+            IReadOnlyList<HexCoord> baseHexes = snap.Self.BaseHexes;
+            var neutralHexes = new HashSet<HexCoord>(
+                (snap.Known.NeutralSightings ?? new List<AiMapMemory.KnownEnemySighting>()).Select(s => s.Hex));
+            var nonNeutralHexes = (snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>())
+                .Select(s => s.Hex).ToList();
+            int avoid = AiConfigV2.frontierEnemyAvoidRadius;
+
+            bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
+            bool Safe(HexCoord h)
+            {
+                if (AiMapMemory.IsScoutDangerous(player, h)) return false;
+                if (neutralHexes.Contains(h)) return false;
+                foreach (HexCoord e in nonNeutralHexes)
+                    if (HexGridMath.Distance(e, h) <= avoid) return false;
+                return true;
+            }
+            int NearestBaseDist(HexCoord h) =>
+                baseHexes.Count > 0 ? baseHexes.Min(b => HexGridMath.Distance(b, h)) : 0;
+
+            // ---- 1. reachable visited ground (BFS from the bases) ----
+            var reachableVisited = new HashSet<HexCoord>();
+            var queue = new Queue<HexCoord>();
+            foreach (HexCoord b in baseHexes)
+                if (OnMap(b) && reachableVisited.Add(b))
+                    queue.Enqueue(b);
+            while (queue.Count > 0)
+            {
+                HexCoord cur = queue.Dequeue();
+                foreach (HexCoord n in HexGridMath.Neighbors(cur))
+                {
+                    if (reachableVisited.Contains(n) || !OnMap(n)) continue;
+                    if (!VisionSystem.IsVisited(player, n) || !Safe(n)) continue;
+                    reachableVisited.Add(n);
+                    queue.Enqueue(n);
+                }
+            }
+
+            // ---- leading edge: nearest unvisited hex's own min-base distance ----
+            int nearestUnvisitedBaseDist = int.MaxValue;
+            foreach (HexCoord c in all)
+                if (!VisionSystem.IsVisited(player, c))
+                    nearestUnvisitedBaseDist = System.Math.Min(nearestUnvisitedBaseDist, NearestBaseDist(c));
+            int waveBandLimit = nearestUnvisitedBaseDist == int.MaxValue
+                ? -1
+                : nearestUnvisitedBaseDist + AiConfigV2.frontierWaveBand;
+
+            // ---- 2. frontier ----
+            var frontier = new List<FrontierHexSnapshot>();
+            var frontierSet = new HashSet<HexCoord>();
+            if (waveBandLimit >= 0)
+            {
+                foreach (HexCoord c in all)
+                {
+                    if (VisionSystem.IsVisited(player, c) || !Safe(c)) continue;
+                    if (NearestBaseDist(c) > waveBandLimit) continue;
+                    bool touchesReachable = false;
+                    int fresh = 0;
+                    foreach (HexCoord n in HexGridMath.Neighbors(c))
+                    {
+                        if (reachableVisited.Contains(n)) touchesReachable = true;
+                        if (OnMap(n) && !VisionSystem.IsVisited(player, n)) fresh++;
+                    }
+                    if (!touchesReachable) continue;
+                    frontier.Add(new FrontierHexSnapshot
+                    {
+                        Hex = c,
+                        FreshNeighbors = fresh,
+                        DistanceFromNearestBase = NearestBaseDist(c),
+                    });
+                    frontierSet.Add(c);
+                }
+            }
+
+            // ---- 3. explorable dark region (flood from the frontier over unvisited safe ground) ----
+            int explorable = 0;
+            if (frontierSet.Count > 0)
+            {
+                var darkSeen = new HashSet<HexCoord>(frontierSet);
+                var darkQueue = new Queue<HexCoord>(frontierSet);
+                while (darkQueue.Count > 0)
+                {
+                    HexCoord cur = darkQueue.Dequeue();
+                    explorable++;
+                    foreach (HexCoord n in HexGridMath.Neighbors(cur))
+                    {
+                        if (darkSeen.Contains(n) || !OnMap(n)) continue;
+                        if (VisionSystem.IsVisited(player, n) || !Safe(n)) continue;
+                        darkSeen.Add(n);
+                        darkQueue.Enqueue(n);
+                    }
+                }
+            }
+
             return new MapKnowledgeSnapshot
             {
                 TotalHexes = total,
                 VisitedHexes = visited,
                 VisibleHexes = visible,
                 UnknownFrac = total > 0 ? 1f - (float)visited / total : 0f,
-                Frontier = System.Array.Empty<HexCoord>(), // STUB — build-order step 4
+                Frontier = frontier,
+                ExplorableUnknownFrac = total > 0 ? (float)explorable / total : 0f,
             };
         }
 
@@ -466,6 +585,7 @@ namespace Game.Ai.V2
                     Source = ContactSource.Honest,
                     Position = s.Hex,
                     Confidence = visibleNow ? AiConfigV2.threatConfidenceExact : AiConfigV2.threatConfidenceLastKnown,
+                    LastObservedTurn = visibleNow ? snap.TurnNumber : s.SeenTurn,
                 });
             }
 

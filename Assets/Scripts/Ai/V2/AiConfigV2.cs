@@ -123,17 +123,19 @@ namespace Game.Ai.V2
         // =======================================================================================
 
         // ---- Recon (single axis, three named contributions) --------------------------------
-        //  exploration  — DECAYS as the reachable map opens. effectiveUnknown discounts the slice
-        //                 that will never be safely visited (behind an enemy citadel, hostile-
-        //                 guarded). A flat floor here is a crude stand-in; build-order step 4's
-        //                 real Frontier replaces it. NO turn-number term (project owner's call —
-        //                 decay is state-driven, not clock-driven).
+        //  exploration  — DECAYS as the reachable map opens. Driven by
+        //                 MapKnowledge.ExplorableUnknownFrac (build-order step 4's real frontier
+        //                 flood — the dark map still reachable on foot), NOT raw UnknownFrac: the
+        //                 slice behind an enemy citadel / hostile guard simply isn't in that
+        //                 number. 0 exactly when the frontier is empty. NO turn-number term
+        //                 (project owner's call — decay is state-driven, not clock-driven).
         //  surveillance — SUSTAINED all game: a non-burning baseline (re-scan hex content, keep
-        //                 resource sites / vision current) plus a bump for contacts gone stale.
+        //                 resource sites / vision current) plus a bump for TARGETABLE contacts
+        //                 (honest + positioned) gone stale. Cheat uncertainty is enemyBlindness's
+        //                 job, never this — the three signals must not overlap.
         //  enemyBlindness— we KNOW an opponent is fielded (honest opponent list) but have zero
         //                 honest sightings of it. Magnitude only; a with-error direction is the
         //                 step-4 planner's job.
-        public const float reconUnreachableFloor = 0.15f;
         public const float reconExploreRampLo = 0.03f;
         public const float reconExploreRampHi = 0.60f;
         public const float reconSurveillanceBaseline = 0.18f;
@@ -209,5 +211,46 @@ namespace Game.Ai.V2
         public const float opportunityEtaWeight = 0.40f;
         public const float opportunityCostWeight = 0.40f;
         public const float opportunityScoreNorm = 0.50f;          // raw product that maps to OpportunityScore 1
+
+        // =======================================================================================
+        //  RECON MISSION PLANNER  (Strategy V2 build-order step 4)
+        //  MissionLayer turns one WorldSnapshot + the Recon DesireBreakdown into up to
+        //  maxConcurrentRecon Scout proposals. Two candidate kinds, one shared 0..100 scale:
+        //    Explore — a MapKnowledge.Frontier hex. Value from info gain + how central it is.
+        //    Surveil — a stale honest contact's last-known hex. Value from staleness x the
+        //              ThreatModel severity already attached to that contact (Recon reuses the
+        //              same threat picture Defence will).
+        //  BaseValue is the mission's INTRINSIC merit and is what goes in MissionProposal.BaseValue.
+        //  The breakdown weights (ReconExploration / ReconSurveillance) are applied ONLY to pick
+        //  the winners (SelectionScore = BaseValue * that weight) — never folded into BaseValue,
+        //  or Recon's strategic pull would be counted twice (once in the radar, once here).
+        // =======================================================================================
+        public const int maxConcurrentRecon = 2;   // parity with V1 AiConfig.maxConcurrentVisitHex
+        // Two picked Scout focus hexes must be at least this far apart — adjacent hexes are the
+        // same frontier, not two missions worth funding separately.
+        public const int scoutTargetMinSeparation = 2;
+
+        // Frontier shape (WorldAnalysis.BuildMapKnowledge).
+        public const int frontierWaveBand = 2;          // ring width past the leading edge (V1 visitRingBand kin)
+        public const int frontierEnemyAvoidRadius = 3;  // drop frontier/dark hexes this close to a known non-neutral (V1 scoutFleeRadius kin)
+
+        // Scout BaseValue = Lerp(min, max, quality); quality = Σ weighted terms / Σ weights, each term [0..1].
+        public const float scoutBaseValueMin = 15f;
+        public const float scoutBaseValueMax = 65f;
+        public const float scoutInfoGainWeight = 0.45f;          // Explore only (Surveil passes infoGain 0)
+        public const float scoutStrategicProximityWeight = 0.25f; // both — closeness to our own bases
+        public const float scoutThreatWeight = 0.45f;            // Surveil only (Explore passes threatRelevance 0)
+        public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
+        public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1
+        public const int scoutProximityRampHi = 12;              // at/over this -> proximity 0
+        public const int scoutSurveilStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
+        public const int scoutSurveilStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
+
+        // ScoutCostModel — resources to fund THIS allocation cycle, not a multi-turn projection.
+        // A ground Scout spends AP to activate and MOVEMENT (not AP) to travel; ActivationEnergy
+        // is a game rule (non-zero only for a real air army, so 0 here). Stealth is a separate
+        // opt-in 1 AP, only when the route carries real detection risk.
+        public const int scoutNotionalActivationAp = 1;  // used when no concrete mover exists yet (Provisioning, step 6, resolves it)
+        public const int scoutOptionalStealthAp = 1;
     }
 }
