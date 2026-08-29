@@ -48,10 +48,11 @@ namespace Game.Ai.V2
         EnemyDiscovered,
         NeutralDiscovered,
         BattleStarted,
-        HexEventStarted,   // reserved — MoveArmyRoutine already settles events before it returns in 6a
+        HexEventStarted,          // a clean Hex Event resolved on the step (explored or skipped) — via AiMoveExecutionTrace
         MoverLost,
         TargetInvalidated,
         MoveRejected,
+        RequiredStealthUnavailable, // a stealth-Required mission's mover could not enter stealth before its first move
     }
 
     public sealed class ExecutionResult
@@ -101,7 +102,7 @@ namespace Game.Ai.V2
                 if (pm.StealthApReserved && !TryEnterRequiredStealth(root, army))
                 {
                     result.FinalHex = army.Hex;
-                    result.StopReason = ExecutionStopReason.MoverLost;
+                    result.StopReason = ExecutionStopReason.RequiredStealthUnavailable;
                     result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                     results.Add(result);
                     AiDebugLog.Write($"[AI][V2] exec {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter "
@@ -154,23 +155,27 @@ namespace Game.Ai.V2
                     var trace = new AiMoveExecutionTrace();
                     yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
+                    // (1) Record the physical move FIRST, before classifying why we stop. The
+                    //     mover may have died in a fight this step — trace.EndHex was captured on
+                    //     arrival, before the battle, so the step still counts and FinalHex is
+                    //     honest even when Resolve() now returns null.
                     army = Resolve(player, pm.MoverArmyId);
+                    HexCoord endHex = army != null ? army.Hex : trace.EndHex;
+                    bool moved = !endHex.Equals(before);
+                    if (moved)
+                        result.StepsMoved++;
+                    result.FinalHex = endHex;
+
+                    // (2) Now the stop reason, in priority order.
                     if (army == null) { stop = ExecutionStopReason.MoverLost; break; }
-                    result.FinalHex = army.Hex;
-
-                    // A fight this step ends the mission for the turn — read it from the trace, NOT
-                    // from IsBattleActive (MoveArmyRoutine only returns once that has gone false
-                    // again, and an AI mover's dead opponent + refreshed memory can hide the
-                    // contact from the sighting diff below).
                     if (trace.BattleOccurred) { stop = ExecutionStopReason.BattleStarted; break; }
-
-                    if (army.Hex.Equals(before))
+                    if (trace.HexEventOccurred) { stop = ExecutionStopReason.HexEventStarted; break; }
+                    if (!moved)
                     {
                         // the order made zero progress this instant — never re-issue the same one
                         stop = ExecutionStopReason.MoveRejected;
                         break;
                     }
-                    result.StepsMoved++;
 
                     // A step that revealed a previously-unknown army ends the turn — a non-neutral
                     // one outranks a neutral one. Both are PRODUCTIVE stops (recon delivered).

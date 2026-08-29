@@ -179,8 +179,9 @@ namespace Game.Ai
     {
         public MoveOrderResult MoveResult;   // exactly what IssueMoveOrder returned
         public bool BattleOccurred;          // a fight was open (or the post-move safety net opened one) on this step
+        public bool HexEventOccurred;        // a clean Hex Event resolved (explored or skipped) during this step
         public bool ReachedDestination;      // the mover ended on decision.TargetHex
-        public HexCoord EndHex;              // where the mover actually ended
+        public HexCoord EndHex;              // where the mover PHYSICALLY stopped — captured before any battle, survives the mover's death
     }
 
     // Level 0 of the AI architecture (see AI_ARCHITECTURE.html section 01 and the project owner's
@@ -1311,6 +1312,20 @@ namespace Game.Ai
             if (trace != null)
                 trace.MoveResult = moveResult;
 
+            // Hex Event seam (V2 TaskExecutor only — trace non-null). eventStopClaimed lives deep
+            // inside IssueMoveOrder's own move coroutine and BeginCleanHexEvent resolves an AI
+            // mover's event synchronously with no popup, so by the time control returns here every
+            // sign of it can be gone. Listen for the registry's own skip/consume signals for the
+            // duration of the move instead. Unsubscribed right after the battle wait below.
+            bool hexEventObserved = false;
+            System.Action<HexCoord> onHexEvent = null;
+            if (trace != null)
+            {
+                onHexEvent = _ => hexEventObserved = true;
+                Game.Map.HexEventRegistry.EventSkipped += onHexEvent;
+                Game.Map.HexEventRegistry.EventConsumed += onHexEvent;
+            }
+
             // The launch-Energy reservation AiAviationSupport.LaunchRoutine placed on this task
             // (2026-08-26 P1 fix) only ever needs to survive until this exact moment — IssueMoveOrder
             // just spent the REAL ActivationEnergyCost from root (or found it already spent, army
@@ -1323,6 +1338,14 @@ namespace Game.Ai
 
             if (army.Controller != null)
                 yield return new WaitUntil(() => !army.Controller.IsMoving);
+
+            // Physical arrival — captured NOW, before any battle below can destroy the mover, so a
+            // caller can still tell where the scout got to (and count the step) even if it dies.
+            if (trace != null)
+            {
+                trace.EndHex = army.Hex;
+                trace.ReachedDestination = army.Hex.Equals(destination);
+            }
 
             // Post-move safety net (2026-08-24 P0 fix, project owner's own report — a real
             // sighting on (6,3): a contact left unresolved by onComplete's own TryBeginBattleAt
@@ -1366,6 +1389,14 @@ namespace Game.Ai
             if (ctx.HexSelection != null)
                 yield return new WaitUntil(() => !ctx.HexSelection.IsBattleActive);
 
+            if (onHexEvent != null)
+            {
+                Game.Map.HexEventRegistry.EventSkipped -= onHexEvent;
+                Game.Map.HexEventRegistry.EventConsumed -= onHexEvent;
+                if (trace != null)
+                    trace.HexEventOccurred = hexEventObserved;
+            }
+
             if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
                 ctx.ArmyViewerModal.Hide();
 
@@ -1387,12 +1418,6 @@ namespace Game.Ai
             // resets the clock, a no-op order (moveResult != success, army.Hex == before) never does.
             if (!army.Hex.Equals(before) && decision.Task != null && decision.Task.Kind == AiTaskKind.VisitHex)
                 decision.Task.VisitLastProgressTurn = ctx.TurnNumber;
-
-            if (trace != null)
-            {
-                trace.EndHex = army.Hex;
-                trace.ReachedDestination = army.Hex.Equals(destination);
-            }
 
             yield return WaitStep(ctx);
         }
