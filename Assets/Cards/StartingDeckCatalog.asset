@@ -102,51 +102,47 @@ MonoBehaviour:
     - cardKey: Iron Concord/Lira Sable
       count: 1
     - cardKey: Iron Concord/Scout
-      count: 0
+      count: 1
     - cardKey: Iron Concord/RC Vehicle
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Scrapper
-      count: 0
+      count: 1
     - cardKey: Iron Concord/AA Crawler
-      count: 0
+      count: 2
     - cardKey: Iron Concord/Light Infantry
-      count: 3
+      count: 2
     - cardKey: Iron Concord/Iron guards
       count: 0
     - cardKey: Iron Concord/Medium infantry
       count: 0
     - cardKey: Iron Concord/Flamer
-      count: 0
-    - cardKey: Iron Concord/AT Infantry
       count: 2
+    - cardKey: Iron Concord/AT Infantry
+      count: 1
     - cardKey: Iron Concord/Heavy Infantry
-      count: 0
+      count: 1
     - cardKey: Iron Concord/BS Melee
-      count: 0
+      count: 1
     - cardKey: Iron Concord/BS Ranged
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Light Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Medium Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Heavy Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Artillery Cannon
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Artillery Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Pulse Cannon
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Watcher Drone
-      count: 0
+      count: 2
     - cardKey: Iron Concord/Wasp
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Rusty Vulture
-      count: 0
-    - cardKey: Neutral/it_Flamer
-      count: 0
-    - cardKey: Neutral/it_Plasma Gun
-      count: 0
+      count: 2
     - cardKey: Neutral/b_Lab
       count: 1
     - cardKey: Neutral/b_Factory

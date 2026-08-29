@@ -17,12 +17,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   researchCards:
-  - cardKey: Neutral/it_Plasma Gun
+  - cardKey: Neutral/it Plasma Gun
     factionRestriction: 2
   productionCards:
-  - cardKey: Neutral/it_Flamer
-    factionRestriction: 2
-  - cardKey: Neutral/it Plasma Gun
+  - cardKey: Neutral/it Flamer
     factionRestriction: 2
   - cardKey: Neutral/it AT Launcher
     factionRestriction: 2
@@ -39,4 +37,6 @@ MonoBehaviour:
   - cardKey: Neutral/it Nuclear Engine
     factionRestriction: 2
   - cardKey: Neutral/it Plasma Cannon
+    factionRestriction: 2
+  - cardKey: Neutral/it Plasma Gun
     factionRestriction: 2

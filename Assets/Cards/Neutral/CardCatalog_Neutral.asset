@@ -670,7 +670,7 @@ MonoBehaviour:
       tech: 4
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 4
     attack: 0
@@ -720,7 +720,7 @@ MonoBehaviour:
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 3
     attack: 0
@@ -768,7 +768,7 @@ MonoBehaviour:
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 3
     attack: 0
@@ -817,7 +817,7 @@ MonoBehaviour:
       tech: 1
     requiredBuildingAbility: Barracks
     moveMax: 0
-    activationApCost: 0
+    activationApCost: 1
     commandRating: 0
     fate: 4
     attack: 0
