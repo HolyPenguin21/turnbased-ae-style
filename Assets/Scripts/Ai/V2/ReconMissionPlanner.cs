@@ -125,10 +125,12 @@ namespace Game.Ai.V2
             return proposals;
         }
 
-        // Deterministic tie-break for candidate ranking: (kind, focus hex). Keeps a slot pick from
-        // depending on LINQ's input order (which for incumbents is registry iteration order).
-        private static (int, int, int) CandidateKey(ScoutCandidate c) =>
-            ((int)c.Target.Kind, c.Target.FocusHex.Q, c.Target.FocusHex.R);
+        // Deterministic tie-break for candidate ranking — the SAME strategic identity the intent
+        // registry and the allocator use (Surveil keyed by tracked ArmyId, so two Surveils on one
+        // hex don't collapse). Keeps a slot pick from depending on LINQ's input order (which for
+        // incumbents is registry iteration order, for Surveil is Threat.Contacts order).
+        private static MissionIntentKey CandidateKey(ScoutCandidate c) =>
+            MissionIntentKey.ForScoutTarget(c.Target);
 
         // Identical hex is never allowed. Two Explores must be spread out. An Explore and a
         // Surveil (or two Surveils) on nearby-but-different hexes are genuinely different jobs.

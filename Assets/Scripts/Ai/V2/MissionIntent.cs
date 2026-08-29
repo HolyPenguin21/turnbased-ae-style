@@ -75,13 +75,17 @@ namespace Game.Ai.V2
         public static MissionIntentKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
-                return t.Kind == ScoutTargetKind.Surveil
-                    ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
-                        t.Contact?.Army?.ArmyId ?? 0, 0, 0)
-                    : new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0,
-                        t.FocusHex.Q, t.FocusHex.R);
+                return ForScoutTarget(t);
             return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
+
+        // Same strategic identity straight off a ScoutMissionTarget — used to give the mission
+        // planner's candidate ranking a stable tie-break WITHOUT inventing a weaker key (two
+        // Surveils on one hex are Surveil #42 vs Surveil #77, never "the same candidate").
+        public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t) =>
+            t.Kind == ScoutTargetKind.Surveil
+                ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, t.Contact?.Army?.ArmyId ?? 0, 0, 0)
+                : new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0, t.FocusHex.Q, t.FocusHex.R);
 
         public static MissionIntentKey For(MissionIntent intent)
         {
