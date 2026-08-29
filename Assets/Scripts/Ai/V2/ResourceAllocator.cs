@@ -164,6 +164,14 @@ namespace Game.Ai.V2
         public ResourceVector RemainderGenerated;
         public ResourceVector RemainderSpent;
         public ResourceVector Unused;
+        public ResourceVector LockedClaim;   // Σ actual claims of missions provisioned in an earlier pass this turn
+
+        // Two DISTINCT overdraft measures:
+        //  AxisOverdraft  — Σ of the amounts individual slices were driven negative (a commitment /
+        //                   locked claim outrunning its OWN axis budget). Expected under many-to-many.
+        //  GlobalOverdraft— max(0, total AP actually committed − the whole sliceable pool). The real
+        //                   "spent more than we have" alarm; ~0 unless commitments exceed the pool.
+        public ResourceVector AxisOverdraft;
         public ResourceVector GlobalOverdraft;
         public int PassNumber;
     }
@@ -230,6 +238,12 @@ namespace Game.Ai.V2
         private readonly AiAllocatorState _state;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
+        // Missions physically provisioned in an earlier pass THIS turn -> the AP they actually
+        // claimed. A re-pack subtracts these from the pool up front (already-spent AP the snapshot
+        // does not reflect) and drops the mission from re-funding, so work that is done never gets
+        // a re-derived Tentative.
+        private readonly Dictionary<StableMissionKey, ResourceVector> _lockedClaims =
+            new Dictionary<StableMissionKey, ResourceVector>();
         private string _lastFingerprint;
 
         public int PassCount { get; private set; }
@@ -260,6 +274,16 @@ namespace Game.Ai.V2
                 _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + AiConfigV2.allocatorRejectCooldownTurns);
         }
 
+        // Step 6 calls this after a real atomic provisioning success — locks in the AP the
+        // ProvisioningManager actually claimed so a later re-pack treats it as already-spent
+        // instead of recomputing a fresh Tentative for work that is done.
+        public void RegisterProvisionSuccess(MissionProposal mission, ResourceVector actualClaim)
+        {
+            if (mission == null)
+                return;
+            _lockedClaims[StableMissionKey.For(mission)] = actualClaim;
+        }
+
         public TentativeAllocation Pack()
         {
             HasNewFailures = false;
@@ -269,12 +293,16 @@ namespace Game.Ai.V2
 
             var alloc = new TentativeAllocation { PassNumber = PassCount };
 
-            // 1. Pool = snapshot AP minus the Manager reserve.
+            // 1. Pool = snapshot AP, minus the Manager reserve, minus AP already physically claimed
+            //    by missions provisioned in an earlier pass this turn (the snapshot is turn-start
+            //    and does not reflect that spend; the locked claims do).
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
             float reserve = Mathf.Max(0f, AiConfigV2.allocatorManagerApReserve);
-            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
+            float lockedTotal = _lockedClaims.Values.Sum(v => v.Ap);
+            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve - lockedTotal));
             alloc.InitialPool = pool;
             alloc.ManagerReserve = new ResourceVector(reserve);
+            alloc.LockedClaim = new ResourceVector(lockedTotal);
 
             // 2. Radar cuts the pool into per-axis slices. Radar has no role in mission ordering.
             var slices = new Dictionary<DesireAxis, BudgetSlice>();
@@ -290,6 +318,12 @@ namespace Game.Ai.V2
             int priority = 0;
 
             // 3. Commitments first. Sticky/pre-paid: they can drive slices negative.
+            //    SEAM DEFECT — fix WITH build-order step 7. A commitment is funded here BEFORE the
+            //    _rejectedThisTurn / cooldown gates the fresh missions get, so a failed commitment
+            //    would be re-funded (and re-draw its slices) on the next Pack — the locked-budget
+            //    trap V2 must prevent. Harmless only while CommitmentLayer.Active returns empty.
+            //    Step 7 must gate this loop on _rejectedThisTurn and give a failed commitment a
+            //    release / cancellation path.
             foreach (Commitment c in _commitments)
             {
                 MissionProposal m = c?.Mission;
@@ -328,7 +362,7 @@ namespace Game.Ai.V2
             // 4. Fresh missions — BaseValue desc + stable key. Strict admission is atomic:
             //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE.
             var ordered = _missions
-                .Where(m => m != null)
+                .Where(m => m != null && !_lockedClaims.ContainsKey(StableMissionKey.For(m)))
                 .OrderByDescending(m => m.BaseValue)
                 .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
                 .ToList();
@@ -455,13 +489,20 @@ namespace Game.Ai.V2
             }
             alloc.Unused = new ResourceVector(Mathf.Max(0f, remainder));
 
-            // 6. Commitment overdraft diagnostic. Positive slices have already moved to remainder;
-            //    any negative slice is therefore sticky commitment debt against the current radar.
-            float overdraft = 0f;
+            // 6. Overdraft diagnostics — two distinct measures.
+            //    AxisOverdraft: positive slices have already moved to remainder, so any negative
+            //    slice is one axis's budget overrun (sticky commitment / locked debt against the
+            //    current radar) — expected under many-to-many, benign.
+            //    GlobalOverdraft: total AP actually committed beyond the whole sliceable pool — the
+            //    real alarm; ~0 unless commitments outright exceed the pool.
+            float axisOverdraft = 0f;
             foreach (BudgetSlice s in alloc.Slices)
                 if (s.Remaining.Ap < 0f)
-                    overdraft += -s.Remaining.Ap;
-            alloc.GlobalOverdraft = new ResourceVector(overdraft);
+                    axisOverdraft += -s.Remaining.Ap;
+            alloc.AxisOverdraft = new ResourceVector(axisOverdraft);
+
+            float committed = alloc.Funded.Sum(fe => fe.Tentative.Ap);
+            alloc.GlobalOverdraft = new ResourceVector(Mathf.Max(0f, committed - pool.Ap));
 
             for (int i = 0; i < alloc.Funded.Count; i++)
                 alloc.Funded[i].Priority = i;
@@ -554,7 +595,8 @@ namespace Game.Ai.V2
                 $"{DesireAxes.Abbrev(s.Axis)} {s.Weight.ToString("0.00", CultureInfo.InvariantCulture)}"
                 + $"→{LogNum(s.Initial.Ap)} left {LogNum(s.Remaining.Ap)}"));
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)} "
-                + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap)} − mgr {LogNum(a.ManagerReserve.Ap)}) | {slices}");
+                + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap + a.LockedClaim.Ap)} "
+                + $"− mgr {LogNum(a.ManagerReserve.Ap)} − locked {LogNum(a.LockedClaim.Ap)}) | {slices}");
 
             foreach (FundedEntry fe in a.Funded)
             {
@@ -582,7 +624,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — funded {a.Funded.Count} "
                 + $"({a.Funded.Count(f => f.IsCommitment)} commit), deferred {a.Deferred.Count}, "
                 + $"strictAp {LogNum(a.StrictFunded.Ap)}, commitmentAp {LogNum(a.CommitmentDraw.Ap)}, "
-                + $"overdraft {LogNum(a.GlobalOverdraft.Ap)}");
+                + $"axisOverdraft {LogNum(a.AxisOverdraft.Ap)}, globalOverdraft {LogNum(a.GlobalOverdraft.Ap)}");
         }
     }
 }

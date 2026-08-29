@@ -307,7 +307,12 @@ namespace Game.Ai.V2
     {
         public MissionProposal Mission;
         public bool Success;
-        // On success: allocated AP + H/E/M/T, reserved army/units/hero/cards/equipment, assembly plan.
+
+        // On success: the AP actually claimed (may sit below the granted envelope if the integer
+        // claim rounded down). AllocationSession.RegisterProvisionSuccess locks THIS in so a later
+        // re-pack treats it as already-spent. Step 9 adds the reserved army/units/hero/cards/
+        // equipment + H/E/M/T + assembly plan alongside it.
+        public float ClaimedAp;
 
         // On failure: WHY, so the allocator's reject state machine can tell a transient AP shortfall
         // (retry the rest of the turn) from a structural dead end (cross-turn cooldown). Filled by
@@ -378,11 +383,14 @@ namespace Game.Ai.V2
             var provisioned = new List<ProvisioningResult>();
             foreach (FundedEntry fe in allocation.Funded)
             {
-                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe.Mission);
+                ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, fe);
                 if (result != null && result.Success)
                     provisioned.Add(result);
-                // Step 6: on a real FAIL, call session.RegisterProvisionFailure(result.FailureKind)
-                // and re-Pack while PassCount < maxReallocIterations && !Converged.
+                // Step 6: feed the outcome back, then bounded re-Pack —
+                //   success -> session.RegisterProvisionSuccess(fe.Mission, new ResourceVector(result.ClaimedAp))
+                //   fail    -> session.RegisterProvisionFailure(fe.Mission, result.FailureKind)
+                //   while (session.HasNewFailures && session.PassCount < AiConfigV2.maxReallocIterations
+                //          && !session.Converged) { allocation = session.Pack(); /* provision new Funded */ }
             }
 
             // Tasks -> execution on the map.
@@ -436,8 +444,13 @@ namespace Game.Ai.V2
         // ONE entry, ONE exit, ATOMIC: feasibility validation uses the same estimator as
         // MissionRequirements (risk 3); on success reserve/claim/spend all-or-nothing; on failure
         // change nothing. No partial-commit state may exist between the two doors.
+        //
+        // Takes the whole FundedEntry, not just the mission: `funded.Tentative` is the AP envelope
+        // the allocator granted (with `funded.PerAxisDraw` / `RemainderTopUp` / `Stage` saying how
+        // it was made up), so provisioning knows whether the mission got Min, Desired or a partial
+        // and can hold that budget instead of re-deriving a cost.
         public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, MissionProposal mission) => null;
+            AiTurnContext ctx, FundedEntry funded) => null;
     }
 
     internal static class TaskExecutor
