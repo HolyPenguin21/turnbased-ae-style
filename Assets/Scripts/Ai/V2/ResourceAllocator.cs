@@ -238,13 +238,37 @@ namespace Game.Ai.V2
         private readonly AiAllocatorState _state;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
-        // Missions physically provisioned in an earlier pass THIS turn -> the AP they actually
-        // claimed. A re-pack subtracts these from the pool up front (already-spent AP the snapshot
-        // does not reflect) and drops the mission from re-funding, so work that is done never gets
-        // a re-derived Tentative.
-        private readonly Dictionary<StableMissionKey, ResourceVector> _lockedClaims =
-            new Dictionary<StableMissionKey, ResourceVector>();
+        // Missions physically provisioned in an earlier pass THIS turn, with their FUNDING
+        // PROVENANCE (which axis slices the strict part drew from + the fungible remainder part),
+        // scaled to what provisioning actually claimed. A re-pack rebuilds the original radar
+        // slices, subtracts each locked mission's strict per-axis draw from the matching slice, and
+        // removes its remainder part from the fungible pool — so an axis can never re-slice a
+        // shrunken pool and drift past the radar budget it was given for the cycle. The mission
+        // itself is dropped from re-funding.
+        private readonly Dictionary<StableMissionKey, LockedAllocation> _lockedClaims =
+            new Dictionary<StableMissionKey, LockedAllocation>();
         private string _lastFingerprint;
+
+        private readonly struct LockedAllocation
+        {
+            public readonly Dictionary<DesireAxis, float> StrictDraw; // per-axis, as granted
+            public readonly float RemainderAp;                        // fungible top-up, as granted
+            public readonly float GrantedAp;                          // Σ StrictDraw + RemainderAp (== FundedEntry.Tentative)
+            public readonly float ClaimedAp;                          // what provisioning actually took
+
+            public LockedAllocation(Dictionary<DesireAxis, float> strictDraw, float remainderAp,
+                float grantedAp, float claimedAp)
+            {
+                StrictDraw = strictDraw;
+                RemainderAp = remainderAp;
+                GrantedAp = grantedAp;
+                ClaimedAp = claimedAp;
+            }
+
+            // Provisioning may claim below the granted envelope (integer rounding); scale the
+            // provenance so slice + remainder bookkeeping matches what was really spent.
+            public float Scale => GrantedAp > 1e-6f ? Mathf.Clamp01(ClaimedAp / GrantedAp) : 0f;
+        }
 
         public int PassCount { get; private set; }
         public bool HasNewFailures { get; private set; }
@@ -274,14 +298,19 @@ namespace Game.Ai.V2
                 _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + AiConfigV2.allocatorRejectCooldownTurns);
         }
 
-        // Step 6 calls this after a real atomic provisioning success — locks in the AP the
-        // ProvisioningManager actually claimed so a later re-pack treats it as already-spent
-        // instead of recomputing a fresh Tentative for work that is done.
-        public void RegisterProvisionSuccess(MissionProposal mission, ResourceVector actualClaim)
+        // Step 6 calls this after a real atomic provisioning success — locks in the funding
+        // provenance (strict per-axis draw + remainder part) and the AP actually claimed, so a
+        // later re-pack applies that spend to the right slices instead of recomputing a fresh
+        // Tentative for work that is done.
+        public void RegisterProvisionSuccess(FundedEntry funded, float claimedAp)
         {
-            if (mission == null)
+            if (funded?.Mission == null)
                 return;
-            _lockedClaims[StableMissionKey.For(mission)] = actualClaim;
+            var strict = new Dictionary<DesireAxis, float>();
+            foreach (KeyValuePair<DesireAxis, ResourceVector> kv in funded.PerAxisDraw)
+                strict[kv.Key] = kv.Value.Ap;
+            _lockedClaims[StableMissionKey.For(funded.Mission)] =
+                new LockedAllocation(strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp);
         }
 
         public TentativeAllocation Pack()
@@ -293,23 +322,51 @@ namespace Game.Ai.V2
 
             var alloc = new TentativeAllocation { PassNumber = PassCount };
 
-            // 1. Pool = snapshot AP, minus the Manager reserve, minus AP already physically claimed
-            //    by missions provisioned in an earlier pass this turn (the snapshot is turn-start
-            //    and does not reflect that spend; the locked claims do).
+            // 1. Pool = the radar BUDGET BASE for this turn: snapshot AP minus the Manager reserve.
+            //    It is deliberately NOT reduced by AP already spent by locked missions — the radar
+            //    slice is an axis's budget for the cycle, not a figure that re-slices a shrinking
+            //    pool after every provisioning success. Locked spend is applied to the slices
+            //    (strict part) and to the fungible remainder (remainder part) below instead.
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
             float reserve = Mathf.Max(0f, AiConfigV2.allocatorManagerApReserve);
-            float lockedTotal = _lockedClaims.Values.Sum(v => v.Ap);
-            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve - lockedTotal));
+            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
             alloc.InitialPool = pool;
             alloc.ManagerReserve = new ResourceVector(reserve);
+
+            // Locked funding provenance, scaled to what provisioning actually claimed: per-axis
+            // strict consumption (removed from the matching slice) + fungible remainder consumption
+            // (removed from the remainder pool in step 5).
+            var lockedStrictByAxis = new Dictionary<DesireAxis, float>();
+            float lockedRemainderConsumed = 0f;
+            float lockedTotal = 0f;
+            foreach (LockedAllocation l in _lockedClaims.Values)
+            {
+                float sc = l.Scale;
+                lockedTotal += l.ClaimedAp;
+                lockedRemainderConsumed += l.RemainderAp * sc;
+                foreach (KeyValuePair<DesireAxis, float> kv in l.StrictDraw)
+                {
+                    lockedStrictByAxis.TryGetValue(kv.Key, out float cur);
+                    lockedStrictByAxis[kv.Key] = cur + kv.Value * sc;
+                }
+            }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
-            // 2. Radar cuts the pool into per-axis slices. Radar has no role in mission ordering.
+            // 2. Radar cuts the pool into per-axis slices; each slice then loses the strict AP a
+            //    locked mission already drew from it. Radar has no role in mission ordering.
             var slices = new Dictionary<DesireAxis, BudgetSlice>();
             foreach (DesireAxis axis in DesireAxes.All)
             {
                 float w = _radar.Weight.TryGetValue(axis, out float ww) ? Mathf.Max(0f, ww) : 0f;
-                var s = new BudgetSlice { Axis = axis, Weight = w, Initial = pool * w, Remaining = pool * w };
+                ResourceVector budget = pool * w;
+                lockedStrictByAxis.TryGetValue(axis, out float lockedHere);
+                var s = new BudgetSlice
+                {
+                    Axis = axis,
+                    Weight = w,
+                    Initial = budget,
+                    Remaining = budget - new ResourceVector(lockedHere),
+                };
                 slices[axis] = s;
                 alloc.Slices.Add(s);
             }
@@ -318,12 +375,14 @@ namespace Game.Ai.V2
             int priority = 0;
 
             // 3. Commitments first. Sticky/pre-paid: they can drive slices negative.
-            //    SEAM DEFECT — fix WITH build-order step 7. A commitment is funded here BEFORE the
-            //    _rejectedThisTurn / cooldown gates the fresh missions get, so a failed commitment
-            //    would be re-funded (and re-draw its slices) on the next Pack — the locked-budget
-            //    trap V2 must prevent. Harmless only while CommitmentLayer.Active returns empty.
-            //    Step 7 must gate this loop on _rejectedThisTurn and give a failed commitment a
-            //    release / cancellation path.
+            //    SEAM DEFECT — fix WITH build-order step 7. This loop gates on NEITHER
+            //    _rejectedThisTurn NOR _lockedClaims, so on a re-Pack it re-funds (and re-draws the
+            //    slices for) a commitment that already FAILED provisioning this turn AND one that
+            //    already SUCCEEDED (its locked strict draw is then double-counted — once here, once
+            //    via lockedStrictByAxis). Harmless only while CommitmentLayer.Active returns empty.
+            //    Step 7 must skip a commitment whose key is in _rejectedThisTurn or _lockedClaims
+            //    (the latter already has its provenance applied to the slices), and give a failed
+            //    commitment a release / cancellation path.
             foreach (Commitment c in _commitments)
             {
                 MissionProposal m = c?.Mission;
@@ -450,7 +509,10 @@ namespace Game.Ai.V2
                 alloc.StrictFunded += v;
             }
 
-            // 5. Positive leftovers lose axis identity and become one fungible remainder pool.
+            // 5. Positive leftovers lose axis identity and become one fungible remainder pool. AP a
+            //    locked mission already spent as a remainder top-up in an earlier pass still shows
+            //    up as slice leftover here (its strict draw was removed from the slice, its
+            //    remainder part was not) — take it back out before redistributing.
             float remainder = 0f;
             foreach (BudgetSlice s in alloc.Slices)
             {
@@ -459,6 +521,7 @@ namespace Game.Ai.V2
                 remainder += s.Remaining.Ap;
                 s.Remaining = ResourceVector.Zero;
             }
+            remainder = Mathf.Max(0f, remainder - lockedRemainderConsumed);
             alloc.RemainderGenerated = new ResourceVector(remainder);
 
             List<FundedEntry> topUpOrder = alloc.Funded
@@ -491,17 +554,18 @@ namespace Game.Ai.V2
 
             // 6. Overdraft diagnostics — two distinct measures.
             //    AxisOverdraft: positive slices have already moved to remainder, so any negative
-            //    slice is one axis's budget overrun (sticky commitment / locked debt against the
-            //    current radar) — expected under many-to-many, benign.
-            //    GlobalOverdraft: total AP actually committed beyond the whole sliceable pool — the
-            //    real alarm; ~0 unless commitments outright exceed the pool.
+            //    slice is one axis's budget overrun — a commitment or a locked mission's strict
+            //    draw exceeding that axis's radar budget. Expected under many-to-many, benign.
+            //    GlobalOverdraft: total AP actually committed this turn (fresh Tentative + locked
+            //    claims) beyond the whole sliceable pool — the real alarm; ~0 unless commitments
+            //    outright exceed the pool.
             float axisOverdraft = 0f;
             foreach (BudgetSlice s in alloc.Slices)
                 if (s.Remaining.Ap < 0f)
                     axisOverdraft += -s.Remaining.Ap;
             alloc.AxisOverdraft = new ResourceVector(axisOverdraft);
 
-            float committed = alloc.Funded.Sum(fe => fe.Tentative.Ap);
+            float committed = alloc.Funded.Sum(fe => fe.Tentative.Ap) + lockedTotal;
             alloc.GlobalOverdraft = new ResourceVector(Mathf.Max(0f, committed - pool.Ap));
 
             for (int i = 0; i < alloc.Funded.Count; i++)
@@ -595,8 +659,8 @@ namespace Game.Ai.V2
                 $"{DesireAxes.Abbrev(s.Axis)} {s.Weight.ToString("0.00", CultureInfo.InvariantCulture)}"
                 + $"→{LogNum(s.Initial.Ap)} left {LogNum(s.Remaining.Ap)}"));
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)} "
-                + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap + a.LockedClaim.Ap)} "
-                + $"− mgr {LogNum(a.ManagerReserve.Ap)} − locked {LogNum(a.LockedClaim.Ap)}) | {slices}");
+                + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap)} − mgr {LogNum(a.ManagerReserve.Ap)}) "
+                + $"| locked {LogNum(a.LockedClaim.Ap)} (applied to slices) | {slices}");
 
             foreach (FundedEntry fe in a.Funded)
             {

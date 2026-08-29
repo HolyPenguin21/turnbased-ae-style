@@ -387,7 +387,7 @@ namespace Game.Ai.V2
                 if (result != null && result.Success)
                     provisioned.Add(result);
                 // Step 6: feed the outcome back, then bounded re-Pack —
-                //   success -> session.RegisterProvisionSuccess(fe.Mission, new ResourceVector(result.ClaimedAp))
+                //   success -> session.RegisterProvisionSuccess(fe, result.ClaimedAp)
                 //   fail    -> session.RegisterProvisionFailure(fe.Mission, result.FailureKind)
                 //   while (session.HasNewFailures && session.PassCount < AiConfigV2.maxReallocIterations
                 //          && !session.Converged) { allocation = session.Pack(); /* provision new Funded */ }
