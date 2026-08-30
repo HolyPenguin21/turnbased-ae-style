@@ -47,12 +47,15 @@ namespace Game.Ai.V2
 
             public RaidCandidate AsIncumbent(CommitmentTier tier, int? preferredMover)
             {
-                // A committed + ready Hard raid gets a sunk-cost bump so a small Radar wobble does
-                // not drop it for routine recon (spec §27 / §61-bonus). Soft/None ride as-is.
-                float las = tier == CommitmentTier.Hard
-                    ? LocalAdmissionScore + AiConfigV2.raidHardCommitmentBonus
-                    : LocalAdmissionScore;
-                return new RaidCandidate(Target, BaseValue, las, Explain + " [incumbent]", true, tier, preferredMover);
+                // Funding protection belongs to MissionContinuity/ResourceAllocator. Do NOT fold
+                // prior investment or a Hard-only bonus into LocalAdmissionScore: the score must
+                // remain the current objective merit × current Aggression sub-driver × current
+                // feasibility. A Hard incumbent is already materialised above the ordinary beam
+                // and funded as a commitment before fresh work, which is the single intended
+                // continuation mechanism.
+                return new RaidCandidate(Target, BaseValue, LocalAdmissionScore,
+                    Explain + $" [incumbent {tier}; funding protected separately]",
+                    true, tier, preferredMover);
             }
         }
 
@@ -87,7 +90,7 @@ namespace Game.Ai.V2
                         // that never re-acquires.
                         if (!intent.Raid.OperationStarted)
                         {
-                            AiDebugLog.Write($"[AI][V2]   raid — intent {intent.IntentKey} not materialisable this turn");
+                            AiDebugLog.Write($"[AI][V2]   raid mission — DEFER {intent.IntentKey}: target has no fresh opportunity read and operation never started");
                             continue;
                         }
                         var stale = new RaidMissionTarget
@@ -99,10 +102,12 @@ namespace Game.Ai.V2
                             EstimatedEta = 1,
                         };
                         float sv = AiConfigV2.raidBaseValueMin;
-                        incumbents.Add(new RaidCandidate(stale, sv,
-                            sv * UnityEngine.Mathf.Max(0.01f, breakdown.AggRaidOpportunity) + AiConfigV2.raidHardCommitmentBonus,
-                            $"Raid #{intent.Raid.TargetArmyId} (tracking, target in fog) [incumbent]",
+                        float staleScore = sv * UnityEngine.Mathf.Max(0.01f, breakdown.AggRaidOpportunity);
+                        incumbents.Add(new RaidCandidate(stale, sv, staleScore,
+                            $"Raid #{intent.Raid.TargetArmyId} (tracking in fog; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId));
+                        AiDebugLog.Write($"[AI][V2]   raid mission — CONTINUE {intent.IntentKey}: target in fog, using last-known hex "
+                            + $"({intent.Raid.LastKnownHex.Q},{intent.Raid.LastKnownHex.R}); base {F(sv)}, local {F(staleScore)}, tier {intent.Funding}");
                         continue;
                     }
                     incumbents.Add(ToCandidate(o, breakdown).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
@@ -136,7 +141,14 @@ namespace Game.Ai.V2
             }
 
             foreach (RaidCandidate c in picked)
-                proposals.Add(BuildProposal(snap, c));
+            {
+                MissionProposal p = BuildProposal(snap, c);
+                proposals.Add(p);
+                AiDebugLog.Write($"[AI][V2]   raid mission — PROPOSE {StableMissionKey.For(p)}: {p.Explain}; "
+                    + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}");
+            }
+            if (picked.Count == 0)
+                AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no candidate survived beam/materialisation");
             return proposals;
         }
 
