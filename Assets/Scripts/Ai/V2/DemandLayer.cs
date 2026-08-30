@@ -171,10 +171,12 @@ namespace Game.Ai.V2
 
         // --------------------------------------------------------------------- Aggression ----
         //  Reads the SAME frozen AggressionObjective[] AggressionMissionLayer will read — no second
-        //  target scan. Strategic feasibility stored on the frozen objective is only the starting
-        //  point: once durable intents are resolved, capability supply must be recalculated from
-        //  FREE actors. A field army/hero committed to an active mission is not spare Raid supply,
-        //  and a Hero card in hand is not a deployed leader until StrategicManager materialises it.
+        //  target scan. The frozen CombatOpportunity keeps the hypothetical assemblable projection
+        //  because Strategy still needs to know whether a target is worth preparing for. Operational
+        //  capability is stricter: Demand asks the SAME RaidAssemblyPlanner that Provisioning will
+        //  later ask whether a FREE, executable force exists now. During the corrective quarantine
+        //  that solver is ready-army-only, so a hypothetical multi-army/hand assemblable roster can
+        //  never suppress a demand the provisioner would immediately reject.
         private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot snap, DesireBreakdown b,
             IReadOnlyList<AggressionObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player)
@@ -210,6 +212,7 @@ namespace Game.Ai.V2
             float chosenPowerDeficit = 0f;
             float chosenRequiredPower = 0f;
             string chosenPowerReason = null;
+            string chosenReadyReason = null;
 
             foreach (AggressionObjective o in objectives
                 .OrderByDescending(x => x.BaseValue)
@@ -218,28 +221,28 @@ namespace Game.Ai.V2
                 if (coveredTargets.Contains(o.TargetArmyId))
                     continue;
 
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, o.TargetArmyId);
+                RaidAssemblyPlan readyPlan = RaidAssemblyPlanner.Plan(
+                    snap, o.ToTarget(), defenders, commitments?.ClaimedArmyIdSet);
+                bool readyExecutable = readyPlan.Feasible;
+
                 float requiredPower = Mathf.Max(1f, o.TargetPower * AiConfigV2.raidCombatPowerMargin);
                 float numericDeficit = Mathf.Max(0f, requiredPower - inv.RaidAvailableFieldPower);
-                bool coverageMissing = !o.CanCoverAllDefenders;
-                bool projectedWinMissing = o.AssemblableWinChance < AiConfigV2.raidMinViableWinChance;
-                bool needsPower = coverageMissing || projectedWinMissing
-                    || numericDeficit > AiConfigV2.allocatorSliceEpsilon;
 
-                // A ready single stack that already clears the shared estimator may raid without a
-                // hero. Otherwise a fresh/strengthened raid needs a DEPLOYED free hero. The
-                // strategic report's HeroAvailable also counts cards in hand; CapabilityInventory
-                // intentionally does not, so this is the point that creates the Phase-A Hero demand.
-                bool readyCanRaidWithoutHero = o.CanCoverAllDefenders
-                    && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
-                bool needsHero = inv.AvailableHeroes <= 0 && !readyCanRaidWithoutHero;
+                // While same-hex assembly is quarantined, ONLY the shared ready-force solver can
+                // close the operational combat shortage. Aggregate power and the frozen assemblable
+                // projection remain useful diagnostics/sizing inputs, but they do not prove that one
+                // legal actor can actually execute this cycle.
+                bool needsPower = !readyExecutable;
+                bool needsHero = !readyExecutable && inv.AvailableHeroes <= 0;
 
-                if (!needsPower && !needsHero)
+                if (readyExecutable)
                 {
                     AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={o.TargetArmyId} "
-                        + $"reason=free_capability_sufficient freePower={inv.RaidAvailableFieldPower:0.#} "
-                        + $"requiredPower={requiredPower:0.#} freeHeroes={inv.AvailableHeroes} "
-                        + $"readyWin={o.ReadyWinChance:0.00} asmWin={o.AssemblableWinChance:0.00} "
-                        + $"cover={(o.CanCoverAllDefenders ? 1 : 0)}");
+                        + $"reason=ready_free_army_clears_shared_estimator actor={readyPlan.BaseArmyId} "
+                        + $"win={readyPlan.ProjectedWinChance:0.00} cover={(readyPlan.CoversAllDefenders ? 1 : 0)} "
+                        + $"freePower={inv.RaidAvailableFieldPower:0.#} requiredPower={requiredPower:0.#} "
+                        + $"frozenAsmWin={o.AssemblableWinChance:0.00}");
                     continue;
                 }
 
@@ -248,9 +251,10 @@ namespace Game.Ai.V2
                 chosenNeedsHero = needsHero;
                 chosenRequiredPower = requiredPower;
                 chosenPowerDeficit = needsPower ? Mathf.Max(1f, numericDeficit) : 0f;
-                chosenPowerReason = coverageMissing ? "defender_coverage_missing"
-                    : projectedWinMissing ? "projected_win_below_threshold"
-                    : "free_field_power_below_requirement";
+                chosenPowerReason = numericDeficit > AiConfigV2.allocatorSliceEpsilon
+                    ? "free_field_power_below_requirement"
+                    : "no_ready_free_army_clears_estimator";
+                chosenReadyReason = readyPlan.Reason ?? "ready-force solver rejected the target";
                 break;
             }
 
@@ -266,7 +270,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
                     + $"capability=Hero desired=1 reason=no_free_deployed_hero freeHeroes={inv.AvailableHeroes} "
-                    + $"committedHeroes={inv.CommittedHeroes} readyWin={chosen.ReadyWinChance:0.00}");
+                    + $"committedHeroes={inv.CommittedHeroes} readySolver=REJECT detail=\"{chosenReadyReason}\"");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Aggression,
@@ -277,7 +281,7 @@ namespace Game.Ai.V2
                     TargetHex = chosen.LastKnownHex,
                     Value = chosen.BaseValue,
                     Explain = $"raid #{chosen.TargetArmyId} needs a free deployed hero; "
-                        + $"free {inv.AvailableHeroes}, committed {inv.CommittedHeroes}",
+                        + $"free {inv.AvailableHeroes}, committed {inv.CommittedHeroes}; {chosenReadyReason}",
                 };
             }
 
@@ -286,8 +290,9 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
                     + $"capability=FieldCombatPower desired={chosenPowerDeficit:0.#} reason={chosenPowerReason} "
                     + $"freePower={inv.RaidAvailableFieldPower:0.#} committedPower={inv.CommittedFieldCombatPower:0.#} "
-                    + $"requiredPower={chosenRequiredPower:0.#} readyWin={chosen.ReadyWinChance:0.00} "
-                    + $"asmWin={chosen.AssemblableWinChance:0.00} cover={(chosen.CanCoverAllDefenders ? 1 : 0)}");
+                    + $"requiredPower={chosenRequiredPower:0.#} readySolver=REJECT detail=\"{chosenReadyReason}\" "
+                    + $"frozenReadyWin={chosen.ReadyWinChance:0.00} frozenAsmWin={chosen.AssemblableWinChance:0.00} "
+                    + $"frozenCover={(chosen.CanCoverAllDefenders ? 1 : 0)}");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Aggression,
@@ -297,11 +302,25 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = 0f,
                     TargetHex = chosen.LastKnownHex,
                     Value = chosen.BaseValue,
-                    Explain = $"raid #{chosen.TargetArmyId} needs ~{chosenPowerDeficit:0.#} more free field power "
-                        + $"({chosenPowerReason}; free {inv.RaidAvailableFieldPower:0.#}, "
-                        + $"committed {inv.CommittedFieldCombatPower:0.#}, required {chosenRequiredPower:0.#})",
+                    Explain = $"raid #{chosen.TargetArmyId} needs ~{chosenPowerDeficit:0.#} more free field capability "
+                        + $"({chosenPowerReason}; free {inv.RaidAvailableFieldPower:0.#}, committed "
+                        + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenRequiredPower:0.#}; {chosenReadyReason})",
                 };
             }
+        }
+
+        private static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId)
+        {
+            if (snap?.Known == null || targetArmyId == 0)
+                return System.Array.Empty<WorthIt.DefenderProfile>();
+
+            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
+                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
+            foreach (AiMapMemory.KnownEnemySighting s in sightings)
+                if (s.ArmyId == targetArmyId)
+                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            return System.Array.Empty<WorthIt.DefenderProfile>();
         }
 
         // ------------------------------------------------------- extensible axis hooks ----
