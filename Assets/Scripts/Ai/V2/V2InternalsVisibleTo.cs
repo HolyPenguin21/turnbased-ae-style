@@ -6,3 +6,4 @@
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("mission-selection-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("housekeeping-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-cooldown-sim")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-throughput-sim")]
