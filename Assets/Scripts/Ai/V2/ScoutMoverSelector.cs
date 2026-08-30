@@ -154,10 +154,11 @@ namespace Game.Ai.V2
         // STRUCTURAL capability probe — solo Recce that could, IN PRINCIPLE, serve a mission of
         // this stealth requirement. Deliberately ignores the turn-transient filters Eligible
         // applies (CurrentMovement > 0, the "visible + already activated" Required exclusion,
-        // excludeArmyIds): their absence is "spent / contended THIS turn" (MoverContended, no
-        // cooldown), NOT "no such executor exists" (NoMoverExists, cooldown). Stealth capability
-        // IS structural — a Required mission needs a Recce that is hidden or carries a stealth
-        // ability at all.
+        // excludeArmyIds): their absence is "spent / contended THIS turn" (MoverContended), while
+        // absence of any such executor is `NoMoverExists` — a TRANSIENT capability shortage that
+        // Demand/StrategicManager may repair and therefore never starts a target cooldown. Stealth
+        // capability itself remains structural for choosing whether a given Recce can serve a
+        // Required mission.
         public static IEnumerable<ArmySnapshot> StructuralCandidates(WorldSnapshot snap, ScoutMissionTarget target)
         {
             if (snap?.Self?.Armies == null)
