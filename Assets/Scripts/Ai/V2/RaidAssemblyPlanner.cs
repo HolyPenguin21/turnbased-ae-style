@@ -8,39 +8,18 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  RAID ASSEMBLY PLANNER  (Strategy V2 build-order step 9 — the pure raid-force solver)
     // ===========================================================================================
-    //  A side-effect-free actor/composition solver: it never mutates gameplay state. For the
-    //  manual-test corrective pass it deliberately returns ONLY an already-ready army. The original
-    //  same-hex consolidation path was proved unsafe: ProvisioningManager applied several canonical
-    //  TransferMember calls sequentially, so transfer #1 could mutate the world and spend AP while
-    //  transfer #2 failed. That violates V2's hard provisioning contract: SUCCESS applies the
-    //  complete plan; FAIL changes nothing.
-    //
-    //  Same-hex assembly is therefore FAIL-CLOSED until it is backed by one canonical atomic batch
-    //  transfer primitive with whole-batch capacity/AP validation. This is intentionally a safety
-    //  quarantine, not a strategic redesign: StrategicManager may still prepare combat capability,
-    //  and the moment a real field army already clears the shared estimator it is immediately
-    //  eligible for Raid. Cross-hex recall / multi-turn concentration remain deferred as before.
-    //
-    //  Snapshot.IsAir historically marks a MOBILE air army only. An airfield is a different
-    //  ArmyData container, so a snapshot-only `!IsAir` filter can accidentally admit parked
-    //  aircraft as a ground Raid actor. IsLiveGroundFieldArmy closes that representation seam by
-    //  resolving only the matching OWN live ArmyData and checking structural container flags. It
-    //  also mirrors ProvisioningManager's dedicated-role exclusions, including a lone hero waiting
-    //  for escort: a solver must never call an actor "ready" that the atomic door immediately
-    //  rejects. It does not inspect opponents/fog state and it does not mutate anything.
-    //
-    //  The estimator is WorthIt run against the SAME DefenderProfile roster and threshold family
-    //  AggressionObjectiveEvaluator / CombatOpportunityAnalyzer use (ONE ESTIMATOR, MANY STAGES).
+    //  Side-effect-free ready-force solver. Same-hex consolidation stays fail-closed until a real
+    //  atomic batch-transfer primitive exists. `PlanForArmy` is the exact single-actor form used
+    //  by ProvisioningManager's batch Raid matching; both paths share the same eligibility and
+    //  WorthIt estimator, so batch assignment cannot drift from final provisioning feasibility.
     // ===========================================================================================
     public sealed class RaidAssemblyPlan
     {
         public bool Feasible;
-        public string Reason;               // null iff Feasible
-
-        public int BaseArmyId;              // the army that will execute the raid
-        public bool NeedsAssembly;          // corrective pass: always false on a feasible plan
+        public string Reason;
+        public int BaseArmyId;
+        public bool NeedsAssembly;
         public readonly List<int> MergeArmyIds = new List<int>();
-
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
 
@@ -57,40 +36,62 @@ namespace Game.Ai.V2
                 return RaidAssemblyPlan.Infeasible("no own-force snapshot");
 
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-
-            List<ArmySnapshot> eligible = snap.Self.Armies
-                .Where(a => a != null && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
-                            && a.MemberCount > 0 && a.CurrentMovement > 0
-                            && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId))
-                            && IsLiveGroundFieldArmy(a))
-                .OrderByDescending(a => a.EffectiveArmyPower)
-                .ThenBy(a => a.ArmyId)
-                .ToList();
+            List<ArmySnapshot> eligible = EligibleReadyArmies(snap, excludeArmyIds);
             if (eligible.Count == 0)
                 return RaidAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
 
-            // A ready army is safe: provisioning only binds it; no composition mutation occurs.
             foreach (ArmySnapshot a in eligible)
             {
-                List<WorthIt.DefenderProfile> roster =
-                    (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-                if (!Clears(roster, defenders, out float win, out bool cover))
-                    continue;
-
-                return new RaidAssemblyPlan
-                {
-                    Feasible = true,
-                    BaseArmyId = a.ArmyId,
-                    NeedsAssembly = false,
-                    ProjectedWinChance = win,
-                    CoversAllDefenders = cover,
-                };
+                RaidAssemblyPlan exact = PlanForArmy(snap, target, defenders, a.ArmyId);
+                if (exact.Feasible)
+                    return exact;
             }
 
             return RaidAssemblyPlan.Infeasible(
                 "no already-formed free army clears the raid estimator; same-hex consolidation is "
                 + "temporarily quarantined because the existing sequential TransferMember apply is not atomic");
         }
+
+        // Exact feasibility for one actor. This is intentionally public within V2's model layer:
+        // ProvisioningManager first solves the funded Raid set as an injective batch, then calls the
+        // same primitive again at the atomic door to revalidate the assigned actor.
+        public static RaidAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId)
+        {
+            if (snap?.Self?.Armies == null)
+                return RaidAssemblyPlan.Infeasible("no own-force snapshot");
+
+            ArmySnapshot a = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == armyId);
+            if (a == null || !IsEligibleReadyArmy(a))
+                return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
+
+            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            List<WorthIt.DefenderProfile> roster =
+                (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
+            if (!Clears(roster, defenders, out float win, out bool cover))
+                return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} does not clear the shared raid estimator");
+
+            return new RaidAssemblyPlan
+            {
+                Feasible = true,
+                BaseArmyId = a.ArmyId,
+                NeedsAssembly = false,
+                ProjectedWinChance = win,
+                CoversAllDefenders = cover,
+            };
+        }
+
+        private static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds) =>
+            snap.Self.Armies
+                .Where(a => a != null && IsEligibleReadyArmy(a)
+                            && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId)))
+                .OrderByDescending(a => a.EffectiveArmyPower)
+                .ThenBy(a => a.ArmyId)
+                .ToList();
+
+        private static bool IsEligibleReadyArmy(ArmySnapshot a) =>
+            a != null && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
+            && a.MemberCount > 0 && a.CurrentMovement > 0 && IsLiveGroundFieldArmy(a);
 
         private static bool IsLiveGroundFieldArmy(ArmySnapshot a)
         {
@@ -114,8 +115,6 @@ namespace Game.Ai.V2
             return cover && win >= AiConfigV2.raidMinViableWinChance;
         }
 
-        // Same rule CombatOpportunityAnalyzer.ProfilesCoverAll uses (every defender needs one
-        // attacker that can dent it).
         private static bool ProfilesCoverAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders)
         {
