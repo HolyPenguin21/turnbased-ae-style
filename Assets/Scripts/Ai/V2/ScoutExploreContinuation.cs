@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using Game.Map;
@@ -16,7 +17,7 @@ namespace Game.Ai.V2
             if (player == null || map == null || army == null || army.CurrentMovement <= 0)
                 return null;
 
-            return HexGridMath.Neighbors(army.Hex)
+            List<HexCoord> candidates = HexGridMath.Neighbors(army.Hex)
                 .Where(h => map.TryGetTerrainAt(h, out _))
                 .Where(h => !VisionSystem.IsVisited(player, h))
                 .Where(h => !ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
@@ -24,8 +25,9 @@ namespace Game.Ai.V2
                 .OrderByDescending(h => FreshNeighborCount(player, map, h))
                 .ThenBy(h => h.Q)
                 .ThenBy(h => h.R)
-                .Cast<HexCoord?>()
-                .FirstOrDefault();
+                .ToList();
+
+            return candidates.Count > 0 ? candidates[0] : (HexCoord?)null;
         }
 
         private static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)
