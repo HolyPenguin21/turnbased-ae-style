@@ -91,8 +91,11 @@ namespace Game.Ai.V2
 
         public static ProvisionFailure MoverContended(string d) =>
             new ProvisionFailure(ProvisionFailureKind.MoverContended, ProvisionDisposition.RetryNextTurn, 0f, d);
+        // Capability absence is transient: StrategicManager may materialize the missing mover on a
+        // later turn (or even earlier in this same pipeline before the next mission pass). It must
+        // never poison the target key with a structural cooldown.
         public static ProvisionFailure NoMoverExists(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.NoMoverExists, ProvisionDisposition.RejectWithCooldown, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.NoMoverExists, ProvisionDisposition.RetryNextTurn, 0f, d);
         public static ProvisionFailure NoObservationVantage(string d) =>
             new ProvisionFailure(ProvisionFailureKind.NoObservationVantage, ProvisionDisposition.RejectWithCooldown, 0f, d);
         public static ProvisionFailure EnvelopeTooSmall(float requiredAp, string d) =>
@@ -463,8 +466,9 @@ namespace Game.Ai.V2
         // No assignment for this mission this pass. Explore keeps the 6a two-way split. Surveil
         // adds NoObservationVantage between "no scout at all" and "scouts busy": a capable scout
         // exists but no on-map hex within ANY structural scout's vision can observe the focus.
-        // "Vantage exists but no safe route to it today" stays transient NoExecutableStep, NOT a
-        // structural cooldown.
+        // Capability absence is transient — StrategicManager can create that scout. Only geometry
+        // that remains impossible with an existing structural scout gets the persistent cooldown.
+        // "Vantage exists but no safe route to it today" stays transient NoExecutableStep.
         private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
             ScoutMissionTarget target, bool surveil)
         {
