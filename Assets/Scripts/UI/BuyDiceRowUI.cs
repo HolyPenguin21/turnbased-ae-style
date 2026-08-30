@@ -7,16 +7,15 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One resource's row in the initiative dice buy panel: coloured icon (matches
-    // ResourceIconVisual's map colours) + current amount + "-" (spend `price` of this
-    // resource, gain one bonus die) / "+" (undo: refund this resource, lose one bonus die,
-    // only enabled if a die was actually bought with THIS resource this turn).
+    // One resource row in the initiative buy panel: coloured icon + current amount + "-" to pay
+    // the ENTIRE current progressive die price from this resource / "+" to undo the most recent
+    // die when this resource paid for it.
     public class BuyDiceRowUI : MonoBehaviour
     {
         [SerializeField] private Image iconImage;
         [SerializeField] private TMP_Text amountText;
-        [SerializeField] private Button buyButton; // "-": spend resource, gain a die
-        [SerializeField] private Button refundButton; // "+": undo, refund resource, lose a die
+        [SerializeField] private Button buyButton;
+        [SerializeField] private Button refundButton;
 
         private ResourceType _type;
         private Action<ResourceType> _onBuy;
@@ -43,9 +42,8 @@ namespace Game.UI
             }
         }
 
-        // locked overrides affordability entirely — used once Roll has been pressed, when
-        // buying/refunding must stop no matter what the player could otherwise afford.
-        public void Refresh(PlayerRoot root, int price, bool locked)
+        // locked overrides affordability entirely once Roll has been pressed.
+        public void Refresh(PlayerRoot root, bool locked)
         {
             if (root == null)
                 return;
@@ -53,7 +51,7 @@ namespace Game.UI
             if (amountText != null)
                 amountText.text = root.GetResource(_type).ToString();
             if (buyButton != null)
-                buyButton.interactable = !locked && root.CanBuyInitiativeDie(_type, price);
+                buyButton.interactable = !locked && root.CanBuyInitiativeDie(_type);
             if (refundButton != null)
                 refundButton.interactable = !locked && root.CanRefundInitiativeDie(_type);
         }
