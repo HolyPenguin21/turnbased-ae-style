@@ -38,19 +38,15 @@ namespace Game.Ai.V2
         public bool MoverAlreadyHidden;
 
         public float ApMinimum, ApDesired, ApMaximum;
-        public float ActivationEnergy;      // -> Energy minimum == desired == maximum
+        public float ActivationEnergy;
         public int EtaTurns;
         public float EstimatedDistance;
     }
 
-    // Cost of ONE concrete (mover, executionHex) pair — the step-6 provision-stage number, used
-    // for both Explore (executionHex == FocusHex) and Surveil (executionHex == chosen vantage).
-    // Travel is MP, never AP; ETA/Distance are toward the executionHex, NOT toward a Surveil
-    // FocusHex the scout never steps on.
     public struct ScoutPairCost
     {
         public int EffActivationAp;
-        public float RequiredAp;    // EffActivationAp + stealth transition when Required && !hidden
+        public float RequiredAp;
         public int EtaTurns;
         public int Distance;
         public bool AlreadyHidden;
@@ -85,13 +81,11 @@ namespace Game.Ai.V2
         {
             var est = new ScoutCostEstimate();
 
-            // SURVEIL (build-order step 6b) — proposal stage sizes MONEY ONLY. The spatial cost is
-            // unknowable here: ExecutionHex (the vantage) does not exist until a concrete mover is
-            // assigned in provisioning. EstimatedDistance / EtaTurns = 0 means "not spatially
-            // estimated", NOT "already on site"; nothing may use them for commitment before step 7.
-            // The AP envelope is still real: Surveil is always stealth-Required, so it is
-            // activation + (1 unless a hidden mover exists), taken as the MINIMUM over the actually
-            // eligible scouts (Rank's stealth-AP ordering would otherwise pick a non-optimal one).
+            // Admission needs the same physical eligibility picture as the cost estimator, but it
+            // must not bind an actor. Refresh target->eligible IDs here while the current snapshot
+            // is already in hand; MissionAdmissionPolicy consumes only that ephemeral metadata.
+            ScoutAdmissionRegistry.Record(snap, target);
+
             if (target.Kind == ScoutTargetKind.Surveil)
             {
                 float stealthAp0 = AiConfigV2.scoutOptionalStealthAp;
@@ -125,9 +119,6 @@ namespace Game.Ai.V2
                 return est;
             }
 
-            // Mover selection is the shared ScoutMoverSelector (step 6) — the estimate takes the
-            // top-ranked candidate; ProvisioningManager takes the whole list and assigns across
-            // missions. No exclusions at estimate time (no mover is claimed yet this cycle).
             var ranked = ScoutMoverSelector.Rank(snap, target, null);
 
             int fleetBudget = snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max();
@@ -154,12 +145,11 @@ namespace Game.Ai.V2
                 est.MoverKnown = false;
                 est.MoverAlreadyHidden = false;
                 activationAp = AiConfigV2.scoutNotionalActivationAp;
-                est.ActivationEnergy = 0; // ground Scout contract
+                est.ActivationEnergy = 0;
                 est.EstimatedDistance = DistFrom(notionalFrom);
                 est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
             }
 
-            // ---- AP envelope by stealth requirement ----
             float stealthAp = AiConfigV2.scoutOptionalStealthAp;
             switch (target.Stealth)
             {
@@ -171,8 +161,6 @@ namespace Game.Ai.V2
                     est.ApMaximum = activationAp + stealthAp;
                     break;
                 case StealthRequirement.Required:
-                    // Already-hidden mover satisfies Required for free; anyone else (real eligible
-                    // mover, or the notional capable scout) must pay the 1 AP to hide first.
                     float req = activationAp + (est.MoverAlreadyHidden ? 0f : stealthAp);
                     est.ApMinimum = est.ApDesired = est.ApMaximum = req;
                     break;
