@@ -47,12 +47,6 @@ namespace Game.Ai.V2
 
             public RaidCandidate AsIncumbent(CommitmentTier tier, int? preferredMover)
             {
-                // Funding protection belongs to MissionContinuity/ResourceAllocator. Do NOT fold
-                // prior investment or a Hard-only bonus into LocalAdmissionScore: the score must
-                // remain the current objective merit × current Aggression sub-driver × current
-                // feasibility. A Hard incumbent is already materialised above the ordinary beam
-                // and funded as a commitment before fresh work, which is the single intended
-                // continuation mechanism.
                 return new RaidCandidate(Target, BaseValue, LocalAdmissionScore,
                     Explain + $" [incumbent {tier}; funding protected separately]",
                     true, tier, preferredMover);
@@ -84,10 +78,6 @@ namespace Game.Ai.V2
                         snap, breakdown.OpportunityReport, intent.Raid.TargetArmyId);
                     if (o == null)
                     {
-                        // No fresh opportunity read this turn (target in fog) — a started Hard raid
-                        // still re-materialises from the last-known intent facts so its commitment
-                        // does not evaporate; MissionContinuityLayer's stall/age caps reap a raid
-                        // that never re-acquires.
                         if (!intent.Raid.OperationStarted)
                         {
                             AiDebugLog.Write($"[AI][V2]   raid mission — DEFER {intent.IntentKey}: target has no fresh opportunity read and operation never started");
@@ -116,16 +106,12 @@ namespace Game.Ai.V2
             var incumbentKeys = new HashSet<int>(incumbents.Select(c => c.Target.TargetArmyId));
             var picked = new List<RaidCandidate>();
 
-            // 1. Every valid Soft/Hard incumbent materialises unconditionally, ON TOP of the beam
-            //    (a funding-protected raid cannot vanish because the fresh beam is full).
             foreach (RaidCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
                 .OrderByDescending(x => x.LocalAdmissionScore)
                 .ThenBy(x => x.Target.TargetArmyId))
                 picked.Add(c);
 
-            // 2. The ordinary beam: None-tier incumbents + fresh (minus fresh duplicates of any
-            //    incumbent), ranked by the shared admission rank, truncated to the beam width.
             IEnumerable<RaidCandidate> ordinary = incumbents
                 .Where(x => x.Tier == CommitmentTier.None)
                 .Concat(fresh.Where(f => !incumbentKeys.Contains(f.Target.TargetArmyId)))
@@ -145,7 +131,8 @@ namespace Game.Ai.V2
                 MissionProposal p = BuildProposal(snap, c);
                 proposals.Add(p);
                 AiDebugLog.Write($"[AI][V2]   raid mission — PROPOSE {StableMissionKey.For(p)}: {p.Explain}; "
-                    + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}");
+                    + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}, "
+                    + $"readyActors=[{RaidAdmissionRegistry.EligibleIds(p)}]");
             }
             if (picked.Count == 0)
                 AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no candidate survived beam/materialisation");
@@ -183,6 +170,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = c.PreferredMover,
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
+            RaidAdmissionRegistry.Record(proposal, snap);
             return proposal;
         }
 
