@@ -24,6 +24,9 @@ namespace ReconThroughputSim
             Scenario08_NearReserveKeepsConservativeSurplusThreshold();
             Scenario09_InitiativeLabelsHighLeftoverAsNonApBottleneck();
             Scenario10_InitiativeLabelsRealStarvationAsApLimited();
+            Scenario11_OneRaidActorCannotBackTwoTargets();
+            Scenario12_TwoRaidActorsCanBackTwoTargets();
+            Scenario13_RaidContentionIsTransientButTrueAssemblyFailureIsStructural();
 
             Console.WriteLine();
             Console.WriteLine($"recon-throughput-sim: {_passed} passed, {_failed} failed");
@@ -140,6 +143,30 @@ namespace ReconThroughputSim
                 label.StartsWith("ap-limited", StringComparison.Ordinal));
         }
 
+        private static void Scenario11_OneRaidActorCannotBackTwoTargets()
+        {
+            Check("11 one ready combat actor cannot physically back two Raid targets",
+                !RaidAdmissionRegistry.SetsHaveDistinctAssignment(new[] { 41 }, new[] { 41 }));
+        }
+
+        private static void Scenario12_TwoRaidActorsCanBackTwoTargets()
+        {
+            Check("12 Raid pair admits when a distinct ready-actor assignment exists",
+                RaidAdmissionRegistry.SetsHaveDistinctAssignment(new[] { 41, 42 }, new[] { 41, 42 }));
+        }
+
+        private static void Scenario13_RaidContentionIsTransientButTrueAssemblyFailureIsStructural()
+        {
+            ProvisionFailure contended = ProvisionFailure.MoverContended("ready raid actor claimed by earlier mission");
+            ProvisionFailure structural = ProvisionFailure.AssemblyInfeasible("no ready army clears estimator");
+            Check("13a Raid actor contention retries without cooldown",
+                contended.Kind == ProvisionFailureKind.MoverContended
+                && contended.Disposition == ProvisionDisposition.RetryNextTurn);
+            Check("13b genuine Raid assembly infeasibility retains structural cooldown semantics",
+                structural.Kind == ProvisionFailureKind.AssemblyInfeasible
+                && structural.Disposition == ProvisionDisposition.RejectWithCooldown);
+        }
+
         private static WorldSnapshot Snap(float dark, IReadOnlyList<ArmySnapshot> armies) =>
             new WorldSnapshot
             {
@@ -215,6 +242,7 @@ namespace ReconThroughputSim
                 },
             };
             p.Axes.Value[DesireAxis.Recon] = 1f;
+            ScoutAdmissionRegistry.Record(p, snap);
             return p;
         }
 
