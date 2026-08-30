@@ -365,6 +365,14 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // Initiative AP telemetry — captured now (turn start) and written back at turn end.
+            // Belongs EXCLUSIVELY to Game.Ai.V2.Initiative analysis; nothing else in this pipeline
+            // reads it (see InitiativeAnalyticsHistory).
+            int initiativeStartAp = root.ActionPoints;
+            int initiativeBaseAp = root.LastApFromInitiative;
+            int initiativeActionableAtStart =
+                Game.Ai.V2.Initiative.PreTurnCapacityAnalysis.CountActionableFieldArmies(player, unactivatedOnly: false);
+
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
 
@@ -539,7 +547,36 @@ namespace Game.Ai.V2
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
                 + $"funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
                 + $"executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
+
+            RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;
+        }
+
+        // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
+        // turn that ended at 0 AP only counts as "needed more AP" if real AP work still remained
+        // — an unactivated field army, or an affordable AP-costing card still in hand.
+        private static void RecordInitiativeAnalytics(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            int startAp, int baseAp, int actionableAtStart)
+        {
+            int endAp = root.ActionPoints;
+            int apSpent = UnityEngine.Mathf.Max(0, startAp - endAp);
+            int unactivatedActionable =
+                Game.Ai.V2.Initiative.PreTurnCapacityAnalysis.CountActionableFieldArmies(player, unactivatedOnly: true);
+
+            bool affordableCardWaiting = false;
+            if (hand != null && endAp > 0)
+                foreach (Game.Cards.CardData c in hand.Hand)
+                {
+                    int ap = c != null ? AiCardCost.PlayAp(c) : 0;
+                    if (ap > 0 && ap <= endAp) { affordableCardWaiting = true; break; }
+                }
+
+            bool hadPotentialWork = unactivatedActionable > 0 || affordableCardWaiting;
+
+            Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Record(player,
+                new Game.Ai.V2.Initiative.InitiativeTurnRecord(
+                    baseAp, startAp, apSpent, endAp,
+                    actionableAtStart, unactivatedActionable, hadPotentialWork));
         }
 
         private static string Fmt(float? v) =>

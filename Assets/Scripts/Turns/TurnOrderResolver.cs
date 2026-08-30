@@ -37,19 +37,17 @@ namespace Game.Turns
     // player's dice again — but only for the tied players, repeated (recursively, since a
     // reroll can itself produce a smaller tie) until every slot is resolved.
     //
-    // Pool size is BaseDiceCount plus whatever that player bought this turn (see
-    // PlayerRoot.BonusInitiativeDice) — not a single shared constant any more, since buying
-    // extra dice is the whole point of the initiative-buying step this feeds into.
+    // Pool size is InitiativeRules.BaseDice plus whatever that player bought this turn (see
+    // PlayerRoot.BonusInitiativeDice) — the base count is the shared gameplay contract now, not
+    // a local const, so the human buy UI, the AI planner and this roll can't disagree on it.
     public static class TurnOrderResolver
     {
-        private const int BaseDiceCount = 3;
-
         // Exposed for DiceRowUI, so the popup can size each player's dice slots correctly
         // before the roll happens (not just once ShowRoll gives back the actual results).
         public static int DiceCountFor(PlayerSetupData player)
         {
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
-            return BaseDiceCount + (root != null ? root.BonusInitiativeDice : 0);
+            return InitiativeRules.BaseDice + (root != null ? root.BonusInitiativeDice : 0);
         }
 
         // finalRolls comes back with, for every player, the roll that actually decided their

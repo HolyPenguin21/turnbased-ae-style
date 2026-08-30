@@ -89,6 +89,13 @@ namespace Game.Ai
 
         public static void Clear() => ByPlayer.Clear();
 
+        // Non-creating read — for callers (e.g. the pre-turn Initiative capacity analysis) that
+        // may look at an AI hand if one already exists but must NOT bring one into being just to
+        // read it (that would draw cards / consume RNG out of turn). Null when this player has
+        // never had a hand built yet.
+        public static AiHandData Peek(PlayerSetupData player) =>
+            player != null && ByPlayer.TryGetValue(player, out AiHandData hand) ? hand : null;
+
         // `capacity` is optional so the many callers that only need to read an existing hand don't
         // have to thread the scene's MaxHandSize through — they pass null and leave whatever
         // capacity the hand was first created with. AiTurnController.RunTurn is the one caller that

@@ -26,17 +26,23 @@ namespace Game.UI
         };
 
         private PlayerRoot _root;
-        private int _price;
         private bool _locked;
+
+        // Progressive price now: the cost of the NEXT die climbs 1 -> 2 -> 4 -> 8 -> 16 as this
+        // player buys (InitiativeRules.NextBonusDieCost), so it is re-read from the root after
+        // every buy/refund rather than being a single flat number passed in once. 0 once the
+        // player has bought the maximum, which also disables every row's buy button.
+        private int CurrentPrice => _root != null ? _root.NextInitiativeDieCost : 0;
 
         // Fired whenever a purchase/refund changes the player's bonus dice count, so
         // TurnOrderPopupUI can resize that player's DiceRowUI slots to match.
         public event Action DiceCountChanged;
 
+        // `price` is kept in the signature for the existing call site but ignored — the real
+        // cost is the progressive CurrentPrice, refreshed after every buy/refund.
         public void Show(PlayerSetupData player, PlayerRoot root, int price)
         {
             _root = root;
-            _price = price;
             _locked = false;
 
             bool active = player != null && player.IsHuman && root != null;
@@ -44,9 +50,6 @@ namespace Game.UI
                 panelRoot.SetActive(active);
             if (!active)
                 return;
-
-            if (priceText != null)
-                priceText.text = price.ToString();
 
             if (resourceRows != null)
                 for (int i = 0; i < resourceRows.Length && i < RowOrder.Length; i++)
@@ -63,9 +66,9 @@ namespace Game.UI
 
         private void OnBuy(ResourceType type)
         {
-            if (_locked || _root == null || !_root.CanBuyInitiativeDie(type, _price))
+            if (_locked || _root == null || !_root.CanBuyInitiativeDie(type, CurrentPrice))
                 return;
-            _root.BuyInitiativeDie(type, _price);
+            _root.BuyInitiativeDie(type, CurrentPrice);
             RefreshRows();
             DiceCountChanged?.Invoke();
         }
@@ -74,7 +77,7 @@ namespace Game.UI
         {
             if (_locked || _root == null || !_root.CanRefundInitiativeDie(type))
                 return;
-            _root.RefundInitiativeDie(type, _price);
+            _root.RefundInitiativeDie(type, CurrentPrice);
             RefreshRows();
             DiceCountChanged?.Invoke();
         }
@@ -83,9 +86,12 @@ namespace Game.UI
         {
             if (resourceRows == null || _root == null)
                 return;
+            int price = CurrentPrice;
+            if (priceText != null)
+                priceText.text = _root.CanBuyMoreInitiativeDice ? price.ToString() : "—";
             foreach (BuyDiceRowUI row in resourceRows)
                 if (row != null)
-                    row.Refresh(_root, _price, _locked);
+                    row.Refresh(_root, price, _locked);
         }
     }
 }

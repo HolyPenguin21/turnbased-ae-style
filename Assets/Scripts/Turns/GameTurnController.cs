@@ -644,10 +644,18 @@ namespace Game.Turns
 
             foreach (PlayerSetupData player in GameSession.Players)
                 PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
-            // Placeholder AI logic (see InitiativeDiceAI) — decides before the popup is shown,
-            // so an AI's purchase is already reflected the first time the player sees it, not
-            // bought live while they watch.
-            InitiativeDiceAI.BuyDiceForAll(GameSession.Players);
+            // AI initiative-dice purchases — decided before the popup is shown, so an AI's
+            // purchase is already reflected the first time the human sees it, not bought live
+            // while they watch. Strategy V2 runs a real economic evaluator
+            // (Game.Ai.V2.Initiative.InitiativeCoordinatorV2 — every AI plans from the same
+            // pre-purchase state, then all plans are applied through PlayerRoot's canonical paid
+            // API); with the flag off the V1 placeholder (random 0-2, no cost) still runs
+            // unchanged.
+            if (Game.Ai.AiConfig.aiStrategyV2Enabled)
+                Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
+                    GameSession.Players, map, cardHand != null ? cardHand.StartingDeckCatalog : null, TurnNumber);
+            else
+                InitiativeDiceAI.BuyDiceForAll(GameSession.Players);
 
             turnOrderPopup.Show(GameSession.Players, OnTurnOrderResolved);
         }
@@ -764,6 +772,17 @@ namespace Game.Turns
         {
             CurrentTurnOrder = order;
 
+            // Public record of what everyone visibly ended up buying this round — the ONLY
+            // opponent information next round's Initiative AI is allowed to use (see
+            // InitiativePublicHistory). Taken now, after the roll, before next turn's
+            // ResetBonusInitiativeDice wipes the counts.
+            foreach (PlayerSetupData player in GameSession.Players)
+            {
+                PlayerRoot historyRoot = PlayerRootRegistry.FindFor(player);
+                if (historyRoot != null)
+                    InitiativePublicHistory.RecordFinalBonusDice(player, historyRoot.BonusInitiativeDice);
+            }
+
             AllocateActionPoints(order);
             GrantPrisonBonusActionPoints(order);
             GrantApBonusActionPoints(order);
@@ -779,7 +798,7 @@ namespace Game.Turns
                 PlayerRoot root = PlayerRootRegistry.FindFor(order[i]);
                 if (root != null)
                 {
-                    int rankAp = ActionPointsForRank(i, order.Count);
+                    int rankAp = InitiativeRules.ApForRank(i);
                     root.ActionPoints = rankAp;
                     root.SetLastApFromInitiative(rankAp);
                 }
@@ -864,16 +883,6 @@ namespace Game.Turns
                 if (bonus > 0)
                     root.ActionPoints += bonus;
             }
-        }
-
-        // Two-player games are a special case (10/6) rather than the normal 10/8/6+ taper.
-        private static int ActionPointsForRank(int rank, int playerCount)
-        {
-            if (playerCount == 2)
-                return rank == 0 ? 10 : 6;
-            if (rank == 0)
-                return 10;
-            return rank == 1 ? 8 : 6;
         }
 
         private void BeginPlayerTurn(int index)

@@ -77,8 +77,10 @@ namespace Game.Map
         }
 
         // Extra initiative dice bought for this turn's dice-off, on top of
-        // TurnOrderResolver's base count — reset every turn before the buying phase, so
-        // nothing carries over once that turn's roll has consumed them.
+        // InitiativeRules.BaseDice — reset every turn before the buying phase, so nothing carries
+        // over once that turn's roll has consumed them. Stays the authoritative count so the V1
+        // placeholder AI (InitiativeDiceAI, which grants free dice via AddBonusInitiativeDice
+        // without any payment) keeps working unchanged when Strategy V2 is off.
         public int BonusInitiativeDice { get; private set; }
 
         public void AddBonusInitiativeDice(int amount)
@@ -89,47 +91,116 @@ namespace Game.Map
         public void ResetBonusInitiativeDice()
         {
             BonusInitiativeDice = 0;
-            foreach (ResourceType type in AllResourceTypes)
-                _diceBoughtByResource[type] = 0;
+            _initiativePayments.Clear();
         }
 
-        // Which resource funded each currently-bought bonus die — lets the buy panel's "+"
-        // (undo) button refund the right resource instead of guessing. Cleared alongside
-        // BonusInitiativeDice at the start of every turn's buying phase.
-        private readonly Dictionary<ResourceType, int> _diceBoughtByResource = new Dictionary<ResourceType, int>
+        // The exact Human/Energy/Materials/Tech bundle that paid for each PAID bonus die, one
+        // entry per die in purchase order (index order matches AllResourceTypes). Refunding the
+        // most recently bought die restores exactly its bundle — see RefundLastInitiativeDie.
+        // The V1 free-dice path never adds here, so this can be shorter than BonusInitiativeDice
+        // when Strategy V2 is off; the human buy panel and the V2 planner only ever go through
+        // the paid API below, so for them the two stay in lockstep.
+        private readonly List<int[]> _initiativePayments = new List<int[]>();
+
+        // How many bonus dice were actually PAID for through the canonical purchase API (<=
+        // BonusInitiativeDice). This is what the progressive price ladder is indexed by.
+        public int PaidInitiativeDice => _initiativePayments.Count;
+
+        // Cost of the next paid bonus die for this player, per the shared progressive ladder.
+        public int NextInitiativeDieCost => Game.Turns.InitiativeRules.NextBonusDieCost(_initiativePayments.Count);
+
+        public bool CanBuyMoreInitiativeDice => _initiativePayments.Count < Game.Turns.InitiativeRules.MaxBonusDice;
+
+        private static int ResourceIndex(ResourceType type)
         {
-            { ResourceType.Human, 0 },
-            { ResourceType.Energy, 0 },
-            { ResourceType.Materials, 0 },
-            { ResourceType.Tech, 0 },
-        };
+            for (int i = 0; i < AllResourceTypes.Length; i++)
+                if (AllResourceTypes[i] == type)
+                    return i;
+            return 0;
+        }
 
-        // Total dice per player is capped at 10 (TurnOrderResolver.BaseDiceCount's 3 plus up to
-        // 7 bought) — without this, buying was only ever limited by how much a player could
-        // afford.
-        private const int MaxBonusInitiativeDice = 7;
+        // Canonical paid-purchase API (used by the human buy panel AND the V2 Initiative
+        // planner). `bundle` is 4 non-negative amounts in AllResourceTypes order; it must sum to
+        // exactly NextInitiativeDieCost and every component must be currently affordable.
+        public bool CanPayInitiativeBundle(IReadOnlyList<int> bundle)
+        {
+            if (!CanBuyMoreInitiativeDice || bundle == null || bundle.Count != AllResourceTypes.Length)
+                return false;
+            int sum = 0;
+            for (int i = 0; i < AllResourceTypes.Length; i++)
+            {
+                if (bundle[i] < 0 || GetResource(AllResourceTypes[i]) < bundle[i])
+                    return false;
+                sum += bundle[i];
+            }
+            return sum == NextInitiativeDieCost;
+        }
 
-        public bool CanBuyInitiativeDie(ResourceType resource, int price) =>
-            GetResource(resource) >= price && BonusInitiativeDice < MaxBonusInitiativeDice;
+        public void PurchaseInitiativeDie(IReadOnlyList<int> bundle)
+        {
+            if (!CanPayInitiativeBundle(bundle))
+                return;
+            var stored = new int[AllResourceTypes.Length];
+            for (int i = 0; i < AllResourceTypes.Length; i++)
+            {
+                stored[i] = bundle[i];
+                if (bundle[i] > 0)
+                    AddResource(AllResourceTypes[i], -bundle[i]);
+            }
+            _initiativePayments.Add(stored);
+            AddBonusInitiativeDice(1);
+        }
+
+        public bool CanRefundLastInitiativeDie => _initiativePayments.Count > 0;
+
+        public void RefundLastInitiativeDie()
+        {
+            if (_initiativePayments.Count == 0)
+                return;
+            int last = _initiativePayments.Count - 1;
+            int[] bundle = _initiativePayments[last];
+            _initiativePayments.RemoveAt(last);
+            for (int i = 0; i < AllResourceTypes.Length; i++)
+                if (bundle[i] > 0)
+                    AddResource(AllResourceTypes[i], bundle[i]);
+            AddBonusInitiativeDice(-1);
+        }
+
+        // ---- Back-compat shims for the existing per-resource buy panel (InitiativeBuyPanelUI /
+        // BuyDiceRowUI). Each row still buys one whole die from its own single resource (a legal
+        // bundle: all-from-one-type), and its "+" refund only lights up when THAT resource paid
+        // the most recent die — refund is last-die-only now that pricing is progressive. The
+        // `price` argument is ignored: the real cost is always NextInitiativeDieCost.
+        public bool CanBuyInitiativeDie(ResourceType resource, int price)
+        {
+            var bundle = new int[AllResourceTypes.Length];
+            bundle[ResourceIndex(resource)] = NextInitiativeDieCost;
+            return CanPayInitiativeBundle(bundle);
+        }
 
         public void BuyInitiativeDie(ResourceType resource, int price)
         {
-            if (!CanBuyInitiativeDie(resource, price))
-                return;
-            AddResource(resource, -price);
-            AddBonusInitiativeDice(1);
-            _diceBoughtByResource[resource]++;
+            var bundle = new int[AllResourceTypes.Length];
+            bundle[ResourceIndex(resource)] = NextInitiativeDieCost;
+            PurchaseInitiativeDie(bundle);
         }
 
-        public bool CanRefundInitiativeDie(ResourceType resource) => _diceBoughtByResource[resource] > 0;
+        public bool CanRefundInitiativeDie(ResourceType resource)
+        {
+            if (_initiativePayments.Count == 0)
+                return false;
+            int[] last = _initiativePayments[_initiativePayments.Count - 1];
+            int idx = ResourceIndex(resource);
+            for (int i = 0; i < last.Length; i++)
+                if (i != idx && last[i] != 0)
+                    return false;
+            return last[idx] > 0;
+        }
 
         public void RefundInitiativeDie(ResourceType resource, int price)
         {
-            if (!CanRefundInitiativeDie(resource))
-                return;
-            AddResource(resource, price);
-            AddBonusInitiativeDice(-1);
-            _diceBoughtByResource[resource]--;
+            if (CanRefundInitiativeDie(resource))
+                RefundLastInitiativeDie();
         }
 
         private static readonly ResourceType[] AllResourceTypes =

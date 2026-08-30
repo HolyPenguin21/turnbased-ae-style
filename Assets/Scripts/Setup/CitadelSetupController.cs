@@ -139,6 +139,8 @@ namespace Game.Setup
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
             Game.Ai.V2.AiAllocatorStateRegistry.Clear(); // Strategy V2 per-player allocator reject-cooldown map
             Game.Ai.V2.MissionIntentRegistry.Clear();    // Strategy V2 per-player durable mission-intent store (step 7)
+            Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
+            Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
             AiResourceReservation.Clear();
             AiManagementPlanner.Clear();
             AssignStartingHexes(GameSession.Players);
