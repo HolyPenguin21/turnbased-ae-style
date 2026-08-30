@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Game.HexGrid;
 using Game.Players;
@@ -34,7 +35,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public enum AggressionObjectiveKind
     {
-        Raid,   // the first (and only) Aggression Objective type — see spec §5
+        Raid,
     }
 
     public sealed class AggressionObjective
@@ -48,25 +49,25 @@ namespace Game.Ai.V2
         public PlayerSetupData TargetOwner;
         public bool TargetIsNeutral;
 
-        public float BaseValue;                 // 0..100 intrinsic merit — becomes MissionProposal.BaseValue
-        public float Confidence;               // knowledge-tier confidence of the sighting
+        public float BaseValue;
+        public float Confidence;
 
         // ---- combat feasibility snapshot (kept OUT of BaseValue) ----
-        public float ReadyWinChance;           // strongest existing single stack vs this target
-        public float AssemblableWinChance;     // strongest roster we could realistically gather this cycle
+        public float ReadyWinChance;
+        public float AssemblableWinChance;
         public bool CanCoverAllDefenders;
         public int EstimatedEta;
         public int DefenderCount;
-        public float TargetPower;              // EffectiveArmyPower of the target's defenders
-        public bool GatePassed;                // hero obtainable AND coverage AND win >= min (feasibility signal only)
+        public float TargetPower;
+        public bool GatePassed;
 
-        // Capability the Aggression axis is short of, if any (spec §11 / §13). Sized so the Demand
-        // layer can ask StrategicManager for the missing amount.
-        public bool NeedsCombatPower;          // no ready/assemblable force clears the target
-        public bool NeedsHero;                 // no obtainable hero to lead a fresh raid
-        public float CombatPowerDeficit;       // projected AiPower shortfall (0 when NeedsCombatPower is false)
+        // These are strategic-cycle hints only. DemandLayer re-checks the CURRENT free capability
+        // after continuity claims are known, so a committed raid army cannot masquerade as spare
+        // supply and a hero card in hand cannot masquerade as an already-deployed raid leader.
+        public bool NeedsCombatPower;
+        public bool NeedsHero;
+        public float CombatPowerDeficit;
 
-        // Deterministic total order for tie-breaks — target army id.
         public string ObjectiveId => $"Raid#{TargetArmyId}";
 
         public MissionIntentKey IntentKey =>
@@ -113,21 +114,55 @@ namespace Game.Ai.V2
         public static List<AggressionObjective> Enumerate(WorldSnapshot snap, CombatOpportunityReport report)
         {
             var list = new List<AggressionObjective>();
-            if (snap?.Self == null || report?.All == null)
+            if (snap?.Self == null)
+            {
+                AiDebugLog.Write("[AI][V2][AggressionObjective] decision=NONE reason=no_self_snapshot");
                 return list;
+            }
+            if (report?.All == null || report.All.Count == 0)
+            {
+                AiDebugLog.Write("[AI][V2][AggressionObjective] decision=NONE reason=no_known_enemy_or_neutral_army_opportunities");
+                return list;
+            }
 
             foreach (CombatOpportunity o in report.All)
             {
-                if (!o.HasTarget || o.TargetArmyId == 0)
+                if (!o.HasTarget)
+                {
+                    AiDebugLog.Write("[AI][V2][AggressionObjective] decision=REJECT targetArmy=0 reason=opportunity_has_no_target");
                     continue;
-                // An army-vs-army fight is not a raid (spec §51 AC #24 kin; parity with V1
-                // AiConfig.raidTargetMaxDefenders).
+                }
+                if (o.TargetArmyId == 0)
+                {
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT hex=({o.TargetHex.Q},{o.TargetHex.R}) reason=missing_stable_target_army_id");
+                    continue;
+                }
                 if (o.DefenderCount > AiConfigV2.raidTargetMaxDefenders)
+                {
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={o.TargetArmyId} "
+                        + $"reason=too_many_defenders defenders={o.DefenderCount} max={AiConfigV2.raidTargetMaxDefenders}");
                     continue;
+                }
 
                 AggressionObjective obj = Build(snap, report, o);
-                if (obj.BaseValue >= AiConfigV2.raidObjectiveMinBaseValue)
-                    list.Add(obj);
+                if (obj.BaseValue < AiConfigV2.raidObjectiveMinBaseValue)
+                {
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={obj.TargetArmyId} "
+                        + $"reason=base_value_below_threshold base={F(obj.BaseValue)} min={F(AiConfigV2.raidObjectiveMinBaseValue)}");
+                    continue;
+                }
+
+                list.Add(obj);
+                string shortage = !obj.CanCoverAllDefenders ? "coverage"
+                    : obj.NeedsCombatPower ? "win_chance_or_power"
+                    : obj.NeedsHero ? "hero"
+                    : "none";
+                AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=ACCEPT targetArmy={obj.TargetArmyId} "
+                    + $"hex=({obj.LastKnownHex.Q},{obj.LastKnownHex.R}) base={F(obj.BaseValue)} "
+                    + $"readyWin={F(obj.ReadyWinChance)} asmWin={F(obj.AssemblableWinChance)} "
+                    + $"cover={(obj.CanCoverAllDefenders ? 1 : 0)} gate={(obj.GatePassed ? 1 : 0)} "
+                    + $"needsPower={(obj.NeedsCombatPower ? 1 : 0)} needsHero={(obj.NeedsHero ? 1 : 0)} "
+                    + $"powerDeficit={F(obj.CombatPowerDeficit)} shortage={shortage}");
             }
 
             list.Sort((a, b) =>
@@ -166,15 +201,27 @@ namespace Game.Ai.V2
                 / Mathf.Max(0.0001f, wSum));
             float baseValue = Mathf.Lerp(AiConfigV2.raidBaseValueMin, AiConfigV2.raidBaseValueMax, quality);
 
-            bool haveViable = o.GatePassed
-                || o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance
-                || o.AssemblableWinChance >= AiConfigV2.raidMinViableWinChance;
-            bool needsHero = !report.HeroAvailable
-                && !snap.Self.Armies.Any(a => a != null && a.HasHero && !a.IsPrison);
+            // Coverage is a hard combat precondition. Step 9 originally treated a high raw
+            // Ready/Assemblable win chance as "viable" even when no attacker could damage one of
+            // the known defenders. That suppresses the very demand that could prepare a better
+            // combat body and later sends Provisioning into a permanent assembly failure loop.
+            bool readyViable = o.CanCoverAllDefenders
+                && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
+            bool assemblableViable = o.CanCoverAllDefenders
+                && o.AssemblableWinChance >= AiConfigV2.raidMinViableWinChance;
+            bool haveViable = o.GatePassed || readyViable || assemblableViable;
+
+            // A ready existing force may raid without a hero. A hero is strategically missing only
+            // when we still need to form/strengthen a raid force and the shared strategic analysis
+            // says no hero is obtainable at all. Operational field availability is rechecked in
+            // DemandLayer after ActorCommitments are known.
+            bool needsHero = !readyViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
+
+            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(DefendersOf(snap, o.TargetArmyId));
+            float requiredPower = targetPower * AiConfigV2.raidCombatPowerMargin;
             float deficit = needsCombatPower
-                ? Mathf.Max(0f, o.TargetValue * AiConfigV2.assetValueArmyPowerDivisor * AiConfigV2.raidCombatPowerMargin
-                    - snap.Self.FieldPower)
+                ? Mathf.Max(1f, requiredPower - snap.Self.FieldPower)
                 : 0f;
 
             return new AggressionObjective
@@ -191,7 +238,7 @@ namespace Game.Ai.V2
                 CanCoverAllDefenders = o.CanCoverAllDefenders,
                 EstimatedEta = o.Eta,
                 DefenderCount = o.DefenderCount,
-                TargetPower = AiPower.EffectiveArmyPowerFromProfiles(DefendersOf(snap, o.TargetArmyId)),
+                TargetPower = targetPower,
                 GatePassed = o.GatePassed,
                 NeedsCombatPower = needsCombatPower,
                 NeedsHero = needsHero,
@@ -220,5 +267,7 @@ namespace Game.Ai.V2
             }
             return best == int.MaxValue ? 0 : best;
         }
+
+        private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }
 }
