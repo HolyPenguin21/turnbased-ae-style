@@ -83,9 +83,20 @@ namespace Game.Ai
         // double-subtracting its OWN already-reserved amount (2026-08-26 P1 fix — see
         // AiTurnController.CanIssueMoveNow's own `reservationOwner` param for why a freshly
         // launched sortie needs this); every other caller passes null, unchanged.
+        //
+        // Strategy V2 is a mutually-exclusive owner of the whole AI turn and intentionally does
+        // not execute V1 AiTaskRegistry work. Legacy task reservations can therefore survive only
+        // as stale V1 bookkeeping while V2 is active. Subtracting them from V2 Phase A/Initiative
+        // created a split-brain resource view: demand materialization saw less stock than Phase B
+        // and the allocator. Under the V2 switch the real PlayerRoot stockpile is the authoritative
+        // physical pool; V2's own atomic spending/claims are handled by its pipeline instead.
         public static int Available(PlayerRoot root, PlayerSetupData player, ResourceType type, AiTask excluding = null)
         {
-            return root == null ? 0 : root.GetResource(type) - TotalReservedExcluding(player, type, excluding);
+            if (root == null)
+                return 0;
+            if (AiConfig.aiStrategyV2Enabled)
+                return root.GetResource(type);
+            return root.GetResource(type) - TotalReservedExcluding(player, type, excluding);
         }
 
         public static bool CanAfford(PlayerRoot root, PlayerSetupData player, ResourceCost cost)
