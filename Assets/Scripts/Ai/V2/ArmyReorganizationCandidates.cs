@@ -9,7 +9,12 @@ namespace Game.Ai.V2
         {
             List<int> armyIds = state.Meta.Keys.OrderBy(id => id).ToList();
 
-            // 1. Absorb/combine an occupied mutable field container into one local destination.
+            // 1. Absorb/combine only a STRUCTURALLY DEGRADED occupied mutable field container.
+            // WorthPlanning also admits healthy groups now so the composition pass below can run;
+            // therefore it can no longer serve as the implicit guard that kept viable armies out
+            // of whole-fold consolidation. Without this local guard, two healthy armies can be
+            // collapsed into one merely because the survivor has a higher minStrength, which is
+            // not a structural Housekeeping improvement (and regresses the healthy-hex no-op).
             foreach (int srcId in armyIds)
             {
                 ReorgContainer src = state.Meta[srcId];
@@ -19,6 +24,9 @@ namespace Game.Ai.V2
                 if (srcUnits.Count == 0 || srcUnits.Any(u =>
                     u.IsCommitted || u.IsAviation || state.MovedUnitKeys.Contains(u.Key)))
                     continue;
+                if (ReorgViability.IsViable(srcUnits)
+                    && !ReorgViability.IsSingletonShape(srcUnits))
+                    continue; // healthy source: composition pass may rebalance/swap it, never erase it wholesale
 
                 foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                 {
