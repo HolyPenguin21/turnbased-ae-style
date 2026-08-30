@@ -96,7 +96,7 @@ namespace Game.Ai.V2.Initiative
         {
             float total = 0f;
             for (int unit = 0; unit < amount; unit++)
-                total += analysis.MarginalCostAt(typeIndex, stockBeforePayment - unit);
+                total += analysis.MarginalCostAt(typeIndex, stockBeforePayment - unit - 1);
             return total;
         }
     }
