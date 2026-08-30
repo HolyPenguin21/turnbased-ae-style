@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Focused acceptance harness for Recon throughput / stranded-capacity policies introduced
-       after AiDebug(4): desired-vs-hard concurrency, physical scout actor admission, adaptive
-       Phase-B utility threshold, and Initiative bottleneck telemetry. -->
+  <!-- Focused acceptance harness for throughput / stranded-capacity policies introduced after
+       AiDebug(4): desired-vs-hard Recon concurrency, physical scout actor admission, adaptive
+       Phase-B utility threshold, Initiative bottleneck telemetry, and Raid actor-contention
+       classification/admission. -->
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
