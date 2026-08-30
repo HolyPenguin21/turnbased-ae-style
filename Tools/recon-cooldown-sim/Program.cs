@@ -23,6 +23,7 @@ namespace ReconCooldownSim
             Scenario06_NoMoverCanBeFundedAgainNextTurn();
             Scenario07_DemandIgnoresAllCooldownBlockedReconJobs();
             Scenario08_DemandSizesOnlyRunnableReconJobs();
+            Scenario09_RefreshedSnapshotScoutIsImmediatelyMoverKnown();
 
             Console.WriteLine();
             Console.WriteLine($"recon-cooldown-sim: {_passed} passed, {_failed} failed");
@@ -204,6 +205,46 @@ namespace ReconCooldownSim
                 && d.Capability == CapabilityKind.ScoutCapability);
             Check("08 demand counts only the one runnable job",
                 recon != null && Math.Abs(recon.DesiredAmount - 1f) < 0.001f);
+        }
+
+        // Pure-model pin for the Phase-A -> RefreshOperationalState -> MissionLayer boundary. Once
+        // the refreshed Self snapshot contains the scout StrategicManager just materialized, the
+        // mission estimator must see it immediately in the same turn (`moverKnown=1`).
+        private static void Scenario09_RefreshedSnapshotScoutIsImmediatelyMoverKnown()
+        {
+            PlayerSetupData me = Fresh("S9");
+            WorldSnapshot snap = Snap(turn: 2, actionPoints: 6);
+            snap.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot
+                {
+                    ArmyId = 11,
+                    Owner = me,
+                    Hex = H(9, 4),
+                    MemberCount = 1,
+                    IsSoloRecce = true,
+                    IsPrison = false,
+                    IsAir = false,
+                    CurrentMovement = 3,
+                    MaxMovement = 3,
+                    ActivationApCost = 1,
+                    HasActivatedThisTurn = false,
+                    IsHidden = false,
+                    CanEnterStealth = false,
+                    StealthLevel = 0,
+                    EffectiveVisionRadius = 2,
+                    Members = Array.Empty<WorthIt.DefenderProfile>(),
+                },
+            };
+            ReconObjective objective = ExploreObjective(H(8, 4), 60f);
+            var breakdown = new DesireBreakdown { ReconExploration = 1f, ReconSurveillance = 0f };
+
+            List<MissionProposal> proposals = MissionLayer.Propose(
+                snap, breakdown, Array.Empty<MissionIntent>(), new[] { objective });
+            MissionProposal explore = proposals.SingleOrDefault(m =>
+                m.Target is ScoutMissionTarget t && t.Kind == ScoutTargetKind.Explore);
+            Check("09 refreshed snapshot scout is immediately visible to MissionLayer as moverKnown=1",
+                explore?.Requirements != null && explore.Requirements.MoverKnown);
         }
 
         // ================================================================ builders ====
