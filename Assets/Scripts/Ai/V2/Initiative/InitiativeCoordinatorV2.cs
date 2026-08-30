@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Cards;
+using Game.Economy;
 using Game.Map;
 using Game.Players;
 using Game.Turns;
@@ -7,15 +8,15 @@ using UnityEngine;
 
 namespace Game.Ai.V2.Initiative
 {
-    // Strategy V2's replacement for the placeholder InitiativeDiceAI. Runs at the pre-popup round
-    // boundary (GameTurnController.ProceedWithNewTurn), after ResetBonusInitiativeDice and before
-    // the human initiative UI.
+    // The one initiative-purchase AI. Runs at the pre-popup round boundary
+    // (GameTurnController.ProceedWithNewTurn), after ResetBonusInitiativeDice and before the human
+    // initiative UI. The old random/free InitiativeDiceAI implementation no longer exists.
     //
     // Strict one-way boundary: it reads only own world/army workload, own resources + income, own
     // deck appetite, own initiative/AP history, own existing AiResourceReservation claims, and
     // the PUBLIC previous-initiative results. It writes nothing into the V2 strategic pipeline —
-    // its only effect on the later AI turn is the ordinary gameplay state (resources actually
-    // spent, AP/order actually won).
+    // its only effect on the later AI turn is ordinary gameplay state (resources actually spent,
+    // AP/order actually won).
     //
     // Orchestration guarantee: EVERY AI plans from the same immutable pre-purchase state
     // (opponent estimates come from public history, never from another AI's freshly-formed plan),
@@ -70,13 +71,16 @@ namespace Game.Ai.V2.Initiative
 
                 int applied = 0;
                 var spent = new int[4];
-                foreach (int[] bundle in entry.Plan.DiePayments)
+                foreach (ResourceType resource in entry.Plan.PaymentResources)
                 {
-                    if (!entry.Root.CanBuyMoreInitiativeDice || !entry.Root.CanPayInitiativeBundle(bundle))
-                        break; // legal limit / exact price / affordability no longer holds — stop, don't force it
-                    entry.Root.PurchaseInitiativeDie(bundle);
-                    for (int i = 0; i < 4; i++)
-                        spent[i] += bundle[i];
+                    if (!entry.Root.CanBuyInitiativeDie(resource))
+                        break;
+
+                    int price = entry.Root.NextInitiativeDieCost;
+                    if (!entry.Root.PurchaseInitiativeDie(resource))
+                        break;
+
+                    spent[ResourceIndex(resource)] += price;
                     applied++;
                 }
 
@@ -86,6 +90,17 @@ namespace Game.Ai.V2.Initiative
                 else if (applied > 0)
                     AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — bought {applied} bonus dice "
                         + $"for H/E/M/T={spent[0]}/{spent[1]}/{spent[2]}/{spent[3]}.");
+            }
+        }
+
+        private static int ResourceIndex(ResourceType type)
+        {
+            switch (type)
+            {
+                case ResourceType.Human: return 0;
+                case ResourceType.Energy: return 1;
+                case ResourceType.Materials: return 2;
+                default: return 3;
             }
         }
     }

@@ -6,12 +6,10 @@ namespace Game.Turns
     // The ONLY cross-player information the Initiative AI is allowed to use about opponents when
     // it plans this round's purchases: what everyone visibly ended up with last time. No hidden
     // stockpile, card or reservation read — just the public bonus-dice count each player showed
-    // on the table after the previous initiative phase resolved (project owner's own redesign,
-    // "Opponent Initiative Estimate").
+    // on the table after the previous initiative phase resolved.
     //
     // GameTurnController.OnTurnOrderResolved records one entry per player every turn, AFTER the
-    // roll, BEFORE next turn's ResetBonusInitiativeDice wipes the counts. Cleared on a new game
-    // via Clear() (same lifecycle as PlayerRootRegistry etc.).
+    // roll, BEFORE next turn's ResetBonusInitiativeDice wipes the counts. Cleared on a new game.
     public static class InitiativePublicHistory
     {
         private const int MaxSamples = 6;
@@ -32,21 +30,18 @@ namespace Game.Turns
                 samples.RemoveRange(0, samples.Count - MaxSamples);
         }
 
-        public static bool HasHistory(PlayerSetupData player) =>
-            player != null && BoughtByPlayer.TryGetValue(player, out List<int> s) && s.Count > 0;
-
-        // Expected bonus dice this opponent will buy this round. No history => assume 0 (i.e. the
-        // 5 free base dice only). With history, a short trailing average, rounded, so a player
-        // who has been steadily buying 2 is expected to buy about 2 again — never their single
-        // best-ever spike.
+        // Expected bonus dice this opponent will buy this round. No history => assume 0 (the five
+        // free base dice only). With history, use a short trailing average rather than a one-off
+        // spike; the result is public-behaviour prediction, never hidden-state inspection.
         public static int EstimatedBonusDice(PlayerSetupData player)
         {
             if (player == null || !BoughtByPlayer.TryGetValue(player, out List<int> samples) || samples.Count == 0)
                 return 0;
+
             int sum = 0;
             foreach (int s in samples)
                 sum += s;
-            int avg = (sum + samples.Count / 2) / samples.Count; // rounded
+            int avg = (sum + samples.Count / 2) / samples.Count;
             if (avg < 0)
                 avg = 0;
             if (avg > InitiativeRules.MaxBonusDice)
