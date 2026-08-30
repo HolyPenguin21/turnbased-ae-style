@@ -33,10 +33,9 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public enum ExecutionLane
     {
-        None,        // not execution-capacity managed (no lane hits this today)
-        Recon,       // Scout missions — bounded by AiConfigV2.maxConcurrentReconExecutions
-        Aggression,  // Raid missions — NOT a fixed K (spec §20): real armies / heroes / commitments
-                     // / physical resources / target conflicts bound it instead.
+        None,
+        Recon,
+        Aggression,
     }
 
     internal static class MissionAdmissionPolicy
@@ -59,8 +58,6 @@ namespace Game.Ai.V2
                 case ExecutionLane.Recon:
                     return AiConfigV2.maxConcurrentReconExecutions;
                 case ExecutionLane.Aggression:
-                    // First-pass: unlimited. If playtests prove a hard cap is needed that is a
-                    // separate tuning decision, not an architectural necessity (spec §20).
                     return int.MaxValue;
                 default:
                     return int.MaxValue;
@@ -70,18 +67,15 @@ namespace Game.Ai.V2
         // Pairwise execution conflict between two Recon missions:
         //   · same FocusHex                                             -> conflict
         //   · Explore + Explore, distance < scoutTargetMinSeparation    -> conflict
-        //   · Explore + Surveil / Surveil + Surveil, different FocusHex -> allowed (different jobs)
-        // Two Surveils that share a hex but track DIFFERENT armies still conflict on the hex — one
-        // vantage observes both; the allocator funds one and the other falls through as a backup.
-        // Exact-identity duplicates are removed upstream (MissionLayer dedup), never here.
+        //   · no distinct physical scout assignment                    -> conflict
+        //
+        // The physical rule is admission-only. It does not bind an actor; ProvisioningManager
+        // remains authoritative. With Recon K=2 this pairwise test is an exact injective-matching
+        // test and prevents the allocator from knowingly funding two jobs for one real scout.
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
 
-            // Step 9 — two Raid proposals on the SAME target army conflict (spec §45.1 / AC #27).
-            // Exact-identity duplicates are removed upstream (AggressionMissionPlanner dedup); this
-            // catches a fresh candidate vs an incumbent for the same target. Actor collisions are
-            // ProvisioningManager's job, not this.
             if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
                 && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
                 return ra.TargetArmyId == rb.TargetArmyId;
@@ -91,16 +85,15 @@ namespace Game.Ai.V2
 
             if (ta.FocusHex.Equals(tb.FocusHex))
                 return true;
+
             bool bothExplore = ta.Kind == ScoutTargetKind.Explore && tb.Kind == ScoutTargetKind.Explore;
-            return bothExplore
-                && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
+            if (bothExplore
+                && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation)
+                return true;
+
+            return !ScoutAdmissionRegistry.PairHasDistinctAssignment(a, b);
         }
 
-        // Planner-local admission rank for one alternative inside its lane. Fresh candidate rides at
-        // its LocalAdmissionScore; a re-materialised None-tier intent (an in-flight Explore, or a
-        // short Surveil that has not earned Soft yet) rides at LocalAdmissionScore * (1 + margin) so
-        // it only yields to a fresh candidate that genuinely beats it. Soft/Hard intents never
-        // reach this path — they are pre-bound Commitments funded before the fresh loop.
         public static float AdmissionRank(MissionProposal m) =>
             m == null ? 0f : AdmissionRank(m.LocalAdmissionScore, m.FromDurableIntent, m.DurableFundingTier);
 
