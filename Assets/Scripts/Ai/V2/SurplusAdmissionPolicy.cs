@@ -21,8 +21,8 @@ namespace Game.Ai.V2
     }
 
     // Hard reserve safety remains StrategicManager.ReservesOkAfterChain. This policy only changes
-    // the SOFT utility admission line inside that already-safe set: repeated stranded AP/resources
-    // lower the threshold toward a floor, while a plan sitting on the reserves keeps the original
+    // the SOFT utility admission line inside that already-safe set: stranded AP/resources lower
+    // the threshold toward a floor, while a plan sitting on the reserves keeps the original
     // conservative threshold.
     internal static class SurplusAdmissionPolicy
     {
@@ -38,7 +38,6 @@ namespace Game.Ai.V2
 
             float hardApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
             float apSlack = Mathf.Max(0f, root.ActionPoints - plan.ApCost - hardApReserve);
-            float apFactor = Mathf.Clamp01(apSlack / ApSlackForFullRelaxation);
 
             float resFactor = 0f;
             int dimensions = 0;
@@ -56,10 +55,18 @@ namespace Game.Ai.V2
 
             if (dimensions > 0)
                 resFactor /= dimensions;
+            return EvaluateFromSlack(apSlack, resFactor);
+        }
 
-            float relaxation = Mathf.Clamp01(0.75f * apFactor + 0.25f * resFactor);
+        internal static SurplusAdmission EvaluateFromSlack(float apSlack, float resourceSlackFactor)
+        {
+            float baseThreshold = AiConfigV2.surplusUtilityThreshold;
+            float safeApSlack = Mathf.Max(0f, apSlack);
+            float safeResourceSlack = Mathf.Clamp01(resourceSlackFactor);
+            float apFactor = Mathf.Clamp01(safeApSlack / ApSlackForFullRelaxation);
+            float relaxation = Mathf.Clamp01(0.75f * apFactor + 0.25f * safeResourceSlack);
             float effective = Mathf.Lerp(baseThreshold, ThresholdFloor, relaxation);
-            return new SurplusAdmission(baseThreshold, effective, apSlack, resFactor);
+            return new SurplusAdmission(baseThreshold, effective, safeApSlack, safeResourceSlack);
         }
     }
 }
