@@ -25,7 +25,9 @@ namespace Game.Ai.V2
     //  ArmyData container, so a snapshot-only `!IsAir` filter can accidentally admit parked
     //  aircraft as a ground Raid actor. IsLiveGroundFieldArmy closes that representation seam by
     //  resolving only the matching OWN live ArmyData and checking structural container flags. It
-    //  does not inspect opponents/fog state and it does not mutate anything.
+    //  also mirrors ProvisioningManager's dedicated-role exclusions, including a lone hero waiting
+    //  for escort: a solver must never call an actor "ready" that the atomic door immediately
+    //  rejects. It does not inspect opponents/fog state and it does not mutate anything.
     //
     //  The estimator is WorthIt run against the SAME DefenderProfile roster and threshold family
     //  AggressionObjectiveEvaluator / CombatOpportunityAnalyzer use (ONE ESTIMATOR, MANY STAGES).
@@ -97,7 +99,8 @@ namespace Game.Ai.V2
                 return false;
             ArmyData live = ArmyRegistry.AllForOwner(owner).FirstOrDefault(x => x != null && x.Id == a.ArmyId);
             return live != null && !live.IsPrison && !live.IsGarrison && !live.IsAirfield && !live.IsAirArmy
-                && !AiArmyRoles.IsSoloRecce(live) && live.Members.Count > 0;
+                && !AiArmyRoles.IsSoloRecce(live) && !AiArmyRoles.IsSoloHeroAwaitingEscort(live)
+                && live.Members.Count > 0;
         }
 
         private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
