@@ -58,6 +58,8 @@ namespace Game.Ai.V2
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 
+            AiDebugLog.Write($"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
+
             var states = demands
                 .Select((d, i) => new DemandState
                 {
@@ -133,8 +135,9 @@ namespace Game.Ai.V2
 
                 if (!play.Deployed)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} chain did not deploy "
-                        + $"({play.FailReason}); gen={(play.Generated ? 1 : 0)} att={(play.Attached ? 1 : 0)}");
+                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
+                        + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
+                        + $"att={(play.Attached ? 1 : 0)}");
                     if (play.StateChanged)
                         snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                     if (!play.StateChanged && plan.Generation == null)
@@ -148,7 +151,7 @@ namespace Game.Ai.V2
                 selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                 result.CardsPlayed++;
 
-                AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} "
+                AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
                     + $"followup {F(selected.FollowupAp)}ap reserved, {plan.StableKey})");
@@ -207,6 +210,8 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 return result;
 
+            AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
+
             for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
             {
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
@@ -219,15 +224,17 @@ namespace Game.Ai.V2
                 SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
                 if (pick.Value.utility < admission.EffectiveThreshold)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} util {F(pick.Value.utility)} "
-                        + $"< threshold {F(admission.EffectiveThreshold)} (base {F(admission.BaseThreshold)}, "
-                        + $"apSlack {F(admission.ApSlack)}, resSlack {F(admission.ResourceSlackFactor)}), stop");
+                    AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
+                        + $"util {F(pick.Value.utility)} < threshold {F(admission.EffectiveThreshold)} "
+                        + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
+                        + $"resSlack {F(admission.ResourceSlackFactor)}), stop");
                     break;
                 }
 
-                AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} util {F(pick.Value.utility)} "
-                    + $">= threshold {F(admission.EffectiveThreshold)} (base {F(admission.BaseThreshold)}, "
-                    + $"apSlack {F(admission.ApSlack)}, resSlack {F(admission.ResourceSlackFactor)})");
+                AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
+                    + $"util {F(pick.Value.utility)} >= threshold {F(admission.EffectiveThreshold)} "
+                    + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
+                    + $"resSlack {F(admission.ResourceSlackFactor)})");
 
                 bool handWasFull = !hand.HasFreeSlot;
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
@@ -237,14 +244,15 @@ namespace Game.Ai.V2
                     result.StateChanged = true;
                 if (!play.Deployed)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} chain did not deploy ({play.FailReason}); stop");
+                    AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                        + $"chain did not deploy ({play.FailReason}); stop");
                     if (play.StateChanged)
                         snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                     break;
                 }
                 result.CardsPlayed++;
-                AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} util {F(pick.Value.utility)} "
-                    + $"(ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
+                AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                    + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
 
                 if (AiConfigV2.surplusAllowDraw && handWasFull && hand.HasFreeSlot
                     && root.ActionPoints - ctx.DrawApCost
@@ -271,10 +279,11 @@ namespace Game.Ai.V2
             ResourceCost cost = plan.ResCost;
             if (cost == null)
                 return true;
-            return root.GetResource(ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
-                && root.GetResource(ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
-                && root.GetResource(ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
-                && root.GetResource(ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
+            PlayerSetupData player = root.Setup;
+            return AiResourceReservation.Available(root, player, ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
