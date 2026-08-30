@@ -29,9 +29,10 @@ namespace Game.Ai.V2
                 matching++;
 
                 bool needsStealth = (demand.RequiredTraits & TraitPreference.Stealth) != 0;
-                bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(def.grantedAbilities)
-                    || (card.Equipment != null && AbilityParams.AbilitiesHaveAnyStealth(
-                        EquipmentSystem.EffectiveAbilities(def.grantedAbilities, card.Equipment.equipment)));
+                bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(def.grantedAbilities);
+                if (!hasStealth && card.Equipment?.equipment != null)
+                    hasStealth = AbilityParams.AbilitiesHaveAnyStealth(
+                        EquipmentSystem.EffectiveAbilities(def.grantedAbilities, card.Equipment.equipment));
                 if (needsStealth && !hasStealth)
                     continue;
                 traitMatching++;
@@ -44,10 +45,11 @@ namespace Game.Ai.V2
                 }
             }
 
+            float axis = ledger != null ? ledger.Balance(demand.RequestingAxis) : 0f;
+            int ap = root != null ? root.ActionPoints : 0;
             return $"diag hand={hand.Hand.Count} freeSlot={(hand.HasFreeSlot ? 1 : 0)} match={matching} "
                 + $"trait={traitMatching} placements={placements} preflight={preflight} "
-                + $"axis={ledger?.Balance(demand.RequestingAxis):0.##} ap={root?.ActionPoints ?? 0} "
-                + $"followupReserved={reservedFollowup:0.##}";
+                + $"axis={axis:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
         }
     }
 }
