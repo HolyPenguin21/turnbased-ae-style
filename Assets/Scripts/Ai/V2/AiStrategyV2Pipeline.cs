@@ -311,10 +311,27 @@ namespace Game.Ai.V2
         public float ApMinimum, ApDesired, ApMaximum;
         public float EnergyMinimum, EnergyDesired, EnergyMaximum;
 
+        // Step 9 — the deferred physical-resource contract, closed. These are EXECUTION costs that
+        // remain AFTER Strategic Manager Phase A (Phase A's preparation spend is already gone from
+        // the real pool — the allocator must not count it again). For a Scout, and for many Raids,
+        // H/M/T are all 0; a resource dimension existing in the shared contract does not oblige a
+        // mission to spend from it. Checked GLOBALLY by ResourceAllocator against one post-Phase-A
+        // physical pool — never radar-sliced (AxisBudgetLedger stays AP-only, spec §18).
+        public float HumanMinimum, HumanDesired, HumanMaximum;
+        public float MaterialsMinimum, MaterialsDesired, MaterialsMaximum;
+        public float TechMinimum, TechDesired, TechMaximum;
+
+        // Step 9 — structural requirements. Describe WHAT the mission needs; they never name a
+        // concrete actor (that is ProvisioningManager's job). A Scout leaves these at their zero
+        // defaults.
+        public bool RequiresArmy;
+        public bool RequiresHero;
+        public float CombatPowerMinimum;
+        public float CombatPowerDesired;
+        public TraitPreference RequiredCombatTraits;
+
         public int EtaTurns;                 // ceil(distance / move budget) — informational, not a resource
         public float EstimatedDistance;
-
-        // TODO step 9: Human/Materials/Tech Min/Desired/Max; CombatPower; Army; Hero; Cards; Equipment.
     }
 
     // --- Stage 7: an in-flight mission the allocator must fund BEFORE fresh decisions and may not
@@ -391,6 +408,21 @@ namespace Game.Ai.V2
             //     Manager changes which SCOUT can execute, never which objectives exist.
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
+            // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
+            //     and AggressionMissionLayer (build-order step 9). FROZEN here alongside the Recon
+            //     objectives, from the SAME shared CombatOpportunityReport the radar already
+            //     computed. Strategic Manager changes which FORCE can raid, never which strategic
+            //     targets exist — so this list is NOT recomputed after the operational refresh.
+            List<AggressionObjective> aggressionObjectives =
+                AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
+            foreach (AggressionObjective ao in aggressionObjectives)
+                AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
+                    + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"readyWin {ao.ReadyWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"asmWin {ao.AssemblableWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"def {ao.DefenderCount} gate {(ao.GatePassed ? 1 : 0)}"
+                    + $"{(ao.NeedsCombatPower ? " needsPower" : "")}{(ao.NeedsHero ? " needsHero" : "")}");
+
             // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, so the planner
             //     can re-materialise them from this snapshot (one place still owns proposal
             //     creation) and retarget hysteresis holds a multi-turn chain steady through Radar
@@ -403,7 +435,7 @@ namespace Game.Ai.V2
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). Axes say what is missing.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, activeIntents, actorCommitments, player);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
@@ -430,6 +462,11 @@ namespace Game.Ai.V2
             //    them. Also materialises every active intent and applies the retarget margin.
             List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
+            // Step 9 — the Aggression lane. Same FROZEN objective set the Demand layer read; a
+            // Raid candidate beam concatenated onto the Recon beam. The allocator's k-way merge
+            // interleaves the two lanes by BaseValue.
+            missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
+                activeIntents, aggressionObjectives));
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
@@ -439,6 +476,10 @@ namespace Game.Ai.V2
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
                     + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
                     + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
+                    + (r != null && (r.HumanDesired > 0f || r.MaterialsDesired > 0f || r.TechDesired > 0f)
+                        ? $"hmt {Fmt(r.HumanDesired)}/{Fmt(r.MaterialsDesired)}/{Fmt(r.TechDesired)} " : "")
+                    + (r != null && r.RequiresArmy
+                        ? $"army{(r.RequiresHero ? "+hero" : "")} cp {Fmt(r.CombatPowerMinimum)}/{Fmt(r.CombatPowerDesired)} " : "")
                     + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)}"
                     + $"{(m.PreferredMoverArmyId.HasValue ? " prefMv#" + m.PreferredMoverArmyId : "")} "
                     + $"| {m.Explain}");

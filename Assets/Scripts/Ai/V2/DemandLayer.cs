@@ -21,12 +21,13 @@ namespace Game.Ai.V2
     public static class DemandLayer
     {
         public static List<AxisDemand> Generate(WorldSnapshot snap, DesireBreakdown breakdown,
-            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
+            IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player)
         {
             var demands = new List<AxisDemand>();
             demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player));
-            demands.AddRange(AggressionDemands(snap, breakdown));
+            demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, commitments));
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown));
             demands.AddRange(DevelopmentDemands(snap, breakdown));
@@ -139,10 +140,66 @@ namespace Game.Ai.V2
             }
         }
 
+        // --------------------------------------------------------------------- Aggression ----
+        //  Reads the SAME frozen AggressionObjective[] AggressionMissionLayer will read (spec §13,
+        //  AC #3/#5) — no second target scan. A Raid objective that no ready/assemblable force can
+        //  execute produces a capability demand: FieldCombatPower (scalar amount, spec §14) and/or
+        //  Hero. StrategicManager decides HOW to fulfil it through its existing materialization
+        //  pipeline (spec §15) — no RaidCardPlayer.
+        private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot snap, DesireBreakdown b,
+            IReadOnlyList<AggressionObjective> objectives, ActorCommitments commitments)
+        {
+            if (objectives == null || objectives.Count == 0 || snap?.Self == null)
+                yield break;
+
+            // The single most valuable objective we cannot currently execute drives the demand —
+            // one prepared combat body / hero unblocks the highest-merit raid first.
+            AggressionObjective worst = objectives
+                .Where(o => o.NeedsCombatPower || o.NeedsHero)
+                .OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.TargetArmyId)
+                .FirstOrDefault();
+            if (worst == null)
+                yield break;
+
+            if (worst.NeedsHero)
+            {
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Aggression,
+                    Capability = CapabilityKind.Hero,
+                    DesiredAmount = 1,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = worst.LastKnownHex,
+                    Value = worst.BaseValue,
+                    Explain = $"raid #{worst.TargetArmyId} (base {worst.BaseValue:0.0}) has no hero to lead it",
+                };
+            }
+
+            if (worst.NeedsCombatPower)
+            {
+                // Scalar capability amount (spec §14 / §29): ask for the projected AiPower
+                // shortfall, not "1 card". StrategicManager decrements the demand by the REAL
+                // delivered FieldCombatPower amount, not by 1.
+                float deficit = UnityEngine.Mathf.Max(1f, worst.CombatPowerDeficit);
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Aggression,
+                    Capability = CapabilityKind.FieldCombatPower,
+                    DesiredAmount = deficit,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = worst.LastKnownHex,
+                    Value = worst.BaseValue,
+                    Explain = $"raid #{worst.TargetArmyId} (base {worst.BaseValue:0.0}) short ~{deficit:0.#} field power "
+                        + $"(readyWin {worst.ReadyWinChance:0.00} asmWin {worst.AssemblableWinChance:0.00})",
+                };
+            }
+        }
+
         // ------------------------------------------------------- extensible axis hooks ----
         //  Kept as explicit no-op methods so the wiring point for each future axis is visible.
-        private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot s, DesireBreakdown b) =>
-            Enumerable.Empty<AxisDemand>();
         private static IEnumerable<AxisDemand> DefenceDemands(WorldSnapshot s, DesireBreakdown b) =>
             Enumerable.Empty<AxisDemand>();
         private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b) =>

@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -57,6 +59,16 @@ namespace Game.Ai.V2
         // a sighting of TrackedArmyId with SeenTurn > BaselineObservedTurn, OR FocusHex visible.
         public int? TrackedArmyId;
         public int BaselineObservedTurn;
+
+        // Step 9 — Raid payload (Kind == MissionKind.Raid). The concrete raid force is MoverArmyId
+        // (re-resolved live before every executor step); ExecutionHex is the target's last-known
+        // position it heads for. Completion / validity is RaidObjectiveEvaluator's job.
+        public int RaidTargetArmyId;
+        public HexCoord RaidLastKnownHex;
+        public bool RaidTargetIsNeutral;
+        // The physical resources this raid claimed from the global pool (spec §19.5 / §31 Stage 6).
+        // Ground raids are 0; kept so ProvisioningSession can lock it against re-pack double-spend.
+        public ResourceVector ClaimedPhysical;
 
         public float ClaimedAp;
         public bool StealthApReserved;
@@ -348,8 +360,14 @@ namespace Game.Ai.V2
             MissionProposal m = funded?.Mission;
             if (m == null || ctx?.Map == null || root == null)
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("no mission / map / root"));
+
+            // Step 9 — mission-kind dispatch (spec §30). Raid provisioning is a SEPARATE atomic
+            // sequence (RaidProvisioner) but the SAME single public door.
+            if (m.Kind == MissionKind.Raid)
+                return RaidProvisioner.Provision(player, root, ctx, session, funded);
+
             if (m.Kind != MissionKind.Scout || !(m.Target is ScoutMissionTarget target))
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("provisions Scout missions only"));
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("provisions Scout / Raid missions only"));
 
             StableMissionKey key = StableMissionKey.For(m);
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
@@ -488,5 +506,173 @@ namespace Game.Ai.V2
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    // ===========================================================================================
+    //  RAID PROVISIONER  (Strategy V2 build-order step 9 — the atomic raid-force door)
+    // ===========================================================================================
+    //  Internal helper of ProvisioningManager (spec §30 — orchestration owner stays there). Turns
+    //  a funded Raid MissionProposal into a ProvisionedMission (a concrete raid army heading for
+    //  the target's last-known hex) or a ProvisionFailure — ATOMIC (spec §31): every check runs
+    //  BEFORE any canonical gameplay mutation; on any failure NOTHING is changed.
+    //
+    //  SEQUENCE (spec §31):
+    //   1. live target validation      — still an allowed, still-existing raid target
+    //   2. ready army                  — prefer an existing free combat army that clears WorthIt
+    //   3. assembly plan               — else a PURE RaidAssemblyPlan (same-hex consolidation only)
+    //   4. preflight                   — actor free/valid, transfers legal, first step exists, AP OK
+    //   5. apply                       — canonical TransferMember for the assembly
+    //   6. lock                        — claim the actor(s), emit ProvisionedMission
+    // ===========================================================================================
+    internal static class RaidProvisioner
+    {
+        public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, FundedEntry funded)
+        {
+            MissionProposal m = funded.Mission;
+            if (!(m.Target is RaidMissionTarget target))
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("raid mission has no RaidMissionTarget"));
+
+            StableMissionKey key = StableMissionKey.For(m);
+            WorldSnapshot snap = session.Snapshot;
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+
+            // 1. LIVE TARGET VALIDATION — the tracked army must still be a known hostile force.
+            AiMapMemory.KnownEnemySighting? sighting = FindLiveSighting(player, target.TargetArmyId);
+            if (sighting == null)
+            {
+                if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target.TargetArmyId))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"raid target #{target.TargetArmyId} no longer exists (destroyed / captured)"));
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid target #{target.TargetArmyId} has no current honest sighting"));
+            }
+            if (sighting.Value.Owner != null && !sighting.Value.Owner.IsNeutral && sighting.Value.Owner.Equals(player))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    $"raid target #{target.TargetArmyId} is now ours"));
+
+            HexCoord targetHex = sighting.Value.Hex;
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                sighting.Value.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+
+            // 2/3. PURE SOLVER — ready army preferred, else same-hex consolidation (spec §31).
+            RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
+            if (!plan.Feasible)
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(plan.Reason));
+
+            // 4. PREFLIGHT — everything proved BEFORE any mutation (spec §31 Stage 4).
+            ArmyData host = ResolveArmy(player, plan.BaseArmyId);
+            if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0
+                || host.IsPrison || host.IsAirfield || AviationRules.IsAirArmy(host)
+                || AiArmyRoles.IsSoloRecce(host) || AiArmyRoles.IsSoloHeroAwaitingEscort(host))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid host #{plan.BaseArmyId} is no longer a usable ground combat army"));
+            if (host.Owner != player || session.ClaimedArmyIds.Contains(host.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid host #{plan.BaseArmyId} was claimed by an earlier mission this cycle"));
+
+            // Planned same-hex transfers — legality proved now, applied only in Stage 5.
+            var transfers = new List<KeyValuePair<UnitData, ArmyData>>();
+            var claimedDonors = new List<int>();
+            if (plan.NeedsAssembly)
+            {
+                var projected = new List<UnitData>(host.Members);
+                foreach (int donorId in plan.MergeArmyIds)
+                {
+                    ArmyData donor = ResolveArmy(player, donorId);
+                    if (donor == null || !donor.Hex.Equals(host.Hex))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid donor #{donorId} is gone or no longer co-located"));
+                    if (session.ClaimedArmyIds.Contains(donorId))
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"raid donor #{donorId} was claimed by an earlier mission this cycle"));
+                    if (donor.IsPrison || donor.IsAirfield || AviationRules.IsAirArmy(donor) || AiArmyRoles.IsSoloRecce(donor))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid donor #{donorId} is not a legal ground donor (prison / aviation / dedicated Recce)"));
+                    claimedDonors.Add(donorId);
+                    foreach (UnitData u in donor.Members.Where(x => !x.IsHero && !x.IsAviation).ToList())
+                    {
+                        var withU = new List<UnitData>(projected) { u };
+                        if (ArmyData.ComputeCapacity(withU, host.IsGarrison) < withU.Count)
+                            continue;   // no room on the host — take what fits, leave the rest
+                        if (!donor.CanLeaveWithoutOvercrowding(u))
+                            continue;
+                        if (!AiArmyRoles.CanSpareGarrisonMember(player, donor, u))
+                            continue;
+                        transfers.Add(new KeyValuePair<UnitData, ArmyData>(u, donor));
+                        projected.Add(u);
+                    }
+                }
+                if (transfers.Count == 0)
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        "no legal same-hex body could be added to the raid host"));
+            }
+
+            // First-step preflight toward the target's last-known hex (V1's fog-safe stepper —
+            // it routes around OTHER known sightings and steps onto the target hex to engage).
+            if (VisitHexTask.FindNextSafeStep(ctx.Map, host, targetHex) == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward raid target ({targetHex.Q},{targetHex.R})"));
+
+            // AP envelope — activation of the host only (travel is MP, engagement is free).
+            int activationAp = host.HasActivatedThisTurn ? 0 : host.ActivationApCost;
+            float envelope = funded.Tentative.Ap;
+            if (activationAp > envelope + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
+                    $"raid host #{host.Id} needs {N(activationAp)} AP, envelope is {N(envelope)}"));
+            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            if (activationAp > turnApLeft + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: raid needs {N(activationAp)}, {N(turnApLeft)} left"));
+
+            // 5. APPLY — canonical same-hex transfers only (movement / engagement is TaskExecutor's).
+            foreach (KeyValuePair<UnitData, ArmyData> t in transfers)
+            {
+                if (!ArmyActions.TransferMember(t.Key, t.Value, host, ctx.HexSelection, out string why))
+                    // A transfer that passed preflight but fails now leaves the earlier ones
+                    // applied — acceptable as a same-hex consolidation (no cross-hex state, no
+                    // reservation), and the raid still launches with whatever folded in. Logged.
+                    AiDebugLog.Write($"[AI][V2]   raid provision {key} — WARN transfer of a body from #{t.Value.Id} failed: {why}");
+            }
+
+            // 6. LOCK — claim the host + every donor so no second mission drafts them.
+            foreach (int d in claimedDonors)
+                session.ClaimedArmyIds.Add(d);
+
+            AiDebugLog.Write($"[AI][V2]   raid provision {key} — OK host #{host.Id} "
+                + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
+                + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"ap {N(activationAp)} -> ({targetHex.Q},{targetHex.R})");
+
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = m,
+                Key = key,
+                Kind = MissionKind.Raid,
+                MoverArmyId = host.Id,
+                FocusHex = targetHex,
+                ExecutionHex = targetHex,
+                RaidTargetArmyId = target.TargetArmyId,
+                RaidLastKnownHex = targetHex,
+                RaidTargetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = activationAp,
+                StealthApReserved = false,
+            });
+        }
+
+        private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
+            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+
+        private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+        private static AiMapMemory.KnownEnemySighting? FindLiveSighting(PlayerSetupData player, int armyId)
+        {
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (s.ArmyId == armyId) return s;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownNeutralSightings(player))
+                if (s.ArmyId == armyId) return s;
+            return null;
+        }
     }
 }

@@ -33,14 +33,24 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public enum ExecutionLane
     {
-        None,   // not execution-capacity managed (no lane hits this today)
-        Recon,  // Scout missions — bounded by AiConfigV2.maxConcurrentReconExecutions
+        None,        // not execution-capacity managed (no lane hits this today)
+        Recon,       // Scout missions — bounded by AiConfigV2.maxConcurrentReconExecutions
+        Aggression,  // Raid missions — NOT a fixed K (spec §20): real armies / heroes / commitments
+                     // / physical resources / target conflicts bound it instead.
     }
 
     internal static class MissionAdmissionPolicy
     {
-        public static ExecutionLane LaneFor(MissionProposal mission) =>
-            mission != null && mission.Kind == MissionKind.Scout ? ExecutionLane.Recon : ExecutionLane.None;
+        public static ExecutionLane LaneFor(MissionProposal mission)
+        {
+            if (mission == null) return ExecutionLane.None;
+            switch (mission.Kind)
+            {
+                case MissionKind.Scout: return ExecutionLane.Recon;
+                case MissionKind.Raid: return ExecutionLane.Aggression;
+                default: return ExecutionLane.None;
+            }
+        }
 
         public static int Capacity(ExecutionLane lane)
         {
@@ -48,6 +58,10 @@ namespace Game.Ai.V2
             {
                 case ExecutionLane.Recon:
                     return AiConfigV2.maxConcurrentReconExecutions;
+                case ExecutionLane.Aggression:
+                    // First-pass: unlimited. If playtests prove a hard cap is needed that is a
+                    // separate tuning decision, not an architectural necessity (spec §20).
+                    return int.MaxValue;
                 default:
                     return int.MaxValue;
             }
@@ -63,6 +77,15 @@ namespace Game.Ai.V2
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
+
+            // Step 9 — two Raid proposals on the SAME target army conflict (spec §45.1 / AC #27).
+            // Exact-identity duplicates are removed upstream (AggressionMissionPlanner dedup); this
+            // catches a fresh candidate vs an incumbent for the same target. Actor collisions are
+            // ProvisioningManager's job, not this.
+            if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
+                && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
+                return ra.TargetArmyId == rb.TargetArmyId;
+
             if (!(a.Target is ScoutMissionTarget ta) || !(b.Target is ScoutMissionTarget tb))
                 return false;
 

@@ -109,6 +109,16 @@ namespace Game.Ai.V2
                 result.FinalHex = army.Hex;
                 int apBefore = root != null ? root.ActionPoints : 0;
 
+                // Step 9 — Raid dispatch (spec §35). Same single public entry point, a dedicated
+                // per-hex loop that heads for the target and ENGAGES (BattleStarted is the expected
+                // result, not a failure — spec §37).
+                if (pm.Kind == MissionKind.Raid)
+                {
+                    yield return RunRaid(player, root, ctx, pm, result, apBefore);
+                    results.Add(result);
+                    continue;
+                }
+
                 // Objective already met by an EARLIER mission this turn (pipeline provisions all,
                 // then executes in order)? Then this Surveil does nothing at all — no movement, no
                 // stealth AP. This check MUST precede every execution mutation.
@@ -278,6 +288,76 @@ namespace Game.Ai.V2
                     + $"ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} stop {stop}"
                     + (result.ReachedGoal ? " (goal)" : ""));
             }
+        }
+
+        // ---- RAID execution (step 9) ------------------------------------------------------
+        //  A provisioned raid force -> per-hex advance toward the target's last-known hex, through
+        //  the SAME canonical movement / engagement path V1 and the human use (spec §36). Never
+        //  picks a different target, never plays a card, never re-scores strategy. A step that
+        //  opens a battle ENDS the turn as productive progress (spec §37) — the RaidIntent's
+        //  next-turn reconciliation decides whether the target is still worth chasing.
+        private static IEnumerator RunRaid(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            int maxIterations = (army?.CurrentMovement ?? 0) + 1;
+            int iterations = 0;
+
+            while (true)
+            {
+                if (++iterations > maxIterations) { stop = ExecutionStopReason.MoveRejected; break; }
+
+                army = Resolve(player, pm.MoverArmyId);
+                if (army == null || army.Owner != player) { stop = ExecutionStopReason.MoverLost; break; }
+                if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
+
+                // Target already gone (destroyed / captured by an earlier mission this turn)?
+                if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId))
+                {
+                    result.ReachedGoal = true;
+                    stop = ExecutionStopReason.ReachedGoal;
+                    break;
+                }
+
+                if (army.Hex.Equals(pm.ExecutionHex))
+                {
+                    // Arrived at the last-known hex with no fight — the target moved. Productive
+                    // stop; the intent carries to next turn (spec §37 / §39).
+                    stop = ExecutionStopReason.EnemyDiscovered;
+                    break;
+                }
+                if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
+
+                HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, pm.ExecutionHex);
+                if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }
+
+                HexCoord before = army.Hex;
+                var decision = AiDecision.Move(army, next.Value,
+                    $"V2 raid — strike #{pm.RaidTargetArmyId} at ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
+                    null, 0f, AiTaskCategory.Aggression);
+                var trace = new AiMoveExecutionTrace();
+                yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
+
+                army = Resolve(player, pm.MoverArmyId);
+                HexCoord endHex = army != null ? army.Hex : trace.EndHex;
+                if (!endHex.Equals(before))
+                    result.StepsMoved++;
+                result.FinalHex = endHex;
+
+                if (trace.BattleOccurred) { stop = ExecutionStopReason.BattleStarted; break; }
+                if (trace.HexEventOccurred) { stop = ExecutionStopReason.HexEventStarted; break; }
+                if (army == null) { stop = ExecutionStopReason.MoverLost; break; }
+                if (endHex.Equals(before)) { stop = ExecutionStopReason.MoveRejected; break; }
+            }
+
+            result.FinalHex = Resolve(player, pm.MoverArmyId)?.Hex ?? result.FinalHex;
+            result.StopReason = stop;
+            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — raid ({result.StartHex.Q},{result.StartHex.R})→"
+                + $"({result.FinalHex.Q},{result.FinalHex.R}) steps {result.StepsMoved} "
+                + $"ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} stop {stop}"
+                + (result.ReachedGoal ? " (target gone)" : ""));
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>

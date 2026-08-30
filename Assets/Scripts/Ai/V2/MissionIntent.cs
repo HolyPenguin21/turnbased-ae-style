@@ -76,6 +76,9 @@ namespace Game.Ai.V2
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
                 return ForScoutTarget(t);
+            // Step 9 — Raid identity is the tracked target army, NOT its hex (spec §25 / §57).
+            if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
+                return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
             return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -89,6 +92,9 @@ namespace Game.Ai.V2
 
         public static MissionIntentKey For(MissionIntent intent)
         {
+            RaidIntent ri = intent?.Raid;
+            if (ri != null)
+                return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, ri.TargetArmyId, 0, 0);
             ScoutIntent s = intent?.Scout;
             if (s == null)
                 return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
@@ -117,7 +123,9 @@ namespace Game.Ai.V2
                 ? (SubKind == (int)ScoutTargetKind.Surveil
                     ? $"Intent(Surveil #{ObjectiveId})"
                     : $"Intent(Explore {Q},{R})")
-                : $"Intent({Kind})";
+                : Kind == MissionKind.Raid
+                    ? $"Intent(Raid #{ObjectiveId})"
+                    : $"Intent({Kind})";
     }
 
     // The durable objective payload for a Scout intent. NO ExecutionHex — the vantage a Surveil
@@ -128,6 +136,18 @@ namespace Game.Ai.V2
         public HexCoord FocusHex;          // Explore: the frontier hex. Surveil: last-known enemy hex (refreshed each turn).
         public int? TrackedArmyId;         // Surveil only
         public int BaselineObservedTurn;   // Surveil only — a sighting past this turn == objective met. Fixed per intent instance.
+    }
+
+    // The durable objective payload for a Raid intent (spec §26). Identity is TargetArmyId; the
+    // last-known hex is a per-turn tactical fact refreshed each turn, not the identity.
+    public sealed class RaidIntent
+    {
+        public int TargetArmyId;
+        public HexCoord LastKnownHex;
+        public bool TargetIsNeutral;
+        // The AI has REALLY begun the operation — assembly applied, or the raid army has moved /
+        // engaged. Only then may the commitment become CommitmentTier.Hard (spec §27 / §55 / §56).
+        public bool OperationStarted;
     }
 
     public sealed class MissionIntent
@@ -158,6 +178,7 @@ namespace Game.Ai.V2
         public int? PreferredMoverArmyId;
 
         public ScoutIntent Scout => Objective as ScoutIntent;
+        public RaidIntent Raid => Objective as RaidIntent;
     }
 
     // Per-player durable intent store. Same lifetime/registry shape as AiRadarStateRegistry /
@@ -231,6 +252,14 @@ namespace Game.Ai.V2
         public int? TrackedArmyId;
         public int BaselineObservedTurn;
         public bool HasScoutPayload;
+
+        // Step 9 — Raid identity refresh + Hard-commitment trigger (spec §26 / §27 / §37).
+        public MissionKind MissionKind = MissionKind.Scout;
+        public bool HasRaidPayload;
+        public int RaidTargetArmyId;
+        public HexCoord RaidLastKnownHex;
+        public bool RaidTargetIsNeutral;
+        public bool RaidOperationStarted;   // assembly applied / raid army moved / engagement occurred
     }
 
     public sealed class MissionOutcomeLedger
@@ -323,9 +352,13 @@ namespace Game.Ai.V2
                 if (r.Execution != null && r.Execution.ReachedGoal)
                     continue;
                 ProvisionedMission pm = r.Provisioned;
-                bool satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
-                    ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
-                    : ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                bool satisfied;
+                if (pm.Kind == MissionKind.Raid)
+                    satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
+                else
+                    satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
+                        ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
+                        : ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
                 if (satisfied)
                 {
                     r.LiveSatisfiedOverride = true;
@@ -352,14 +385,28 @@ namespace Game.Ai.V2
                     WasCommitment = r.WasCommitment,
                 };
 
+                o.MissionKind = r.Proposal.Kind;
+
                 if (r.Provisioned != null)
                 {
                     o.MoverArmyId = r.Provisioned.MoverArmyId;
-                    o.HasScoutPayload = true;
-                    o.ScoutKind = r.Provisioned.ScoutKind;
-                    o.FocusHex = r.Provisioned.FocusHex;
-                    o.TrackedArmyId = r.Provisioned.TrackedArmyId;
-                    o.BaselineObservedTurn = r.Provisioned.BaselineObservedTurn;
+                    if (r.Provisioned.Kind == MissionKind.Raid)
+                    {
+                        o.HasRaidPayload = true;
+                        o.RaidTargetArmyId = r.Provisioned.RaidTargetArmyId;
+                        o.RaidLastKnownHex = r.Provisioned.RaidLastKnownHex;
+                        o.RaidTargetIsNeutral = r.Provisioned.RaidTargetIsNeutral;
+                        // OperationStarted is set below from the EXECUTION facts (moved / engaged) —
+                        // spec §27: a provisioned raid that never actually moved is not yet Hard.
+                    }
+                    else
+                    {
+                        o.HasScoutPayload = true;
+                        o.ScoutKind = r.Provisioned.ScoutKind;
+                        o.FocusHex = r.Provisioned.FocusHex;
+                        o.TrackedArmyId = r.Provisioned.TrackedArmyId;
+                        o.BaselineObservedTurn = r.Provisioned.BaselineObservedTurn;
+                    }
                 }
 
                 if (r.Execution != null)
@@ -367,7 +414,12 @@ namespace Game.Ai.V2
                     ExecutionResult e = r.Execution;
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
-                    o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth;
+                    bool raidEngaged = o.MissionKind == MissionKind.Raid
+                        && (e.StopReason == ExecutionStopReason.BattleStarted
+                            || e.StopReason == ExecutionStopReason.HexEventStarted);
+                    o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth || raidEngaged;
+                    if (o.MissionKind == MissionKind.Raid && (e.StepsMoved > 0 || raidEngaged))
+                        o.RaidOperationStarted = true;
                     Classify(e, o);
                 }
                 else if (r.PendingFailure.HasValue)
@@ -405,6 +457,33 @@ namespace Game.Ai.V2
                 o.ObjectiveSatisfied = true;
                 return;
             }
+
+            // Step 9 — mission-specific outcome interpretation (spec §37). For a Raid, an
+            // engagement is the EXPECTED result of the operation, not a failure: BattleStarted /
+            // HexEventStarted count as productive operational progress, and the RaidIntent survives
+            // for next-turn reconciliation to decide whether the target is still worth chasing.
+            if (o.MissionKind == MissionKind.Raid)
+            {
+                switch (e.StopReason)
+                {
+                    case ExecutionStopReason.BattleStarted:
+                    case ExecutionStopReason.HexEventStarted:
+                    case ExecutionStopReason.OutOfMovement:
+                    case ExecutionStopReason.EnemyDiscovered:
+                    case ExecutionStopReason.NeutralDiscovered:
+                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        break;
+                    case ExecutionStopReason.NoSafeStep:
+                    case ExecutionStopReason.MoveRejected:
+                        o.Outcome = ExecutionOutcome.Blocked;
+                        break;
+                    default: // MoverLost / TargetInvalidated — actor loss / world changed under the mission
+                        o.Outcome = ExecutionOutcome.Failed;
+                        break;
+                }
+                return;
+            }
+
             switch (e.StopReason)
             {
                 case ExecutionStopReason.OutOfMovement:
@@ -466,6 +545,27 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent intent in state.All)
             {
+                // Step 9 — explicit per-kind dispatch (spec §26 / §29). Scout -> ScoutObjective-
+                // Evaluator; Raid -> RaidObjectiveEvaluator. An intent with neither payload is dead.
+                if (intent.Kind == MissionKind.Raid)
+                {
+                    RaidIntent ri = intent.Raid;
+                    if (ri == null || !RaidObjectiveEvaluator.IsIntentStillValid(snap, ri))
+                    {
+                        dead.Add(intent.IntentKey);
+                        AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (raid target no longer valid)");
+                        continue;
+                    }
+                    if (intent.Status == IntentStatus.Suspended && intent.Suspended == SuspendReason.PoolExhausted)
+                    {
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                    }
+                    if (intent.Status == IntentStatus.Active)
+                        active.Add(intent);
+                    continue;
+                }
+
                 ScoutIntent s = intent.Scout;
                 if (s == null) { dead.Add(intent.IntentKey); continue; }
 
@@ -615,6 +715,10 @@ namespace Game.Ai.V2
                 {
                     CreateIntent(state, o, turn);
                 }
+                else if (o.HasRaidPayload && o.RaidOperationStarted)
+                {
+                    CreateRaidIntent(state, o, turn);
+                }
             }
 
             // Registry intents with no outcome this turn: not materialised / not funded (a loose
@@ -658,6 +762,24 @@ namespace Game.Ai.V2
                 intent.Scout.FocusHex = o.FocusHex;
                 if (o.TrackedArmyId.HasValue)
                     intent.Scout.TrackedArmyId = o.TrackedArmyId;
+            }
+
+            if (o.HasRaidPayload && intent.Raid != null)
+            {
+                // Refresh the last-known target position (identity — TargetArmyId — is unchanged).
+                intent.Raid.LastKnownHex = o.RaidLastKnownHex;
+                if (o.RaidOperationStarted)
+                {
+                    intent.Raid.OperationStarted = true;
+                    // Step 9 — a raid the AI has REALLY begun earns a Hard commitment (spec §27):
+                    // funded before fresh decisions, protected from a small Radar wobble. It never
+                    // becomes Hard on mere existence or tentative funding.
+                    if (intent.Funding != CommitmentTier.Hard)
+                    {
+                        intent.Funding = CommitmentTier.Hard;
+                        AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} promoted to Hard commitment (operation started)");
+                    }
+                }
             }
 
             bool poolExhausted = o.AllocationDeferReason == DeferReason.CommitmentPoolExhausted;
@@ -732,9 +854,46 @@ namespace Game.Ai.V2
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
         }
 
-        private static bool ShouldReap(MissionIntent i) =>
-            i.StallTurns >= AiConfigV2.commitmentStallTurns
-            || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
+        // A started, unfinished Raid becomes/reuses a durable RaidIntent (spec §54). It is Hard
+        // from creation: reaching this path means the raid force already moved or engaged this turn.
+        private static void CreateRaidIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        {
+            var ri = new RaidIntent
+            {
+                TargetArmyId = o.RaidTargetArmyId,
+                LastKnownHex = o.RaidLastKnownHex,
+                TargetIsNeutral = o.RaidTargetIsNeutral,
+                OperationStarted = true,
+            };
+            var intent = new MissionIntent
+            {
+                IntentKey = o.IntentKey,
+                LastAttemptKey = o.AttemptKey,
+                Kind = MissionKind.Raid,
+                Funding = CommitmentTier.Hard,
+                Status = IntentStatus.Active,
+                Suspended = SuspendReason.None,
+                Objective = ri,
+                CreatedTurn = turn,
+                TurnsActive = 1,
+                LastProgressTurn = turn,
+                StallTurns = 0,
+                CumulativeApSpent = o.ApSpent,
+                StepsMovedTotal = o.StepsMoved,
+                PreferredMoverArmyId = o.MoverArmyId,
+            };
+            state.Put(intent);
+            AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
+        }
+
+        private static bool ShouldReap(MissionIntent i)
+        {
+            if (i.Kind == MissionKind.Raid)
+                return i.StallTurns >= AiConfigV2.raidIntentStallTurns
+                    || i.TurnsActive >= AiConfigV2.raidIntentMaxTurns;
+            return i.StallTurns >= AiConfigV2.commitmentStallTurns
+                || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
+        }
 
         private static string Describe(MissionTurnOutcome o) =>
             o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t ? $"{t.Kind}" : "?";

@@ -46,6 +46,11 @@ namespace Game.Ai.V2
     {
         public readonly bool HasTarget;
         public readonly HexCoord TargetHex;
+        // Step 9 — the STABLE strategic identity of a Raid target (spec §7). The last-known hex is
+        // only the target's current position; a moving army must stay the SAME objective, so
+        // AggressionObjective / RaidIntent / StableMissionKey all key off this, not the hex. 0 for
+        // a target with no tracked army id (should not happen for a sighting-sourced opportunity).
+        public readonly int TargetArmyId;
         public readonly PlayerSetupData TargetOwner;
         public readonly bool TargetIsNeutral;
         public readonly int DefenderCount;
@@ -61,12 +66,13 @@ namespace Game.Ai.V2
         public readonly bool GatePassed;              // hero obtainable AND CanCoverAll AND win >= min
         public readonly float OpportunityScore;       // 0..1 — exactly 0 when GatePassed is false
 
-        public CombatOpportunity(bool hasTarget, HexCoord targetHex, PlayerSetupData targetOwner, bool targetIsNeutral,
+        public CombatOpportunity(bool hasTarget, HexCoord targetHex, int targetArmyId, PlayerSetupData targetOwner, bool targetIsNeutral,
             int defenderCount, float readyWinChance, float assemblableWinChance, bool canCoverAll, float battleCostProxy,
             int eta, float targetValue, float confidence, bool gatePassed, float opportunityScore)
         {
             HasTarget = hasTarget;
             TargetHex = targetHex;
+            TargetArmyId = targetArmyId;
             TargetOwner = targetOwner;
             TargetIsNeutral = targetIsNeutral;
             DefenderCount = defenderCount;
@@ -82,7 +88,7 @@ namespace Game.Ai.V2
         }
 
         public static CombatOpportunity None =>
-            new CombatOpportunity(false, default, null, false, 0, 0f, 0f, false, 0f, 0, 0f, 0f, false, 0f);
+            new CombatOpportunity(false, default, 0, null, false, 0, 0f, 0f, false, 0f, 0, 0f, 0f, false, 0f);
     }
 
     public sealed class CombatOpportunityReport
@@ -189,6 +195,7 @@ namespace Game.Ai.V2
                 all.Add(new CombatOpportunity(
                     hasTarget: true,
                     targetHex: t.Hex,
+                    targetArmyId: t.ArmyId,
                     targetOwner: t.Owner,
                     targetIsNeutral: t.Owner != null && t.Owner.IsNeutral,
                     defenderCount: defenders.Count,

@@ -1587,7 +1587,13 @@ namespace Game.Ai
         // risks, and the recon-first build order).
         // static readonly, not const, on purpose: this is an A/B toggle you flip, so neither
         // branch of the fork in AiTurnController.RunTurn should compile to unreachable code.
-        public static readonly bool aiStrategyV2Enabled = false;
+        //
+        // Step 9 (2026-08-30, project owner's directive): the AI player is now FULLY driven by V2 —
+        // "only what is implemented in V2 should work". Default flipped to true; every AI turn runs
+        // Game.Ai.V2.Pipeline end to end. V1 (the stack above + everything below the fork) is left
+        // fully intact and is reachable again only by flipping this back to false for a regression
+        // check.
+        public static readonly bool aiStrategyV2Enabled = true;
         // Step 5 (2026-08-27) — retire the hand-rolled cross-category couplings the strategic axes
         // now subsume, so a new behavior no longer needs a fresh constant threaded between two old
         // ones. When true:

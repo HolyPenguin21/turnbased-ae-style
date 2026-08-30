@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
 using Game.Players;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -24,9 +25,12 @@ namespace Game.Ai.V2
         public int ReserveScouts;      // solo Recce that exists but cannot be tasked this turn
         public int StealthScouts;      // subset of ReadyScouts already hidden or able to enter stealth
 
-        public float FieldCombatPower;
+        public float FieldCombatPower;         // total fielded (non-garrison) combat power
+        public float CommittedFieldCombatPower;// subset locked to an active mission (Raid / other durable op)
+        public float RaidAvailableFieldPower;  // FieldCombatPower - CommittedFieldCombatPower (spec §14)
         public float GarrisonCombatPower;
-        public int AvailableHeroes;    // fielded (non-garrison) hero-led armies
+        public int AvailableHeroes;    // fielded (non-garrison) hero-led armies, NOT claimed by an operation
+        public int CommittedHeroes;    // fielded hero-led armies claimed by an active mission
 
         public IReadOnlyList<ArmyData> ReusableEmptyArmies = Array.Empty<ArmyData>();
 
@@ -63,8 +67,29 @@ namespace Game.Ai.V2
 
             inv.FieldCombatPower = snap.Self.FieldPower;
             inv.GarrisonCombatPower = snap.Self.GarrisonPower;
-            inv.AvailableHeroes = snap.Self.Armies.Count(a =>
-                a != null && a.HasHero && !a.IsGarrison && !a.IsPrison);
+
+            // Step 9 — split total field power / heroes into COMMITTED (locked to an active
+            // durable mission, e.g. a Hard raid) vs AVAILABLE. An army an operation already owns
+            // is not free Aggression supply (spec §14 / AC #27).
+            float committedPower = 0f;
+            int committedHeroes = 0, availHeroes = 0;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || a.IsGarrison || a.IsPrison || a.IsSoloRecce || a.MemberCount <= 0)
+                    continue;
+                bool claimed = commitments != null && commitments.IsArmyClaimed(a.ArmyId);
+                if (claimed)
+                    committedPower += a.EffectiveArmyPower;
+                if (a.HasHero)
+                {
+                    if (claimed) committedHeroes++;
+                    else availHeroes++;
+                }
+            }
+            inv.CommittedFieldCombatPower = committedPower;
+            inv.RaidAvailableFieldPower = Mathf.Max(0f, snap.Self.FieldPower - committedPower);
+            inv.AvailableHeroes = availHeroes;
+            inv.CommittedHeroes = committedHeroes;
 
             inv.ReusableEmptyArmies = ReusableArmySelector.ReusableShells(player, commitments);
             return inv;

@@ -40,29 +40,61 @@ namespace Game.Ai.V2
     //  RegisterProvisionFailure -> Pack, bounded by maxReallocIterations + RejectedThisTurn +
     //  structural cooldown + fingerprint convergence.
     //
-    //  RESOURCE DIMENSIONS
+    //  RESOURCE DIMENSIONS  (step 9 closure — spec §19.1)
     //  --------------------------------------------------------------------------------------------
-    //  AP only in step 5. ResourceVector intentionally has one live component. Energy/H/M/T and
-    //  multi-resource atomic funding stay out until step 9.
+    //  AP + Human + Energy + Materials + Tech. AP is still checked through the per-axis radar
+    //  SLICES (AxisBudgetLedger). Human/Energy/Materials/Tech are ONE global physical pool — never
+    //  axis-sliced (spec §18 / §19.3): a mission is funded only if all its AP axis draws AND the
+    //  whole global physical draw succeed together, atomically (spec §19.4 / AC #17). The physical
+    //  pool the allocator sees is already post-Initiative + post-Phase-A (spec §41 / §16 / AC
+    //  #19/#20) — the real remaining stockpile, never a re-reservation of what is already spent.
     // ===========================================================================================
 
     public readonly struct ResourceVector
     {
         public readonly float Ap;
+        public readonly float Human;
+        public readonly float Energy;
+        public readonly float Materials;
+        public readonly float Tech;
 
-        public ResourceVector(float ap) { Ap = ap; }
+        public ResourceVector(float ap) : this(ap, 0f, 0f, 0f, 0f) { }
 
-        public static readonly ResourceVector Zero = new ResourceVector(0f);
+        public ResourceVector(float ap, float human, float energy, float materials, float tech)
+        {
+            Ap = ap; Human = human; Energy = energy; Materials = materials; Tech = tech;
+        }
 
+        public static readonly ResourceVector Zero = new ResourceVector(0f, 0f, 0f, 0f, 0f);
+
+        // AP-side only — the fresh/remainder pack logic is AP-driven; physical is a separate gate.
         public bool IsPositive => Ap > AiConfigV2.allocatorSliceEpsilon;
+        public bool AnyPhysical => Human > AiConfigV2.allocatorSliceEpsilon || Energy > AiConfigV2.allocatorSliceEpsilon
+            || Materials > AiConfigV2.allocatorSliceEpsilon || Tech > AiConfigV2.allocatorSliceEpsilon;
 
-        public static ResourceVector operator +(ResourceVector a, ResourceVector b) => new ResourceVector(a.Ap + b.Ap);
-        public static ResourceVector operator -(ResourceVector a, ResourceVector b) => new ResourceVector(a.Ap - b.Ap);
-        public static ResourceVector operator *(ResourceVector a, float k) => new ResourceVector(a.Ap * k);
+        public static ResourceVector operator +(ResourceVector a, ResourceVector b) =>
+            new ResourceVector(a.Ap + b.Ap, a.Human + b.Human, a.Energy + b.Energy, a.Materials + b.Materials, a.Tech + b.Tech);
+        public static ResourceVector operator -(ResourceVector a, ResourceVector b) =>
+            new ResourceVector(a.Ap - b.Ap, a.Human - b.Human, a.Energy - b.Energy, a.Materials - b.Materials, a.Tech - b.Tech);
+        public static ResourceVector operator *(ResourceVector a, float k) =>
+            new ResourceVector(a.Ap * k, a.Human * k, a.Energy * k, a.Materials * k, a.Tech * k);
 
-        public ResourceVector ClampLow0() => new ResourceVector(Mathf.Max(0f, Ap));
+        public ResourceVector ClampLow0() => new ResourceVector(
+            Mathf.Max(0f, Ap), Mathf.Max(0f, Human), Mathf.Max(0f, Energy), Mathf.Max(0f, Materials), Mathf.Max(0f, Tech));
         public float Magnitude => Ap;
+
+        // True iff every physical dimension of `need` fits within this vector (AP ignored — the AP
+        // check is the axis-slice path). Atomic multi-resource admission (spec §19.4).
+        public bool CoversPhysical(ResourceVector need, float eps) =>
+            Human + eps >= need.Human && Energy + eps >= need.Energy
+            && Materials + eps >= need.Materials && Tech + eps >= need.Tech;
+
         public string Fmt() => Ap.ToString("0.00", CultureInfo.InvariantCulture);
+        public string FmtPhysical() =>
+            $"H{Human.ToString("0.#", CultureInfo.InvariantCulture)} "
+            + $"E{Energy.ToString("0.#", CultureInfo.InvariantCulture)} "
+            + $"M{Materials.ToString("0.#", CultureInfo.InvariantCulture)} "
+            + $"T{Tech.ToString("0.#", CultureInfo.InvariantCulture)}";
     }
 
     // Declared in step 5; ProvisioningManager fills it in step 6. The concrete REASON a mission
@@ -121,6 +153,10 @@ namespace Game.Ai.V2
                 int targetId = t.Kind == ScoutTargetKind.Surveil ? (t.Contact?.Army?.ArmyId ?? 0) : 0;
                 return new StableMissionKey(MissionKind.Scout, (int)t.Kind, targetId, t.FocusHex.Q, t.FocusHex.R);
             }
+            // Step 9 — Raid identity is the tracked target army (spec §25). Hex is telemetry /
+            // tie-break only, so it stays out of the key: a moving target is the same mission.
+            if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
+                return new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
             return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -133,7 +169,9 @@ namespace Game.Ai.V2
                 ? (TargetId != 0
                     ? $"{Kind}({(ScoutTargetKind)SubKind} #{TargetId} {Q},{R})"
                     : $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})")
-                : $"{Kind}";
+                : Kind == MissionKind.Raid
+                    ? $"Raid(#{TargetId})"
+                    : $"{Kind}";
 
         public int CompareTo(StableMissionKey o)
         {
@@ -167,6 +205,11 @@ namespace Game.Ai.V2
             new Dictionary<DesireAxis, ResourceVector>();
         public ResourceVector RemainderTopUp;
 
+        // Step 9 — the global physical draw (Human/Energy/Materials/Tech) this mission was funded
+        // for. NOT axis-attributed (spec §18) — one global pool. Locked verbatim on provision
+        // success so a re-pack cannot hand the same physical resources out twice (spec §19.5).
+        public ResourceVector PhysicalDraw;
+
         public bool IsCommitment;
         public FundingStage Stage;
     }
@@ -174,6 +217,7 @@ namespace Game.Ai.V2
     public enum DeferReason
     {
         InsufficientBudget,
+        InsufficientPhysical,      // step 9 — global Human/Energy/Materials/Tech pool cannot cover this mission
         InvalidContribution,
         RejectedThisTurn,
         OnCooldown,
@@ -210,6 +254,11 @@ namespace Game.Ai.V2
         public ResourceVector RemainderSpent;
         public ResourceVector Unused;
         public ResourceVector LockedClaim;   // Σ actual claims of missions provisioned in an earlier pass this turn
+
+        // Step 9 — global physical pool telemetry (Human/Energy/Materials/Tech, spec §19).
+        public ResourceVector PhysicalPool;      // real post-Phase-A stockpile
+        public ResourceVector PhysicalLocked;    // Σ physical claims of missions provisioned earlier this turn
+        public ResourceVector PhysicalFunded;    // Σ physical draw of this pack's funded set
 
         // Two DISTINCT overdraft measures:
         //  AxisOverdraft  — Σ of the amounts individual slices were driven negative (a commitment /
@@ -323,13 +372,17 @@ namespace Game.Ai.V2
             public readonly float RemainderAp;                        // fungible top-up, as granted
             public readonly float GrantedAp;                          // StrictAp + RemainderAp (== FundedEntry.Tentative)
             public readonly float ClaimedAp;                          // what provisioning actually took
+            // Step 9 — the global physical resources (H/E/M/T) this locked mission consumed. A
+            // re-pack subtracts this from the global physical pool so the same units can't be
+            // handed out again (spec §19.5 / AC #18).
+            public readonly ResourceVector PhysicalClaim;
             // Step 7.1 — the mission provisioned in an earlier pass this turn. Kept so a re-pack
             // still charges its execution-lane slot (fundedReconCount <= K counts locked successes)
             // and so a fresh candidate can be conflict-tested against work already under way.
             public readonly MissionProposal Mission;
 
             public LockedAllocation(MissionProposal mission, Dictionary<DesireAxis, float> strictDraw, float remainderAp,
-                float grantedAp, float claimedAp)
+                float grantedAp, float claimedAp, ResourceVector physicalClaim)
             {
                 Mission = mission;
                 StrictDraw = strictDraw;
@@ -339,6 +392,7 @@ namespace Game.Ai.V2
                 RemainderAp = remainderAp;
                 GrantedAp = grantedAp;
                 ClaimedAp = claimedAp;
+                PhysicalClaim = physicalClaim;
             }
 
             // What provisioning REALLY consumed, resolved as a WATERFALL (not a flat scale): the
@@ -409,7 +463,10 @@ namespace Game.Ai.V2
                 }
                 case ProvisionDisposition.RejectWithCooldown:
                     _rejectedThisTurn.Add(key);
-                    _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + AiConfigV2.allocatorRejectCooldownTurns);
+                    int cd = funded.Mission.Kind == MissionKind.Raid
+                        ? AiConfigV2.raidRejectCooldownTurns
+                        : AiConfigV2.allocatorRejectCooldownTurns;
+                    _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + cd);
                     break;
                 default: // RetryNextTurn / DropThisTurn — out this turn, re-proposed fresh next turn, no cooldown
                     _rejectedThisTurn.Add(key);
@@ -429,7 +486,8 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<DesireAxis, ResourceVector> kv in funded.PerAxisDraw)
                 strict[kv.Key] = kv.Value.Ap;
             _lockedClaims[StableMissionKey.For(funded.Mission)] =
-                new LockedAllocation(funded.Mission, strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp);
+                new LockedAllocation(funded.Mission, strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp,
+                    funded.PhysicalDraw);
         }
 
         public TentativeAllocation Pack()
@@ -504,6 +562,20 @@ namespace Game.Ai.V2
                 alloc.Slices.Add(s);
             }
 
+            // 2b. Step 9 — the ONE global physical pool (Human/Energy/Materials/Tech). NOT
+            //     axis-sliced (spec §18): it is the real post-Initiative + post-Phase-A stockpile,
+            //     minus what missions provisioned in an earlier pass this turn already claimed
+            //     (spec §19.5 — a re-pack can never re-hand-out the same physical units). AP stays
+            //     on the radar slices above; physical is a flat atomic gate below.
+            ResourceBundle stock = _snap?.Self?.Stockpile ?? default;
+            var physicalPool = new ResourceVector(0f, stock.Human, stock.Energy, stock.Materials, stock.Tech);
+            var lockedPhysical = ResourceVector.Zero;
+            foreach (LockedAllocation lc in _lockedClaims.Values)
+                lockedPhysical += lc.PhysicalClaim;
+            ResourceVector physicalRemaining = (physicalPool - lockedPhysical).ClampLow0();
+            alloc.PhysicalPool = physicalPool;
+            alloc.PhysicalLocked = lockedPhysical;
+
             var shareCache = new Dictionary<MissionProposal, Dictionary<DesireAxis, float>>();
             int priority = 0;
 
@@ -577,7 +649,20 @@ namespace Game.Ai.V2
                     alloc.CommitmentsStarveFreshDecisions = true;
                     continue;
                 }
+
+                // Step 9 — a commitment must also fit the GLOBAL physical pool, atomically with AP
+                // (spec §19.4). A Hard raid the AI has started still cannot conjure Energy/Materials
+                // that are not there — it suspends as PoolExhausted and gets a fresh shot next turn.
+                ResourceVector cPhys = PhysicalDesired(m);
+                if (cPhys.AnyPhysical && !physicalRemaining.CoversPhysical(cPhys, eps))
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
+                    alloc.CommitmentsStarveFreshDecisions = true;
+                    continue;
+                }
+
                 committedApSoFar += askAp;
+                physicalRemaining = (physicalRemaining - cPhys).ClampLow0();
                 ConsumeSlot(clane);
 
                 var ask = new ResourceVector(askAp);
@@ -588,6 +673,7 @@ namespace Game.Ai.V2
                     Tentative = ask,
                     IsCommitment = true,
                     Stage = FundingStage.Strict,
+                    PhysicalDraw = cPhys,
                 };
 
                 foreach (KeyValuePair<DesireAxis, float> kv in shares)
@@ -600,17 +686,20 @@ namespace Game.Ai.V2
 
                 alloc.Funded.Add(fe);
                 alloc.CommitmentDraw += ask;
+                alloc.PhysicalFunded += cPhys;
             }
 
-            // 4. Fresh missions, one EXECUTION LANE at a time. WITHIN a lane the order is
-            //    MissionAdmissionPolicy.AdmissionRank (LocalAdmissionScore + the step-7 retarget
-            //    hysteresis) so the Recon Explore-vs-Surveil balance is not lost to the N>K beam.
-            //    Per candidate: conflict -> capacity -> budget. Budget admission is still atomic:
-            //    calculate ALL draws -> check ALL slices -> mutate ALL or mutate NONE. A proposal
-            //    that is ALSO an active commitment is funded through the commitment loop above only.
-            //    NOTE lanes are walked group-at-a-time (ordered by each group's max BaseValue). With
-            //    one lane that is exactly "AdmissionRank order". It is NOT a true cross-lane
-            //    interleave — see rule 1's step-9 TODO; harmless until a second lane exists.
+            // 4. Fresh missions — TRUE CROSS-LANE k-way MERGE (spec §21, closing rule-1's step-9
+            //    TODO). Per-lane queues are each ordered by MissionAdmissionPolicy.AdmissionRank
+            //    (the None lane by BaseValue) so the WITHIN-lane balance (Recon Explore-vs-Surveil,
+            //    Raid feasibility ordering) survives the N>K beam. Then, repeatedly, the queue HEAD
+            //    with the highest BaseValue is taken and admission-tested — so LocalAdmissionScore
+            //    orders inside a lane, BaseValue orders BETWEEN lanes, and the radar only ever sized
+            //    the AP budget (never a score multiplier). Tie-break: BaseValue DESC, then
+            //    StableMissionKey ASC — deterministic regardless of Dictionary iteration order.
+            //    Per candidate: conflict -> capacity -> AP budget (atomic axis draws) -> global
+            //    physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is funded
+            //    through the commitment loop above only.
             var commitmentKeys = new HashSet<StableMissionKey>(_commitments
                 .Where(c => c?.Mission != null)
                 .Select(c => StableMissionKey.For(c.Mission)));
@@ -620,17 +709,38 @@ namespace Game.Ai.V2
                     && !commitmentKeys.Contains(StableMissionKey.For(m)))
                 .ToList();
 
-            foreach (IGrouping<ExecutionLane, MissionProposal> laneGroup in freshPool
-                .GroupBy(m => MissionAdmissionPolicy.LaneFor(m))
-                .OrderByDescending(g => g.Max(m => m.BaseValue))
-                .ThenBy(g => (int)g.Key))
+            var laneQueues = new Dictionary<ExecutionLane, Queue<MissionProposal>>();
+            foreach (IGrouping<ExecutionLane, MissionProposal> g in freshPool
+                .GroupBy(m => MissionAdmissionPolicy.LaneFor(m)))
             {
-                ExecutionLane lane = laneGroup.Key;
-                IOrderedEnumerable<MissionProposal> ranked = lane == ExecutionLane.None
-                    ? laneGroup.OrderByDescending(m => m.BaseValue)
-                    : laneGroup.OrderByDescending(m => MissionAdmissionPolicy.AdmissionRank(m));
+                IEnumerable<MissionProposal> ordered = g.Key == ExecutionLane.None
+                    ? g.OrderByDescending(m => m.BaseValue)
+                        .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
+                    : g.OrderByDescending(m => MissionAdmissionPolicy.AdmissionRank(m))
+                        .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance);
+                laneQueues[g.Key] = new Queue<MissionProposal>(ordered);
+            }
 
-                foreach (MissionProposal m in ranked.ThenBy(mm => StableMissionKey.For(mm), MissionKeyComparer.Instance))
+            while (laneQueues.Values.Any(q => q.Count > 0))
+            {
+                ExecutionLane lane = ExecutionLane.None;
+                MissionProposal m = null;
+                foreach (KeyValuePair<ExecutionLane, Queue<MissionProposal>> kv in laneQueues)
+                {
+                    if (kv.Value.Count == 0)
+                        continue;
+                    MissionProposal head = kv.Value.Peek();
+                    if (m == null
+                        || head.BaseValue > m.BaseValue + eps
+                        || (Mathf.Abs(head.BaseValue - m.BaseValue) <= eps
+                            && StableMissionKey.For(head).CompareTo(StableMissionKey.For(m)) < 0))
+                    {
+                        m = head;
+                        lane = kv.Key;
+                    }
+                }
+                laneQueues[lane].Dequeue();
+
                 {
                     StableMissionKey key = StableMissionKey.For(m);
 
@@ -657,7 +767,7 @@ namespace Game.Ai.V2
                     // is reported and a re-pack that drops the conflicting incumbent frees it. Tested
                     // against every funded mission in this lane (commitments included) + every locked
                     // success this turn. commitment-vs-commitment is NOT tested here — dropping an
-                    // already-bound commitment over a conflict is pre-emption (step 9).
+                    // already-bound commitment over a conflict is pre-emption (deferred).
                     if (lane != ExecutionLane.None
                         && (alloc.Funded.Any(fe => fe.Mission != null
                                 && MissionAdmissionPolicy.LaneFor(fe.Mission) == lane
@@ -695,6 +805,28 @@ namespace Game.Ai.V2
                         continue;
                     }
 
+                    // Global physical gate — atomic with the AP axis draws (spec §19.4). Checked at
+                    // MINIMUM before we commit any slice mutation; a funded mission draws Desired.
+                    ResourceVector physMin = PhysicalMinimum(m);
+                    ResourceVector physDraw = PhysicalDesired(m);
+                    if ((physMin.AnyPhysical || physDraw.AnyPhysical)
+                        && !physicalRemaining.CoversPhysical(physMin, eps))
+                    {
+                        alloc.Deferred.Add(new DeferredEntry
+                        {
+                            Mission = m,
+                            Reason = DeferReason.InsufficientPhysical,
+                            Required = physMin,
+                            Available = physicalRemaining,
+                            Missing = (physMin - physicalRemaining).ClampLow0(),
+                        });
+                        continue;
+                    }
+                    // Fund physical at Desired only if the whole Desired still fits; otherwise fall
+                    // back to Minimum (which just passed). No fungible top-up pool for physical.
+                    if (!physicalRemaining.CoversPhysical(physDraw, eps))
+                        physDraw = physMin;
+
                     float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
                     var v = new ResourceVector(fundAp);
                     var draws = new Dictionary<DesireAxis, ResourceVector>();
@@ -726,16 +858,19 @@ namespace Game.Ai.V2
                         Tentative = v,
                         IsCommitment = false,
                         Stage = FundingStage.Strict,
+                        PhysicalDraw = physDraw,
                     };
                     foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
                         funded.PerAxisDraw[kv.Key] = kv.Value;
                     foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
                         slices[kv.Key].Remaining -= kv.Value;
+                    physicalRemaining = (physicalRemaining - physDraw).ClampLow0();
 
                     alloc.Funded.Add(funded);
                     alloc.StrictFunded += v;
+                    alloc.PhysicalFunded += physDraw;
                     ConsumeSlot(lane);
-                    }
+                }
             }
 
             // 4b. Telemetry: did a funded commitment crowd out a fresh decision — on budget (a more
@@ -886,6 +1021,27 @@ namespace Game.Ai.V2
         private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
 
+        // Step 9 — the physical (H/E/M/T) side of a mission's requirements as one vector. Minimum
+        // gates admission; Desired is what a funded mission actually draws from the global pool.
+        // AP is deliberately 0 here — that dimension is the axis-slice path.
+        private static ResourceVector PhysicalMinimum(MissionProposal m)
+        {
+            MissionRequirements r = m?.Requirements;
+            return r == null ? ResourceVector.Zero
+                : new ResourceVector(0f, Mathf.Max(0f, r.HumanMinimum), Mathf.Max(0f, r.EnergyMinimum),
+                    Mathf.Max(0f, r.MaterialsMinimum), Mathf.Max(0f, r.TechMinimum));
+        }
+        private static ResourceVector PhysicalDesired(MissionProposal m)
+        {
+            MissionRequirements r = m?.Requirements;
+            if (r == null) return ResourceVector.Zero;
+            return new ResourceVector(0f,
+                Mathf.Max(r.HumanMinimum, r.HumanDesired),
+                Mathf.Max(r.EnergyMinimum, r.EnergyDesired),
+                Mathf.Max(r.MaterialsMinimum, r.MaterialsDesired),
+                Mathf.Max(r.TechMinimum, r.TechDesired)).ClampLow0();
+        }
+
         private sealed class MissionKeyComparer : IComparer<StableMissionKey>
         {
             public static readonly MissionKeyComparer Instance = new MissionKeyComparer();
@@ -922,6 +1078,9 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)} "
                 + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap)} − mgr {LogNum(a.ManagerReserve.Ap)}) "
                 + $"| locked {LogNum(a.LockedClaim.Ap)} (applied to slices) | {slices}");
+            if (a.PhysicalPool.AnyPhysical || a.PhysicalFunded.AnyPhysical)
+                AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — physical pool [{a.PhysicalPool.FmtPhysical()}] "
+                    + $"− locked [{a.PhysicalLocked.FmtPhysical()}] − funded [{a.PhysicalFunded.FmtPhysical()}]");
 
             foreach (FundedEntry fe in a.Funded)
             {
@@ -939,7 +1098,9 @@ namespace Game.Ai.V2
                 string why = d.Reason == DeferReason.InsufficientBudget && d.BottleneckAxis.HasValue
                     ? $"@{DesireAxes.Abbrev(d.BottleneckAxis.Value)} need {LogNum(d.Required.Ap)} "
                       + $"have {LogNum(d.Available.Ap)} miss {LogNum(d.Missing.Ap)}"
-                    : "";
+                    : d.Reason == DeferReason.InsufficientPhysical
+                        ? $"need [{d.Required.FmtPhysical()}] have [{d.Available.FmtPhysical()}]"
+                        : "";
                 AiDebugLog.Write($"[AI][V2]   defer {StableMissionKey.For(d.Mission)} "
                     + $"base {LogNum(d.Mission.BaseValue)} — {d.Reason} {why}");
             }

@@ -192,7 +192,11 @@ namespace Game.Ai.V2
 
                 reservedFollowupByAxis.TryGetValue(chosenDemand.RequestingAxis, out float alreadyReserved);
                 reservedFollowupByAxis[chosenDemand.RequestingAxis] = alreadyReserved + selected.FollowupAp;
-                selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - 1f);
+                // Step 9 — decrement unmet demand by the REAL delivered capability amount, not an
+                // unconditional 1 (spec §14 / §29 / AC #29). Scout / Hero deliver 1; FieldCombatPower
+                // is a scalar — a stronger unit closes more of the deficit than a weaker one.
+                float delivered = DeliveredCapabilityAmount(chosenDemand, plan);
+                selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                 result.CardsPlayed++;
 
                 AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} "
@@ -229,6 +233,26 @@ namespace Game.Ai.V2
                     return true;
             }
             return false;
+        }
+
+        // Step 9 — the shared "how much of the demand did this chain actually close" contract
+        // (spec §14). A ScoutCapability / Hero card is a discrete unit (1). FieldCombatPower /
+        // GarrisonCombatPower are SCALARS: the projected AiPower of the deployed body. So Phase A's
+        // Remaining decreases by real capability, and a big unit does not leave a raid still marked
+        // "short 1 more card".
+        private static float DeliveredCapabilityAmount(AxisDemand demand, MaterializationPlan plan)
+        {
+            if (demand == null || plan == null)
+                return 1f;
+            switch (demand.Capability)
+            {
+                case CapabilityKind.FieldCombatPower:
+                case CapabilityKind.GarrisonCombatPower:
+                    Game.Cards.CardDefinition d = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
+                    return d != null ? Mathf.Max(1f, AiPower.ToPowerUnit(d).BasePower) : 1f;
+                default:
+                    return 1f;   // ScoutCapability / Hero — a discrete unit
+            }
         }
 
         // Demand.Value is the cross-demand strategic value; Plan.Score is the already-computed

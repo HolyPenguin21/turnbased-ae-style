@@ -59,6 +59,16 @@ namespace Game.Ai.V2
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
+                // Step 9 — mission-specific claim validity (spec §29). Raid -> a live own combat
+                // army (not prison / air / dedicated solo Recce) still structurally able to run
+                // the operation. Scout keeps its solo-Recce + stealth test below.
+                if (i.Kind == MissionKind.Raid)
+                {
+                    if (RaidActorStillValid(i.PreferredMoverArmyId.Value, snap))
+                        c.Claim(i.PreferredMoverArmyId.Value);
+                    continue;
+                }
+
                 StealthRequirement req;
                 if (reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r))
                 {
@@ -85,6 +95,20 @@ namespace Game.Ai.V2
                     c.Claim(i.PreferredMoverArmyId.Value);
             }
             return c;
+        }
+
+        // Step 9 — a Raid intent's committed force is claimed only while it is a live own combat
+        // army still able to fight: not a prison, not air, not a dedicated solo Recce (spec §29 /
+        // §6 "no dedicated Recon actor as raid fodder"), with members. A folded-away / emptied army
+        // is NOT claimed — its objective is genuinely uncovered and the raid re-provisions.
+        private static bool RaidActorStillValid(int armyId, WorldSnapshot snap)
+        {
+            if (armyId == 0 || snap?.Self?.Armies == null)
+                return false;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+                if (a != null && a.ArmyId == armyId)
+                    return !a.IsPrison && !a.IsAir && !a.IsSoloRecce && a.MemberCount > 0;
+            return false;
         }
 
         // Is the intent's committed mover a live own army STRUCTURALLY able to run it — a solo

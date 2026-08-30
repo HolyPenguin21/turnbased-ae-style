@@ -301,6 +301,56 @@ namespace Game.Ai.V2
         public const float allocatorSliceEpsilon = 0.01f;
 
         // =======================================================================================
+        //  AGGRESSION / RAID  (Strategy V2 build-order step 9 — the second objective/mission lane)
+        //  Raid is the first Aggression Objective type. Objective discovery reuses the shared
+        //  CombatOpportunityAnalyzer (snapshot tier); the numbers below only shape Raid-LOCAL
+        //  admission ordering, the resource envelope and the assembly/continuity guards. Cross-lane
+        //  ordering stays on BaseValue, AP budget stays on the radar / AxisBudgetLedger.
+        // =======================================================================================
+        // A known enemy/neutral army sighting becomes a Raid AggressionObjective only if its
+        // intrinsic strategic merit clears this. Merit is target value + a small closeness term —
+        // NOT feasibility (a target we cannot beat yet still produces an objective so the Demand
+        // layer can ask for the missing combat capability; see spec §11).
+        public const float raidObjectiveMinBaseValue = 8f;
+        // Raid BaseValue = Lerp(min, max, quality); quality blends target value and base-proximity.
+        public const float raidBaseValueMin = 12f;
+        public const float raidBaseValueMax = 90f;
+        public const float raidValueWeight = 0.75f;
+        public const float raidProximityWeight = 0.25f;
+        public const int raidProximityRampLo = 3;   // target this close to a base -> proximity term 1
+        public const int raidProximityRampHi = 16;  // this far or more -> proximity term 0
+        // LocalAdmissionScore = BaseValue * AggRaidOpportunity sub-driver * a feasibility factor
+        // (Lerp(floor, 1, assemblableWinChance)). Ranks Raid alternatives WITHIN the Aggression lane
+        // only; never re-applies the whole Aggression radar weight (spec §10).
+        public const float raidLocalFeasibilityFloor = 0.25f;
+        // N — how many Raid alternatives AggressionMissionPlanner hands downstream (beam width).
+        // Execution capacity is bounded by real armies / heroes / commitments / resources, NOT a
+        // fixed K (spec §20), so there is no maxConcurrentRaidExecutions.
+        public const int raidCandidateBeamWidth = 4;
+        // Raid execution AP envelope (activation of the raid mover only; movement is MP, not AP).
+        public const float raidNotionalActivationAp = 1f;
+        public const float raidActivationApMax = 3f;
+        // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
+        // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
+        public const float raidMinViableWinChance = 0.65f;
+        // CombatPower the requirement projection asks for when no ready force clears the target:
+        // the target's own EffectiveArmyPower times this margin.
+        public const float raidCombatPowerMargin = 1.25f;
+        // A target with more known defenders than this is an army-vs-army fight, not a raid — no
+        // Raid objective (parity with V1 AiConfig.raidTargetMaxDefenders).
+        public const int raidTargetMaxDefenders = 4;
+        // Continuity: a started Raid intent is reaped after this many stalled turns / absolute
+        // turns, same shape as the shared commitment* caps but a touch more patient (assembly +
+        // travel is slower than a scout leg).
+        public const int raidIntentStallTurns = 3;
+        public const int raidIntentMaxTurns = 10;
+        // A committed + ready (assembly applied / mover moving) Raid gets this Hard sunk-cost bump
+        // on its LocalAdmissionScore so a small Radar wobble cannot drop it for routine recon.
+        public const float raidHardCommitmentBonus = 8f;
+        // Structural-failure cooldown for a Raid mission key (assembly infeasible / no mover).
+        public const int raidRejectCooldownTurns = 3;
+
+        // =======================================================================================
         //  MISSION CONTINUITY  (Strategy V2 build-order step 7)
         //  Two separated concerns:
         //    Intent  — "I still want to finish THIS objective / keep tracking THIS army". Durable,

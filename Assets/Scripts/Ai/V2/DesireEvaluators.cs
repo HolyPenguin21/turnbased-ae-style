@@ -80,6 +80,11 @@ namespace Game.Ai.V2
 
         // Carried through verbatim so downstream reuses this analysis, never re-derives it.
         public CombatOpportunity BestOpportunity = CombatOpportunity.None;
+        // Step 9 — the WHOLE shared combat-opportunity report from this cycle's Aggression
+        // evaluation, frozen here so AggressionObjectiveEvaluator can turn it into frozen Raid
+        // objectives and DemandLayer / AggressionMissionPlanner read the same set. The Raid lane
+        // never re-scans the world (spec §9, AC #5).
+        public CombatOpportunityReport OpportunityReport = new CombatOpportunityReport();
         public float RequiredDefensiveReserve;
         public float OffensiveFreePower;
     }
@@ -215,6 +220,7 @@ namespace Game.Ai.V2
             breakdown.AggPotentialSaturation = potentialSaturation;
             breakdown.AggMomentum = momentum;
             breakdown.BestOpportunity = opp.Best;
+            breakdown.OpportunityReport = opp;
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
 
