@@ -27,6 +27,7 @@ namespace ReconThroughputSim
             Scenario11_OneRaidActorCannotBackTwoTargets();
             Scenario12_TwoRaidActorsCanBackTwoTargets();
             Scenario13_RaidContentionIsTransientButTrueAssemblyFailureIsStructural();
+            Scenario14_DurableRaidContentionDoesNotAgeIntoCooldown();
 
             Console.WriteLine();
             Console.WriteLine($"recon-throughput-sim: {_passed} passed, {_failed} failed");
@@ -165,6 +166,56 @@ namespace ReconThroughputSim
             Check("13b genuine Raid assembly infeasibility retains structural cooldown semantics",
                 structural.Kind == ProvisionFailureKind.AssemblyInfeasible
                 && structural.Disposition == ProvisionDisposition.RejectWithCooldown);
+        }
+
+        private static void Scenario14_DurableRaidContentionDoesNotAgeIntoCooldown()
+        {
+            MissionIntentRegistry.Clear();
+            AiAllocatorStateRegistry.Clear();
+            PlayerSetupData me = Player("S14");
+            var key = new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, 77, 0, 0);
+            var ik = new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, 77, 0, 0);
+            var intent = new MissionIntent
+            {
+                IntentKey = ik,
+                LastAttemptKey = key,
+                Kind = MissionKind.Raid,
+                Funding = CommitmentTier.Hard,
+                Status = IntentStatus.Active,
+                Suspended = SuspendReason.None,
+                Objective = new RaidIntent
+                {
+                    TargetArmyId = 77,
+                    LastKnownHex = H(8, 4),
+                    OperationStarted = true,
+                },
+                CreatedTurn = 1,
+                TurnsActive = 4,
+                LastProgressTurn = 2,
+                StallTurns = 2,
+                PreferredMoverArmyId = 41,
+            };
+            MissionIntentRegistry.GetOrCreate(me).Put(intent);
+
+            var outcome = new MissionTurnOutcome
+            {
+                AttemptKey = key,
+                IntentKey = ik,
+                MissionKind = MissionKind.Raid,
+                Outcome = ExecutionOutcome.Blocked,
+                ProvisionFailureKindValue = ProvisionFailureKind.MoverContended,
+                HasRaidPayload = true,
+                RaidTargetArmyId = 77,
+                RaidLastKnownHex = H(8, 4),
+            };
+            MissionContinuityLayer.ReconcileAfterTurn(me, 5, new[] { outcome });
+
+            bool alive = MissionIntentRegistry.GetOrCreate(me).TryGet(ik, out MissionIntent after);
+            bool cooldown = AiAllocatorStateRegistry.GetOrCreate(me).OnCooldown(key, 6);
+            Check("14 durable Raid actor contention suspends without stall ageing or target cooldown",
+                alive && after.Status == IntentStatus.Suspended
+                && after.Suspended == SuspendReason.CapabilityUnavailable
+                && after.StallTurns == 2 && !cooldown);
         }
 
         private static WorldSnapshot Snap(float dark, IReadOnlyList<ArmySnapshot> armies) =>
