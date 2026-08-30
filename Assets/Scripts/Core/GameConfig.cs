@@ -275,12 +275,6 @@ namespace Game.Core
         public int maxPlayers = 4;
         public PlayerRowUI playerRowPrefab;
 
-        [Header("Initiative Dice")]
-        // Cost of one bonus initiative die, in units of whichever single resource the player
-        // spends it from (see PlayerRoot.BuyInitiativeDie) — same price regardless of which
-        // resource is chosen.
-        public int initiativeDicePrice = 3;
-
         [Header("Move Arrow")]
         // Comet-trail move-order preview (see MoveArrowMarker / MoveArrowStyle).
         public MoveArrowStyle moveArrowStyle = new MoveArrowStyle();
@@ -301,6 +295,6 @@ namespace Game.Core
         public int buildingVisionRadius = 1;
         // Dimming overlay + coordinate-label tunables (see Game.Map.FogOfWarController /
         // Custom/FogOfWar.shader) — one shared style, same pattern as every other style block.
-        public FogOfWarStyle fogOfWarStyle = new FogOfWarStyle();
+        public FogOfWarStyle fogOfWar = new FogOfWarStyle();
     }
 }
