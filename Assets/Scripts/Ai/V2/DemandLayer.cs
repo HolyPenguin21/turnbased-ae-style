@@ -117,12 +117,18 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            int remainingConcurrency = Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions - activeReconExecutions);
+            // maxConcurrentReconExecutions is a HARD allocator ceiling, not a production target.
+            // Demand asks for the second lane only while its marginal objective value and remaining
+            // map darkness justify owning another scout.
+            int desiredConcurrency = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
+            int remainingConcurrency = Mathf.Max(0, desiredConcurrency - activeReconExecutions);
+            AiDebugLog.Write($"[AI][V2][Demand][Recon] concurrency {ReconConcurrencyPolicy.Explain(snap, runnable)} "
+                + $"active={activeReconExecutions} remaining={remainingConcurrency}");
             if (remainingConcurrency == 0)
             {
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=execution_lane_capacity "
-                    + $"active={activeReconExecutions} max={AiConfigV2.maxConcurrentReconExecutions} "
-                    + $"runnable={runnable.Count} blocked={blocked}");
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=desired_concurrency_satisfied "
+                    + $"active={activeReconExecutions} desired={desiredConcurrency} "
+                    + $"hard={AiConfigV2.maxConcurrentReconExecutions} runnable={runnable.Count} blocked={blocked}");
                 yield break;
             }
 
