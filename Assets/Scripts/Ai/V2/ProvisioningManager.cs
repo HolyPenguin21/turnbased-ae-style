@@ -85,6 +85,8 @@ namespace Game.Ai.V2
             new Dictionary<StableMissionKey, ProvisionedMission>();
         private readonly Dictionary<StableMissionKey, ScoutExecutionCandidate> _assignment =
             new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
+        private readonly Dictionary<StableMissionKey, int> _raidAssignment =
+            new Dictionary<StableMissionKey, int>();
 
         public ProvisioningSession(WorldSnapshot snapshot)
         {
@@ -110,6 +112,16 @@ namespace Game.Ai.V2
 
         internal bool TryGetAssignedExecution(StableMissionKey k, out ScoutExecutionCandidate exec) =>
             _assignment.TryGetValue(k, out exec);
+
+        internal void SetRaidAssignment(Dictionary<StableMissionKey, int> a)
+        {
+            _raidAssignment.Clear();
+            foreach (KeyValuePair<StableMissionKey, int> kv in a)
+                _raidAssignment[kv.Key] = kv.Value;
+        }
+
+        internal bool TryGetAssignedRaidActor(StableMissionKey k, out int armyId) =>
+            _raidAssignment.TryGetValue(k, out armyId);
     }
 
     internal static class ProvisioningManager
@@ -117,6 +129,13 @@ namespace Game.Ai.V2
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, TentativeAllocation allocation)
+        {
+            PrepareScoutAssignments(player, ctx, session, allocation);
+            PrepareRaidAssignments(session, allocation);
+        }
+
+        private static void PrepareScoutAssignments(PlayerSetupData player, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation)
         {
             var open = new List<FundedEntry>();
@@ -144,7 +163,7 @@ namespace Game.Ai.V2
             var best = new int[open.Count];
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
-            Recurse(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
+            RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
 
             var map = new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
             for (int i = 0; i < open.Count; i++)
@@ -153,9 +172,54 @@ namespace Game.Ai.V2
             session.SetAssignment(map);
 
             if (open.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   provision prepare — {open.Count} open, assigned ["
+                AiDebugLog.Write($"[AI][V2]   provision prepare scout — {open.Count} open, assigned ["
                     + string.Join(" ", map.Select(kv =>
                         $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]");
+        }
+
+        // Raid uses the same provisioning-boundary principle as Scout: allocator funds missions but
+        // does not bind actors; this batch solves all funded Raid proposals together before any one
+        // of them claims an army. That avoids greedy A->army1 making B impossible when a valid
+        // A->army2 / B->army1 matching exists. Beam size is small, so exhaustive backtracking is
+        // deterministic and bounded in practice.
+        private static void PrepareRaidAssignments(ProvisioningSession session, TentativeAllocation allocation)
+        {
+            var open = new List<FundedEntry>();
+            if (allocation?.Funded != null)
+                foreach (FundedEntry fe in allocation.Funded)
+                {
+                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid)
+                        continue;
+                    if (session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
+                        continue;
+                    open.Add(fe);
+                }
+            open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
+
+            var cands = new List<List<int>>(open.Count);
+            foreach (FundedEntry fe in open)
+            {
+                var ids = new List<int>();
+                if (RaidAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
+                    ids.AddRange(eligible.Where(id => !session.ClaimedArmyIds.Contains(id)).OrderBy(id => id));
+                cands.Add(ids);
+            }
+
+            var chosen = new int[open.Count];
+            var best = new int[open.Count];
+            for (int i = 0; i < best.Length; i++) best[i] = -1;
+            long[] bestKey = null;
+            RecurseRaid(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
+
+            var map = new Dictionary<StableMissionKey, int>();
+            for (int i = 0; i < open.Count; i++)
+                if (best[i] >= 0)
+                    map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
+            session.SetRaidAssignment(map);
+
+            if (open.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   provision prepare raid — {open.Count} open, assigned ["
+                    + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
         }
 
         private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
@@ -191,12 +255,12 @@ namespace Game.Ai.V2
             return list;
         }
 
-        private static void Recurse(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
+        private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best)
         {
             if (i == open.Count)
             {
-                long[] key = ScoreAssignment(open, cands, chosen);
+                long[] key = ScoreScoutAssignment(open, cands, chosen);
                 if (bestKey == null || Lex(key, bestKey) < 0)
                 {
                     bestKey = key;
@@ -206,7 +270,7 @@ namespace Game.Ai.V2
             }
 
             chosen[i] = -1;
-            Recurse(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
+            RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
 
             for (int c = 0; c < cands[i].Count; c++)
             {
@@ -215,13 +279,14 @@ namespace Game.Ai.V2
                     continue;
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
-                Recurse(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
+                RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
                 usedArmyIds.Remove(aid);
             }
             chosen[i] = -1;
         }
 
-        private static long[] ScoreAssignment(List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands, int[] chosen)
+        private static long[] ScoreScoutAssignment(List<FundedEntry> open,
+            List<List<ScoutExecutionCandidate>> cands, int[] chosen)
         {
             int n = open.Count;
             int covered = 0;
@@ -281,6 +346,70 @@ namespace Game.Ai.V2
                     key[b + 2] = cand.ExecutionHex.R;
                 }
             }
+            return key;
+        }
+
+        private static void RecurseRaid(int i, List<FundedEntry> open, List<List<int>> cands,
+            int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best)
+        {
+            if (i == open.Count)
+            {
+                long[] key = ScoreRaidAssignment(open, cands, chosen);
+                if (bestKey == null || Lex(key, bestKey) < 0)
+                {
+                    bestKey = key;
+                    Array.Copy(chosen, best, chosen.Length);
+                }
+                return;
+            }
+
+            chosen[i] = -1;
+            RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
+
+            for (int c = 0; c < cands[i].Count; c++)
+            {
+                int aid = cands[i][c];
+                if (usedArmyIds.Contains(aid))
+                    continue;
+                usedArmyIds.Add(aid);
+                chosen[i] = c;
+                RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
+                usedArmyIds.Remove(aid);
+            }
+            chosen[i] = -1;
+        }
+
+        // Maximise number of Raid missions covered, then higher-priority coverage, then preserve
+        // an incumbent's preferred mover when available, then deterministic actor IDs.
+        private static long[] ScoreRaidAssignment(List<FundedEntry> open, List<List<int>> cands, int[] chosen)
+        {
+            int n = open.Count;
+            int covered = 0;
+            long priorityCoverage = 0;
+            int actorDiscontinuity = 0;
+            long actorIdSum = 0;
+
+            for (int i = 0; i < n; i++)
+            {
+                if (chosen[i] < 0)
+                    continue;
+                int actorId = cands[i][chosen[i]];
+                covered++;
+                priorityCoverage += n - i;
+                actorIdSum += actorId;
+
+                int? preferred = open[i].Mission.PreferredMoverArmyId;
+                if (preferred.HasValue && actorId != preferred.Value && cands[i].Contains(preferred.Value))
+                    actorDiscontinuity++;
+            }
+
+            var key = new long[4 + n];
+            key[0] = -(long)covered;
+            key[1] = -priorityCoverage;
+            key[2] = actorDiscontinuity;
+            key[3] = actorIdSum;
+            for (int i = 0; i < n; i++)
+                key[4 + i] = chosen[i] < 0 ? long.MaxValue : cands[i][chosen[i]];
             return key;
         }
 
@@ -465,19 +594,27 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
                 sighting.Value.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
 
-            RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
+            RaidAssemblyPlan plan = null;
+            if (session.TryGetAssignedRaidActor(key, out int assignedActor)
+                && !session.ClaimedArmyIds.Contains(assignedActor))
+            {
+                RaidAssemblyPlan assigned = RaidAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
+                if (assigned.Feasible)
+                    plan = assigned;
+            }
+
+            // Live/fallback solve: if the frozen batch assignment became stale, another still-free
+            // actor may now be the right host. This stays inside the same atomic provisioning door.
+            if (plan == null)
+                plan = RaidAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
+
             if (!plan.Feasible)
             {
-                // Critical distinction: the target/force is NOT structurally infeasible when the
-                // same frozen world has a ready actor that clears the shared estimator and the only
-                // reason it disappeared is a claim by an earlier mission this cycle. Re-run the
-                // pure solver without same-turn claims to classify the failure. This is the Raid
-                // analogue of Scout MoverContended and must never poison the target with cooldown.
                 RaidAssemblyPlan unrestricted = RaidAssemblyPlanner.Plan(snap, target, defenders, null);
                 if (unrestricted.Feasible)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"raid target #{target.TargetArmyId} has a ready actor (#{unrestricted.BaseArmyId}) "
-                        + $"without same-turn claims, but all clearing actors are already claimed/spent; {plan.Reason}"));
+                        $"raid target #{target.TargetArmyId} has ready actor(s) without same-turn claims, "
+                        + $"but every clearing actor is already assigned/claimed/spent; {plan.Reason}"));
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(plan.Reason));
             }
 
