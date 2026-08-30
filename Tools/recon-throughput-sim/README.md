@@ -19,10 +19,13 @@ capacity, and Aggression actor contention.
 12. Two ready combat actors can provide a distinct assignment for two Raid targets.
 13. Raid actor contention is transient (`MoverContended/RetryNextTurn`) while genuine
     `AssemblyInfeasible` retains structural cooldown semantics.
+14. A durable Hard Raid blocked by temporary actor contention is suspended without increasing
+    `StallTurns` and without creating a target cooldown.
 
-The live Raid provisioning path additionally re-runs the same pure `RaidAssemblyPlanner` without
-same-turn actor claims whenever the claimed-state solve fails. If the unrestricted solve succeeds,
-the failure is actor contention and cannot create a target cooldown.
+Funded Raid proposals are batch-matched to distinct ready actors in `ProvisioningManager` before
+any individual Raid claims an army. The live Raid provisioning path then revalidates that actor and,
+if needed, re-runs the same `RaidAssemblyPlanner` without same-turn actor claims. If the unrestricted
+solve succeeds, the failure is actor contention and cannot create a target cooldown.
 
 ## Run
 
