@@ -49,10 +49,10 @@ namespace Game.Ai.V2
     public enum IntentStatus { Active, Suspended }
 
     // Why an Active intent is not being pursued THIS turn. Siege -> an existential threat outranks
-    // it (absolute MilitaryThreat / UnderSiege, exactly what those out-of-simplex scalars exist
-    // for); resume when the siege lifts. PoolExhausted -> more commitments than AP this turn; the
-    // intent survives and gets another shot next turn.
-    public enum SuspendReason { None, Siege, PoolExhausted }
+    // it. PoolExhausted -> more commitments than AP this turn. CapabilityUnavailable -> the target
+    // is still valid but its executor no longer exists; Demand/StrategicManager may restore that
+    // capability, so this must never age into a target-level structural cooldown.
+    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable }
 
     // Strategic identity — deliberately COARSER than StableMissionKey. It survives a change of
     // tactical attempt: a Surveil intent is keyed by the tracked army alone, so a fresher
@@ -160,7 +160,7 @@ namespace Game.Ai.V2
         public IntentStatus Status;
         public SuspendReason Suspended;
 
-        public object Objective;                  // boxed ScoutIntent
+        public object Objective;                  // boxed ScoutIntent / RaidIntent
 
         public int CreatedTurn;
         public int TurnsActive;
@@ -233,7 +233,7 @@ namespace Game.Ai.V2
 
         public ExecutionOutcome Outcome;
         public bool ObjectiveSatisfied;
-        public bool StructuralFailure;   // -> retire the intent AND cooldown the key
+        public bool StructuralFailure;   // objective/geometry/assembly dead end -> retire intent + cooldown key
         public bool MadeProgress;        // StepsMoved > 0 || EnteredStealth — the ONLY "earned continuation" test
 
         public int StepsMoved;
@@ -505,7 +505,11 @@ namespace Game.Ai.V2
         {
             switch (f.Kind)
             {
+                // A missing actor is a capability shortage, not evidence that the objective is
+                // structurally impossible. Demand/StrategicManager can change this fact.
                 case ProvisionFailureKind.NoMoverExists:
+                    o.Outcome = ExecutionOutcome.Blocked;
+                    break;
                 case ProvisionFailureKind.NoObservationVantage:
                 case ProvisionFailureKind.AssemblyInfeasible:
                     o.Outcome = ExecutionOutcome.Failed;
@@ -531,8 +535,8 @@ namespace Game.Ai.V2
     internal static class MissionContinuityLayer
     {
         // START OF TURN. Refresh each durable intent against the fresh snapshot: purge the
-        // structurally dead, suspend funding under siege, clear a spent PoolExhausted suspension.
-        // Returns the intents MissionLayer must re-materialise (Active only).
+        // structurally dead, suspend funding under siege, clear transient suspensions so a changed
+        // resource/capability state gets a fresh attempt. Returns Active intents only.
         public static List<MissionIntent> ResolveActive(PlayerSetupData player, WorldSnapshot snap)
         {
             var active = new List<MissionIntent>();
@@ -556,7 +560,9 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (raid target no longer valid)");
                         continue;
                     }
-                    if (intent.Status == IntentStatus.Suspended && intent.Suspended == SuspendReason.PoolExhausted)
+                    if (intent.Status == IntentStatus.Suspended
+                        && (intent.Suspended == SuspendReason.PoolExhausted
+                            || intent.Suspended == SuspendReason.CapabilityUnavailable))
                     {
                         intent.Status = IntentStatus.Active;
                         intent.Suspended = SuspendReason.None;
@@ -576,8 +582,11 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // A spent pool-exhaustion suspension gets another chance every turn.
-                if (intent.Status == IntentStatus.Suspended && intent.Suspended == SuspendReason.PoolExhausted)
+                // Transient resource/capability suspensions get another chance every turn. The
+                // fresh Demand + Phase-A materialization may make them executable before MissionLayer.
+                if (intent.Status == IntentStatus.Suspended
+                    && (intent.Suspended == SuspendReason.PoolExhausted
+                        || intent.Suspended == SuspendReason.CapabilityUnavailable))
                 {
                     intent.Status = IntentStatus.Active;
                     intent.Suspended = SuspendReason.None;
@@ -664,7 +673,8 @@ namespace Game.Ai.V2
             return commitments;
         }
 
-        // END OF TURN. Pure state transition over FACTS. No world reads.
+        // END OF TURN. Pure state transition over FACTS. No world reads. This is the SINGLE runtime
+        // owner of cross-turn mission cooldown: allocator re-pack state is deliberately same-turn.
         public static void ReconcileAfterTurn(PlayerSetupData player, int turn,
             IReadOnlyList<MissionTurnOutcome> outcomes)
         {
@@ -691,8 +701,9 @@ namespace Game.Ai.V2
                 if (o.StructuralFailure)
                 {
                     if (intent != null) state.Remove(o.IntentKey);
-                    allocState.StartCooldown(o.AttemptKey, turn + AiConfigV2.allocatorRejectCooldownTurns);
-                    AiDebugLog.Write($"[AI][V2] continuity — {o.IntentKey} structural failure, retired + cooldown");
+                    string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
+                    StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
+                    AiDebugLog.Write($"[AI][V2] continuity — {o.IntentKey} structural failure ({reason}), retired + cooldown");
                     continue;
                 }
 
@@ -727,8 +738,10 @@ namespace Game.Ai.V2
             {
                 if (seen.Contains(intent.IntentKey))
                     continue;
-                if (intent.Status == IntentStatus.Suspended && intent.Suspended == SuspendReason.Siege)
-                    continue; // wait out the siege, no ageing
+                if (intent.Status == IntentStatus.Suspended
+                    && (intent.Suspended == SuspendReason.Siege
+                        || intent.Suspended == SuspendReason.CapabilityUnavailable))
+                    continue; // external blocker: wait, no target-level ageing
 
                 intent.TurnsActive++;
                 if (intent.Suspended != SuspendReason.PoolExhausted)
@@ -737,7 +750,7 @@ namespace Game.Ai.V2
                 if (ShouldReap(intent))
                 {
                     state.Remove(intent.IntentKey);
-                    allocState.StartCooldown(intent.LastAttemptKey, turn + AiConfigV2.allocatorRejectCooldownTurns);
+                    StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedIdle");
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (idle: "
                         + $"stall {intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, "
                         + $"age {intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
@@ -783,13 +796,14 @@ namespace Game.Ai.V2
             }
 
             bool poolExhausted = o.AllocationDeferReason == DeferReason.CommitmentPoolExhausted;
+            bool capabilityUnavailable = o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists;
 
             if (o.MadeProgress)
             {
                 intent.LastProgressTurn = turn;
                 intent.StallTurns = 0;
             }
-            else if (!poolExhausted)
+            else if (!poolExhausted && !capabilityUnavailable)
             {
                 intent.StallTurns++;
             }
@@ -803,11 +817,20 @@ namespace Game.Ai.V2
                 intent.Status = IntentStatus.Suspended;
                 intent.Suspended = SuspendReason.PoolExhausted;
             }
+            else if (capabilityUnavailable)
+            {
+                // Losing the executor is not a property of the target. Keep the intent, stop stall
+                // ageing, and let next turn's Demand/StrategicManager restore the capability.
+                intent.Status = IntentStatus.Suspended;
+                intent.Suspended = SuspendReason.CapabilityUnavailable;
+            }
 
-            if (ShouldReap(intent))
+            // CapabilityUnavailable deliberately cannot reap here: a target must not be poisoned
+            // simply because its actor disappeared. It gets reactivated at next turn start.
+            if (!capabilityUnavailable && ShouldReap(intent))
             {
                 state.Remove(intent.IntentKey);
-                allocState.StartCooldown(intent.LastAttemptKey, turn + AiConfigV2.allocatorRejectCooldownTurns);
+                StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
                 AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (stall "
                     + $"{intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, age "
                     + $"{intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
@@ -815,7 +838,8 @@ namespace Game.Ai.V2
             else
             {
                 AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} advanced "
-                    + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns})");
+                    + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
+                    + (capabilityUnavailable ? ", suspended CapabilityUnavailable" : "") + ")");
             }
         }
 
@@ -893,6 +917,17 @@ namespace Game.Ai.V2
                     || i.TurnsActive >= AiConfigV2.raidIntentMaxTurns;
             return i.StallTurns >= AiConfigV2.commitmentStallTurns
                 || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
+        }
+
+        private static void StartPersistentCooldown(AiAllocatorState state, StableMissionKey key,
+            MissionKind kind, int turn, string reason)
+        {
+            int duration = kind == MissionKind.Raid
+                ? AiConfigV2.raidRejectCooldownTurns
+                : AiConfigV2.allocatorRejectCooldownTurns;
+            int until = turn + duration;
+            state.StartCooldown(key, turn, until, reason);
+            AiDebugLog.Write($"[AI][V2] cooldown — {key} reason={reason} start=t{turn} until=t{until} duration={duration}");
         }
 
         private static string Describe(MissionTurnOutcome o) =>

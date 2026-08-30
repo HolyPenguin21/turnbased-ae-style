@@ -180,16 +180,25 @@ namespace Game.Ai.V2
 
         // One ReconObjective -> one ScoutCandidate. BaseValue / target / risk come straight from
         // the objective; only the mission-planning-specific LocalAdmissionScore (BaseValue x the
-        // relevant Recon sub-desire x a risk factor) is applied here.
+        // relevant Recon sub-desire x a risk factor) is applied here. Explain also expands the
+        // objective's already-computed raw terms so score saturation is visible in AiDebug.log.
         private static ScoutCandidate ToCandidate(ReconObjective o, DesireBreakdown bd)
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             float subDesire = explore ? bd.ReconExploration : bd.ReconSurveillance;
+            float proximity = Curves.InvRamp(o.DistanceFromBase,
+                AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
+            float infoGain = explore
+                ? Mathf.Clamp01(o.FreshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm))
+                : 0f;
+            bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
             string explain = explore
-                ? $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase}"
+                ? $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
+                  + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
                   + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(subDesire)}"
-                : $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)}"
-                  + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x surv {F(subDesire)}";
+                : $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
+                  + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
+                  + $"base {F(o.BaseValue)} x surv {F(subDesire)}";
             return new ScoutCandidate(o.ToTarget(), o.BaseValue,
                 ComputeLocalAdmissionScore(o.BaseValue, subDesire, o.DetectionRisk), explain);
         }

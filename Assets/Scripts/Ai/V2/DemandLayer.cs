@@ -18,7 +18,9 @@ namespace Game.Ai.V2
     //  Recon: sizes required Scout capacity from the ONE Recon-objective enumeration
     //  (ReconObjectiveEvaluator), NOT a private duplicate scout-target estimator. Objectives
     //  already covered by a valid active Recon intent do NOT need new capacity, and a solo Recce
-    //  claimed by an active operation is "existing", not "available".
+    //  claimed by an active operation is "existing", not "available". Persistent structural
+    //  cooldown is an admission fact, not demand: blocked objectives are logged and removed from
+    //  the runnable job count before capability shortage is calculated.
     // ===========================================================================================
     public static class DemandLayer
     {
@@ -84,16 +86,48 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // Persistent cooldown belongs to objective admission, not capability supply. A target
+            // blocked by a real structural failure must not make StrategicManager buy another scout:
+            // a new actor does not change the blocked target fact. Read the ONE cooldown registry
+            // and size Demand from RUNNABLE uncovered objectives only.
+            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
+            int turn = snap.TurnNumber;
+            var runnable = new List<ReconObjective>(uncovered.Count);
+            int blocked = 0;
+            foreach (ReconObjective o in uncovered)
+            {
+                StableMissionKey key = ReconKey(o);
+                if (cooldownState.TryGetCooldown(key, turn, out MissionCooldownInfo cd))
+                {
+                    blocked++;
+                    AiDebugLog.Write($"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
+                        + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
+                    continue;
+                }
+                runnable.Add(o);
+            }
+
+            AiDebugLog.Write($"[AI][V2][Demand][Recon] jobs raw={objectives.Count} covered={coveredKeys.Count} "
+                + $"uncovered={uncovered.Count} blocked={blocked} runnable={runnable.Count} active={activeReconExecutions}");
+
+            if (runnable.Count == 0)
+            {
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=all_uncovered_objectives_on_cooldown "
+                    + $"uncovered={uncovered.Count} blocked={blocked} runnable=0");
+                yield break;
+            }
+
             int remainingConcurrency = Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions - activeReconExecutions);
             if (remainingConcurrency == 0)
             {
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=execution_lane_capacity "
-                    + $"active={activeReconExecutions} max={AiConfigV2.maxConcurrentReconExecutions} uncovered={uncovered.Count}");
+                    + $"active={activeReconExecutions} max={AiConfigV2.maxConcurrentReconExecutions} "
+                    + $"runnable={runnable.Count} blocked={blocked}");
                 yield break;
             }
 
-            int requiredNewExecutions = Mathf.Min(remainingConcurrency, uncovered.Count);
-            List<ReconObjective> topN = uncovered.Take(requiredNewExecutions).ToList();
+            int requiredNewExecutions = Mathf.Min(remainingConcurrency, runnable.Count);
+            List<ReconObjective> topN = runnable.Take(requiredNewExecutions).ToList();
 
             // Split by capability PROFILE — a stealth-Required objective needs a stealth scout; a
             // plain Explore is fine with any scout. Emitting one blanket stealth demand would make
@@ -124,10 +158,11 @@ namespace Game.Ai.V2
             if (missStealth > 0)
             {
                 ReconObjective best = topN.FirstOrDefault(o =>
-                    o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f) ?? uncovered[0];
+                    o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f) ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=stealth desired={missStealth} reason=insufficient_free_stealth_scouts "
-                    + $"jobs={stealthNeeded} free={stealthSupply} target=({best.FocusHex.Q},{best.FocusHex.R})");
+                    + $"jobs={stealthNeeded} free={stealthSupply} runnable={runnable.Count} blocked={blocked} "
+                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
@@ -137,18 +172,18 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
-                    Explain = $"{stealthNeeded} stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}",
+                    Explain = $"{stealthNeeded} runnable stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}; blocked {blocked}",
                 };
             }
 
             if (missGeneric > 0)
             {
                 ReconObjective best = topN.FirstOrDefault(o =>
-                    o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f)) ?? uncovered[0];
+                    o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f)) ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=generic desired={missGeneric} reason=insufficient_free_scouts jobs={genericNeeded} "
                     + $"free={genericSupply} anyFree={anySupply} stealthFree={stealthSupply} "
-                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
+                    + $"runnable={runnable.Count} blocked={blocked} target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
@@ -159,14 +194,15 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
-                    Explain = $"{genericNeeded} generic job(s), {genericSupply} scout(s) free "
-                        + $"(any {anySupply}, stealth {stealthSupply}), miss {missGeneric}",
+                    Explain = $"{genericNeeded} runnable generic job(s), {genericSupply} scout(s) free "
+                        + $"(any {anySupply}, stealth {stealthSupply}), miss {missGeneric}; blocked {blocked}",
                 };
             }
 
             if (missStealth == 0 && missGeneric == 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=SATISFIED reason=free_scout_supply_covers_open_slots "
-                    + $"jobs={requiredNewExecutions} anyFree={anySupply} stealthFree={stealthSupply}");
+                    + $"jobs={requiredNewExecutions} runnable={runnable.Count} blocked={blocked} "
+                    + $"anyFree={anySupply} stealthFree={stealthSupply}");
         }
 
         // --------------------------------------------------------------------- Aggression ----
@@ -213,6 +249,8 @@ namespace Game.Ai.V2
             float chosenRequiredPower = 0f;
             string chosenPowerReason = null;
             string chosenReadyReason = null;
+            int blocked = 0;
+            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
 
             foreach (AggressionObjective o in objectives
                 .OrderByDescending(x => x.BaseValue)
@@ -220,6 +258,15 @@ namespace Game.Ai.V2
             {
                 if (coveredTargets.Contains(o.TargetArmyId))
                     continue;
+
+                StableMissionKey key = RaidKey(o);
+                if (cooldownState.TryGetCooldown(key, snap.TurnNumber, out MissionCooldownInfo cd))
+                {
+                    blocked++;
+                    AiDebugLog.Write($"[AI][V2][Demand][Aggression] blocked {key} reason={cd.Reason} "
+                        + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(snap.TurnNumber)}");
+                    continue;
+                }
 
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, o.TargetArmyId);
                 RaidAssemblyPlan readyPlan = RaidAssemblyPlanner.Plan(
@@ -260,9 +307,10 @@ namespace Game.Ai.V2
 
             if (chosen == null)
             {
-                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED reason=no_uncovered_capability_shortage "
-                    + $"freePower={inv.RaidAvailableFieldPower:0.#} committedPower={inv.CommittedFieldCombatPower:0.#} "
-                    + $"freeHeroes={inv.AvailableHeroes} committedHeroes={inv.CommittedHeroes}");
+                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED reason=no_runnable_capability_shortage "
+                    + $"objectives={objectives.Count} blocked={blocked} freePower={inv.RaidAvailableFieldPower:0.#} "
+                    + $"committedPower={inv.CommittedFieldCombatPower:0.#} freeHeroes={inv.AvailableHeroes} "
+                    + $"committedHeroes={inv.CommittedHeroes}");
                 yield break;
             }
 
@@ -270,7 +318,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
                     + $"capability=Hero desired=1 reason=no_free_deployed_hero freeHeroes={inv.AvailableHeroes} "
-                    + $"committedHeroes={inv.CommittedHeroes} readySolver=REJECT detail=\"{chosenReadyReason}\"");
+                    + $"committedHeroes={inv.CommittedHeroes} blocked={blocked} readySolver=REJECT detail=\"{chosenReadyReason}\"");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Aggression,
@@ -281,7 +329,7 @@ namespace Game.Ai.V2
                     TargetHex = chosen.LastKnownHex,
                     Value = chosen.BaseValue,
                     Explain = $"raid #{chosen.TargetArmyId} needs a free deployed hero; "
-                        + $"free {inv.AvailableHeroes}, committed {inv.CommittedHeroes}; {chosenReadyReason}",
+                        + $"free {inv.AvailableHeroes}, committed {inv.CommittedHeroes}; blocked targets {blocked}; {chosenReadyReason}",
                 };
             }
 
@@ -290,7 +338,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
                     + $"capability=FieldCombatPower desired={chosenPowerDeficit:0.#} reason={chosenPowerReason} "
                     + $"freePower={inv.RaidAvailableFieldPower:0.#} committedPower={inv.CommittedFieldCombatPower:0.#} "
-                    + $"requiredPower={chosenRequiredPower:0.#} readySolver=REJECT detail=\"{chosenReadyReason}\" "
+                    + $"requiredPower={chosenRequiredPower:0.#} blocked={blocked} readySolver=REJECT detail=\"{chosenReadyReason}\" "
                     + $"frozenReadyWin={chosen.ReadyWinChance:0.00} frozenAsmWin={chosen.AssemblableWinChance:0.00} "
                     + $"frozenCover={(chosen.CanCoverAllDefenders ? 1 : 0)}");
                 yield return new AxisDemand
@@ -304,10 +352,19 @@ namespace Game.Ai.V2
                     Value = chosen.BaseValue,
                     Explain = $"raid #{chosen.TargetArmyId} needs ~{chosenPowerDeficit:0.#} more free field capability "
                         + $"({chosenPowerReason}; free {inv.RaidAvailableFieldPower:0.#}, committed "
-                        + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenRequiredPower:0.#}; {chosenReadyReason})",
+                        + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenRequiredPower:0.#}; blocked targets {blocked}; {chosenReadyReason})",
                 };
             }
         }
+
+        private static StableMissionKey ReconKey(ReconObjective o) =>
+            new StableMissionKey(MissionKind.Scout,
+                o.Kind == ReconObjectiveKind.Surveil ? (int)ScoutTargetKind.Surveil : (int)ScoutTargetKind.Explore,
+                o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
+                o.FocusHex.Q, o.FocusHex.R);
+
+        private static StableMissionKey RaidKey(AggressionObjective o) =>
+            new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
 
         private static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId)
         {
