@@ -25,5 +25,6 @@ Exit code `0` means all scenarios passed.
 | 06 | T1 Explore fails because no scout exists | the same `StableMissionKey` is fundable again on T2; direct regression for the observed startup deadlock |
 | 07 | Every uncovered Recon objective is on structural cooldown | `DemandLayer` creates no replacement `ScoutCapability` demand |
 | 08 | One of two Recon objectives is blocked | Demand sizes capability from the one runnable job only (`DesiredAmount == 1`) |
+| 09 | Operational refresh now contains a newly materialized solo Recce | `MissionLayer` immediately estimates the Explore with `MoverKnown == true`, pinning the Phase-A → refresh → mission same-turn handoff |
 
 The existing `mission-selection-sim` still protects bounded re-pack/fallback, capacity and conflict behavior; `commitment-sim` still protects multi-turn intent/commitment behavior and `NoObservationVantage` retirement.
