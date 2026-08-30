@@ -9,50 +9,11 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // ===========================================================================================
-    //  STRATEGIC MANAGER  (Strategy V2 — centralized card play + capability preparation)
-    // ===========================================================================================
-    //  NOT a DesireAxis, NO radar slice. The single owner of V2 strategic Unit/Hero/Recce
-    //  materialization decisions. Strategic axes only expose AxisDemand[] — they never choose a
-    //  card, generate one, attach equipment, create an army, pick a placement, or touch the hand.
-    //
-    //  Step 8B: a demand is closed by the best COMPLETE materialization chain, not a single card.
-    //  Four chain shapes, at most one generation + one attach + one deploy each
-    //  (MaterializationPlan): Direct / AttachDeploy / GenerateDeploy / GenerateAttachDeploy.
-    //  Generation = the existing Research/Production mechanism, and ONLY when a qualifying Hero
-    //  already stands on the Facility this turn (no positioning, no multi-turn planning). The
-    //  whole chain's AP + R/H/M/T cost is what is compared and reserved; RequiredTraits are a
-    //  hard feasibility gate on the projected END result, PreferredTraits only a ranking bonus.
-    //
-    //    Phase A — FulfillDemands (BEFORE mission planning). Every iteration asks ALL still-unmet
-    //              demands for their best currently-feasible complete chain, then arbitrates the
-    //              resulting (Demand, Plan) pairs globally. A plan that would consume a trait
-    //              required by another feasible demand, while its own demand does not require that
-    //              trait, is protected behind the constrained demand. This prevents a generic job
-    //              from consuming the only Stealth-capable card/equipment before a Stealth-required
-    //              job. The chosen chain executes through MaterializationExecutor and its REAL AP
-    //              delta is charged to demand.RequestingAxis. Follow-up AP is RESERVED, not spent.
-    //              Bounded by maxDemandFulfillmentActionsPerTurn and maxGenerationActionsPerTurn.
-    //
-    //    Phase B — UseSurplus (AFTER mission execution + operational refresh). Bounded greedy over
-    //              GENUINELY remaining real AP/resources; may also proactively generate / attach.
-    //              The same MaterializationReservation is carried from Phase A, so the shared
-    //              generation-attempt cap and exact attempted-card set survive the phase boundary.
-    //              Refreshes the operational snapshot after every successful chain.
-    //
-    //  Reusable-army policy: an empty ArmyData is a paid, reusable asset. For a solo (Recce /
-    //  ScoutCapability) card only a shell-at-hex or a fresh army is legal; for a plain Unit/Hero
-    //  an existing suitable army / garrison with room is preferred over paying CreateArmy AP.
-    // ===========================================================================================
     public sealed class StrategicPhaseResult
     {
         public bool StateChanged;
         public int CardsPlayed;
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
-
-        // Pass-local generation-attempt ownership. Phase A creates it; the pipeline carries the
-        // SAME instance into Phase B so the exact (hero, facility, mode, card) combination is not
-        // retried and the shared per-turn generation-attempt cap cannot be exceeded.
         public MaterializationReservation Reservation;
 
         public void AddDebit(DesireAxis a, float ap)
@@ -62,6 +23,9 @@ namespace Game.Ai.V2
         }
     }
 
+    // The single owner of V2 strategic Unit/Hero/Recce materialization. Phase A closes explicit
+    // capability demands against the shared axis ledger; Phase B spends only genuinely remaining
+    // capacity and never crosses hard AP/resource reserves.
     public static class StrategicManager
     {
         private sealed class DemandState
@@ -86,7 +50,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // ----------------------------------------------------------------- PHASE A ----
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments)
@@ -107,9 +70,7 @@ namespace Game.Ai.V2
             if (states.Count == 0)
                 return result;
 
-            // ACCUMULATIVE follow-up reservation, per axis, across every fulfilled demand this phase.
             var reservedFollowupByAxis = new Dictionary<DesireAxis, float>();
-
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {
@@ -120,8 +81,6 @@ namespace Game.Ai.V2
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
                 var feasible = new List<PhaseACandidate>();
 
-                // GLOBAL arbitration input: ask every unmet demand for its best chain against the
-                // SAME live state before executing anything.
                 foreach (DemandState state in active)
                 {
                     AxisDemand demand = state.Demand;
@@ -138,17 +97,15 @@ namespace Game.Ai.V2
                     {
                         AxisDemand d = state.Demand;
                         reservedFollowupByAxis.TryGetValue(d.RequestingAxis, out float reserved);
+                        string diag = MaterializationDiagnostics.ExplainNoChain(
+                            snap, player, root, hand, ctx, d, ledger, commitments, reserved);
                         AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement "
-                            + $"{F(ledger.Balance(d.RequestingAxis))}, followup reserved {F(reserved)})");
+                            + $"{F(ledger.Balance(d.RequestingAxis))}, followup reserved {F(reserved)}); {diag}");
                     }
                     break;
                 }
 
-                // SCOR conflict rule: a less-constrained demand may not consume a projected trait
-                // that another CURRENTLY FEASIBLE unmet demand requires. This is deliberately
-                // lexicographic, not a soft score: losing the only hard-trait supply is irreversible
-                // for the rest of the pass, while delaying a generic demand by one iteration is not.
                 PhaseACandidate selected = feasible
                     .OrderBy(c => ConsumesTraitRequiredByOtherFeasibleDemand(c, feasible) ? 1 : 0)
                     .ThenByDescending(ArbitrationScore)
@@ -178,11 +135,6 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} chain did not deploy "
                         + $"({play.FailReason}); gen={(play.Generated ? 1 : 0)} att={(play.Attached ? 1 : 0)}");
-
-                    // Re-plan the same demand when the chain changed either gameplay state or the
-                    // generation-attempt reservation: a minted card / successful attach may now be
-                    // a cheaper direct continuation. Only a clean no-op failure is blocked, because
-                    // repeating it against identical state could spin until the safety bound.
                     if (play.StateChanged)
                         snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                     if (!play.StateChanged && plan.Generation == null)
@@ -192,9 +144,6 @@ namespace Game.Ai.V2
 
                 reservedFollowupByAxis.TryGetValue(chosenDemand.RequestingAxis, out float alreadyReserved);
                 reservedFollowupByAxis[chosenDemand.RequestingAxis] = alreadyReserved + selected.FollowupAp;
-                // Step 9 — decrement unmet demand by the REAL delivered capability amount, not an
-                // unconditional 1 (spec §14 / §29 / AC #29). Scout / Hero deliver 1; FieldCombatPower
-                // is a scalar — a stronger unit closes more of the deficit than a weaker one.
                 float delivered = DeliveredCapabilityAmount(chosenDemand, plan);
                 selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                 result.CardsPlayed++;
@@ -204,8 +153,6 @@ namespace Game.Ai.V2
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
                     + $"followup {F(selected.FollowupAp)}ap reserved, {plan.StableKey})");
 
-                // Rebuild all candidates after every mutation: a hand card, equipment card, army
-                // slot, generator attempt, resource balance or capability count may have changed.
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
 
@@ -214,10 +161,6 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // A plan is "protected" only when its own demand does NOT require a trait the plan carries,
-        // and some other currently-feasible unmet demand DOES require that same trait. Today only
-        // Stealth can reach ExpectedTraits, so this is exact for the currently-proven classifier and
-        // automatically extends when additional reliable traits are added later.
         private static bool ConsumesTraitRequiredByOtherFeasibleDemand(
             PhaseACandidate candidate, IReadOnlyList<PhaseACandidate> feasible)
         {
@@ -235,11 +178,6 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // Step 9 — the shared "how much of the demand did this chain actually close" contract
-        // (spec §14). A ScoutCapability / Hero card is a discrete unit (1). FieldCombatPower /
-        // GarrisonCombatPower are SCALARS: the projected AiPower of the deployed body. So Phase A's
-        // Remaining decreases by real capability, and a big unit does not leave a raid still marked
-        // "short 1 more card".
         private static float DeliveredCapabilityAmount(AxisDemand demand, MaterializationPlan plan)
         {
             if (demand == null || plan == null)
@@ -248,20 +186,16 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.FieldCombatPower:
                 case CapabilityKind.GarrisonCombatPower:
-                    Game.Cards.CardDefinition d = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
+                    CardDefinition d = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
                     return d != null ? Mathf.Max(1f, AiPower.ToPowerUnit(d).BasePower) : 1f;
                 default:
-                    return 1f;   // ScoutCapability / Hero — a discrete unit
+                    return 1f;
             }
         }
 
-        // Demand.Value is the cross-demand strategic value; Plan.Score is the already-computed
-        // complete-chain quality/cost/placement score within that demand. Multiplication preserves
-        // both scales without introducing another tuning constant.
         private static float ArbitrationScore(PhaseACandidate c) =>
             Mathf.Max(0f, c.State.Demand.Value) * Mathf.Max(0.0001f, c.Plan.Score);
 
-        // ----------------------------------------------------------------- PHASE B ----
         public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
             MaterializationReservation carriedReservation)
@@ -280,14 +214,21 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx, inv, commitments, result.Reservation);
                 if (pick == null)
                     break;
-                if (pick.Value.utility < AiConfigV2.surplusUtilityThreshold)
+
+                MaterializationPlan plan = pick.Value.plan;
+                SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
+                if (pick.Value.utility < admission.EffectiveThreshold)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — best feasible utility {F(pick.Value.utility)} < threshold "
-                        + $"{F(AiConfigV2.surplusUtilityThreshold)}, stop");
+                    AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} util {F(pick.Value.utility)} "
+                        + $"< threshold {F(admission.EffectiveThreshold)} (base {F(admission.BaseThreshold)}, "
+                        + $"apSlack {F(admission.ApSlack)}, resSlack {F(admission.ResourceSlackFactor)}), stop");
                     break;
                 }
 
-                MaterializationPlan plan = pick.Value.plan;
+                AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} util {F(pick.Value.utility)} "
+                    + $">= threshold {F(admission.EffectiveThreshold)} (base {F(admission.BaseThreshold)}, "
+                    + $"apSlack {F(admission.ApSlack)}, resSlack {F(admission.ResourceSlackFactor)})");
+
                 bool handWasFull = !hand.HasFreeSlot;
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
                 if (plan.Generation != null)
@@ -305,15 +246,11 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} util {F(pick.Value.utility)} "
                     + $"(ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
 
-                // Cycle ONLY when the play actually relieved hand pressure and the AP reserve still
-                // holds after the draw.
                 if (AiConfigV2.surplusAllowDraw && handWasFull && hand.HasFreeSlot
                     && root.ActionPoints - ctx.DrawApCost
                         >= AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve
                     && CardDrawExecutor.TryCycle(root, hand, ctx))
-                {
                     result.StateChanged = true;
-                }
 
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
@@ -323,12 +260,9 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Whole-chain reserve check for Phase B — the Step 8B analogue of the pre-8B
-        // ReservesOkAfter(CardPlayPlan): real AP after the whole chain must stay above
-        // housekeeping + surplus reserves, and every per-resource surplus floor must hold.
         internal static bool ReservesOkAfterChain(PlayerRoot root, MaterializationPlan plan)
         {
-            if (plan == null)
+            if (root == null || plan == null)
                 return false;
             float apAfter = root.ActionPoints - plan.ApCost;
             if (apAfter < AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve)
@@ -337,10 +271,11 @@ namespace Game.Ai.V2
             ResourceCost cost = plan.ResCost;
             if (cost == null)
                 return true;
-            return root.GetResource(ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
-                && root.GetResource(ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
-                && root.GetResource(ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
-                && root.GetResource(ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
+            PlayerSetupData player = root.Setup;
+            return AiResourceReservation.Available(root, player, ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
+                && AiResourceReservation.Available(root, player, ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
