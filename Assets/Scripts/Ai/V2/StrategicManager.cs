@@ -271,11 +271,10 @@ namespace Game.Ai.V2
             ResourceCost cost = plan.ResCost;
             if (cost == null)
                 return true;
-            PlayerSetupData player = root.Setup;
-            return AiResourceReservation.Available(root, player, ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
+            return root.GetResource(ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
+                && root.GetResource(ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
+                && root.GetResource(ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
+                && root.GetResource(ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
