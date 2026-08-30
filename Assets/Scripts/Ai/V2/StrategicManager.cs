@@ -24,21 +24,21 @@ namespace Game.Ai.V2
     //  whole chain's AP + R/H/M/T cost is what is compared and reserved; RequiredTraits are a
     //  hard feasibility gate on the projected END result, PreferredTraits only a ranking bonus.
     //
-    //    Phase A — FulfillDemands (BEFORE mission planning). For each demand, in value order:
-    //              MaterializationCandidateBuilder enumerates every legal chain -> rejects the
-    //              infeasible (RequiredTraits, axis entitlement AND real-AP room for the demand's
-    //              MinimumFollowupAp + housekeeping reserve, whole-chain resource cost, hand
-    //              capacity at every intermediate state, generator use not already claimed) ->
-    //              ranks the survivors as finished plans -> executes the best via
-    //              MaterializationExecutor -> debits the requesting axis by the REAL AP spent.
+    //    Phase A — FulfillDemands (BEFORE mission planning). Every iteration asks ALL still-unmet
+    //              demands for their best currently-feasible complete chain, then arbitrates the
+    //              resulting (Demand, Plan) pairs globally. A plan that would consume a trait
+    //              required by another feasible demand, while its own demand does not require that
+    //              trait, is protected behind the constrained demand. This prevents a generic job
+    //              from consuming the only Stealth-capable card/equipment before a Stealth-required
+    //              job. The chosen chain executes through MaterializationExecutor and its REAL AP
+    //              delta is charged to demand.RequestingAxis. Follow-up AP is RESERVED, not spent.
     //              Bounded by maxDemandFulfillmentActionsPerTurn and maxGenerationActionsPerTurn.
-    //              Follow-up AP is RESERVED, not spent.
     //
     //    Phase B — UseSurplus (AFTER mission execution + operational refresh). Bounded greedy over
     //              GENUINELY remaining real AP/resources; may also proactively generate / attach.
-    //              Cannot touch a generator use / hand slot Phase A reserved (the same
-    //              MaterializationReservation is carried over). Refreshes the operational snapshot
-    //              after every successful chain so scarcity is recomputed honestly.
+    //              The same MaterializationReservation is carried from Phase A, so the shared
+    //              generation-attempt cap and exact attempted-card set survive the phase boundary.
+    //              Refreshes the operational snapshot after every successful chain.
     //
     //  Reusable-army policy: an empty ArmyData is a paid, reusable asset. For a solo (Recce /
     //  ScoutCapability) card only a shell-at-hex or a fresh army is legal; for a plain Unit/Hero
@@ -50,9 +50,9 @@ namespace Game.Ai.V2
         public int CardsPlayed;
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
 
-        // Pass-local generator-use / generation-budget ownership. Phase A creates it; the pipeline
-        // carries the SAME instance into Phase B so surplus preparation cannot re-use a generator
-        // Phase A already spent or exceed the shared per-turn generation bound.
+        // Pass-local generation-attempt ownership. Phase A creates it; the pipeline carries the
+        // SAME instance into Phase B so the exact (hero, facility, mode, card) combination is not
+        // retried and the shared per-turn generation-attempt cap cannot be exceeded.
         public MaterializationReservation Reservation;
 
         public void AddDebit(DesireAxis a, float ap)
@@ -64,6 +64,28 @@ namespace Game.Ai.V2
 
     public static class StrategicManager
     {
+        private sealed class DemandState
+        {
+            public AxisDemand Demand;
+            public float Remaining;
+            public int Ordinal;
+            public bool Blocked;
+        }
+
+        private readonly struct PhaseACandidate
+        {
+            public readonly DemandState State;
+            public readonly MaterializationPlan Plan;
+            public readonly float FollowupAp;
+
+            public PhaseACandidate(DemandState state, MaterializationPlan plan, float followupAp)
+            {
+                State = state;
+                Plan = plan;
+                FollowupAp = followupAp;
+            }
+        }
+
         // ----------------------------------------------------------------- PHASE A ----
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
@@ -73,72 +95,147 @@ namespace Game.Ai.V2
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 
-            // ACCUMULATIVE follow-up reservation, per axis, across every demand this phase.
+            var states = demands
+                .Select((d, i) => new DemandState
+                {
+                    Demand = d,
+                    Remaining = d != null ? Mathf.Max(0f, d.DesiredAmount) : 0f,
+                    Ordinal = i,
+                })
+                .Where(s => s.Demand != null && s.Remaining > 0f)
+                .ToList();
+            if (states.Count == 0)
+                return result;
+
+            // ACCUMULATIVE follow-up reservation, per axis, across every fulfilled demand this phase.
             var reservedFollowupByAxis = new Dictionary<DesireAxis, float>();
 
-            int actions = 0;
-            foreach (AxisDemand demand in demands
-                .OrderByDescending(d => d.Value)
-                .ThenBy(d => (int)d.RequestingAxis))
+            int chainAttempts = 0;
+            while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {
-                float deficit = demand.DesiredAmount;
-                while (deficit > 0f && actions < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
-                {
-                    reservedFollowupByAxis.TryGetValue(demand.RequestingAxis, out float reserved);
-                    CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+                List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f).ToList();
+                if (active.Count == 0)
+                    break;
 
+                CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+                var feasible = new List<PhaseACandidate>();
+
+                // GLOBAL arbitration input: ask every unmet demand for its best chain against the
+                // SAME live state before executing anything.
+                foreach (DemandState state in active)
+                {
+                    AxisDemand demand = state.Demand;
+                    reservedFollowupByAxis.TryGetValue(demand.RequestingAxis, out float reserved);
                     (MaterializationPlan plan, float followupAp)? pick = MaterializationCandidateBuilder.BestForDemand(
                         snap, player, root, hand, ctx, demand, ledger, commitments, reserved, result.Reservation, inv);
-                    if (pick == null)
-                    {
-                        AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: no feasible useful chain "
-                            + $"({DesireAxes.Abbrev(demand.RequestingAxis)} entitlement "
-                            + $"{F(ledger.Balance(demand.RequestingAxis))}, followup reserved {F(reserved)})");
-                        break;
-                    }
-
-                    MaterializationPlan plan = pick.Value.plan;
-                    MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
-                    if (plan.Generation != null)
-                        result.Reservation.RecordGenerationAttempt(plan.Generation, play);
-                    if (play.StateChanged)
-                        result.StateChanged = true;
-                    if (play.ApSpent > 0f)
-                    {
-                        ledger.Debit(demand.RequestingAxis, play.ApSpent);
-                        result.AddDebit(demand.RequestingAxis, play.ApSpent);
-                    }
-
-                    if (!play.Deployed)
-                    {
-                        AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: {plan.Kind} chain did not deploy "
-                            + $"({play.FailReason}); gen={(play.Generated ? 1 : 0)} att={(play.Attached ? 1 : 0)}");
-                        // Refresh so a partial mutation (a minted card, spent resources, a reveal)
-                        // is visible to the next demand's enumeration.
-                        if (play.StateChanged)
-                            snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                        break;
-                    }
-
-                    reservedFollowupByAxis[demand.RequestingAxis] = reserved + pick.Value.followupAp;
-                    actions++;
-                    result.CardsPlayed++;
-                    deficit -= 1f;
-                    AiDebugLog.Write($"[AI][V2]   strat.A — {demand}: {plan.Kind} "
-                        + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
-                        + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(demand.RequestingAxis)}, {plan.Deploy.Kind}, "
-                        + $"followup {F(pick.Value.followupAp)}ap reserved, {plan.StableKey})");
-
-                    // Refresh own operational state so the next pick's CapabilityInventory /
-                    // generation eligibility / hand read see the entity just materialised.
-                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    if (pick != null)
+                        feasible.Add(new PhaseACandidate(state, pick.Value.plan, pick.Value.followupAp));
                 }
+
+                if (feasible.Count == 0)
+                {
+                    foreach (DemandState state in active)
+                    {
+                        AxisDemand d = state.Demand;
+                        reservedFollowupByAxis.TryGetValue(d.RequestingAxis, out float reserved);
+                        AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
+                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement "
+                            + $"{F(ledger.Balance(d.RequestingAxis))}, followup reserved {F(reserved)})");
+                    }
+                    break;
+                }
+
+                // SCOR conflict rule: a less-constrained demand may not consume a projected trait
+                // that another CURRENTLY FEASIBLE unmet demand requires. This is deliberately
+                // lexicographic, not a soft score: losing the only hard-trait supply is irreversible
+                // for the rest of the pass, while delaying a generic demand by one iteration is not.
+                PhaseACandidate selected = feasible
+                    .OrderBy(c => ConsumesTraitRequiredByOtherFeasibleDemand(c, feasible) ? 1 : 0)
+                    .ThenByDescending(ArbitrationScore)
+                    .ThenByDescending(c => c.State.Demand.Value)
+                    .ThenBy(c => (int)c.State.Demand.RequestingAxis)
+                    .ThenBy(c => c.State.Ordinal)
+                    .ThenBy(c => c.Plan.StableKey, System.StringComparer.Ordinal)
+                    .First();
+
+                AxisDemand chosenDemand = selected.State.Demand;
+                MaterializationPlan plan = selected.Plan;
+                MaterializationResult play = MaterializationExecutor.Execute(
+                    snap, player, root, hand, ctx, plan, commitments);
+                chainAttempts++;
+
+                if (plan.Generation != null)
+                    result.Reservation.RecordGenerationAttempt(plan.Generation, play);
+                if (play.StateChanged)
+                    result.StateChanged = true;
+                if (play.ApSpent > 0f)
+                {
+                    ledger.Debit(chosenDemand.RequestingAxis, play.ApSpent);
+                    result.AddDebit(chosenDemand.RequestingAxis, play.ApSpent);
+                }
+
+                if (!play.Deployed)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} chain did not deploy "
+                        + $"({play.FailReason}); gen={(play.Generated ? 1 : 0)} att={(play.Attached ? 1 : 0)}");
+
+                    // Re-plan the same demand when the chain changed either gameplay state or the
+                    // generation-attempt reservation: a minted card / successful attach may now be
+                    // a cheaper direct continuation. Only a clean no-op failure is blocked, because
+                    // repeating it against identical state could spin until the safety bound.
+                    if (play.StateChanged)
+                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    if (!play.StateChanged && plan.Generation == null)
+                        selected.State.Blocked = true;
+                    continue;
+                }
+
+                reservedFollowupByAxis.TryGetValue(chosenDemand.RequestingAxis, out float alreadyReserved);
+                reservedFollowupByAxis[chosenDemand.RequestingAxis] = alreadyReserved + selected.FollowupAp;
+                selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - 1f);
+                result.CardsPlayed++;
+
+                AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} "
+                    + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
+                    + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
+                    + $"followup {F(selected.FollowupAp)}ap reserved, {plan.StableKey})");
+
+                // Rebuild all candidates after every mutation: a hand card, equipment card, army
+                // slot, generator attempt, resource balance or capability count may have changed.
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), ledger now " + ledger.DebugLine());
             return result;
         }
+
+        // A plan is "protected" only when its own demand does NOT require a trait the plan carries,
+        // and some other currently-feasible unmet demand DOES require that same trait. Today only
+        // Stealth can reach ExpectedTraits, so this is exact for the currently-proven classifier and
+        // automatically extends when additional reliable traits are added later.
+        private static bool ConsumesTraitRequiredByOtherFeasibleDemand(
+            PhaseACandidate candidate, IReadOnlyList<PhaseACandidate> feasible)
+        {
+            TraitPreference spareTraits = candidate.Plan.ExpectedTraits & ~candidate.State.Demand.RequiredTraits;
+            if (spareTraits == TraitPreference.None)
+                return false;
+
+            foreach (PhaseACandidate other in feasible)
+            {
+                if (ReferenceEquals(other.State, candidate.State))
+                    continue;
+                if ((other.State.Demand.RequiredTraits & spareTraits) != TraitPreference.None)
+                    return true;
+            }
+            return false;
+        }
+
+        // Demand.Value is the cross-demand strategic value; Plan.Score is the already-computed
+        // complete-chain quality/cost/placement score within that demand. Multiplication preserves
+        // both scales without introducing another tuning constant.
+        private static float ArbitrationScore(PhaseACandidate c) =>
+            Mathf.Max(0f, c.State.Demand.Value) * Mathf.Max(0.0001f, c.Plan.Score);
 
         // ----------------------------------------------------------------- PHASE B ----
         public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,

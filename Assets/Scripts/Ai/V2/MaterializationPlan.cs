@@ -46,11 +46,11 @@ namespace Game.Ai.V2
         public float SuccessChance;        // ResearchProductionSystem.EstimateSuccessChance
         public bool ProducesEquipment;     // CardDef.cardType == CardType.Equipment
 
-        // Stable identity of the generator USE (one hero, one Facility, one mode) — a hero can run
-        // exactly one Challenge per turn, so this is the limited resource claimed pass-locally and
-        // the deterministic tie-break key, NOT the card.
+        // Deterministic actor/facility/mode prefix used for diagnostics and CardKey construction.
+        // It is NOT a gameplay "one Challenge per hero" lock. The exact attempted combination is
+        // CardKey below, matching V1's (hero, mode, card) retry semantics.
         public string UseKey;
-        public string CardKey;             // UseKey + card, for the "already attempted this pass" set
+        public string CardKey;             // UseKey + card, the exact "already attempted" identity
     }
 
     public sealed class MaterializationPlan
@@ -108,8 +108,8 @@ namespace Game.Ai.V2
         public float ApSpent;                     // real PlayerRoot AP delta across the whole chain
         public string FailReason;
 
-        // The generator USE that was attempted (win OR loss) — the pass must not retry it. null if
-        // the chain had no generation step or never reached it.
+        // Diagnostic identity of the actor/facility/mode prefix reached by the attempt. Exact retry
+        // suppression is keyed by GenerationStep.CardKey, not by this prefix.
         public string AttemptedGenerationUseKey;
     }
 }

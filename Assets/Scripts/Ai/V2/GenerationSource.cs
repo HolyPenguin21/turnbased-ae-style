@@ -17,10 +17,12 @@ namespace Game.Ai.V2
     //  hex this turn. Step 8B adds NO hero positioning and NO multi-turn planning: "MoveArmy ->
     //  Facility -> Generate" is out of scope.
     //
-    //  Feasibility is gated exactly the way V1 AiDevelopmentPlanner gates it — the SAME
-    //  AiConfig.developmentMinSuccessChance threshold (no second one), the same reservation-aware
-    //  resource-surplus rule — minus any (hero) use already claimed by an earlier selected chain
-    //  this pass and any (hero, card) pair already attempted this pass.
+    //  This class owns SOURCE validity only: gameplay eligibility, exact-combination retry guard,
+    //  reservation-aware affordability, and the existing AiConfig.developmentMinSuccessChance
+    //  quality floor. It deliberately does NOT apply V1 AiDevelopmentPlanner's
+    //  developmentMinResourceKeep investment policy. Phase A generation may be a necessary way to
+    //  satisfy another axis's hard demand; Phase B applies its own surplus reserve policy when the
+    //  complete MaterializationPlan is evaluated.
     //
     //  This is NOT a separate generation manager: it only exposes options. StrategicManager
     //  decides whether generating anything is worth it, compares generation chains against direct
@@ -31,9 +33,11 @@ namespace Game.Ai.V2
         private static readonly ResearchProductionMode[] Modes =
             { ResearchProductionMode.Research, ResearchProductionMode.Production };
 
-        // Every (hero-on-Facility, offered card) pair usable RIGHT NOW, in a deterministic order
-        // (Facility hex, then mode, then card display name). `claimedUseKeys` / `triedCardKeys`
-        // are the pass-local exclusion sets owned by MaterializationReservation.
+        // Every (hero-on-Facility, offered card) combination usable RIGHT NOW, in deterministic
+        // order. `triedCardKeys` is the actual retry guard: gameplay/V1 defines the spent attempt as
+        // (hero, mode, card), not "this hero may only Challenge once". `claimedUseKeys` remains in
+        // the signature for the Step-8B reservation contract but is intentionally NOT a feasibility
+        // gate; the shared maxGenerationActionsPerTurn bound is the AI-wide attempt limiter.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys)
         {
@@ -59,8 +63,6 @@ namespace Game.Ai.V2
                         continue;
 
                     string useKey = $"{mode}:{b.Hex.Q},{b.Hex.R}:{StableHeroKey(hero)}";
-                    if (claimedUseKeys != null && claimedUseKeys.Contains(useKey))
-                        continue;
 
                     foreach (CardDefinition card in ResearchProductionSystem
                         .OfferedCards(ctx.ResearchProductionCatalog, mode, player.Faction)
@@ -72,7 +74,7 @@ namespace Game.Ai.V2
                             continue;
                         if (!ResearchProductionSystem.CanAffordCard(root, card))
                             continue;
-                        if (!FitsReservationSurplus(root, player, card))
+                        if (!FitsReservedAffordability(root, player, card))
                             continue;
                         float chance = ResearchProductionSystem.EstimateSuccessChance(hero, card);
                         if (chance < AiConfig.developmentMinSuccessChance)
@@ -100,10 +102,10 @@ namespace Game.Ai.V2
         public static string StableHeroKey(UnitData hero) =>
             hero == null ? "?" : (!string.IsNullOrEmpty(hero.Name) ? hero.Name : hero.GetHashCode().ToString());
 
-        // spec §9 parity with AiDevelopmentPlanner.FitsResourceSurplus — the reservation-aware
-        // free surplus of every resource type the card needs must stay at/above
-        // AiConfig.developmentMinResourceKeep after paying.
-        private static bool FitsReservationSurplus(PlayerRoot root, PlayerSetupData player, CardDefinition card)
+        // Source-level resource gate only: do not offer a card whose actual cost would consume
+        // resources already reserved elsewhere. No arbitrary post-spend minimum is imposed here;
+        // Phase A/Phase B own their different strategic reserve policies on the COMPLETE chain.
+        private static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player, CardDefinition card)
         {
             ResourceCost cost = card.resourceCost;
             if (cost == null)
@@ -113,7 +115,7 @@ namespace Game.Ai.V2
                 int need = cost.Get(t);
                 if (need <= 0)
                     continue;
-                if (AiResourceReservation.Available(root, player, t) - need < AiConfig.developmentMinResourceKeep)
+                if (AiResourceReservation.Available(root, player, t) < need)
                     return false;
             }
             return true;
