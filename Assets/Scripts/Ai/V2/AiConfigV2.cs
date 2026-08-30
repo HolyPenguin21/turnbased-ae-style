@@ -394,6 +394,33 @@ namespace Game.Ai.V2
         public const int surplusEnergyReserve = 2;
         public const int surplusMaterialsReserve = 0;
         public const int surplusTechReserve = 0;
+
+        // =======================================================================================
+        //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
+        //  The OFF-BUDGET late-turn local army/garrison reorganisation pass. It runs AFTER
+        //  Strategic Manager Phase B + the final operational refresh and does deterministic,
+        //  same-hex structural cleanup only — never movement, never a mission, never card play,
+        //  never Equipment. It reduces the number of pointless occupied formations (non-exempt
+        //  singletons, non-viable weak armies) while preserving mission ownership, gameplay
+        //  legality, garrison safety, and reusable empty ArmyData shells. See the Step 8C design
+        //  record for the full ownership boundaries and the lexicographic policy.
+        // =======================================================================================
+        // Σ of member AiPower.UnitPower for an occupied ground field army below this reads as
+        // "non-viable" — a conservative structural floor, NOT a battle prediction. A singleton
+        // (one non-hero member) and a lone hero are non-viable regardless of this number.
+        public const float housekeepingViabilityPowerFloor = 6f;
+        // Fewer than this many friendly containers (garrison + field armies) on one hex -> there
+        // is nothing to reorganise, the hex is skipped.
+        public const int housekeepingMinContainersForGroup = 2;
+        // Hard bound on the planner's greedy best-improvement loop per hex. Each iteration applies
+        // at most one accepted structural move; the loop stops early the moment no move improves
+        // the lexicographic outcome.
+        public const int housekeepingMaxPlanIterationsPerHex = 24;
+        // Canonical BaseCapacity / GarrisonBaseCapacity from Game.Map.ArmyData.ComputeCapacity,
+        // mirrored here so the pure planner can size virtual rosters without a live ArmyData.
+        // Keep in step with ArmyData if those ever change.
+        public const int armyBaseCapacityNoHero = 2;
+        public const int garrisonBaseCapacityNoHero = 4;
         // FutureUtility term weights / values.
         public const float surplusApCostWeight = 0.20f;
         public const float surplusResourceCostWeight = 0.05f;

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone acceptance harness for Strategy V2 build-order step 8C — HousekeepingManager /
+       Army & Garrison Reorganization (Assets/Scripts/Ai/V2/ArmyReorgProfile.cs +
+       ArmyReorganizationPlanner.cs + ReorganizationPlan.cs). Drives the PURE planner directly
+       with hand-built LocalForceGroup projections and asserts the lexicographic policy:
+       non-exempt singletons and non-viable weak armies are consolidated, emptied ArmyData stays
+       a registered shell, protected / garrison-floor / viability invariants are never broken, and
+       identical input state yields an identical plan. Execution against live ArmyData cannot run
+       headless, so the executor/analyzer are exercised in-game, not here. Same pattern as
+       Tools/mission-selection-sim: a console Exe that ProjectReferences the Unity-generated
+       Assembly-CSharp.csproj so it always runs the current game code. Pure model layer only. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>housekeeping-sim</AssemblyName>
+    <RootNamespace>HousekeepingSim</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <UnityManaged>D:\Unity\Editor\6000.5.4f1\Editor\Data\Managed\UnityEngine</UnityManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Assembly-CSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="UnityEngine">
+      <HintPath>$(UnityManaged)\UnityEngine.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(UnityManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

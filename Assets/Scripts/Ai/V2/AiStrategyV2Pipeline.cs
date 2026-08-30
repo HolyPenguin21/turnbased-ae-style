@@ -526,7 +526,14 @@ namespace Game.Ai.V2
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
-            yield return HousekeepingManager.RunHousekeeping(player, ctx);
+            //    The LAST mutating AI layer: deterministic, same-hex army/garrison REORGANISATION
+            //    (build-order step 8C). Reads the just-refreshed snapshot + the post-Phase-B actor
+            //    ownership; a successful mutation triggers one final operational refresh so the
+            //    saved end-turn state matches the real world.
+            var housekeeping = new HousekeepingResult();
+            yield return HousekeepingManager.RunHousekeeping(snapshot, player, root, ctx, postCommitments, housekeeping);
+            if (housekeeping.StateChanged)
+                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
@@ -566,17 +573,10 @@ namespace Game.Ai.V2
     // ExecutionResult / ExecutionStopReason (step 6a) live in TaskExecutor.cs. AiScoutStealthPolicy
     // (the shared V1+V2 stealth-warrant primitive) lives in Assets/Scripts/Ai/AiScoutStealthPolicy.cs.
 
-    // HousekeepingManager (renamed from Manager) — build-order step 8. A SEPARATE, post-mission
-    // system from StrategicManager: it owns army/garrison REORGANIZATION and cleanup, not card
-    // play. NOT a radar axis — off-budget, guaranteed minimum (housekeepingApReserve). Reservation
-    // cleanup, garrison reorganisation (the V1 GarrisonReorgTask pass), weak-army consolidation,
-    // invariant repair, last-garrison-defender guard. Its detailed behaviour is a separate task;
-    // the stub is unchanged here.
-    internal static class HousekeepingManager
-    {
-        public static IEnumerator RunHousekeeping(PlayerSetupData player, AiTurnContext ctx)
-        {
-            yield break;
-        }
-    }
+    // HousekeepingManager (renamed from Manager) — build-order step 8C. A SEPARATE, post-mission
+    // system from StrategicManager: it owns deterministic same-hex army/garrison REORGANIZATION,
+    // not card play. NOT a radar axis — off-budget. It now lives in its own file,
+    // HousekeepingManager.cs, with LocalForceGroup / ArmyReorgProfile (ArmyReorgProfile.cs),
+    // ArmyReorgAnalyzer.cs, ArmyReorganizationPlanner.cs, ReorganizationPlan.cs and
+    // HousekeepingExecutor.cs. This orchestration file only calls it (stage 8 above).
 }
