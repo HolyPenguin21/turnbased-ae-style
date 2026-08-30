@@ -35,10 +35,12 @@ namespace Game.Ai.V2
     //
     //  RE-ALLOCATE ON FAIL — BOUNDED (risk 2)
     //  --------------------------------------------------------------------------------------------
-    //  AllocationSession owns the retry state/policy but never calls ProvisioningManager. Step 5
-    //  executes exactly one Pack per turn. Step 6 wires real provisioning failures through
-    //  RegisterProvisionFailure -> Pack, bounded by maxReallocIterations + RejectedThisTurn +
-    //  structural cooldown + fingerprint convergence.
+    //  AllocationSession owns same-turn retry state/policy but never calls ProvisioningManager.
+    //  Step 6 wires real provisioning failures through RegisterProvisionFailure -> Pack, bounded by
+    //  maxReallocIterations + RejectedThisTurn + cross-turn structural cooldown + fingerprint
+    //  convergence. Persistent cooldown is written ONLY by MissionContinuityLayer after the final
+    //  MissionOutcomeLedger result is known; an intermediate provisioning failure can never poison
+    //  next turn before a later re-pack has a chance to succeed.
     //
     //  RESOURCE DIMENSIONS  (step 9 closure — spec §19.1)
     //  --------------------------------------------------------------------------------------------
@@ -107,7 +109,7 @@ namespace Game.Ai.V2
     {
         None,
         MoverContended,      // a capable mover exists, but this allocation cycle handed every one to a higher-priority mission
-        NoMoverExists,       // no eligible executor on the map at all (or none that can satisfy a stealth-Required leg)
+        NoMoverExists,       // transient capability shortage: no executor exists yet (or none with required stealth)
         EnvelopeTooSmall,    // the funded AP envelope cannot cover the real mover's cost — carries RequiredAp for repricing
         NoExecutableStep,    // mover + budget are fine, but no safe first step toward the target exists right now
         TargetSatisfied,     // the objective is already met (Explore focus hex already visited) — drop, not fail
@@ -122,7 +124,7 @@ namespace Game.Ai.V2
         RetryNextTurn,       // out of the running THIS turn; a fresh snapshot re-proposes it next turn. No cooldown.
         DropThisTurn,        // same mechanics as RetryNextTurn, but semantically "no longer wanted" (telemetry only).
         RepriceThisTurn,     // re-fund THIS turn at a raised AP floor (ProvisionFailure.RequiredAp), still <= funded.Tentative.
-        RejectWithCooldown,  // structural dead end — reject and suppress the mission key for allocatorRejectCooldownTurns.
+        RejectWithCooldown,  // structural dead end: reject this pack; continuity writes cross-turn cooldown from final facts.
     }
 
     // Stable across turns so ordering/reject/cooldown/fingerprint all address the same mission.
@@ -238,6 +240,12 @@ namespace Game.Ai.V2
         public ResourceVector Required;
         public ResourceVector Available;
         public ResourceVector Missing;
+
+        // OnCooldown telemetry — populated only for DeferReason.OnCooldown. Kept on the row so the
+        // log can explain the historical cause instead of printing a context-free boolean.
+        public int CooldownStartedTurn;
+        public int CooldownUntilTurn;
+        public string CooldownReason;
     }
 
     public sealed class TentativeAllocation
@@ -276,27 +284,59 @@ namespace Game.Ai.V2
         public bool CommitmentsStarveFreshDecisions;
     }
 
-    // Cross-turn state only. RejectedThisTurn/pass/fingerprint live in AllocationSession.
+    public readonly struct MissionCooldownInfo
+    {
+        public readonly int StartedTurn;
+        public readonly int UntilTurn;
+        public readonly string Reason;
+
+        public MissionCooldownInfo(int startedTurn, int untilTurn, string reason)
+        {
+            StartedTurn = startedTurn;
+            UntilTurn = untilTurn;
+            Reason = string.IsNullOrEmpty(reason) ? "StructuralFailure" : reason;
+        }
+
+        public int RemainingAt(int turn) => Mathf.Max(0, UntilTurn - turn + 1);
+    }
+
+    // Cross-turn state only. RejectedThisTurn/pass/fingerprint live in AllocationSession. The
+    // state stores the WHY/start/until triple as well as the deadline so Demand/mission telemetry
+    // can reason about blocked work without inventing a second cooldown registry.
     public sealed class AiAllocatorState
     {
-        private readonly Dictionary<StableMissionKey, int> _cooldownUntilTurn =
-            new Dictionary<StableMissionKey, int>();
+        private readonly Dictionary<StableMissionKey, MissionCooldownInfo> _cooldowns =
+            new Dictionary<StableMissionKey, MissionCooldownInfo>();
 
         // Inclusive `until`: a failure on turn T with cooldown=2 suppresses T+1 and T+2.
-        public bool OnCooldown(StableMissionKey k, int turn) =>
-            _cooldownUntilTurn.TryGetValue(k, out int until) && turn <= until;
+        public bool OnCooldown(StableMissionKey k, int turn) => TryGetCooldown(k, turn, out _);
 
-        public void StartCooldown(StableMissionKey k, int untilTurn)
+        public bool TryGetCooldown(StableMissionKey k, int turn, out MissionCooldownInfo info)
         {
-            if (!_cooldownUntilTurn.TryGetValue(k, out int cur) || untilTurn > cur)
-                _cooldownUntilTurn[k] = untilTurn;
+            if (_cooldowns.TryGetValue(k, out info) && turn <= info.UntilTurn)
+                return true;
+            info = default;
+            return false;
         }
+
+        // Canonical cross-turn write. MissionContinuityLayer is the runtime owner; the public API
+        // stays here because tests/sims seed historical state directly.
+        public void StartCooldown(StableMissionKey k, int startedTurn, int untilTurn, string reason)
+        {
+            var next = new MissionCooldownInfo(startedTurn, untilTurn, reason);
+            if (!_cooldowns.TryGetValue(k, out MissionCooldownInfo cur) || untilTurn > cur.UntilTurn)
+                _cooldowns[k] = next;
+        }
+
+        // Compatibility helper for older harnesses that seed a deadline only.
+        public void StartCooldown(StableMissionKey k, int untilTurn) =>
+            StartCooldown(k, Mathf.Max(0, untilTurn - AiConfigV2.allocatorRejectCooldownTurns), untilTurn, "LegacySeed");
 
         public void PurgeExpired(int turn)
         {
-            var dead = _cooldownUntilTurn.Where(kv => kv.Value < turn).Select(kv => kv.Key).ToList();
+            var dead = _cooldowns.Where(kv => kv.Value.UntilTurn < turn).Select(kv => kv.Key).ToList();
             foreach (StableMissionKey k in dead)
-                _cooldownUntilTurn.Remove(k);
+                _cooldowns.Remove(k);
         }
     }
 
@@ -462,11 +502,10 @@ namespace Game.Ai.V2
                     break;
                 }
                 case ProvisionDisposition.RejectWithCooldown:
+                    // SAME-TURN owner only. The final ledger may still be superseded by a later
+                    // success/reclassification; MissionContinuityLayer alone writes cross-turn
+                    // cooldown after Finalize() has established the authoritative outcome.
                     _rejectedThisTurn.Add(key);
-                    int cd = funded.Mission.Kind == MissionKind.Raid
-                        ? AiConfigV2.raidRejectCooldownTurns
-                        : AiConfigV2.allocatorRejectCooldownTurns;
-                    _state.StartCooldown(key, (_snap?.TurnNumber ?? 0) + cd);
                     break;
                 default: // RetryNextTurn / DropThisTurn — out this turn, re-proposed fresh next turn, no cooldown
                     _rejectedThisTurn.Add(key);
@@ -749,9 +788,16 @@ namespace Game.Ai.V2
                         alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.RejectedThisTurn });
                         continue;
                     }
-                    if (_state.OnCooldown(key, turn))
+                    if (_state.TryGetCooldown(key, turn, out MissionCooldownInfo cooldown))
                     {
-                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.OnCooldown });
+                        alloc.Deferred.Add(new DeferredEntry
+                        {
+                            Mission = m,
+                            Reason = DeferReason.OnCooldown,
+                            CooldownStartedTurn = cooldown.StartedTurn,
+                            CooldownUntilTurn = cooldown.UntilTurn,
+                            CooldownReason = cooldown.Reason,
+                        });
                         continue;
                     }
 
@@ -957,7 +1003,7 @@ namespace Game.Ai.V2
             Converged = fp == _lastFingerprint;
             _lastFingerprint = fp;
 
-            LogDump(alloc);
+            LogDump(alloc, turn);
             return alloc;
         }
 
@@ -1070,7 +1116,7 @@ namespace Game.Ai.V2
 
         private static string LogNum(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
-        private static void LogDump(TentativeAllocation a)
+        private static void LogDump(TentativeAllocation a, int turn)
         {
             string slices = string.Join(" ", a.Slices.Select(s =>
                 $"{DesireAxes.Abbrev(s.Axis)} {s.Weight.ToString("0.00", CultureInfo.InvariantCulture)}"
@@ -1100,7 +1146,10 @@ namespace Game.Ai.V2
                       + $"have {LogNum(d.Available.Ap)} miss {LogNum(d.Missing.Ap)}"
                     : d.Reason == DeferReason.InsufficientPhysical
                         ? $"need [{d.Required.FmtPhysical()}] have [{d.Available.FmtPhysical()}]"
-                        : "";
+                        : d.Reason == DeferReason.OnCooldown
+                            ? $"reason={d.CooldownReason ?? "StructuralFailure"} start=t{d.CooldownStartedTurn} "
+                              + $"until=t{d.CooldownUntilTurn} remaining={Mathf.Max(0, d.CooldownUntilTurn - turn + 1)}"
+                            : "";
                 AiDebugLog.Write($"[AI][V2]   defer {StableMissionKey.For(d.Mission)} "
                     + $"base {LogNum(d.Mission.BaseValue)} — {d.Reason} {why}");
             }
