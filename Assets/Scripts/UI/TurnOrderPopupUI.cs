@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Game.Core;
 using Game.Map;
 using Game.Players;
 using Game.Turns;
@@ -10,9 +9,9 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Phase 1 of every turn: everyone rolls 3 base dice plus any purchased bonus dice, highest
-    // score goes first, and tied players visibly reroll until the tie is broken (see
-    // TurnOrderResolver). One DiceRowUI per player is spawned fresh each turn.
+    // Phase 1 of every turn: everyone rolls InitiativeRules.BaseDice plus any purchased bonus
+    // dice, highest score goes first, and tied players visibly reroll until the tie is broken
+    // (see TurnOrderResolver). One DiceRowUI per player is spawned fresh each turn.
     public class TurnOrderPopupUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -21,7 +20,6 @@ namespace Game.UI
         [SerializeField] private Button rollButton;
         [SerializeField] private Button continueButton;
         [SerializeField] private InitiativeBuyPanelUI buyPanel;
-        [SerializeField] private GameConfig gameConfig;
         // Player-facing "auto-press Roll/Continue for me" checkbox (AutoRoll_Checkbox, under
         // TurnOrderPopup) — same principle as BattleAttackPopupUI's own Autoroll_Toggle,
         // persisted via PlayerPrefs. One toggle gates two delayed auto-presses: Roll once this
@@ -126,9 +124,8 @@ namespace Game.UI
                 Finish(order);
         }
 
-        // Only the human player buys dice through this panel — AI already bought its dice via
-        // InitiativeDiceAI before Show was even called (see InitiativeBuyPanelUI.Show, which
-        // no-ops and hides itself for any non-human/missing player).
+        // Only the human player buys dice through this panel — AI purchases are already applied
+        // by InitiativeCoordinatorV2 before Show is called.
         private void ShowBuyPanel(List<PlayerSetupData> players)
         {
             if (buyPanel == null)
@@ -139,8 +136,7 @@ namespace Game.UI
 
             PlayerSetupData human = players.Find(p => p != null && p.IsHuman);
             PlayerRoot humanRoot = human != null ? PlayerRootRegistry.FindFor(human) : null;
-            int price = gameConfig != null ? gameConfig.initiativeDicePrice : 0;
-            buyPanel.Show(human, humanRoot, price);
+            buyPanel.Show(human, humanRoot);
         }
 
         // The human just bought/refunded a die — resize their row's dice slots to match so
