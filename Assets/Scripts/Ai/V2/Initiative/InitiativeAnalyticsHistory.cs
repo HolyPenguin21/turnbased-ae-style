@@ -15,10 +15,14 @@ namespace Game.Ai.V2.Initiative
         public readonly int EndAp;
         public readonly int ActionableArmyCountAtStart;
         public readonly int UnactivatedActionableArmyCountAtEnd;
+        // Legacy diagnostic field retained so the existing recorder signature does not have to
+        // reshape the whole V2 pipeline. Its authoritative meaning is now simply "real occupied
+        // field-army work remained"; the old card-affordability boolean passed by the recorder is
+        // intentionally ignored because it was not a reliable AP-starvation signal.
         public readonly bool HadPotentialApWorkAtEnd;
 
         public InitiativeTurnRecord(int initiativeBaseAp, int totalStartAp, int apSpent, int endAp,
-            int actionableArmyCountAtStart, int unactivatedActionableArmyCountAtEnd, bool hadPotentialApWorkAtEnd)
+            int actionableArmyCountAtStart, int unactivatedActionableArmyCountAtEnd, bool legacyCardOrArmyWorkFlag)
         {
             InitiativeBaseAp = initiativeBaseAp;
             TotalStartAp = totalStartAp;
@@ -26,7 +30,7 @@ namespace Game.Ai.V2.Initiative
             EndAp = endAp;
             ActionableArmyCountAtStart = actionableArmyCountAtStart;
             UnactivatedActionableArmyCountAtEnd = unactivatedActionableArmyCountAtEnd;
-            HadPotentialApWorkAtEnd = hadPotentialApWorkAtEnd;
+            HadPotentialApWorkAtEnd = unactivatedActionableArmyCountAtEnd > 0;
         }
     }
 
