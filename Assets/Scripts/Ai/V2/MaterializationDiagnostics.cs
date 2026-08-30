@@ -47,8 +47,8 @@ namespace Game.Ai.V2
 
             float axis = ledger != null ? ledger.Balance(demand.RequestingAxis) : 0f;
             int ap = root != null ? root.ActionPoints : 0;
-            return $"diag hand={hand.Hand.Count} freeSlot={(hand.HasFreeSlot ? 1 : 0)} match={matching} "
-                + $"trait={traitMatching} placements={placements} preflight={preflight} "
+            return $"diag hand={hand.Hand.Count} {AiCardLog.Hand(hand)} freeSlot={(hand.HasFreeSlot ? 1 : 0)} "
+                + $"match={matching} trait={traitMatching} placements={placements} preflight={preflight} "
                 + $"axis={axis:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
         }
     }
