@@ -295,6 +295,6 @@ namespace Game.Core
         public int buildingVisionRadius = 1;
         // Dimming overlay + coordinate-label tunables (see Game.Map.FogOfWarController /
         // Custom/FogOfWar.shader) — one shared style, same pattern as every other style block.
-        public FogOfWarStyle fogOfWar = new FogOfWarStyle();
+        public FogOfWarStyle fogOfWarStyle = new FogOfWarStyle();
     }
 }
