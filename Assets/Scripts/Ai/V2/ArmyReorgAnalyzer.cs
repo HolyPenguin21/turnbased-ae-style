@@ -12,17 +12,13 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ARMY REORG ANALYZER  (Strategy V2 — HousekeepingManager, step 8C)
     // ===========================================================================================
-    //  Turns the LIVE post-Phase-B world into the immutable LocalForceGroup projections the pure
-    //  planner consumes, plus the back-maps the executor needs (ReorgUnit.Key -> UnitData,
-    //  ArmyId -> ArmyData). It composes existing canonical predicates and never invents a second
-    //  source of truth:
-    //    · physical role   — AiArmyRoles.IsSoloRecce / AviationRules / ArmyData flags
-    //    · protection      — ActorCommitments.IsArmyClaimed (the canonical V2 ownership view,
-    //                        rebuilt from the reconciled intent registry before Phase B)
-    //    · garrison floor  — AiConfig.secure*MinNonHeroUnits (same numbers CanSpareGarrisonMember
-    //                        and IsBaseGarrisonSecure already use)
-    //    · strength        — AiPower.UnitPower (the shared V2 ranking scalar; folds in the final
-    //                        Equipment-enhanced unit state automatically — no re-derivation)
+    //  LIVE post-Phase-B world -> immutable LocalForceGroup projections + executor back-maps.
+    //  Reuses canonical signals instead of inventing a second source of truth:
+    //    · role/protection   — AiArmyRoles / AviationRules / ActorCommitments
+    //    · garrison safety   — AiConfig secure* floors, rechecked by AiArmyRoles at execution
+    //    · strength/compo    — AiPower.PowerUnit from final live UnitData (Equipment already applied)
+    //    · capacity ordering — the live ArmyData.Members order, because FIRST hero CommandRating wins
+    //    · AP legality       — HasActivatedThisTurn + each member's effective ActivationApCost
     // ===========================================================================================
     public sealed class ArmyReorgAnalysis
     {
@@ -42,10 +38,6 @@ namespace Game.Ai.V2
                 return new ArmyReorgAnalysis { Groups = groups, UnitByKey = unitByKey, ArmyById = armyById };
 
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
-
-            // One deterministic key stream for the whole pass — units ordered inside each army by
-            // (hero first, then descending power, then name) so identical rosters get identical
-            // keys run to run.
             int nextKey = 0;
 
             var byHex = ArmyRegistry.AllForOwner(player)
@@ -59,15 +51,14 @@ namespace Game.Ai.V2
                 foreach (ArmyData army in hexGroup.OrderBy(a => a.Id))
                 {
                     armyById[army.Id] = army;
-                    var container = BuildContainer(player, army, commitments, citadelHex, unitByKey, ref nextKey);
-                    containers.Add(container);
+                    containers.Add(BuildContainer(player, army, commitments, citadelHex, unitByKey, ref nextKey));
                 }
 
                 var lfg = new LocalForceGroup
                 {
                     Q = hexGroup.Key.Q,
                     R = hexGroup.Key.R,
-                    Containers = containers, // already ArmyId-ordered
+                    Containers = containers,
                 };
                 if (lfg.WorthPlanning())
                     groups.Add(lfg);
@@ -79,24 +70,30 @@ namespace Game.Ai.V2
         private static ReorgContainer BuildContainer(PlayerSetupData player, ArmyData army, ActorCommitments commitments,
             HexCoord citadelHex, Dictionary<int, UnitData> unitByKey, ref int nextKey)
         {
-            var container = new ReorgContainer { ArmyId = army.Id, IsGarrison = army.IsGarrison };
+            // Preserve the canonical live roster order. ArmyData.ComputeCapacity uses the FIRST hero,
+            // and AddMemberSorted deliberately preserves hero insertion order; re-sorting heroes by
+            // power here can therefore make the pure planner disagree with gameplay capacity.
+            var container = new ReorgContainer
+            {
+                ArmyId = army.Id,
+                IsGarrison = army.IsGarrison,
+                HasActivatedThisTurn = army.HasActivatedThisTurn,
+            };
 
-            List<UnitData> ordered = army.Members
-                .OrderByDescending(m => m.IsHero)
-                .ThenByDescending(AiPower.UnitPower)
-                .ThenBy(m => m.Name)
-                .ToList();
-            foreach (UnitData u in ordered)
+            foreach (UnitData u in army.Members)
             {
                 int key = nextKey++;
                 unitByKey[key] = u;
+                AiPower.PowerUnit pu = AiPower.ToPowerUnit(u);
                 container.Units.Add(new ReorgUnit
                 {
                     Key = key,
                     IsHero = u.IsHero,
                     CommandRating = u.CommandRating,
-                    Power = AiPower.UnitPower(u),
-                    Range = u.Range,
+                    Power = pu.BasePower,
+                    Range = pu.Range,
+                    TypeTags = pu.Tags.ToList(),
+                    ActivationApCost = u.ActivationApCost,
                     HasRecce = AbilityParams.UnitHasAnyRecce(u),
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
@@ -111,13 +108,15 @@ namespace Game.Ai.V2
                 || container.Role == ReorgPhysicalRole.Garrison;
 
             container.CanChangeComposition = mutable && !protectedOwner;
-            // A garrison / empty shell can only ever RECEIVE (nothing structural to donate from a
-            // shell; a garrison donates only under the floor rule, handled in the planner).
             container.CanReceive = mutable && !protectedOwner;
             container.CanDonate = container.CanChangeComposition
                 && (container.Role == ReorgPhysicalRole.NormalFieldArmy || container.Role == ReorgPhysicalRole.Garrison);
 
-            container.SingletonExempt = container.Role != ReorgPhysicalRole.NormalFieldArmy;
+            // Empty reusable field containers are not permanently singleton-exempt: once the
+            // virtual plan fills one, it is an ordinary field formation and must satisfy the same
+            // structural rules as every other field army.
+            container.SingletonExempt = container.Role != ReorgPhysicalRole.NormalFieldArmy
+                && container.Role != ReorgPhysicalRole.EmptyReusableArmy;
 
             if (army.IsGarrison)
             {

@@ -7,43 +7,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  The OFF-BUDGET, late-turn structural cleanup pass. It runs as the LAST mutating AI layer of
-    //  a V2 turn — after Strategic Manager Phase B and the final operational refresh, before
-    //  end-turn state is saved:
+    //  Last mutating V2 layer: local same-hex army/garrison structural reorganisation only.
+    //  Analyzer -> pure deterministic Planner -> canonical Executor. It never moves across hexes,
+    //  creates/deletes ArmyData, touches cards/Equipment, or changes mission ownership.
     //
-    //     StrategicManager Phase B -> RefreshOperationalState -> HousekeepingManager -> end turn
-    //
-    //  WHAT IT DOES
-    //    For each friendly hex holding more than one ground container it builds an immutable
-    //    LocalForceGroup, classifies every container (ArmyReorgAnalyzer), asks the pure
-    //    ArmyReorganizationPlanner for the structurally-better legal same-hex arrangement, and
-    //    applies it through the canonical ArmyActions.TransferMember (HousekeepingExecutor). The
-    //    goal is FEWER pointless occupied formations — non-exempt singletons, non-viable weak
-    //    armies — while an emptied ArmyData stays a registered, reusable shell.
-    //
-    //  WHAT IT NEVER DOES  (see the Step 8C design record §5 / §21 for the full list)
-    //    · no movement / pathfinding / regroup task           · no card play / generated cards
-    //    · no new Objective / Mission / mission ownership      · no Equipment select/attach/detach
-    //    · no new ArmyData                                     · no strategic axis entitlement
-    //    · never touches aviation / prison / protected armies  · never deletes a normal empty shell
-    //
-    //  OWNERSHIP
-    //    Protection comes from the canonical ActorCommitments projection (rebuilt from the
-    //    reconciled intent registry before Phase B) — Housekeeping consumes it, it never keeps its
-    //    own reservation registry. Garrison safety uses the canonical AiArmyRoles secure-floor
-    //    predicates. Strength uses AiPower (the shared V2 ranking scalar, already Equipment-aware).
-    //
-    //  COST
-    //    Same-hex ArmyActions.TransferMember between not-yet-activated armies is free, so this pass
-    //    costs 0 AP in practice and takes nothing from any strategic axis. It never spends
-    //    Human/Energy/Materials/Tech. (housekeepingApReserve stays 0 until a genuinely AP-costing
-    //    canonical reorg action is ever added here.)
-    //
-    //  NOTE ON SHARED CLEANUP
-    //    The V1 empty-army sweeps (AiTurnController.RunEmptyArmyCleanup / RunGarrisonReorgPhase)
-    //    do NOT run on a V2 turn — RunTurn returns right after Pipeline.RunTurn. TransferMember
-    //    itself never calls DeleteArmyIfEmptied. So an ArmyData emptied by this pass survives as a
-    //    reusable shell with no extra guarding needed.
+    //  AP OWNERSHIP: housekeepingApReserve is currently 0. Therefore every planned/executed
+    //  transfer/swap must be zero-cost under ArmyActions' real activated-destination rule. The
+    //  executor enforces that before mutation; this manager also records a turn-end invariant
+    //  violation if AP changed anyway, protecting against future gameplay-rule drift.
     // ===========================================================================================
     public sealed class HousekeepingResult
     {
@@ -51,22 +22,20 @@ namespace Game.Ai.V2
         public int GroupsPlanned;
         public int TransfersApplied;
         public int TransfersFailed;
+        public bool ApInvariantViolated;
     }
 
     internal static class HousekeepingManager
     {
-        // Coroutine form kept for the pipeline (`yield return`). The body is synchronous — no move
-        // orders, no battles — so it simply runs and ends. `result` is the out-channel (same shape
-        // as TaskExecutor's results list) the pipeline reads to decide on a final refresh.
         public static IEnumerator RunHousekeeping(WorldSnapshot snapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result)
         {
-            Run(player, ctx, commitments, result ?? new HousekeepingResult());
+            Run(player, root, ctx, commitments, result ?? new HousekeepingResult());
             yield break;
         }
 
-        internal static void Run(PlayerSetupData player, AiTurnContext ctx, ActorCommitments commitments,
-            HousekeepingResult result)
+        internal static void Run(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ActorCommitments commitments, HousekeepingResult result)
         {
             if (player == null || ctx == null)
             {
@@ -74,6 +43,7 @@ namespace Game.Ai.V2
                 return;
             }
 
+            int apBefore = root != null ? root.ActionPoints : 0;
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
             if (analysis.Groups.Count == 0)
             {
@@ -98,9 +68,16 @@ namespace Game.Ai.V2
                 result.TransfersFailed += exec.Failed;
             }
 
+            if (root != null && root.ActionPoints != apBefore)
+            {
+                result.ApInvariantViolated = true;
+                AiDebugLog.Write($"[AI][V2][ERROR] housekeeping AP invariant violated — AP {apBefore}->{root.ActionPoints}. "
+                    + "Step 8C owns no AP while housekeepingApReserve is 0.");
+            }
+
             AiDebugLog.Write($"[AI][V2] housekeeping — groups {result.GroupsPlanned}, "
-                + $"transfers applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
-                + $"stateChanged {(result.StateChanged ? 1 : 0)}");
+                + $"operations applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
+                + $"stateChanged {(result.StateChanged ? 1 : 0)}, apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }
     }
 }
