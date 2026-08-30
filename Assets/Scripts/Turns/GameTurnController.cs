@@ -95,6 +95,10 @@ namespace Game.Turns
 
         // Hidden until the game actually starts — see BeginGame. Same trigger as resourceBar.
         [SerializeField] private CardHandUI cardHand;
+        // Gameplay-side deck source for pre-turn Initiative resource-demand analysis. Existing
+        // scenes predate this field, so BeginGame bootstraps it once from CardHandUI when the
+        // serialized reference has not been wired yet; Initiative itself never reaches into UI.
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
 
         // AI turn visualization (see Game.Ai.AiTurnController) — the camera pans to whatever the
         // AI is doing and armyViewerModal below opens read-only on whichever army it's acting
@@ -448,6 +452,11 @@ namespace Game.Turns
                 resourceBar.Show();
             if (cardHand != null)
                 cardHand.Show();
+            // Existing scenes already carry the same deck catalog on CardHandUI. Copy it once
+            // into the gameplay-owned field when the new direct reference has not been assigned;
+            // from this point the Initiative module is independent of the UI object.
+            if (startingDeckCatalog == null && cardHand != null)
+                startingDeckCatalog = cardHand.StartingDeckCatalog;
             // Shown once, same trigger as resourceBar, and never hidden again — only its
             // interactable state changes from here on (see BeginPlayerTurn/OnTurnConfirmed).
             if (endTurnButton != null)
@@ -644,18 +653,13 @@ namespace Game.Turns
 
             foreach (PlayerSetupData player in GameSession.Players)
                 PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
-            // AI initiative-dice purchases — decided before the popup is shown, so an AI's
-            // purchase is already reflected the first time the human sees it, not bought live
-            // while they watch. Strategy V2 runs a real economic evaluator
-            // (Game.Ai.V2.Initiative.InitiativeCoordinatorV2 — every AI plans from the same
-            // pre-purchase state, then all plans are applied through PlayerRoot's canonical paid
-            // API); with the flag off the V1 placeholder (random 0-2, no cost) still runs
-            // unchanged.
-            if (Game.Ai.AiConfig.aiStrategyV2Enabled)
-                Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
-                    GameSession.Players, map, cardHand != null ? cardHand.StartingDeckCatalog : null, TurnNumber);
-            else
-                InitiativeDiceAI.BuyDiceForAll(GameSession.Players);
+
+            // Initiative has one implementation now. Every AI plans from the same immutable
+            // pre-purchase state, then all paid purchases are applied before the human sees the
+            // popup. There is no V1/random/free fallback and no strategy-version flag at this
+            // round-boundary decision point.
+            Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
+                GameSession.Players, map, startingDeckCatalog, TurnNumber);
 
             turnOrderPopup.Show(GameSession.Players, OnTurnOrderResolved);
         }
