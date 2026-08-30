@@ -36,7 +36,7 @@ namespace Game.Ai.V2
             while (true)
             {
                 RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, excluded);
-                if (!plan.Feasible || plan.BaseArmyId == 0 || !excluded.Add(plan.BaseArmyId))
+                if (!plan.Feasible || !excluded.Add(plan.BaseArmyId))
                     break;
                 ids.Add(plan.BaseArmyId);
             }
@@ -64,6 +64,15 @@ namespace Game.Ai.V2
         {
             if (!TryGet(a, out HashSet<int> aa) || !TryGet(b, out HashSet<int> bb))
                 return true; // legacy/bare harness: keep the final Provisioning guard authoritative
+            return SetsHaveDistinctAssignment(aa, bb);
+        }
+
+        internal static bool SetsHaveDistinctAssignment(IEnumerable<int> a, IEnumerable<int> b)
+        {
+            if (a == null || b == null)
+                return true;
+            int[] aa = a.Distinct().ToArray();
+            int[] bb = b.Distinct().ToArray();
             foreach (int x in aa)
                 foreach (int y in bb)
                     if (x != y)
