@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using Game.Map;
 
 namespace Game.Ai.V2
 {
@@ -14,13 +16,11 @@ namespace Game.Ai.V2
     //  gain persistent missions.
     //
     //  An intent's PreferredMoverArmyId is only claimed while the actor is STILL VALID for that
-    //  intent — a live solo Recce that still meets the intent's real stealth requirement. A live
-    //  army that has been folded into a combat force, or lost its stealth unit, is NOT claimed:
-    //  its objective is genuinely uncovered AND the army is free to be reassigned to a job it can
-    //  still do (a plain Explore).
-    //
-    //  TODO (when Raid / Defence land): replace the Recon-shaped (snap, ReconObjective[]) inputs
-    //  with a per-intent CapabilityRequirement + IsClaimStillValid(snapshot, intent) contract.
+    //  intent. For Raid that means the same structural actor shape ProvisioningManager accepts:
+    //  a real ground field army, not prison/airfield/air/Recce and not a lone hero awaiting escort.
+    //  If battle damage leaves a started Raid as only a hero, the INTENT may survive but the actor
+    //  claim is released; DemandLayer can then ask StrategicManager for the missing escort instead
+    //  of incorrectly declaring the objective covered by an actor provisioning will reject.
     // ===========================================================================================
     public sealed class ActorCommitments
     {
@@ -59,13 +59,20 @@ namespace Game.Ai.V2
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
-                // Step 9 — mission-specific claim validity (spec §29). Raid -> a live own combat
-                // army (not prison / air / dedicated solo Recce) still structurally able to run
-                // the operation. Scout keeps its solo-Recce + stealth test below.
                 if (i.Kind == MissionKind.Raid)
                 {
-                    if (RaidActorStillValid(i.PreferredMoverArmyId.Value, snap))
-                        c.Claim(i.PreferredMoverArmyId.Value);
+                    int actorId = i.PreferredMoverArmyId.Value;
+                    if (RaidActorStillValid(actorId, snap, out string reason))
+                    {
+                        c.Claim(actorId);
+                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
+                            + "reason=actor_still_matches_raid_provisioning_gate");
+                    }
+                    else
+                    {
+                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
+                            + $"reason={reason}");
+                    }
                     continue;
                 }
 
@@ -97,18 +104,58 @@ namespace Game.Ai.V2
             return c;
         }
 
-        // Step 9 — a Raid intent's committed force is claimed only while it is a live own combat
-        // army still able to fight: not a prison, not air, not a dedicated solo Recce (spec §29 /
-        // §6 "no dedicated Recon actor as raid fodder"), with members. A folded-away / emptied army
-        // is NOT claimed — its objective is genuinely uncovered and the raid re-provisions.
-        private static bool RaidActorStillValid(int armyId, WorldSnapshot snap)
+        private static bool RaidActorStillValid(int armyId, WorldSnapshot snap, out string reason)
         {
+            reason = null;
             if (armyId == 0 || snap?.Self?.Armies == null)
+            {
+                reason = "missing_actor_or_snapshot";
                 return false;
-            foreach (ArmySnapshot a in snap.Self.Armies)
-                if (a != null && a.ArmyId == armyId)
-                    return !a.IsPrison && !a.IsAir && !a.IsSoloRecce && a.MemberCount > 0;
-            return false;
+            }
+
+            ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == armyId);
+            if (actor == null || actor.Owner == null)
+            {
+                reason = "actor_not_in_own_snapshot";
+                return false;
+            }
+            if (actor.IsPrison || actor.IsAir || actor.IsSoloRecce || actor.MemberCount <= 0)
+            {
+                reason = "snapshot_actor_not_ground_combat_force";
+                return false;
+            }
+
+            // Snapshot.IsAir does not encode an airfield container, and a post-battle lone hero is
+            // a role-level invalid Raid actor that the snapshot does not encode directly. Resolve
+            // only the matching OWN live army to mirror the final provisioning structural gate.
+            ArmyData live = ArmyRegistry.AllForOwner(actor.Owner)
+                .FirstOrDefault(a => a != null && a.Id == armyId);
+            if (live == null)
+            {
+                reason = "live_actor_missing";
+                return false;
+            }
+            if (live.IsPrison || live.IsGarrison || live.IsAirfield || live.IsAirArmy)
+            {
+                reason = "live_actor_is_non_field_container";
+                return false;
+            }
+            if (AiArmyRoles.IsSoloRecce(live))
+            {
+                reason = "live_actor_is_dedicated_recce";
+                return false;
+            }
+            if (AiArmyRoles.IsSoloHeroAwaitingEscort(live))
+            {
+                reason = "live_actor_is_solo_hero_awaiting_escort";
+                return false;
+            }
+            if (live.Members.Count <= 0)
+            {
+                reason = "live_actor_empty";
+                return false;
+            }
+            return true;
         }
 
         // Is the intent's committed mover a live own army STRUCTURALLY able to run it — a solo
