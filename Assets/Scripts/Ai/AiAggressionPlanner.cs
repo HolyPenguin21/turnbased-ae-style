@@ -1391,8 +1391,6 @@ namespace Game.Ai
             // transfer nothing about the candidate-generation side predicts.
             ctx.RecordArmyVisit(unit, source, formingArmy);
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(formingArmy);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1567,8 +1565,6 @@ namespace Game.Ai
                     + $"\"{wounded.Name}\" — task stays active for a retry.");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1977,8 +1973,6 @@ namespace Game.Ai
                 AiTaskRegistry.Remove(player, task);
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -2120,8 +2114,6 @@ namespace Game.Ai
                 // army, same pick, unless something about the roster changed meanwhile).
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.Target);
             yield return AiTurnController.WaitStep(ctx);
         }
 

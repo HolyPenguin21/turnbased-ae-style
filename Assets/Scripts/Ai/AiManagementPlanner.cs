@@ -1338,8 +1338,6 @@ namespace Game.Ai
                     + AiTurnController.HandDemandLogSuffix(player, decision.EconomyResourceType, root, handForLog));
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(destination);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1391,8 +1389,6 @@ namespace Game.Ai
 
             ctx.HexSelection?.DeleteArmyIfEmptied(move.Source);
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.Garrison);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1426,8 +1422,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't merge {move.Unit.Name} — {failReason}");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.Target);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1460,8 +1454,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't swap {move.UnitA.Name} for {move.UnitB.Name} — {failReason}");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.ArmyB);
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1480,8 +1472,6 @@ namespace Game.Ai
             }
 
             yield return AiTurnController.PanTo(ctx, army.Hex);
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return AiTurnController.WaitStep(ctx);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
@@ -1500,8 +1490,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't repair {task.TargetUnit.Name} — {failReason}.");
             AiTaskRegistry.Remove(player, task);
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
 

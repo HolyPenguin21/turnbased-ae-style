@@ -48,7 +48,7 @@ namespace Game.Map
 
         public static PlayerSetupData CurrentViewer { get; set; }
 
-        // Dev-only override — see GameTurnController.debugRevealFogOfWar's own comment. Touches
+        // Dev-only override — see GameTurnController.debugWatchAiTurns' own comment. Touches
         // only the three CurrentViewer-facing read paths directly below, never the underlying
         // per-player Visible/Visited/EverSeen sets themselves and never IsVisible/IsVisited/
         // HasEverSeen taking an explicit `player` argument — those are what AiMapMemory and every

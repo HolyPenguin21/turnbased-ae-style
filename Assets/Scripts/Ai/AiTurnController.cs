@@ -31,10 +31,9 @@ namespace Game.Ai
         public RtsCameraController Camera;
         public HexMap Map;
         public HexSelectionController HexSelection;
-        public ArmyViewerModalUI ArmyViewerModal;
         // Kept alongside StartingDeckCatalog/etc (all read from this same source, see From)
         // purely so RunTurn can push live hand updates to CardHandUI.RefreshAiHandDebugIfShowing
-        // — a no-op whenever debugFollowAiVision isn't showing this player's hand, so this never
+        // — a no-op whenever debugWatchAiTurns isn't showing this player's hand, so this never
         // needs to know that flag itself.
         public CardHandUI HumanCardHandUI;
         public StartingDeckCatalog StartingDeckCatalog;
@@ -49,12 +48,6 @@ namespace Game.Ai
         // AiHandData in RunTurn so a won Research/Production Challenge can't mint into a full hand.
         public int HandCapacity = 10;
         public float StepDelay = 0.5f;
-        // Dev-only: gates every ArmyViewerModal.ShowReadOnly/Hide call below (see GameTurnController.
-        // debugShowAiArmyModal's own comment) — off by default because the modal popping open/closed
-        // on every single AI step (one MoveArmy per step, several steps per turn) reads as constant
-        // flicker rather than something watchable; the AiDebugLog file/console line already logged
-        // alongside every one of these same routines covers "what did the AI just do" without it.
-        public bool ShowArmyModal;
         // For BuildFacilityRoutine's own extractionFacilityCards lookup — GameTurnController
         // already holds a GameConfig reference, just not previously threaded through to here.
         public GameConfig GameConfig;
@@ -145,8 +138,8 @@ namespace Game.Ai
             => DevelopmentAttemptsThisTurn.Add((hero, mode, card));
 
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
-            ArmyViewerModalUI armyViewerModal, CardHandUI humanCardHand, float stepDelay,
-            GameConfig gameConfig, int turnNumber, bool showArmyModal,
+            CardHandUI humanCardHand, float stepDelay,
+            GameConfig gameConfig, int turnNumber,
             ResearchProductionCatalog researchProductionCatalog = null)
         {
             return new AiTurnContext
@@ -154,7 +147,6 @@ namespace Game.Ai
                 Camera = camera,
                 Map = map,
                 HexSelection = hexSelection,
-                ArmyViewerModal = armyViewerModal,
                 HumanCardHandUI = humanCardHand,
                 StartingDeckCatalog = humanCardHand != null ? humanCardHand.StartingDeckCatalog : null,
                 StartingHandSize = humanCardHand != null ? humanCardHand.StartingHandSize : 0,
@@ -164,7 +156,6 @@ namespace Game.Ai
                 StepDelay = stepDelay,
                 GameConfig = gameConfig,
                 TurnNumber = turnNumber,
-                ShowArmyModal = showArmyModal,
             };
         }
     }
@@ -1219,12 +1210,6 @@ namespace Game.Ai
                 + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
 
             yield return PanTo(ctx, army.Hex);
-            // Read-only — a human could otherwise drag units around inside the popup while it's
-            // only meant to show what the AI is doing (map-click input is blocked during another
-            // player's turn, but nothing gates in-panel dragging on its own — see
-            // ArmyViewerModalUI.ShowReadOnly's own comment).
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return WaitStep(ctx);
 
             HexCoord destination = decision.TargetHex;
@@ -1384,9 +1369,6 @@ namespace Game.Ai
             if (ctx.HexSelection != null)
                 yield return new WaitUntil(() => !ctx.HexSelection.IsBattleActive);
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
-
             // Diagnostic fix (2026-08-24, project owner's own report): this used to print one
             // catch-all "no path, no movement left, or a fight blocked the way" line regardless of
             // which of IssueMoveOrder's own guard clauses actually rejected the order — moveResult
@@ -1478,8 +1460,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: creates new army \"{targetArmy.Name}\" for card {decision.Card.Definition.displayName}.");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(targetArmy);
             yield return WaitStep(ctx);
 
             // sourceCard: the hand instance — a Research/Production-created card then pays
@@ -1505,8 +1485,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't deploy {decision.Card.Definition.displayName} — {failReason}");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return WaitStep(ctx);
         }
 

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<doc>
+  <members>
+    <assembly>
+      <name>UnityEngine.UnityConsentModule</name>
+    </assembly>
+    <member name="T:UnityEngine.UnityConsent.ConsentState">
+      <summary>
+        <para>Represents the consent state of a user.</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.UnityConsent.ConsentState.AdsIntent">
+      <summary>
+        <para>The consent status for Ads.</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.UnityConsent.ConsentState.AnalyticsIntent">
+      <summary>
+        <para>The consent status for Analytics.</para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.UnityConsent.ConsentState.#ctor">
+      <summary>
+        <para>Initializes a new instance of the &lt;see cref="ConsentState"/&gt; struct with default values.</para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.UnityConsent.ConsentState.ToString">
+      <summary>
+        <para>Returns a string representation of the consent state.</para>
+      </summary>
+      <returns>
+        <para>A string describing the Ads and Analytics consent statuses.</para>
+      </returns>
+    </member>
+    <member name="T:UnityEngine.UnityConsent.ConsentStatus">
+      <summary>
+        <para>Consent status for a specific operation or feature.</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.UnityConsent.ConsentStatus.Denied">
+      <summary>
+        <para>Consent has been explicitly denied.</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.UnityConsent.ConsentStatus.Granted">
+      <summary>
+        <para>Consent has been explicitly granted.</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.UnityConsent.ConsentStatus.Unspecified">
+      <summary>
+        <para>The consent status is unspecified. No explicit consent has been given or denied.</para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.UnityConsent.EndUserConsent">
+      <summary>
+        <para>Provides methods and events to manage and track the user's consent state.</para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.UnityConsent.EndUserConsent.consentStateChanged(System.Action`1&lt;UnityEngine.UnityConsent.ConsentState&gt;)">
+      <summary>
+        <para>Occurs when the consent state of the user changes.</para>
+      </summary>
+      <param name="value">The new consent state.</param>
+    </member>
+    <member name="M:UnityEngine.UnityConsent.EndUserConsent.GetConsentState">
+      <summary>
+        <para>Retrieves the current consent state of the user.</para>
+      </summary>
+      <returns>
+        <para>The current &lt;see cref="ConsentState"/&gt; of the user.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.UnityConsent.EndUserConsent.SetConsentState(UnityEngine.UnityConsent.ConsentState)">
+      <summary>
+        <para>Updates the consent state of the user.</para>
+      </summary>
+      <param name="consentState">The new &lt;see cref="ConsentState"/&gt; to set.</param>
+    </member>
+    <member name="A:UnityEngine.UnityConsentModule">
+      <summary>
+        <para>A module for managing user consent.</para>
+      </summary>
+    </member>
+  </members>
+</doc>

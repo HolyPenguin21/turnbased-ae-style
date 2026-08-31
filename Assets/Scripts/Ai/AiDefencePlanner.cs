@@ -1539,8 +1539,6 @@ namespace Game.Ai
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't strengthen \"{move.ArmyA.Name}\" with {move.UnitB.Name} — {failReason}");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.ArmyA);
             yield return AiTurnController.WaitStep(ctx);
         }
     }

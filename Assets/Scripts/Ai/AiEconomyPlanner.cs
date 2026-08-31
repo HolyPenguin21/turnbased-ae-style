@@ -927,8 +927,6 @@ namespace Game.Ai
             }
 
             yield return AiTurnController.PanTo(ctx, army.Hex);
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(army);
             yield return AiTurnController.WaitStep(ctx);
 
             CardDefinition definition = (int)task.ResourceType.Value < ctx.GameConfig.extractionFacilityCards.Length
@@ -963,8 +961,6 @@ namespace Game.Ai
                 }
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
 
@@ -1018,8 +1014,6 @@ namespace Game.Ai
                     AiDebugLog.Write($"[AI] {player.Nickname}: couldn't detach {collector.Name} — {failReason}");
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
     }

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<doc>
+  <members>
+    <assembly>
+      <name>UnityEngine.MultiplayerModule</name>
+    </assembly>
+    <member name="T:Unity.Multiplayer.PlayMode.CurrentPlayer">
+      <summary>
+        <para>
+ Utility class to access information about the multiplayer play mode player while in playmode.
+ </para>
+      </summary>
+    </member>
+    <member name="P:Unity.Multiplayer.PlayMode.CurrentPlayer.IsMainEditor">
+      <summary>
+        <para>
+ Indicates if the currently running player is the main editor.
+ </para>
+      </summary>
+    </member>
+    <member name="M:Unity.Multiplayer.PlayMode.CurrentPlayer.ReadOnlyTags">
+      <summary>
+        <para>
+ Returns the tag(s) assigned to the currently running player.
+ </para>
+      </summary>
+      <returns>
+        <para>Returns the array of assigned tags</para>
+      </returns>
+    </member>
+    <member name="P:Unity.Multiplayer.PlayMode.CurrentPlayer.Tags">
+      <summary>
+        <para>
+ Returns the tag(s) assigned to the currently running player.
+ This property is read-only and should be used to access the tags without modifying them.
+ </para>
+      </summary>
+      <returns>
+        <para>Returns the array of assigned tags</para>
+      </returns>
+    </member>
+  </members>
+</doc>

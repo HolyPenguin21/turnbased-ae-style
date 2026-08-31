@@ -120,8 +120,6 @@ namespace Game.Ai
                 // Task/courier left exactly as they are — retried fresh next step.
             }
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.ShowReadOnly(move.Target);
             yield return AiTurnController.WaitStep(ctx);
         }
     }

@@ -29,7 +29,7 @@ namespace Game.UI
         private PlayerRoot _humanRoot;
 
         // Whichever PlayerRoot the bar is actually reading from right now — _humanRoot except
-        // during GameTurnController's debugFollowAiVision (see ShowRootDebug), when it's
+        // during GameTurnController's debugWatchAiTurns (see ShowRootDebug), when it's
         // temporarily the acting AI's own root instead. Always the one RefreshResourceText reads
         // and ResourcesChanged is subscribed to; SetDisplayedRoot is the only place that changes.
         private PlayerRoot _displayedRoot;
@@ -60,7 +60,7 @@ namespace Game.UI
                 turnController.TurnStarted -= OnTurnStarted;
         }
 
-        // Dev-only (see GameTurnController.debugFollowAiVision): points the bar at `root`
+        // Dev-only (see GameTurnController.debugWatchAiTurns): points the bar at `root`
         // instead of the human's own — the acting AI's own AP/resources, for the same span its
         // hand is shown via CardHandUI.ShowAiHandDebug. Null (or the human's own root) reverts to
         // normal.

@@ -588,8 +588,6 @@ namespace Game.Ai
             else
                 AiDebugLog.Write($"[AI] {player.Nickname}: couldn't assemble the Recce composition — {failReason}");
 
-            if (ctx.ShowArmyModal && ctx.ArmyViewerModal != null)
-                ctx.ArmyViewerModal.Hide();
             yield return AiTurnController.WaitStep(ctx);
         }
 

@@ -1,0 +1,3445 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<doc>
+  <members>
+    <assembly>
+      <name>UnityEngine.AdaptivePerformanceModule</name>
+    </assembly>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveBatching">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to control if dynamic batching is enabled.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveBatching.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveBatching.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveBatching.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveBatching.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveDecals">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the view distance of decals.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveDecals.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveDecals.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveDecals.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveDecals.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveFramerate">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the application update rate using Application._targetFrameRate.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveFramerate.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveFramerate.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveFramerate.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveFramerate.OnLevelDecrease">
+      <summary>
+        <para>
+ Callback for when the quality level is increased/scaler level decreased.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveFramerate.OnLevelIncrease">
+      <summary>
+        <para>
+ Callback for when the quality level is decreased/scaler level increased.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveLayerCulling">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer for adjusting https:docs.unity3d.comScriptReferenceCamera-layerCullDistances.html|layer culling distances.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLayerCulling.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLayerCulling.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLayerCulling.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLayerCulling.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveLOD">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer for adjusting at what distance LODs are switched.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLOD.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLOD.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLOD.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLOD.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveLut">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the size of the palette used for color grading in URP.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLut.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLut.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLut.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveLut.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveMSAA">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the level of antialiasing.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveMSAA.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveMSAA.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveMSAA.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveMSAA.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceConfigurationDataAttribute">
+      <summary>
+        <para>
+ This attribute is used to tag classes as providing build settings support for an Adaptive Performance provider. The unified setting system
+ will present the settings as an inspectable object in the Project Settings window using the built-in inspector UI.
+
+ The implementor of the settings is able to create their own custom UI and the Project Settings system will use that UI in
+ place of the build-in one in the Inspector. See the https:docs.unity3d.comManualExtendingTheEditor.html|Extending the Editor
+ page in the Unity Manual for more information.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceConfigurationDataAttribute.buildSettingsKey">
+      <summary>
+        <para>
+ The key used to store the singleton instance of these settings within EditorBuildSettings.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceConfigurationDataAttribute.displayName">
+      <summary>
+        <para>
+ The display name that the user sees in the Project Settings window.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceConfigurationDataAttribute.#ctor(System.String,System.String)">
+      <summary>
+        <para>Constructor for attribute</para>
+      </summary>
+      <param name="displayName">The display name to use in the Project Settings window.</param>
+      <param name="buildSettingsKey">The key to use to get or set build settings with.</param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings">
+      <summary>
+        <para>
+ A ScriptableObject that contains global settings applicable to all Adaptive Performance providers.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.k_SettingsKey">
+      <summary>
+        <para>The key used to query to get the current loader settings.</para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.AssignedSettings">
+      <summary>
+        <para>
+ The current active manager used to manage the Adaptive Performance lifetime.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.InitManagerOnStart">
+      <summary>
+        <para>
+ Used to set if the manager is activated and initialized on startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.Instance">
+      <summary>
+        <para>The current settings instance.</para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.IsProviderInitialized">
+      <summary>
+        <para>
+ Indicates if provider loader has been initialized.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.IsProviderStarted">
+      <summary>
+        <para>
+ Indicates if provider loader and subsystem has been started.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceGeneralSettings.Manager">
+      <summary>
+        <para>The current active manager used to manage the Adaptive Performance lifetime.</para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer">
+      <summary>
+        <para>
+ Higher level implementation of Adaptive performance that tracks performance and thermal states of the device and provides them to AdaptivePerformance.AdaptivePerformanceScaler which use the information to increase or decrease performance levels.
+ System acts as AdaptivePerformance.AdaptivePerformanceScaler manager and handles the lifetime of the scalers in the scenes.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.DeltaTime">
+      <summary>
+        <para>
+ Returns Time._deltaTime only and is primarily encapsulated for tests.
+ </para>
+      </summary>
+      <returns>
+        <para>delta time</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.GetAllRegisteredScalers(System.Collections.Generic.List`1&lt;UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler&gt;&amp;)">
+      <summary>
+        <para>
+ Returns all scalers independent of their state.
+ </para>
+      </summary>
+      <param name="scalers">Output where scalers will be written.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.GetAppliedScalers(System.Collections.Generic.List`1&lt;UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler&gt;&amp;)">
+      <summary>
+        <para>
+ Returns all currently applied scalers.
+ </para>
+      </summary>
+      <param name="scalers">Output where scalers will be written.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.GetDisabledScalers(System.Collections.Generic.List`1&lt;UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler&gt;&amp;)">
+      <summary>
+        <para>
+ Returns all currently disabled scalers.
+ </para>
+      </summary>
+      <param name="scalers">Output where scalers will be written.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.GetUnappliedScalers(System.Collections.Generic.List`1&lt;UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler&gt;&amp;)">
+      <summary>
+        <para>
+ Returns all currently unapplied scalers.
+ </para>
+      </summary>
+      <param name="scalers">Output where scalers will be written.</param>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.PerformanceAction">
+      <summary>
+        <para>
+ Current determined action needed from performance state.
+ Action AdaptivePerformance.StateAction.Increase will be ignored if AdaptivePerformance.AdaptivePerformanceIndexer.ThermalAction is decreasing.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.ThermalAction">
+      <summary>
+        <para>
+ Current determined action needed from thermal state.
+ Action AdaptivePerformance.StateAction.Increase will be ignored if AdaptivePerformance.AdaptivePerformanceIndexer.PerformanceAction is decreasing.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.TimeUntilNextAction">
+      <summary>
+        <para>
+ Time left until next action.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexer.UnapplyAllScalers">
+      <summary>
+        <para>
+ Unapply all currently active scalers.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexerSettings">
+      <summary>
+        <para>
+ Settings of indexer system.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexerSettings.active">
+      <summary>
+        <para>
+ Returns true if Indexer was active, false otherwise.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexerSettings.performanceActionDelay">
+      <summary>
+        <para>
+ Delay after any scaler is applied or unapplied because of performance state.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceIndexerSettings.thermalActionDelay">
+      <summary>
+        <para>
+ Delay after any scaler is applied or unapplied because of thermal state.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader">
+      <summary>
+        <para>
+ Adaptive Performance Loader abstract class used as a base class for specific provider implementations. Providers should implement
+ subclasses of this to provide specific initialization and management implementations that make sense for their supported
+ scenarios and needs.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Deinitialize">
+      <summary>
+        <para>
+ Ask loader to deinitialize all initialized subsystems.
+ </para>
+      </summary>
+      <returns>
+        <para>Whether or not deinitialization succeeded.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.GetDefaultSubsystem">
+      <summary>
+        <para>
+ Gets the loaded default subsystem.
+ </para>
+      </summary>
+      <returns>
+        <para>The loaded subsystem, or null if no default subsystem is loaded.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.GetLoadedSubsystem">
+      <summary>
+        <para>
+ Gets the loaded subsystem of the specified type. This is implementation-specific, because implementations contain data on
+ what they have loaded and how best to get it.
+ </para>
+      </summary>
+      <returns>
+        <para>The loaded subsystem, or null if no subsystem found.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.GetSettings">
+      <summary>
+        <para>
+ Gets the Settings of the loader used to descibe the loader and subsystems.
+ </para>
+      </summary>
+      <returns>
+        <para>The settings of the loader.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Initialize">
+      <summary>
+        <para>
+ Initialize the loader. This should initialize all subsystems to support the desired runtime setup this
+ loader represents.
+ </para>
+      </summary>
+      <returns>
+        <para>Whether or not initialization succeeded.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Initialized">
+      <summary>
+        <para>
+ Returns if the provider loader was initialized successfully.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Running">
+      <summary>
+        <para>
+ Returns if the provider loader is currently running.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Start">
+      <summary>
+        <para>
+ Ask loader to start all initialized subsystems.
+ </para>
+      </summary>
+      <returns>
+        <para>Whether or not all subsystems were successfully started.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoader.Stop">
+      <summary>
+        <para>
+ Ask loader to stop all initialized subsystems.
+ </para>
+      </summary>
+      <returns>
+        <para>Whether or not all subsystems were successfully stopped.</para>
+      </returns>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper">
+      <summary>
+        <para>
+ Adaptive Performance Loader abstract subclass used as a base class for specific provider implementations. Class provides some
+ helper logic that can be used to handle subsystem handling in a typesafe manner, reducing potential boilerplate
+ code.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.CreateSubsystem(System.Collections.Generic.List`1&lt;TDescriptor&gt;,System.String)">
+      <summary>
+        <para>
+ Creates a subsystem with a given list of descriptors and a specific subsystem id.
+ </para>
+      </summary>
+      <param name="descriptors">List of TDescriptor instances to use for subsystem matching.</param>
+      <param name="id">The identifier key of the particualr subsystem implementation being requested.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.Deinitialize">
+      <summary>
+        <para>
+ Override of AdaptivePerformance.AdaptivePerformanceLoaderHelper.Deinitialize to provide for clearing the instance map.
+
+ If you override AdaptivePerformance.AdaptivePerformanceLoaderHelper.Deinitialize in your subclass, you must call the base
+ implementation to allow the instance map tp be cleaned up correctly.
+ </para>
+      </summary>
+      <returns>
+        <para>True if de-initialization was successful.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.DestroySubsystem">
+      <summary>
+        <para>
+ Destroy a subsystem instance of a given type. Subsystem is assumed to already be loaded from
+ a previous call to CreateSubsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.GetLoadedSubsystem">
+      <summary>
+        <para>
+ Gets the loaded subsystem of the specified type. This is implementation-specific, because implementations contain data on
+ what they have loaded and how best to get it.
+ </para>
+      </summary>
+      <returns>
+        <para>The loaded subsystem, or null if no subsystem found.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.StartSubsystem">
+      <summary>
+        <para>
+ Start a subsystem instance of a given type. Subsystem is assumed to already be loaded from
+ a previous call to CreateSubsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceLoaderHelper.StopSubsystem">
+      <summary>
+        <para>
+ Stop a subsystem instance of a given type. Subsystem is assumed to already be loaded from
+ a previous call to CreateSubsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings">
+      <summary>
+        <para>
+ Class to handle active loader and subsystem management for Adaptive Performance. This class is to be added as a
+ ScriptableObject asset in your project and should only be referenced by an AdaptivePerformance.AdaptivePerformanceGeneralSettings
+ instance for its use.
+
+ Given a list of loaders, it will attempt to load each loader in the given order. Unity will use the first
+ loader that is successful and ignore all remaining loaders. The successful loader
+ is accessible through the AdaptivePerformance.AdaptivePerformanceManagerSettings._activeLoader property on the manager.
+
+ Depending on configuration, the AdaptivePerformance.AdaptivePerformanceGeneralSettings instance will automatically manage the active loader
+ at the correct points in the application lifecycle. You can override certain points in the active loader lifecycle
+ and manually manage them by toggling the AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticLoading and AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticRunning
+ properties. Disabling AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticLoading implies that you are responsible for the full lifecycle
+ of the Adaptive Performance session normally handled by the AdaptivePerformance.AdaptivePerformanceGeneralSettings instance. Setting this to false also sets
+ AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticRunning to false.
+
+ Disabling AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticRunning only implies that you are responsible for starting and stopping
+ the AdaptivePerformance.AdaptivePerformanceManagerSettings._activeLoader through the AdaptivePerformance.AdaptivePerformanceManagerSettings.StartSubsystems and AdaptivePerformance.AdaptivePerformanceManagerSettings.StopSubsystems APIs.
+
+ Unity executes atomatic lifecycle management as follows:
+
+ " OnEnable calls AdaptivePerformance.AdaptivePerformanceManagerSettings.InitializeLoader internally. The loader list will be iterated over and the first successful loader will be set as the active loader.
+ " Start calls AdaptivePerformance.AdaptivePerformanceManagerSettings.StartSubsystems internally. Ask the active loader to start all subsystems.
+ " OnDisable calls AdaptivePerformance.AdaptivePerformanceManagerSettings.StopSubsystems internally. Ask the active loader to stop all subsystems.
+ " OnDestroy calls AdaptivePerformance.AdaptivePerformanceManagerSettings.DeinitializeLoader internally. Deinitialize and remove the active loader.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.activeLoader">
+      <summary>
+        <para>
+ Returns the current singleton active loader instance.
+</para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.automaticLoading">
+      <summary>
+        <para>
+ Get and set Automatic Loading state for this manager. When this is true, the manager will automatically call
+ AdaptivePerformance.AdaptivePerformanceManagerSettings.InitializeLoader and AdaptivePerformance.AdaptivePerformanceManagerSettings.DeinitializeLoader for you. When false, AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticRunning
+ is also set to false and remains that way. This means that disabling automatic loading disables all automatic behavior
+ for the manager.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.automaticRunning">
+      <summary>
+        <para>
+ Get and set the automatic running state for this manager. When this is true, the manager will call AdaptivePerformance.AdaptivePerformanceManagerSettings.StartSubsystems
+ and AdaptivePerformance.AdaptivePerformanceManagerSettings.StopSubsystems APIs at appropriate times. When false, or when AdaptivePerformance.AdaptivePerformanceManagerSettings._automaticLoading is false,
+ it is up to the user of the manager to handle that same functionality.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.isInitializationComplete">
+      <summary>
+        <para>
+ Read-only boolean that is true if initialization is completed and false otherwise. Because initialization is
+ handled as a Coroutine, applications that use the auto-lifecycle management of AdaptivePerformanceManager
+ will need to wait for init to complete before checking for an ActiveLoader and calling StartSubsystems.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.loaders">
+      <summary>
+        <para>
+ List of loaders currently managed by this Adaptive Performance Manager instance.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceManagerSettings.ActiveLoaderAs">
+      <summary>
+        <para>
+ Returns the current active loader, cast to the requested type. Useful shortcut when you need
+ to get the active loader as something less generic than AdaptivePerformanceLoader.
+ </para>
+      </summary>
+      <returns>
+        <para>The active loader as requested type, or null if no active loader currently exists.</para>
+      </returns>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats">
+      <summary>
+        <para>
+ Profiler Stats reporting helper class. Stores all adaptive performance markers and helper functions.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.kAdaptivePerformanceProfilerModuleGuid">
+      <summary>
+        <para>
+ GUID for the Adaptive Performance Profile Module definition.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.kScalerDataTag">
+      <summary>
+        <para>
+ The Scaler data tag defines a tag for the scalers to send them via the emit frame data function.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.AdaptivePerformanceProfilerCategory">
+      <summary>
+        <para>
+ Profiler Category is set to scripts for Adaptive Performance.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.AvgCPUMarker">
+      <summary>
+        <para>
+ Profiler counter to report cpu average frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.AvgFrametimeMarker">
+      <summary>
+        <para>
+ Profiler counter to report average frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.AvgGPUMarker">
+      <summary>
+        <para>
+ Profiler counter to report gpu average frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.BottleneckMarker">
+      <summary>
+        <para>
+ Profiler counter to report the bottleneck.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CurrentCPULevelMarker">
+      <summary>
+        <para>
+ Profiler counter to report cpu performance level.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CurrentCPUMarker">
+      <summary>
+        <para>
+ Profiler counter to report cpu frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CurrentFrametimeMarker">
+      <summary>
+        <para>
+ Profiler counter to report frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CurrentGPULevelMarker">
+      <summary>
+        <para>
+ Profiler counter to report gpu performance level.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CurrentGPUMarker">
+      <summary>
+        <para>
+ Profiler counter to report gpu frametime.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CustomProfilerMarker`1">
+      <summary>
+        <para>
+ Custom Profiler Marker that allows you to sample different data from Unity Profiler.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CustomProfilerMarker_1.#ctor(System.String,Unity.Profiling.ProfilerMarkerDataUnit)">
+      <summary>
+        <para>
+ Construct the marker with the name of the marker and the dataUnit the marker is collected on.
+ </para>
+      </summary>
+      <param name="name"></param>
+      <param name="dataUnit"></param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.CustomProfilerMarker_1.Sample(T)">
+      <summary>
+        <para>
+ Sample a single data point in the frame.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.EmitScalerDataToProfilerStream(System.String,System.Boolean,System.Int32,System.Int32,System.Single,System.Boolean,System.Int32)">
+      <summary>
+        <para>
+ Adaptive Performance sends scaler data to the profiler each frame. It is collected from multiple places with this method and flushed once with AdaptivePerformance.AdaptivePerformanceProfilerStats.FlushScalerDataToProfilerStream.
+ </para>
+      </summary>
+      <param name="scalerName"> The name of the scaler. 320 characters max. </param>
+      <param name="enabled"> If the scaler is currently enabled.</param>
+      <param name="overrideLevel">The override state of the scaler.</param>
+      <param name="currentLevel">The current level of the scaler.</param>
+      <param name="scale">The actual scale of the scaler.</param>
+      <param name="applied">If the scaler is currently applied.</param>
+      <param name="maxLevel">The maximum level of the scaler.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.FlushScalerDataToProfilerStream">
+      <summary>
+        <para>
+ Flushes the Adaptive Performance scaler data for this frame. Used in conjunction with AdaptivePerformance.AdaptivePerformanceProfilerStats.EmitScalerDataToProfilerStream.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.PerformanceModeMarker">
+      <summary>
+        <para>
+ Profiler counter to report the performance mode.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo">
+      <summary>
+        <para>
+ ScalerInfo is a struct used to collect and send scaler info to the profile collectively.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.applied">
+      <summary>
+        <para>
+ State if the scaler is currently applied.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.currentLevel">
+      <summary>
+        <para>
+ The current level of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.enabled">
+      <summary>
+        <para>
+ If the scaler is currently enabled.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.maxLevel">
+      <summary>
+        <para>
+ The maximum level of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.overrideLevel">
+      <summary>
+        <para>
+ The override state of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.scale">
+      <summary>
+        <para>
+ The actual scale of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.ScalerInfo.scalerName">
+      <summary>
+        <para>
+ The name of the scaler. 320 characters max.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.TemperatureLevelMarker">
+      <summary>
+        <para>
+ Profiler counter to report the temperature level.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.TemperatureTrendMarker">
+      <summary>
+        <para>
+ Profiler counter to report the temperature trend.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.AdaptivePerformanceProfilerStats.WarningLevelMarker">
+      <summary>
+        <para>
+ Profiler counter to report the thermal warning level.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings">
+      <summary>
+        <para>
+ This class is used to store changes to a number of rendering quality settings that are applied when using
+ the Universal Render Pipeline.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.AntiAliasingQualityBias">
+      <summary>
+        <para>
+ Adjust the quality of MSAA.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.DecalsDrawDistance">
+      <summary>
+        <para>
+ Adjust the drawdistance for decals.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.LutBias">
+      <summary>
+        <para>
+ Adjust the size of lookup tables that are used for color grading.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.MainLightShadowCascadesCountBias">
+      <summary>
+        <para>
+ Adjust the number of shadow cascades for the main camera in the scene.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.MainLightShadowmapResolutionMultiplier">
+      <summary>
+        <para>
+ Amount to multiply the main lights shadowmap resolution. Values are clamped between 0 and 1.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.MaxShadowDistanceMultiplier">
+      <summary>
+        <para>
+ Adjust how far in the distance shadows will be rendered. Values are clamped between 0 and 1.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.RenderScaleMultiplier">
+      <summary>
+        <para>
+ Lower the resolution of the main camera to reduce fillrate and GPU load.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.ShadowQualityBias">
+      <summary>
+        <para>
+ Adjust the quality setting of shadows.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.SkipDynamicBatching">
+      <summary>
+        <para>
+ Whether dynamic batching should be used when rendering multiple objects that share the same material.
+ Useful on hardware that does not support instancing.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.SkipFrontToBackSorting">
+      <summary>
+        <para>
+ Whether depth-based sorting should be enabled.
+ When enabled, there is a higher load on the CPU but less rendering overdraw.
+ When disabled, there is less CPU pressure but more overdraw.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceRenderSettings.SkipTransparentObjects">
+      <summary>
+        <para>
+ Whether transparent objects should be rendered
+ When enabled, there is less rendering overdraw, but entire objects can disappear.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler">
+      <summary>
+        <para>
+ Abstract class representing single feature that is controlled by AdaptivePerformance.AdaptivePerformanceIndexer.
+ You control the quality through changing the levels, where 0 represents the controller not being applied and 1,2... as applied.
+ As a result, a higher level represents lower visuals, but better performance.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.ApplyDefaultSetting(UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase)">
+      <summary>
+        <para>
+ Any scaler with settings in AdaptivePerformance.IAdaptivePerformanceSettings needs to call this method and provide the scaler specific setting. Unity uses the setting arguments in the base-scaler as the default settings.
+ This is also used by Scaler Profiles to apply their Settings.
+ </para>
+      </summary>
+      <param name="defaultSetting">The settings to apply to the scaler.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.CalculateCost">
+      <summary>
+        <para>
+ Calculate the cost of applying this particular scaler.
+ </para>
+      </summary>
+      <returns>
+        <para>Cost of scaler ranges from 0 to infinity.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.CpuImpact">
+      <summary>
+        <para>
+ Scaler impact on CPU so far in milliseconds.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.CurrentLevel">
+      <summary>
+        <para>
+ Returns the current level of scale.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.DefaultSetting">
+      <summary>
+        <para>
+ Default settings for this scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.Enabled">
+      <summary>
+        <para>
+ Returns true if this scaler is active, otherwise returns false.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.GpuImpact">
+      <summary>
+        <para>
+ Scaler impact on GPU so far in milliseconds.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.IsMaxLevel">
+      <summary>
+        <para>
+ Returns true if the scaler can no longer be applied, otherwise returns false.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.MaxBound">
+      <summary>
+        <para>
+ Returns the maximum boundary of this scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.MaxLevel">
+      <summary>
+        <para>
+ Returns the maximum level of this scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.MinBound">
+      <summary>
+        <para>
+ Returns the minimum boundary of this scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.Name">
+      <summary>
+        <para>
+ Returns a string with the name of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.NotLeveled">
+      <summary>
+        <para>
+ Returns true if the scaler is not applied, otherwise returns false.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OnLevelDecrease">
+      <summary>
+        <para>
+ Callback for when the performance level is decreased.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OnLevelIncrease">
+      <summary>
+        <para>
+ Callback for when the performance level is increased.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.OverrideLevel">
+      <summary>
+        <para>
+ Allows you to manually override the scaler level.
+ If the value is -1, AdaptivePerformance.AdaptivePerformanceIndexer will handle levels, otherwise scaler will be forced to the value you specify.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.Scale">
+      <summary>
+        <para>
+ Returns a generic scale of this scaler in range [0,1] which is applied to the quality.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.ScaleChanged">
+      <summary>
+        <para>
+ Checks if scale changed based on the current level and returns true if scale changed false otherwise.
+ </para>
+      </summary>
+      <returns>
+        <para>Returns true if scale changed false otherwise.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.Target">
+      <summary>
+        <para>
+ Returns the bottlenecks that this scaler targets.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScaler.VisualImpact">
+      <summary>
+        <para>
+ Returns the visual impact of scaler when applied.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerProfile">
+      <summary>
+        <para>
+ Scaler profiles are used to combine all settings of scalers into one profile to be able to change the settings of each scaler at once.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerProfile.AddedScalers">
+      <summary>
+        <para>
+ List of custom scalers added to the provider settings via the scaler profile UI.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerProfile.Name">
+      <summary>
+        <para>
+ Name of the Scaler Profile. Used to find profiles and switch them during runtime.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings">
+      <summary>
+        <para>
+ Settings of indexer system.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveBatching">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to control if dynamic batching is enabled.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveDecals">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change decal properties.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveFramerate">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the application update rate using Application._targetFrameRate.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveLayerCulling">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change the layer culling distance.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveLOD">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer for adjusting at what distance LODs are switched.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveLut">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the size of the palette used for color grading in URP.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveMSAA">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the level of antialiasing.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptivePhysics">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change physics properties.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveResolution">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the resolution of all render targets that allow dynamic resolution.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowCascade">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the number of shadow cascades to be used.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowCascades">
+      <summary>
+        <para>
+ Obsolete: Please use AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowCascade.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowDistance">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change the distance at which shadows are rendered.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowmapResolution">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the resolution of shadow maps.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveShadowQuality">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the quality of shadows.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveSorting">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change if objects in the scene are sorted by depth before rendering to reduce overdraw.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveTransparency">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to disable transparent objects rendering.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.AdaptiveViewDistance">
+      <summary>
+        <para>
+ A scaler setting used by AdaptivePerformance.AdaptivePerformanceIndexer to change the view distance.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.ApplySettings(UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings)">
+      <summary>
+        <para>
+ Apply existing external settings to a scaler to override the existing settings.
+ </para>
+      </summary>
+      <param name="settings">Provide existing settings to replace the default settings.</param>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettings.DefaultScalerSettings">
+      <summary>
+        <para>
+ Returns the list of default scaler settings.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase">
+      <summary>
+        <para>
+ Settings of indexer system.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.enabled">
+      <summary>
+        <para>
+ Returns true if Indexer was active, false otherwise.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.maxBound">
+      <summary>
+        <para>
+ Maximum value for the scale boundary.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.maxLevel">
+      <summary>
+        <para>
+ Maximum level for the scaler. This is tied to the implementation of the scaler to divide the levels into concrete steps.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.minBound">
+      <summary>
+        <para>
+ Minimum value for the scale boundary.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.name">
+      <summary>
+        <para>
+ Returns the name of the scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.scale">
+      <summary>
+        <para>
+ Scale to control the quality impact for the scaler. No quality change when 1, improved quality when bigger 1, and lowered quality when smaller 1.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.target">
+      <summary>
+        <para>
+ Application bottleneck that the scaler targets. The target selected has the most impact on the quality control of this scaler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.AdaptivePerformanceScalerSettingsBase.visualImpact">
+      <summary>
+        <para>
+ Visual impact the scaler has on the application. The higher the value, the more impact the scaler has on the visuals.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptivePhysics">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer for adjusting how physics is applied.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePhysics.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePhysics.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePhysics.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptivePhysics.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveResolution">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the resolution of all render targets that allow dynamic resolution.
+ If a device or graphics API doesn't support a dynamic resolution, it will use the rendering pipeline's render scale multiplier as a fallback.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveResolution.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveResolution.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveResolution.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveResolution.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveShadowCascade">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the number of shadow cascades to be used.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowCascade.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowCascade.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowCascade.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowCascade.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveShadowDistance">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to change the distance at which shadows are rendered.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowDistance.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowDistance.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowDistance.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowDistance.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveShadowmapResolution">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the resolution of shadow maps.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowmapResolution.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowmapResolution.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowmapResolution.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowmapResolution.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveShadowQuality">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to adjust the quality of shadows.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowQuality.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowQuality.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowQuality.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveShadowQuality.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveSorting">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to change if objects in the scene are sorted by depth before rendering to reduce overdraw.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveSorting.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveSorting.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveSorting.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveSorting.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveTransparency">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer to toggle rendering of transparent objects.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveTransparency.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveTransparency.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveTransparency.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.AdaptiveViewDistance">
+      <summary>
+        <para>
+ A scaler used by AdaptivePerformance.AdaptivePerformanceIndexer for adjusting what view distance is applied to the camera.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveViewDistance.Awake">
+      <summary>
+        <para>
+ Ensures settings are applied during startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveViewDistance.OnDisabled">
+      <summary>
+        <para>
+ Callback when scaler gets disabled and removed from indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveViewDistance.OnEnabled">
+      <summary>
+        <para>
+ Callback when scaler gets enabled and added to the indexer
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.AdaptiveViewDistance.OnLevel">
+      <summary>
+        <para>
+ Callback for any level change.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Basic.BasicProviderConstants">
+      <summary>
+        <para>
+ Static class that stores the setting key for basic provider.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Basic.BasicProviderConstants.k_SettingKey">
+      <summary>
+        <para>
+ unique setting key for basic provider that is used to save/retrieve the assets in the editor.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Basic.BasicProviderSettings">
+      <summary>
+        <para>
+ Basic provider Settings.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.ClusterInfo">
+      <summary>
+        <para>
+ The cluster info describes the CPU Cluster setup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ClusterInfo.BigCore">
+      <summary>
+        <para>
+ Number of big cores supported by the CPU.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ClusterInfo.LittleCore">
+      <summary>
+        <para>
+ Number of little cores supported by the CPU.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ClusterInfo.MediumCore">
+      <summary>
+        <para>
+ Number of medium cores supported by the CPU.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Constants">
+      <summary>
+        <para>
+ Constants used by Adaptive Performance.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.DefaultAverageFrameCount">
+      <summary>
+        <para>
+ The number of past frames that are considered to calculate average frame times.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.MaxTemperatureLevel">
+      <summary>
+        <para>
+ The maximum temperature level.
+ See AdaptivePerformance.ThermalMetrics.TemperatureLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.MinCpuPerformanceLevel">
+      <summary>
+        <para>
+ The minimum CPU level.
+ Used by AdaptivePerformance.IDevicePerformanceControl.CpuLevel and AdaptivePerformance.PerformanceMetrics.CurrentCpuLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.MinGpuPerformanceLevel">
+      <summary>
+        <para>
+ The minimum GPU level.
+ Used by AdaptivePerformance.IDevicePerformanceControl.GpuLevel and AdaptivePerformance.PerformanceMetrics.CurrentGpuLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.MinTemperatureLevel">
+      <summary>
+        <para>
+ The minimum temperature level.
+ See AdaptivePerformance.ThermalMetrics.TemperatureLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Constants.UnknownPerformanceLevel">
+      <summary>
+        <para>
+ UnknownPerformanceLevel is the value of AdaptivePerformance.IDevicePerformanceControl.GpuLevel, AdaptivePerformance.PerformanceMetrics.CurrentGpuLevel,
+ AdaptivePerformance.IDevicePerformanceControl.CpuLevel, and AdaptivePerformance.PerformanceMetrics.CurrentCpuLevel if the current performance level is unknown.
+ This can happen when AdaptivePerformance is not supported or when the device is in throttling state (see AdaptivePerformance.WarningLevel.Throttling).
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.FrameTiming">
+      <summary>
+        <para>
+ FrameTiming stores timing information about CPU, GPU, and the overall frame time.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.AverageCpuFrameTime">
+      <summary>
+        <para>
+ Returns the main thread CPU time as an average over the past 100 frames (in seconds).
+ Returns -1.0f if this is not available (for example, in the first frame or directly after resume).
+ The CPU time includes only the time the CPU spent executing Unity's main and/or render threads.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.AverageFrameTime">
+      <summary>
+        <para>
+ The overall frame time as an average over the past 100 frames (in seconds).
+ Returns -1.0f if no timing information is available (for example, in the first frame or directly after resume).
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.AverageGpuFrameTime">
+      <summary>
+        <para>
+ Returns the overall frame time as an average over the past 100 frames (in seconds).
+ Returns -1.0f if no timing information is available.
+ The GPU time only includes the time the GPU spent on rendering a frame (for example, in the first frame or directly after resume).
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.CurrentCpuFrameTime">
+      <summary>
+        <para>
+ Returns the main thread CPU time of the last frame (in seconds).
+ The CPU time includes only time the CPU spent executing Unity's main and/or render threads.
+ Returns -1.0f if no timing information is available (for example, in the first frame or directly after resume).
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.CurrentFrameTime">
+      <summary>
+        <para>
+ The overall frame time in seconds.
+ Returns -1.0f if no timing information is available (for example, in the first frame or directly after resume).
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.FrameTiming.CurrentGpuFrameTime">
+      <summary>
+        <para>
+ Returns the GPU time of the last completely rendered frame (in seconds).
+ Returns -1.0f if no timing information is available.
+ The GPU time only includes the time the GPU spent on rendering a frame (for example, in the first frame or directly after resume).
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Holder">
+      <summary>
+        <para>
+ Global access to the default Adaptive Performance interface and lifecycle management controls.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Holder.Deinitialize">
+      <summary>
+        <para>
+ Stops Adaptive Performance and cleans up all associated resources and objects.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Holder.Initialize">
+      <summary>
+        <para>
+ Initializes Adaptive Performance and makes the instance available for use.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Holder.Instance">
+      <summary>
+        <para>
+ The default Adaptive Performance interface instance for accessing all Adaptive Performance functionality.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.Holder.LifecycleEventHandler(UnityEngine.AdaptivePerformance.LifecycleEventHandler)">
+      <summary>
+        <para>
+ Occurs when the Adaptive Performance instance is created or destroyed during lifecycle changes.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IAdaptivePerformance">
+      <summary>
+        <para>
+ The main interface to access Adaptive Performance.
+ None of the properties in this interface change after startup.
+ This means the references returned by the properties may be cached by the user.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.Active">
+      <summary>
+        <para>
+ Returns true if Adaptive Performance was initialized and is actively running, false otherwise.
+ This means that Adaptive Performance is enabled in StartupSettings.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformance.DeinitializeAdaptivePerformance">
+      <summary>
+        <para>
+ Stops Adaptive Performance (if still running) and initiates the tear down process. When this completes
+ successfully, AdaptivePerformance.IAdaptivePerformance.Initialized will be false.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.DevelopmentSettings">
+      <summary>
+        <para>
+ Access to development (logging) settings.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.DevicePerformanceControl">
+      <summary>
+        <para>
+ Control CPU and GPU performance of the device.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.Indexer">
+      <summary>
+        <para>
+ Access to the Indexer system. See AdaptivePerformance.AdaptivePerformanceIndexer</para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformance.InitializeAdaptivePerformance">
+      <summary>
+        <para>
+ Initiates the initialization process for Adaptive Performance by attempting to initialize the loaders. When
+ this completes successfully, AdaptivePerformance.IAdaptivePerformance.Initialized will be true. Adaptive Performance can now be
+ started by calling the AdaptivePerformance.IAdaptivePerformance.StartAdaptivePerformance method.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.Initialized">
+      <summary>
+        <para>
+ Returns true if Adaptive Performance was initialized successfully, false otherwise.
+ This means that Adaptive Performance is enabled in StartupSettings and the application runs on a device that supports Adaptive Performance.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.PerformanceModeStatus">
+      <summary>
+        <para>
+ Access performance mode status information of the device.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.PerformanceStatus">
+      <summary>
+        <para>
+ Access performance status information of the device and your application.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.Settings">
+      <summary>
+        <para>
+ Access to the Settings. See AdaptivePerformance.IAdaptivePerformanceSettings.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformance.StartAdaptivePerformance">
+      <summary>
+        <para>
+ Attempts to start Adaptive Performance by requesting the active loader and all subsystems to start. When
+ this completes successfully, AdaptivePerformance.IAdaptivePerformance.Active will be true.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformance.StopAdaptivePerformance">
+      <summary>
+        <para>
+ Attempts to stop Adaptive Performance by requesting the active loader and all subsystems to stop. When
+ this completes successfully, AdaptivePerformance.IAdaptivePerformance.Active will be false.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.Subsystem">
+      <summary>
+        <para>
+ Access to the active Subsystem. See AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformance.SupportedFeature(UnityEngine.AdaptivePerformance.Provider.Feature)">
+      <summary>
+        <para>
+ List of supported Features by the loaded provider. See AdaptivePerformance.Provider.Feature.
+ </para>
+      </summary>
+      <param name="feature">The feature in question. See AdaptivePerformance.Provider.Feature.</param>
+      <returns>
+        <para>True if the requested feature is supported, false otherwise.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformance.ThermalStatus">
+      <summary>
+        <para>
+ Access thermal status information of the device.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings">
+      <summary>
+        <para>
+ Provider Settings Interface as base class of the provider. Used to control the Editor runtime asset instance which stores the Settings.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.automaticGameMode">
+      <summary>
+        <para>
+ Whether automated target frame rate based on device GameMode settings should be used.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.automaticPerformanceMode">
+      <summary>
+        <para>
+ The initial value of AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.defaultScalerProfilerIndex">
+      <summary>
+        <para>
+ Default scaler profile index.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.enableBoostOnStartup">
+      <summary>
+        <para>
+ Whether CPU and GPU boost mode should be enabled on application startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.indexerSettings">
+      <summary>
+        <para>
+ Settings of indexer system.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.logging">
+      <summary>
+        <para>
+  Control debug logging.
+  This setting only affects development builds. All logging is disabled in release builds.
+  This setting can also be controlled after startup using AdaptivePerformance.IDevelopmentSettings.Logging.
+  Logging is disabled by default.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.scalerSettings">
+      <summary>
+        <para>
+ Settings of scaler system.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.statsLoggingFrequencyInFrames">
+      <summary>
+        <para>
+ Adjust the frequency in frames at which the application logs frame statistics to the console.
+ This is only relevant when logging is enabled. See AdaptivePerformance.IDevelopmentSettings.Logging.
+ This setting can also be controlled after startup using AdaptivePerformance.IDevelopmentSettings.LoggingFrequencyInFrames.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.ActiveScalerProfile">
+      <summary>
+        <para>
+ The currently active scaler profile.
+ Only one scaler profile is active at a time.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.AddScalerProfileWithDefaultScalers(System.String)">
+      <summary>
+        <para>
+ Add a new scaler profile with default scaler settings.
+ </para>
+      </summary>
+      <param name="name"></param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.DeleteScalerProfileAt(System.Int32)">
+      <summary>
+        <para>
+ Delete a scaler profile at the given index.
+ </para>
+      </summary>
+      <param name="index"></param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.GetAvailableScalerProfiles">
+      <summary>
+        <para>
+ Returns a list of all available scaler profiles.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.LoadScalerProfile(System.String)">
+      <summary>
+        <para>
+ Load a scaler profile from the settings. Unity update the values of all scalers in the profile to new ones.
+ This is a heavy operation using reflection and should not be used per frame and only in load operations as it causes hitching and possible screen artifacts depending on which scalers are used in a scene.
+ </para>
+      </summary>
+      <param name="scalerProfileName">Supply the name of the scaler. You can query a list of available scaler profiles via AdaptivePerformance.IAdaptivePerformanceSettings.GetAvailableScalerProfiles.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.OnEnable">
+      <summary>
+        <para>
+ When Unity enables the serialized object it upgrades old files to the new format in the editor and saves the assets. Empty during runtime.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IAdaptivePerformanceSettings.ScalerProfiles">
+      <summary>
+        <para>
+ List of created scaler profiles for this provider.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IDevelopmentSettings">
+      <summary>
+        <para>
+ Use the developer settings interface to access and change settings which are available only in development mode.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevelopmentSettings.Logging">
+      <summary>
+        <para>
+ Returns true if logging was enabled in StartupSettings.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevelopmentSettings.LoggingFrequencyInFrames">
+      <summary>
+        <para>
+ Adjust the frequency in frames at which the application logs frame statistics to the console.
+ This is only relevant when logging is enabled.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IDevicePerformanceControl">
+      <summary>
+        <para>
+ The device performance control interface handles all control elements related to the device performance. You can
+ change the AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl settings or retrieve information about the AdaptivePerformance.IDevicePerformanceControl.CpuLevel and AdaptivePerformance.IDevicePerformanceControl.GpuLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl">
+      <summary>
+        <para>
+ When set to true, which is the default value, Adaptive Performance automatically sets  AdaptivePerformance.IDevicePerformanceControl.CpuLevel and AdaptivePerformance.IDevicePerformanceControl.GpuLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.CpuLevel">
+      <summary>
+        <para>
+ The requested CPU performance level.
+ Higher levels typically allow CPU cores to run at higher clock speeds.
+ The consequence is that thermal warnings and throttling might happen sooner when the device cannot sustain high clock speeds.
+ Changes are applied once per frame.
+ It is recommended to set the CpuLevel as low as possible to save power.
+ The valid value range is [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.IDevicePerformanceControl.MaxCpuPerformanceLevel].
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.CpuPerformanceBoost">
+      <summary>
+        <para>
+ The requested CPU boost mode state.
+ Enabled typically allows CPU cores to run at higher clock speeds.
+ The consequence is that thermal warnings and throttling might happen sooner when the device cannot sustain high clock speeds.
+ Changes are applied once per frame.
+ It is recommended to not use a boost often and certainly not continuously to save power.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.GpuLevel">
+      <summary>
+        <para>
+ The requested GPU performance level.
+ Higher levels typically allow the GPU to run at higher clock speeds.
+ The consequence is that thermal warnings and throttling might happen sooner when the device cannot sustain high clock speeds.
+ Changes are applied once per frame.
+ It is recommended to set the GpuLevel as low as possible to save power.
+ The valid value range is [AdaptivePerformance.Constants.MinGpuPerformanceLevel, AdaptivePerformance.IDevicePerformanceControl.MaxGpuPerformanceLevel].
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.GpuPerformanceBoost">
+      <summary>
+        <para>
+ The requested GPU boost mode state.
+ Enabled typically allows GPU cores to run at higher clock speeds.
+ The consequence is that thermal warnings and throttling might happen sooner when the device cannot sustain high clock speeds.
+ Changes are applied once per frame.
+ It is recommended to not use a boost often and certainly not continuously to save power.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.MaxCpuPerformanceLevel">
+      <summary>
+        <para>
+ The maximum valid CPU performance level you use with AdaptivePerformance.IDevicePerformanceControl.CpuLevel.
+ The minimum value returned is AdaptivePerformance.Constants.MinCpuPerformanceLevel.
+ This value does not change after startup is complete.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.MaxGpuPerformanceLevel">
+      <summary>
+        <para>
+ The maximum valid GPU performance level you use with AdaptivePerformance.IDevicePerformanceControl.GpuLevel.
+ The minimum value returned is AdaptivePerformance.Constants.MinGpuPerformanceLevel.
+ This value does not change after startup is complete.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IDevicePerformanceControl.PerformanceControlMode">
+      <summary>
+        <para>
+ The current PerformanceControlMode.
+ PerformanceControlMode is affected by AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceModeStatus">
+      <summary>
+        <para>
+ Use the performance mode status interface to receive performance mode status events of the device.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IPerformanceModeStatus.PerformanceMode">
+      <summary>
+        <para>
+ The latest performance mode available.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceModeStatus.PerformanceModeEvent(UnityEngine.AdaptivePerformance.PerformanceModeEventHandler)">
+      <summary>
+        <para>
+ Subscribe to performance mode events which Adaptive Performance sends when the performance mode of the device changes.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceStatus">
+      <summary>
+        <para>
+ You can use the performance status interface to obtain performance metrics, frame timing, and subscribe to bottleneck and performance event changes.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IPerformanceStatus.FrameTiming">
+      <summary>
+        <para>
+ Allows you to query the latest frame timing measurements.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceStatus.PerformanceBoostChangeEvent(UnityEngine.AdaptivePerformance.PerformanceBoostChangeHandler)">
+      <summary>
+        <para>
+ Subscribe to events and get updates when the the current CPU or GPU is boosted.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceStatus.PerformanceBottleneckChangeEvent(UnityEngine.AdaptivePerformance.PerformanceBottleneckChangeHandler)">
+      <summary>
+        <para>
+ Subscribe to performance events and get updates when the bottleneck changes.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IPerformanceStatus.PerformanceLevelChangeEvent(UnityEngine.AdaptivePerformance.PerformanceLevelChangeHandler)">
+      <summary>
+        <para>
+ Subscribe to events and get updates when the the current CPU or GPU level changes.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IPerformanceStatus.PerformanceMetrics">
+      <summary>
+        <para>
+ Allows you to query the latest performance metrics.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IPerformanceStatus.PerformanceMode">
+      <summary>
+        <para>
+ Allows you to query the latest performance mode.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IThermalStatus">
+      <summary>
+        <para>
+ Use the thermal status interface to receive thermal status events and thermal metrics of the device.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.IThermalStatus.ThermalEvent(UnityEngine.AdaptivePerformance.ThermalEventHandler)">
+      <summary>
+        <para>
+ Subscribe to thermal events which Adaptive Performance sends when the thermal state of the device changes.
+ </para>
+      </summary>
+      <param name="value"></param>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.IThermalStatus.ThermalMetrics">
+      <summary>
+        <para>
+ The latest thermal metrics available.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.LifecycleChangeType">
+      <summary>
+        <para>
+ Types of Adaptive Performance lifecycle changes.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.LifecycleChangeType.Created">
+      <summary>
+        <para>
+ Adaptive Performance was created.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.LifecycleChangeType.Destroyed">
+      <summary>
+        <para>
+ Adaptive Performance was destroyed.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.LifecycleEventHandler">
+      <summary>
+        <para>
+ Adaptive Performance lifecycle events which are sent when the lifecycle of AdaptivePerformance.IAdaptivePerformance
+ is changed.
+ </para>
+      </summary>
+      <param name="instance">AdaptivePerformance.IAdaptivePerformance instance.</param>
+      <param name="changeType">Type of lifecycle change on instance</param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceBoostChangeEventArgs">
+      <summary>
+        <para>
+ Event arguments for boost changes. These are used in the AdaptivePerformance.PerformanceBottleneckChangeHandler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceBoostChangeEventArgs.CpuBoost">
+      <summary>
+        <para>
+ Is the CPU boosted.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceBoostChangeEventArgs.GpuBoost">
+      <summary>
+        <para>
+ Is the GPU boosted
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceBoostChangeHandler">
+      <summary>
+        <para>
+ You can subscribe to the boost event delegate which sends the AdaptivePerformance.PerformanceBoostChangeEventArgs when a boost changes.
+ </para>
+      </summary>
+      <param name="boostEventArgs">The AdaptivePerformance.PerformanceBoostChangeEventArgs that describes the boost event.</param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceBottleneck">
+      <summary>
+        <para>
+ The performance bottleneck enum describes what is currently limiting the system.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceBottleneck.CPU">
+      <summary>
+        <para>
+ Framerate is limited by CPU processing.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceBottleneck.GPU">
+      <summary>
+        <para>
+ Framerate is limited by GPU processing.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceBottleneck.TargetFrameRate">
+      <summary>
+        <para>
+ Framerate is limited by Application.targetFrameRate.
+ In this case, you should consider lowering the application's performance requirements (see AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl).
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceBottleneck.Unknown">
+      <summary>
+        <para>
+ Framerate bottleneck is unknown.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceBottleneckChangeEventArgs">
+      <summary>
+        <para>
+ Event arguments for performance bottleneck changes. These are used in the AdaptivePerformance.PerformanceBottleneckChangeHandler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceBottleneckChangeEventArgs.PerformanceBottleneck">
+      <summary>
+        <para>
+ The performance bottleneck reported in the event.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceBottleneckChangeHandler">
+      <summary>
+        <para>
+ You can subscribe to the bottleneck event delegate which sends the AdaptivePerformance.PerformanceBottleneckChangeEventArgs when the bottleneck changes.
+ </para>
+      </summary>
+      <param name="bottleneckEventArgs">The AdaptivePerformance.PerformanceBottleneckChangeEventArgs that describes the performance bottleneck state.</param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceControlMode">
+      <summary>
+        <para>
+ Enum used to describe the performance control mode used by Adaptive Performance. Can be read from AdaptivePerformance.IDevicePerformanceControl.PerformanceControlMode.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceControlMode.Automatic">
+      <summary>
+        <para>
+ Adaptive Performance controls performance levels automatically (default).
+ This mode is enabled by setting AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl to true.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceControlMode.Manual">
+      <summary>
+        <para>
+ You can control performance levels via AdaptivePerformance.IDevicePerformanceControl.CpuLevel and AdaptivePerformance.IDevicePerformanceControl.GpuLevel.
+ This mode is enabled by setting AdaptivePerformance.IDevicePerformanceControl.AutomaticPerformanceControl to false.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceControlMode.System">
+      <summary>
+        <para>
+ The operating system controls performance levels.
+ This happens if manual control is not supported or if the system is in a thermal throttling state, at which point the operating system takes over control automatically.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs">
+      <summary>
+        <para>
+ Arguments for the performance level change event. These are used in the AdaptivePerformance.PerformanceLevelChangeHandler.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.CpuLevel">
+      <summary>
+        <para>
+ The new CPU level.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.CpuLevelDelta">
+      <summary>
+        <para>
+ The difference in CPU levels
+ 0 if the previous or new level equals AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.GpuLevel">
+      <summary>
+        <para>
+ The new GPU level.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.GpuLevelDelta">
+      <summary>
+        <para>
+ The difference in GPU levels.
+ 0 if either the previous or the new level equals AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.ManualOverride">
+      <summary>
+        <para>
+ True if the change was caused by manual adjustments to AdaptivePerformance.IDevicePerformanceControl.CpuLevel or AdaptivePerformance.IDevicePerformanceControl.GpuLevel during automatic mode, false otherwise.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceLevelChangeEventArgs.PerformanceControlMode">
+      <summary>
+        <para>
+ The current PerformanceControlMode. See AdaptivePerformance.IDevicePerformanceControl.PerformanceControlMode.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceLevelChangeHandler">
+      <summary>
+        <para>
+ You can subscribe to the performance level event delegate which sends the AdaptivePerformance.PerformanceLevelChangeEventArgs when the performance level changes.
+ </para>
+      </summary>
+      <param name="levelChangeEventArgs">The performance level change event is sent to the delegate via the level change event argument.</param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceMetrics">
+      <summary>
+        <para>
+ PerformanceMetrics store the current bottleneck, CPU, and GPU levels
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.ClusterInfo">
+      <summary>
+        <para>
+ Current CPU cluster information information. Updated at application startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.CpuPerformanceBoost">
+      <summary>
+        <para>
+ CPU boosted.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.CurrentCpuLevel">
+      <summary>
+        <para>
+ Current CPU performance level.
+ This value updates once per frame when changes are applied to AdaptivePerformance.IDevicePerformanceControl.CpuLevel.
+ Value in the range [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.IDevicePerformanceControl.MaxCpuPerformanceLevel] or AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.CurrentGpuLevel">
+      <summary>
+        <para>
+ Current GPU performance level.
+ This value updates once per frame when changes are applied to AdaptivePerformance.IDevicePerformanceControl.GpuLevel.
+ Value in the range [AdaptivePerformance.Constants.MinGpuPerformanceLevel, AdaptivePerformance.IDevicePerformanceControl.MaxGpuPerformanceLevel] or AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.GpuPerformanceBoost">
+      <summary>
+        <para>
+ GPU boosted.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.PerformanceMetrics.PerformanceBottleneck">
+      <summary>
+        <para>
+ Current performance bottleneck which describes if the program is CPU, GPU, or Application.targetFrameRate bound.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceMode">
+      <summary>
+        <para>
+ The performance mode enum describes what is currently the active performance mode of the stystem.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.Battery">
+      <summary>
+        <para>
+ Performance is limited as mode is set to preserve battery.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.CPU">
+      <summary>
+        <para>
+ Performance mode is accelerates CPU.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.GPU">
+      <summary>
+        <para>
+ Performance mode is accelerates GPU.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.Optimize">
+      <summary>
+        <para>
+ Performance mode is optimized and may be a mix of accelerating both CPU and GPU.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.Standard">
+      <summary>
+        <para>
+ Default performance mode.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.PerformanceMode.Unknown">
+      <summary>
+        <para>
+ Performance mode is unknown.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.PerformanceModeEventHandler">
+      <summary>
+        <para>
+ You can subscribe to the performance mode event delegate which sends the AdaptivePerformance.PerformanceMode when the performance mode changes.
+ </para>
+      </summary>
+      <param name="performanceMode"></param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem">
+      <summary>
+        <para>
+ A class to define a provider subsystem for Adaptive Performance.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.ApplicationLifecycle">
+      <summary>
+        <para>
+ Lifecycle of the Subsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider">
+      <summary>
+        <para>
+ An abstract class to be implemented by providers of this subsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.running">
+      <summary>
+        <para>
+ Returns if the subsystem is running.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.ApplicationLifecycle">
+      <summary>
+        <para>
+ Application lifecycle events to be consumed by subsystem.
+ Can be null if the subsystem does not need special handling on life-cycle events.
+ The returned reference does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Capabilities">
+      <summary>
+        <para>
+ Bitset of supported features.
+ Does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Initialized">
+      <summary>
+        <para>
+ Returns if the subsystem is initialized successfully.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.PerformanceLevelControl">
+      <summary>
+        <para>
+ Control CPU or GPU performance levels of the device.
+ Can be null if the subsystem does not support controlling CPU/GPU performance levels.
+ Is null when the AdaptivePerformance.Provider.Feature.PerformanceLevelControl bit is not set in AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Capabilities.
+ The returned reference does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Stats">
+      <summary>
+        <para>
+ Generates a human readable string of subsystem internal stats.
+ Optional and only used for development.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Update">
+      <summary>
+        <para>
+ To be called once per frame.
+ The returned data structure's fields are populated with the latest available data, according to the supported AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Capabilities.
+ </para>
+      </summary>
+      <returns>
+        <para>Data structure with the most recent performance data.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.APProvider.Version">
+      <summary>
+        <para>
+ Returns the version of the subsystem implementation.
+ Can be used together with SubsystemDescriptor to identify a subsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities">
+      <summary>
+        <para>
+ Bitset of supported features.
+ Does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.#ctor">
+      <summary>
+        <para>
+ Main constructor, not used in the subsystem specifically.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Initialized">
+      <summary>
+        <para>
+ Returns if the subsystem is initialized successfully.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.PerformanceLevelControl">
+      <summary>
+        <para>
+ Control CPU or GPU performance levels of the device.
+ Can be null if the subsystem does not support controlling CPU/GPU performance levels.
+ Is null when the AdaptivePerformance.Provider.Feature.PerformanceLevelControl bit is not set in AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities.
+ The returned reference does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Stats">
+      <summary>
+        <para>
+ Generates a human readable string of subsystem internal stats.
+ Optional and only used for development.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Update">
+      <summary>
+        <para>
+ To be called once per frame.
+ The returned data structure's fields are populated with the latest available data, according to the supported AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities.
+ </para>
+      </summary>
+      <returns>
+        <para>Data structure with the most recent performance data.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Version">
+      <summary>
+        <para>
+ Returns the version of the subsystem implementation.
+ Can be used together with SubsystemDescriptor to identify a subsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase`3">
+      <summary>
+        <para>
+ Base class for subsystems to create your custom provider subsystem to deliver data from your provider to Adaptive Performance.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.ApplicationLifecycle">
+      <summary>
+        <para>
+ Application lifecycle events to be consumed by subsystem.
+ Can be null if the subsystem does not need special handling on life-cycle events.
+ The returned reference does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Capabilities">
+      <summary>
+        <para>
+ Bitset of supported features.
+ Does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Initialized">
+      <summary>
+        <para>
+ Returns if the subsystem is initialized successfully.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.PerformanceLevelControl">
+      <summary>
+        <para>
+ Control CPU or GPU performance levels of the device.
+ Can be null if the subsystem does not support controlling CPU/GPU performance levels.
+ Is null when the AdaptivePerformance.Provider.Feature.PerformanceLevelControl bit is not set in AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Capabilities.
+ The returned reference does not change after startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Stats">
+      <summary>
+        <para>
+ Generates a human readable string of subsystem internal stats.
+ Optional and only used for development.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Update">
+      <summary>
+        <para>
+ To be called once per frame.
+ The returned data structure's fields are populated with the latest available data, according to the supported AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Capabilities.
+ </para>
+      </summary>
+      <returns>
+        <para>Data structure with the most recent performance data.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemBase_3.Version">
+      <summary>
+        <para>
+ Returns the version of the subsystem implementation.
+ Can be used together with SubsystemDescriptor to identify a subsystem.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor">
+      <summary>
+        <para>
+ The Adaptive Performance Subsystem Descriptor is used for describing the subsystem so it can be picked up by the subsystem management system.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.Cinfo">
+      <summary>
+        <para>
+ Cinfo stores the ID and subsystem implementation type which is used to identify the subsystem during subsystem initialization.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.Cinfo.id">
+      <summary>
+        <para>
+ The ID stores the name of the subsystem used to identify it in the subsystem registry.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.Cinfo.providerType">
+      <summary>
+        <para>
+ Specifies the provider implementation type to use for instantiation.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.Cinfo.subsystemImplementationType">
+      <summary>
+        <para>
+ The subsystem implementation type stores the the type used for initialization in the subsystem registry.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.Cinfo.subsystemTypeOverride">
+      <summary>
+        <para>
+ Specifies the AdaptivePerformanceSubsystem-derived type that forwards casted calls to its provider.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.#ctor(UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor/Cinfo)">
+      <summary>
+        <para>
+ Constructor to fill the subsystem descriptor with all information to register the subsystem successfully.
+ </para>
+      </summary>
+      <param name="cinfo">Pass in the information about the subsystem.</param>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor.RegisterDescriptor(UnityEngine.AdaptivePerformance.Provider.AdaptivePerformanceSubsystemDescriptor/Cinfo)">
+      <summary>
+        <para>
+ Register the subsystem with the subsystem registry and make it available to use during runtime.
+ </para>
+      </summary>
+      <param name="cinfo">Pass in the information about the subsystem.</param>
+      <returns>
+        <para>Returns an active subsystem descriptor.</para>
+      </returns>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.Feature">
+      <summary>
+        <para>
+ Feature flags
+ See AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags and AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.ClusterInfo">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.ClusterInfo</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.CpuFrameTime">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.CpuFrameTime</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.CpuPerformanceBoost">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.CpuPerformanceBoost and AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableCpuBoost</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.CpuPerformanceLevel">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.CpuPerformanceLevel and AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.GpuFrameTime">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.GpuFrameTime</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.GpuPerformanceBoost">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.GpuPerformanceBoost and AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableGpuBoost</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.GpuPerformanceLevel">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.GpuPerformanceLevel and AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.None">
+      <summary>
+        <para>
+ No features
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.OverallFrameTime">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.OverallFrameTime</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.PerformanceLevelControl">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.PerformanceLevelControlAvailable and AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.PerformanceLevelControl</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.PerformanceMode">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.PerformanceMode</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.TemperatureLevel">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.TemperatureLevel</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.TemperatureTrend">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.TemperatureTrend</para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.Provider.Feature.WarningLevel">
+      <summary>
+        <para>
+ See AdaptivePerformance.Provider.PerformanceDataRecord.WarningLevel</para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.Provider.IApplicationLifecycle">
+      <summary>
+        <para>
+ This interface describes how the Adaptive Performance provider lifecycle behaves.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.IApplicationLifecycle.ApplicationPause">
+      <summary>
+        <para>
+ Called before an application pauses.
+ To be called from MonoBehaviour.OnApplicationPause.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.IApplicationLifecycle.ApplicationResume">
+      <summary>
+        <para>
+ Called after an application resumes.
+ To be called from MonoBehaviour.OnApplicationPause.
+ </para>
+      </summary>
+    </member>
+    <member name="?:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl">
+      <summary>
+        <para>
+ The device performance level control lets you change CPU and GPU levels and informs you about the current levels.
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableCpuBoost">
+      <summary>
+        <para>
+ Request a CPU performance boost.
+ </para>
+      </summary>
+      <returns>
+        <para>Returns true on success. When this fails, it means that the system took control and does not allow boosts.</para>
+      </returns>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableGpuBoost">
+      <summary>
+        <para>
+ Request a GPU performance boost.
+ </para>
+      </summary>
+      <returns>
+        <para>Returns true on success. When this fails, it means that the system took control and does not allow boosts.</para>
+      </returns>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxCpuPerformanceLevel">
+      <summary>
+        <para>
+ Maximum supported CPU performance level. This should not change after startup.
+ AdaptivePerformance.Constants.UnknownPerformanceLevel in case performance levels are not supported.
+ Value in the range of [AdaptivePerformance.Constants.MinCpuPerformanceLevel, 10].
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxGpuPerformanceLevel">
+      <summary>
+        <para>
+ Maximum supported GPU performance level. This should not change after startup.
+ AdaptivePerformance.Constants.UnknownPerformanceLevel in case performance levels are not supported.
+ Value in the range of [AdaptivePerformance.Constants.MinGpuPerformanceLevel, 10].
+ </para>
+      </summary>
+    </member>
+    <member name="M:UnityEngine.AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel(System.Int32&amp;,System.Int32&amp;)">
+      <summary>
+        <para>
+ Request a performance level change.
+ If AdaptivePerformance.Constants.UnknownPerformanceLevel is passed, the subsystem picks the level to be used.
+ </para>
+      </summary>
+      <param name="cpu">
+ The new performance level. Can be AdaptivePerformance.Constants.UnknownPerformanceLevel or range of [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxCpuPerformanceLevel].
+ If AdaptivePerformance.Provider.Feature.CpuPerformanceLevel is not supported (see AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities), this parameter is ignored.
+ </param>
+      <param name="gpu">
+ The new performance level. Can be AdaptivePerformance.Constants.UnknownPerformanceLevel or range of [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxGpuPerformanceLevel].
+ If AdaptivePerformance.Provider.Feature.GpuPerformanceLevel is not supported (see AdaptivePerformance.Provider.AdaptivePerformanceSubsystem.Capabilities), this parameter is ignored.
+ </param>
+      <returns>
+        <para>Returns true on success. When this fails, it means that the system took control of the active performance levels.</para>
+      </returns>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord">
+      <summary>
+        <para>
+ The performance data record stores all information about the thermal and performance status and delivers it from the provider subsystem to Adaptive Performance for further processing.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags">
+      <summary>
+        <para>
+ A bitset of features which indicate if their value changed in the last frame or at startup.
+ Unsupported features will never change.
+ Fields not changing always have valid data as long as its capability is supported.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.ClusterInfo">
+      <summary>
+        <para>
+ Current CPU cluster information information. Includes number of big, medium and small cores use at the application startup.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.CpuFrameTime">
+      <summary>
+        <para>
+ The time in seconds spent by the CPU for rendering the last complete frame.
+ Has changed when AdaptivePerformance.Provider.Feature.CpuFrameTime bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.CpuPerformanceBoost">
+      <summary>
+        <para>
+ The currently active CPU boost state. This is typically true if previously enabled with AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableCpuBoost once the boost is successfully applied.
+ Adaptive Performance might also change this level on its own. This typically happens when the device is thermal throttling or when AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableCpuBoost fails.
+ Once the CPU boost is enabled it is active until you receive a callback that it is disabled.
+ CPU boost level has changed when AdaptivePerformance.Provider.Feature.CpuPerformanceBoost bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.CpuPerformanceLevel">
+      <summary>
+        <para>
+ The currently active CPU performance level. This is typically the value previously set with AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel once the levels are successfully applied.
+ Adaptive Performance might also change this level on its own. This typically happens when the device is thermal throttling or when AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel failed.
+ CPU performance level has a value in the range of [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxCpuPerformanceLevel], or AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ A value of AdaptivePerformance.Constants.UnknownPerformanceLevel means that Adaptive Performance took control of performance levels.
+ CPU performance level has changed when AdaptivePerformance.Provider.Feature.CpuPerformanceLevel bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.GpuFrameTime">
+      <summary>
+        <para>
+ The time in seconds spent by the GPU for rendering the last complete frame.
+ Has changed when AdaptivePerformance.Provider.Feature.GpuFrameTime bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.GpuPerformanceBoost">
+      <summary>
+        <para>
+ The currently active GPU boost state. This is typically true if previously enabled with AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableGpuBoost once the boost is successfully applied.
+ Adaptive Performance might also change this level on its own. This typically happens when the device is thermal throttling or when AdaptivePerformance.Provider.IDevicePerformanceLevelControl.EnableGpuBoost fails.
+ Once the GPU boost is enabled it is active until you receive a callback that it is disabled.
+ GPU boost level has changed when AdaptivePerformance.Provider.Feature.GpuPerformanceBoost bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.GpuPerformanceLevel">
+      <summary>
+        <para>
+ The currently active GPU performance level. This is typically the value previously set with AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel once the levels are successfully applied.
+ Adaptive Performance might also change this level on its own. This typically happens when the device is thermal throttling or when AdaptivePerformance.Provider.IDevicePerformanceLevelControl.SetPerformanceLevel failed.
+ GPU performance level has a value in the range of [AdaptivePerformance.Constants.MinCpuPerformanceLevel, AdaptivePerformance.Provider.IDevicePerformanceLevelControl.MaxGpuPerformanceLevel], or AdaptivePerformance.Constants.UnknownPerformanceLevel.
+ A value of AdaptivePerformance.Constants.UnknownPerformanceLevel means that Adaptive Performance took control of performance levels.
+ GPU performance level has changed when AdaptivePerformance.Provider.Feature.GpuPerformanceLevel bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.OverallFrameTime">
+      <summary>
+        <para>
+ The total time in seconds spent for the frame.
+ Has changed when AdaptivePerformance.Provider.Feature.OverallFrameTime bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.PerformanceLevelControlAvailable">
+      <summary>
+        <para>
+ True if =performance levels can currently be controlled manually and aren't controlled by Adaptive Performance or the operating system.
+ Has changed when AdaptivePerformance.Provider.Feature.PerformanceLevelControl bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.PerformanceMode">
+      <summary>
+        <para>
+ Current Performance mode information.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.TemperatureLevel">
+      <summary>
+        <para>
+ The current normalized temperature level in the range of [0.0, 1.0], or -1.0 when not supported or not available right now.
+ A level of 1.0 means that the device is thermal throttling.
+ The temperature level has changed when the AdaptivePerformance.Provider.Feature.TemperatureLevel bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.TemperatureTrend">
+      <summary>
+        <para>
+ The current temperature trend in the range of [-1.0, 1.0] that is a metric of temperature change over time.
+ The temperature trend is constant at 0.0 in case the feature is not supported.
+ The temperature trend has changed when AdaptivePerformance.Provider.Feature.TemperatureTrend bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.Provider.PerformanceDataRecord.WarningLevel">
+      <summary>
+        <para>
+ The current warning level as documented in AdaptivePerformance.Provider.Feature.WarningLevel.
+ The warning level has changed when AdaptivePerformance.Provider.Feature.WarningLevel bit is set in AdaptivePerformance.Provider.PerformanceDataRecord.ChangeFlags.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.ScalerTarget">
+      <summary>
+        <para>
+ Bottleneck flags that the scaler targets.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerTarget.CPU">
+      <summary>
+        <para>
+ The scaler targets the CPU and attempts to reduce the CPU load.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerTarget.FillRate">
+      <summary>
+        <para>
+ The scaler targets fillrate, often at the expense of visual quality.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerTarget.GPU">
+      <summary>
+        <para>
+ The scaler targets the GPU and attempts to reduce the GPU load.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.ScalerVisualImpact">
+      <summary>
+        <para>
+ Scaler impact on visuals.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerVisualImpact.High">
+      <summary>
+        <para>
+ High impact on visual quality. The scaler will have an easily visible effect on quality.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerVisualImpact.Low">
+      <summary>
+        <para>
+ Low impact on visual quality. Changes might not be very noticeable to the user.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.ScalerVisualImpact.Medium">
+      <summary>
+        <para>
+ Medium impact on visual quality. Mildly affects the visuals in the scene and might be noticeable to the user.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.StateAction">
+      <summary>
+        <para>
+ Describes what action is needed to stabilize.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.StateAction.Decrease">
+      <summary>
+        <para>
+ Quality must be decreased.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.StateAction.FastDecrease">
+      <summary>
+        <para>
+ Quality must be decreased as soon as possible.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.StateAction.Increase">
+      <summary>
+        <para>
+ Recommended to increase quality.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.StateAction.Stale">
+      <summary>
+        <para>
+ No action is required.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.ThermalEventHandler">
+      <summary>
+        <para>
+ You can subscribe to the thermal event delegate which sends the AdaptivePerformance.ThermalMetrics when the thermal state changes.
+ </para>
+      </summary>
+      <param name="thermalMetrics"></param>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.ThermalMetrics">
+      <summary>
+        <para>
+ ThermalMetrics stores the thermal state as AdaptivePerformance.ThermalMetrics.TemperatureLevel, AdaptivePerformance.ThermalMetrics.TemperatureTrend, and AdaptivePerformance.ThermalMetrics.WarningLevel.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ThermalMetrics.TemperatureLevel">
+      <summary>
+        <para>
+ Current normalized temperature level in the range of [0, 1].
+ A value of 0 means standard operation temperature and that the device is not in a throttling state.
+ A value of 1 means that the device has reached maximum temperature and is either going into or is already in throttling state.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ThermalMetrics.TemperatureTrend">
+      <summary>
+        <para>
+ Current normalized temperature trend in the range of [-1, 1].
+ A value of 1 describes a rapid increase in temperature.
+ A value of 0 describes a constant temperature.
+ A value of -1 describes a rapid decrease in temperature.
+ Note: It takes at least 10s until the temperature trend can start reflecting any changes.
+ </para>
+      </summary>
+    </member>
+    <member name="P:UnityEngine.AdaptivePerformance.ThermalMetrics.WarningLevel">
+      <summary>
+        <para>
+ Current thermal warning level.
+ </para>
+      </summary>
+    </member>
+    <member name="T:UnityEngine.AdaptivePerformance.WarningLevel">
+      <summary>
+        <para>
+ Warning levels are used in the AdaptivePerformance.ThermalMetrics and describe the thermal status of the device. There are three possible statuses.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.WarningLevel.NoWarning">
+      <summary>
+        <para>
+ No warning is the normal warning level during standard thermal state.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.WarningLevel.Throttling">
+      <summary>
+        <para>
+ If the application is in the throttling state, it should make adjustments to go back to normal temperature levels.
+ </para>
+      </summary>
+    </member>
+    <member name="F:UnityEngine.AdaptivePerformance.WarningLevel.ThrottlingImminent">
+      <summary>
+        <para>
+ If throttling is imminent, the application should perform adjustments to avoid thermal throttling.
+ </para>
+      </summary>
+    </member>
+    <member name="A:UnityEngine.AdaptivePerformanceModule">
+      <summary>
+        <para>Adaptive Performance is a built-in module that allows users to adjust settings based on performance metrics.</para>
+      </summary>
+    </member>
+  </members>
+</doc>

@@ -1,0 +1,1552 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<doc>
+  <members>
+    <assembly>
+      <name>UnityEngine.VectorGraphicsModule</name>
+    </assembly>
+    <member name="T:Unity.VectorGraphics.AddressMode">
+      <summary>
+        <para>The addressing mode, defining how textures or gradients behave when being addressed outside their unit range.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.AddressMode.Clamp">
+      <summary>
+        <para>Textures/gradients are clamped on the borders.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.AddressMode.Mirror">
+      <summary>
+        <para>Textures/gradients are repeated with a mirroring pattern.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.AddressMode.Wrap">
+      <summary>
+        <para>Textures/gradients are wrapping around with a repeating pattern.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.BezierContour">
+      <summary>
+        <para>A chain of bezier paths, optionnally closed.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.BezierContour.Closed">
+      <summary>
+        <para>A boolean indicating if the contour should be closed.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.BezierContour.Segments">
+      <summary>
+        <para>An array of every path segments on the contour.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.BezierPathSegment">
+      <summary>
+        <para>A bezier path segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierPathSegment.P0">
+      <summary>
+        <para>Origin point of the segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierPathSegment.P1">
+      <summary>
+        <para>First control point of the segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierPathSegment.P2">
+      <summary>
+        <para>Second control point of the segment.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.BezierSegment">
+      <summary>
+        <para>A bezier segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierSegment.P0">
+      <summary>
+        <para>Origin point of the segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierSegment.P1">
+      <summary>
+        <para>First control point of the segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierSegment.P2">
+      <summary>
+        <para>Second control point of the segment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.BezierSegment.P3">
+      <summary>
+        <para>Ending point of the segment.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.FillMode">
+      <summary>
+        <para>The fill mode types.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.FillMode.NonZero">
+      <summary>
+        <para>Determines the "insideness" of the shape by evaluating the direction of the edges crossed.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.FillMode.OddEven">
+      <summary>
+        <para>Determines the "insideness" of the shape by counting the number of edges crossed.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.GradientFill">
+      <summary>
+        <para>Fills a shape with a gradient.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.Addressing">
+      <summary>
+        <para>The adressing mode (wrap, clamp or mirror) of this fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.Mode">
+      <summary>
+        <para>The filling method (non-zero or even-odd) of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.Opacity">
+      <summary>
+        <para>The opacity of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.RadialFocus">
+      <summary>
+        <para>A position within the unit circle (-1,1) where 0 falls in the middle of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.Stops">
+      <summary>
+        <para>An array of stops defining the gradient colors.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientFill.Type">
+      <summary>
+        <para>The fill type (linear or gradient).</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.GradientFillType">
+      <summary>
+        <para>The gradient fill types.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.GradientFillType.Linear">
+      <summary>
+        <para>A linear gradient.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.GradientFillType.Radial">
+      <summary>
+        <para>A radial gradient, centered at the radial focus of the gradient fill.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.GradientStop">
+      <summary>
+        <para>The gradient stops used for gradient fills.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientStop.Color">
+      <summary>
+        <para>The color of the stop.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.GradientStop.StopPercentage">
+      <summary>
+        <para>At which percentage this stop applies. The value must be between 0 and 1, inclusively.</para>
+      </summary>
+    </member>
+    <member name="?:Unity.VectorGraphics.IFill">
+      <summary>
+        <para>The IFill interface is implemented by filling techniques (solid, texture or gradient).</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.IFill.Mode">
+      <summary>
+        <para>The filling method (non-zero or even-odd) of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.IFill.Opacity">
+      <summary>
+        <para>The opacity of the fill.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.Matrix2D">
+      <summary>
+        <para>A 2x3 transformation matrix used for 2D operations.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Matrix2D.identity">
+      <summary>
+        <para>Returns the identity matrix (read-only).</para>
+      </summary>
+      <returns>
+        <para>The identity matrix</para>
+      </returns>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m00">
+      <summary>
+        <para>The matrix member at (0,0)</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m01">
+      <summary>
+        <para>The matrix member at (0,1)</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m02">
+      <summary>
+        <para>The matrix member at (0,2)</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m10">
+      <summary>
+        <para>The matrix member at (1,0)</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m11">
+      <summary>
+        <para>The matrix member at (1,1)</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.Matrix2D.m12">
+      <summary>
+        <para>The matrix member at (1,2)</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Matrix2D.zero">
+      <summary>
+        <para>Returns a matrix with all elements set to zero (read-only).</para>
+      </summary>
+      <returns>
+        <para>The zero matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.#ctor(UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Initializes a Matrix2D with column vectors</para>
+      </summary>
+      <param name="column0">The first column</param>
+      <param name="column1">The second column</param>
+      <param name="column2">The third column</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.Equals(System.Object)">
+      <summary>
+        <para>Checks if two matrices are equal.</para>
+      </summary>
+      <param name="other">The other matrix to compare with</param>
+      <returns>
+        <para>True when the matrix is equal to "other"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.Equals(Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>
+ Checks if this matrix is equal to another Matrix2D.
+ </para>
+      </summary>
+      <param name="other">The other matrix to compare with.</param>
+      <returns>
+        <para>True if the matrices are equal, false otherwise.</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.GetColumn(System.Int32)">
+      <summary>
+        <para>Gets a column of the matrix.</para>
+      </summary>
+      <param name="index">The column index, between 0 and 2 inclusively</param>
+      <returns>
+        <para>The column at "index"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.GetHashCode">
+      <summary>
+        <para>Gets a hashcode of the matrix.</para>
+      </summary>
+      <returns>
+        <para>The hashcode of the matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.GetRow(System.Int32)">
+      <summary>
+        <para>Gets a row of the matrix.</para>
+      </summary>
+      <param name="index">The row index, between 0 and 1 inclusively</param>
+      <returns>
+        <para>The row at "index"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.Inverse">
+      <summary>
+        <para>Computes the inverse of the matrix.</para>
+      </summary>
+      <returns>
+        <para>The inverse matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.MultiplyPoint(UnityEngine.Vector2)">
+      <summary>
+        <para>Transforms a position by this matrix (effectively by 2x3).</para>
+      </summary>
+      <param name="point">The point to multiply with this matrix</param>
+      <returns>
+        <para>The multiplied point</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.MultiplyVector(UnityEngine.Vector2)">
+      <summary>
+        <para>Transforms a direction by this matrix.</para>
+      </summary>
+      <param name="vector">The direction to multiply with this matrix</param>
+      <returns>
+        <para>The multiplied direction</para>
+      </returns>
+    </member>
+    <member name="?:Unity.VectorGraphics.Matrix2D.op_Equal(Unity.VectorGraphics.Matrix2D,Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>Checks if two matrices are equal.</para>
+      </summary>
+      <param name="lhs">The left hand side matrix of the comparison</param>
+      <param name="rhs">The right hand side matrix of the comparison</param>
+      <returns>
+        <para>True if "lhs" and "rhs" are equal, or false otherwise.</para>
+      </returns>
+    </member>
+    <member name="?:Unity.VectorGraphics.Matrix2D.op_Multiply(Unity.VectorGraphics.Matrix2D,Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>Multiplies two matrices.</para>
+      </summary>
+      <param name="lhs">The left hand side matrix of the operation</param>
+      <param name="rhs">The right hand side matrix of the operation</param>
+      <returns>
+        <para>The multiplied matrix</para>
+      </returns>
+    </member>
+    <member name="?:Unity.VectorGraphics.Matrix2D.op_Multiply(Unity.VectorGraphics.Matrix2D,UnityEngine.Vector2)">
+      <summary>
+        <para>Transforms a Vector2 by a matrix.</para>
+      </summary>
+      <param name="lhs">The left hand side matrix of the operation</param>
+      <param name="vector">The vector the matrix will be multiplied with</param>
+      <returns>
+        <para>The transformed vector</para>
+      </returns>
+    </member>
+    <member name="?:Unity.VectorGraphics.Matrix2D.op_NotEqual(Unity.VectorGraphics.Matrix2D,Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>Checks if two matrices are not equal.</para>
+      </summary>
+      <param name="lhs">The left hand side matrix of the comparison</param>
+      <param name="rhs">The right hand side matrix of the comparison</param>
+      <returns>
+        <para>True if "lhs" and "rhs" not are equal, or false otherwise.</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.RotateLH(System.Single)">
+      <summary>
+        <para>Creates a left-hand side rotation matrix.</para>
+      </summary>
+      <param name="angleRadians">The rotation angle, in radians</param>
+      <returns>
+        <para>The rotation matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.RotateRH(System.Single)">
+      <summary>
+        <para>Creates a right-hand side rotation matrix.</para>
+      </summary>
+      <param name="angleRadians">The rotation angle, in radians</param>
+      <returns>
+        <para>The rotation matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.Scale(UnityEngine.Vector2)">
+      <summary>
+        <para>Creates a scaling matrix.</para>
+      </summary>
+      <param name="vector">The scaling vector</param>
+      <returns>
+        <para>The scaling matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.SetColumn(System.Int32,UnityEngine.Vector2)">
+      <summary>
+        <para>Sets a column of the matrix.</para>
+      </summary>
+      <param name="index">The column index, between 0 and 2 inclusively</param>
+      <param name="column">The column</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.SetRow(System.Int32,UnityEngine.Vector3)">
+      <summary>
+        <para>Sets a row of the matrix.</para>
+      </summary>
+      <param name="index">The column index, between 0 and 1 inclusively</param>
+      <param name="row">The row</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.SkewX(System.Single)">
+      <summary>
+        <para>Creates a skew matrix on X.</para>
+      </summary>
+      <param name="angleRadians">The skew angle, in radians</param>
+      <returns>
+        <para>The skew matrix</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.SkewY(System.Single)">
+      <summary>
+        <para>Creates a skew matrix on U.</para>
+      </summary>
+      <param name="angleRadians">The skew angle, in radians</param>
+      <returns>
+        <para>The skew matrix</para>
+      </returns>
+    </member>
+    <member name="P:Unity.VectorGraphics.Matrix2D.this">
+      <summary>
+        <para>Access element at [row, column].</para>
+      </summary>
+      <returns>
+        <para>The value at [row, column]</para>
+      </returns>
+    </member>
+    <member name="P:Unity.VectorGraphics.Matrix2D.this">
+      <summary>
+        <para>Access element at sequential index (0..5 inclusive).</para>
+      </summary>
+      <returns>
+        <para>The value at [index]</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.ToString">
+      <summary>
+        <para>Returns a string representation of the matrix.</para>
+      </summary>
+      <returns>
+        <para>The matrix string representation</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.ToString(System.String)">
+      <summary>
+        <para>Returns a string representation of the matrix using a format.</para>
+      </summary>
+      <param name="format">The format to be used for the matrix components</param>
+      <returns>
+        <para>The matrix string representation</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.Matrix2D.Translate(UnityEngine.Vector2)">
+      <summary>
+        <para>Creates a translation matrix.</para>
+      </summary>
+      <param name="vector">The translation vector</param>
+      <returns>
+        <para>The translation matrix</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.PathCorner">
+      <summary>
+        <para>The path corner types, for joining path segments together.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathCorner.Beveled">
+      <summary>
+        <para>A beveled corner.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathCorner.Round">
+      <summary>
+        <para>A rounded corner.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathCorner.Tipped">
+      <summary>
+        <para>A tipped corner with a sharp edge.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.PathEnding">
+      <summary>
+        <para>The path ending types.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathEnding.Chop">
+      <summary>
+        <para>A square path ending.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathEnding.Round">
+      <summary>
+        <para>A rounded path ending.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.PathEnding.Square">
+      <summary>
+        <para>A square path ending with a small extrusion.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.PathProperties">
+      <summary>
+        <para>Defines properties of paths.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PathProperties.Corners">
+      <summary>
+        <para>How the corners of the path are displayed.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PathProperties.Head">
+      <summary>
+        <para>How the beginning of the path is displayed.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PathProperties.Stroke">
+      <summary>
+        <para>The stroke used to render the path.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PathProperties.Tail">
+      <summary>
+        <para>How the end of the path is displayed.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.PatternFill">
+      <summary>
+        <para>Fills a shape with a pattern.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PatternFill.Mode">
+      <summary>
+        <para>The filling method (non-zero or even-odd) of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PatternFill.Opacity">
+      <summary>
+        <para>The opacity of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PatternFill.Pattern">
+      <summary>
+        <para>The root node of the pattern</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.PatternFill.Rect">
+      <summary>
+        <para>The rectangle that is repeated</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.Scene">
+      <summary>
+        <para>A scene contains the whole node hierarchy.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Scene.Root">
+      <summary>
+        <para>The root of the node hierarchy.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.SceneNode">
+      <summary>
+        <para>A node inside a hierarchy.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SceneNode.Children">
+      <summary>
+        <para>The list of children nodes.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SceneNode.Clipper">
+      <summary>
+        <para>A clipper hierarchy that clips this node.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SceneNode.Shapes">
+      <summary>
+        <para>The list of shapes inside this node.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SceneNode.Transform">
+      <summary>
+        <para>The transform of the node.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.Shape">
+      <summary>
+        <para>A generic filled shape.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Shape.Contours">
+      <summary>
+        <para>All the contours defining the shape.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Shape.Fill">
+      <summary>
+        <para>The fill used on the shape.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Shape.FillTransform">
+      <summary>
+        <para>A transformation specific to the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Shape.IsConvex">
+      <summary>
+        <para>Whether the specified contours are convex.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Shape.PathProps">
+      <summary>
+        <para>The path properties.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.SolidFill">
+      <summary>
+        <para>Fills a shape with a single color.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SolidFill.Color">
+      <summary>
+        <para>The color of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SolidFill.Mode">
+      <summary>
+        <para>The filling method (non-zero or even-odd) of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SolidFill.Opacity">
+      <summary>
+        <para>The opacity of the fill.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.Stroke">
+      <summary>
+        <para>Defines how strokes are rendered.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.Color">
+      <summary>
+        <para>The stroke color.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.Fill">
+      <summary>
+        <para>The stroke fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.FillTransform">
+      <summary>
+        <para>A transformation specific to the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.HalfThickness">
+      <summary>
+        <para>The stroke half-thickness.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.Pattern">
+      <summary>
+        <para>The stroke pattern (dashes).</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.PatternOffset">
+      <summary>
+        <para>An offset to which the pattern starts.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.Stroke.TippedCornerLimit">
+      <summary>
+        <para>How far the tipped corners might extrude.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.SVGParser">
+      <summary>
+        <para>Reads an SVG document and builds a vector scene.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.SVGParser.ImportSVG(System.IO.TextReader,System.Single,System.Single,System.Int32,System.Int32,System.Boolean)">
+      <summary>
+        <para>Kicks off an SVG file import.</para>
+      </summary>
+      <param name="textReader">The reader object containing the SVG file data</param>
+      <param name="dpi">The DPI of the SVG file, or 0 to use the device's DPI</param>
+      <param name="pixelsPerUnit">How many SVG units fit in a Unity unit</param>
+      <param name="windowWidth">The default with of the viewport, may be 0</param>
+      <param name="windowHeight">The default height of the viewport, may be 0</param>
+      <param name="clipViewport">Whether the vector scene should be clipped by the SVG document's viewport</param>
+      <returns>
+        <para>A SceneInfo object containing the scene data</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.SVGParser.ImportSVG(System.IO.TextReader,Unity.VectorGraphics.ViewportOptions,System.Single,System.Single,System.Int32,System.Int32)">
+      <summary>
+        <para>Kicks off an SVG file import.</para>
+      </summary>
+      <param name="textReader">The reader object containing the SVG file data</param>
+      <param name="viewportOptions">The viewport options to use</param>
+      <param name="dpi">The DPI of the SVG file, or 0 to use the device's DPI</param>
+      <param name="pixelsPerUnit">How many SVG units fit in a Unity unit</param>
+      <param name="windowWidth">The default with of the viewport, may be 0</param>
+      <param name="windowHeight">The default height of the viewport, may be 0</param>
+      <returns>
+        <para>A SceneInfo object containing the scene data</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.SVGParser.SceneInfo">
+      <summary>
+        <para>A structure containing the SVG scene data.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SVGParser.SceneInfo.NodeIDs">
+      <summary>
+        <para>A dictionary containing the scene node for a given ID</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SVGParser.SceneInfo.NodeOpacity">
+      <summary>
+        <para>A dictionary containing the opacity of the scene nodes.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SVGParser.SceneInfo.Scene">
+      <summary>
+        <para>The vector scene.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.SVGParser.SceneInfo.SceneViewport">
+      <summary>
+        <para>The position and size of the SVG document</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.TextureFill">
+      <summary>
+        <para>Fills a shape with a texture.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.TextureFill.Addressing">
+      <summary>
+        <para>The adressing mode (wrap, clamp or mirror) of this fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.TextureFill.Mode">
+      <summary>
+        <para>The filling method (non-zero or even-odd) of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.TextureFill.Opacity">
+      <summary>
+        <para>The opacity of the fill.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.TextureFill.Texture">
+      <summary>
+        <para>The texture to fill the shape with.</para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils">
+      <summary>
+        <para>
+ Provides various tools to work with vector graphics.
+ </para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.Alignment">
+      <summary>
+        <para>The alignement of the sprite, to determine the location of the pivot.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.BottomCenter">
+      <summary>
+        <para>Bottom-center alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.BottomLeft">
+      <summary>
+        <para>Bottom-left alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.BottomRight">
+      <summary>
+        <para>Bottom-right alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.Center">
+      <summary>
+        <para>Center alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.Custom">
+      <summary>
+        <para>Custom alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.LeftCenter">
+      <summary>
+        <para>Left-center alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.RightCenter">
+      <summary>
+        <para>Right-center alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.SVGOrigin">
+      <summary>
+        <para>SVG origin alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.TopCenter">
+      <summary>
+        <para>Top-center alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.TopLeft">
+      <summary>
+        <para>Top-left alignment.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Alignment.TopRight">
+      <summary>
+        <para>Top-right alignment.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.ApproximateSceneNodeBounds(Unity.VectorGraphics.SceneNode)">
+      <summary>
+        <para>Computes a rough approximation of the node hierarchy bounds.</para>
+      </summary>
+      <param name="root">The root node of the hierarchy to computes the bounds from</param>
+      <returns>
+        <para>An approximation of the root hierarchy axis-aligned bounding-box</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BezierSegmentsToPath(Unity.VectorGraphics.BezierSegment[])">
+      <summary>
+        <para>Converts an array of BezierSegments into a connected path.</para>
+      </summary>
+      <param name="segments">An array of BezierSegment</param>
+      <returns>
+        <para>An array of path segments</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BezierSegmentToPath(Unity.VectorGraphics.BezierSegment)">
+      <summary>
+        <para>Convert a segments into a path.</para>
+      </summary>
+      <param name="segment">The BezierSegment</param>
+      <returns>
+        <para>An array of two path segments</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.Bounds(Unity.VectorGraphics.BezierPathSegment[])">
+      <summary>
+        <para>Computes the bounds of a bezier path.</para>
+      </summary>
+      <param name="path">The path to compute the bounds from</param>
+      <returns>
+        <para>A Rect containing the axis-aligned bounding-box of the contour</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.Bounds(System.Collections.Generic.IEnumerable`1&lt;UnityEngine.Vector2&gt;)">
+      <summary>
+        <para>Computes the bounds of a list of vertices.</para>
+      </summary>
+      <param name="vertices">The list of vertices to compute the bounds from</param>
+      <returns>
+        <para>A Rect containing the axis-aligned bounding-box of the vertices</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.Bounds(Unity.VectorGraphics.BezierSegment,UnityEngine.Vector2&amp;,UnityEngine.Vector2&amp;)">
+      <summary>
+        <para>Computes the bounds of a segment.</para>
+      </summary>
+      <param name="segment">The segment to flip</param>
+      <param name="min">The output min value of the segment</param>
+      <param name="max">The output max value of the segment</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BuildRectangleContour(UnityEngine.Rect,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Builds a BezierContour from a Rectangle.</para>
+      </summary>
+      <param name="rect">The rectangle to build the contour from</param>
+      <param name="radiusTL">The top-left radius of the rectangle</param>
+      <param name="radiusTR">The top-right radius of the rectangle</param>
+      <param name="radiusBR">The bottom-right radius of the rectangle</param>
+      <param name="radiusBL">The bottom-left radius of the rectangle</param>
+      <returns>
+        <para>A BezierContour that follows the rectangle contour</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BuildSprite(System.Collections.Generic.List`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,System.Single,Unity.VectorGraphics.VectorUtils/Alignment,UnityEngine.Vector2,System.UInt16,System.Boolean)">
+      <summary>
+        <para>Builds a sprite asset from a scene tessellation.</para>
+      </summary>
+      <param name="geoms">The list of tessellated Geometry instances</param>
+      <param name="svgPixelsPerUnit">How many SVG "pixels" map into a Unity unit</param>
+      <param name="alignment">The position of the sprite origin</param>
+      <param name="customPivot">If alignment is Unity.VectorGraphics.VectorUtils.Alignment.Custom, customPivot is used to compute the sprite origin</param>
+      <param name="gradientResolution">The maximum size of the texture holding gradient data</param>
+      <param name="flipYAxis">True to have the positive Y axis to go downward.</param>
+      <returns>
+        <para>A new Sprite containing the provided geometry. The Sprite may have a texture if the geometry has any texture and/or gradients</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BuildSprite(System.Collections.Generic.List`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,UnityEngine.Rect,System.Single,Unity.VectorGraphics.VectorUtils/Alignment,UnityEngine.Vector2,System.UInt16,System.Boolean)">
+      <summary>
+        <para>Builds a sprite asset from a scene tessellation.</para>
+      </summary>
+      <param name="geoms">The list of tessellated Geometry instances</param>
+      <param name="rect">The position and size of the sprite geometry</param>
+      <param name="svgPixelsPerUnit">How many SVG "pixels" map into a Unity unit</param>
+      <param name="alignment">The position of the sprite origin</param>
+      <param name="customPivot">If alignment is Unity.VectorGraphics.VectorUtils.Alignment.Custom, customPivot is used to compute the sprite origin</param>
+      <param name="gradientResolution">The maximum size of the texture holding gradient data</param>
+      <param name="flipYAxis">True to have the positive Y axis to go downward.</param>
+      <returns>
+        <para>A new Sprite containing the provided geometry. The Sprite may have a texture if the geometry has any texture and/or gradients</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BuildVectorImage(System.Collections.Generic.IEnumerable`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,System.UInt32)">
+      <summary>
+        <para>Builds a sprite asset from a scene tessellation.</para>
+      </summary>
+      <param name="geoms">The list of tessellated Geometry instances</param>
+      <param name="gradientResolution">The maximum size of the texture holding gradient data</param>
+      <returns>
+        <para>
+ A new VectorImage containing the provided geometry.
+ The VectorImage may have a texture if the geometry has any texture and/or gradients
+ </para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.BuildVectorImage(Unity.VectorGraphics.SVGParser/SceneInfo)">
+      <summary>
+        <para>Builds an antialiased VectorImage from a vector scene definition.</para>
+      </summary>
+      <param name="sceneInfo">The Unity.VectorGraphics.SVGParser.SceneInfo to build the VectorImage from.</param>
+      <returns>
+        <para>A UIElements.VectorImage constructed from the vector scene definition.</para>
+      </returns>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Epsilon">
+      <summary>
+        <para>A small value used everywhere by the vector graphics package.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.Eval(Unity.VectorGraphics.BezierSegment,System.Single)">
+      <summary>
+        <para>Evaluates the position on a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the position</param>
+      <param name="t">The parametric location on the curve</param>
+      <returns>
+        <para>The position on the curve at parametric location "t"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.EvalFull(Unity.VectorGraphics.BezierSegment,System.Single,UnityEngine.Vector2&amp;)">
+      <summary>
+        <para>Evalutes both the position and tangent on a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the normal</param>
+      <param name="t">The parametric location on the curve</param>
+      <param name="tangent">The output tangent at parametric location "t"</param>
+      <returns>
+        <para>The position on the curve at parametric location "t"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.EvalFull(Unity.VectorGraphics.BezierSegment,System.Single,UnityEngine.Vector2&amp;,UnityEngine.Vector2&amp;)">
+      <summary>
+        <para>Evalutes the position, tangent and normal on a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the normal</param>
+      <param name="t">The parametric location on the curve</param>
+      <param name="tangent">The output tangent at parametric location "t"</param>
+      <param name="normal">The output normal at parametric location "t"</param>
+      <returns>
+        <para>The position on the curve at parametric location "t"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.EvalNormal(Unity.VectorGraphics.BezierSegment,System.Single)">
+      <summary>
+        <para>Evalutes the normal on a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the normal</param>
+      <param name="t">The parametric location on the curve</param>
+      <returns>
+        <para>The normal of the curve at parametric location "t"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.EvalTangent(Unity.VectorGraphics.BezierSegment,System.Single)">
+      <summary>
+        <para>Evaluates the tangent on a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the tangent</param>
+      <param name="t">The parametric location on the curve</param>
+      <returns>
+        <para>The tangent of the curve at parametric location "t"</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.FillMesh(UnityEngine.Mesh,System.Collections.Generic.List`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,System.Single,System.Boolean)">
+      <summary>
+        <para>Fills a mesh geometry from a scene tessellation.</para>
+      </summary>
+      <param name="mesh">The mesh object to fill</param>
+      <param name="geoms">The list of tessellated Geometry instances, generated by TessellateNodeHierarchy</param>
+      <param name="svgPixelsPerUnit">How many SVG "pixels" map into a Unity unit</param>
+      <param name="flipYAxis">Set to "true" to have the positive Y axis to go downward.</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.FillUVs(System.Collections.Generic.IEnumerable`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,Unity.VectorGraphics.VectorUtils/TextureAtlas)">
+      <summary>
+        <para>Fill the UVs of the geometry using the provided texture atlas.</para>
+      </summary>
+      <param name="geoms">The geometry that will have its UVs filled</param>
+      <param name="texAtlas">The texture atlas used for the UV generation</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.FindBezierLineIntersections(Unity.VectorGraphics.BezierSegment,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Find the intersections (up to three) between a line and a curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment</param>
+      <param name="p0">The first point</param>
+      <param name="p1">The second point</param>
+      <returns>
+        <para>Returns the Bezier's 't' parametric values where the line p0-p1 intersects the segment, up to 3 values</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.FlipSegment(Unity.VectorGraphics.BezierSegment)">
+      <summary>
+        <para>Flips a segment direction.</para>
+      </summary>
+      <param name="segment">The segment to flip</param>
+      <returns>
+        <para>The flipped segment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.FlipVerticesInBounds(System.Collections.Generic.IList`1&lt;UnityEngine.Vector2&gt;,UnityEngine.Rect)">
+      <summary>
+        <para>Flip the vertices (in-place) inside their axis-aligned bounding-box.</para>
+      </summary>
+      <param name="vertices">The vertices to realign</param>
+      <param name="bounds">The bounds into which the vertices will be realigned</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.GenerateAtlas(System.Collections.Generic.IEnumerable`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,System.UInt32,System.Boolean,System.Boolean,System.Boolean)">
+      <summary>
+        <para>Generates a Texture2D atlas containing the textures and gradients for the vector geometry.</para>
+      </summary>
+      <param name="geoms">The list of Geometry objects, probably created with TessellateNodeHierarchy</param>
+      <param name="rasterSize">Maximum size of the generated texture</param>
+      <param name="generatePOTTexture">Resize the texture to the next power-of-two</param>
+      <param name="encodeSettings">Encode the gradient settings inside the texture</param>
+      <param name="linear">If true, the texture will be created in linear colorspace</param>
+      <returns>
+        <para>The generated texture atlas</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.GenerateAtlasAndFillUVs(System.Collections.Generic.IEnumerable`1&lt;Unity.VectorGraphics.VectorUtils/Geometry&gt;,System.UInt32)">
+      <summary>
+        <para>Generates a Texture2D atlas containing the textures and gradients for the vector geometry, and fill the UVs of the geometry.</para>
+      </summary>
+      <param name="geoms">The list of Geometry objects, probably created with TessellateNodeHierarchy</param>
+      <param name="rasterSize">Maximum size of the generated texture</param>
+      <returns>
+        <para>The generated texture atlas</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.Geometry">
+      <summary>
+        <para>Holds the tessellated Scene geometry and associated data.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.Color">
+      <summary>
+        <para>The color of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.Fill">
+      <summary>
+        <para>The fill of the geometry. May be null.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.FillTransform">
+      <summary>
+        <para>The filling transform of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.Indices">
+      <summary>
+        <para>The triangle indices of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.SettingIndex">
+      <summary>
+        <para>The setting index of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.UnclippedBounds">
+      <summary>
+        <para>The unclipped bounds of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.UVs">
+      <summary>
+        <para>The UV coordinates of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.Vertices">
+      <summary>
+        <para>The vertices of the geometry.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.Geometry.WorldTransform">
+      <summary>
+        <para>The world transform of the geometry.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.IntersectLines(UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Finds the intersection between two infinite lines</para>
+      </summary>
+      <param name="line1Pt1">The first point of the first line</param>
+      <param name="line1Pt2">The second point of the first line</param>
+      <param name="line2Pt1">The first point of the second line</param>
+      <param name="line2Pt2">The second point of the second line</param>
+      <returns>
+        <para>The intersection point, or (float.PositiveInfinity, float.PositiveInfinity) if the lines are parallel</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.IntersectLineSegments(UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Finds the intersection between two line segments</para>
+      </summary>
+      <param name="line1Pt1">The first point of the first line</param>
+      <param name="line1Pt2">The second point of the first line</param>
+      <param name="line2Pt1">The first point of the second line</param>
+      <param name="line2Pt2">The second point of the second line</param>
+      <returns>
+        <para>The intersection point, or (float.PositiveInfinity, float.PositiveInfinity) if the lines are parallel</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeArc(UnityEngine.Vector2,System.Single,System.Single,System.Single)">
+      <summary>
+        <para>Approximates a circle arc with up to 4 segments.</para>
+      </summary>
+      <param name="center">The center of the arc</param>
+      <param name="startAngleRads">The starting angle of the arc, in radians</param>
+      <param name="sweepAngleRads">The "length" of the arc, in radians</param>
+      <param name="radius">The radius of the arc</param>
+      <returns>
+        <para>An array of up to four BezierSegments holding the arc</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeCircleShape(Unity.VectorGraphics.Shape,UnityEngine.Vector2,System.Single)">
+      <summary>
+        <para>Builds a circle shape.</para>
+      </summary>
+      <param name="circleShape">The shape object that will be filled with a circle.</param>
+      <param name="pos">The position of the circle, relative to its center.</param>
+      <param name="radius">The radius of the circle.</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeEllipseShape(Unity.VectorGraphics.Shape,UnityEngine.Vector2,System.Single,System.Single)">
+      <summary>
+        <para>Builds an ellipse shape.</para>
+      </summary>
+      <param name="ellipseShape">The shape object that will be filled with an ellipse.</param>
+      <param name="pos">The position of the circle, relative to its center.</param>
+      <param name="radiusX">The x component of the radius of the circle.</param>
+      <param name="radiusY">The y component of the radius of the circle.</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeLine(UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Builds a line segment.</para>
+      </summary>
+      <param name="from">The starting position of the line segment</param>
+      <param name="to">The ending position of the line segment</param>
+      <returns>
+        <para>A straight line BezierSegment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakePathLine(UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Builds a line path segment.</para>
+      </summary>
+      <param name="from">The starting position of the line segment</param>
+      <param name="to">The ending position of the line segment</param>
+      <returns>
+        <para>A BezierPathSegment array of two elements, configured in a straight line</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeRectangleShape(Unity.VectorGraphics.Shape,UnityEngine.Rect)">
+      <summary>
+        <para>Builds a rectangle shape.</para>
+      </summary>
+      <param name="rectShape">The shape object that will be filled with a rectangle.</param>
+      <param name="rect">The position and dimensions of the rectangle.</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.MakeRectangleShape(Unity.VectorGraphics.Shape,UnityEngine.Rect,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Builds a rectangle shape.</para>
+      </summary>
+      <param name="rectShape">The shape object that will be filled with a rectangle.</param>
+      <param name="rect">The position and dimensions of the rectangle.</param>
+      <param name="radiusTL">The top-left radius of the rectangle</param>
+      <param name="radiusTR">The top-right radius of the rectangle</param>
+      <param name="radiusBR">The bottom-right radius of the rectangle</param>
+      <param name="radiusBL">The bottom-left radius of the rectangle</param>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.PackRectItem">
+      <summary>
+        <para>Struct to hold a texture atlas location.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.PackRectItem.Fill">
+      <summary>
+        <para>The fill associated with this entry, may be null.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.PackRectItem.Position">
+      <summary>
+        <para>The position of the entry inside the atlas.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.PackRectItem.Rotated">
+      <summary>
+        <para>True if the entry is rotated by 90 degrees.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.PackRectItem.Size">
+      <summary>
+        <para>The size of the entry inside the atlas.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.PathEndsPerfectlyMatch(System.Collections.Generic.IList`1&lt;Unity.VectorGraphics.BezierPathSegment&gt;)">
+      <summary>
+        <para>
+ Checks if the two ends of a BezierPathSegment chain are at the same location.
+ </para>
+      </summary>
+      <param name="path">The chain of BezierPathSegments</param>
+      <returns>
+        <para>True if the two ends of the chain are at the same location, false otherwise</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.PathSegmentAtIndex(System.Collections.Generic.IList`1&lt;Unity.VectorGraphics.BezierPathSegment&gt;,System.Int32)">
+      <summary>
+        <para>
+ Computes the BezierSegment at a given index from a list of BezierPathSegments.
+ </para>
+      </summary>
+      <param name="path">The chain of BezierPathSegments</param>
+      <param name="index">The segment index</param>
+      <returns>
+        <para>The BezierSegment at the given index</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.QuadraticToCubic(UnityEngine.Vector2,UnityEngine.Vector2,UnityEngine.Vector2)">
+      <summary>
+        <para>Converts a quadratic bezier to a cubic bezier</para>
+      </summary>
+      <param name="p0">The starting position of the quadratic segment</param>
+      <param name="p1">The control position of the quadratic segment</param>
+      <param name="p2">The ending position of the quadratic segment</param>
+      <returns>
+        <para>The resulting BezierSegment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.RealignVerticesInBounds(System.Collections.Generic.IList`1&lt;UnityEngine.Vector2&gt;,UnityEngine.Rect,System.Boolean)">
+      <summary>
+        <para>Realigns the vertices (in-place) inside their axis-aligned bounding-box.</para>
+      </summary>
+      <param name="vertices">The vertices to realign</param>
+      <param name="bounds">The bounds into which the vertices will be realigned</param>
+      <param name="flip">A boolean indicating whether to flip the coordinates on the Y axis</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.RenderSprite(UnityEngine.Sprite,UnityEngine.Material,System.Boolean)">
+      <summary>
+        <para>Draws a vector sprite using the provided material.</para>
+      </summary>
+      <param name="sprite">The sprite to render</param>
+      <param name="mat">The material used for rendering</param>
+      <param name="clear">If true, clear the render target before rendering</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.RenderSpriteToTexture2D(UnityEngine.Sprite,System.Int32,System.Int32,UnityEngine.Material,System.Int32,System.Boolean)">
+      <summary>
+        <para>Renders a vector sprite to Texture2D.</para>
+      </summary>
+      <param name="sprite">The sprite to render</param>
+      <param name="width">The desired width of the resulting texture</param>
+      <param name="height">The desired height of the resulting texture</param>
+      <param name="mat">The material used to render the sprite</param>
+      <param name="antiAliasing">The number of samples per pixel for anti-aliasing</param>
+      <param name="expandEdges">When true, expand the edges to avoid a dark banding effect caused by filtering. This is slower to render and uses more graphics memory.</param>
+      <returns>
+        <para>A Texture2D object containing the rendered vector sprite</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SceneNodeBounds(Unity.VectorGraphics.SceneNode)">
+      <summary>
+        <para>Computes a pretty accurate approximation of the scene bounds.</para>
+      </summary>
+      <param name="root">The root node of the hierarchy to computes the bounds from</param>
+      <returns>
+        <para>An approximation of the node hierarchy axis-aligned bounding-box</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SceneNodes(Unity.VectorGraphics.SceneNode)">
+      <summary>
+        <para>Lists every nodes under a root node.</para>
+      </summary>
+      <param name="root">The root node</param>
+      <returns>
+        <para>The enumerable listing every nodes under "root", including the root itself.</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.SceneNodeWorldTransform">
+      <summary>
+        <para>Structure holding the SceneNode computed transforms, opacities and enumeration path.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.SceneNodeWorldTransform.Node">
+      <summary>
+        <para>The node we are currently visiting.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.SceneNodeWorldTransform.Parent">
+      <summary>
+        <para>The parent of the node we are currently visiting.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.SceneNodeWorldTransform.WorldOpacity">
+      <summary>
+        <para>The accumulated world opacity of this node.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.VectorUtils.SceneNodeWorldTransform.WorldTransform">
+      <summary>
+        <para>The accumulated world transform of this node.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SegmentLength(Unity.VectorGraphics.BezierSegment,System.Single)">
+      <summary>
+        <para>Computes the length of a single curve segment.</para>
+      </summary>
+      <param name="segment">The curve segment on which to evaluate the length</param>
+      <param name="precision">The precision of the length computation</param>
+      <returns>
+        <para>The length of the segment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SegmentsInPath(System.Collections.Generic.IEnumerable`1&lt;Unity.VectorGraphics.BezierPathSegment&gt;,System.Boolean)">
+      <summary>
+        <para>Iterates through every segment in a list of path segments.</para>
+      </summary>
+      <param name="segments">The path segments to iterate from</param>
+      <param name="closed">Whether to return the segment connecting the last point to the beginning of the path</param>
+      <returns>
+        <para>An enumerable of every segments in the path</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SegmentsLength(System.Collections.Generic.IList`1&lt;Unity.VectorGraphics.BezierPathSegment&gt;,System.Boolean,System.Single)">
+      <summary>
+        <para>Computes the combined length of a segment chain.</para>
+      </summary>
+      <param name="segments">The curve segments on which to evaluate the length</param>
+      <param name="closed">A boolean indicating if the length of the segment joining the first and last points should be computed</param>
+      <param name="precision">The precision of the length computation</param>
+      <returns>
+        <para>The combined length of the segment chain</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SegmentsLengths(System.Collections.Generic.IList`1&lt;Unity.VectorGraphics.BezierPathSegment&gt;,System.Boolean,System.Single)">
+      <summary>
+        <para>Computes the individual lengths of a segment chain.</para>
+      </summary>
+      <param name="segments">The segments on which to compute the lengths</param>
+      <param name="closed">A boolean indicating if the length of the segment joining the first and last points should be computed</param>
+      <param name="precision">The precision of the lengths computation</param>
+      <returns>
+        <para>An array containing the lenghts of the segments</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.SplitSegment(Unity.VectorGraphics.BezierSegment,System.Single,Unity.VectorGraphics.BezierSegment&amp;,Unity.VectorGraphics.BezierSegment&amp;)">
+      <summary>
+        <para>Splits a curve segment at a given parametric location.</para>
+      </summary>
+      <param name="segment">The curve segment to split</param>
+      <param name="t">The parametric location at which the segment will be split</param>
+      <param name="b1">The output of the first segment</param>
+      <param name="b2">The output of the second segment</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TessellatePath(Unity.VectorGraphics.BezierContour,Unity.VectorGraphics.PathProperties,Unity.VectorGraphics.VectorUtils/TessellationOptions,UnityEngine.Vector2[]&amp;,System.UInt16[]&amp;)">
+      <summary>
+        <para>
+ Tessellates a path.
+ </para>
+      </summary>
+      <param name="contour">The path to tessellate</param>
+      <param name="pathProps">The path properties</param>
+      <param name="tessellateOptions">The tessellation options</param>
+      <param name="vertices">The resulting vertices</param>
+      <param name="indices">The resulting triangles</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TessellateRect(UnityEngine.Rect,UnityEngine.Vector2[]&amp;,System.UInt16[]&amp;)">
+      <summary>
+        <para>Tessellates a rectangle.</para>
+      </summary>
+      <param name="rect">Rectangle to tessellate</param>
+      <param name="vertices">The output vertices</param>
+      <param name="indices">The output triangles</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TessellateRectBorder(UnityEngine.Rect,System.Single,UnityEngine.Vector2[]&amp;,System.UInt16[]&amp;)">
+      <summary>
+        <para>Tessellates a rectangle border.</para>
+      </summary>
+      <param name="rect">Rectangle to tessellate</param>
+      <param name="halfThickness">The half-thickness of the border</param>
+      <param name="vertices">The output vertices</param>
+      <param name="indices">The output triangles</param>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TessellateScene(Unity.VectorGraphics.Scene,Unity.VectorGraphics.VectorUtils/TessellationOptions,System.Collections.Generic.Dictionary`2&lt;Unity.VectorGraphics.SceneNode,System.Single&gt;)">
+      <summary>
+        <para>Tessellates a Scene object into triangles.</para>
+      </summary>
+      <param name="scene">The scene containing the hierarchy to tessellate</param>
+      <param name="tessellationOptions">The tessellation options</param>
+      <param name="nodeOpacities">If provided, the resulting node opacities</param>
+      <returns>
+        <para>A list of tesselated geometry</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.TessellationOptions">
+      <summary>
+        <para>
+ Structure to store the tessellation options.
+ </para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TessellationOptions.MaxCordDeviation">
+      <summary>
+        <para>
+ The maximum distance on the cord to a straight line between to points after which more tessellation will be generated.
+ To disable, specify float.MaxValue.
+ </para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TessellationOptions.MaxTanAngleDeviation">
+      <summary>
+        <para>
+ The maximum angle (in degrees) between the curve tangent and the next point after which more tessellation will be generated.
+ To disable, specify float.MaxValue.
+ </para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TessellationOptions.SamplingStepSize">
+      <summary>
+        <para>
+ The number of samples used internally to evaluate the curves. More samples = higher quality.
+ Should be between 0 and 1 (inclusive).
+ </para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TessellationOptions.StepDistance">
+      <summary>
+        <para>
+ The uniform tessellation step distance.
+ </para>
+      </summary>
+    </member>
+    <member name="T:Unity.VectorGraphics.VectorUtils.TextureAtlas">
+      <summary>
+        <para>A struct to hold packed atlas entries.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TextureAtlas.Entries">
+      <summary>
+        <para>The atlas entries.</para>
+      </summary>
+    </member>
+    <member name="P:Unity.VectorGraphics.VectorUtils.TextureAtlas.Texture">
+      <summary>
+        <para>The texture atlas.</para>
+      </summary>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TransformBezierPath(Unity.VectorGraphics.BezierPathSegment[],UnityEngine.Vector2,System.Single,UnityEngine.Vector2)">
+      <summary>
+        <para>Transforms a path by a transformation matrix.</para>
+      </summary>
+      <param name="path">The path to transform</param>
+      <param name="translation">The translation to apply</param>
+      <param name="rotation">The rotation to apply, in radians</param>
+      <param name="scaling">The scaling to apply</param>
+      <returns>
+        <para>The transformed path</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TransformBezierPath(Unity.VectorGraphics.BezierPathSegment[],Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>Transforms a path by a transformation matrix.</para>
+      </summary>
+      <param name="path">The path to transform</param>
+      <param name="matrix">The transformation matrix to apply on the curve segment</param>
+      <returns>
+        <para>The transformed path</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TransformSegment(Unity.VectorGraphics.BezierSegment,UnityEngine.Vector2,System.Single,UnityEngine.Vector2)">
+      <summary>
+        <para>Transforms a curve segment by a translation, rotation and scaling.</para>
+      </summary>
+      <param name="segment">The curve segment to transform</param>
+      <param name="translation">The translation to apply on the curve segment</param>
+      <param name="rotation">The rotation to apply on the curve segment</param>
+      <param name="scaling">The scaling to apply on the curve segment</param>
+      <returns>
+        <para>The transformed curve segment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.TransformSegment(Unity.VectorGraphics.BezierSegment,Unity.VectorGraphics.Matrix2D)">
+      <summary>
+        <para>Transforms a curve segment by a transformation matrix.</para>
+      </summary>
+      <param name="segment">The curve segment to transform</param>
+      <param name="matrix">The transformation matrix to apply on the curve segment</param>
+      <returns>
+        <para>The transformed curve segment</para>
+      </returns>
+    </member>
+    <member name="M:Unity.VectorGraphics.VectorUtils.WorldTransformedSceneNodes(Unity.VectorGraphics.SceneNode,System.Collections.Generic.Dictionary`2&lt;Unity.VectorGraphics.SceneNode,System.Single&gt;)">
+      <summary>
+        <para>Iterates through every nodes under a root with computed transform and opacities.</para>
+      </summary>
+      <param name="root">The starting node of the hierarchy</param>
+      <param name="nodeOpacities">Storage for the resulting node opacities, may be null</param>
+      <returns>
+        <para>An enumeration of every node with their pre-computed world transforms, opacities and paths.</para>
+      </returns>
+    </member>
+    <member name="T:Unity.VectorGraphics.ViewportOptions">
+      <summary>
+        <para>An enum describing the viewport options to use when importing the SVG document.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.ViewportOptions.DontPreserve">
+      <summary>
+        <para>Don't preserve the viewport defined in the SVG document.</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.ViewportOptions.OnlyApplyRootViewBox">
+      <summary>
+        <para>Applies the root view-box defined in the SVG document (if any).</para>
+      </summary>
+    </member>
+    <member name="F:Unity.VectorGraphics.ViewportOptions.PreserveViewport">
+      <summary>
+        <para>Preserves the viewport defined in the SVG document.</para>
+      </summary>
+    </member>
+  </members>
+</doc>

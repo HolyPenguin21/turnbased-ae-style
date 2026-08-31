@@ -38,46 +38,23 @@ namespace Game.Turns
         [SerializeField] private Button endTurnButton;
         [SerializeField] private float aiStepDelay = 0.5f;
 
-        // Dev-only: when on, the fog overlay follows whichever AI is currently acting instead of
-        // staying on the last human's view (see BeginPlayerTurn) — lets the project owner watch
-        // an AI turn play out through that AI's own VisionSystem set. Inspector checkbox for now,
-        // per the owner's own call — may become a real pre-game setup option later.
-        [SerializeField] private bool debugFollowAiVision;
-
-        // Dev-only: reveals every hex to whichever human is VisionSystem.CurrentViewer, as if
-        // they'd stood on it — the project owner's own request to click straight onto an AI's
-        // citadel and read its army compositions while testing, without having to actually scout
-        // there first. Editor Inspector checkbox during Play Mode only, same convention as
-        // debugFollowAiVision right above — no in-game UI. Purely a render-side override (see
-        // VisionSystem.DebugRevealAll's own comment): it short-circuits only the CurrentViewer-
-        // facing read paths (IsVisibleToCurrentViewer/IsVisitedByCurrentViewer/
-        // HasEverSeenByCurrentViewer), never touches any player's own Visible/Visited/EverSeen
-        // sets — so it can never leak into what an AI itself perceives (AiMapMemory reads those
-        // sets directly, not through CurrentViewer — see VisionSystem's own class comment).
-        [SerializeField] private bool debugRevealFogOfWar;
-
-        // Dev-only: lets an AI turn's own ArmyViewerModal.ShowReadOnly/Hide calls (AiTurnController.
-        // MoveArmyRoutine/PlayCardRoutine and every Level-1 planner's own execution routine) actually
-        // open the popup. Off by default (project owner's own call, 2026-08-21) — with one MoveArmy
-        // per step and several steps per AI turn, the popup opening and closing every single step
-        // reads as constant flicker rather than something watchable. AiDebugLog (Logs/AiDebug.log,
-        // also mirrored to the Console) already logs the same "what did the AI just do" info
-        // alongside every one of these same routines, so testing doesn't need this on to follow an
-        // AI turn — flip it on only to actually watch one army's own popup update live.
-        [SerializeField] private bool debugShowAiArmyModal;
-
-        // Dev-only: writes one line per stealth-detection challenge to Logs/AiDebug.log (also
-        // mirrored to the Console) — observer, hidden unit, hex, spot vs hide dice/hits, and
-        // the outcome; plus a line when a check couldn't roll at all (spot pool 0). Off by
-        // default and never player-facing (stealth design §3/§9 — the challenge itself stays
-        // silent in the combat log / turn popups); flip this on only to trace detection while
-        // testing. Same Inspector-checkbox convention as debugRevealFogOfWar above.
-        [SerializeField] private bool debugLogStealthChallenges;
+        // Dev-only: one switch for watching an AI turn play out. When on it (a) makes the fog
+        // overlay follow whichever AI is currently acting instead of staying on the last human's
+        // view (see BeginPlayerTurn), and shows that AI's own hand/resource debug panels;
+        // (b) reveals every hex to VisionSystem.CurrentViewer as if they'd stood on it
+        // (VisionSystem.DebugRevealAll — purely a render-side override of the CurrentViewer-facing
+        // read paths, never touches any player's own Visible/Visited/EverSeen sets, so it can't
+        // leak into what an AI itself perceives; AiMapMemory reads those sets directly, not
+        // through CurrentViewer — see VisionSystem's own class comment); and (c) writes one line
+        // per stealth-detection challenge to Logs/AiDebug.log / the Console (StealthSystem.DebugLog
+        // — observer, hidden unit, hex, spot vs hide dice/hits, outcome; never player-facing,
+        // stealth design §3/§9). Off by default; Editor Inspector checkbox only, no in-game UI.
+        [SerializeField] private bool debugWatchAiTurns;
 
         private void OnValidate()
         {
-            VisionSystem.DebugRevealAll = debugRevealFogOfWar;
-            Game.Map.StealthSystem.DebugLog = debugLogStealthChallenges;
+            VisionSystem.DebugRevealAll = debugWatchAiTurns;
+            Game.Map.StealthSystem.DebugLog = debugWatchAiTurns;
         }
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
@@ -271,8 +248,8 @@ namespace Game.Turns
             // OnValidate already applies this on every Inspector edit, but that never fires on a
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
-            VisionSystem.DebugRevealAll = debugRevealFogOfWar;
-            StealthSystem.DebugLog = debugLogStealthChallenges;
+            VisionSystem.DebugRevealAll = debugWatchAiTurns;
+            StealthSystem.DebugLog = debugWatchAiTurns;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
             if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
@@ -938,8 +915,8 @@ namespace Game.Turns
             // sharing one screen, so this has to track CurrentPlayer, not "the" human (there
             // isn't always exactly one). Left untouched on an AI/Neutral turn — no screen to
             // switch to, so the last human's own view stays up rather than going blank — unless
-            // debugFollowAiVision opts into watching that AI's own vision instead.
-            if (player.IsHuman || debugFollowAiVision)
+            // debugWatchAiTurns opts into watching that AI's own vision instead.
+            if (player.IsHuman || debugWatchAiTurns)
                 VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
 
@@ -958,17 +935,17 @@ namespace Game.Turns
                 StealthSystem.TakeDetectionNotices(player);
                 if (turnInfoPopup != null)
                     turnInfoPopup.ShowForOther(player);
-                // debugFollowAiVision's hand/resources half (see ShowAiHandDebug/ShowRootDebug's
+                // debugWatchAiTurns' hand/resources half (see ShowAiHandDebug/ShowRootDebug's
                 // own comments) — shown before RunTurn starts so both are already visible for the
                 // very first decision; the hand stays live via ctx.HumanCardHandUI's own refresh
                 // calls, resources via PlayerRoot.ResourcesChanged same as the human's own always
                 // did.
-                if (debugFollowAiVision && cardHand != null)
+                if (debugWatchAiTurns && cardHand != null)
                     cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
-                if (debugFollowAiVision)
+                if (debugWatchAiTurns)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
-                    armyViewerModal, cardHand, aiStepDelay, gameConfig, TurnNumber, debugShowAiArmyModal,
+                    cardHand, aiStepDelay, gameConfig, TurnNumber,
                     researchProductionModal != null ? researchProductionModal.Catalog : null);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }

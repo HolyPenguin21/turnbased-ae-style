@@ -106,7 +106,7 @@ namespace Game.UI
         // cancels; a failed attach shows the reason and also ends the mode, card left in hand.
         private CardData _pendingEquipment;
         public bool IsAttachMode => _pendingEquipment != null;
-        // Dev-only mirror of _cards for GameTurnController's debugFollowAiVision toggle (see
+        // Dev-only mirror of _cards for GameTurnController's debugWatchAiTurns toggle (see
         // ShowAiHandDebug) — kept fully separate so swapping the display never touches the
         // human's own real hand/deck state underneath.
         private readonly List<CardUI> _debugCards = new List<CardUI>();
@@ -362,7 +362,7 @@ namespace Game.UI
         private static PlayerRoot FindHumanRoot() => GameSession.FindHumanRoot();
 
         // Dev-only: swaps the visible hand row for `hand`'s own cards (see GameTurnController.
-        // debugFollowAiVision) — the real hand's own _cards are only hidden, never touched, so
+        // debugWatchAiTurns) — the real hand's own _cards are only hidden, never touched, so
         // nothing about the human's actual hand/deck state changes. Read-only in practice without
         // needing its own flag: CanDragCards() already requires turnController.CurrentPlayer.
         // IsHuman, which is false for the whole AI turn this is ever shown during, so these cards
@@ -403,7 +403,7 @@ namespace Game.UI
         // Re-lays-out the currently shown debug hand from `hand`'s latest contents — a no-op
         // unless ShowAiHandDebug is already active, so Game.Ai.AiTurnController can call this
         // after every decision step (hand contents can change mid-turn — a draw, a deploy) without
-        // needing to know whether debugFollowAiVision is even on.
+        // needing to know whether debugWatchAiTurns is even on.
         public void RefreshAiHandDebugIfShowing(AiHandData hand)
         {
             if (_showingDebugHand)
