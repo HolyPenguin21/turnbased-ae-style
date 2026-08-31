@@ -382,6 +382,11 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // Turn-scoped activity record (main vs reaction vs total). Reset here so a stale
+            // Reaction bucket from last turn can never leak into this turn's Total.
+            V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
+            CapabilityPoolExhaustionRegistry.BeginTurn(player, ctx.TurnNumber);
+
             // Initiative AP telemetry — captured now (turn start) and written back at turn end.
             // Belongs EXCLUSIVELY to Game.Ai.V2.Initiative analysis; nothing else in this pipeline
             // reads it (see InitiativeAnalyticsHistory).
@@ -510,6 +515,8 @@ namespace Game.Ai.V2
             while (true)
             {
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                bool anyFailure = false;
+                bool allFailuresArePoolWide = true;
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null)
@@ -517,6 +524,10 @@ namespace Game.Ai.V2
                     StableMissionKey key = StableMissionKey.For(fe.Mission);
                     if (provSession.AlreadyProvisioned(key))
                         continue; // locked by an earlier pass this turn
+                    // A capability pool already proven pool-wide unable this turn is not asked again.
+                    if (CapabilityPoolExhaustionRegistry.IsExhausted(player,
+                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission)))
+                        continue;
 
                     ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
                     if (result.Success)
@@ -532,6 +543,14 @@ namespace Game.Ai.V2
                     }
                     else
                     {
+                        anyFailure = true;
+                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
+                            snapshot, player, fe.Mission, result.Failure);
+                        if (poolWide)
+                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
+                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
+                                $"{result.Failure.Kind}: no eligible actor in snapshot");
+                        allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
                         AiDebugLog.Write($"[AI][V2]   provision {key} — FAIL {result.Failure.Kind} "
@@ -539,6 +558,11 @@ namespace Game.Ai.V2
                     }
                 }
 
+                if (anyFailure && allFailuresArePoolWide)
+                {
+                    AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
+                    break;
+                }
                 if (!session.HasNewFailures || session.Converged || ++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;
                 allocation = session.Pack();
@@ -546,7 +570,7 @@ namespace Game.Ai.V2
 
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, V2Phase.Main);
             foreach (ExecutionResult er in executed)
                 ledger.RecordExecution(er);
             ledger.RecordDeferrals(allocation.Deferred);
@@ -584,10 +608,27 @@ namespace Game.Ai.V2
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
+            // --- Main-phase activity bucket. Derived from this pipeline's own facts exactly once;
+            //     the Reaction bucket is owned by StrategicReactionPass. Total = Main + Reaction.
+            V2PhaseActivity main = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
+            main.DemandsRaised = demands.Count;
+            main.MissionsConsidered = missions.Count;
+            main.MissionsFunded = allocation.Funded.Count;
+            main.Provisioned = provisioned.Count;
+            main.ExecutionAttempts = executed.Count;
+            main.ExecutionsSucceeded = executed.Count(MissionRevalidator.WasGenuineExecution);
+            main.ExecutionsStaleOrSkipped = executed.Count(MissionRevalidator.WasStaleOrSkipped);
+            main.CardsPlayed = phaseA.CardsPlayed + phaseB.CardsPlayed;
+            main.CardsDrawn = phaseA.CardsDrawn + phaseB.CardsDrawn;
+            main.InfrastructureBuilt = phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
+            foreach (System.Collections.Generic.KeyValuePair<DesireAxis, float> kv in phaseA.ApDebited)
+                if (kv.Value > 0f) main.CapabilityDeliveries++;
+
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
                 + $"funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
                 + $"executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
+            V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;

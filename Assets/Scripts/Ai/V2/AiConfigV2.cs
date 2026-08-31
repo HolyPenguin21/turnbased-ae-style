@@ -192,6 +192,23 @@ namespace Game.Ai.V2
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
 
         // =======================================================================================
+        //  DEF / ECO / DEV DEMAND CONSUMERS  (DemandLayer minimal vertical slices)
+        //  Deterministic thresholds, not combat simulation. A DEF demand is raised ONLY when a
+        //  Citadel/Base is under real threat AND its committed defence is below requirement (see
+        //  the saturation gate in DemandLayer.DefenceDemands); ECO/DEV only when a genuine
+        //  structural gap exists (starved resource with an unbuilt site, or no development
+        //  facility). None of the three fire merely because resources are free.
+        // =======================================================================================
+        public const float defenceSeverityTrigger = 0.18f;    // AssetThreatSnapshot.Severity at/above this raises DEF
+        public const float defencePerBodyPowerEstimate = 6f;   // ~power one garrison body adds, for sizing DesiredAmount
+        public const int defenceMaxBodiesPerAsset = 2;         // cap on bodies requested for one asset in one turn
+        public const int defenceMaxDemandsPerTurn = 2;         // anti-spam cap across all threatened assets
+        public const float defenceReserveMargin = 1.15f;       // requiredDefence = threateningPower * this
+
+        public const int economyMaxDemandsPerTurn = 1;         // one extraction-infrastructure demand at a time
+        public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
+
+        // =======================================================================================
         //  COMBAT OPPORTUNITY ANALYZER  (shared estimator — ONE ESTIMATOR, MANY STAGES)
         //  Snapshot-fidelity tier: ranks known enemy/neutral ARMY sightings (the target set that
         //  actually carries per-unit DefenderProfiles) by whether a realistically assemblable

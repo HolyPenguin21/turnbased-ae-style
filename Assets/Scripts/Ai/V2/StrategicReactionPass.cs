@@ -19,6 +19,8 @@ namespace Game.Ai.V2
         public int Missions;
         public int Provisioned;
         public int Executed;
+        public int ExecutionsSucceeded;
+        public int ExecutionsStaleOrSkipped;
         public int CardsPlayed;
         public int CardsDrawn;
         public int Rounds;
@@ -50,6 +52,10 @@ namespace Game.Ai.V2
             result.Ran = true;
             result.Rounds++;
             result.DiscoveredTargets += targetIds.Count;
+
+            // A bounded reaction round is a fresh capability-exhaustion scope: Phase A below may
+            // materialise new capability, so nothing the main pass marked exhausted carries in.
+            CapabilityPoolExhaustionRegistry.BeginRound(player, ctx.TurnNumber, round + 1);
 
             if (hand == null)
             {
@@ -114,13 +120,17 @@ namespace Game.Ai.V2
             while (true)
             {
                 bool anyFailure = false;
-                bool allFailuresAreExhaustedScoutPool = true;
+                bool allFailuresArePoolWide = true;
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null) continue;
                     StableMissionKey key = StableMissionKey.For(fe.Mission);
                     if (provSession.AlreadyProvisioned(key)) continue;
+                    // A capability pool already proven pool-wide unable this round is not asked again.
+                    if (CapabilityPoolExhaustionRegistry.IsExhausted(player,
+                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission)))
+                        continue;
 
                     ProvisioningResult provision = ProvisioningManager.Provision(
                         player, root, hand, ctx, provSession, fe);
@@ -137,8 +147,13 @@ namespace Game.Ai.V2
                     else
                     {
                         anyFailure = true;
-                        bool exhaustedScoutPool = IsExhaustedScoutPoolFailure(snapshot, fe, provision.Failure);
-                        allFailuresAreExhaustedScoutPool &= exhaustedScoutPool;
+                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
+                            snapshot, player, fe.Mission, provision.Failure);
+                        if (poolWide)
+                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
+                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
+                                $"reaction {provision.Failure.Kind}: no eligible actor in snapshot");
+                        allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
                         AiDebugLog.Write($"[AI][V2]   reaction provision {key} — FAIL "
@@ -147,9 +162,9 @@ namespace Game.Ai.V2
                     }
                 }
 
-                if (anyFailure && allFailuresAreExhaustedScoutPool)
+                if (anyFailure && allFailuresArePoolWide)
                 {
-                    AiDebugLog.Write("[AI][V2] reaction — recon capability pool exhausted this cycle; stop key-by-key scout reallocation");
+                    AiDebugLog.Write("[AI][V2] reaction — every funded mission's capability pool is exhausted this cycle; stop key-by-key reallocation");
                     break;
                 }
                 if (!session.HasNewFailures || session.Converged
@@ -160,8 +175,10 @@ namespace Game.Ai.V2
 
             result.Provisioned += provisioned.Count;
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, V2Phase.Reaction);
             result.Executed += executed.Count;
+            result.ExecutionsSucceeded += executed.Count(MissionRevalidator.WasGenuineExecution);
+            result.ExecutionsStaleOrSkipped += executed.Count(MissionRevalidator.WasStaleOrSkipped);
             foreach (ExecutionResult er in executed)
                 outcomeLedger.RecordExecution(er);
             outcomeLedger.RecordDeferrals(allocation.Deferred);
@@ -185,6 +202,20 @@ namespace Game.Ai.V2
             result.CardsDrawn += phaseB.CardsDrawn;
             result.StateChanged |= phaseB.StateChanged || executed.Count > 0;
 
+            // Reaction-phase activity bucket (additive across the up-to-2 bounded rounds). The
+            // Main bucket is owned by Pipeline.RunTurn; Total = Main + Reaction, no double count.
+            V2PhaseActivity ract = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Reaction);
+            ract.DemandsRaised += demands.Count;
+            ract.MissionsConsidered += missions.Count;
+            ract.MissionsFunded += allocation.Funded.Count;
+            ract.Provisioned += provisioned.Count;
+            ract.ExecutionAttempts += executed.Count;
+            ract.ExecutionsSucceeded += executed.Count(MissionRevalidator.WasGenuineExecution);
+            ract.ExecutionsStaleOrSkipped += executed.Count(MissionRevalidator.WasStaleOrSkipped);
+            ract.CardsPlayed += phaseA.CardsPlayed + phaseB.CardsPlayed;
+            ract.CardsDrawn += phaseB.CardsDrawn;
+            ract.InfrastructureBuilt += phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
+
             AiDebugLog.Write($"[AI][V2] reaction — END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
                 + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "
                 + $"executed {executed.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
@@ -203,21 +234,6 @@ namespace Game.Ai.V2
                     StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
                 }
             }
-        }
-
-        private static bool IsExhaustedScoutPoolFailure(WorldSnapshot snapshot, FundedEntry funded,
-            ProvisionFailure failure)
-        {
-            if (failure.Kind != ProvisionFailureKind.MoverContended
-                || funded?.Mission?.Kind != MissionKind.Scout
-                || !(funded.Mission.Target is ScoutMissionTarget target))
-                return false;
-
-            // Ignore ProvisioningSession claims here on purpose. If the frozen/live reaction
-            // snapshot itself has zero eligible ready actors, changing the mission key cannot make
-            // another recon job executable this cycle. Conversely, when a second ready scout really
-            // exists, Eligible(..., null) keeps the normal re-pack fallback alive.
-            return ScoutMoverSelector.Eligible(snapshot, target, null).Count == 0;
         }
     }
 }

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Economy;
+using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
 
@@ -309,11 +311,200 @@ namespace Game.Ai.V2
             return System.Array.Empty<WorthIt.DefenderProfile>();
         }
 
-        private static IEnumerable<AxisDemand> DefenceDemands(WorldSnapshot s, DesireBreakdown b) =>
-            Enumerable.Empty<AxisDemand>();
-        private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b) =>
-            Enumerable.Empty<AxisDemand>();
-        private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b) =>
-            Enumerable.Empty<AxisDemand>();
+        // ---------------------------------------------------------------------------------------
+        //  DEF — a threatened Citadel/Base whose committed defence is below requirement. NEVER
+        //  fires just because resources are free: it needs a real AssetThreatSnapshot above the
+        //  severity trigger AND a saturation deficit. Existing garrison + own field armies already
+        //  standing on the asset + defence bodies already requested earlier in THIS same call are
+        //  all subtracted before a new demand is raised (spec §5).
+        // ---------------------------------------------------------------------------------------
+        private static IEnumerable<AxisDemand> DefenceDemands(WorldSnapshot s, DesireBreakdown b)
+        {
+            IReadOnlyList<AssetThreatSnapshot> threats = s?.Threat?.Threats;
+            if (threats == null || threats.Count == 0 || s.Self?.Armies == null)
+            {
+                AiDebugLog.Write("[AI][V2][Demand][Defence] decision=NONE reason=no_asset_threats");
+                yield break;
+            }
+
+            // Highest-severity threat per defended asset hex.
+            var worst = new Dictionary<HexCoord, AssetThreatSnapshot>();
+            foreach (AssetThreatSnapshot t in threats)
+            {
+                if (t?.Asset == null || t.Contact == null)
+                    continue;
+                if (t.Asset.Kind != AssetKind.Citadel && t.Asset.Kind != AssetKind.Base)
+                    continue;
+                if (t.Severity < AiConfigV2.defenceSeverityTrigger)
+                    continue;
+                if (!worst.TryGetValue(t.Asset.Hex, out AssetThreatSnapshot cur) || t.Severity > cur.Severity)
+                    worst[t.Asset.Hex] = t;
+            }
+            if (worst.Count == 0)
+            {
+                AiDebugLog.Write($"[AI][V2][Demand][Defence] decision=SATISFIED reason=no_threat_above_severity_trigger "
+                    + $"trigger={AiConfigV2.defenceSeverityTrigger:0.##} threats={threats.Count}");
+                yield break;
+            }
+
+            int emitted = 0;
+            var plannedByHex = new Dictionary<HexCoord, float>();
+            foreach (AssetThreatSnapshot t in worst.Values
+                .OrderByDescending(x => x.Severity).ThenBy(x => x.Asset.Hex.Q).ThenBy(x => x.Asset.Hex.R))
+            {
+                if (emitted >= AiConfigV2.defenceMaxDemandsPerTurn)
+                    break;
+
+                HexCoord hex = t.Asset.Hex;
+                float threateningPower = t.Contact.Army?.EffectiveArmyPower ?? 0f;
+                float required = threateningPower * AiConfigV2.defenceReserveMargin;
+
+                float existingGarrison = 0f, assignedField = 0f;
+                foreach (ArmySnapshot a in s.Self.Armies)
+                {
+                    if (a == null || !a.Hex.Equals(hex)) continue;
+                    if (a.IsGarrison) existingGarrison += a.EffectiveArmyPower;
+                    else if (!a.IsAir && !a.IsPrison) assignedField += a.EffectiveArmyPower;
+                }
+                plannedByHex.TryGetValue(hex, out float planned);
+                float available = existingGarrison + assignedField + planned;
+
+                if (available + AiConfigV2.allocatorSliceEpsilon >= required)
+                {
+                    AiDebugLog.Write($"[AI][V2][Demand][Defence] decision=SATISFIED asset=({hex.Q},{hex.R}) "
+                        + $"kind={t.Asset.Kind} severity={t.Severity:0.##} required={required:0.#} "
+                        + $"available={available:0.#} (garrison={existingGarrison:0.#} field={assignedField:0.#} "
+                        + $"planned={planned:0.#}) — saturated");
+                    continue;
+                }
+
+                float deficit = required - available;
+                int bodies = Mathf.Clamp(
+                    Mathf.CeilToInt(deficit / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate)),
+                    1, AiConfigV2.defenceMaxBodiesPerAsset);
+                plannedByHex[hex] = planned + bodies * AiConfigV2.defencePerBodyPowerEstimate;
+                emitted++;
+
+                AiDebugLog.Write($"[AI][V2][Demand][Defence] decision=CREATE asset=({hex.Q},{hex.R}) "
+                    + $"kind={t.Asset.Kind} capability=GarrisonCombatPower desired={bodies} "
+                    + $"severity={t.Severity:0.##} required={required:0.#} available={available:0.#} "
+                    + $"deficit={deficit:0.#} (garrison={existingGarrison:0.#} field={assignedField:0.#})");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Defence,
+                    Capability = CapabilityKind.GarrisonCombatPower,
+                    DesiredAmount = bodies,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = hex,
+                    Value = Mathf.Clamp01(t.Severity) * 100f,
+                    Explain = $"{t.Asset.Kind} @({hex.Q},{hex.R}) under threat sev {t.Severity:0.##}: "
+                        + $"need ~{required:0.#} defence, have {available:0.#} "
+                        + $"(garrison {existingGarrison:0.#} + field {assignedField:0.#}); request {bodies} body(s)",
+                };
+            }
+
+            if (emitted == 0)
+                AiDebugLog.Write("[AI][V2][Demand][Defence] decision=SATISFIED reason=all_threatened_assets_saturated");
+        }
+
+        // ---------------------------------------------------------------------------------------
+        //  ECO — a resource type with NO income source AND a known unbuilt resource hex for it.
+        //  This is a structural gap (the AI is not extracting a resource it could be), not a
+        //  surplus opportunity. One demand at a time.
+        // ---------------------------------------------------------------------------------------
+        private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b)
+        {
+            IReadOnlyList<KeyValuePair<HexCoord, ResourceType>> resourceHexes = s?.Known?.ResourceHexes;
+            if (resourceHexes == null || resourceHexes.Count == 0 || s.Self == null)
+            {
+                AiDebugLog.Write("[AI][V2][Demand][Economy] decision=NONE reason=no_known_resource_hexes");
+                yield break;
+            }
+
+            var knownBuilt = new HashSet<HexCoord>();
+            if (s.Known.Buildings != null)
+                foreach (AiMapMemory.KnownBuilding kb in s.Known.Buildings)
+                    knownBuilt.Add(kb.Hex);
+
+            int emitted = 0;
+            var seenTypes = new HashSet<ResourceType>();
+            foreach (KeyValuePair<HexCoord, ResourceType> rh in resourceHexes
+                .OrderBy(x => x.Key.Q).ThenBy(x => x.Key.R))
+            {
+                if (emitted >= AiConfigV2.economyMaxDemandsPerTurn)
+                    break;
+                if (knownBuilt.Contains(rh.Key) || seenTypes.Contains(rh.Value))
+                    continue;
+
+                bool hasIncome = HasIncomeFor(s, rh.Value);
+                if (hasIncome)
+                    continue;
+                seenTypes.Add(rh.Value);
+                emitted++;
+
+                AiDebugLog.Write($"[AI][V2][Demand][Economy] decision=CREATE hex=({rh.Key.Q},{rh.Key.R}) "
+                    + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=no_income_source_for_type");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.EconomicInfrastructure,
+                    DesiredAmount = 1,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = rh.Key,
+                    Value = 55f,
+                    Explain = $"no income for {rh.Value}; known unbuilt {rh.Value} site @({rh.Key.Q},{rh.Key.R})",
+                };
+            }
+
+            if (emitted == 0)
+                AiDebugLog.Write("[AI][V2][Demand][Economy] decision=SATISFIED reason=every_known_site_built_or_type_has_income");
+        }
+
+        // ---------------------------------------------------------------------------------------
+        //  DEV — no Research/Production facility yet. A capability gap that blocks the whole
+        //  Development axis downstream. One demand at a time.
+        // ---------------------------------------------------------------------------------------
+        private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b)
+        {
+            if (s?.Self == null)
+            {
+                AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_self_snapshot");
+                yield break;
+            }
+            if (s.Self.HasDevFacility)
+            {
+                AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED reason=development_facility_exists");
+                yield break;
+            }
+            if (s.Self.BaseHexes == null || s.Self.BaseHexes.Count == 0)
+            {
+                AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_base_to_expand");
+                yield break;
+            }
+
+            HexCoord anchor = s.Self.BaseHexes[0];
+            AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({anchor.Q},{anchor.R}) "
+                + "capability=DevelopmentInfrastructure desired=1 reason=no_research_production_facility");
+            yield return new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Development,
+                Capability = CapabilityKind.DevelopmentInfrastructure,
+                DesiredAmount = 1,
+                RequiredTraits = TraitPreference.None,
+                MinimumFollowupAp = 0f,
+                TargetHex = anchor,
+                Value = 45f,
+                Explain = "no Research/Production facility — Development axis has no operator base",
+            };
+        }
+
+        private static bool HasIncomeFor(WorldSnapshot s, ResourceType type)
+        {
+            if (s?.Self?.PerTurnIncome != null && s.Self.PerTurnIncome.Get(type) > 0f)
+                return true;
+            return false;
+        }
     }
 }

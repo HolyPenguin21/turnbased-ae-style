@@ -14,6 +14,7 @@ namespace Game.Ai.V2
         public bool StateChanged;
         public int CardsPlayed;
         public int CardsDrawn;
+        public int InfrastructureBuilt;
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
 
@@ -75,6 +76,38 @@ namespace Game.Ai.V2
                 .ToList();
             if (states.Count == 0)
                 return result;
+
+            // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
+            //     demands are fulfilled by BuildingPlayExecutor through the authoritative gameplay
+            //     API, NOT the Unit/Hero materialization chain below. Charged to the requesting
+            //     axis exactly like a card play. Handled here once, then blocked so the generic
+            //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
+            foreach (DemandState istate in states.Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability)))
+            {
+                istate.Blocked = true;
+                InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
+                    snap, player, root, hand, ctx, istate.Demand);
+                if (infra.StateChanged)
+                    result.StateChanged = true;
+                if (infra.ApSpent > 0f)
+                {
+                    ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
+                    result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
+                }
+                if (infra.Built)
+                {
+                    istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
+                    result.CardsPlayed++;
+                    result.InfrastructureBuilt++;
+                    AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
+                        + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
+                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
+                }
+            }
 
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
@@ -316,6 +349,8 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.FieldCombatPower:
                     return RaidAssemblyPlanner.IsReadyRaidActor(army);
+                case CapabilityKind.GarrisonCombatPower:
+                    return army.IsGarrison;
                 case CapabilityKind.Hero:
                     return army.HasHero && RaidAssemblyPlanner.IsReadyRaidActor(army);
                 case CapabilityKind.ScoutCapability:

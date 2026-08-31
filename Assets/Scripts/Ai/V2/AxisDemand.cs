@@ -18,10 +18,16 @@ namespace Game.Ai.V2
 
     public enum CapabilityKind
     {
-        ScoutCapability,       // a solo Recce able to run a Scout mission (the only one wired now)
-        GarrisonCombatPower,   // defensive body at a specific base            (future)
-        FieldCombatPower,      // offensive body for a field force             (future)
-        Hero,                  // a hero to lead / research / build            (future)
+        ScoutCapability,       // a solo Recce able to run a Scout mission
+        GarrisonCombatPower,   // defensive body at a specific base
+        FieldCombatPower,      // offensive body for a field force
+        Hero,                  // a hero to lead / research / build
+
+        // Infrastructure. Fulfilled by BuildingPlayExecutor through the authoritative gameplay
+        // APIs (HexSelectionController.SpawnBuilding / TryBuildExtractionFacility), NOT by the
+        // Unit/Hero MaterializationCandidateBuilder path — see InfrastructureFulfillment.
+        EconomicInfrastructure,    // an extraction facility / economy building at a resource site
+        DevelopmentInfrastructure, // a Research/Production-capable base or facility
     }
 
     // Optional preferred characteristics of the capability. Flags so a demand can want several.

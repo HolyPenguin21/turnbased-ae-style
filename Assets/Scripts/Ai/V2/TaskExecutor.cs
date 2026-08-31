@@ -45,10 +45,15 @@ namespace Game.Ai.V2
     internal static class TaskExecutor
     {
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results)
+            IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
+            WorldSnapshot snapshot = null, V2Phase phase = V2Phase.Main)
         {
             if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
                 yield break;
+
+            V2PhaseActivity activity = ctx != null
+                ? V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, phase)
+                : new V2PhaseActivity();
 
             // Indexed execution is intentional: optional AP may use only the slack ABOVE every
             // mandatory AP claim owned by the current and still-pending provisioned missions.
@@ -70,6 +75,40 @@ namespace Game.Ai.V2
                 result.StartHex = army.Hex;
                 result.FinalHex = army.Hex;
                 int apBefore = root != null ? root.ActionPoints : 0;
+
+                // --- Live mission revalidation. An earlier mission in this batch may have moved the
+                //     world under this one. A stale mission spends no AP, plays no card, and is
+                //     never counted a successful execution.
+                MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
+                if (validity == MissionValidity.StaleGoalMet
+                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, out HexCoord replFocus)
+                    && !VisionSystem.IsVisited(player, replFocus))
+                {
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus ({pm.ExecutionHex.Q},{pm.ExecutionHex.R}) "
+                        + $"already satisfied; bounded replacement re-points mover #{pm.MoverArmyId} to "
+                        + $"({replFocus.Q},{replFocus.R}) from the turn's own frontier (no replan)");
+                    pm.ExecutionHex = replFocus;
+                    pm.FocusHex = replFocus;
+                    activity.ReplacementMissions++;
+                    validity = MissionRevalidator.Validate(player, root, ctx, pm);
+                }
+
+                if (MissionRevalidator.IsStale(validity))
+                {
+                    result.FinalHex = army.Hex;
+                    result.ApSpent = 0f;
+                    result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
+                    result.StopReason = validity == MissionValidity.StaleMoverLost
+                        ? ExecutionStopReason.MoverLost
+                        : validity == MissionValidity.StaleGoalMet
+                            ? ExecutionStopReason.ReachedGoal
+                            : ExecutionStopReason.TargetInvalidated;
+                    results.Add(result);
+                    activity.ExecutionsStaleOrSkipped++;
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — revalidation: {validity}; "
+                        + "no movement, 0 AP, not a successful execution");
+                    continue;
+                }
 
                 if (pm.Kind == MissionKind.Raid)
                 {
