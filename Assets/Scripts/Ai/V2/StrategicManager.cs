@@ -125,7 +125,8 @@ namespace Game.Ai.V2
                 }
 
                 PhaseACandidate selected = feasible
-                    .OrderBy(c => ConsumesTraitRequiredByOtherFeasibleDemand(c, feasible) ? 1 : 0)
+                    .OrderBy(c => ConsumesResourceNeededByHigherPriorityDemand(c, feasible, root) ? 1 : 0)
+                    .ThenBy(c => ConsumesTraitRequiredByOtherFeasibleDemand(c, feasible) ? 1 : 0)
                     .ThenByDescending(ArbitrationScore)
                     .ThenByDescending(c => c.State.Demand.Value)
                     .ThenBy(c => (int)c.State.Demand.RequestingAxis)
@@ -247,6 +248,65 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // Preserve a physically scarce resource for a harder capability gate before spending it on
+        // a more fungible one. This is intentionally asymmetric: a Hero shortage is a binary raid
+        // gate, while generic FieldCombatPower can usually be supplied by many bodies. Without this
+        // portfolio guard the first infantry candidate could consume the last Human and make the
+        // simultaneously feasible Hero demand impossible in the very next Phase-A iteration.
+        private static bool ConsumesResourceNeededByHigherPriorityDemand(PhaseACandidate candidate,
+            IReadOnlyList<PhaseACandidate> feasible, PlayerRoot root)
+        {
+            if (root == null || candidate.State?.Demand == null)
+                return false;
+
+            int candidatePriority = CapabilityResourcePriority(candidate.State.Demand.Capability);
+            foreach (PhaseACandidate other in feasible)
+            {
+                if (ReferenceEquals(other.State, candidate.State) || other.State?.Demand == null)
+                    continue;
+                if (CapabilityResourcePriority(other.State.Demand.Capability) <= candidatePriority)
+                    continue;
+
+                foreach (ResourceType type in ResourceBundle.All)
+                {
+                    int spend = ResourceSpend(candidate.Plan, type);
+                    int otherNeed = ResourceSpend(other.Plan, type);
+                    if (spend <= 0 || otherNeed <= 0)
+                        continue;
+                    if (root.GetResource(type) - spend < otherNeed)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static int CapabilityResourcePriority(CapabilityKind capability)
+        {
+            switch (capability)
+            {
+                case CapabilityKind.Hero: return 3;
+                case CapabilityKind.ScoutCapability: return 2;
+                case CapabilityKind.FieldCombatPower: return 1;
+                case CapabilityKind.GarrisonCombatPower: return 0;
+                default: return 0;
+            }
+        }
+
+        private static int ResourceSpend(MaterializationPlan plan, ResourceType type)
+        {
+            ResourceCost cost = plan?.ResCost;
+            if (cost == null)
+                return 0;
+            switch (type)
+            {
+                case ResourceType.Human: return Mathf.Max(0, cost.human);
+                case ResourceType.Energy: return Mathf.Max(0, cost.energy);
+                case ResourceType.Materials: return Mathf.Max(0, cost.materials);
+                case ResourceType.Tech: return Mathf.Max(0, cost.tech);
+                default: return 0;
+            }
+        }
+
         private static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)
         {
@@ -267,6 +327,42 @@ namespace Game.Ai.V2
                     return Mathf.Max(0, after.ReadyScouts - before.ReadyScouts);
                 default:
                     return 0f;
+            }
+        }
+
+        // Phase B may let an unresolved strategic demand outrank the generic surplus threshold, but
+        // only when this placement can operationally deliver that demand. Matching CapabilityKind is
+        // not enough: a FieldCombatPower card sent to garrison is reserve/potential, not a mobile
+        // raid actor, and must be evaluated as ordinary surplus instead of receiving a residual pass.
+        private static bool CanDeliverResidualOperationally(MaterializationPlan plan, AxisDemand demand)
+        {
+            if (plan == null || demand == null)
+                return false;
+
+            switch (demand.Capability)
+            {
+                case CapabilityKind.ScoutCapability:
+                    return true;
+                case CapabilityKind.GarrisonCombatPower:
+                    return plan.Deploy.Kind == DeploymentKind.Garrison;
+                case CapabilityKind.Hero:
+                    return plan.Deploy.Kind == DeploymentKind.ExistingArmy
+                        && plan.Deploy.Army != null
+                        && plan.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
+                case CapabilityKind.FieldCombatPower:
+                {
+                    if (plan.Deploy.Kind == DeploymentKind.Garrison)
+                        return false;
+                    CardDefinition def = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
+                    bool hero = def != null && def.cardType == CardType.Hero;
+                    if (!hero)
+                        return true;
+                    return plan.Deploy.Kind == DeploymentKind.ExistingArmy
+                        && plan.Deploy.Army != null
+                        && plan.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
+                }
+                default:
+                    return false;
             }
         }
 
@@ -305,8 +401,19 @@ namespace Game.Ai.V2
                     break;
 
                 MaterializationPlan plan = pick.Value.plan;
-                AxisDemand residual = result.Reservation.BestUnresolvedDemandFor(plan);
+                AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
+                AxisDemand residual = matchedResidual != null && CanDeliverResidualOperationally(plan, matchedResidual)
+                    ? matchedResidual
+                    : null;
                 SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
+
+                if (matchedResidual != null && residual == null)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — residual bypass denied for {plan.StableKey}: "
+                        + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
+                        + "evaluate as generic surplus");
+                }
+
                 if (residual == null && pick.Value.utility < admission.EffectiveThreshold)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
@@ -320,7 +427,7 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
                         + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(pick.Value.utility)} "
-                        + "(strategic residual outranks generic surplus)");
+                        + "(operational strategic residual outranks generic surplus)");
                 }
                 else
                 {
@@ -371,13 +478,6 @@ namespace Game.Ai.V2
                     cleanStop = false;
                     break;
                 }
-                if (residual != null)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — residual {residual.Capability} unchanged: "
-                        + "deployment was reserve/potential only; stop residual loop without false reaction");
-                    cleanStop = false;
-                    break;
-                }
             }
 
             if (result.CardsPlayed > 0)
@@ -415,12 +515,16 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx, inv, commitments, result.Reservation);
                 if (pick != null)
                 {
-                    AxisDemand residual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
+                    AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
+                    AxisDemand residual = matchedResidual != null
+                        && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual)
+                        ? matchedResidual
+                        : null;
                     SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
                     if (residual != null || pick.Value.utility >= adm.EffectiveThreshold)
                     {
                         AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: "
-                            + $"{(residual != null ? "a residual demand" : "a worthwhile surplus chain")} "
+                            + $"{(residual != null ? "an operational residual demand" : "a worthwhile surplus chain")} "
                             + $"is now actionable ({pick.Value.plan.StableKey})");
                         if (drawn > 0)
                         {
