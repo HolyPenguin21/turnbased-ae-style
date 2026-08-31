@@ -118,7 +118,7 @@ namespace Game.Ai.V2
                 int maxIterations = army.CurrentMovement + 1;
                 int iterations = 0;
                 ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
-                HexCoord executionHex = pm.ExecutionHex; // immutable mission focus / surveil vantage
+                HexCoord executionHex = pm.ExecutionHex;
                 bool primaryExploreSatisfied = false;
                 bool exploreFollowThroughUsed = false;
                 bool optionalStealthChecked = false;
@@ -173,9 +173,6 @@ namespace Game.Ai.V2
                                 + $"movement={army.CurrentMovement}");
                         }
 
-                        // The mission target itself never changes. Once it is satisfied, one optional
-                        // adjacent step may use the already-paid activation against LIVE information.
-                        // This is explicitly tactical follow-through, not a planner re-target.
                         if (primaryExploreSatisfied)
                         {
                             if (exploreFollowThroughUsed || army.CurrentMovement <= 0)
@@ -209,10 +206,6 @@ namespace Game.Ai.V2
                     HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, movementGoal);
                     if (next == null) { stop = doingExploreFollowThrough ? ExecutionStopReason.ReachedGoal : ExecutionStopReason.NoSafeStep; break; }
 
-                    // A scout may be unable to enter stealth after its first activation. Evaluate
-                    // once BEFORE that activation against the worst honest pressure already known
-                    // on the first leg OR planned execution/end hex, and only from AP not claimed by
-                    // this or later provisioned missions.
                     if (!optionalStealthChecked)
                     {
                         optionalStealthChecked = true;
@@ -268,18 +261,38 @@ namespace Game.Ai.V2
                     knownEnemyIds = enemyNow;
                     knownNeutralIds = neutralNow;
 
-                    // Discovery is a STRATEGIC interrupt, not a tactical movement stop. Record it
-                    // for the bounded same-turn reaction pass, then let this scout finish the route
-                    // it already owns (or its one post-goal local step) without replacing its focus.
+                    bool discovered = newEnemyIds.Length > 0 || newNeutralIds.Length > 0;
+                    bool primarySatisfiedNow = pm.ScoutKind != ScoutTargetKind.Surveil
+                        && (primaryExploreSatisfied || army.Hex.Equals(executionHex)
+                            || VisionSystem.IsVisited(player, executionHex));
+
                     if (newEnemyIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered enemy army id(s) [{string.Join(",", newEnemyIds)}]; continuing with {army.CurrentMovement} MP");
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered enemy army id(s) "
+                            + $"[{string.Join(",", newEnemyIds)}]; "
+                            + (primarySatisfiedNow ? "primary Explore is satisfied; optional follow-through suppressed"
+                                : $"continuing mandatory route with {army.CurrentMovement} MP"));
                     }
                     if (newNeutralIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered neutral army id(s) [{string.Join(",", newNeutralIds)}]; continuing with {army.CurrentMovement} MP");
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered neutral army id(s) "
+                            + $"[{string.Join(",", newNeutralIds)}]; "
+                            + (primarySatisfiedNow ? "primary Explore is satisfied; optional follow-through suppressed"
+                                : $"continuing mandatory route with {army.CurrentMovement} MP"));
+                    }
+
+                    // Discovery remains strategic rather than a tactical abort: before the primary
+                    // Explore focus we keep the route we already own. Once that focus is satisfied,
+                    // however, the adjacent follow-through is purely optional and must not consume
+                    // information/movement that the bounded reaction pass should re-evaluate.
+                    if (discovered && primarySatisfiedNow && !doingExploreFollowThrough)
+                    {
+                        primaryExploreSatisfied = true;
+                        result.ReachedGoal = true;
+                        stop = ExecutionStopReason.ReachedGoal;
+                        break;
                     }
                 }
 
@@ -374,7 +387,6 @@ namespace Game.Ai.V2
             return total;
         }
 
-        // Returns true only if it actually entered stealth this call.
         private static bool MaybeEnterOptionalStealth(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ArmyData army, ProvisionedMission pm, HexCoord nextHex, HexCoord executionHex, float mandatoryApClaims)
         {
@@ -406,9 +418,6 @@ namespace Game.Ai.V2
                 MandatoryApClaims = mandatoryApClaims,
                 DrawAvailable = drawAvailable,
                 DrawApCost = ctx != null ? ctx.DrawApCost : 0,
-                // Exact slot/deck cardinality is deliberately not duplicated here; the terminal
-                // executor remains authoritative. This is only a conservative bounded upper bound
-                // for marginal AP opportunity, further capped by actual AP before/after the spend.
                 DrawOpportunities = drawAvailable ? AiConfigV2.maxTerminalDrawsPerTurn : 0,
             });
 
@@ -420,15 +429,13 @@ namespace Game.Ai.V2
             if (eval.Decision != OptionalStealthDecision.Enter)
                 return false;
             if (slack + AiConfigV2.allocatorSliceEpsilon < stealthAp)
-                return false; // live re-check: never spend another provisioned mission's claim
+                return false;
 
             root.SpendActionPoints(stealthAp);
             StealthSystem.EnterStealth(scout);
             return true;
         }
 
-        // Honest per-leg detection risk — same shape as ScoutRiskModel.DetectorRisk, but from the
-        // live map memory TaskExecutor already reads (no WorldSnapshot here). Never TrueWorld.
         private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex)
         {
             int r = AiConfigV2.frontierEnemyExposureRadius;
