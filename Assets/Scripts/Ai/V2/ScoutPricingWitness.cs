@@ -6,9 +6,8 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // Prices the Scout portfolio against DISTINCT movers before ResourceAllocator sees AP.
-    // This is a soft pricing witness, not final actor ownership: ProvisioningManager still does
-    // the live injective assignment and can deviate if state changed. Its existing PreferredMover
-    // continuity term makes the same witness stable when it remains feasible.
+    // Provisioning still owns the final live injective assignment, so the AP floor must remain safe
+    // if it has to choose another eligible mover than the soft preferred witness.
     internal static class ScoutPricingWitness
     {
         private readonly struct Candidate
@@ -81,11 +80,20 @@ namespace Game.Ai.V2
                 if (r == null)
                     continue;
 
+                // PreferredMover is soft. A later funded subset can make Provisioning choose a
+                // different eligible scout than this full-beam witness. Price the strict envelope
+                // at the worst AP claim among currently eligible actors so that reassignment cannot
+                // manufacture an EnvelopeTooSmall retry. This reserves budget only; execution still
+                // spends the authoritative live activation/stealth claim and unused AP stays real.
+                float assignmentSafeAp = cands[i].Count > 0
+                    ? cands[i].Max(x => x.RequiredAp)
+                    : c.RequiredAp;
+
                 m.PreferredMoverArmyId = c.Army.ArmyId;
                 r.MoverKnown = true;
-                r.ApMinimum = c.RequiredAp;
-                r.ApDesired = c.RequiredAp;
-                r.ApMaximum = Mathf.Max(r.ApMaximum, c.RequiredAp);
+                r.ApMinimum = assignmentSafeAp;
+                r.ApDesired = assignmentSafeAp;
+                r.ApMaximum = Mathf.Max(r.ApMaximum, assignmentSafeAp);
                 if (((ScoutMissionTarget)m.Target).Kind == ScoutTargetKind.Explore)
                 {
                     r.EtaTurns = c.Eta;
@@ -93,7 +101,8 @@ namespace Game.Ai.V2
                 }
 
                 AiDebugLog.Write($"[AI][V2]   mission pricing witness — {StableMissionKey.For(m)} "
-                    + $"-> #{c.Army.ArmyId} ap {c.RequiredAp:0.#} eta {c.Eta} d{c.Distance}");
+                    + $"-> #{c.Army.ArmyId} actorAp {c.RequiredAp:0.#} safeAp {assignmentSafeAp:0.#} "
+                    + $"eta {c.Eta} d{c.Distance}");
             }
         }
 
