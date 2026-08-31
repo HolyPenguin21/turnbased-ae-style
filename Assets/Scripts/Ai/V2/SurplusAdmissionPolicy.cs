@@ -21,16 +21,17 @@ namespace Game.Ai.V2
         }
     }
 
-    // Hard reserve safety remains StrategicManager.ReservesOkAfterChain. This policy only changes
-    // the SOFT utility admission line inside that already-safe set: stranded AP/resources lower
-    // the threshold toward a floor, while a plan sitting on the reserves keeps the original
-    // conservative threshold.
+    // Hard physical safety remains StrategicManager.ReservesOkAfterChain. This policy only changes
+    // the SOFT utility admission line inside that already-safe set: genuinely stranded AP/resources
+    // lower the threshold toward a floor, while scarce capacity keeps the original conservative
+    // threshold.
     //
-    // IMPORTANT: a configured reserve is a floor we must not CROSS because of a surplus action,
-    // not a prerequisite stockpile the player must already own. If the turn begins below a reserve
-    // (for example E=1 while surplusEnergyReserve=2), a plan that costs 0 of that resource is still
-    // safe: it leaves the existing deficit unchanged. The protected floor is therefore
-    // min(configuredReserve, currentlyAvailable) per dimension.
+    // IMPORTANT: Phase B runs after ordinary mission execution. It must not invent fixed AP or
+    // H/E/M/T reserves for hypothetical future work. AP slack is simply real AP left after the
+    // candidate. Resource slack is based on AiResourceReservation.Available — the authoritative
+    // dynamic balance after every real reservation owned elsewhere. If aviation or another late
+    // subsystem has genuinely reserved Energy, that Energy is already absent here; otherwise it is
+    // legitimate surplus and may relax the threshold.
     internal static class SurplusAdmissionPolicy
     {
         internal const float ThresholdFloor = 0.35f;
@@ -43,22 +44,19 @@ namespace Game.Ai.V2
             if (root == null || plan == null)
                 return new SurplusAdmission(baseThreshold, baseThreshold, 0f, 0f);
 
-            float configuredApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
-            float protectedApFloor = Mathf.Min(configuredApReserve, Mathf.Max(0f, root.ActionPoints));
-            float apSlack = Mathf.Max(0f, root.ActionPoints - plan.ApCost - protectedApFloor);
+            float apSlack = Mathf.Max(0f, root.ActionPoints - plan.ApCost);
 
             float resFactor = 0f;
             int dimensions = 0;
-            Add(ResourceType.Human, AiConfigV2.surplusHumanReserve, plan.ResCost?.human ?? 0);
-            Add(ResourceType.Energy, AiConfigV2.surplusEnergyReserve, plan.ResCost?.energy ?? 0);
-            Add(ResourceType.Materials, AiConfigV2.surplusMaterialsReserve, plan.ResCost?.materials ?? 0);
-            Add(ResourceType.Tech, AiConfigV2.surplusTechReserve, plan.ResCost?.tech ?? 0);
+            Add(ResourceType.Human, plan.ResCost?.human ?? 0);
+            Add(ResourceType.Energy, plan.ResCost?.energy ?? 0);
+            Add(ResourceType.Materials, plan.ResCost?.materials ?? 0);
+            Add(ResourceType.Tech, plan.ResCost?.tech ?? 0);
 
-            void Add(ResourceType type, int configuredReserve, int cost)
+            void Add(ResourceType type, int cost)
             {
                 float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
-                float protectedFloor = Mathf.Min(configuredReserve, available);
-                float afterSlack = Mathf.Max(0f, available - cost - protectedFloor);
+                float afterSlack = Mathf.Max(0f, available - Mathf.Max(0, cost));
                 resFactor += Mathf.Clamp01(afterSlack / ResourceSlackForFullRelaxation);
                 dimensions++;
             }
