@@ -60,19 +60,14 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  StrategicManager can change AP / Human / Energy / Materials / Tech / hand / armies /
         //  army composition. Mission planning must not keep using the beginning-of-turn own-force
-        //  state. This rebuilds ONLY the layers derived from own force / own stockpile — Self and
-        //  Economy — and REUSES the frozen strategic observations (Known / TrueWorld / MapKnowledge
-        //  / Threat) unchanged: a card play does not change what the AI knows about the enemy or
-        //  the map, and the turn's radar / breakdown / Recon objectives must stay stable so the
-        //  AI does not recompute its strategic personality mid-turn.
+        //  state. This rebuilds own operational state while preserving the turn's strategic
+        //  observations (Known / TrueWorld / MapKnowledge), so radar/objective identity stays
+        //  stable. Threat, however, is REBUILT: its response ETA, asset defence and attack win
+        //  chance depend on our current armies/garrisons and become stale as soon as Phase A/B
+        //  materializes combat power, a hero, or equipment.
         //
-        //  Threat is kept frozen because the only card type wired this task (a solo Recce into its
-        //  own empty army) alters no garrison roster and no field combat force. When defensive /
-        //  offensive card play lands, the own-state-derived parts of BuildThreat (ResponseEta,
-        //  AttackWinChance vs. our roster, UnderSiege) must be refreshed or split out here.
-        //
-        //  Not a second full Scan — the expensive parts (TrueWorld cheat reads, the MapKnowledge
-        //  frontier flood) are deliberately not repeated.
+        //  This is not a second full Scan — the expensive TrueWorld read and map frontier flood are
+        //  deliberately not repeated.
         public static WorldSnapshot RefreshOperationalState(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
@@ -85,16 +80,42 @@ namespace Game.Ai.V2
                 Known = prev.Known,
                 TrueWorld = prev.TrueWorld,
                 MapKnowledge = prev.MapKnowledge,
-                Threat = prev.Threat,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Economy = BuildEconomy(player, ctx, snap);
+            snap.Threat = BuildThreat(player, ctx, snap);
 
             SelfSnapshot s = snap.Self;
             AiDebugLog.Write($"[AI][V2] {player?.Nickname} op-refresh — AP {s.ActionPoints} "
                 + $"hand {s.Hand.Count}/{s.HandCapacity} armies {s.Armies.Count} "
                 + $"field {F(s.FieldPower)} garrison {F(s.GarrisonPower)} "
-                + $"bestStack {F(s.BestStackPotential)}");
+                + $"bestStack {F(s.BestStackPotential)} threats {snap.Threat?.Threats?.Count ?? 0}");
+            return snap;
+        }
+
+        // A bounded same-turn discovery replan needs genuinely fresh honest knowledge and frontier,
+        // but it must not call the top-level Scan merely to get those fields and accidentally look
+        // like a second turn-start decision point. This method rebuilds all world-derived layers
+        // against the same turn number and emits one concise marker instead of a second full WHY log.
+        public static WorldSnapshot RefreshStrategicKnowledge(WorldSnapshot prev, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (prev == null)
+                return Scan(player, root, hand, ctx);
+
+            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber };
+            snap.Self = BuildSelf(player, root, hand, ctx);
+            snap.Known = BuildKnown(player, snap.Self.BaseHexes);
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
+            snap.TrueWorld = BuildTrueWorld(player, ctx);
+            snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
+            snap.Economy = BuildEconomy(player, ctx, snap);
+            snap.Threat = BuildThreat(player, ctx, snap);
+
+            AiDebugLog.Write($"[AI][V2] {player?.Nickname} knowledge-refresh — "
+                + $"enemyKnown {snap.Known.EnemySightings.Count} neutralKnown {snap.Known.NeutralSightings.Count} "
+                + $"visited {snap.MapKnowledge.VisitedHexes}/{snap.MapKnowledge.TotalHexes} "
+                + $"frontier {snap.MapKnowledge.Frontier.Count} threats {snap.Threat.Threats.Count}");
             return snap;
         }
 
@@ -605,10 +626,13 @@ namespace Game.Ai.V2
             eco.RelativePressure = Mathf.Clamp(relAccum / ResourceBundle.All.Length, -1f, 1f);
             eco.BottleneckPressure = Mathf.Clamp01(1f - (worstRatio == float.MaxValue ? 1f : worstRatio));
 
-            // DeckResourceNeed — aggregate resource appetite of every still-playable, resource-
-            // costing card (hand + deck).
+            // DeckResourceNeed — aggregate play-time resource appetite of the current hand plus
+            // definition-level appetite of the still-undrawn deck. Hand MUST use AiCardCost: a
+            // Research/Production-created CardData has already paid its resources at Create and
+            // would otherwise be counted a second time. Ordinary hand cards remain 1:1 with their
+            // definition cost through AiCardCost.PlayResources.
             var need = new ResourceBundle();
-            AccumulateCardCosts(snap.Self.Hand.Select(c => c?.Definition), need);
+            AccumulateCardCosts(snap.Self.Hand, need);
             AccumulateCardCosts(snap.Self.Deck, need);
             eco.DeckResourceNeed = need;
 
@@ -625,6 +649,24 @@ namespace Game.Ai.V2
                 + AiConfigV2.economySecurityBottleneckWeight * (1f - eco.BottleneckPressure)) / Mathf.Max(0.0001f, wSum));
 
             return eco;
+        }
+
+        private static void AccumulateCardCosts(IEnumerable<CardData> cards, ResourceBundle need)
+        {
+            foreach (CardData card in cards)
+            {
+                CardDefinition d = card?.Definition;
+                if (d == null)
+                    continue;
+                if (d.cardType != CardType.Unit && d.cardType != CardType.Hero
+                    && d.cardType != CardType.Facility && d.cardType != CardType.Base)
+                    continue;
+                ResourceCost cost = AiCardCost.PlayResources(card);
+                if (cost == null)
+                    continue;
+                foreach (ResourceType t in ResourceBundle.All)
+                    need.Add(t, cost.Get(t));
+            }
         }
 
         private static void AccumulateCardCosts(IEnumerable<CardDefinition> defs, ResourceBundle need)
