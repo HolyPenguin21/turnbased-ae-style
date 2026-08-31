@@ -21,9 +21,11 @@ namespace Game.Ai.V2
     //  operation still exist and is it done".
     //
     //  KNOWLEDGE RULES (spec §39). Loss of current visibility is NEVER proof of destruction. The
-    //  live "satisfied" read scans the army REGISTRY (not fog memory), so a target that merely
-    //  walked out of vision still exists and the raid keeps going; only an army that is genuinely
-    //  gone from every opponent's roster — or now ours — retires the intent.
+    //  live "satisfied" read first resolves positive live ownership and then falls back to honest
+    //  map memory. Neutral encounter armies are not guaranteed to live in GameSession.Players, so
+    //  absence from ordinary player rosters is UNKNOWN while a hostile/neutral sighting is still
+    //  remembered. This keeps a target that merely left vision — or a neutral encounter army —
+    //  alive until capture/destruction is authoritative.
     // ===========================================================================================
     public static class RaidObjectiveEvaluator
     {
@@ -63,23 +65,35 @@ namespace Game.Ai.V2
 
         // ---- LIVE (post-execution ledger pass) --------------------------------------------
 
-        // The raid objective is satisfied the moment the target army no longer exists as a hostile
-        // force — destroyed in a fight, or captured (now ours). Registry read, NOT fog memory
-        // (spec §39): an army that just left our vision is still in some opponent's roster and does
-        // NOT count as satisfied.
+        // Objective completion must be POSITIVE, not inferred from one registry's absence.
+        //  1) If the target id is now ours, it was captured / turned non-hostile -> satisfied.
+        //  2) If any ordinary non-us player still fields it -> not satisfied.
+        //  3) If no ordinary roster resolves it but honest memory still tracks it, this is the
+        //     neutral/fog case -> not satisfied.
+        //  4) Only absence from both live ownership and honest memory counts as confirmed gone.
         public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, int targetArmyId)
         {
             if (player == null || targetArmyId == 0)
                 return false;
+
+            if (ArmyRegistry.AllForOwner(player)
+                .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
+                return true;
+
             foreach (PlayerSetupData other in GameSession.Players ?? System.Linq.Enumerable.Empty<PlayerSetupData>())
             {
                 if (other == null || other.Equals(player))
                     continue;
-                foreach (ArmyData a in ArmyRegistry.AllForOwner(other))
-                    if (a != null && a.Id == targetArmyId && a.Members.Count > 0)
-                        return false;   // still fielded by a non-us player -> not satisfied
+                if (ArmyRegistry.AllForOwner(other)
+                    .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
+                    return false;
             }
-            return true;   // gone from every opponent roster -> destroyed or captured
+
+            bool rememberedEnemy = AiMapMemory.AllKnownEnemySightings(player)
+                .Any(s => s.ArmyId == targetArmyId);
+            bool rememberedNeutral = AiMapMemory.AllKnownNeutralSightings(player)
+                .Any(s => s.ArmyId == targetArmyId);
+            return !rememberedEnemy && !rememberedNeutral;
         }
 
         private static PlayerSetupData SelfOwner(WorldSnapshot snap)
