@@ -28,10 +28,11 @@ namespace Game.Ai.V2
     //
     // IMPORTANT: Phase B runs after ordinary mission execution. It must not invent fixed AP or
     // H/E/M/T reserves for hypothetical future work. AP slack is simply real AP left after the
-    // candidate. Resource slack is based on AiResourceReservation.Available — the authoritative
-    // dynamic balance after every real reservation owned elsewhere. If aviation or another late
-    // subsystem has genuinely reserved Energy, that Energy is already absent here; otherwise it is
-    // legitimate surplus and may relax the threshold.
+    // candidate. Under the V2 switch AiResourceReservation deliberately does NOT own V2 claims and
+    // returns the raw stockpile anyway, so read PlayerRoot explicitly here: this is the real physical
+    // capacity remaining after all earlier V2 mutations. If a future late-turn subsystem needs a
+    // resource after Phase B, it must pass/own an explicit V2 reservation before Phase B rather than
+    // reviving a global magic-number floor.
     internal static class SurplusAdmissionPolicy
     {
         internal const float ThresholdFloor = 0.35f;
@@ -55,7 +56,7 @@ namespace Game.Ai.V2
 
             void Add(ResourceType type, int cost)
             {
-                float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
+                float available = Mathf.Max(0f, root.GetResource(type));
                 float afterSlack = Mathf.Max(0f, available - Mathf.Max(0, cost));
                 resFactor += Mathf.Clamp01(afterSlack / ResourceSlackForFullRelaxation);
                 dimensions++;
