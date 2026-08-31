@@ -19,6 +19,7 @@ namespace Game.Ai.V2
                 return "diag unavailable";
 
             int matching = 0, traitMatching = 0, placements = 0, preflight = 0;
+            float minDirectNeed = float.PositiveInfinity;
             var failures = new Dictionary<string, int>();
             bool solo = demand.Capability == CapabilityKind.ScoutCapability;
             foreach (CardData card in hand.Hand.Where(c => c?.Definition != null))
@@ -47,6 +48,11 @@ namespace Game.Ai.V2
                     if (CardPlayExecutor.Preflight(player, root, hand, ctx, opt.Bind(card), out string reason))
                     {
                         preflight++;
+                        int stealthSurcharge = needsStealth ? AiConfigV2.scoutOptionalStealthAp : 0;
+                        float deployAp = card.EffectivePlayApCost
+                            + (opt.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0f);
+                        float followupAp = def.activationApCost + stealthSurcharge + demand.MinimumFollowupAp;
+                        minDirectNeed = System.Math.Min(minDirectNeed, deployAp + reservedFollowup + followupAp);
                         continue;
                     }
 
@@ -57,14 +63,31 @@ namespace Game.Ai.V2
             }
 
             float axis = ledger != null ? ledger.Balance(demand.RequestingAxis) : 0f;
+            float discrete = ledger != null ? ledger.DiscreteAdmissionBudget(demand.RequestingAxis) : axis;
             int ap = root != null ? root.ActionPoints : 0;
             string failText = failures.Count == 0
                 ? "-"
                 : string.Join(" | ", failures.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
                     .Select(kv => kv.Value > 1 ? $"{kv.Key} x{kv.Value}" : kv.Key));
+
+            string postGate = "-";
+            string directNeed = "-";
+            if (!float.IsPositiveInfinity(minDirectNeed))
+            {
+                directNeed = minDirectNeed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                float eps = AiConfigV2.allocatorSliceEpsilon;
+                if (minDirectNeed > discrete + eps)
+                    postGate = "axis-budget";
+                else if (root != null && root.ActionPoints - minDirectNeed - AiConfigV2.housekeepingApReserve < -eps)
+                    postGate = "global-ap";
+                else
+                    postGate = "direct-passes-post-preflight";
+            }
+
             return $"diag hand={hand.Hand.Count} {AiCardLog.Hand(hand)} freeSlot={(hand.HasFreeSlot ? 1 : 0)} "
                 + $"match={matching} trait={traitMatching} placements={placements} preflight={preflight} "
-                + $"fails=[{failText}] axis={axis:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
+                + $"fails=[{failText}] directNeedMin={directNeed} postGate={postGate} "
+                + $"axis={axis:0.##} discrete={discrete:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
         }
 
         private static string DetailFailure(PlayerRoot root, PlayerSetupData player, CardData card, string reason)

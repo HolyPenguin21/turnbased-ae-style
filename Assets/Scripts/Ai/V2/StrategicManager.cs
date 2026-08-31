@@ -79,7 +79,6 @@ namespace Game.Ai.V2
             if (states.Count == 0)
                 return result;
 
-            var reservedFollowupByAxis = new Dictionary<DesireAxis, float>();
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {
@@ -93,7 +92,7 @@ namespace Game.Ai.V2
                 foreach (DemandState state in active)
                 {
                     AxisDemand demand = state.Demand;
-                    reservedFollowupByAxis.TryGetValue(demand.RequestingAxis, out float reserved);
+                    float reserved = ledger.ReservedFollowup(demand.RequestingAxis);
                     (MaterializationPlan plan, float followupAp)? pick = MaterializationCandidateBuilder.BestForDemand(
                         snap, player, root, hand, ctx, demand, ledger, commitments, reserved, result.Reservation, inv);
                     if (pick != null)
@@ -105,12 +104,13 @@ namespace Game.Ai.V2
                     foreach (DemandState state in active)
                     {
                         AxisDemand d = state.Demand;
-                        reservedFollowupByAxis.TryGetValue(d.RequestingAxis, out float reserved);
+                        float reserved = ledger.ReservedFollowup(d.RequestingAxis);
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, ledger, commitments, reserved);
                         AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement "
-                            + $"{F(ledger.Balance(d.RequestingAxis))}, followup reserved {F(reserved)}); {diag}");
+                            + $"{F(ledger.Balance(d.RequestingAxis))}, discrete "
+                            + $"{F(ledger.DiscreteAdmissionBudget(d.RequestingAxis))}, followup reserved {F(reserved)}); {diag}");
                     }
                     break;
                 }
@@ -152,8 +152,10 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                reservedFollowupByAxis.TryGetValue(chosenDemand.RequestingAxis, out float alreadyReserved);
-                reservedFollowupByAxis[chosenDemand.RequestingAxis] = alreadyReserved + selected.FollowupAp;
+                float alreadyReserved = ledger.ReservedFollowup(chosenDemand.RequestingAxis);
+                float borrowed = ledger.CommitDiscreteFollowupBorrow(chosenDemand.RequestingAxis,
+                    alreadyReserved + selected.FollowupAp);
+                ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
                 float delivered = DeliveredCapabilityAmount(chosenDemand, plan);
                 selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                 result.CardsPlayed++;
@@ -161,14 +163,43 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
-                    + $"followup {F(selected.FollowupAp)}ap reserved, {plan.StableKey})");
+                    + $"followup {F(selected.FollowupAp)}ap reserved"
+                    + (borrowed > AiConfigV2.allocatorSliceEpsilon ? $", discreteBorrow {F(borrowed)}ap" : "")
+                    + $", {plan.StableKey})");
 
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
 
+            // Carry only the still-missing quantity into late-turn preparation. This is deliberately
+            // a snapshot copy: Phase B may consume it without mutating the DemandLayer's frozen
+            // strategic output or accidentally recreating quantities already delivered in Phase A.
+            result.Reservation.UnresolvedDemands.Clear();
+            foreach (DemandState state in states.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
+
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), ledger now " + ledger.DebugLine());
+            if (result.Reservation.UnresolvedDemands.Count > 0)
+                AiDebugLog.Write($"[AI][V2] strat.A — residual demands "
+                    + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
             return result;
+        }
+
+        private static AxisDemand CloneResidualDemand(DemandState state)
+        {
+            AxisDemand d = state.Demand;
+            return new AxisDemand
+            {
+                RequestingAxis = d.RequestingAxis,
+                Value = d.Value,
+                TargetHex = d.TargetHex,
+                Capability = d.Capability,
+                DesiredAmount = Mathf.Max(0f, state.Remaining),
+                RequiredTraits = d.RequiredTraits,
+                PreferredTraits = d.PreferredTraits,
+                MinimumFollowupAp = d.MinimumFollowupAp,
+                Explain = d.Explain,
+            };
         }
 
         private static bool ConsumesTraitRequiredByOtherFeasibleDemand(
@@ -228,8 +259,9 @@ namespace Game.Ai.V2
                     break;
 
                 MaterializationPlan plan = pick.Value.plan;
+                AxisDemand residual = result.Reservation.BestUnresolvedDemandFor(plan);
                 SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
-                if (pick.Value.utility < admission.EffectiveThreshold)
+                if (residual == null && pick.Value.utility < admission.EffectiveThreshold)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
                         + $"util {F(pick.Value.utility)} < threshold {F(admission.EffectiveThreshold)} "
@@ -238,10 +270,19 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
-                    + $"util {F(pick.Value.utility)} >= threshold {F(admission.EffectiveThreshold)} "
-                    + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                    + $"resSlack {F(admission.ResourceSlackFactor)})");
+                if (residual != null)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
+                        + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(pick.Value.utility)} "
+                        + "(strategic residual outranks generic surplus)");
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
+                        + $"util {F(pick.Value.utility)} >= threshold {F(admission.EffectiveThreshold)} "
+                        + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
+                        + $"resSlack {F(admission.ResourceSlackFactor)})");
+                }
 
                 bool handWasFull = !hand.HasFreeSlot;
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
@@ -258,6 +299,13 @@ namespace Game.Ai.V2
                     break;
                 }
                 result.CardsPlayed++;
+                if (residual != null)
+                {
+                    residual.DesiredAmount = Mathf.Max(0f,
+                        residual.DesiredAmount - DeliveredCapabilityAmount(residual, plan));
+                    if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
+                        result.Reservation.UnresolvedDemands.Remove(residual);
+                }
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
 

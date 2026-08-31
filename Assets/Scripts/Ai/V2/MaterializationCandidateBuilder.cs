@@ -94,11 +94,17 @@ namespace Game.Ai.V2
     //  the next candidate is enumerated, and the operational snapshot is refreshed, so a deployed
     //  card / a consumed equipment card is simply no longer in hand for the next enumeration.
     //  AxisBudgetLedger stays the owner of strategic AP boundaries; this is not a second budget.
+    //
+    //  The reservation also carries the RESIDUAL strategic demand set from Phase A into Phase B.
+    //  Phase B remains late-turn preparation (it cannot retroactively execute a mission), but an
+    //  executable residual strategic shortage must outrank generic surplus so unused AP prepares
+    //  the requested capability for the next turn instead of playing an unrelated card.
     // ===========================================================================================
     public sealed class MaterializationReservation
     {
         public readonly HashSet<string> ClaimedGeneratorUses = new HashSet<string>();
         public readonly HashSet<string> TriedGeneratorCards = new HashSet<string>();
+        public readonly List<AxisDemand> UnresolvedDemands = new List<AxisDemand>();
         public int GenerationAttemptsUsed;
 
         public bool CanGenerateMore => GenerationAttemptsUsed < AiConfigV2.maxGenerationActionsPerTurn;
@@ -116,6 +122,18 @@ namespace Game.Ai.V2
                 TriedGeneratorCards.Add(g.CardKey);
             if (r != null && !string.IsNullOrEmpty(r.AttemptedGenerationUseKey))
                 ClaimedGeneratorUses.Add(r.AttemptedGenerationUseKey);
+        }
+
+        public AxisDemand BestUnresolvedDemandFor(MaterializationPlan plan)
+        {
+            if (plan == null)
+                return null;
+            return UnresolvedDemands
+                .Where(d => d != null && d.DesiredAmount > 0f && d.Capability == plan.FinalCapability
+                    && (plan.ExpectedTraits & d.RequiredTraits) == d.RequiredTraits)
+                .OrderByDescending(d => d.Value)
+                .ThenBy(d => (int)d.RequestingAxis)
+                .FirstOrDefault();
         }
     }
 
@@ -140,7 +158,10 @@ namespace Game.Ai.V2
             MaterializationReservation reservation, CapabilityInventory inv)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            float axisBudget = ledger.Balance(demand.RequestingAxis);
+            // Radar slices are fractional while every currently executable AP action is discrete.
+            // Permit only the ledger-backed fractional tail to the next whole AP; the real transfer
+            // is committed after a successful deployment by StrategicManager.
+            float axisBudget = ledger.DiscreteAdmissionBudget(demand.RequestingAxis);
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
             int stealthSurcharge = (demand.RequiredTraits & TraitPreference.Stealth) != 0
                 ? AiConfigV2.scoutOptionalStealthAp : 0;
@@ -315,6 +336,9 @@ namespace Game.Ai.V2
         //  Highest FutureUtility reserve-safe chain among Direct / AttachDeploy / GenerateDeploy,
         //  or null. Never touches a generator use already claimed by Phase A (reservation), never
         //  exceeds the remaining generation budget, always leaves every configured reserve intact.
+        //  If Phase A carried a still-unresolved strategic demand, any feasible matching surplus
+        //  plan ranks ahead of generic surplus; StrategicManager bypasses the generic utility
+        //  threshold for that demanded plan and records the residual delivery.
         public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
@@ -427,7 +451,9 @@ namespace Game.Ai.V2
                 return null;
 
             MaterializationPlan bestPlan = candidates
-                .OrderByDescending(p => p.Score)
+                .OrderByDescending(p => reservation?.BestUnresolvedDemandFor(p) != null ? 1 : 0)
+                .ThenByDescending(p => reservation?.BestUnresolvedDemandFor(p)?.Value ?? 0f)
+                .ThenByDescending(p => p.Score)
                 .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
                 .First();
             return (bestPlan, bestPlan.Score);
