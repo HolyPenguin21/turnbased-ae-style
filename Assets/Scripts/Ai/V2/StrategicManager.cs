@@ -258,13 +258,11 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 return result;
 
-            // Recon may have changed the strategic world after the frozen turn-start analysis. A
-            // pending discovery owns the remaining AP until the one bounded reaction pass consumes
-            // it. In particular, do not turn that AP into generic surplus materialization or terminal
-            // draws before the newly discovered army has even been evaluated as an objective.
+            // A strategic invalidation owns the remaining AP until the one bounded reaction pass
+            // consumes it. Discovery is one reason; a late capability/hand change can now be another.
             if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
             {
-                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: pending strategic discovery interrupt; "
+                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: pending strategic reaction interrupt; "
                     + $"preserve {root.ActionPoints} AP for bounded reaction pass");
                 return result;
             }
@@ -335,6 +333,19 @@ namespace Game.Ai.V2
                 // every real materialization. Generic hand cycling is a terminal sink only; an
                 // immediate refill here could consume the AP of a second useful preparation action.
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+
+                // A residual capability did not exist when the ordinary MissionLayer was built.
+                // Once Phase B creates it, that earlier suppression is stale. Return ownership of
+                // the remaining AP to the bounded reaction pass instead of continuing generic
+                // surplus/draw work; the reaction will re-admit and execute any now-legal mission.
+                if (residual != null)
+                {
+                    StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
+                    AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B materialized residual "
+                        + $"{residual.Capability}; re-admit missions before further surplus spending");
+                    cleanStop = false;
+                    break;
+                }
             }
 
             if (result.CardsPlayed > 0)
@@ -343,7 +354,8 @@ namespace Game.Ai.V2
             // Terminal draw — Phase B found no residual demand it could action and no worthwhile
             // surplus chain. AP does not carry to the next turn and nothing late-turn owns it
             // (housekeeping is zero-AP by invariant), so convert the genuinely stranded AP into
-            // card option value. Skipped after a deploy FAILURE (state may be mid-chain). Bounded.
+            // card option value. Skipped after a deploy FAILURE or a newly materialized residual
+            // capability (both need the reaction pass first). Bounded.
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
                 result.StateChanged = true;
             return result;
@@ -352,8 +364,8 @@ namespace Game.Ai.V2
         // spec §11–§15 / AC14–AC19. Priority stays: executable residual strategic demand and
         // worthwhile proactive surplus were already exhausted by the loop above; a card a prior
         // draw revealed that now makes either actionable STOPS further drawing (its slot is not
-        // stolen — spec §13 / AC16). Never overflows the hand, never draws a dry deck, never
-        // spends unaffordable AP.
+        // stolen — spec §13 / AC16). If that opportunity appeared only after a draw, request the
+        // bounded strategic reaction so it is actually consumed this turn instead of merely noticed.
         private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result)
         {
@@ -378,6 +390,12 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: "
                             + $"{(residual != null ? "a residual demand" : "a worthwhile surplus chain")} "
                             + $"is now actionable ({pick.Value.plan.StableKey})");
+                        if (drawn > 0)
+                        {
+                            StrategicInterruptRegistry.MarkHandOpportunity(player, ctx.TurnNumber, hand);
+                            AiDebugLog.Write($"[AI][V2] strategic interrupt — terminal draw changed the "
+                                + "actionable hand; replan before converting any more AP to draws");
+                        }
                         break;
                     }
                 }

@@ -11,8 +11,9 @@ namespace Game.Ai.V2
 {
     // Executes provisioned V2 missions through the canonical movement path. Scout movement is
     // deliberately one hex per iteration so every step can settle vision/contact/event/battle state
-    // before the next decision. Explore may tactically continue after its strategic focus is reached
-    // while movement remains; Surveil never retargets and Raid keeps its own loop below.
+    // before the next decision. Explore first satisfies its turn-start strategic focus, then rebuilds
+    // a live frontier target on every following movement iteration; Surveil never retargets and Raid
+    // keeps its own loop below.
     public enum ExecutionStopReason
     {
         ReachedGoal,
@@ -146,14 +147,19 @@ namespace Game.Ai.V2
                     else
                     {
                         bool goalSatisfied = army.Hex.Equals(executionHex) || VisionSystem.IsVisited(player, executionHex);
-                        if (goalSatisfied)
+                        if (goalSatisfied && !primaryExploreSatisfied)
                         {
-                            if (!primaryExploreSatisfied)
-                            {
-                                primaryExploreSatisfied = true;
-                                result.ReachedGoal = true;
-                            }
+                            primaryExploreSatisfied = true;
+                            result.ReachedGoal = true;
+                        }
 
+                        // The frozen turn-start focus is only the entry point into exploration. Once
+                        // it has been satisfied, every loop iteration (therefore after every settled
+                        // scout step) re-evaluates the whole honest LIVE frontier. The scout can turn
+                        // toward newly revealed information instead of following a route whose end
+                        // was chosen before it opened the map.
+                        if (primaryExploreSatisfied)
+                        {
                             if (army.CurrentMovement <= 0)
                             {
                                 stop = ExecutionStopReason.OutOfMovement;
@@ -167,11 +173,14 @@ namespace Game.Ai.V2
                                 break;
                             }
 
-                            HexCoord oldGoal = executionHex;
-                            executionHex = continuation.Value;
-                            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — explore follow-through ({army.Hex.Q},{army.Hex.R}) "
-                                + $"primary=({oldGoal.Q},{oldGoal.R}) next=({executionHex.Q},{executionHex.R}) "
-                                + $"movement={army.CurrentMovement}");
+                            if (!continuation.Value.Equals(executionHex))
+                            {
+                                HexCoord oldGoal = executionHex;
+                                executionHex = continuation.Value;
+                                AiDebugLog.Write($"[AI][V2] exec {pm.Key} — live-frontier replan ({army.Hex.Q},{army.Hex.R}) "
+                                    + $"old=({oldGoal.Q},{oldGoal.R}) next=({executionHex.Q},{executionHex.R}) "
+                                    + $"movement={army.CurrentMovement}");
+                            }
                         }
 
                         if (AiMapMemory.KnownEnemySightingAt(player, executionHex).HasValue)
@@ -243,7 +252,8 @@ namespace Game.Ai.V2
                     // Discovery is a STRATEGIC interrupt, not a tactical movement stop. Record it
                     // for the bounded same-turn reaction pass, then let this scout keep using the
                     // MP it already paid to activate. The next loop iteration re-evaluates route,
-                    // safety, contacts and the live objective against the newly revealed world.
+                    // safety, contacts and (after the primary focus) the live frontier against the
+                    // newly revealed world.
                     if (newEnemyIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
