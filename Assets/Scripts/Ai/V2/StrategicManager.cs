@@ -25,8 +25,8 @@ namespace Game.Ai.V2
 
     // The single owner of V2 strategic Unit/Hero/Recce materialization. Phase A closes explicit
     // capability demands against the shared axis ledger; Phase B spends only genuinely remaining
-    // capacity. Physical resources are protected by the authoritative AiResourceReservation view,
-    // never by speculative fixed H/E/M/T floors.
+    // capacity. Physical resources are read from the real V2 PlayerRoot pool, never protected by
+    // speculative fixed H/E/M/T floors.
     public static class StrategicManager
     {
         private sealed class DemandState
@@ -285,12 +285,12 @@ namespace Game.Ai.V2
                 return false;
 
             // Phase B runs after ordinary mission execution. Therefore it must protect only REAL
-            // reservations that still exist, not fixed speculative floors. AP is the actual
-            // remaining turn currency, so a chain is AP-safe iff it fits. For physical resources,
-            // AiResourceReservation.Available is the authoritative dynamic balance: stockpile minus
-            // whatever another subsystem has genuinely reserved. If aviation (or any future late
-            // action) owns a reservation, it is already absent from Available; if no such work
-            // exists, Phase B is free to spend the resource instead of hoarding a magic number.
+            // work still scheduled after it, not fixed speculative floors. There is currently no
+            // resource/AP-costing late V2 stage: housekeeping is zero-cost by invariant, and AP
+            // cannot be banked into the next turn. Consequently the exact safe pool is the real
+            // PlayerRoot state remaining after earlier V2 mutations. If a future subsystem truly
+            // needs resources after Phase B, that subsystem must add an explicit V2 reservation
+            // contract before Phase B; V1 AiResourceReservation is intentionally bypassed in V2.
             if (root.ActionPoints - plan.ApCost < 0f)
                 return false;
 
@@ -298,7 +298,6 @@ namespace Game.Ai.V2
             if (cost == null)
                 return true;
 
-            PlayerSetupData player = root.Setup;
             return Has(ResourceType.Human, cost.human)
                 && Has(ResourceType.Energy, cost.energy)
                 && Has(ResourceType.Materials, cost.materials)
@@ -306,7 +305,7 @@ namespace Game.Ai.V2
 
             bool Has(ResourceType type, int spend)
             {
-                float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
+                float available = Mathf.Max(0f, root.GetResource(type));
                 return available >= Mathf.Max(0, spend);
             }
         }
