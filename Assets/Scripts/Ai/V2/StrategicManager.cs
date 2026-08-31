@@ -13,6 +13,7 @@ namespace Game.Ai.V2
     {
         public bool StateChanged;
         public int CardsPlayed;
+        public int CardsDrawn;
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
 
@@ -257,6 +258,17 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 return result;
 
+            // Recon may have changed the strategic world after the frozen turn-start analysis. A
+            // pending discovery owns the remaining AP until the one bounded reaction pass consumes
+            // it. In particular, do not turn that AP into generic surplus materialization or terminal
+            // draws before the newly discovered army has even been evaluated as an objective.
+            if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+            {
+                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: pending strategic discovery interrupt; "
+                    + $"preserve {root.ActionPoints} AP for bounded reaction pass");
+                return result;
+            }
+
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             bool cleanStop = true;
@@ -383,6 +395,7 @@ namespace Game.Ai.V2
 
             if (drawn > 0)
                 AiDebugLog.Write($"[AI][V2] strat.B — {drawn} terminal draw(s)");
+            result.CardsDrawn += drawn;
             return drawn > 0;
         }
 

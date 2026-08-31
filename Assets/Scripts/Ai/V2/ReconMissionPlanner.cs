@@ -60,6 +60,10 @@ namespace Game.Ai.V2
             public readonly float BaseValue;
             public readonly float LocalAdmissionScore;
             public readonly string Explain;
+            // Raw Explore information survives BaseValue saturation and is used only as a secondary
+            // local tie-break. This keeps the shared 0..100 scale unchanged while ensuring that an
+            // otherwise identical opens=5 objective outranks opens=4 instead of falling to key order.
+            public readonly int FreshNeighbors;
 
             // Step 7 — set only when this candidate was re-materialised from a durable intent.
             public readonly bool IsIncumbent;
@@ -67,19 +71,22 @@ namespace Game.Ai.V2
             public readonly int? PreferredMover;
 
             public ScoutCandidate(ScoutMissionTarget target, float baseValue, float localAdmissionScore, string explain,
-                bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None, int? preferredMover = null)
+                bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None, int? preferredMover = null,
+                int freshNeighbors = 0)
             {
                 Target = target;
                 BaseValue = baseValue;
                 LocalAdmissionScore = localAdmissionScore;
                 Explain = explain;
+                FreshNeighbors = freshNeighbors;
                 IsIncumbent = isIncumbent;
                 Tier = tier;
                 PreferredMover = preferredMover;
             }
 
             public ScoutCandidate AsIncumbent(CommitmentTier tier, int? preferredMover) =>
-                new ScoutCandidate(Target, BaseValue, LocalAdmissionScore, Explain + " [incumbent]", true, tier, preferredMover);
+                new ScoutCandidate(Target, BaseValue, LocalAdmissionScore, Explain + " [incumbent]", true, tier,
+                    preferredMover, FreshNeighbors);
         }
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
@@ -127,6 +134,7 @@ namespace Game.Ai.V2
             foreach (ScoutCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
                 .OrderByDescending(x => x.LocalAdmissionScore)
+                .ThenByDescending(x => x.Target.Kind == ScoutTargetKind.Explore ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x)))
                 picked.Add(c);
 
@@ -140,6 +148,7 @@ namespace Game.Ai.V2
                 .Where(x => x.Tier == CommitmentTier.None)
                 .Concat(fresh.Where(f => !incumbentKeys.Contains(CandidateKey(f))))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
+                .ThenByDescending(x => x.Target.Kind == ScoutTargetKind.Explore ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x));
             int ordinaryCount = 0;
             foreach (ScoutCandidate c in ordinary)
@@ -220,7 +229,8 @@ namespace Game.Ai.V2
                   + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
                   + $"base {F(o.BaseValue)} x surv {F(subDesire)}";
             return new ScoutCandidate(o.ToTarget(), o.BaseValue,
-                ComputeLocalAdmissionScore(o.BaseValue, subDesire, o.DetectionRisk), explain);
+                ComputeLocalAdmissionScore(o.BaseValue, subDesire, o.DetectionRisk), explain,
+                freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
 
         // LocalAdmissionScore = BaseValue * the relevant Recon sub-desire * an execution-risk

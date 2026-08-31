@@ -7,9 +7,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last mutating V2 layer: local same-hex army/garrison structural reorganisation only.
-    //  Analyzer -> pure deterministic Planner -> canonical Executor. It never moves across hexes,
-    //  creates/deletes ArmyData, touches cards/Equipment, or changes mission ownership.
+    //  Last ordinary mutating V2 layer: local same-hex army/garrison structural reorganisation.
+    //  A pending Recon strategic interrupt is consumed immediately before housekeeping by the one
+    //  bounded StrategicReactionPass; only after that pass settles do we run the zero-AP structural
+    //  cleanup below. Analyzer -> pure deterministic Planner -> canonical Executor.
     //
     //  AP OWNERSHIP: housekeepingApReserve is currently 0. Therefore every planned/executed
     //  transfer/swap must be zero-cost under ArmyActions' real activated-destination rule. The
@@ -23,6 +24,7 @@ namespace Game.Ai.V2
         public int TransfersApplied;
         public int TransfersFailed;
         public bool ApInvariantViolated;
+        public StrategicReactionResult Reaction;
     }
 
     internal static class HousekeepingManager
@@ -30,7 +32,28 @@ namespace Game.Ai.V2
         public static IEnumerator RunHousekeeping(WorldSnapshot snapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result)
         {
-            Run(player, root, ctx, commitments, result ?? new HousekeepingResult());
+            if (result == null)
+                result = new HousekeepingResult();
+
+            // Phase B deliberately preserves AP while a discovery interrupt is pending. Consume it
+            // here before structural cleanup, then rebuild the FULL world snapshot because the
+            // reaction may have changed both own forces and honest map knowledge.
+            var reaction = new StrategicReactionResult();
+            yield return StrategicReactionPass.ExecuteIfPending(snapshot, player, root, ctx, reaction);
+            result.Reaction = reaction;
+            if (reaction.Ran)
+            {
+                result.StateChanged |= reaction.StateChanged;
+                AiHandData hand = AiHandRegistry.Peek(player);
+                if (hand != null)
+                    snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+                commitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All,
+                    snapshot,
+                    ReconObjectiveEvaluator.Enumerate(snapshot));
+            }
+
+            Run(player, root, ctx, commitments, result);
             // Run() can return early when there is nothing to reorganise; resource telemetry is a
             // turn-level concern and must still be emitted exactly once after the last mutating V2
             // layer has had its chance.

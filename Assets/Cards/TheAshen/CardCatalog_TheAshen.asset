@@ -441,7 +441,6 @@ MonoBehaviour:
     unitTypeTags: 00000000
     grantedAbilities:
     - r1s4
-    - RapidReaction
     - Stealth4
     resourceYield:
       human: 0

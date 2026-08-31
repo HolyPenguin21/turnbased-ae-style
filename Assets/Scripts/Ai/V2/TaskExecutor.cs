@@ -239,19 +239,20 @@ namespace Game.Ai.V2
                     int[] newNeutralIds = neutralNow.Where(id => !knownNeutralIds.Contains(id)).ToArray();
                     knownEnemyIds = enemyNow;
                     knownNeutralIds = neutralNow;
+
+                    // Discovery is a STRATEGIC interrupt, not a tactical movement stop. Record it
+                    // for the bounded same-turn reaction pass, then let this scout keep using the
+                    // MP it already paid to activate. The next loop iteration re-evaluates route,
+                    // safety, contacts and the live objective against the newly revealed world.
                     if (newEnemyIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered enemy army id(s) [{string.Join(",", newEnemyIds)}]");
-                        stop = ExecutionStopReason.EnemyDiscovered;
-                        break;
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered enemy army id(s) [{string.Join(",", newEnemyIds)}]; continuing with {army.CurrentMovement} MP");
                     }
                     if (newNeutralIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered neutral army id(s) [{string.Join(",", newNeutralIds)}]");
-                        stop = ExecutionStopReason.NeutralDiscovered;
-                        break;
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered neutral army id(s) [{string.Join(",", newNeutralIds)}]; continuing with {army.CurrentMovement} MP");
                     }
                 }
 

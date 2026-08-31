@@ -84,6 +84,9 @@ namespace Game.Ai.V2
                     activationAp = projectedAp;
             }
 
+            // RapidReaction's gameplay contract makes both deploy and movement activation free;
+            // HexSelectionController.Factory applies the same activation override to the spawned
+            // unit. Mirror it here so strategic affordability never diverges from real execution.
             IReadOnlyList<string> finalAbilities = plan?.ProjectedAbilities
                 ?? (IReadOnlyList<string>)def.grantedAbilities
                 ?? NoAbilities;
