@@ -539,7 +539,7 @@ namespace Game.Ai.V2
             ap += p.Deploy.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0;
             if (p.GeneratedBaseDef != null)
             {
-                ap += baseDef != null ? baseDef.activationApCost : 0;
+                ap += baseDef != null ? ArmyActions.EffectiveDeployApCost(baseDef) : 0;
             }
             else if (baseInstance != null)
             {
