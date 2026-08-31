@@ -216,12 +216,24 @@ namespace Game.Ai.V2
 
                     HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
                     HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
-                    bool newEnemy = enemyNow.Any(id => !knownEnemyIds.Contains(id));
-                    bool newNeutral = neutralNow.Any(id => !knownNeutralIds.Contains(id));
+                    int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
+                    int[] newNeutralIds = neutralNow.Where(id => !knownNeutralIds.Contains(id)).ToArray();
                     knownEnemyIds = enemyNow;
                     knownNeutralIds = neutralNow;
-                    if (newEnemy) { stop = ExecutionStopReason.EnemyDiscovered; break; }
-                    if (newNeutral) { stop = ExecutionStopReason.NeutralDiscovered; break; }
+                    if (newEnemyIds.Length > 0)
+                    {
+                        StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered enemy army id(s) [{string.Join(",", newEnemyIds)}]");
+                        stop = ExecutionStopReason.EnemyDiscovered;
+                        break;
+                    }
+                    if (newNeutralIds.Length > 0)
+                    {
+                        StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — scout discovered neutral army id(s) [{string.Join(",", newNeutralIds)}]");
+                        stop = ExecutionStopReason.NeutralDiscovered;
+                        break;
+                    }
                 }
 
                 result.FinalHex = army?.Hex ?? result.FinalHex;
