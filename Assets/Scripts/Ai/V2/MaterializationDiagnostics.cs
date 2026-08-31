@@ -69,7 +69,7 @@ namespace Game.Ai.V2
 
         private static string DetailFailure(PlayerRoot root, PlayerSetupData player, CardData card, string reason)
         {
-            string cardName = card?.Definition?.cardName ?? "?";
+            string cardName = card?.Definition?.displayName ?? "?";
             if (root == null || player == null || card == null)
                 return $"{cardName}: {reason ?? "preflight rejected"}";
 
