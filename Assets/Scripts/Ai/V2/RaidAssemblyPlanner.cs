@@ -12,6 +12,11 @@ namespace Game.Ai.V2
     //  atomic batch-transfer primitive exists. `PlanForArmy` is the exact single-actor form used
     //  by ProvisioningManager's batch Raid matching; both paths share the same eligibility and
     //  WorthIt estimator, so batch assignment cannot drift from final provisioning feasibility.
+    //
+    //  IMPORTANT: actor preference is mobility-first, not power-first. The cheapest activation
+    //  envelope wins, then the smallest already-sufficient combat body. This prevents a raid that
+    //  already clears the estimator from automatically claiming the biggest stack and turning
+    //  harmless reinforcement into a larger AP activation bill on following turns.
     // ===========================================================================================
     public sealed class RaidAssemblyPlan
     {
@@ -85,7 +90,11 @@ namespace Game.Ai.V2
             snap.Self.Armies
                 .Where(a => a != null && IsReadyRaidActor(a)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId)))
-                .OrderByDescending(a => a.EffectiveArmyPower)
+                // Already-activated actors are effectively free on the AP axis. Otherwise prefer
+                // the smallest activation envelope, then the least overkill body that still passes
+                // PlanForArmy's shared combat estimator.
+                .OrderBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
+                .ThenBy(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
                 .ToList();
 

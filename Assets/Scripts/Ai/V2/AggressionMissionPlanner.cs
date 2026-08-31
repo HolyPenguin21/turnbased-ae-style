@@ -11,22 +11,10 @@ namespace Game.Ai.V2
     //  operational snapshot + the FROZEN AggressionObjective[] + the Aggression DesireBreakdown ->
     //  a CANDIDATE BEAM of up to AiConfigV2.raidCandidateBeamWidth Raid MissionProposals.
     //
-    //  It does NOT (spec §22): scan the world, call an enemy scan, play cards, pick a concrete
-    //  army, or mutate game state. It DOES: re-materialise active Raid intents, build fresh Raid
-    //  candidates from the frozen objectives, size MissionRequirements (RaidCostModel), set
-    //  AxisContribution (Aggression = 1.0, spec §24), set LocalAdmissionScore, and emit proposals.
-    //
-    //  SCORING SPLIT (spec §10): BaseValue is the objective's intrinsic merit (cross-lane ordering
-    //  + radar slices). LocalAdmissionScore = BaseValue * AggRaidOpportunity sub-driver * a
-    //  feasibility factor — orders Raid alternatives WITHIN the Aggression lane only, never
-    //  cross-lane, and never re-multiplies the whole Aggression radar weight.
-    //
-    //  POST-PHASE-A EXECUTABILITY: fresh Raid opportunities are emitted only when the current
-    //  snapshot contains at least one independently feasible ready actor. Phase A has already had
-    //  the chance to satisfy Hero/CombatPower demand from affordable cards/generation. If it could
-    //  not, a fresh Raid is not a current-turn task and must not consume allocator/re-pack budget.
-    //  Durable incumbents are retained: they represent already-started intent, not a fresh
-    //  potential task, and continuity owns whether they stay funded/suspended.
+    //  Strategic target discovery/value remains frozen. Own-force executability does NOT: Phase A
+    //  may have materially changed a raid body, so this layer refreshes only the ready-force combat
+    //  projection from the post-Phase-A Self snapshot. That keeps target identity/value stable while
+    //  preventing stale readyWin values from competing with Provisioning's live estimator.
     // ===========================================================================================
     internal static class AggressionMissionLayer
     {
@@ -73,7 +61,7 @@ namespace Game.Ai.V2
 
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
-                fresh.Add(ToCandidate(o, breakdown));
+                fresh.Add(ToCandidate(snap, o, breakdown));
 
             var incumbents = new List<RaidCandidate>();
             if (activeIntents != null)
@@ -107,7 +95,7 @@ namespace Game.Ai.V2
                             + $"({intent.Raid.LastKnownHex.Q},{intent.Raid.LastKnownHex.R}); base {F(sv)}, local {F(staleScore)}, tier {intent.Funding}");
                         continue;
                     }
-                    incumbents.Add(ToCandidate(o, breakdown).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
+                    incumbents.Add(ToCandidate(snap, o, breakdown).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
             var incumbentKeys = new HashSet<int>(incumbents.Select(c => c.Target.TargetArmyId));
@@ -155,18 +143,55 @@ namespace Game.Ai.V2
             return proposals;
         }
 
-        private static RaidCandidate ToCandidate(AggressionObjective o, DesireBreakdown bd)
+        private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o, DesireBreakdown bd)
         {
+            RaidMissionTarget target = o.ToTarget();
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = KnownDefenders(snap, o.TargetArmyId);
+            RaidAssemblyPlan live = RaidAssemblyPlanner.Plan(snap, target, defenders, null);
+
+            float readyWin = live.Feasible ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
+            if (live.Feasible)
+            {
+                target.ReadyWinChance = readyWin;
+                target.CanCoverAllDefenders = live.CoversAllDefenders;
+            }
+
+            // Expected-value weighting: probability is no longer merely a weak gate. Squaring the
+            // live ready probability makes a 0.75 target materially preferable to a 0.35 target
+            // when their intrinsic values are nearly equal, while still preserving BaseValue as
+            // the cross-lane strategic merit.
+            float p = live.Feasible
+                ? readyWin
+                : UnityEngine.Mathf.Clamp01(o.AssemblableWinChance) * 0.35f;
             float feasibility = UnityEngine.Mathf.Lerp(
-                AiConfigV2.raidLocalFeasibilityFloor, 1f,
-                UnityEngine.Mathf.Clamp01(UnityEngine.Mathf.Max(o.ReadyWinChance, o.AssemblableWinChance)));
-            float las = o.BaseValue * UnityEngine.Mathf.Max(0.01f, bd.AggRaidOpportunity) * feasibility;
+                AiConfigV2.raidLocalFeasibilityFloor, 1f, p * p);
+
+            MissionRequirements req = RaidCostModel.Build(snap, target);
+            float ap = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
+            float apEfficiency = 1f / (1f + 0.12f * UnityEngine.Mathf.Max(0f, ap - 1f));
+            float las = o.BaseValue * UnityEngine.Mathf.Max(0.01f, bd.AggRaidOpportunity)
+                * feasibility * apEfficiency;
+
             string explain = $"Raid #{o.TargetArmyId} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
-                + $"val {F(o.BaseValue)} x aggRaid {F(bd.AggRaidOpportunity)} feas {F(feasibility)} "
-                + $"(readyWin {F(o.ReadyWinChance)} asmWin {F(o.AssemblableWinChance)} def {o.DefenderCount} "
-                + $"eta {o.EstimatedEta} gate {(o.GatePassed ? 1 : 0)}"
-                + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")})";
-            return new RaidCandidate(o.ToTarget(), o.BaseValue, las, explain);
+                + $"val {F(o.BaseValue)} x aggRaid {F(bd.AggRaidOpportunity)} liveFeas {F(feasibility)} "
+                + $"apEff {F(apEfficiency)} (readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "
+                + $"asmWin {F(o.AssemblableWinChance)} def {o.DefenderCount} eta {o.EstimatedEta} "
+                + $"gate {(o.GatePassed ? 1 : 0)}{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}" 
+                + $"{(o.NeedsHero ? " NEEDS-HERO" : "")})";
+            return new RaidCandidate(target, o.BaseValue, las, explain);
+        }
+
+        private static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId)
+        {
+            if (snap?.Known == null || armyId == 0)
+                return System.Array.Empty<WorthIt.DefenderProfile>();
+            IEnumerable<AiMapMemory.KnownEnemySighting> all =
+                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
+            foreach (AiMapMemory.KnownEnemySighting s in all)
+                if (s.ArmyId == armyId)
+                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            return System.Array.Empty<WorthIt.DefenderProfile>();
         }
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
