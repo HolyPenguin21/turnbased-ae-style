@@ -109,8 +109,6 @@ namespace Game.Ai.V2
 
         public bool CanGenerateMore => GenerationAttemptsUsed < AiConfigV2.maxGenerationActionsPerTurn;
 
-        // Called after a chain that HAD a generation step was executed (win OR loss). The generator
-        // use is spent for the rest of the pass regardless of outcome.
         public void RecordGenerationAttempt(GenerationStep g, MaterializationResult r)
         {
             if (g == null)
@@ -140,27 +138,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  MATERIALIZATION CANDIDATE BUILDER  (Strategy V2 — Strategic Manager, Step 8B)
     // ===========================================================================================
-    //  Turns one Demand (Phase A) or the surplus context (Phase B) into COMPLETE materialization
-    //  chains, then ENUMERATE -> REJECT INFEASIBLE -> RANK -> CHOOSE. Four chain shapes only, at
-    //  most one generation + one attach + one deploy each. RequiredTraits are a hard feasibility
-    //  gate on the projected END result; PreferredTraits are only a ranking tie-break. The whole
-    //  chain's AP + R/H/M/T cost is what is compared and (by the caller) reserved.
-    // ===========================================================================================
     internal static class MaterializationCandidateBuilder
     {
-        // ------------------------------------------------------------------ PHASE A ----
-        //  reservedFollowupAp = follow-up AP already reserved for executors this demand's axis
-        //  prepared earlier this phase (cumulative). `inv` supplies scarcity for the opportunity-
-        //  cost term. Returns the best (plan, followupAp) or null.
         public static (MaterializationPlan plan, float followupAp)? BestForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
-            MaterializationReservation reservation, CapabilityInventory inv)
+            MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            // Radar slices are fractional while every currently executable AP action is discrete.
-            // Permit only the ledger-backed fractional tail to the next whole AP; the real transfer
-            // is committed after a successful deployment by StrategicManager.
             float axisBudget = ledger.DiscreteAdmissionBudget(demand.RequestingAxis);
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
             int stealthSurcharge = (demand.RequiredTraits & TraitPreference.Stealth) != 0
@@ -174,7 +159,6 @@ namespace Game.Ai.V2
 
             var candidates = new List<(MaterializationPlan plan, float followupAp, TraitPreference proj)>();
 
-            // ---- A. Direct  +  B. AttachDeploy (existing base card) ----
             for (int i = 0; i < handList.Count; i++)
             {
                 CardData card = handList[i];
@@ -184,7 +168,6 @@ namespace Game.Ai.V2
 
                 IReadOnlyList<string> baseAbilities = EffectiveAbilities(def, card.Equipment);
 
-                // A. Direct
                 if (AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability)
                     && MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
                 {
@@ -199,7 +182,6 @@ namespace Game.Ai.V2
                     }
                 }
 
-                // B. AttachDeploy — an unattached equipment card in hand onto this host
                 if (card.Equipment == null)
                 {
                     for (int j = 0; j < handList.Count; j++)
@@ -231,14 +213,12 @@ namespace Game.Ai.V2
                 }
             }
 
-            // ---- C. GenerateDeploy  +  D. GenerateAttachDeploy ----
             foreach (GenerationStep g in genSteps)
             {
                 CardDefinition gd = g.CardDef;
 
                 if (g.ProducesEquipment)
                 {
-                    // D2 — generated equipment onto an EXISTING host card in hand.
                     if (gd.equipment == null)
                         continue;
                     for (int i = 0; i < handList.Count; i++)
@@ -273,12 +253,10 @@ namespace Game.Ai.V2
                     if (!MatchesCapabilityDef(gd, demand.Capability))
                         continue;
                     IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
-                    List<PlacementOption> genOpts =
-                        PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly);
+                    List<PlacementOption> genOpts = PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly);
                     if (genOpts.Count == 0)
                         continue;
 
-                    // C — GenerateDeploy (no equipment)
                     if (AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability)
                         && MeetsRequiredTraits(genAbilities, demand.RequiredTraits))
                     {
@@ -292,7 +270,6 @@ namespace Game.Ai.V2
                         }
                     }
 
-                    // D1 — generated deployable + EXISTING equipment card in hand
                     for (int j = 0; j < handList.Count; j++)
                     {
                         CardData eq = handList[j];
@@ -322,15 +299,23 @@ namespace Game.Ai.V2
             if (candidates.Count == 0)
                 return null;
 
-            // The feasible set's cheapest END mobility — the baseline every candidate's mobility /
-            // ETA advantage is measured AGAINST, so extra moveMax only scores when it actually
-            // beats the alternative that was already on the table (spec AC2 / Case 3 / Case 4).
-            int referenceMoveMax = demand.Capability == CapabilityKind.ScoutCapability
-                ? candidates.Min(c => CapabilityQualityEvaluator.ProjectedMoveMax(c.plan))
-                : 0;
+            // Mobility is marginal against the cheapest useful feasible chain, not the slowest
+            // body in the candidate set. An expensive Move1 generation chain must not manufacture
+            // artificial "Move3 beats Move1" value when a cheap Move2 scout is the real alternative.
+            int referenceMoveMax = 0;
+            if (demand.Capability == CapabilityKind.ScoutCapability)
+            {
+                var reference = candidates
+                    .OrderBy(c => c.plan.ApCost + c.followupAp)
+                    .ThenBy(c => ResourceCostSum(c.plan.ResCost))
+                    .ThenBy(c => (int)c.plan.Kind)
+                    .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
+                    .First();
+                referenceMoveMax = CapabilityQualityEvaluator.ProjectedMoveMax(reference.plan);
+            }
 
             foreach (var c in candidates)
-                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax);
+                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand);
 
             var ranked = candidates
                 .OrderByDescending(c => c.plan.Score)
@@ -341,9 +326,6 @@ namespace Game.Ai.V2
             return (ranked[0].plan, ranked[0].followupAp);
         }
 
-        // Spec §17 — explain a close / materially-contested capability-quality choice. Never dumps
-        // every placement variant: the winner, and the runner-up only when it is a DIFFERENT
-        // body (different base card / chain kind) or within a whisker on score.
         private static void LogQualityChoice(AxisDemand demand,
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> ranked)
         {
@@ -379,13 +361,6 @@ namespace Game.Ai.V2
                 + $"[{bdR}]");
         }
 
-        // ------------------------------------------------------------------ PHASE B ----
-        //  Highest FutureUtility reserve-safe chain among Direct / AttachDeploy / GenerateDeploy,
-        //  or null. Never touches a generator use already claimed by Phase A (reservation), never
-        //  exceeds the remaining generation budget, always leaves every configured reserve intact.
-        //  If Phase A carried a still-unresolved strategic demand, any feasible matching surplus
-        //  plan ranks ahead of generic surplus; StrategicManager bypasses the generic utility
-        //  threshold for that demanded plan and records the residual delivery.
         public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
@@ -393,7 +368,6 @@ namespace Game.Ai.V2
             List<CardData> handList = hand.Hand.ToList();
             var candidates = new List<MaterializationPlan>();
 
-            // Direct + AttachDeploy over hand cards.
             for (int i = 0; i < handList.Count; i++)
             {
                 CardData card = handList[i];
@@ -423,7 +397,6 @@ namespace Game.Ai.V2
                         candidates.Add(direct);
                     }
 
-                    // AttachDeploy — only when the attach actually ADDS a scarce trait (Stealth).
                     if (!AiConfigV2.surplusAllowAttach || card.Equipment != null)
                         continue;
                     for (int j = 0; j < handList.Count; j++)
@@ -456,7 +429,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            // GenerateDeploy — proactive generation of a scarce deployable.
             if (AiConfigV2.surplusAllowGeneration && reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
@@ -506,9 +478,6 @@ namespace Game.Ai.V2
             return (bestPlan, bestPlan.Score);
         }
 
-        // =====================================================================================
-        //  PLAN CONSTRUCTION
-        // =====================================================================================
         private static MaterializationPlan MakeExistingPlan(MaterializationChainKind kind, AxisDemand demand,
             CardData baseCard, int baseIdx, CardData equip, int equipIdx, PlacementOption opt,
             IReadOnlyList<string> projected)
@@ -546,14 +515,12 @@ namespace Game.Ai.V2
             CardDefinition baseDef;
             if (generatedIsEquipment)
             {
-                // generated component is the EQUIPMENT; the deployable is an existing hand card
                 p.BaseCardInHand = baseInHand;
                 p.GeneratedEquipmentDef = g.CardDef;
                 baseDef = baseInHand.Definition;
             }
             else
             {
-                // generated component is the DEPLOYABLE
                 p.GeneratedBaseDef = g.CardDef;
                 p.EquipmentInHand = kind == MaterializationChainKind.GenerateAttachDeploy ? equipInHand : null;
                 baseDef = g.CardDef;
@@ -563,18 +530,15 @@ namespace Game.Ai.V2
             return p;
         }
 
-        // Whole-chain AP + resource cost, hand-slot peak, stable key.
         private static void FillCostsAndKey(MaterializationPlan p, CardDefinition baseDef, CardData baseInstance,
             CardData equipInstance, int baseIdx, int equipIdx, int genMark)
         {
             int human = 0, energy = 0, materials = 0, tech = 0;
             float ap = 0f;
 
-            // deploy
             ap += p.Deploy.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0;
             if (p.GeneratedBaseDef != null)
             {
-                // a minted card plays at activationApCost and its ResourceCost was paid at Create.
                 ap += baseDef != null ? baseDef.activationApCost : 0;
             }
             else if (baseInstance != null)
@@ -583,12 +547,10 @@ namespace Game.Ai.V2
                 Accumulate(baseInstance.EffectivePlayResourceCost, ref human, ref energy, ref materials, ref tech);
             }
 
-            // attach
             if (p.UsesEquipment)
             {
                 if (p.GeneratedEquipmentDef != null)
                 {
-                    // minted equipment attaches for activationApCost, no resources (paid at Create).
                     ap += p.GeneratedEquipmentDef.activationApCost;
                 }
                 else if (equipInstance != null)
@@ -598,7 +560,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            // generation — ResourceCost only (the Challenge costs the player no AP).
             if (p.Generation != null && p.Generation.CardDef?.resourceCost != null)
             {
                 ResourceCost rc = p.Generation.CardDef.resourceCost;
@@ -628,17 +589,19 @@ namespace Game.Ai.V2
             h += c.human; e += c.energy; m += c.materials; t += c.tech;
         }
 
-        // =====================================================================================
-        //  FEASIBILITY + RANKING
-        // =====================================================================================
         private static void AddIfFeasibleA(
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> sink,
             MaterializationPlan p, AxisDemand demand, CardDefinition baseDef, int stealthSurcharge,
             float reservedFollowupAp, float axisBudget, float eps, PlayerRoot root, AiHandData hand,
             PlayerSetupData player)
         {
-            float followupAp = (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp)
-                + stealthSurcharge + demand.MinimumFollowupAp;
+            // Follow-up belongs to the projected END body. Equipment may change Move/activation AP
+            // (or grant RapidReaction), so reserving baseDef.activationApCost can over/under-fund
+            // the mission even when the materialization chain itself was correctly affordable.
+            float activationAp = p != null
+                ? CapabilityQualityEvaluator.ProjectedActivationApCost(p)
+                : (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp);
+            float followupAp = activationAp + stealthSurcharge + demand.MinimumFollowupAp;
 
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps)
@@ -664,47 +627,49 @@ namespace Game.Ai.V2
         }
 
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
-            CapabilityInventory inv, int referenceMoveMax)
+            CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand)
         {
             float fit = TargetFit(p.Deploy.Hex, demand.TargetHex);
-            float resSum = p.ResCost == null ? 0f
-                : p.ResCost.human + p.ResCost.energy + p.ResCost.materials + p.ResCost.tech;
+            float resSum = ResourceCostSum(p.ResCost);
             float costFactor = 1f + AiConfigV2.stratCardApCostWeight * p.ApCost
                                   + AiConfigV2.stratChainResCostWeight * resSum;
-            float traitBonus = (demand.PreferredTraits & TraitPreference.Stealth) != 0
+
+            // Scout Preferred-Stealth is already contextual in ScoutCapabilityQuality. Keeping the
+            // old unconditional +0.35 here would double-count it and make a safe dark-map Scout
+            // choice hinge on the tag rather than mobility/information value.
+            float traitBonus = demand.Capability != CapabilityKind.ScoutCapability
+                               && (demand.PreferredTraits & TraitPreference.Stealth) != 0
                                && (projected & TraitPreference.Stealth) != 0
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
 
             float score = (1f + traitBonus) * (0.5f + 0.5f * fit) / Mathf.Max(0.0001f, costFactor);
             score += PlacementBonus(p.Deploy.Kind);
-            score -= ChainStepPenalty(p.Kind);
             if (p.Generation != null)
                 score *= Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
                     Mathf.Clamp01(p.Generation.SuccessChance));
-            score -= ScarcityOpportunityCost(p, demand, inv);
 
-            // Capability quality — rank feasible chains by the USEFULNESS of the body they produce
-            // for the shortage's mission context, not only by cost / preferred trait. A bounded
-            // multiplier (1.0 == no opinion); the whole-chain AP/resource affordability gate in
-            // AddIfFeasibleA stays authoritative (spec Invariant 5). Direct / Attach / Generate*
-            // all pass through the SAME call (spec AC9).
+            // Apply quality while the score is still a positive benefit measure. Multiplying after
+            // subtracting penalties can invert ranking: x1.6 makes a negative score more negative.
             float qm = CapabilityQualityEvaluator.QualityMultiplier(
-                p, demand, inv, referenceMoveMax, out MaterializationQualityBreakdown qbd);
+                p, demand, inv, referenceMoveMax, hasCompetingHeroDemand,
+                out MaterializationQualityBreakdown qbd);
             p.QualityBreakdown = qbd;
             score *= qm;
+
+            score -= ChainStepPenalty(p.Kind);
+            score -= ScarcityOpportunityCost(p, demand, inv);
             return score;
         }
 
-        // spec §5 / §14 / §21 — a generalized (but still bounded, still ranking-only) opportunity
-        // cost: closing THIS demand with a capability another known shortage values much more
-        // highly is penalised BETWEEN feasible alternatives. It never hard-rejects the only
-        // feasible chain — a hard current demand still outranks a speculative future preference.
         private static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
         {
             float cost = 0f;
 
-            // (a) a unique / near-unique Stealth item spent on a demand that does not require it.
-            if ((demand.RequiredTraits & TraitPreference.Stealth) == 0)
+            // A stealth Scout used as a Scout preserves that capability on the map; do not treat it
+            // as "consuming a scarce stealth item" merely because stealth was Preferred rather than
+            // Required. This generic preservation penalty is for spending stealth outside Scout work.
+            if (demand.Capability != CapabilityKind.ScoutCapability
+                && (demand.RequiredTraits & TraitPreference.Stealth) == 0)
             {
                 bool consumesExistingStealth =
                     (p.BaseCardInHand != null && CardCarriesStealth(p.BaseCardInHand))
@@ -715,9 +680,6 @@ namespace Game.Ai.V2
                     cost += AiConfigV2.stratChainScarcityPenalty;
             }
 
-            // (b) a scarce Hero body spent on a non-Hero, non-Scout demand. Scout demands carry
-            // their own CONTEXTUAL hero-opportunity term in CapabilityQualityEvaluator — never
-            // double-count it here.
             if (demand.Capability != CapabilityKind.Hero && demand.Capability != CapabilityKind.ScoutCapability)
             {
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
@@ -744,7 +706,10 @@ namespace Game.Ai.V2
             }
         }
 
-        // Phase B FutureUtility — the V1-ported surplus shape, on the whole chain's cost.
+        private static float ResourceCostSum(ResourceCost c) => c == null
+            ? 0f
+            : c.human + c.energy + c.materials + c.tech;
+
         private static float SurplusUtility(MaterializationPlan p, CapabilityInventory inv, bool recce, bool hero,
             AiHandData hand, IReadOnlyList<string> projected)
         {
@@ -756,8 +721,7 @@ namespace Game.Ai.V2
             float oversupply = recce
                 && inv != null && inv.ReadyScouts + inv.ReserveScouts >= AiConfigV2.surplusScoutOversupplyAt
                 ? AiConfigV2.surplusOversupplyPenalty : 0f;
-            float resSum = p.ResCost == null ? 0f
-                : p.ResCost.human + p.ResCost.energy + p.ResCost.materials + p.ResCost.tech;
+            float resSum = ResourceCostSum(p.ResCost);
 
             return scarcity + versatility + traits + handPressure
                 - AiConfigV2.surplusApCostWeight * p.ApCost
@@ -783,9 +747,6 @@ namespace Game.Ai.V2
             return AiConfigV2.surplusScarcityLow;
         }
 
-        // =====================================================================================
-        //  CAPABILITY + TRAIT HELPERS
-        // =====================================================================================
         private static IReadOnlyList<string> EffectiveAbilities(CardDefinition def, CardDefinition attachedEquipment)
         {
             var baseList = def?.grantedAbilities != null
@@ -815,8 +776,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // Post-projection capability check — an equipment grant can CLEAR the Recce family, so a
-        // scout chain must re-confirm the projected ability set still scouts.
         private static bool AbilitiesSatisfyCapability(IReadOnlyList<string> abilities, CardType type, CapabilityKind kind)
         {
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(abilities);
@@ -834,9 +793,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // HARD trait constraint on the projected END result. Only Stealth has a snapshot-safe
-        // classifier; a demand that sets AntiArmour / Ranged / Melee as Required matches nothing
-        // until such a classifier lands (unchanged from the pre-8B behaviour).
         private static bool MeetsRequiredTraits(IReadOnlyList<string> abilities, TraitPreference required)
         {
             if (required == TraitPreference.None)
@@ -881,9 +837,6 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // =====================================================================================
-        //  SHARED SCORING PRIMITIVES  (ported verbatim from the pre-8B CardCandidateEvaluator)
-        // =====================================================================================
         private static float PlacementBonus(DeploymentKind k)
         {
             switch (k)

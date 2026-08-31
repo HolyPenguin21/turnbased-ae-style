@@ -27,12 +27,14 @@ namespace Game.Ai.V2
         // 2 barely beats radius 1 at this spot.
         public int FocusFreshNeighbors;
 
-        // Honest detection pressure around the focus hex, [0..1] (ReconObjective.DetectionRisk).
+        // Honest pressure that THIS scout may be detected around the focus hex, [0..1]
+        // (ReconObjective.DetectionRisk). This informs stealth protection, not Recce spot strength.
         public float DetectionRisk;
 
-        // The work is about FINDING something that may be hidden (a Surveil / stale-contact chase,
-        // or an Explore into annotated detector range) — the only setting where Recce spot
-        // strength earns real Scout quality. A plain dark-map Explore leaves this false.
+        // The work is specifically about re-acquiring / observing a potentially hidden target.
+        // Recce spot strength detects OTHER hidden units; it does NOT protect our scout from enemy
+        // detectors, so an exposed Explore does not become spot-relevant merely because its own
+        // DetectionRisk is high. Today Surveil is the only such objective.
         public bool DetectionRelevant;
 
         public HexCoord? FocusHex;
@@ -47,9 +49,7 @@ namespace Game.Ai.V2
                 ExplorableUnknownFrac = UnityEngine.Mathf.Clamp01(darkFrac),
                 FocusFreshNeighbors = o.FreshNeighbors,
                 DetectionRisk = UnityEngine.Mathf.Clamp01(o.DetectionRisk),
-                DetectionRelevant = o.Kind == ReconObjectiveKind.Surveil
-                                    || o.Stealth == StealthRequirement.Required
-                                    || o.DetectionRisk > 0f,
+                DetectionRelevant = o.Kind == ReconObjectiveKind.Surveil,
                 FocusHex = o.FocusHex,
             };
         }

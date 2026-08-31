@@ -93,8 +93,16 @@ namespace Game.Ai.V2
                 {
                     AxisDemand demand = state.Demand;
                     float reserved = ledger.ReservedFollowup(demand.RequestingAxis);
+                    // Hero opportunity is real only when another still-active strategic shortage
+                    // in THIS Phase-A portfolio actually needs a Hero. "No deployed free hero" by
+                    // itself is not a reason to preserve a Hero scout on turn one.
+                    bool competingHeroDemand = demand.Capability == CapabilityKind.ScoutCapability
+                        && active.Any(other => !ReferenceEquals(other, state)
+                            && other.Remaining > AiConfigV2.allocatorSliceEpsilon
+                            && other.Demand.Capability == CapabilityKind.Hero);
                     (MaterializationPlan plan, float followupAp)? pick = MaterializationCandidateBuilder.BestForDemand(
-                        snap, player, root, hand, ctx, demand, ledger, commitments, reserved, result.Reservation, inv);
+                        snap, player, root, hand, ctx, demand, ledger, commitments, reserved,
+                        result.Reservation, inv, competingHeroDemand);
                     if (pick != null)
                         feasible.Add(new PhaseACandidate(state, pick.Value.plan, pick.Value.followupAp));
                 }
@@ -286,7 +294,6 @@ namespace Game.Ai.V2
                         + $"resSlack {F(admission.ResourceSlackFactor)})");
                 }
 
-                bool handWasFull = !hand.HasFreeSlot;
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
                 if (plan.Generation != null)
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
@@ -312,16 +319,9 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
 
-                // Phase B is already after mission execution. There is no generic AP stockpile to
-                // keep for a hypothetical later action: AP does not carry between turns. Draw only
-                // needs its real cost to fit the AP that actually remains now. Any future late-turn
-                // consumer must own an explicit reservation before Phase B rather than reviving a
-                // global surplus floor.
-                if (AiConfigV2.surplusAllowDraw && handWasFull && hand.HasFreeSlot
-                    && root.ActionPoints >= ctx.DrawApCost
-                    && CardDrawExecutor.TryCycle(root, hand, ctx))
-                    result.StateChanged = true;
-
+                // Do NOT draw here. Phase B must re-evaluate residual + worthwhile surplus after
+                // every real materialization. Generic hand cycling is a terminal sink only; an
+                // immediate refill here could consume the AP of a second useful preparation action.
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
 

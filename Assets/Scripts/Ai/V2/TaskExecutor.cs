@@ -49,8 +49,11 @@ namespace Game.Ai.V2
             if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
                 yield break;
 
-            foreach (ProvisionedMission pm in provisioned)
+            // Indexed execution is intentional: optional AP may use only the slack ABOVE every
+            // mandatory AP claim owned by the current and still-pending provisioned missions.
+            for (int missionIndex = 0; missionIndex < provisioned.Count; missionIndex++)
             {
+                ProvisionedMission pm = provisioned[missionIndex];
                 var result = new ExecutionResult { Key = pm.Key };
                 ArmyData army = Resolve(player, pm.MoverArmyId);
                 if (army == null)
@@ -183,14 +186,19 @@ namespace Game.Ai.V2
                     HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, executionHex);
                     if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }
 
-                    // Optional (non-Required) stealth — a stealth-capable, still-visible mover that
-                    // can only enter stealth before its first move decides here, once, whether the
-                    // risk of the leg it is about to take is worth the AP (spec §9 / §10 / AC12 / AC13).
+                    // A scout may be unable to enter stealth after its first activation. Evaluate
+                    // once BEFORE that activation against the worst honest pressure already known
+                    // on the first leg OR planned execution/end hex, and only from AP not claimed by
+                    // this or later provisioned missions.
                     if (!optionalStealthChecked)
                     {
                         optionalStealthChecked = true;
                         if (!pm.StealthApReserved && !result.EnteredStealth)
-                            result.EnteredStealth |= MaybeEnterOptionalStealth(player, root, ctx, army, pm, next.Value);
+                        {
+                            float mandatoryClaims = MandatoryApClaimsFrom(provisioned, missionIndex);
+                            result.EnteredStealth |= MaybeEnterOptionalStealth(
+                                player, root, ctx, army, pm, next.Value, executionHex, mandatoryClaims);
+                        }
                     }
 
                     HexCoord before = army.Hex;
@@ -327,9 +335,20 @@ namespace Game.Ai.V2
             pm.ScoutKind == ScoutTargetKind.Surveil
             && ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
 
+        private static float MandatoryApClaimsFrom(IReadOnlyList<ProvisionedMission> provisioned, int startIndex)
+        {
+            if (provisioned == null)
+                return 0f;
+            float total = 0f;
+            for (int i = Mathf.Max(0, startIndex); i < provisioned.Count; i++)
+                if (provisioned[i] != null)
+                    total += Mathf.Max(0f, provisioned[i].ClaimedAp);
+            return total;
+        }
+
         // Returns true only if it actually entered stealth this call.
         private static bool MaybeEnterOptionalStealth(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ArmyData army, ProvisionedMission pm, HexCoord nextHex)
+            ArmyData army, ProvisionedMission pm, HexCoord nextHex, HexCoord executionHex, float mandatoryApClaims)
         {
             if (army == null || army.Members.Count == 0 || root == null)
                 return false;
@@ -345,23 +364,35 @@ namespace Game.Ai.V2
 
             AiHandData hand = AiHandRegistry.Peek(player);
             bool drawAvailable = hand != null && hand.HasFreeSlot && hand.HasCardsLeftToDraw;
+            float knownRouteRisk = Mathf.Max(
+                LegDetectionRisk(player, nextHex),
+                LegDetectionRisk(player, executionHex));
 
             var eval = ScoutOptionalStealthPolicy.Evaluate(new OptionalStealthInputs
             {
-                LegDetectionRisk = LegDetectionRisk(player, nextHex),
+                LegDetectionRisk = knownRouteRisk,
                 MoverAlreadyHidden = false,
                 MoverIsStrategicBody = army.Members.Any(m => m.IsHero),
                 ApRemaining = root.ActionPoints,
                 StealthApCost = stealthAp,
+                MandatoryApClaims = mandatoryApClaims,
                 DrawAvailable = drawAvailable,
                 DrawApCost = ctx != null ? ctx.DrawApCost : 0,
+                // Exact slot/deck cardinality is deliberately not duplicated here; the terminal
+                // executor remains authoritative. This is only a conservative bounded upper bound
+                // for marginal AP opportunity, further capped by actual AP before/after the spend.
+                DrawOpportunities = drawAvailable ? AiConfigV2.maxTerminalDrawsPerTurn : 0,
             });
 
+            float slack = Mathf.Max(0f, root.ActionPoints - Mathf.Max(0f, mandatoryApClaims));
             AiDebugLog.Write($"[AI][V2] exec {pm.Key} — scout stealth {eval.ToCompact()} "
-                + $"ap={root.ActionPoints} drawSlots={(drawAvailable ? 1 : 0)}");
+                + $"ap={root.ActionPoints} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
+                + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)} draw={(drawAvailable ? 1 : 0)}");
 
             if (eval.Decision != OptionalStealthDecision.Enter)
                 return false;
+            if (slack + AiConfigV2.allocatorSliceEpsilon < stealthAp)
+                return false; // live re-check: never spend another provisioned mission's claim
 
             root.SpendActionPoints(stealthAp);
             StealthSystem.EnterStealth(scout);

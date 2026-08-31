@@ -34,10 +34,13 @@ namespace Game.Ai.V2
                 matching++;
 
                 bool needsStealth = (demand.RequiredTraits & TraitPreference.Stealth) != 0;
-                bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(def.grantedAbilities);
-                if (!hasStealth && card.Equipment?.equipment != null)
-                    hasStealth = AbilityParams.AbilitiesHaveAnyStealth(
-                        EquipmentSystem.EffectiveAbilities(def.grantedAbilities, card.Equipment.equipment));
+                IReadOnlyList<string> projectedAbilities = def.grantedAbilities;
+                bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(projectedAbilities);
+                if (card.Equipment?.equipment != null)
+                {
+                    projectedAbilities = EquipmentSystem.EffectiveAbilities(def.grantedAbilities, card.Equipment.equipment);
+                    hasStealth = AbilityParams.AbilitiesHaveAnyStealth(projectedAbilities);
+                }
                 if (needsStealth && !hasStealth)
                     continue;
                 traitMatching++;
@@ -51,7 +54,13 @@ namespace Game.Ai.V2
                         int stealthSurcharge = needsStealth ? AiConfigV2.scoutOptionalStealthAp : 0;
                         float deployAp = card.EffectivePlayApCost
                             + (opt.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0f);
-                        float followupAp = def.activationApCost + stealthSurcharge + demand.MinimumFollowupAp;
+                        var diagnosticPlan = new MaterializationPlan
+                        {
+                            BaseCardInHand = card,
+                            ProjectedAbilities = projectedAbilities,
+                        };
+                        float followupAp = CapabilityQualityEvaluator.ProjectedActivationApCost(diagnosticPlan)
+                            + stealthSurcharge + demand.MinimumFollowupAp;
                         minDirectNeed = System.Math.Min(minDirectNeed, deployAp + reservedFollowup + followupAp);
                         continue;
                     }
