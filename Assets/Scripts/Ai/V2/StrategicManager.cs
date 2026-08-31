@@ -272,18 +272,35 @@ namespace Game.Ai.V2
         {
             if (root == null || plan == null)
                 return false;
+
+            // A reserve is a floor a SURPLUS action may not cross; it is not a prerequisite balance.
+            // If the player is already below a configured floor, a plan that does not spend that
+            // dimension must remain admissible. Protect min(configured reserve, current available)
+            // so surplus can never deepen an existing deficit but also cannot deadlock while waiting
+            // to climb back to the configured reserve. This fixes e.g. a 0-Energy hero being blocked
+            // solely because current Energy is 1 while surplusEnergyReserve is 2.
+            float configuredApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
+            float protectedApFloor = Mathf.Min(configuredApReserve, Mathf.Max(0f, root.ActionPoints));
             float apAfter = root.ActionPoints - plan.ApCost;
-            if (apAfter < AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve)
+            if (apAfter < protectedApFloor)
                 return false;
 
             ResourceCost cost = plan.ResCost;
             if (cost == null)
                 return true;
+
             PlayerSetupData player = root.Setup;
-            return AiResourceReservation.Available(root, player, ResourceType.Human) - cost.human >= AiConfigV2.surplusHumanReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Energy) - cost.energy >= AiConfigV2.surplusEnergyReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Materials) - cost.materials >= AiConfigV2.surplusMaterialsReserve
-                && AiResourceReservation.Available(root, player, ResourceType.Tech) - cost.tech >= AiConfigV2.surplusTechReserve;
+            return Preserves(ResourceType.Human, cost.human, AiConfigV2.surplusHumanReserve)
+                && Preserves(ResourceType.Energy, cost.energy, AiConfigV2.surplusEnergyReserve)
+                && Preserves(ResourceType.Materials, cost.materials, AiConfigV2.surplusMaterialsReserve)
+                && Preserves(ResourceType.Tech, cost.tech, AiConfigV2.surplusTechReserve);
+
+            bool Preserves(ResourceType type, int spend, int configuredReserve)
+            {
+                float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
+                float protectedFloor = Mathf.Min(configuredReserve, available);
+                return available - spend >= protectedFloor;
+            }
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
