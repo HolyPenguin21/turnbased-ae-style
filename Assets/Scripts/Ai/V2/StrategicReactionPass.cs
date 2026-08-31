@@ -7,11 +7,9 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // One bounded same-turn replan after execution reveals a previously unknown enemy/neutral army.
-    // The normal turn-start analysis is intentionally frozen while missions execute; this pass is
-    // the explicit exception for information Recon exists to discover. It consumes the interrupt
-    // BEFORE replanning, so discoveries made by the reaction itself are deferred to next turn rather
-    // than recursively restarting strategy.
+    // Bounded same-turn replanning. Round 0 consumes the ordinary strategic invalidation. A single
+    // round 1 is permitted only when round 0 itself materializes new operational capability or a
+    // terminal draw exposes an actionable hand. New contact discovery never recursively chains.
     public sealed class StrategicReactionResult
     {
         public bool Ran;
@@ -23,6 +21,7 @@ namespace Game.Ai.V2
         public int Executed;
         public int CardsPlayed;
         public int CardsDrawn;
+        public int Rounds;
     }
 
     internal static class StrategicReactionPass
@@ -30,11 +29,16 @@ namespace Game.Ai.V2
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
         {
-            if (result == null)
-                result = new StrategicReactionResult();
+            yield return ExecuteRound(priorSnapshot, player, root, ctx,
+                result ?? new StrategicReactionResult(), 0);
+        }
+
+        private static IEnumerator ExecuteRound(WorldSnapshot priorSnapshot, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result, int round)
+        {
             if (player == null || root == null || ctx == null || ctx.Map == null)
                 yield break;
-            if (!StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+            if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 yield break;
 
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
@@ -42,25 +46,23 @@ namespace Game.Ai.V2
             if (hand == null)
                 StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
 
-            // Consume first: this is the hard one-pass bound. Any discovery produced below creates a
-            // fresh pending entry which is logged/cleared at the end and left for next turn's normal
-            // strategic scan instead of recursively invoking this pass.
+            // Consume the entry before running the round. Anything registered below is necessarily
+            // a new invalidation and therefore eligible only for the explicit bounded follow-up.
             StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
             result.Ran = true;
-            result.DiscoveredTargets = targetIds.Count;
+            result.Rounds++;
+            result.DiscoveredTargets += targetIds.Count;
 
             if (hand == null)
             {
-                AiDebugLog.Write("[AI][V2] reaction — pending discovery consumed, but no AI hand is available; defer to next turn");
+                AiDebugLog.Write("[AI][V2] reaction — pending invalidation consumed, but no AI hand is available; defer to next turn");
                 yield break;
             }
 
             int apAtStart = root.ActionPoints;
-            AiDebugLog.Write($"[AI][V2] reaction — BEGIN bounded strategic replan "
+            AiDebugLog.Write($"[AI][V2] reaction — BEGIN round {round + 1}/2 bounded strategic replan "
                 + $"targets=[{string.Join(",", targetIds.OrderBy(x => x))}] ap={apAtStart}");
 
-            // Unlike RefreshOperationalState, Scan intentionally rebuilds Known/Threat/Opportunity
-            // from the world knowledge the scout just revealed.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
             RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
@@ -83,7 +85,7 @@ namespace Game.Ai.V2
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
-            result.Demands = demands.Count;
+            result.Demands += demands.Count;
 
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(snapshot.Self?.ActionPoints ?? 0, radar);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
@@ -97,7 +99,7 @@ namespace Game.Ai.V2
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives));
-            result.Missions = missions.Count;
+            result.Missions += missions.Count;
 
             List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
             var outcomeLedger = new MissionOutcomeLedger();
@@ -116,11 +118,9 @@ namespace Game.Ai.V2
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
                 foreach (FundedEntry fe in allocation.Funded)
                 {
-                    if (fe?.Mission == null)
-                        continue;
+                    if (fe?.Mission == null) continue;
                     StableMissionKey key = StableMissionKey.For(fe.Mission);
-                    if (provSession.AlreadyProvisioned(key))
-                        continue;
+                    if (provSession.AlreadyProvisioned(key)) continue;
 
                     ProvisioningResult provision = ProvisioningManager.Provision(
                         player, root, hand, ctx, provSession, fe);
@@ -150,25 +150,25 @@ namespace Game.Ai.V2
                 allocation = session.Pack();
             }
 
-            result.Provisioned = provisioned.Count;
+            result.Provisioned += provisioned.Count;
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed);
-            result.Executed = executed.Count;
+            result.Executed += executed.Count;
             foreach (ExecutionResult er in executed)
                 outcomeLedger.RecordExecution(er);
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());
 
-            // A second discovery during this pass is deliberately NOT recursively replanned. The
-            // next normal turn-start scan will see it. Clear the current-turn signal so Phase B can
-            // safely convert only genuinely stranded AP after this one reaction opportunity.
-            if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+            // Contact discovery produced by a reaction is intentionally not recursively replanned.
+            // The next ordinary scan already sees the world knowledge, so consume only that reason
+            // and preserve any independent hand/capability invalidation registered in the round.
+            if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {
                 HashSet<int> deferred = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
-                AiDebugLog.Write($"[AI][V2] reaction — bounded pass exhausted; additional discovery "
-                    + $"[{string.Join(",", deferred.OrderBy(x => x))}] deferred to next turn");
-                StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
+                AiDebugLog.Write($"[AI][V2] reaction — contact recursion suppressed; additional discovery "
+                    + $"[{string.Join(",", deferred.OrderBy(x => x))}] deferred to next strategic scan");
+                StrategicInterruptRegistry.ClearDiscovery(player, ctx.TurnNumber);
             }
 
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
@@ -180,9 +180,24 @@ namespace Game.Ai.V2
             result.CardsDrawn += phaseB.CardsDrawn;
             result.StateChanged |= phaseB.StateChanged || executed.Count > 0;
 
-            AiDebugLog.Write($"[AI][V2] reaction — END ap {apAtStart}->{root.ActionPoints}, "
-                + $"demands {result.Demands}, missions {result.Missions}, provisioned {result.Provisioned}, "
-                + $"executed {result.Executed}, cardsPlayed {result.CardsPlayed}, draws {result.CardsDrawn}");
+            AiDebugLog.Write($"[AI][V2] reaction — END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
+                + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "
+                + $"executed {executed.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
+                + $"draws {phaseB.CardsDrawn}");
+
+            if (StrategicInterruptRegistry.HasPendingFollowup(player, ctx.TurnNumber))
+            {
+                if (round == 0)
+                {
+                    AiDebugLog.Write("[AI][V2] reaction — operational hand/capability changed inside round 1; run one bounded follow-up round");
+                    yield return ExecuteRound(snapshot, player, root, ctx, result, 1);
+                }
+                else
+                {
+                    AiDebugLog.Write("[AI][V2] reaction — follow-up bound reached; remaining hand/capability invalidation deferred to next strategic scan");
+                    StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
+                }
+            }
         }
     }
 }

@@ -4,10 +4,9 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // Carries current-turn facts that invalidate strategic conclusions already made earlier in the
-    // pipeline. Enemy/neutral discovery is one source; a late hand/capability mutation can also make
-    // a previously suppressed mission executable. All reasons feed the same ONE bounded reaction
-    // pass before housekeeping — no recursive replanning and no second planner implementation.
+    // Carries current-turn facts that invalidate conclusions made by the frozen strategic pass.
+    // One ordinary reaction round is always allowed; one extra follow-up round is allowed only for
+    // hand/capability changes created by that reaction. Contact discovery never recursively chains.
     internal static class StrategicInterruptRegistry
     {
         [System.Flags]
@@ -32,60 +31,57 @@ namespace Game.Ai.V2
 
         public static void CaptureTurnContext(PlayerSetupData player, int turn, AiHandData hand)
         {
-            if (player == null)
-                return;
+            if (player == null) return;
             Entry e = GetOrReset(player, turn);
-            if (hand != null)
-                e.Hand = hand;
+            if (hand != null) e.Hand = hand;
         }
 
         public static void MarkDiscovery(PlayerSetupData player, int turn, IEnumerable<int> armyIds)
         {
-            if (player == null || armyIds == null)
-                return;
+            if (player == null || armyIds == null) return;
             Entry e = GetOrReset(player, turn);
             foreach (int id in armyIds)
-                if (id > 0)
-                    e.DiscoveredArmyIds.Add(id);
+                if (id > 0) e.DiscoveredArmyIds.Add(id);
             if (e.DiscoveredArmyIds.Count > 0)
                 e.Reasons |= Reason.Discovery;
         }
 
         public static void MarkHandOpportunity(PlayerSetupData player, int turn, AiHandData hand)
         {
-            if (player == null)
-                return;
+            if (player == null) return;
             Entry e = GetOrReset(player, turn);
-            if (hand != null)
-                e.Hand = hand;
+            if (hand != null) e.Hand = hand;
             e.Reasons |= Reason.HandOpportunity;
         }
 
         public static void MarkCapabilityChanged(PlayerSetupData player, int turn, AiHandData hand)
         {
-            if (player == null)
-                return;
+            if (player == null) return;
             Entry e = GetOrReset(player, turn);
-            if (hand != null)
-                e.Hand = hand;
+            if (hand != null) e.Hand = hand;
             e.Reasons |= Reason.CapabilityChanged;
         }
 
-        // Historical name retained because StrategicManager/StrategicReactionPass already meet at
-        // this seam. Semantics are now deliberately broader: ANY strategic invalidation requests the
-        // same bounded reaction. TargetIds remains empty when the reason was not a contact discovery.
-        public static bool HasPendingDiscovery(PlayerSetupData player, int turn)
-        {
-            return player != null
-                && ByPlayer.TryGetValue(player, out Entry e)
-                && e.Turn == turn
-                && e.Reasons != Reason.None;
-        }
+        // Historical name retained for existing call sites. It now means ANY pending strategic
+        // invalidation, not only contact discovery.
+        public static bool HasPendingDiscovery(PlayerSetupData player, int turn) => HasPending(player, turn);
+
+        public static bool HasPending(PlayerSetupData player, int turn) =>
+            player != null && ByPlayer.TryGetValue(player, out Entry e)
+            && e.Turn == turn && e.Reasons != Reason.None;
+
+        public static bool HasPendingContactDiscovery(PlayerSetupData player, int turn) =>
+            player != null && ByPlayer.TryGetValue(player, out Entry e)
+            && e.Turn == turn && (e.Reasons & Reason.Discovery) != 0;
+
+        public static bool HasPendingFollowup(PlayerSetupData player, int turn) =>
+            player != null && ByPlayer.TryGetValue(player, out Entry e)
+            && e.Turn == turn
+            && (e.Reasons & (Reason.HandOpportunity | Reason.CapabilityChanged)) != 0;
 
         public static HashSet<int> TargetIds(PlayerSetupData player, int turn)
         {
-            if (!HasPendingDiscovery(player, turn))
-                return new HashSet<int>();
+            if (!HasPending(player, turn)) return new HashSet<int>();
             return new HashSet<int>(ByPlayer[player].DiscoveredArmyIds);
         }
 
@@ -96,6 +92,18 @@ namespace Game.Ai.V2
                 return false;
             hand = e.Hand;
             return hand != null;
+        }
+
+        // Drop only contact-discovery recursion while preserving a hand/capability invalidation that
+        // may have been registered in the same round.
+        public static void ClearDiscovery(PlayerSetupData player, int turn)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return;
+            e.Reasons &= ~Reason.Discovery;
+            e.DiscoveredArmyIds.Clear();
+            if (e.Reasons == Reason.None)
+                ByPlayer.Remove(player);
         }
 
         public static void Clear(PlayerSetupData player, int turn)
