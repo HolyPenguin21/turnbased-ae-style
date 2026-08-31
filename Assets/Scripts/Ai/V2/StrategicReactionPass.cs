@@ -46,8 +46,6 @@ namespace Game.Ai.V2
             if (hand == null)
                 StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
 
-            // Consume the entry before running the round. Anything registered below is necessarily
-            // a new invalidation and therefore eligible only for the explicit bounded follow-up.
             StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
             result.Ran = true;
             result.Rounds++;
@@ -115,6 +113,8 @@ namespace Game.Ai.V2
             int reallocPass = 0;
             while (true)
             {
+                bool anyFailure = false;
+                bool allFailuresAreExhaustedScoutPool = true;
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
                 foreach (FundedEntry fe in allocation.Funded)
                 {
@@ -136,6 +136,9 @@ namespace Game.Ai.V2
                     }
                     else
                     {
+                        anyFailure = true;
+                        bool exhaustedScoutPool = IsExhaustedScoutPoolFailure(snapshot, fe, provision.Failure);
+                        allFailuresAreExhaustedScoutPool &= exhaustedScoutPool;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
                         AiDebugLog.Write($"[AI][V2]   reaction provision {key} — FAIL "
@@ -144,6 +147,11 @@ namespace Game.Ai.V2
                     }
                 }
 
+                if (anyFailure && allFailuresAreExhaustedScoutPool)
+                {
+                    AiDebugLog.Write("[AI][V2] reaction — recon capability pool exhausted this cycle; stop key-by-key scout reallocation");
+                    break;
+                }
                 if (!session.HasNewFailures || session.Converged
                     || ++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;
@@ -160,9 +168,6 @@ namespace Game.Ai.V2
             outcomeLedger.RefreshObjectiveStatesLive(player);
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());
 
-            // Contact discovery produced by a reaction is intentionally not recursively replanned.
-            // The next ordinary scan already sees the world knowledge, so consume only that reason
-            // and preserve any independent hand/capability invalidation registered in the round.
             if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {
                 HashSet<int> deferred = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
@@ -198,6 +203,21 @@ namespace Game.Ai.V2
                     StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
                 }
             }
+        }
+
+        private static bool IsExhaustedScoutPoolFailure(WorldSnapshot snapshot, FundedEntry funded,
+            ProvisionFailure failure)
+        {
+            if (failure.Kind != ProvisionFailureKind.MoverContended
+                || funded?.Mission?.Kind != MissionKind.Scout
+                || !(funded.Mission.Target is ScoutMissionTarget target))
+                return false;
+
+            // Ignore ProvisioningSession claims here on purpose. If the frozen/live reaction
+            // snapshot itself has zero eligible ready actors, changing the mission key cannot make
+            // another recon job executable this cycle. Conversely, when a second ready scout really
+            // exists, Eligible(..., null) keeps the normal re-pack fallback alive.
+            return ScoutMoverSelector.Eligible(snapshot, target, null).Count == 0;
         }
     }
 }
