@@ -31,6 +31,10 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result)
         {
             Run(player, root, ctx, commitments, result ?? new HousekeepingResult());
+            // Run() can return early when there is nothing to reorganise; resource telemetry is a
+            // turn-level concern and must still be emitted exactly once after the last mutating V2
+            // layer has had its chance.
+            TurnResourceTelemetry.LogEnd(player, root, ctx?.TurnNumber ?? 0);
             yield break;
         }
 
