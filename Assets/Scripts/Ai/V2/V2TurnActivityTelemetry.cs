@@ -24,14 +24,24 @@ namespace Game.Ai.V2
         public int MissionsConsidered;
         public int MissionsFunded;
         public int Provisioned;
-        public int ExecutionAttempts;
+        public int ExecutionAttempts;          // missions actually run (superseded stale ones excluded)
         public int ExecutionsSucceeded;
-        public int ExecutionsStaleOrSkipped;   // revalidated-away or completed with 0 AP / 0 steps
-        public int ReplacementMissions;        // stale provisioned mission handed to a live replacement
+        public int ExecutionsStaleOrSkipped;   // revalidated-away / superseded / 0 AP & 0 steps
+        public int ReplacementMissions;        // synthesised replacements (own fresh key)
         public int CardsPlayed;
         public int CardsDrawn;
         public int CapabilityDeliveries;
         public int ExhaustionEvents;           // a capability pool proven pool-wide unable this scope
+        public int PoolRecoveries;             // an exhausted pool revalidated as usable again
+
+        // Production telemetry (spec §12).
+        public int MaterializationAttempts;
+        public int MaterializationsSucceeded;
+        public int GeneratedCardAttempts;
+        public int GeneratedCardsSucceeded;
+        public int EquipmentAssignmentAttempts;
+        public int EquipmentAssignmentsSucceeded;
+        public int InfrastructureAttempts;
         public int InfrastructureBuilt;
 
         public void Add(V2PhaseActivity o)
@@ -49,6 +59,14 @@ namespace Game.Ai.V2
             CardsDrawn += o.CardsDrawn;
             CapabilityDeliveries += o.CapabilityDeliveries;
             ExhaustionEvents += o.ExhaustionEvents;
+            PoolRecoveries += o.PoolRecoveries;
+            MaterializationAttempts += o.MaterializationAttempts;
+            MaterializationsSucceeded += o.MaterializationsSucceeded;
+            GeneratedCardAttempts += o.GeneratedCardAttempts;
+            GeneratedCardsSucceeded += o.GeneratedCardsSucceeded;
+            EquipmentAssignmentAttempts += o.EquipmentAssignmentAttempts;
+            EquipmentAssignmentsSucceeded += o.EquipmentAssignmentsSucceeded;
+            InfrastructureAttempts += o.InfrastructureAttempts;
             InfrastructureBuilt += o.InfrastructureBuilt;
         }
 
@@ -57,7 +75,11 @@ namespace Game.Ai.V2
             + $"provisioned {Provisioned}, execAttempts {ExecutionAttempts}, execOk {ExecutionsSucceeded}, "
             + $"execStale {ExecutionsStaleOrSkipped}, replacements {ReplacementMissions}, "
             + $"cards {CardsPlayed}, draws {CardsDrawn}, capDeliveries {CapabilityDeliveries}, "
-            + $"exhaustion {ExhaustionEvents}, infra {InfrastructureBuilt}";
+            + $"exhaustion {ExhaustionEvents}, poolRecov {PoolRecoveries}, "
+            + $"mat {MaterializationsSucceeded}/{MaterializationAttempts}, "
+            + $"genCard {GeneratedCardsSucceeded}/{GeneratedCardAttempts}, "
+            + $"equip {EquipmentAssignmentsSucceeded}/{EquipmentAssignmentAttempts}, "
+            + $"infra {InfrastructureBuilt}/{InfrastructureAttempts}";
     }
 
     internal sealed class V2TurnActivity

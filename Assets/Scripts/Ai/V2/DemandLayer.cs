@@ -397,6 +397,7 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.None,
                     MinimumFollowupAp = 0f,
                     TargetHex = hex,
+                    RequiredCapabilityPower = required,
                     Value = Mathf.Clamp01(t.Severity) * 100f,
                     Explain = $"{t.Asset.Kind} @({hex.Q},{hex.R}) under threat sev {t.Severity:0.##}: "
                         + $"need ~{required:0.#} defence, have {available:0.#} "
@@ -453,6 +454,7 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.None,
                     MinimumFollowupAp = 0f,
                     TargetHex = rh.Key,
+                    EconomyResourceType = rh.Value,
                     Value = 55f,
                     Explain = $"no income for {rh.Value}; known unbuilt {rh.Value} site @({rh.Key.Q},{rh.Key.R})",
                 };

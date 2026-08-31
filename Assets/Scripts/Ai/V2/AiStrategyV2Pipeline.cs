@@ -524,9 +524,10 @@ namespace Game.Ai.V2
                     StableMissionKey key = StableMissionKey.For(fe.Mission);
                     if (provSession.AlreadyProvisioned(key))
                         continue; // locked by an earlier pass this turn
-                    // A capability pool already proven pool-wide unable this turn is not asked again.
-                    if (CapabilityPoolExhaustionRegistry.IsExhausted(player,
-                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission)))
+                    // A capability pool proven pool-wide unable is not asked again UNLESS a cheap
+                    // revalidation now finds an eligible actor (spec §7).
+                    if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
+                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
                         continue;
 
                     ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
@@ -570,7 +571,7 @@ namespace Game.Ai.V2
 
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, V2Phase.Main);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot);
             foreach (ExecutionResult er in executed)
                 ledger.RecordExecution(er);
             ledger.RecordDeferrals(allocation.Deferred);
@@ -608,21 +609,29 @@ namespace Game.Ai.V2
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
-            // --- Main-phase activity bucket. Derived from this pipeline's own facts exactly once;
-            //     the Reaction bucket is owned by StrategicReactionPass. Total = Main + Reaction.
+            // --- Main-phase activity bucket. DERIVED once, here, from this pipeline's own facts —
+            //     never incremented inside a nested layer (spec §11). The Reaction bucket is owned
+            //     by StrategicReactionPass the same way. Total = Main + Reaction, no double count.
             V2PhaseActivity main = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
             main.DemandsRaised = demands.Count;
             main.MissionsConsidered = missions.Count;
             main.MissionsFunded = allocation.Funded.Count;
             main.Provisioned = provisioned.Count;
-            main.ExecutionAttempts = executed.Count;
+            main.ExecutionAttempts = executed.Count(MissionRevalidator.WasAttempt);
             main.ExecutionsSucceeded = executed.Count(MissionRevalidator.WasGenuineExecution);
             main.ExecutionsStaleOrSkipped = executed.Count(MissionRevalidator.WasStaleOrSkipped);
+            main.ReplacementMissions = executed.Count(MissionRevalidator.WasReplacement);
             main.CardsPlayed = phaseA.CardsPlayed + phaseB.CardsPlayed;
             main.CardsDrawn = phaseA.CardsDrawn + phaseB.CardsDrawn;
+            main.InfrastructureAttempts = phaseA.InfrastructureAttempts + phaseB.InfrastructureAttempts;
             main.InfrastructureBuilt = phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
-            foreach (System.Collections.Generic.KeyValuePair<DesireAxis, float> kv in phaseA.ApDebited)
-                if (kv.Value > 0f) main.CapabilityDeliveries++;
+            main.MaterializationAttempts = phaseA.MaterializationAttempts + phaseB.MaterializationAttempts;
+            main.MaterializationsSucceeded = phaseA.MaterializationsSucceeded + phaseB.MaterializationsSucceeded;
+            main.GeneratedCardAttempts = phaseA.GeneratedCardAttempts + phaseB.GeneratedCardAttempts;
+            main.GeneratedCardsSucceeded = phaseA.GeneratedCardsSucceeded + phaseB.GeneratedCardsSucceeded;
+            main.EquipmentAssignmentAttempts = phaseA.EquipmentAssignmentAttempts + phaseB.EquipmentAssignmentAttempts;
+            main.EquipmentAssignmentsSucceeded = phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
+            main.CapabilityDeliveries = phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries;
 
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "

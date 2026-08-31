@@ -18,9 +18,7 @@ namespace Game.Ai.V2
         public int Demands;
         public int Missions;
         public int Provisioned;
-        public int Executed;
-        public int ExecutionsSucceeded;
-        public int ExecutionsStaleOrSkipped;
+        public int Executed;          // real attempts (superseded stale missions excluded)
         public int CardsPlayed;
         public int CardsDrawn;
         public int Rounds;
@@ -127,9 +125,10 @@ namespace Game.Ai.V2
                     if (fe?.Mission == null) continue;
                     StableMissionKey key = StableMissionKey.For(fe.Mission);
                     if (provSession.AlreadyProvisioned(key)) continue;
-                    // A capability pool already proven pool-wide unable this round is not asked again.
-                    if (CapabilityPoolExhaustionRegistry.IsExhausted(player,
-                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission)))
+                    // A capability pool proven pool-wide unable stays exhausted across the reaction
+                    // round boundary; it is only re-tried if revalidation now finds an actor (spec §7).
+                    if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
+                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
                         continue;
 
                     ProvisioningResult provision = ProvisioningManager.Provision(
@@ -175,10 +174,8 @@ namespace Game.Ai.V2
 
             result.Provisioned += provisioned.Count;
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, V2Phase.Reaction);
-            result.Executed += executed.Count;
-            result.ExecutionsSucceeded += executed.Count(MissionRevalidator.WasGenuineExecution);
-            result.ExecutionsStaleOrSkipped += executed.Count(MissionRevalidator.WasStaleOrSkipped);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot);
+            result.Executed += executed.Count(MissionRevalidator.WasAttempt);
             foreach (ExecutionResult er in executed)
                 outcomeLedger.RecordExecution(er);
             outcomeLedger.RecordDeferrals(allocation.Deferred);
@@ -202,19 +199,30 @@ namespace Game.Ai.V2
             result.CardsDrawn += phaseB.CardsDrawn;
             result.StateChanged |= phaseB.StateChanged || executed.Count > 0;
 
-            // Reaction-phase activity bucket (additive across the up-to-2 bounded rounds). The
-            // Main bucket is owned by Pipeline.RunTurn; Total = Main + Reaction, no double count.
+            // Reaction-phase activity bucket (additive across the up-to-2 bounded rounds). Every
+            // execution counter is DERIVED from `executed` exactly once — never incremented inside
+            // TaskExecutor (spec §11). The Main bucket is owned by Pipeline.RunTurn; Total = Main +
+            // Reaction, no double count.
             V2PhaseActivity ract = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Reaction);
             ract.DemandsRaised += demands.Count;
             ract.MissionsConsidered += missions.Count;
             ract.MissionsFunded += allocation.Funded.Count;
             ract.Provisioned += provisioned.Count;
-            ract.ExecutionAttempts += executed.Count;
+            ract.ExecutionAttempts += executed.Count(MissionRevalidator.WasAttempt);
             ract.ExecutionsSucceeded += executed.Count(MissionRevalidator.WasGenuineExecution);
             ract.ExecutionsStaleOrSkipped += executed.Count(MissionRevalidator.WasStaleOrSkipped);
+            ract.ReplacementMissions += executed.Count(MissionRevalidator.WasReplacement);
             ract.CardsPlayed += phaseA.CardsPlayed + phaseB.CardsPlayed;
             ract.CardsDrawn += phaseB.CardsDrawn;
+            ract.CapabilityDeliveries += phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries;
+            ract.InfrastructureAttempts += phaseA.InfrastructureAttempts + phaseB.InfrastructureAttempts;
             ract.InfrastructureBuilt += phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
+            ract.MaterializationAttempts += phaseA.MaterializationAttempts + phaseB.MaterializationAttempts;
+            ract.MaterializationsSucceeded += phaseA.MaterializationsSucceeded + phaseB.MaterializationsSucceeded;
+            ract.GeneratedCardAttempts += phaseA.GeneratedCardAttempts + phaseB.GeneratedCardAttempts;
+            ract.GeneratedCardsSucceeded += phaseA.GeneratedCardsSucceeded + phaseB.GeneratedCardsSucceeded;
+            ract.EquipmentAssignmentAttempts += phaseA.EquipmentAssignmentAttempts + phaseB.EquipmentAssignmentAttempts;
+            ract.EquipmentAssignmentsSucceeded += phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
 
             AiDebugLog.Write($"[AI][V2] reaction — END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
                 + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "

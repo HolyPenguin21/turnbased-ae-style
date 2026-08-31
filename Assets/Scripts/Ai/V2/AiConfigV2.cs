@@ -208,6 +208,19 @@ namespace Game.Ai.V2
         public const int economyMaxDemandsPerTurn = 1;         // one extraction-infrastructure demand at a time
         public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
+        // Garrison saturation / composition-diversity modifier in MaterializationCandidateBuilder
+        // .ScorePlanA — applied ONLY to a GarrisonCombatPower demand landing in an existing
+        // garrison / defensive army. Deterministic; keeps one destination from absorbing every
+        // defensive card once it already covers the threat.
+        public const float garrisonSaturatedPenalty = 6f;          // destination already meets RequiredCapabilityPower
+        public const float garrisonCrowdingPenaltyPerMember = 0.35f; // grows with the destination's current member count
+        public const float garrisonDuplicateTypePenalty = 0.6f;    // the card's primary type already dominates the destination
+
+        // Bounded live replacement for stale Explore missions (TaskExecutor). One replacement per
+        // stale mission (a replacement can never spawn another), plus this hard cap on the whole
+        // execution pass. Deterministic frontier pick, no pipeline re-run.
+        public const int maxReplacementMissionsPerPass = 2;
+
         // =======================================================================================
         //  COMBAT OPPORTUNITY ANALYZER  (shared estimator — ONE ESTIMATOR, MANY STAGES)
         //  Snapshot-fidelity tier: ranks known enemy/neutral ARMY sightings (the target set that

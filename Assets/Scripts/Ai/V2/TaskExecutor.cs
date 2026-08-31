@@ -40,27 +40,40 @@ namespace Game.Ai.V2
         public float ApSpent;
         public ExecutionStopReason StopReason;
         public bool EnteredStealth;
+
+        // Lifecycle distinction for continuity + telemetry (2026-08-31 review follow-up).
+        //  Replaced      — this result is the SUPERSEDED stale mission; a live replacement was
+        //                  synthesised for its mover. 0 AP, not a success.
+        //  IsReplacement — this result belongs to the synthesised replacement mission (its own
+        //                  fresh StableMissionKey). Counted once as a replacement, and normally
+        //                  as an execution attempt / success on its own merits.
+        public bool Replaced;
+        public bool IsReplacement;
     }
 
     internal static class TaskExecutor
     {
+        // `snapshot` (the turn's own WorldSnapshot) is used ONLY for the bounded stale-Explore
+        // replacement's frontier pick — never re-planned. Telemetry counters are NOT touched here:
+        // the caller derives every count from `results` exactly once (spec §11).
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null, V2Phase phase = V2Phase.Main)
+            WorldSnapshot snapshot = null)
         {
             if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
                 yield break;
 
-            V2PhaseActivity activity = ctx != null
-                ? V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, phase)
-                : new V2PhaseActivity();
+            // A mutable working queue: a bounded stale-Explore replacement appends a brand-new
+            // ProvisionedMission (its own fresh StableMissionKey) that this same loop then runs.
+            var queue = new List<ProvisionedMission>(provisioned);
+            int replacementsUsed = 0;
 
             // Indexed execution is intentional: optional AP may use only the slack ABOVE every
             // mandatory AP claim owned by the current and still-pending provisioned missions.
-            for (int missionIndex = 0; missionIndex < provisioned.Count; missionIndex++)
+            for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
             {
-                ProvisionedMission pm = provisioned[missionIndex];
-                var result = new ExecutionResult { Key = pm.Key };
+                ProvisionedMission pm = queue[missionIndex];
+                var result = new ExecutionResult { Key = pm.Key, IsReplacement = pm.IsReplacement };
                 ArmyData army = Resolve(player, pm.MoverArmyId);
                 if (army == null)
                 {
@@ -80,17 +93,34 @@ namespace Game.Ai.V2
                 //     world under this one. A stale mission spends no AP, plays no card, and is
                 //     never counted a successful execution.
                 MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
+
+                // Bounded replacement: a stale Explore whose focus is already satisfied and whose
+                // mover is still valid is SUPERSEDED (recorded stale + Replaced) and a brand-new
+                // replacement mission — its OWN fresh StableMissionKey and ScoutMissionTarget — is
+                // appended to the queue for this same loop to run. One hop per mission, hard cap on
+                // the pass, deterministic frontier pick, no pipeline re-run (spec §5, §6).
                 if (validity == MissionValidity.StaleGoalMet
+                    && replacementsUsed < AiConfigV2.maxReplacementMissionsPerPass
                     && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, out HexCoord replFocus)
                     && !VisionSystem.IsVisited(player, replFocus))
                 {
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus ({pm.ExecutionHex.Q},{pm.ExecutionHex.R}) "
-                        + $"already satisfied; bounded replacement re-points mover #{pm.MoverArmyId} to "
-                        + $"({replFocus.Q},{replFocus.R}) from the turn's own frontier (no replan)");
-                    pm.ExecutionHex = replFocus;
-                    pm.FocusHex = replFocus;
-                    activity.ReplacementMissions++;
-                    validity = MissionRevalidator.Validate(player, root, ctx, pm);
+                    ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus);
+                    if (!MissionRevalidator.IsStale(MissionRevalidator.Validate(player, root, ctx, repl)))
+                    {
+                        result.FinalHex = army.Hex;
+                        result.ApSpent = 0f;
+                        result.ReachedGoal = true;        // the ORIGINAL objective genuinely was met
+                        result.Replaced = true;
+                        result.StopReason = ExecutionStopReason.ReachedGoal;
+                        results.Add(result);
+
+                        queue.Add(repl);
+                        replacementsUsed++;
+                        AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus already satisfied; "
+                            + $"superseded → replacement {repl.Key} for mover #{repl.MoverArmyId} "
+                            + $"@({replFocus.Q},{replFocus.R}) (fresh identity, no replan)");
+                        continue;
+                    }
                 }
 
                 if (MissionRevalidator.IsStale(validity))
@@ -104,7 +134,6 @@ namespace Game.Ai.V2
                             ? ExecutionStopReason.ReachedGoal
                             : ExecutionStopReason.TargetInvalidated;
                     results.Add(result);
-                    activity.ExecutionsStaleOrSkipped++;
                     AiDebugLog.Write($"[AI][V2] exec {pm.Key} — revalidation: {validity}; "
                         + "no movement, 0 AP, not a successful execution");
                     continue;
@@ -250,7 +279,7 @@ namespace Game.Ai.V2
                         optionalStealthChecked = true;
                         if (!pm.StealthApReserved && !result.EnteredStealth)
                         {
-                            float mandatoryClaims = MandatoryApClaimsFrom(provisioned, missionIndex);
+                            float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
                             result.EnteredStealth |= MaybeEnterOptionalStealth(
                                 player, root, ctx, army, pm, next.Value, movementGoal, mandatoryClaims);
                         }

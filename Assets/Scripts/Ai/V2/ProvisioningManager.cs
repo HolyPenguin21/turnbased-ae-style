@@ -28,6 +28,12 @@ namespace Game.Ai.V2
         public ResourceVector ClaimedPhysical;
         public float ClaimedAp;
         public bool StealthApReserved;
+
+        // Set true ONLY on a mission synthesised by MissionRevalidator as a bounded live
+        // replacement for a stale Explore. It carries its OWN fresh StableMissionKey (Key above)
+        // and its own ScoutMissionTarget — never the superseded mission's identity. A replacement
+        // can never itself be replaced (one hop, deterministic, bounded).
+        public bool IsReplacement;
     }
 
     public readonly struct ProvisionFailure

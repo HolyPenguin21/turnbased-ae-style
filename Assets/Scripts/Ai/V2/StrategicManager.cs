@@ -14,7 +14,20 @@ namespace Game.Ai.V2
         public bool StateChanged;
         public int CardsPlayed;
         public int CardsDrawn;
+
+        // Production telemetry (Step 8B/8C — spec §12). Attempts/successes for each chain stage,
+        // kept separate so a Generate → Attach → Deploy chain reads as one materialization with
+        // one generated card and one equipment assignment. Scoring is untouched.
+        public int MaterializationAttempts;
+        public int MaterializationsSucceeded;
+        public int GeneratedCardAttempts;
+        public int GeneratedCardsSucceeded;
+        public int EquipmentAssignmentAttempts;
+        public int EquipmentAssignmentsSucceeded;
+        public int InfrastructureAttempts;
         public int InfrastructureBuilt;
+        public int CapabilityDeliveries;   // operational capability actually delivered to a demand
+
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
 
@@ -85,20 +98,27 @@ namespace Game.Ai.V2
             foreach (DemandState istate in states.Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability)))
             {
                 istate.Blocked = true;
+                result.InfrastructureAttempts++;
+                // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
+                // checks the requesting axis's discrete entitlement and live affordability, and
+                // only then runs the authoritative build. A shortfall => nothing spent, not built.
                 InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
-                    snap, player, root, hand, ctx, istate.Demand);
+                    snap, player, root, hand, ctx, istate.Demand, ledger);
                 if (infra.StateChanged)
                     result.StateChanged = true;
-                if (infra.ApSpent > 0f)
-                {
-                    ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
-                    result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
-                }
                 if (infra.Built)
                 {
+                    // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
+                    // ledger records an already-permitted action, never grants overdraft.
+                    if (infra.ApSpent > 0f)
+                    {
+                        ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
+                        result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
+                    }
                     istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
                     result.CardsPlayed++;
                     result.InfrastructureBuilt++;
+                    result.CapabilityDeliveries++;
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
                         + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                     snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
@@ -167,6 +187,21 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx, plan, commitments);
                 chainAttempts++;
 
+                // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
+                // from the plan shape + MaterializationResult; no scoring change.
+                result.MaterializationAttempts++;
+                if (play.Deployed) result.MaterializationsSucceeded++;
+                if (plan.Generation != null)
+                {
+                    result.GeneratedCardAttempts++;
+                    if (play.Generated) result.GeneratedCardsSucceeded++;
+                }
+                if (plan.UsesEquipment)
+                {
+                    result.EquipmentAssignmentAttempts++;
+                    if (play.Attached) result.EquipmentAssignmentsSucceeded++;
+                }
+
                 if (plan.Generation != null)
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
                 if (play.StateChanged)
@@ -205,6 +240,7 @@ namespace Game.Ai.V2
 
                     IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, snap, plan, chosenDemand);
                     StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, chosenDemand.Capability, leased);
+                    result.CapabilityDeliveries++;
                 }
                 else
                 {
@@ -248,6 +284,8 @@ namespace Game.Ai.V2
                 PreferredTraits = d.PreferredTraits,
                 MinimumFollowupAp = d.MinimumFollowupAp,
                 ScoutContext = d.ScoutContext,
+                EconomyResourceType = d.EconomyResourceType,
+                RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
             };
         }
@@ -478,6 +516,18 @@ namespace Game.Ai.V2
                         + $"resSlack {F(admission.ResourceSlackFactor)})");
 
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
+                result.MaterializationAttempts++;
+                if (play.Deployed) result.MaterializationsSucceeded++;
+                if (plan.Generation != null)
+                {
+                    result.GeneratedCardAttempts++;
+                    if (play.Generated) result.GeneratedCardsSucceeded++;
+                }
+                if (plan.UsesEquipment)
+                {
+                    result.EquipmentAssignmentAttempts++;
+                    if (play.Attached) result.EquipmentAssignmentsSucceeded++;
+                }
                 if (plan.Generation != null)
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
                 if (play.StateChanged)

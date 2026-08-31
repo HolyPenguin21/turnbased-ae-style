@@ -85,12 +85,13 @@ namespace Game.Ai.V2
 
         // Bounded, deterministic replacement for a stale Explore. Returns a still-unvisited frontier
         // hex from the turn's own snapshot the mover could be re-pointed at, or null. Never re-plans.
+        // A mission that is ITSELF a replacement never gets replaced again (one hop, bounded).
         public static bool TryPickReplacementExploreFocus(WorldSnapshot snapshot, PlayerSetupData player,
             ProvisionedMission pm, out HexCoord focus)
         {
             focus = default;
-            if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.Kind != MissionKind.Scout
-                || pm.ScoutKind != ScoutTargetKind.Explore)
+            if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
+                || pm.Kind != MissionKind.Scout || pm.ScoutKind != ScoutTargetKind.Explore)
                 return false;
 
             HexCoord from = pm.ExecutionHex;
@@ -110,6 +111,47 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Synthesise a NEW mission for `newFocus` off the stale one's mover. The result has its OWN
+        // fresh StableMissionKey and its OWN ScoutMissionTarget — it never carries the superseded
+        // mission's identity (spec §5). It reuses only the physical mover + AP claim (already
+        // reserved for that mover this turn). Deterministic: `newFocus` came from a totally-ordered
+        // frontier pick.
+        public static ProvisionedMission BuildExploreReplacement(ProvisionedMission stale, HexCoord newFocus)
+        {
+            var target = new ScoutMissionTarget
+            {
+                FocusHex = newFocus,
+                Kind = ScoutTargetKind.Explore,
+                Stealth = StealthRequirement.None,
+                DetectionRisk = 0f,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Scout,
+                Target = target,
+                BaseValue = stale?.Mission?.BaseValue ?? 0f,
+                Explain = "live replacement for a stale Explore focus",
+                PreferredMoverArmyId = stale?.MoverArmyId,
+            };
+            return new ProvisionedMission
+            {
+                Mission = proposal,
+                Key = new StableMissionKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0,
+                    newFocus.Q, newFocus.R),
+                Kind = MissionKind.Scout,
+                ScoutKind = ScoutTargetKind.Explore,
+                MoverArmyId = stale?.MoverArmyId ?? 0,
+                FocusHex = newFocus,
+                ExecutionHex = newFocus,
+                TrackedArmyId = null,
+                BaselineObservedTurn = 0,
+                ClaimedPhysical = stale?.ClaimedPhysical ?? default,
+                ClaimedAp = stale?.ClaimedAp ?? 0f,
+                StealthApReserved = false,   // a different route — never inherit a stealth reserve
+                IsReplacement = true,
+            };
+        }
+
         private static bool Better(FrontierHexSnapshot a, FrontierHexSnapshot b, HexCoord from)
         {
             int da = HexGridMath.Distance(from, a.Hex);
@@ -120,16 +162,23 @@ namespace Game.Ai.V2
             return a.Hex.R < b.Hex.R;
         }
 
-        // --- ExecutionResult classification for turn-activity telemetry (no double counting). ---
-        //  Genuine success : the goal was reached AND real work was done (moved, or spent AP).
-        //  Stale / skipped  : nothing happened at all — 0 steps and 0 AP — whether the executor
-        //                     flagged it a goal (already met before start) or invalidated.
-        //  Anything else (moved toward a multi-turn goal but did not reach it) counts only as an
-        //  attempt, in neither bucket.
+        // --- ExecutionResult classification for turn-activity telemetry. The `executed` list is
+        //     the SINGLE source of truth; every counter is DERIVED from it once in the caller,
+        //     never incremented inside TaskExecutor (spec §11 — no double counting).
+        //  Attempt          : a mission the executor actually ran (not a superseded stale one).
+        //  Genuine success  : the goal was reached AND real work was done (moved, or spent AP).
+        //  Stale / skipped  : nothing happened at all — 0 steps and 0 AP — whether flagged a goal
+        //                     (already met before start), invalidated, or superseded by a
+        //                     replacement.
+        //  Replacement      : the synthesised replacement mission (its own fresh key).
+        public static bool WasAttempt(ExecutionResult r) => r != null && !r.Replaced;
+
         public static bool WasGenuineExecution(ExecutionResult r) =>
-            r != null && r.ReachedGoal && (r.StepsMoved > 0 || r.ApSpent > Mathf.Epsilon);
+            r != null && !r.Replaced && r.ReachedGoal && (r.StepsMoved > 0 || r.ApSpent > Mathf.Epsilon);
 
         public static bool WasStaleOrSkipped(ExecutionResult r) =>
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;
+
+        public static bool WasReplacement(ExecutionResult r) => r != null && r.IsReplacement;
     }
 }

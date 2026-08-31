@@ -1,3 +1,4 @@
+using Game.Economy;
 using Game.HexGrid;
 
 namespace Game.Ai.V2
@@ -83,6 +84,18 @@ namespace Game.Ai.V2
         // trait match. Never a card choice / card name / pre-scored card. Populated per axis:
         // Recon fills ScoutContext; other capabilities add their own typed context as they land.
         public ScoutCapabilityContext ScoutContext;
+
+        // --- Identity extensions (2026-08-31 review follow-up) --------------------------------
+        // ECONOMY: the resource type this EconomicInfrastructure demand is about. Fulfillment must
+        // create an income source for THIS type (an extraction facility on a same-type site) — a
+        // generic Base elsewhere is NOT a valid fulfillment (spec §4).
+        public ResourceType? EconomyResourceType;
+
+        // Target capability POWER the demand needs met, on the same power scale as
+        // ArmySnapshot.EffectiveArmyPower. Set by DefenceDemands (= required garrison power at the
+        // asset). MaterializationCandidateBuilder.ScorePlanA reads it for the garrison-saturation
+        // penalty: a destination that already reaches this figure should not keep attracting cards.
+        public float RequiredCapabilityPower;
 
         public override string ToString() =>
             $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"

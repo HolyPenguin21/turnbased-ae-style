@@ -16,11 +16,13 @@ namespace Game.Ai.V2
     //  POOL-WIDE failure   (every eligible candidate in the snapshot, ignoring this cycle's own
     //  tentative claims, was proven unable) is exhaustion.
     //
-    //  SCOPE is one allocation epoch: the main pipeline turn, or one bounded reaction round. A new
-    //  turn (BeginTurn) or a new reaction round (BeginRound) is a fresh scope — capability may have
-    //  been delivered by Strategic Manager Phase A in between, an actor may have freed up, or the
-    //  world may have moved, so exhaustion never survives a scope boundary. There is no other
-    //  reset and no cross-turn persistence: deterministic and bounded by construction.
+    //  SCOPE + INVALIDATION (spec §7). A new TURN (BeginTurn) is a genuinely fresh slate: AP and
+    //  movement refill, armies un-activate, so every pool is re-evaluated from scratch. A new
+    //  reaction ROUND (BeginRound) is NOT — it does not, on its own, change capability state, so
+    //  exhaustion is CARRIED, and lifted only when a cheap pool-level revalidation
+    //  (RevalidateAndClearIfRecovered) proves at least one eligible actor now exists — e.g. after
+    //  Phase A inside the round materialised a new scout, or an actor freed up. An exhausted pool
+    //  with still-zero eligible actors is never asked to provision again.
     // ===========================================================================================
     internal enum CapabilityPoolKind
     {
@@ -60,20 +62,68 @@ namespace Game.Ai.V2
             s.Exhausted.Clear();
         }
 
-        // A bounded reaction round is a fresh scope — Phase A inside the round may have materialised
-        // new capability, so anything marked exhausted in the main pass gets another chance.
+        // A bounded reaction round does NOT, by itself, change capability state — so it does NOT
+        // clear exhaustion (spec §7). Recovery is proven per-pool by RevalidateAndClearIfRecovered.
+        // A turn boundary (BeginTurn) still resets, and the same is true if the turn number moved
+        // (a stale carry from an earlier turn is never trusted).
         public static void BeginRound(PlayerSetupData player, int turn, int round)
         {
             Scope s = Get(player);
+            if (s.Turn != turn)
+                s.Exhausted.Clear();
             s.Turn = turn;
             s.Round = round;
-            s.Exhausted.Clear();
         }
 
         public static bool IsExhausted(PlayerSetupData player, CapabilityPoolKind pool)
         {
             if (player == null || pool == CapabilityPoolKind.None) return false;
             return Get(player).Exhausted.ContainsKey(pool);
+        }
+
+        // The gate the pack loop calls before consulting an exhausted pool again. If the pool is
+        // NOT exhausted -> true (usable). If it IS exhausted -> a cheap pool-level eligibility
+        // revalidation against the CURRENT snapshot: an eligible actor now exists -> clear the
+        // mark and return true (usable again); still none -> stay exhausted, return false (skip).
+        public static bool RevalidateAndClearIfRecovered(PlayerSetupData player, CapabilityPoolKind pool,
+            WorldSnapshot snap)
+        {
+            if (player == null || pool == CapabilityPoolKind.None) return true;
+            Scope s = Get(player);
+            if (!s.Exhausted.ContainsKey(pool)) return true;
+            if (snap != null && PoolHasEligibleActor(snap, player, pool))
+            {
+                s.Exhausted.Remove(pool);
+                AiDebugLog.Write($"[AI][V2] capability pool recovered — {pool} revalidated as usable this "
+                    + $"{(s.Round == 0 ? "turn" : "reaction round " + s.Round)}");
+                V2Phase phase = s.Round == 0 ? V2Phase.Main : V2Phase.Reaction;
+                V2TurnActivityTelemetry.Phase(player, s.Turn, phase).PoolRecoveries++;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool PoolHasEligibleActor(WorldSnapshot snap, PlayerSetupData player, CapabilityPoolKind pool)
+        {
+            switch (pool)
+            {
+                case CapabilityPoolKind.Scout:
+                    return ScoutMoverSelector.Eligible(snap,
+                        new ScoutMissionTarget { Stealth = StealthRequirement.None }, null).Count > 0;
+                case CapabilityPoolKind.StealthScout:
+                    return ScoutMoverSelector.Eligible(snap,
+                        new ScoutMissionTarget { Stealth = StealthRequirement.Required }, null).Count > 0;
+                case CapabilityPoolKind.FieldCombat:
+                {
+                    CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+                    return inv.RaidAvailableFieldPower > AiConfigV2.allocatorSliceEpsilon
+                        || inv.AvailableHeroes > 0;
+                }
+                case CapabilityPoolKind.Hero:
+                    return CapabilityInventory.Build(snap, player, null).AvailableHeroes > 0;
+                default:
+                    return true;
+            }
         }
 
         public static void MarkExhausted(PlayerSetupData player, CapabilityPoolKind pool, string reason)

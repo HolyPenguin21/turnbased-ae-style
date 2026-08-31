@@ -4,6 +4,7 @@ using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -267,7 +268,7 @@ namespace Game.Ai.V2
             }
 
             foreach (var c in candidates)
-                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand);
+                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
 
             var ranked = candidates
                 .OrderByDescending(c => c.plan.Score)
@@ -566,7 +567,7 @@ namespace Game.Ai.V2
         }
 
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
-            CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand)
+            CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap)
         {
             float fit = TargetFit(p.Deploy.Hex, demand.TargetHex);
             float resSum = ResourceCostSum(p.ResCost);
@@ -588,7 +589,58 @@ namespace Game.Ai.V2
             score *= qm;
             score -= ChainStepPenalty(p.Kind);
             score -= ScarcityOpportunityCost(p, demand, inv);
+            score -= GarrisonSaturationPenalty(p, demand, snap);
             return score;
+        }
+
+        // Deterministic saturation / composition-diversity penalty for a GarrisonCombatPower demand
+        // landing in an EXISTING garrison / defensive army (spec §9, §10). Same-cycle pending
+        // additions are already reflected: Phase A refreshes the snapshot after every play, so the
+        // destination's live member count / power grows between BestForDemand calls, and this
+        // penalty rises with it — steering the next defensive card to a different destination
+        // instead of always the first/strongest army.
+        private static float GarrisonSaturationPenalty(MaterializationPlan p, AxisDemand demand, WorldSnapshot snap)
+        {
+            if (demand == null || demand.Capability != CapabilityKind.GarrisonCombatPower)
+                return 0f;
+            ArmyData dest = p?.Deploy.Army;
+            if (dest == null)
+                return 0f; // a fresh army / reusable shell has no existing crowd to saturate
+
+            int members = dest.Members?.Count ?? 0;
+            float penalty = AiConfigV2.garrisonCrowdingPenaltyPerMember * members;
+
+            // Destination already meets the demanded defence power -> steep penalty (it does not
+            // need this card; a different threatened asset or a fresh body is better).
+            float destPower = 0f;
+            if (snap?.Self?.Armies != null)
+                foreach (ArmySnapshot a in snap.Self.Armies)
+                    if (a != null && a.ArmyId == dest.Id) { destPower = a.EffectiveArmyPower; break; }
+            if (demand.RequiredCapabilityPower > 0f && destPower >= demand.RequiredCapabilityPower)
+                penalty += AiConfigV2.garrisonSaturatedPenalty;
+
+            // Light composition-diversity nudge: the card's primary unit type already dominates
+            // the destination's non-hero members.
+            if (PrimaryTypeDominates(p, dest))
+                penalty += AiConfigV2.garrisonDuplicateTypePenalty;
+
+            return penalty;
+        }
+
+        private static bool PrimaryTypeDominates(MaterializationPlan p, ArmyData dest)
+        {
+            CardDefinition def = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
+            if (def?.unitTypeTags == null || def.unitTypeTags.Count == 0 || dest?.Members == null)
+                return false;
+            Game.Cards.UnitTypeTag primary = def.unitTypeTags[0];
+            int nonHero = 0, sharing = 0;
+            foreach (UnitData m in dest.Members)
+            {
+                if (m == null || m.IsHero) continue;
+                nonHero++;
+                if (m.TypeTags != null && m.TypeTags.Contains(primary)) sharing++;
+            }
+            return nonHero > 0 && sharing * 2 >= nonHero;
         }
 
         private static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
