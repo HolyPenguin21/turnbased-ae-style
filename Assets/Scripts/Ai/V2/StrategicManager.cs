@@ -198,6 +198,7 @@ namespace Game.Ai.V2
                 RequiredTraits = d.RequiredTraits,
                 PreferredTraits = d.PreferredTraits,
                 MinimumFollowupAp = d.MinimumFollowupAp,
+                ScoutContext = d.ScoutContext,
                 Explain = d.Explain,
             };
         }
@@ -250,6 +251,7 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
+            bool cleanStop = true;
             for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
             {
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
@@ -296,6 +298,7 @@ namespace Game.Ai.V2
                         + $"chain did not deploy ({play.FailReason}); stop");
                     if (play.StateChanged)
                         snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    cleanStop = false;
                     break;
                 }
                 result.CardsPlayed++;
@@ -324,7 +327,63 @@ namespace Game.Ai.V2
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
+
+            // Terminal draw — Phase B found no residual demand it could action and no worthwhile
+            // surplus chain. AP does not carry to the next turn and nothing late-turn owns it
+            // (housekeeping is zero-AP by invariant), so convert the genuinely stranded AP into
+            // card option value. Skipped after a deploy FAILURE (state may be mid-chain). Bounded.
+            if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
+                result.StateChanged = true;
             return result;
+        }
+
+        // spec §11–§15 / AC14–AC19. Priority stays: executable residual strategic demand and
+        // worthwhile proactive surplus were already exhausted by the loop above; a card a prior
+        // draw revealed that now makes either actionable STOPS further drawing (its slot is not
+        // stolen — spec §13 / AC16). Never overflows the hand, never draws a dry deck, never
+        // spends unaffordable AP.
+        private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result)
+        {
+            if (!AiConfigV2.surplusAllowDraw || root == null || hand == null || ctx == null)
+                return false;
+
+            int drawn = 0;
+            while (drawn < AiConfigV2.maxTerminalDrawsPerTurn)
+            {
+                if (!hand.HasFreeSlot || !hand.HasCardsLeftToDraw || !root.CanSpendActionPoints(ctx.DrawApCost))
+                    break;
+
+                CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+                (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
+                    snap, player, root, hand, ctx, inv, commitments, result.Reservation);
+                if (pick != null)
+                {
+                    AxisDemand residual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
+                    SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
+                    if (residual != null || pick.Value.utility >= adm.EffectiveThreshold)
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: "
+                            + $"{(residual != null ? "a residual demand" : "a worthwhile surplus chain")} "
+                            + $"is now actionable ({pick.Value.plan.StableKey})");
+                        break;
+                    }
+                }
+
+                int apBefore = root.ActionPoints;
+                int handBefore = hand.Hand.Count;
+                if (!CardDrawExecutor.TryCycle(root, hand, ctx))
+                    break;
+                drawn++;
+                AiDebugLog.Write($"[AI][V2]   strat.B terminal — no actionable residual/surplus, "
+                    + $"convert stranded AP to draw; ap {apBefore}->{root.ActionPoints} "
+                    + $"hand {handBefore}->{hand.Hand.Count}");
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+            }
+
+            if (drawn > 0)
+                AiDebugLog.Write($"[AI][V2] strat.B — {drawn} terminal draw(s)");
+            return drawn > 0;
         }
 
         internal static bool ReservesOkAfterChain(PlayerRoot root, MaterializationPlan plan)

@@ -322,14 +322,61 @@ namespace Game.Ai.V2
             if (candidates.Count == 0)
                 return null;
 
-            foreach (var c in candidates)
-                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv);
+            // The feasible set's cheapest END mobility — the baseline every candidate's mobility /
+            // ETA advantage is measured AGAINST, so extra moveMax only scores when it actually
+            // beats the alternative that was already on the table (spec AC2 / Case 3 / Case 4).
+            int referenceMoveMax = demand.Capability == CapabilityKind.ScoutCapability
+                ? candidates.Min(c => CapabilityQualityEvaluator.ProjectedMoveMax(c.plan))
+                : 0;
 
-            var best = candidates
+            foreach (var c in candidates)
+                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax);
+
+            var ranked = candidates
                 .OrderByDescending(c => c.plan.Score)
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
-                .First();
-            return (best.plan, best.followupAp);
+                .ToList();
+
+            LogQualityChoice(demand, ranked);
+            return (ranked[0].plan, ranked[0].followupAp);
+        }
+
+        // Spec §17 — explain a close / materially-contested capability-quality choice. Never dumps
+        // every placement variant: the winner, and the runner-up only when it is a DIFFERENT
+        // body (different base card / chain kind) or within a whisker on score.
+        private static void LogQualityChoice(AxisDemand demand,
+            List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> ranked)
+        {
+            if (demand.Capability != CapabilityKind.ScoutCapability || ranked.Count == 0)
+                return;
+            MaterializationPlan win = ranked[0].plan;
+
+            (MaterializationPlan plan, float followupAp, TraitPreference proj)? runner = null;
+            foreach (var c in ranked.Skip(1))
+            {
+                bool differentBody = c.plan.Kind != win.Kind
+                    || !ReferenceEquals(c.plan.BaseCardInHand, win.BaseCardInHand)
+                    || c.plan.GeneratedBaseDef != win.GeneratedBaseDef;
+                bool close = win.Score - c.plan.Score <= AiConfigV2.scoutQualityLogRunnerUpMargin;
+                if (differentBody || close)
+                {
+                    runner = c;
+                    break;
+                }
+            }
+            if (runner == null)
+                return;
+
+            string Name(MaterializationPlan p) =>
+                (p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef)?.displayName ?? "?";
+            string bdW = win.QualityBreakdown != null ? win.QualityBreakdown.ToCompact() : "-";
+            string bdR = runner.Value.plan.QualityBreakdown != null
+                ? runner.Value.plan.QualityBreakdown.ToCompact() : "-";
+            AiDebugLog.Write($"[AI][V2]   strat.A quality {demand.Capability} — "
+                + $"{Name(win)} score {win.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                + $"[{bdW}] > {Name(runner.Value.plan)} "
+                + $"{runner.Value.plan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                + $"[{bdR}]");
         }
 
         // ------------------------------------------------------------------ PHASE B ----
@@ -475,6 +522,7 @@ namespace Game.Ai.V2
                 BaseCardInHand = baseCard,
                 EquipmentInHand = kind == MaterializationChainKind.AttachDeploy ? equip : null,
                 Deploy = opt,
+                ProjectedAbilities = projected,
             };
             FillCostsAndKey(p, baseCard.Definition, baseCard, equip, baseIdx, equipIdx, -1);
             return p;
@@ -492,6 +540,7 @@ namespace Game.Ai.V2
                 ExpectedTraits = TraitsOf(projected),
                 Generation = g,
                 Deploy = opt,
+                ProjectedAbilities = projected,
             };
 
             CardDefinition baseDef;
@@ -615,7 +664,7 @@ namespace Game.Ai.V2
         }
 
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
-            CapabilityInventory inv)
+            CapabilityInventory inv, int referenceMoveMax)
         {
             float fit = TargetFit(p.Deploy.Hex, demand.TargetHex);
             float resSum = p.ResCost == null ? 0f
@@ -633,24 +682,51 @@ namespace Game.Ai.V2
                 score *= Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
                     Mathf.Clamp01(p.Generation.SuccessChance));
             score -= ScarcityOpportunityCost(p, demand, inv);
+
+            // Capability quality — rank feasible chains by the USEFULNESS of the body they produce
+            // for the shortage's mission context, not only by cost / preferred trait. A bounded
+            // multiplier (1.0 == no opinion); the whole-chain AP/resource affordability gate in
+            // AddIfFeasibleA stays authoritative (spec Invariant 5). Direct / Attach / Generate*
+            // all pass through the SAME call (spec AC9).
+            float qm = CapabilityQualityEvaluator.QualityMultiplier(
+                p, demand, inv, referenceMoveMax, out MaterializationQualityBreakdown qbd);
+            p.QualityBreakdown = qbd;
+            score *= qm;
             return score;
         }
 
-        // spec §14 / §21 — do not spend a unique Stealth item on a Demand that does not require
-        // Stealth when Stealth supply is scarce and a more constrained Demand may need it.
+        // spec §5 / §14 / §21 — a generalized (but still bounded, still ranking-only) opportunity
+        // cost: closing THIS demand with a capability another known shortage values much more
+        // highly is penalised BETWEEN feasible alternatives. It never hard-rejects the only
+        // feasible chain — a hard current demand still outranks a speculative future preference.
         private static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
         {
-            if ((demand.RequiredTraits & TraitPreference.Stealth) != 0)
-                return 0f;
-            bool consumesExistingStealth =
-                (p.BaseCardInHand != null && CardCarriesStealth(p.BaseCardInHand))
-                || (p.EquipmentInHand?.Definition?.equipment != null
-                    && GrantAddsStealth(p.EquipmentInHand.Definition.equipment));
-            if (!consumesExistingStealth)
-                return 0f;
-            if (inv != null && inv.StealthScouts > AiConfigV2.stratChainStealthScarceAt)
-                return 0f;
-            return AiConfigV2.stratChainScarcityPenalty;
+            float cost = 0f;
+
+            // (a) a unique / near-unique Stealth item spent on a demand that does not require it.
+            if ((demand.RequiredTraits & TraitPreference.Stealth) == 0)
+            {
+                bool consumesExistingStealth =
+                    (p.BaseCardInHand != null && CardCarriesStealth(p.BaseCardInHand))
+                    || (p.EquipmentInHand?.Definition?.equipment != null
+                        && GrantAddsStealth(p.EquipmentInHand.Definition.equipment));
+                if (consumesExistingStealth
+                    && !(inv != null && inv.StealthScouts > AiConfigV2.stratChainStealthScarceAt))
+                    cost += AiConfigV2.stratChainScarcityPenalty;
+            }
+
+            // (b) a scarce Hero body spent on a non-Hero, non-Scout demand. Scout demands carry
+            // their own CONTEXTUAL hero-opportunity term in CapabilityQualityEvaluator — never
+            // double-count it here.
+            if (demand.Capability != CapabilityKind.Hero && demand.Capability != CapabilityKind.ScoutCapability)
+            {
+                CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                if (baseDef != null && baseDef.cardType == CardType.Hero
+                    && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
+                    cost += AiConfigV2.stratChainHeroScarcityPenalty;
+            }
+
+            return cost;
         }
 
         private static float ChainStepPenalty(MaterializationChainKind k)

@@ -422,6 +422,41 @@ namespace Game.Ai.V2
         public const float stratChainGenerationChanceFloor = 0.35f;
         public const int stratChainStealthScarceAt = 1;   // StealthScouts <= this -> preserve a unique Stealth item
         public const float stratChainScarcityPenalty = 0.40f;
+        // Generalized scarcity (spec §5): a Hero body spent on a non-Hero, non-Scout demand while
+        // no free deployed hero exists. Scout demands carry their own contextual hero-opportunity
+        // term (scoutQualityHeroOppCostMax) and are excluded here to avoid double-counting.
+        public const int stratChainHeroScarceAt = 0;      // AvailableHeroes <= this -> the Hero body is a live bottleneck
+        public const float stratChainHeroScarcityPenalty = 0.30f;
+
+        // ---- Capability Quality Model — Scout profile (spec §1–§8 / §16 / §17) -----------------
+        //  A BOUNDED multiplier on ScorePlanA's cost/fit base score, built from MARGINAL mission
+        //  value: every term is "how much more useful is this body than the cheapest feasible
+        //  alternative, HERE", never an unconditional raw-stat bonus. Whole-chain AP/resource
+        //  affordability and follow-up reservation stay authoritative regardless of this number.
+        public const float scoutQualityMobilityWeight = 0.16f;      // per extra moveMax over the feasible-set minimum, scaled by map darkness
+        public const float scoutQualityMobilityEtaWeight = 0.22f;   // per whole turn shaved off the ETA to the focus vs that baseline
+        public const float scoutQualityMobilityFollowThroughFactor = 0.35f; // raw-headroom value kept when the baseline mover already reaches the focus this turn
+        public const float scoutQualityVisionWeight = 0.16f;        // per Recce radius over 1, scaled by how much dark it can actually open
+        public const float scoutQualitySpotWeight = 0.16f;          // Recce spot strength, only meaningful in a detection/surveil context
+        public const int   scoutQualitySpotNorm = 6;                // spot strength that maps to a full spot term
+        public const float scoutQualitySpotIrrelevantFactor = 0.06f;// residual spot value on a plain Explore (near zero)
+        public const float scoutQualityStealthOptionValue = 0.10f;  // safe-context option value of a stealth-capable body (ceiling)
+        public const float scoutQualityStealthRiskValue = 0.45f;    // protective value of stealth at detection risk 1
+        public const float scoutQualityHeroOppCostMax = 0.45f;      // full opportunity cost of burning a Hero as a solo Recce
+        public const int   scoutQualityHeroAbundantAt = 2;          // AvailableHeroes >= this -> hero opportunity cost ~0
+        public const int   scoutQualityHeroScarceAt = 0;            // AvailableHeroes <= this -> acute hero opportunity cost
+        public const float scoutQualityActivationApWeight = 0.12f;  // per activation AP over 1 (drag costFactor's deploy-AP term misses)
+        public const float scoutQualityMultiplierMin = 0.55f;
+        public const float scoutQualityMultiplierMax = 1.60f;
+        public const float scoutQualityLogRunnerUpMargin = 0.15f;   // log the runner-up when it is this close on score
+
+        // ---- Optional (non-Required) Scout stealth AP decision (spec §9 / §10 / §20) -----------
+        public const float scoutOptionalStealthMinRisk = 0.15f;          // leg detection risk under this -> never enter
+        public const float scoutOptionalStealthProtectionScale = 0.9f;   // protection value = risk * this (* strategic-body factor)
+        public const float scoutOptionalStealthStrategicBodyFactor = 1.3f;// a hero-led scout's skin is worth more
+        public const float scoutOptionalStealthBaseApOpportunity = 0.06f;// a spent AP is never entirely free late-turn
+        public const float scoutOptionalStealthDrawOpportunity = 0.35f;  // extra opportunity cost when the spend would kill a legal draw
+        public const float scoutOptionalStealthEnterMargin = 0.10f;      // enter only when protection - opportunity clears this
         // Hard bound on Research/Production Challenges the Strategic Manager may ATTEMPT per AI turn
         // (Phase A + Phase B share it). Generation is resource-expensive and probabilistic — one is
         // a safe first pass; raise only against real AiDebug.log runs.
@@ -437,13 +472,16 @@ namespace Game.Ai.V2
         public const int maxSurplusActionsPerTurn = 2;      // bounds play/draw/play/draw draining the deck/economy
         public const bool surplusAllowDraw = true;
         public const float surplusUtilityThreshold = 0.60f; // a candidate below this FutureUtility is not worth playing
-        // Real AP kept back ON TOP of housekeepingApReserve so surplus play never starves late work.
-        public const float surplusApReserve = 2f;
-        // Per-resource floors surplus play must leave intact (Energy non-zero for aviation head-room).
-        public const int surplusHumanReserve = 0;
-        public const int surplusEnergyReserve = 2;
-        public const int surplusMaterialsReserve = 0;
-        public const int surplusTechReserve = 0;
+        // Standalone TERMINAL draw (spec §11–§15): once Phase B has no residual demand it can
+        // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
+        // next turn — convert it to card option value, bounded by this many draws per turn.
+        public const int maxTerminalDrawsPerTurn = 4;
+        // NOTE: the old speculative Phase-B floors (surplusApReserve / surplus{Human,Energy,
+        // Materials,Tech}Reserve) are RETIRED. Phase B runs AFTER ordinary mission execution;
+        // AP cannot be banked and there is no resource/AP-costing late V2 stage (housekeeping is
+        // zero-AP by invariant). StrategicManager.ReservesOkAfterChain now protects only the REAL
+        // remaining pool. A future late stage that genuinely needs resources after Phase B must
+        // add its own explicit V2 reservation contract rather than reviving a fixed floor here.
 
         // =======================================================================================
         //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)

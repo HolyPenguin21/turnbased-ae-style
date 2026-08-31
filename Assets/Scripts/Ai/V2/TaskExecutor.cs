@@ -103,6 +103,7 @@ namespace Game.Ai.V2
                 ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
                 HexCoord executionHex = pm.ExecutionHex;
                 bool primaryExploreSatisfied = false;
+                bool optionalStealthChecked = false;
 
                 HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
                 HashSet<int> knownNeutralIds = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
@@ -181,6 +182,16 @@ namespace Game.Ai.V2
 
                     HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, executionHex);
                     if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }
+
+                    // Optional (non-Required) stealth — a stealth-capable, still-visible mover that
+                    // can only enter stealth before its first move decides here, once, whether the
+                    // risk of the leg it is about to take is worth the AP (spec §9 / §10 / AC12 / AC13).
+                    if (!optionalStealthChecked)
+                    {
+                        optionalStealthChecked = true;
+                        if (!pm.StealthApReserved && !result.EnteredStealth)
+                            result.EnteredStealth |= MaybeEnterOptionalStealth(player, root, ctx, army, pm, next.Value);
+                    }
 
                     HexCoord before = army.Hex;
                     var decision = AiDecision.Move(army, next.Value,
@@ -315,6 +326,59 @@ namespace Game.Ai.V2
         private static bool IsSurveilSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
             pm.ScoutKind == ScoutTargetKind.Surveil
             && ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
+
+        // Returns true only if it actually entered stealth this call.
+        private static bool MaybeEnterOptionalStealth(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ArmyData army, ProvisionedMission pm, HexCoord nextHex)
+        {
+            if (army == null || army.Members.Count == 0 || root == null)
+                return false;
+            if (army.Members.Any(m => m.IsHidden) || army.HasActivatedThisTurn)
+                return false;
+            var scout = army.Members[0];
+            if (!StealthSystem.CanEnterStealth(scout))
+                return false;
+
+            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
+            if (stealthAp <= 0 || !root.CanSpendActionPoints(stealthAp))
+                return false;
+
+            AiHandData hand = AiHandRegistry.Peek(player);
+            bool drawAvailable = hand != null && hand.HasFreeSlot && hand.HasCardsLeftToDraw;
+
+            var eval = ScoutOptionalStealthPolicy.Evaluate(new OptionalStealthInputs
+            {
+                LegDetectionRisk = LegDetectionRisk(player, nextHex),
+                MoverAlreadyHidden = false,
+                MoverIsStrategicBody = army.Members.Any(m => m.IsHero),
+                ApRemaining = root.ActionPoints,
+                StealthApCost = stealthAp,
+                DrawAvailable = drawAvailable,
+                DrawApCost = ctx != null ? ctx.DrawApCost : 0,
+            });
+
+            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — scout stealth {eval.ToCompact()} "
+                + $"ap={root.ActionPoints} drawSlots={(drawAvailable ? 1 : 0)}");
+
+            if (eval.Decision != OptionalStealthDecision.Enter)
+                return false;
+
+            root.SpendActionPoints(stealthAp);
+            StealthSystem.EnterStealth(scout);
+            return true;
+        }
+
+        // Honest per-leg detection risk — same shape as ScoutRiskModel.DetectorRisk, but from the
+        // live map memory TaskExecutor already reads (no WorldSnapshot here). Never TrueWorld.
+        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex)
+        {
+            int r = AiConfigV2.frontierEnemyExposureRadius;
+            int detectors = 0;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
+                    detectors++;
+            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
+        }
 
         private static bool TryEnterRequiredStealth(PlayerRoot root, ArmyData army, out bool entered)
         {

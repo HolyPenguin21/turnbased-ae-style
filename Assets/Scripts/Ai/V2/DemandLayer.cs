@@ -178,6 +178,7 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
+                    ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"{stealthNeeded} runnable stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}; blocked {blocked}",
                 };
             }
@@ -200,6 +201,7 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
+                    ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"{genericNeeded} runnable generic job(s), {genericSupply} scout(s) free "
                         + $"(any {anySupply}, stealth {stealthSupply}), miss {missGeneric}; blocked {blocked}",
                 };

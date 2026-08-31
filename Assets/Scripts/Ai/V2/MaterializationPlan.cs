@@ -60,6 +60,15 @@ namespace Game.Ai.V2
         public CapabilityKind FinalCapability;
         public TraitPreference ExpectedTraits;     // projected traits of the END result (only Stealth is proven)
 
+        // Projected granted-ability set of the END result (base grantedAbilities + any equipment
+        // grant). Transient — kept only so CapabilityQualityEvaluator can read Recce radius / spot
+        // strength off the same list the feasibility gate used, without re-projecting equipment.
+        public System.Collections.Generic.IReadOnlyList<string> ProjectedAbilities;
+
+        // Diagnostic-only capability-quality decomposition, populated during ScorePlanA when the
+        // final capability has a quality profile (Scout today). Never persisted or fed back.
+        public MaterializationQualityBreakdown QualityBreakdown;
+
         public GenerationStep Generation;          // null unless a Generate* kind
 
         // --- deploy host -----------------------------------------------------------------------

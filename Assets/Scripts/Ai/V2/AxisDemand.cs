@@ -72,6 +72,12 @@ namespace Game.Ai.V2
 
         public string Explain;
 
+        // OPTIONAL capability-specific mission context, so StrategicManager can judge the QUALITY
+        // of a materialization in the setting the demand was raised for — not just capability +
+        // trait match. Never a card choice / card name / pre-scored card. Populated per axis:
+        // Recon fills ScoutContext; other capabilities add their own typed context as they land.
+        public ScoutCapabilityContext ScoutContext;
+
         public override string ToString() =>
             $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
             + (RequiredTraits != TraitPreference.None ? $" !{RequiredTraits}" : "")
