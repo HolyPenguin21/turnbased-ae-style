@@ -53,6 +53,17 @@ namespace Game.Ai.V2.Initiative
                 if (entry.Plan.DiceToBuy <= 0)
                     continue;
 
+                // Cross-turn spendability feedback: when the previous turn stranded a configured
+                // fraction of AP, the planner's theoretical AP pressure is not enough evidence to
+                // spend scarce H/E/M/T on more initiative. One clean turn with low leftover removes
+                // this guard automatically.
+                if (InitiativeBottleneckDiagnostics.ShouldSuppressBonusDice(entry.Player, out string suppressReason))
+                {
+                    AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — suppress "
+                        + $"{entry.Plan.DiceToBuy} planned bonus dice: {suppressReason}.");
+                    continue;
+                }
+
                 int applied = 0;
                 var spent = new int[4];
                 foreach (ResourceType resource in entry.Plan.PaymentResources)
