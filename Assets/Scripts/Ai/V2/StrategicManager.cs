@@ -56,9 +56,6 @@ namespace Game.Ai.V2
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments)
         {
-            // This method is the first V2 mutating boundary. Capture before checking whether there
-            // are any demands so even a pure-surplus / housekeeping-only turn gets an exact start
-            // state for the final AP/H/E/M/T delta line.
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
 
@@ -68,8 +65,7 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
-            var states = demands
-                .Select((d, i) => new DemandState
+            var states = demands.Select((d, i) => new DemandState
                 {
                     Demand = d,
                     Remaining = d != null ? Mathf.Max(0f, d.DesiredAmount) : 0f,
@@ -89,14 +85,10 @@ namespace Game.Ai.V2
 
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
                 var feasible = new List<PhaseACandidate>();
-
                 foreach (DemandState state in active)
                 {
                     AxisDemand demand = state.Demand;
                     float reserved = ledger.ReservedFollowup(demand.RequestingAxis);
-                    // Hero opportunity is real only when another still-active strategic shortage
-                    // in THIS Phase-A portfolio actually needs a Hero. "No deployed free hero" by
-                    // itself is not a reason to preserve a Hero scout on turn one.
                     bool competingHeroDemand = demand.Capability == CapabilityKind.ScoutCapability
                         && active.Any(other => !ReferenceEquals(other, state)
                             && other.Remaining > AiConfigV2.allocatorSliceEpsilon
@@ -117,9 +109,9 @@ namespace Game.Ai.V2
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, ledger, commitments, reserved);
                         AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
-                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement "
-                            + $"{F(ledger.Balance(d.RequestingAxis))}, discrete "
-                            + $"{F(ledger.DiscreteAdmissionBudget(d.RequestingAxis))}, followup reserved {F(reserved)}); {diag}");
+                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance(d.RequestingAxis))}, "
+                            + $"discrete {F(ledger.DiscreteAdmissionBudget(d.RequestingAxis))}, "
+                            + $"followup reserved {F(reserved)}); {diag}");
                     }
                     break;
                 }
@@ -136,6 +128,8 @@ namespace Game.Ai.V2
 
                 AxisDemand chosenDemand = selected.State.Demand;
                 MaterializationPlan plan = selected.Plan;
+                var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
+                    .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
                 MaterializationResult play = MaterializationExecutor.Execute(
                     snap, player, root, hand, ctx, plan, commitments);
                 chainAttempts++;
@@ -162,9 +156,6 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // Capability delivery is a LIVE state delta, not the printed BasePower of the card.
-                // In particular, a unit deposited into garrison is useful reserve power but it has
-                // delivered 0 mobile FieldCombatPower until a real Raid-eligible field actor exists.
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                 CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
                 float delivered = DeliveredCapabilityAmount(chosenDemand, inv, afterInv);
@@ -178,12 +169,12 @@ namespace Game.Ai.V2
                         alreadyReserved + selected.FollowupAp);
                     ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
                     selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
+
+                    IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, snap, plan, chosenDemand);
+                    StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, chosenDemand.Capability, leased);
                 }
                 else
                 {
-                    // Do not repeatedly consume the whole hand on reserve-only placements for one
-                    // operational shortage in this Phase-A pass. The unresolved demand is carried
-                    // into Phase B/next turn and will be re-evaluated from the refreshed live state.
                     selected.State.Blocked = true;
                     AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: deployment changed state but delivered "
                         + $"0 operational {chosenDemand.Capability}; reserve/potential only, residual unchanged");
@@ -198,9 +189,6 @@ namespace Game.Ai.V2
                     + $", {plan.StableKey})");
             }
 
-            // Carry only the still-missing quantity into late-turn preparation. This is deliberately
-            // a snapshot copy: Phase B may consume it without mutating the DemandLayer's frozen
-            // strategic output or accidentally recreating quantities already delivered in Phase A.
             result.Reservation.UnresolvedDemands.Clear();
             foreach (DemandState state in states.Where(s => s.Remaining > 0f))
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
@@ -237,7 +225,6 @@ namespace Game.Ai.V2
             TraitPreference spareTraits = candidate.Plan.ExpectedTraits & ~candidate.State.Demand.RequiredTraits;
             if (spareTraits == TraitPreference.None)
                 return false;
-
             foreach (PhaseACandidate other in feasible)
             {
                 if (ReferenceEquals(other.State, candidate.State))
@@ -248,17 +235,11 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // Preserve a physically scarce resource for a harder capability gate before spending it on
-        // a more fungible one. This is intentionally asymmetric: a Hero shortage is a binary raid
-        // gate, while generic FieldCombatPower can usually be supplied by many bodies. Without this
-        // portfolio guard the first infantry candidate could consume the last Human and make the
-        // simultaneously feasible Hero demand impossible in the very next Phase-A iteration.
         private static bool ConsumesResourceNeededByHigherPriorityDemand(PhaseACandidate candidate,
             IReadOnlyList<PhaseACandidate> feasible, PlayerRoot root)
         {
             if (root == null || candidate.State?.Demand == null)
                 return false;
-
             int candidatePriority = CapabilityResourcePriority(candidate.State.Demand.Capability);
             foreach (PhaseACandidate other in feasible)
             {
@@ -266,7 +247,6 @@ namespace Game.Ai.V2
                     continue;
                 if (CapabilityResourcePriority(other.State.Demand.Capability) <= candidatePriority)
                     continue;
-
                 foreach (ResourceType type in ResourceBundle.All)
                 {
                     int spend = ResourceSpend(candidate.Plan, type);
@@ -307,12 +287,52 @@ namespace Game.Ai.V2
             }
         }
 
+        private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
+            WorldSnapshot after, MaterializationPlan plan, AxisDemand demand)
+        {
+            var ids = new HashSet<int>();
+            if (after?.Self?.Armies == null || demand == null)
+                return ids.ToList();
+
+            int existingRecipient = plan?.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
+            foreach (ArmySnapshot army in after.Self.Armies)
+            {
+                if (army == null || (!armyIdsBefore.Contains(army.ArmyId) && !IsOperationalForDemand(army, demand)))
+                    continue;
+                if (army.ArmyId == existingRecipient && IsOperationalForDemand(army, demand))
+                    ids.Add(army.ArmyId);
+            }
+            foreach (ArmySnapshot army in after.Self.Armies)
+                if (army != null && !armyIdsBefore.Contains(army.ArmyId) && IsOperationalForDemand(army, demand))
+                    ids.Add(army.ArmyId);
+            return ids.OrderBy(id => id).ToList();
+        }
+
+        private static bool IsOperationalForDemand(ArmySnapshot army, AxisDemand demand)
+        {
+            if (army == null || demand == null)
+                return false;
+            switch (demand.Capability)
+            {
+                case CapabilityKind.FieldCombatPower:
+                    return RaidAssemblyPlanner.IsReadyRaidActor(army);
+                case CapabilityKind.Hero:
+                    return army.HasHero && RaidAssemblyPlanner.IsReadyRaidActor(army);
+                case CapabilityKind.ScoutCapability:
+                    if (!army.IsSoloRecce || army.CurrentMovement <= 0)
+                        return false;
+                    return (demand.RequiredTraits & TraitPreference.Stealth) == 0
+                        || army.IsHidden || army.CanEnterStealth;
+                default:
+                    return false;
+            }
+        }
+
         private static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)
         {
             if (demand == null || before == null || after == null)
                 return 0f;
-
             switch (demand.Capability)
             {
                 case CapabilityKind.FieldCombatPower:
@@ -330,15 +350,10 @@ namespace Game.Ai.V2
             }
         }
 
-        // Phase B may let an unresolved strategic demand outrank the generic surplus threshold, but
-        // only when this placement can operationally deliver that demand. Matching CapabilityKind is
-        // not enough: a FieldCombatPower card sent to garrison is reserve/potential, not a mobile
-        // raid actor, and must be evaluated as ordinary surplus instead of receiving a residual pass.
         private static bool CanDeliverResidualOperationally(MaterializationPlan plan, AxisDemand demand)
         {
             if (plan == null || demand == null)
                 return false;
-
             switch (demand.Capability)
             {
                 case CapabilityKind.ScoutCapability:
@@ -380,8 +395,6 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 return result;
 
-            // A strategic invalidation owns the remaining AP until the one bounded reaction pass
-            // consumes it. Discovery is one reason; a late capability/hand change can now be another.
             if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
             {
                 AiDebugLog.Write($"[AI][V2]   strat.B — deferred: pending strategic reaction interrupt; "
@@ -390,7 +403,6 @@ namespace Game.Ai.V2
             }
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
-
             bool cleanStop = true;
             for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
             {
@@ -403,16 +415,13 @@ namespace Game.Ai.V2
                 MaterializationPlan plan = pick.Value.plan;
                 AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
                 AxisDemand residual = matchedResidual != null && CanDeliverResidualOperationally(plan, matchedResidual)
-                    ? matchedResidual
-                    : null;
+                    ? matchedResidual : null;
                 SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
 
                 if (matchedResidual != null && residual == null)
-                {
                     AiDebugLog.Write($"[AI][V2]   strat.B — residual bypass denied for {plan.StableKey}: "
                         + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
                         + "evaluate as generic surplus");
-                }
 
                 if (residual == null && pick.Value.utility < admission.EffectiveThreshold)
                 {
@@ -424,18 +433,14 @@ namespace Game.Ai.V2
                 }
 
                 if (residual != null)
-                {
                     AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
                         + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(pick.Value.utility)} "
                         + "(operational strategic residual outranks generic surplus)");
-                }
                 else
-                {
                     AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
                         + $"util {F(pick.Value.utility)} >= threshold {F(admission.EffectiveThreshold)} "
                         + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
                         + $"resSlack {F(admission.ResourceSlackFactor)})");
-                }
 
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
                 if (plan.Generation != null)
@@ -453,8 +458,6 @@ namespace Game.Ai.V2
                 }
                 result.CardsPlayed++;
 
-                // Rebuild operational supply before saying a residual was delivered. Garrison
-                // deposit can be good reserve housekeeping without creating a mobile Raid actor.
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                 CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
                 float delivered = residual != null ? DeliveredCapabilityAmount(residual, inv, afterInv) : 0f;
@@ -468,8 +471,6 @@ namespace Game.Ai.V2
                     + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
                     + $"delivered {F(delivered)}, {plan.StableKey})");
 
-                // A residual capability did not exist when the ordinary MissionLayer was built.
-                // Request a reaction only when this chain actually created executable supply.
                 if (residual != null && delivered > AiConfigV2.allocatorSliceEpsilon)
                 {
                     StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
@@ -482,22 +483,11 @@ namespace Game.Ai.V2
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
-
-            // Terminal draw — Phase B found no residual demand it could action and no worthwhile
-            // surplus chain. AP does not carry to the next turn and nothing late-turn owns it
-            // (housekeeping is zero-AP by invariant), so convert the genuinely stranded AP into
-            // card option value. Skipped after a deploy FAILURE or a newly materialized residual
-            // capability (both need the reaction pass first). Bounded.
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
                 result.StateChanged = true;
             return result;
         }
 
-        // spec §11–§15 / AC14–AC19. Priority stays: executable residual strategic demand and
-        // worthwhile proactive surplus were already exhausted by the loop above; a card a prior
-        // draw revealed that now makes either actionable STOPS further drawing (its slot is not
-        // stolen — spec §13 / AC16). If that opportunity appeared only after a draw, request the
-        // bounded strategic reaction so it is actually consumed this turn instead of merely noticed.
         private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result)
         {
@@ -517,9 +507,7 @@ namespace Game.Ai.V2
                 {
                     AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
                     AxisDemand residual = matchedResidual != null
-                        && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual)
-                        ? matchedResidual
-                        : null;
+                        && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual) ? matchedResidual : null;
                     SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
                     if (residual != null || pick.Value.utility >= adm.EffectiveThreshold)
                     {
@@ -557,14 +545,6 @@ namespace Game.Ai.V2
         {
             if (root == null || plan == null)
                 return false;
-
-            // Phase B runs after ordinary mission execution. Therefore it must protect only REAL
-            // work still scheduled after it, not fixed speculative floors. There is currently no
-            // resource/AP-costing late V2 stage: housekeeping is zero-cost by invariant, and AP
-            // cannot be banked into the next turn. Consequently the exact safe pool is the real
-            // PlayerRoot state remaining after earlier V2 mutations. If a future subsystem truly
-            // needs resources after Phase B, that subsystem must add an explicit V2 reservation
-            // contract before Phase B; V1 AiResourceReservation is intentionally bypassed in V2.
             if (root.ActionPoints - plan.ApCost < 0f)
                 return false;
 

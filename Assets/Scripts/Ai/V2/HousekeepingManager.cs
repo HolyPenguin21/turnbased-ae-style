@@ -54,6 +54,10 @@ namespace Game.Ai.V2
             }
 
             Run(player, root, ctx, commitments, result);
+            // Strategic capability leases exist only to bridge Phase A/Reaction materialization to
+            // this final structural pass. Once housekeeping has respected them they must expire;
+            // otherwise a one-turn preparation decision would freeze that army in later turns.
+            StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
             // Run() can return early when there is nothing to reorganise; resource telemetry is a
             // turn-level concern and must still be emitted exactly once after the last mutating V2
             // layer has had its chance.

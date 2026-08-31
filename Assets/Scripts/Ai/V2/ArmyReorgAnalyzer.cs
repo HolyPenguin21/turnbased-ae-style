@@ -9,12 +9,56 @@ using Game.Units;
 
 namespace Game.Ai.V2
 {
+    // Same-turn ownership for operational capability created by StrategicManager. A force that was
+    // materialized to satisfy a still-live strategic shortage must not be folded into garrison by
+    // the later zero-AP housekeeping pass before that capability can be used. The lease is deliberately
+    // turn-local: HousekeepingManager clears it after the final structural pass.
+    internal static class StrategicCapabilityLeaseRegistry
+    {
+        private sealed class LeaseState
+        {
+            public int Turn;
+            public readonly HashSet<int> ArmyIds = new HashSet<int>();
+        }
+
+        private static readonly Dictionary<PlayerSetupData, LeaseState> ByPlayer =
+            new Dictionary<PlayerSetupData, LeaseState>();
+
+        public static void Mark(PlayerSetupData player, int turn, CapabilityKind capability, IEnumerable<int> armyIds)
+        {
+            if (player == null || armyIds == null)
+                return;
+            if (!ByPlayer.TryGetValue(player, out LeaseState state) || state.Turn != turn)
+                ByPlayer[player] = state = new LeaseState { Turn = turn };
+
+            var added = new List<int>();
+            foreach (int id in armyIds.Where(id => id >= 0).Distinct())
+                if (state.ArmyIds.Add(id))
+                    added.Add(id);
+
+            if (added.Count > 0)
+                AiDebugLog.Write($"[AI][V2][Lease] protect operational {capability} army(s) "
+                    + $"[{string.Join(",", added)}] through housekeeping (turn {turn})");
+        }
+
+        public static bool IsLeased(PlayerSetupData player, int armyId) =>
+            player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.ArmyIds.Contains(armyId);
+
+        public static void Clear(PlayerSetupData player, int turn)
+        {
+            if (player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.Turn == turn)
+                ByPlayer.Remove(player);
+        }
+
+        public static void ClearAll() => ByPlayer.Clear();
+    }
+
     // ===========================================================================================
     //  ARMY REORG ANALYZER  (Strategy V2 — HousekeepingManager, step 8C)
     // ===========================================================================================
     //  LIVE post-Phase-B world -> immutable LocalForceGroup projections + executor back-maps.
     //  Reuses canonical signals instead of inventing a second source of truth:
-    //    · role/protection   — AiArmyRoles / AviationRules / ActorCommitments
+    //    · role/protection   — AiArmyRoles / AviationRules / ActorCommitments / strategic leases
     //    · garrison safety   — AiConfig secure* floors, rechecked by AiArmyRoles at execution
     //    · strength/compo    — AiPower.PowerUnit from final live UnitData (Equipment already applied)
     //    · capacity ordering — the live ArmyData.Members order, because FIRST hero CommandRating wins
@@ -100,7 +144,7 @@ namespace Game.Ai.V2
                 });
             }
 
-            container.Role = ClassifyRole(army, commitments);
+            container.Role = ClassifyRole(player, army, commitments);
 
             bool protectedOwner = container.Role == ReorgPhysicalRole.ProtectedMissionArmy;
             bool mutable = container.Role == ReorgPhysicalRole.NormalFieldArmy
@@ -129,7 +173,7 @@ namespace Game.Ai.V2
             return container;
         }
 
-        private static ReorgPhysicalRole ClassifyRole(ArmyData army, ActorCommitments commitments)
+        private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, ArmyData army, ActorCommitments commitments)
         {
             if (army.IsGarrison)
                 return ReorgPhysicalRole.Garrison;
@@ -137,7 +181,8 @@ namespace Game.Ai.V2
                 return ReorgPhysicalRole.SpecialExcludedContainer;
             if (AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return ReorgPhysicalRole.Aviation;
-            if (commitments != null && commitments.IsArmyClaimed(army.Id))
+            if ((commitments != null && commitments.IsArmyClaimed(army.Id))
+                || StrategicCapabilityLeaseRegistry.IsLeased(player, army.Id))
                 return ReorgPhysicalRole.ProtectedMissionArmy;
             if (AiArmyRoles.IsSoloRecce(army))
                 return ReorgPhysicalRole.SoloRecce;
