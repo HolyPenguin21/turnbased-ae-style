@@ -88,6 +88,19 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // Provisioning is a batch: an earlier scout may visit this Explore focus before this
+                // mission gets its turn. In that case the strategic job is already complete. Do not
+                // activate this mover merely to consume the old batch slot or take post-goal follow-through.
+                if (pm.ScoutKind != ScoutTargetKind.Surveil && VisionSystem.IsVisited(player, pm.ExecutionHex))
+                {
+                    result.ReachedGoal = true;
+                    result.StopReason = ExecutionStopReason.ReachedGoal;
+                    result.ApSpent = 0f;
+                    results.Add(result);
+                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus already visited before start — stale batch mission completed with no movement, 0 AP");
+                    continue;
+                }
+
                 if (pm.StealthApReserved)
                 {
                     if (!TryEnterRequiredStealth(root, army, out bool enteredStealth))
