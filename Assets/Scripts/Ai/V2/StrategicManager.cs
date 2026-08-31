@@ -161,22 +161,40 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                float alreadyReserved = ledger.ReservedFollowup(chosenDemand.RequestingAxis);
-                float borrowed = ledger.CommitDiscreteFollowupBorrow(chosenDemand.RequestingAxis,
-                    alreadyReserved + selected.FollowupAp);
-                ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
-                float delivered = DeliveredCapabilityAmount(chosenDemand, plan);
-                selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
+                // Capability delivery is a LIVE state delta, not the printed BasePower of the card.
+                // In particular, a unit deposited into garrison is useful reserve power but it has
+                // delivered 0 mobile FieldCombatPower until a real Raid-eligible field actor exists.
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
+                float delivered = DeliveredCapabilityAmount(chosenDemand, inv, afterInv);
+                bool operationallyDelivered = delivered > AiConfigV2.allocatorSliceEpsilon;
+
+                float borrowed = 0f;
+                if (operationallyDelivered)
+                {
+                    float alreadyReserved = ledger.ReservedFollowup(chosenDemand.RequestingAxis);
+                    borrowed = ledger.CommitDiscreteFollowupBorrow(chosenDemand.RequestingAxis,
+                        alreadyReserved + selected.FollowupAp);
+                    ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
+                    selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
+                }
+                else
+                {
+                    // Do not repeatedly consume the whole hand on reserve-only placements for one
+                    // operational shortage in this Phase-A pass. The unresolved demand is carried
+                    // into Phase B/next turn and will be re-evaluated from the refreshed live state.
+                    selected.State.Blocked = true;
+                    AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: deployment changed state but delivered "
+                        + $"0 operational {chosenDemand.Capability}; reserve/potential only, residual unchanged");
+                }
                 result.CardsPlayed++;
 
                 AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
-                    + $"followup {F(selected.FollowupAp)}ap reserved"
+                    + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
                     + (borrowed > AiConfigV2.allocatorSliceEpsilon ? $", discreteBorrow {F(borrowed)}ap" : "")
                     + $", {plan.StableKey})");
-
-                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
 
             // Carry only the still-missing quantity into late-turn preparation. This is deliberately
@@ -229,18 +247,26 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static float DeliveredCapabilityAmount(AxisDemand demand, MaterializationPlan plan)
+        private static float DeliveredCapabilityAmount(AxisDemand demand,
+            CapabilityInventory before, CapabilityInventory after)
         {
-            if (demand == null || plan == null)
-                return 1f;
+            if (demand == null || before == null || after == null)
+                return 0f;
+
             switch (demand.Capability)
             {
                 case CapabilityKind.FieldCombatPower:
+                    return Mathf.Max(0f, after.RaidAvailableFieldPower - before.RaidAvailableFieldPower);
                 case CapabilityKind.GarrisonCombatPower:
-                    CardDefinition d = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
-                    return d != null ? Mathf.Max(1f, AiPower.ToPowerUnit(d).BasePower) : 1f;
+                    return Mathf.Max(0f, after.GarrisonCombatPower - before.GarrisonCombatPower);
+                case CapabilityKind.Hero:
+                    return Mathf.Max(0, after.AvailableHeroes - before.AvailableHeroes);
+                case CapabilityKind.ScoutCapability:
+                    if ((demand.RequiredTraits & TraitPreference.Stealth) != 0)
+                        return Mathf.Max(0, after.StealthScouts - before.StealthScouts);
+                    return Mathf.Max(0, after.ReadyScouts - before.ReadyScouts);
                 default:
-                    return 1f;
+                    return 0f;
             }
         }
 
@@ -319,30 +345,36 @@ namespace Game.Ai.V2
                     break;
                 }
                 result.CardsPlayed++;
-                if (residual != null)
+
+                // Rebuild operational supply before saying a residual was delivered. Garrison
+                // deposit can be good reserve housekeeping without creating a mobile Raid actor.
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
+                float delivered = residual != null ? DeliveredCapabilityAmount(residual, inv, afterInv) : 0f;
+                if (residual != null && delivered > AiConfigV2.allocatorSliceEpsilon)
                 {
-                    residual.DesiredAmount = Mathf.Max(0f,
-                        residual.DesiredAmount - DeliveredCapabilityAmount(residual, plan));
+                    residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
                     if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
                         result.Reservation.UnresolvedDemands.Remove(residual);
                 }
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
-                    + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
-
-                // Do NOT draw here. Phase B must re-evaluate residual + worthwhile surplus after
-                // every real materialization. Generic hand cycling is a terminal sink only; an
-                // immediate refill here could consume the AP of a second useful preparation action.
-                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
+                    + $"delivered {F(delivered)}, {plan.StableKey})");
 
                 // A residual capability did not exist when the ordinary MissionLayer was built.
-                // Once Phase B creates it, that earlier suppression is stale. Return ownership of
-                // the remaining AP to the bounded reaction pass instead of continuing generic
-                // surplus/draw work; the reaction will re-admit and execute any now-legal mission.
-                if (residual != null)
+                // Request a reaction only when this chain actually created executable supply.
+                if (residual != null && delivered > AiConfigV2.allocatorSliceEpsilon)
                 {
                     StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
-                    AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B materialized residual "
+                    AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
                         + $"{residual.Capability}; re-admit missions before further surplus spending");
+                    cleanStop = false;
+                    break;
+                }
+                if (residual != null)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — residual {residual.Capability} unchanged: "
+                        + "deployment was reserve/potential only; stop residual loop without false reaction");
                     cleanStop = false;
                     break;
                 }

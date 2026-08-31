@@ -11,9 +11,9 @@ namespace Game.Ai.V2
 {
     // Executes provisioned V2 missions through the canonical movement path. Scout movement is
     // deliberately one hex per iteration so every step can settle vision/contact/event/battle state
-    // before the next decision. Explore first satisfies its turn-start strategic focus, then rebuilds
-    // a live frontier target on every following movement iteration; Surveil never retargets and Raid
-    // keeps its own loop below.
+    // before the next decision. Explore keeps its assigned strategic focus immutable until that focus
+    // is satisfied; afterwards it may spend at most one already-activated MP on an adjacent tactical
+    // follow-through. Surveil never retargets and Raid keeps its own loop below.
     public enum ExecutionStopReason
     {
         ReachedGoal,
@@ -105,8 +105,9 @@ namespace Game.Ai.V2
                 int maxIterations = army.CurrentMovement + 1;
                 int iterations = 0;
                 ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
-                HexCoord executionHex = pm.ExecutionHex;
+                HexCoord executionHex = pm.ExecutionHex; // immutable mission focus / surveil vantage
                 bool primaryExploreSatisfied = false;
+                bool exploreFollowThroughUsed = false;
                 bool optionalStealthChecked = false;
 
                 HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
@@ -124,6 +125,9 @@ namespace Game.Ai.V2
                     if (army == null || army.Owner != player) { stop = ExecutionStopReason.MoverLost; break; }
                     if (!AiArmyRoles.IsSoloRecce(army)) { stop = ExecutionStopReason.MoverLost; break; }
                     if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive) { stop = ExecutionStopReason.BattleStarted; break; }
+
+                    HexCoord movementGoal = executionHex;
+                    bool doingExploreFollowThrough = false;
 
                     if (pm.ScoutKind == ScoutTargetKind.Surveil)
                     {
@@ -151,18 +155,19 @@ namespace Game.Ai.V2
                         {
                             primaryExploreSatisfied = true;
                             result.ReachedGoal = true;
+                            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — primary Explore focus satisfied "
+                                + $"at ({army.Hex.Q},{army.Hex.R}); assigned=({executionHex.Q},{executionHex.R}) "
+                                + $"movement={army.CurrentMovement}");
                         }
 
-                        // The frozen turn-start focus is only the entry point into exploration. Once
-                        // it has been satisfied, every loop iteration (therefore after every settled
-                        // scout step) re-evaluates the whole honest LIVE frontier. The scout can turn
-                        // toward newly revealed information instead of following a route whose end
-                        // was chosen before it opened the map.
+                        // The mission target itself never changes. Once it is satisfied, one optional
+                        // adjacent step may use the already-paid activation against LIVE information.
+                        // This is explicitly tactical follow-through, not a planner re-target.
                         if (primaryExploreSatisfied)
                         {
-                            if (army.CurrentMovement <= 0)
+                            if (exploreFollowThroughUsed || army.CurrentMovement <= 0)
                             {
-                                stop = ExecutionStopReason.OutOfMovement;
+                                stop = ExecutionStopReason.ReachedGoal;
                                 break;
                             }
 
@@ -173,17 +178,13 @@ namespace Game.Ai.V2
                                 break;
                             }
 
-                            if (!continuation.Value.Equals(executionHex))
-                            {
-                                HexCoord oldGoal = executionHex;
-                                executionHex = continuation.Value;
-                                AiDebugLog.Write($"[AI][V2] exec {pm.Key} — live-frontier replan ({army.Hex.Q},{army.Hex.R}) "
-                                    + $"old=({oldGoal.Q},{oldGoal.R}) next=({executionHex.Q},{executionHex.R}) "
-                                    + $"movement={army.CurrentMovement}");
-                            }
+                            movementGoal = continuation.Value;
+                            doingExploreFollowThrough = true;
+                            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — post-goal follow-through "
+                                + $"from=({army.Hex.Q},{army.Hex.R}) primary=({executionHex.Q},{executionHex.R}) "
+                                + $"next=({movementGoal.Q},{movementGoal.R}) movement={army.CurrentMovement}");
                         }
-
-                        if (AiMapMemory.KnownEnemySightingAt(player, executionHex).HasValue)
+                        else if (AiMapMemory.KnownEnemySightingAt(player, executionHex).HasValue)
                         {
                             stop = ExecutionStopReason.TargetInvalidated;
                             break;
@@ -192,8 +193,8 @@ namespace Game.Ai.V2
 
                     if (army.CurrentMovement <= 0) { stop = ExecutionStopReason.OutOfMovement; break; }
 
-                    HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, executionHex);
-                    if (next == null) { stop = ExecutionStopReason.NoSafeStep; break; }
+                    HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, movementGoal);
+                    if (next == null) { stop = doingExploreFollowThrough ? ExecutionStopReason.ReachedGoal : ExecutionStopReason.NoSafeStep; break; }
 
                     // A scout may be unable to enter stealth after its first activation. Evaluate
                     // once BEFORE that activation against the worst honest pressure already known
@@ -206,13 +207,15 @@ namespace Game.Ai.V2
                         {
                             float mandatoryClaims = MandatoryApClaimsFrom(provisioned, missionIndex);
                             result.EnteredStealth |= MaybeEnterOptionalStealth(
-                                player, root, ctx, army, pm, next.Value, executionHex, mandatoryClaims);
+                                player, root, ctx, army, pm, next.Value, movementGoal, mandatoryClaims);
                         }
                     }
 
                     HexCoord before = army.Hex;
-                    var decision = AiDecision.Move(army, next.Value,
-                        $"V2 recon — {pm.ScoutKind} toward ({executionHex.Q},{executionHex.R})",
+                    string moveWhy = doingExploreFollowThrough
+                        ? $"V2 recon — Explore post-goal follow-through near ({executionHex.Q},{executionHex.R})"
+                        : $"V2 recon — {pm.ScoutKind} toward ({executionHex.Q},{executionHex.R})";
+                    var decision = AiDecision.Move(army, next.Value, moveWhy,
                         null, 0f, AiTaskCategory.Reconnaissance);
                     var trace = new AiMoveExecutionTrace();
                     yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
@@ -242,6 +245,9 @@ namespace Game.Ai.V2
                         break;
                     }
 
+                    if (doingExploreFollowThrough)
+                        exploreFollowThroughUsed = true;
+
                     HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
                     HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
                     int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
@@ -250,10 +256,8 @@ namespace Game.Ai.V2
                     knownNeutralIds = neutralNow;
 
                     // Discovery is a STRATEGIC interrupt, not a tactical movement stop. Record it
-                    // for the bounded same-turn reaction pass, then let this scout keep using the
-                    // MP it already paid to activate. The next loop iteration re-evaluates route,
-                    // safety, contacts and (after the primary focus) the live frontier against the
-                    // newly revealed world.
+                    // for the bounded same-turn reaction pass, then let this scout finish the route
+                    // it already owns (or its one post-goal local step) without replacing its focus.
                     if (newEnemyIds.Length > 0)
                     {
                         StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);

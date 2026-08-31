@@ -173,6 +173,12 @@ namespace Game.Ai.V2
                 }
                 proposals.Add(BuildProposal(snap, c));
             }
+
+            // Individual ScoutCostModel estimates cannot price actor contention: two proposals can
+            // both independently pick the same 0-AP RapidReaction scout. Build a distinct-mover
+            // pricing witness now, before allocator admission. Provisioning remains authoritative
+            // and revalidates the live assignment; EnvelopeTooSmall stays as state-drift insurance.
+            ScoutPricingWitness.Apply(snap, proposals);
             return proposals;
         }
 

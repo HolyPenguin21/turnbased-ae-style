@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         public readonly bool TargetIsNeutral;
         public readonly int DefenderCount;
 
-        public readonly float ReadyWinChance;         // strongest EXISTING single stack vs this target
+        public readonly float ReadyWinChance;         // strongest EXISTING ready Raid actor vs this target
         public readonly float AssemblableWinChance;   // strongest roster we could realistically gather
         public readonly bool CanCoverAllDefenders;    // WorthIt.CanDamage covers every defender
         public readonly float BattleCostProxy;        // 1 - AssemblableWinChance (see fidelity note)
@@ -111,6 +111,9 @@ namespace Game.Ai.V2
                 return report;
 
             // ---- our two attacking rosters, as real per-unit profiles --------------------
+            // Assemblable/potential power deliberately includes reserve bodies (including
+            // garrison): those units can matter after reorganisation. READY power below is much
+            // stricter and uses the exact same actor predicate as Raid provisioning.
             var ownBodies = new List<WorthIt.DefenderProfile>();
             int heroCap = 0;
             foreach (ArmySnapshot a in snap.Self.Armies)
@@ -135,8 +138,10 @@ namespace Game.Ai.V2
             report.AssemblableCap = cap;
 
             ArmySnapshot bestReadyArmy = snap.Self.Armies
-                .Where(a => a != null && !a.IsPrison && a.MemberCount > 0 && a.Members != null && a.Members.Count > 0)
+                .Where(a => RaidAssemblyPlanner.IsReadyRaidActor(a)
+                            && a.Members != null && a.Members.Count > 0)
                 .OrderByDescending(a => a.EffectiveArmyPower)
+                .ThenBy(a => a.ArmyId)
                 .FirstOrDefault();
             List<WorthIt.DefenderProfile> readyRoster = bestReadyArmy?.Members?.ToList()
                 ?? new List<WorthIt.DefenderProfile>();
@@ -147,12 +152,14 @@ namespace Game.Ai.V2
                 .Take(Mathf.Max(0, cap - 1))
                 .ToList();
 
-            // ---- ETA basis: our nearest usable force / a move budget --------------------
+            // ---- ETA basis: our nearest structurally usable field force / a move budget ------
+            // Garrison and other non-Raid containers must not make a target look operationally
+            // closer even though they remain valid ingredients of AssemblableWinChance above.
             var fromHexes = new List<HexCoord>();
             int moverBudget = AiConfigV2.etaFallbackMoveBudget;
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (a == null || a.IsPrison || a.MemberCount == 0) continue;
+                if (!RaidAssemblyPlanner.IsStructuralRaidActor(a)) continue;
                 fromHexes.Add(a.Hex);
                 if (a.MaxMovement > moverBudget) moverBudget = a.MaxMovement;
             }

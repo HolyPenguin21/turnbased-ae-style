@@ -70,14 +70,9 @@ namespace Game.Ai.V2
 
             inv.GarrisonCombatPower = snap.Self.GarrisonPower;
 
-            // Step 9 corrective pass — derive Raid supply from the SAME actor shape provisioning
-            // can ultimately bind, rather than subtracting commitments from the coarse aggregate
-            // Self.FieldPower. WorldSnapshot.IsAir historically marks mobile air armies only, while
-            // an airfield is a separate ArmyData container; the live own-army cross-check closes
-            // that representation gap here so parked aircraft never masquerade as ground Raid
-            // power. CapabilityInventory already owns live reusable-shell discovery below, and it
-            // is rebuilt only from the freshly-refreshed operational state, so this is still one
-            // current-state inventory rather than a second strategic scan.
+            // Raid supply and Raid provisioning now share the exact same actor-shape predicate.
+            // Garrison remains real reserve/potential combat power, but never mobile Raid supply;
+            // solo heroes awaiting escort and airfield storage are likewise excluded everywhere.
             float totalGroundPower = 0f;
             float committedPower = 0f;
             float availablePower = 0f;
@@ -86,7 +81,7 @@ namespace Game.Ai.V2
 
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (!IsRaidGroundFieldArmy(a, player))
+                if (!RaidAssemblyPlanner.IsStructuralRaidActor(a))
                     continue;
 
                 totalGroundPower += a.EffectiveArmyPower;
@@ -99,10 +94,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // A force with no MP left is real military strength, but not executable supply for
-                // a mission admitted in THIS cycle. Let Demand ask StrategicManager for an actor
-                // rather than having a spent army falsely suppress that shortage.
-                if (a.CurrentMovement <= 0)
+                if (!RaidAssemblyPlanner.IsReadyRaidActor(a))
                     continue;
 
                 availablePower += a.EffectiveArmyPower;
@@ -118,19 +110,6 @@ namespace Game.Ai.V2
 
             inv.ReusableEmptyArmies = ReusableArmySelector.ReusableShells(player, commitments);
             return inv;
-        }
-
-        private static bool IsRaidGroundFieldArmy(ArmySnapshot a, PlayerSetupData player)
-        {
-            if (a == null || a.IsGarrison || a.IsPrison || a.IsAir || a.IsSoloRecce || a.MemberCount <= 0)
-                return false;
-
-            // Snapshot.IsAir currently distinguishes a mobile air army, but not the immobile
-            // airfield storage container. Resolve only OUR corresponding live ArmyData to close
-            // that exact structural gap; never inspect opponents or hidden world state here.
-            ArmyData live = ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x != null && x.Id == a.ArmyId);
-            return live != null && !live.IsPrison && !live.IsGarrison && !live.IsAirfield && !live.IsAirArmy
-                && !AiArmyRoles.IsSoloRecce(live) && live.Members.Count > 0;
         }
     }
 }

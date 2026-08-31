@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                 return RaidAssemblyPlan.Infeasible("no own-force snapshot");
 
             ArmySnapshot a = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == armyId);
-            if (a == null || !IsEligibleReadyArmy(a))
+            if (a == null || !IsReadyRaidActor(a))
                 return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
@@ -83,19 +83,21 @@ namespace Game.Ai.V2
 
         private static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds) =>
             snap.Self.Armies
-                .Where(a => a != null && IsEligibleReadyArmy(a)
+                .Where(a => a != null && IsReadyRaidActor(a)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId)))
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
                 .ToList();
 
-        private static bool IsEligibleReadyArmy(ArmySnapshot a) =>
-            a != null && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
-            && a.MemberCount > 0 && a.CurrentMovement > 0 && IsLiveGroundFieldArmy(a);
-
-        private static bool IsLiveGroundFieldArmy(ArmySnapshot a)
+        // ONE structural Raid actor predicate shared by Strategy diagnostics, Demand capability
+        // inventory and final Provisioning. Garrison is deliberately reserve/potential power only:
+        // it can feed housekeeping reorganisation, but it is never a mobile army by itself.
+        internal static bool IsStructuralRaidActor(ArmySnapshot a)
         {
-            PlayerSetupData owner = a?.Owner;
+            if (a == null || a.IsPrison || a.IsAir || a.IsGarrison || a.IsSoloRecce || a.MemberCount <= 0)
+                return false;
+
+            PlayerSetupData owner = a.Owner;
             if (owner == null)
                 return false;
             ArmyData live = ArmyRegistry.AllForOwner(owner).FirstOrDefault(x => x != null && x.Id == a.ArmyId);
@@ -103,6 +105,9 @@ namespace Game.Ai.V2
                 && !AiArmyRoles.IsSoloRecce(live) && !AiArmyRoles.IsSoloHeroAwaitingEscort(live)
                 && live.Members.Count > 0;
         }
+
+        internal static bool IsReadyRaidActor(ArmySnapshot a) =>
+            IsStructuralRaidActor(a) && a.CurrentMovement > 0;
 
         private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover)
