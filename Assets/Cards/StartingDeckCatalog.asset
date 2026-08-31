@@ -149,3 +149,5 @@ MonoBehaviour:
       count: 1
     - cardKey: Neutral/b_Intel
       count: 1
+    - cardKey: Iron Concord/AT Cannon
+      count: 1

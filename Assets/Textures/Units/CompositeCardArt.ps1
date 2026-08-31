@@ -1,4 +1,4 @@
-<#
+﻿<#
 Composites raw generated illustrations onto the reusable card frame (Card_Base.png).
 See CARD_ART_PIPELINE.md (Step 2) in this same folder for the full pipeline this belongs to.
 
@@ -19,9 +19,9 @@ Quick reference - all alpha-feather parameters (see README.md for what each one 
 
 What this does, per source image, in order:
     1. Takes Card_Base.png (832x1216 frame template) and rounds its 4 corners (46px radius
-       alpha-cutout) on a fresh in-memory copy - the template file itself is never modified. This
+       anti-aliased alpha-cutout) on a fresh in-memory copy - the template file itself is never modified. This
        is done once and reused across the whole batch, not per image.
-    2. Feathers the raw illustration's edges to alpha 0 near the borders, twice per image - once
+    2. Feathers the raw illustration's edges to alpha 0 near the borders with rounded fade intersections and SmoothStep easing, twice per image - once
        with the text-wipe bottom (output 1) and once with a plain symmetric top/bottom edge fade
        (output 2) - so it blends into the frame instead of showing a hard rectangle.
     3. Composites the rounded frame + feathered art onto a new 832x1216 canvas: art is scaled
@@ -111,41 +111,58 @@ function New-RoundedFrame {
     $bmp = New-Object System.Drawing.Bitmap $Source.Width, $Source.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.DrawImage($Source, 0, 0)
     $g.Dispose()
 
-    # Alpha-cutout the 4 corners: any pixel outside the rounded-rect radius from each corner
-    # center gets alpha 0. Cheap per-pixel distance check, only near the corners.
+    # Anti-aliased alpha cutout for the four outer frame corners.
+    # The old code used a binary 0/255 alpha cut, which can leave a visibly jagged edge.
+    # Here the last ~1 px around the circle gets partial alpha coverage.
     $w = $bmp.Width; $h = $bmp.Height
     $corners = @(
-        @{ CX = $Radius; CY = $Radius },                    # top-left
-        @{ CX = $w - $Radius; CY = $Radius },                # top-right
-        @{ CX = $Radius; CY = $h - $Radius },                # bottom-left
-        @{ CX = $w - $Radius; CY = $h - $Radius }            # bottom-right
+        @{ CX = $Radius; CY = $Radius },
+        @{ CX = $w - $Radius; CY = $Radius },
+        @{ CX = $Radius; CY = $h - $Radius },
+        @{ CX = $w - $Radius; CY = $h - $Radius }
     )
+
     foreach ($c in $corners) {
-        $x0 = [Math]::Max(0, $c.CX - $Radius)
-        $x1 = [Math]::Min($w - 1, $c.CX + $Radius)
-        $y0 = [Math]::Max(0, $c.CY - $Radius)
-        $y1 = [Math]::Min($h - 1, $c.CY + $Radius)
+        $x0 = [Math]::Max(0, $c.CX - $Radius - 1)
+        $x1 = [Math]::Min($w - 1, $c.CX + $Radius + 1)
+        $y0 = [Math]::Max(0, $c.CY - $Radius - 1)
+        $y1 = [Math]::Min($h - 1, $c.CY + $Radius + 1)
+
         for ($y = $y0; $y -le $y1; $y++) {
             for ($x = $x0; $x -le $x1; $x++) {
-                # Only actually a "corner" quadrant pixel if it's on the outside side of the
-                # corner center in both axes (otherwise it's the straight edge, leave it alone).
                 $isLeft = $x -lt $c.CX
                 $isTop = $y -lt $c.CY
                 $cornerIsLeft = $c.CX -eq $Radius
                 $cornerIsTop = $c.CY -eq $Radius
+
                 if (($isLeft -eq $cornerIsLeft) -and ($isTop -eq $cornerIsTop)) {
                     $dx = $x - $c.CX
                     $dy = $y - $c.CY
-                    if (($dx * $dx + $dy * $dy) -gt ($Radius * $Radius)) {
-                        $bmp.SetPixel($x, $y, [System.Drawing.Color]::Transparent)
+                    $distance = [Math]::Sqrt(($dx * $dx) + ($dy * $dy))
+
+                    # 1.0 well inside the radius, 0.0 well outside, fractional around the edge.
+                    $coverage = ($Radius + 0.5) - $distance
+                    $coverage = [Math]::Max(0.0, [Math]::Min(1.0, $coverage))
+
+                    if ($coverage -lt 0.999) {
+                        if ($coverage -le 0.001) {
+                            $bmp.SetPixel($x, $y, [System.Drawing.Color]::Transparent)
+                        } else {
+                            $p = $bmp.GetPixel($x, $y)
+                            $newAlpha = [byte]([Math]::Round($p.A * $coverage))
+                            $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($newAlpha, $p.R, $p.G, $p.B))
+                        }
                     }
                 }
             }
         }
     }
+
     return $bmp
 }
 
@@ -214,12 +231,26 @@ function New-FeatheredArt {
                 $hFactor = 1.0
             }
 
-            $factor = [Math]::Min($hFactor, $vFactor)
+            # Clamp the independent horizontal / vertical fades first.
+            $hFactor = [Math]::Max(0.0, [Math]::Min(1.0, $hFactor))
+            $vFactor = [Math]::Max(0.0, [Math]::Min(1.0, $vFactor))
+
+            # Rounded corner blend.
+            # Min(h,v) creates square/L-shaped intersections where side and top/bottom fades meet.
+            # Treat the distance from the fully opaque interior (1,1) radially instead, which makes
+            # those intersections curve smoothly around the corner.
+            $fadeX = 1.0 - $hFactor
+            $fadeY = 1.0 - $vFactor
+            $factor = 1.0 - [Math]::Sqrt(($fadeX * $fadeX) + ($fadeY * $fadeY))
+            $factor = [Math]::Max(0.0, [Math]::Min(1.0, $factor))
+
+            # SmoothStep easing removes the visibly linear alpha ramp while preserving 0 and 1.
+            $factor = $factor * $factor * (3.0 - (2.0 * $factor))
+
             if ($factor -lt 0.999) {
                 # Format32bppArgb byte order in memory is B, G, R, A - only alpha changes.
                 $alphaIdx = $rowOffset + ($x * 4) + 3
-                $clamped = [Math]::Max(0.0, [Math]::Min(1.0, $factor))
-                $buffer[$alphaIdx] = [byte]([Math]::Round($buffer[$alphaIdx] * $clamped))
+                $buffer[$alphaIdx] = [byte]([Math]::Round($buffer[$alphaIdx] * $factor))
             }
         }
 

@@ -630,8 +630,8 @@ MonoBehaviour:
       statChanges: []
   - id: 14
     displayName: Light Infantry
-    art: {fileID: 21300000, guid: 31193e8e1a6072b47b1970e84241463f, type: 3}
-    detailArt: {fileID: 21300000, guid: bb7ce7e9597b25646a9800c17c6ebdc9, type: 3}
+    art: {fileID: 21300000, guid: 87d2e43c93ec46f449df54e7dbd79630, type: 3}
+    detailArt: {fileID: 21300000, guid: 112869c9859c1004e87d3fd582acd1b6, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -715,8 +715,8 @@ MonoBehaviour:
       statChanges: []
   - id: 16
     displayName: Medium infantry
-    art: {fileID: 21300000, guid: 57c7f5684c2dddb42b56b4e565c14bfa, type: 3}
-    detailArt: {fileID: 21300000, guid: 4b9dfd8f9f12a4242b73fd54ad42173b, type: 3}
+    art: {fileID: 21300000, guid: 3900480d0177f1145b50517dca5f02be, type: 3}
+    detailArt: {fileID: 21300000, guid: 4271f47fdc840af4fb95ee0478b0ad61, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -800,8 +800,8 @@ MonoBehaviour:
       statChanges: []
   - id: 18
     displayName: AT Infantry
-    art: {fileID: 21300000, guid: 5bd54449712263f4f9080efa19fb81a5, type: 3}
-    detailArt: {fileID: 21300000, guid: f6313bed1de65754d9b350fc6f8d6d51, type: 3}
+    art: {fileID: 21300000, guid: b6fdd0c5ffebcdc44b29c772f2c1413c, type: 3}
+    detailArt: {fileID: 21300000, guid: ecfc07428f64ab64bb9cff02eb048e24, type: 3}
     faction: 0
     cardType: 1
     apCost: 3
@@ -843,8 +843,8 @@ MonoBehaviour:
       statChanges: []
   - id: 19
     displayName: Heavy Infantry
-    art: {fileID: 21300000, guid: ddd99a3f644357f42ad690fcf22dafa6, type: 3}
-    detailArt: {fileID: 21300000, guid: e5047807d847ee342b209c8a78223453, type: 3}
+    art: {fileID: 21300000, guid: 042bfba921c84424aadfbdfd3b29c9dd, type: 3}
+    detailArt: {fileID: 21300000, guid: 0f35dac589f9dd843b865822680ec531, type: 3}
     faction: 0
     cardType: 1
     apCost: 3
@@ -1098,8 +1098,8 @@ MonoBehaviour:
       statChanges: []
   - id: 25
     displayName: Artillery Cannon
-    art: {fileID: 21300000, guid: 8405a142c2690cf4f829caa14e4a6a03, type: 3}
-    detailArt: {fileID: 21300000, guid: d66eb5642ca7d0a42b7adedbf3c2f04e, type: 3}
+    art: {fileID: 21300000, guid: 3826ac6974438f4478b6044379a4e644, type: 3}
+    detailArt: {fileID: 21300000, guid: 1dc7beb4d6e83964cb2674463d455939, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
@@ -1122,9 +1122,9 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 07000000
     grantedAbilities:
     - ShockAttack
     resourceYield:
@@ -1298,6 +1298,49 @@ MonoBehaviour:
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 30
+    displayName: AT Cannon
+    art: {fileID: 21300000, guid: 6fa8bc7390af5324caaaa5589e00b6f4, type: 3}
+    detailArt: {fileID: 21300000, guid: b3a0a5eff7d1ad24eb69b856bef41b77, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 1
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    resistanceRating: 2
+    range: 3
+    hitPoints: 2
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 07000000
+    grantedAbilities:
+    - Hyperkinetic
     resourceYield:
       human: 0
       energy: 0
