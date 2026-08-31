@@ -54,6 +54,12 @@ namespace Game.Ai.V2
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments)
         {
+            // This method is the first V2 mutating boundary. Capture before checking whether there
+            // are any demands so even a pure-surplus / housekeeping-only turn gets an exact start
+            // state for the final AP/H/E/M/T delta line.
+            if (player != null && root != null && ctx != null)
+                TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
+
             var result = new StrategicPhaseResult { Reservation = new MaterializationReservation() };
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
