@@ -88,11 +88,7 @@ namespace Game.Ai.V2
         private readonly Dictionary<StableMissionKey, int> _raidAssignment =
             new Dictionary<StableMissionKey, int>();
 
-        public ProvisioningSession(WorldSnapshot snapshot)
-        {
-            Snapshot = snapshot;
-        }
-
+        public ProvisioningSession(WorldSnapshot snapshot) { Snapshot = snapshot; }
         public IReadOnlyDictionary<StableMissionKey, ProvisionedMission> Successful => _successful;
         public bool AlreadyProvisioned(StableMissionKey k) => _successful.ContainsKey(k);
 
@@ -142,11 +138,9 @@ namespace Game.Ai.V2
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
-                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Scout)
-                        continue;
-                    if (!(fe.Mission.Target is ScoutMissionTarget))
-                        continue;
-                    if (session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
+                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Scout
+                        || !(fe.Mission.Target is ScoutMissionTarget)
+                        || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
                     open.Add(fe);
                 }
@@ -177,20 +171,14 @@ namespace Game.Ai.V2
                         $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]");
         }
 
-        // Raid uses the same provisioning-boundary principle as Scout: allocator funds missions but
-        // does not bind actors; this batch solves all funded Raid proposals together before any one
-        // of them claims an army. That avoids greedy A->army1 making B impossible when a valid
-        // A->army2 / B->army1 matching exists. Beam size is small, so exhaustive backtracking is
-        // deterministic and bounded in practice.
         private static void PrepareRaidAssignments(ProvisioningSession session, TentativeAllocation allocation)
         {
             var open = new List<FundedEntry>();
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
-                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid)
-                        continue;
-                    if (session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
+                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
+                        || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
                     open.Add(fe);
                 }
@@ -201,7 +189,10 @@ namespace Game.Ai.V2
             {
                 var ids = new List<int>();
                 if (RaidAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
-                    ids.AddRange(eligible.Where(id => !session.ClaimedArmyIds.Contains(id)).OrderBy(id => id));
+                    ids.AddRange(eligible.Where(id => !session.ClaimedArmyIds.Contains(id))
+                        .OrderBy(id => RaidActorActivation(session.Snapshot, id))
+                        .ThenBy(id => RaidActorPower(session.Snapshot, id))
+                        .ThenBy(id => id));
                 cands.Add(ids);
             }
 
@@ -209,7 +200,7 @@ namespace Game.Ai.V2
             var best = new int[open.Count];
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
-            RecurseRaid(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
+            RecurseRaid(0, open, cands, chosen, new HashSet<int>(), session.Snapshot, ref bestKey, best);
 
             var map = new Dictionary<StableMissionKey, int>();
             for (int i = 0; i < open.Count; i++)
@@ -221,6 +212,15 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   provision prepare raid — {open.Count} open, assigned ["
                     + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
         }
+
+        private static int RaidActorActivation(WorldSnapshot snap, int id)
+        {
+            ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
+            return a == null || a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
+        }
+
+        private static float RaidActorPower(WorldSnapshot snap, int id) =>
+            snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id)?.EffectiveArmyPower ?? float.MaxValue;
 
         private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
@@ -240,8 +240,7 @@ namespace Game.Ai.V2
                 }
 
                 ArmyData live = ResolveArmy(player, mover.ArmyId);
-                if (live == null)
-                    continue;
+                if (live == null) continue;
                 foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
                 {
                     if (VisitHexTask.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
@@ -271,12 +270,10 @@ namespace Game.Ai.V2
 
             chosen[i] = -1;
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
-
             for (int c = 0; c < cands[i].Count; c++)
             {
                 int aid = cands[i][c].Army.ArmyId;
-                if (usedArmyIds.Contains(aid))
-                    continue;
+                if (usedArmyIds.Contains(aid)) continue;
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
@@ -297,8 +294,7 @@ namespace Game.Ai.V2
 
             for (int i = 0; i < n; i++)
             {
-                if (chosen[i] < 0)
-                    continue;
+                if (chosen[i] < 0) continue;
                 ScoutExecutionCandidate cand = cands[i][chosen[i]];
                 covered++;
                 priorityCoverage += n - i;
@@ -322,7 +318,7 @@ namespace Game.Ai.V2
             }
 
             var key = new long[9 + 3 * n];
-            key[0] = -(long)covered;
+            key[0] = -covered;
             key[1] = -priorityCoverage;
             key[2] = actorDiscontinuity;
             key[3] = wastedStealth;
@@ -335,9 +331,7 @@ namespace Game.Ai.V2
             {
                 int b = 9 + 3 * i;
                 if (chosen[i] < 0)
-                {
                     key[b] = key[b + 1] = key[b + 2] = long.MaxValue;
-                }
                 else
                 {
                     ScoutExecutionCandidate cand = cands[i][chosen[i]];
@@ -350,11 +344,11 @@ namespace Game.Ai.V2
         }
 
         private static void RecurseRaid(int i, List<FundedEntry> open, List<List<int>> cands,
-            int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best)
+            int[] chosen, HashSet<int> usedArmyIds, WorldSnapshot snap, ref long[] bestKey, int[] best)
         {
             if (i == open.Count)
             {
-                long[] key = ScoreRaidAssignment(open, cands, chosen);
+                long[] key = ScoreRaidAssignment(open, cands, chosen, snap);
                 if (bestKey == null || Lex(key, bestKey) < 0)
                 {
                     bestKey = key;
@@ -364,38 +358,38 @@ namespace Game.Ai.V2
             }
 
             chosen[i] = -1;
-            RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
-
+            RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 int aid = cands[i][c];
-                if (usedArmyIds.Contains(aid))
-                    continue;
+                if (usedArmyIds.Contains(aid)) continue;
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
-                RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
+                RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
                 usedArmyIds.Remove(aid);
             }
             chosen[i] = -1;
         }
 
-        // Maximise number of Raid missions covered, then higher-priority coverage, then preserve
-        // an incumbent's preferred mover when available, then deterministic actor IDs.
-        private static long[] ScoreRaidAssignment(List<FundedEntry> open, List<List<int>> cands, int[] chosen)
+        private static long[] ScoreRaidAssignment(List<FundedEntry> open, List<List<int>> cands,
+            int[] chosen, WorldSnapshot snap)
         {
             int n = open.Count;
             int covered = 0;
             long priorityCoverage = 0;
             int actorDiscontinuity = 0;
+            long activation = 0;
+            long overkillPower = 0;
             long actorIdSum = 0;
 
             for (int i = 0; i < n; i++)
             {
-                if (chosen[i] < 0)
-                    continue;
+                if (chosen[i] < 0) continue;
                 int actorId = cands[i][chosen[i]];
                 covered++;
                 priorityCoverage += n - i;
+                activation += RaidActorActivation(snap, actorId);
+                overkillPower += Mathf.RoundToInt(RaidActorPower(snap, actorId) * 100f);
                 actorIdSum += actorId;
 
                 int? preferred = open[i].Mission.PreferredMoverArmyId;
@@ -403,13 +397,15 @@ namespace Game.Ai.V2
                     actorDiscontinuity++;
             }
 
-            var key = new long[4 + n];
-            key[0] = -(long)covered;
+            var key = new long[6 + n];
+            key[0] = -covered;
             key[1] = -priorityCoverage;
             key[2] = actorDiscontinuity;
-            key[3] = actorIdSum;
+            key[3] = activation;
+            key[4] = overkillPower;
+            key[5] = actorIdSum;
             for (int i = 0; i < n; i++)
-                key[4 + i] = chosen[i] < 0 ? long.MaxValue : cands[i][chosen[i]];
+                key[6 + i] = chosen[i] < 0 ? long.MaxValue : cands[i][chosen[i]];
             return key;
         }
 
@@ -584,7 +580,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"raid target #{target.TargetArmyId} no longer exists (destroyed / captured)"));
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    $"raid target #{target.TargetArmyId} has no current honest sighting"));
+                    $"raid target #{target.TargetArmyId} has no current honest sighting; absence is not proof of destruction"));
             }
             if (sighting.Value.Owner != null && !sighting.Value.Owner.IsNeutral && sighting.Value.Owner.Equals(player))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
@@ -599,12 +595,8 @@ namespace Game.Ai.V2
                 && !session.ClaimedArmyIds.Contains(assignedActor))
             {
                 RaidAssemblyPlan assigned = RaidAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
-                if (assigned.Feasible)
-                    plan = assigned;
+                if (assigned.Feasible) plan = assigned;
             }
-
-            // Live/fallback solve: if the frozen batch assignment became stale, another still-free
-            // actor may now be the right host. This stays inside the same atomic provisioning door.
             if (plan == null)
                 plan = RaidAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
 
@@ -613,8 +605,7 @@ namespace Game.Ai.V2
                 RaidAssemblyPlan unrestricted = RaidAssemblyPlanner.Plan(snap, target, defenders, null);
                 if (unrestricted.Feasible)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"raid target #{target.TargetArmyId} has ready actor(s) without same-turn claims, "
-                        + $"but every clearing actor is already assigned/claimed/spent; {plan.Reason}"));
+                        $"raid target #{target.TargetArmyId} has an executable force but its host/donor is already claimed; {plan.Reason}"));
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(plan.Reason));
             }
 
@@ -628,40 +619,49 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"raid host #{plan.BaseArmyId} was claimed by an earlier mission this cycle"));
 
-            var transfers = new List<KeyValuePair<UnitData, ArmyData>>();
-            var claimedDonors = new List<int>();
+            var transfers = new List<RaidAssemblyTransfer>();
+            var claimedDonors = new HashSet<int>();
+            var projectedUnits = new List<UnitData>(host.Members);
             if (plan.NeedsAssembly)
             {
-                var projected = new List<UnitData>(host.Members);
-                foreach (int donorId in plan.MergeArmyIds)
+                foreach (RaidAssemblyTransfer t in plan.Transfers)
                 {
-                    ArmyData donor = ResolveArmy(player, donorId);
-                    if (donor == null || !donor.Hex.Equals(host.Hex))
+                    if (t?.Unit == null)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("raid assembly contains a null unit"));
+                    ArmyData donor = ResolveArmy(player, t.DonorArmyId);
+                    if (donor == null || donor.Members.Count <= 1 || !donor.Hex.Equals(host.Hex))
                         return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                            $"raid donor #{donorId} is gone or no longer co-located"));
-                    if (session.ClaimedArmyIds.Contains(donorId))
+                            $"raid donor #{t.DonorArmyId} is gone, moved, or would be emptied"));
+                    if (session.ClaimedArmyIds.Contains(donor.Id))
                         return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                            $"raid donor #{donorId} was claimed by an earlier mission this cycle"));
-                    if (donor.IsPrison || donor.IsAirfield || AviationRules.IsAirArmy(donor) || AiArmyRoles.IsSoloRecce(donor))
+                            $"raid donor #{donor.Id} was claimed by an earlier mission this cycle"));
+                    if (donor.IsPrison || donor.IsAirfield || AviationRules.IsAirArmy(donor)
+                        || AiArmyRoles.IsSoloRecce(donor) || !donor.Members.Contains(t.Unit)
+                        || t.Unit.IsHero || t.Unit.IsAviation)
                         return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                            $"raid donor #{donorId} is not a legal ground donor (prison / aviation / dedicated Recce)"));
-                    claimedDonors.Add(donorId);
-                    foreach (UnitData u in donor.Members.Where(x => !x.IsHero && !x.IsAviation).ToList())
-                    {
-                        var withU = new List<UnitData>(projected) { u };
-                        if (ArmyData.ComputeCapacity(withU, host.IsGarrison) < withU.Count)
-                            continue;
-                        if (!donor.CanLeaveWithoutOvercrowding(u))
-                            continue;
-                        if (!AiArmyRoles.CanSpareGarrisonMember(player, donor, u))
-                            continue;
-                        transfers.Add(new KeyValuePair<UnitData, ArmyData>(u, donor));
-                        projected.Add(u);
-                    }
+                            $"raid donor #{donor.Id} / unit {t.Unit.Name} is no longer legal"));
+                    if (!donor.CanLeaveWithoutOvercrowding(t.Unit)
+                        || (donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit)))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid donor #{donor.Id} can no longer spare {t.Unit.Name}"));
+                    if (host.HasActivatedThisTurn && t.Unit.ActivationApCost > 0)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"adding {t.Unit.Name} to activated raid host would spend unbudgeted AP"));
+
+                    var withU = new List<UnitData>(projectedUnits) { t.Unit };
+                    if (ArmyData.ComputeCapacity(withU, host.IsGarrison) < withU.Count)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid host #{host.Id} no longer has capacity for planned assembly"));
+                    projectedUnits.Add(t.Unit);
+                    transfers.Add(t);
+                    claimedDonors.Add(donor.Id);
                 }
-                if (transfers.Count == 0)
+
+                List<WorthIt.DefenderProfile> projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
+                if (!Clears(projectedProfiles, defenders, out float projectedWin))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                        "no legal same-hex body could be added to the raid host"));
+                        "planned same-hex roster no longer clears the shared WorthIt estimator"));
+                plan.ProjectedWinChance = projectedWin;
             }
 
             if (VisitHexTask.FindNextSafeStep(ctx.Map, host, targetHex) == null)
@@ -678,17 +678,27 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: raid needs {N(activationAp)}, {N(turnApLeft)} left"));
 
-            foreach (KeyValuePair<UnitData, ArmyData> t in transfers)
+            var applied = new List<RaidAssemblyTransfer>();
+            foreach (RaidAssemblyTransfer t in transfers)
             {
-                if (!ArmyActions.TransferMember(t.Key, t.Value, host, ctx.HexSelection, out string why))
-                    AiDebugLog.Write($"[AI][V2]   raid provision {key} — WARN transfer of a body from #{t.Value.Id} failed: {why}");
+                ArmyData donor = ResolveArmy(player, t.DonorArmyId);
+                string why = donor == null ? "donor missing" : null;
+                if (donor == null || !ArmyActions.TransferMember(t.Unit, donor, host, ctx.HexSelection, out why))
+                {
+                    bool rollbackOk = RollbackAssembly(player, host, applied, ctx);
+                    AiDebugLog.Write($"[AI][V2]   raid provision {key} — assembly transaction failed on "
+                        + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}");
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        rollbackOk ? $"atomic raid assembly rejected: {why}" : $"raid assembly failed and rollback was incomplete: {why}"));
+                }
+                applied.Add(t);
             }
 
             foreach (int d in claimedDonors)
                 session.ClaimedArmyIds.Add(d);
 
             AiDebugLog.Write($"[AI][V2]   raid provision {key} — OK host #{host.Id} "
-                + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
+                + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}" 
                 + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"ap {N(activationAp)} -> ({targetHex.Q},{targetHex.R})");
 
@@ -707,6 +717,41 @@ namespace Game.Ai.V2
                 ClaimedAp = activationAp,
                 StealthApReserved = false,
             });
+        }
+
+        private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
+            List<RaidAssemblyTransfer> applied, AiTurnContext ctx)
+        {
+            bool ok = true;
+            for (int i = applied.Count - 1; i >= 0; i--)
+            {
+                RaidAssemblyTransfer t = applied[i];
+                ArmyData donor = ResolveArmy(player, t.DonorArmyId);
+                string why = donor == null ? "donor missing" : !host.Members.Contains(t.Unit) ? "unit no longer in host" : null;
+                if (donor == null || !host.Members.Contains(t.Unit)
+                    || !ArmyActions.TransferMember(t.Unit, host, donor, ctx.HexSelection, out why))
+                {
+                    ok = false;
+                    AiDebugLog.Write($"[AI][V2]   raid assembly rollback — FAILED {t.Unit?.Name} "
+                        + $"host #{host.Id}->donor #{t.DonorArmyId}: {why}");
+                }
+            }
+            return ok;
+        }
+
+        private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win)
+        {
+            foreach (WorthIt.DefenderProfile def in defenders)
+            {
+                bool covered = attackers.Any(atk => WorthIt.CanDamage(atk.Attack, def, 0f));
+                if (!covered) { win = 0f; return false; }
+            }
+            win = defenders.Count == 0
+                ? 1f
+                : WorthIt.WinChance((IReadOnlyCollection<WorthIt.DefenderProfile>)attackers,
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            return win >= AiConfigV2.raidMinViableWinChance;
         }
 
         private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>

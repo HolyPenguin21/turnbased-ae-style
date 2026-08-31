@@ -36,7 +36,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class WorldAnalysis
     {
-        // A game-rule mirror of ArmyData's own private BaseCapacity (no hero -> 2 slots).
         private const int NoHeroStackCapacity = 2;
 
         public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
@@ -44,8 +43,6 @@ namespace Game.Ai.V2
             var snap = new WorldSnapshot { TurnNumber = ctx.TurnNumber };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
-            // V2's longer recon observation history — fed the current honest sightings, retains
-            // them past V1's 2-turn tactical memory so Surveil staleness can actually build.
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
@@ -55,19 +52,6 @@ namespace Game.Ai.V2
             return snap;
         }
 
-        // =======================================================================================
-        //  OPERATIONAL SELF-STATE REFRESH  (Strategy V2 — after StrategicManager mutations)
-        // =======================================================================================
-        //  StrategicManager can change AP / Human / Energy / Materials / Tech / hand / armies /
-        //  army composition. Mission planning must not keep using the beginning-of-turn own-force
-        //  state. This rebuilds own operational state while preserving the turn's strategic
-        //  observations (Known / TrueWorld / MapKnowledge), so radar/objective identity stays
-        //  stable. Threat, however, is REBUILT: its response ETA, asset defence and attack win
-        //  chance depend on our current armies/garrisons and become stale as soon as Phase A/B
-        //  materializes combat power, a hero, or equipment.
-        //
-        //  This is not a second full Scan — the expensive TrueWorld read and map frontier flood are
-        //  deliberately not repeated.
         public static WorldSnapshot RefreshOperationalState(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
@@ -93,10 +77,6 @@ namespace Game.Ai.V2
             return snap;
         }
 
-        // A bounded same-turn discovery replan needs genuinely fresh honest knowledge and frontier,
-        // but it must not call the top-level Scan merely to get those fields and accidentally look
-        // like a second turn-start decision point. This method rebuilds all world-derived layers
-        // against the same turn number and emits one concise marker instead of a second full WHY log.
         public static WorldSnapshot RefreshStrategicKnowledge(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
@@ -119,14 +99,6 @@ namespace Game.Ai.V2
             return snap;
         }
 
-        // =======================================================================================
-        //  "WHY" LOG  — the reasoning trace the downstream evaluators/planners act on. Written
-        //  once per AI turn to Logs/AiDebug.log (via AiDebugLog). Deliberately verbose: strength
-        //  is a derived number (breaks down as raw stat line * composition), economic health is
-        //  relative to BOTH the deck's own resource appetite and the rest of the field, threat
-        //  severity is a blend of several factors — a later "AGG went to 0.7 because ..." is only
-        //  auditable if these inputs are on record. All floats InvariantCulture (V1 convention).
-        // =======================================================================================
         private static void LogSnapshot(PlayerSetupData player, WorldSnapshot s)
         {
             string nick = player?.Nickname ?? "?";
@@ -188,9 +160,6 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
         private static string P(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
-        // =======================================================================================
-        //  SELF
-        // =======================================================================================
         private static SelfSnapshot BuildSelf(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             var self = new SelfSnapshot();
@@ -238,13 +207,6 @@ namespace Game.Ai.V2
                 .Any(m => m != null && m.IsHero
                     && (m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)));
 
-            // ---- potentials -----------------------------------------------------------------
-            // Both are ONE composition-aware stack (AiPower.ComposeStack), capped at a hero's
-            // CommandRating like a real army — never an unbounded card sum.
-            //   BestStackPotential  : what I can field NOW/soon — on-map units (current HP) + hand.
-            //                         Dynamic: lose a unit and it drops.
-            //   TotalMilitaryPotential : the whole-game ceiling — also folds in the remaining deck,
-            //                         capped at the most capacious hero anywhere in that pool.
             var nowPool = new List<AiPower.PowerUnit>();
             int nowCap = NoHeroStackCapacity;
             foreach (ArmyData a in ownArmies)
@@ -280,9 +242,6 @@ namespace Game.Ai.V2
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
 
-        // =======================================================================================
-        //  ARMY SNAPSHOT  (shared by Self and TrueWorld)
-        // =======================================================================================
         private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {
             var nonHero = a.Members.Where(m => !m.IsHero).ToList();
@@ -308,21 +267,16 @@ namespace Game.Ai.V2
                 CompositionQuality = AiPower.CompositionQualityOf(a.Members),
                 MaxMovement = a.MaxMovement,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
-
-                // Operational fields — see ArmySnapshot's own comment: only trustworthy for isOwn.
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
-
                 IsHidden = isOwn && a.Members.Count > 0 && a.Members.All(m => m.IsHidden),
                 CanEnterStealth = isOwn && a.Members.Any(StealthSystem.CanEnterStealth),
                 StealthLevel = isOwn
                     ? a.Members.Select(AbilityParams.GetStealthLevel).DefaultIfEmpty(0).Max()
                     : 0,
-                // VisionSystem's own formula (VisionSystem.RebuildFor): flat army radius + the
-                // best Recce widening among members.
                 EffectiveVisionRadius = armyVisionRadius + AbilityParams.GetBestRecceRadius(a),
             };
         }
@@ -330,9 +284,6 @@ namespace Game.Ai.V2
         private static int ArmyVisionRadius(AiTurnContext ctx) =>
             ctx != null && ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;
 
-        // =======================================================================================
-        //  KNOWN  (honest)
-        // =======================================================================================
         private static KnownSnapshot BuildKnown(PlayerSetupData player, IReadOnlyList<HexCoord> baseHexes)
         {
             var known = new KnownSnapshot
@@ -344,7 +295,6 @@ namespace Game.Ai.V2
                 ResourceHexes = AiMapMemory.AllKnownResourceHexes(player).ToList(),
             };
 
-            // Aggregates — verbatim from AiStrategyDirector.Evaluate.
             known.EnemyKnownStrength = known.EnemySightings.Sum(s => s.DefenseSum + s.AttackSum);
 
             int nearest = int.MaxValue;
@@ -352,8 +302,7 @@ namespace Game.Ai.V2
             foreach (AiMapMemory.KnownEnemySighting s in known.EnemySightings)
             {
                 int d = baseHexes.Min(b => HexGridMath.Distance(b, s.Hex));
-                if (d < nearest)
-                    nearest = d;
+                if (d < nearest) nearest = d;
                 if (d <= AiConfig.raidThreatRadius + 2)
                     nearBases += s.DefenseSum + s.AttackSum;
             }
@@ -363,9 +312,6 @@ namespace Game.Ai.V2
             return known;
         }
 
-        // =======================================================================================
-        //  TRUE WORLD  (cheat)
-        // =======================================================================================
         private static TrueWorldSnapshot BuildTrueWorld(PlayerSetupData player, AiTurnContext ctx)
         {
             var tw = new TrueWorldSnapshot();
@@ -375,8 +321,7 @@ namespace Game.Ai.V2
 
             foreach (PlayerSetupData p in GameSession.Players ?? new List<PlayerSetupData>())
             {
-                if (p == null || p == player)
-                    continue;
+                if (p == null || p == player) continue;
 
                 List<ArmyData> armies = ArmyRegistry.AllForOwner(p)
                     .Where(a => a != null && !a.IsPrison && a.Members.Count > 0)
@@ -435,22 +380,6 @@ namespace Game.Ai.V2
             };
         }
 
-        // =======================================================================================
-        //  MAP KNOWLEDGE
-        // =======================================================================================
-        // Build-order step 4. A real frontier and a real "explorable dark region" measure:
-        //   1. REACHABLE VISITED GROUND — visited, non-HardBlocked hexes flood-connected to an own
-        //      base (bases seed the flood). HardBlocked = off-map, a known neutral on the hex, or
-        //      an active scout-danger zone. Enemy PROXIMITY is not a block — it only annotates.
-        //   2. FRONTIER — unvisited, non-HardBlocked hexes touching that reachable ground. The
-        //      wave band is measured off THIS set's own nearest hex (+ frontierWaveBand), never
-        //      off an arbitrary unvisited hex, so a HardBlocked hole next to a base can't cut the
-        //      real frontier. Each hex carries FreshNeighbors (non-HardBlocked unvisited only) +
-        //      DistanceFromNearestBase + the EnemyExposure / StealthDetectionRisk annotation.
-        //   3. ExplorableUnknownFrac — flood the dark side (unvisited, non-HardBlocked) outward
-        //      from the frontier; size / TotalHexes is how much map is still discoverable on foot
-        //      (a stealth scout can cross exposure). 0 exactly when the frontier is empty.
-        //      Replaces V1's flat reconUnreachableFloor.
         private static MapKnowledgeSnapshot BuildMapKnowledge(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
             HexMap map = ctx.Map;
@@ -473,10 +402,6 @@ namespace Game.Ai.V2
             int exposureR = AiConfigV2.frontierEnemyExposureRadius;
 
             bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
-            // HardBlocked keeps a hex out of the frontier AND out of the explorable flood: a
-            // neutral physically on it (a scout never fights), an active scout-danger cooldown
-            // (we already tried that sector and it went badly — kept hard even for a stealth
-            // scout for now), off the map. Enemy PROXIMITY is NOT here — it only annotates.
             bool HardBlocked(HexCoord h) =>
                 !OnMap(h) || neutralHexes.Contains(h) || AiMapMemory.IsScoutDangerous(player, h);
             bool EnemyExposed(HexCoord h)
@@ -495,7 +420,6 @@ namespace Game.Ai.V2
             int NearestBaseDist(HexCoord h) =>
                 baseHexes.Count > 0 ? baseHexes.Min(b => HexGridMath.Distance(b, h)) : 0;
 
-            // ---- 1. reachable visited ground (BFS from the bases, over visited non-HardBlocked) ----
             var reachableVisited = new HashSet<HexCoord>();
             var queue = new Queue<HexCoord>();
             foreach (HexCoord b in baseHexes)
@@ -513,10 +437,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            // ---- 2a. RAW frontier — every unvisited, non-HardBlocked hex touching reachable
-            //          ground. The wave band comes from THIS set's own leading edge, never from an
-            //          arbitrary unvisited hex: a HardBlocked hole right next to a base must not
-            //          drag the band in and cut off the real explorable frontier five hexes out.
             var raw = new List<FrontierHexSnapshot>();
             foreach (HexCoord c in all)
             {
@@ -540,7 +460,6 @@ namespace Game.Ai.V2
                 });
             }
 
-            // ---- 2b. keep only the wave-band ring off the real frontier's leading edge ----
             var frontier = new List<FrontierHexSnapshot>();
             var frontierSet = new HashSet<HexCoord>();
             if (raw.Count > 0)
@@ -555,9 +474,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            // ---- 3. explorable dark region (flood from the frontier over unvisited, non-HardBlocked
-            //         ground — enemy exposure does NOT stop the flood: a stealth scout can still get
-            //         there, so the region is genuinely discoverable and Recon must not zero out). ----
             int explorable = 0;
             if (frontierSet.Count > 0)
             {
@@ -586,17 +502,11 @@ namespace Game.Ai.V2
                 Frontier = frontier,
                 ExplorableUnknownFrac = total > 0 ? (float)explorable / total : 0f,
                 AllHexes = all,
-                // `all` is already only on-map hexes, so HardBlocked here reduces to the two
-                // scout-facing blocks (neutral on the hex / active scout-danger) — enemy
-                // proximity is not a block, exactly as the frontier scan treats it.
                 ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
                 VisitedHexSet = visitedSet,
             };
         }
 
-        // =======================================================================================
-        //  ECONOMY STANDING
-        // =======================================================================================
         private static EconomyStanding BuildEconomy(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
             var eco = new EconomyStanding();
@@ -620,27 +530,24 @@ namespace Game.Ai.V2
                 });
                 worstRatio = Mathf.Min(worstRatio, ratio);
                 float d = ratio - 1f;
-                relAccum += d / (1f + Mathf.Abs(d)); // squash to (-1..1)
+                relAccum += d / (1f + Mathf.Abs(d));
             }
             eco.PerType = perType;
             eco.RelativePressure = Mathf.Clamp(relAccum / ResourceBundle.All.Length, -1f, 1f);
             eco.BottleneckPressure = Mathf.Clamp01(1f - (worstRatio == float.MaxValue ? 1f : worstRatio));
 
-            // DeckResourceNeed — aggregate play-time resource appetite of the current hand plus
-            // definition-level appetite of the still-undrawn deck. Hand MUST use AiCardCost: a
-            // Research/Production-created CardData has already paid its resources at Create and
-            // would otherwise be counted a second time. Ordinary hand cards remain 1:1 with their
-            // definition cost through AiCardCost.PlayResources.
+            // ResourceBundle is a struct. These helpers MUST receive it by ref; passing by value
+            // silently accumulated into a copy and left DeckResourceNeed at 0/0/0/0 every turn.
             var need = new ResourceBundle();
-            AccumulateCardCosts(snap.Self.Hand, need);
-            AccumulateCardCosts(snap.Self.Deck, need);
+            AccumulateCardCosts(snap.Self.Hand, ref need);
+            AccumulateCardCosts(snap.Self.Deck, ref need);
             eco.DeckResourceNeed = need;
 
             float target = need.Sum / Mathf.Max(0.0001f, AiConfigV2.economyDeckNeedHorizonTurns);
             float actual = snap.Self.PerTurnIncome.Sum;
             eco.AbsFloor = target <= 0.0001f ? 1f : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(actual / target));
 
-            float relTerm = (eco.RelativePressure + 1f) * 0.5f; // -> [0..1]
+            float relTerm = (eco.RelativePressure + 1f) * 0.5f;
             float wSum = AiConfigV2.economySecurityAbsWeight + AiConfigV2.economySecurityRelWeight
                        + AiConfigV2.economySecurityBottleneckWeight;
             eco.EconomicSecurity = Mathf.Clamp01((
@@ -651,30 +558,27 @@ namespace Game.Ai.V2
             return eco;
         }
 
-        private static void AccumulateCardCosts(IEnumerable<CardData> cards, ResourceBundle need)
+        private static void AccumulateCardCosts(IEnumerable<CardData> cards, ref ResourceBundle need)
         {
             foreach (CardData card in cards)
             {
                 CardDefinition d = card?.Definition;
-                if (d == null)
-                    continue;
+                if (d == null) continue;
                 if (d.cardType != CardType.Unit && d.cardType != CardType.Hero
                     && d.cardType != CardType.Facility && d.cardType != CardType.Base)
                     continue;
                 ResourceCost cost = AiCardCost.PlayResources(card);
-                if (cost == null)
-                    continue;
+                if (cost == null) continue;
                 foreach (ResourceType t in ResourceBundle.All)
                     need.Add(t, cost.Get(t));
             }
         }
 
-        private static void AccumulateCardCosts(IEnumerable<CardDefinition> defs, ResourceBundle need)
+        private static void AccumulateCardCosts(IEnumerable<CardDefinition> defs, ref ResourceBundle need)
         {
             foreach (CardDefinition d in defs)
             {
-                if (d == null || d.resourceCost == null)
-                    continue;
+                if (d == null || d.resourceCost == null) continue;
                 if (d.cardType != CardType.Unit && d.cardType != CardType.Hero
                     && d.cardType != CardType.Facility && d.cardType != CardType.Base)
                     continue;
@@ -685,22 +589,17 @@ namespace Game.Ai.V2
 
         private static float Median(List<float> values)
         {
-            if (values == null || values.Count == 0)
-                return 0f;
+            if (values == null || values.Count == 0) return 0f;
             values.Sort();
             int n = values.Count;
             return n % 2 == 1 ? values[n / 2] : 0.5f * (values[n / 2 - 1] + values[n / 2]);
         }
 
-        // =======================================================================================
-        //  THREAT MODEL
-        // =======================================================================================
         private static ThreatModel BuildThreat(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
             var model = new ThreatModel();
             var contacts = new List<EnemyContactSnapshot>();
 
-            // ---- honest contacts (from fog-respecting sightings) --------------------------
             foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings)
             {
                 bool visibleNow = VisionSystem.IsVisible(player, s.Hex);
@@ -715,11 +614,6 @@ namespace Game.Ai.V2
                 });
             }
 
-            // ---- historical honest contacts (AiReconMemory — V1's memory already dropped them) --
-            // Armies we HAD honest eyes on but no longer do, retained past V1's 2-turn tactical
-            // window. Honest + positioned (so a Surveil mission can target the last-known hex),
-            // LastKnown, with confidence decaying to 0 as the entry ages toward its purge. These
-            // are the whole reason the Surveil staleness ramp is reachable.
             var liveArmyIds = new HashSet<int>(snap.Known.EnemySightings.Select(s => s.ArmyId));
             foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds))
             {
@@ -735,9 +629,6 @@ namespace Game.Ai.V2
                 });
             }
 
-            // ---- cheat contacts (ported SCOPE of AiDefencePlanner.CheatEstimateRaiderThreat) --
-            // Per own base, only for a scout/raid-shaped force, only when we DON'T already have an
-            // honest sighting in that sector (honest info is strictly better). Never carries a hex.
             foreach (HexCoord home in snap.Self.BaseHexes)
             {
                 if (AiMapMemory.HasKnownEnemyWithin(player, home, AiConfig.defenceReactionRadius))
@@ -763,24 +654,17 @@ namespace Game.Ai.V2
             }
             model.Contacts = contacts;
 
-            // Honest, positioned contacts by tracked army id — feeds the step-7 Surveil continuity
-            // check. Only the historical (AiReconMemory) contacts carry a real ArmyId; a
-            // currently-visible sighting is stamped -1 (SightingToArmySnapshot) and is skipped
-            // here — a visible army is not a surveillance target anyway.
             var byArmy = new Dictionary<int, EnemyContactSnapshot>();
             foreach (EnemyContactSnapshot c in contacts)
             {
-                if (c.Source != ContactSource.Honest || !c.Position.HasValue)
-                    continue;
+                if (c.Source != ContactSource.Honest || !c.Position.HasValue) continue;
                 int id = c.Army?.ArmyId ?? 0;
-                if (id <= 0)
-                    continue;
+                if (id <= 0) continue;
                 if (!byArmy.TryGetValue(id, out EnemyContactSnapshot cur) || c.LastObservedTurn > cur.LastObservedTurn)
                     byArmy[id] = c;
             }
             model.ReconContactByArmyId = byArmy;
 
-            // ---- strategic assets --------------------------------------------------------
             var assets = new List<StrategicAssetSnapshot>();
             float totalIncome = snap.Self.PerTurnIncome.Sum;
 
@@ -819,7 +703,6 @@ namespace Game.Ai.V2
             }
             model.Assets = assets;
 
-            // ---- Enemy x Asset pressure ------------------------------------------------
             var threats = new List<AssetThreatSnapshot>();
             List<ArmySnapshot> ownFieldForResponse = snap.Self.Armies
                 .Where(a => !a.IsPrison && a.MemberCount > 0).ToList();
@@ -850,8 +733,7 @@ namespace Game.Ai.V2
 
                     float potentialDamage = winChance * (canDamage ? 1f : 0f);
                     float severity = Severity(winChance, potentialDamage, enemyEta, responseEta, canDamage, c.Confidence);
-                    if (severity < AiConfigV2.severityListingCutoff)
-                        continue;
+                    if (severity < AiConfigV2.severityListingCutoff) continue;
 
                     threats.Add(new AssetThreatSnapshot
                     {
@@ -869,15 +751,6 @@ namespace Game.Ai.V2
             }
             model.Threats = threats;
 
-            // "Siege" is a pure AI-behaviour label — there is no such game state. It means "a
-            // force I can't currently beat is at the gates of my citadel/base": a threat pair on
-            // a Citadel/Base asset where the enemy is within AiConfig.siegeRadius (or <= 1 turn
-            // out) AND their attack on that asset would probably win. Same shape as V1
-            // AiDefencePlanner.IsUnderSiege (known enemy within siegeRadius of the citadel that
-            // the garrison isn't ready to beat), which is OR'd in for exact parity with what V1's
-            // Defence/Aggression already react to. NOT distance 0 — an enemy actually on the hex
-            // resolves the same step into a battle / hero-challenge / capture, it is never a
-            // standing state to detect.
             bool derivedSiege = threats.Any(t =>
                 (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base)
                 && t.AttackWinChance >= AiConfigV2.siegeEnemyWinChanceThreshold
@@ -889,9 +762,6 @@ namespace Game.Ai.V2
             return model;
         }
 
-        // Cheat contact — enforces spec-18 structurally: Region knowledge, NO position, and a
-        // strength-only Army copy with its hex/id stripped so no caller can read a hidden army's
-        // location off it.
         private static EnemyContactSnapshot MakeCheatContact(ArmySnapshot source, HexCoord regionCenter, int regionRadius)
         {
             return new EnemyContactSnapshot
@@ -955,7 +825,7 @@ namespace Game.Ai.V2
                 AttackSum = s.AttackSum,
                 DefenseSum = s.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
-                MaxMovement = 1, // unknown from a sighting — assume 1 for a first-pass ETA
+                MaxMovement = 1,
                 Members = members,
             };
         }
@@ -988,10 +858,8 @@ namespace Game.Ai.V2
         private static bool ProfilesCanDamageAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, float extraDefense)
         {
-            if (defenders == null || defenders.Count == 0)
-                return true; // nothing to fail to cover (matches WorthIt.CanDamageAll)
-            if (attackers == null || attackers.Count == 0)
-                return false;
+            if (defenders == null || defenders.Count == 0) return true;
+            if (attackers == null || attackers.Count == 0) return false;
             foreach (WorthIt.DefenderProfile def in defenders)
             {
                 bool covered = false;
@@ -1001,8 +869,7 @@ namespace Game.Ai.V2
                         covered = true;
                         break;
                     }
-                if (!covered)
-                    return false;
+                if (!covered) return false;
             }
             return true;
         }
@@ -1015,7 +882,7 @@ namespace Game.Ai.V2
                 : 1f / (1f + AiConfigV2.etaUnknownContactPenalty);
 
             float responseHeadstart = (enemyEta.HasValue && responseEta.HasValue)
-                ? Mathf.Clamp01((responseEta.Value - enemyEta.Value) / 4f) // we arrive later => scarier
+                ? Mathf.Clamp01((responseEta.Value - enemyEta.Value) / 4f)
                 : 0f;
 
             float posWeight = AiConfigV2.severityWinChanceWeight + AiConfigV2.severityDamageWeight
