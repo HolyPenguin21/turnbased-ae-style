@@ -1,5 +1,6 @@
 using System.Linq;
 using Game.Cards;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
