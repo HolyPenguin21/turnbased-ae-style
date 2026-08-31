@@ -20,6 +20,13 @@ namespace Game.Ai.V2
     //  + radar slices). LocalAdmissionScore = BaseValue * AggRaidOpportunity sub-driver * a
     //  feasibility factor — orders Raid alternatives WITHIN the Aggression lane only, never
     //  cross-lane, and never re-multiplies the whole Aggression radar weight.
+    //
+    //  POST-PHASE-A EXECUTABILITY: fresh Raid opportunities are emitted only when the current
+    //  snapshot contains at least one independently feasible ready actor. Phase A has already had
+    //  the chance to satisfy Hero/CombatPower demand from affordable cards/generation. If it could
+    //  not, a fresh Raid is not a current-turn task and must not consume allocator/re-pack budget.
+    //  Durable incumbents are retained: they represent already-started intent, not a fresh
+    //  potential task, and continuity owns whether they stay funded/suspended.
     // ===========================================================================================
     internal static class AggressionMissionLayer
     {
@@ -129,13 +136,22 @@ namespace Game.Ai.V2
             foreach (RaidCandidate c in picked)
             {
                 MissionProposal p = BuildProposal(snap, c);
+                if (!c.IsIncumbent
+                    && RaidAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
+                    && eligible.Count == 0)
+                {
+                    AiDebugLog.Write($"[AI][V2]   mission suppress — {StableMissionKey.For(p)} "
+                        + "reason=no_ready_raid_actor_after_phaseA");
+                    continue;
+                }
+
                 proposals.Add(p);
                 AiDebugLog.Write($"[AI][V2]   raid mission — PROPOSE {StableMissionKey.For(p)}: {p.Explain}; "
                     + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}, "
                     + $"readyActors=[{RaidAdmissionRegistry.EligibleIds(p)}]");
             }
-            if (picked.Count == 0)
-                AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no candidate survived beam/materialisation");
+            if (proposals.Count == 0)
+                AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
             return proposals;
         }
 
