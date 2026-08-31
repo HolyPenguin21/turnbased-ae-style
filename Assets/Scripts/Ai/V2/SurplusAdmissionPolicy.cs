@@ -25,6 +25,12 @@ namespace Game.Ai.V2
     // the SOFT utility admission line inside that already-safe set: stranded AP/resources lower
     // the threshold toward a floor, while a plan sitting on the reserves keeps the original
     // conservative threshold.
+    //
+    // IMPORTANT: a configured reserve is a floor we must not CROSS because of a surplus action,
+    // not a prerequisite stockpile the player must already own. If the turn begins below a reserve
+    // (for example E=1 while surplusEnergyReserve=2), a plan that costs 0 of that resource is still
+    // safe: it leaves the existing deficit unchanged. The protected floor is therefore
+    // min(configuredReserve, currentlyAvailable) per dimension.
     internal static class SurplusAdmissionPolicy
     {
         internal const float ThresholdFloor = 0.35f;
@@ -37,8 +43,9 @@ namespace Game.Ai.V2
             if (root == null || plan == null)
                 return new SurplusAdmission(baseThreshold, baseThreshold, 0f, 0f);
 
-            float hardApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
-            float apSlack = Mathf.Max(0f, root.ActionPoints - plan.ApCost - hardApReserve);
+            float configuredApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
+            float protectedApFloor = Mathf.Min(configuredApReserve, Mathf.Max(0f, root.ActionPoints));
+            float apSlack = Mathf.Max(0f, root.ActionPoints - plan.ApCost - protectedApFloor);
 
             float resFactor = 0f;
             int dimensions = 0;
@@ -47,10 +54,12 @@ namespace Game.Ai.V2
             Add(ResourceType.Materials, AiConfigV2.surplusMaterialsReserve, plan.ResCost?.materials ?? 0);
             Add(ResourceType.Tech, AiConfigV2.surplusTechReserve, plan.ResCost?.tech ?? 0);
 
-            void Add(ResourceType type, int reserve, int cost)
+            void Add(ResourceType type, int configuredReserve, int cost)
             {
-                float after = Mathf.Max(0f, AiResourceReservation.Available(root, player, type) - cost - reserve);
-                resFactor += Mathf.Clamp01(after / ResourceSlackForFullRelaxation);
+                float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
+                float protectedFloor = Mathf.Min(configuredReserve, available);
+                float afterSlack = Mathf.Max(0f, available - cost - protectedFloor);
+                resFactor += Mathf.Clamp01(afterSlack / ResourceSlackForFullRelaxation);
                 dimensions++;
             }
 
