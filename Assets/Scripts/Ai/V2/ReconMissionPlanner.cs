@@ -37,6 +37,14 @@ namespace Game.Ai.V2
     //      the allocator so its bounded re-pack can fall through to a backup. Conflicts + K are
     //      MissionAdmissionPolicy's / ResourceAllocator's job.
     //
+    //  POST-PHASE-A EXECUTABILITY
+    //    The pipeline calls this planner AFTER StrategicManager Phase A. Therefore the current
+    //    snapshot already includes every Scout card the AI could afford/materialize for this turn.
+    //    If no structural Scout actor exists at this point, emitting Explore/Surveil proposals is
+    //    knowingly impossible and only causes NoMoverExists -> re-pack churn. Such proposals are
+    //    suppressed here. A spent/claimed Scout is different: it still structurally exists, so
+    //    normal contention/continuity semantics remain downstream.
+    //
     //  INTRINSIC value vs LOCAL ADMISSION
     //    BaseValue           = Lerp(scoutBaseValueMin, scoutBaseValueMax, quality) — the ONLY thing
     //                          in MissionProposal.BaseValue. Cross-lane ordering + radar slices.
@@ -143,7 +151,19 @@ namespace Game.Ai.V2
             }
 
             foreach (ScoutCandidate c in picked)
+            {
+                // Phase A has already had the chance to satisfy ScoutCapability demand from the
+                // hand/generators using the real AP/resources. At this boundary a structural miss
+                // means this is not an executable task this turn. Do not let a target-specific
+                // mission key hide that lane-wide fact and burn allocator re-pack attempts.
+                if (!ScoutMoverSelector.HasStructuralCandidate(snap, c.Target))
+                {
+                    AiDebugLog.Write($"[AI][V2]   mission suppress — Scout {CandidateKey(c)} "
+                        + "reason=no_materialized_scout_after_phaseA");
+                    continue;
+                }
                 proposals.Add(BuildProposal(snap, c));
+            }
             return proposals;
         }
 
