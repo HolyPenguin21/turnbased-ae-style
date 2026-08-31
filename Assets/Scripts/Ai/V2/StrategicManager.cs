@@ -25,7 +25,8 @@ namespace Game.Ai.V2
 
     // The single owner of V2 strategic Unit/Hero/Recce materialization. Phase A closes explicit
     // capability demands against the shared axis ledger; Phase B spends only genuinely remaining
-    // capacity and never crosses hard AP/resource reserves.
+    // capacity. Physical resources are protected by the authoritative AiResourceReservation view,
+    // never by speculative fixed H/E/M/T floors.
     public static class StrategicManager
     {
         private sealed class DemandState
@@ -260,9 +261,13 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, {plan.StableKey})");
 
+                // Phase B is already after mission execution. There is no generic AP stockpile to
+                // keep for a hypothetical later action: AP does not carry between turns. Draw only
+                // needs its real cost to fit the AP that actually remains now. Any future late-turn
+                // consumer must own an explicit reservation before Phase B rather than reviving a
+                // global surplus floor.
                 if (AiConfigV2.surplusAllowDraw && handWasFull && hand.HasFreeSlot
-                    && root.ActionPoints - ctx.DrawApCost
-                        >= AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve
+                    && root.ActionPoints >= ctx.DrawApCost
                     && CardDrawExecutor.TryCycle(root, hand, ctx))
                     result.StateChanged = true;
 
@@ -279,16 +284,14 @@ namespace Game.Ai.V2
             if (root == null || plan == null)
                 return false;
 
-            // A reserve is a floor a SURPLUS action may not cross; it is not a prerequisite balance.
-            // If the player is already below a configured floor, a plan that does not spend that
-            // dimension must remain admissible. Protect min(configured reserve, current available)
-            // so surplus can never deepen an existing deficit but also cannot deadlock while waiting
-            // to climb back to the configured reserve. This fixes e.g. a 0-Energy hero being blocked
-            // solely because current Energy is 1 while surplusEnergyReserve is 2.
-            float configuredApReserve = AiConfigV2.housekeepingApReserve + AiConfigV2.surplusApReserve;
-            float protectedApFloor = Mathf.Min(configuredApReserve, Mathf.Max(0f, root.ActionPoints));
-            float apAfter = root.ActionPoints - plan.ApCost;
-            if (apAfter < protectedApFloor)
+            // Phase B runs after ordinary mission execution. Therefore it must protect only REAL
+            // reservations that still exist, not fixed speculative floors. AP is the actual
+            // remaining turn currency, so a chain is AP-safe iff it fits. For physical resources,
+            // AiResourceReservation.Available is the authoritative dynamic balance: stockpile minus
+            // whatever another subsystem has genuinely reserved. If aviation (or any future late
+            // action) owns a reservation, it is already absent from Available; if no such work
+            // exists, Phase B is free to spend the resource instead of hoarding a magic number.
+            if (root.ActionPoints - plan.ApCost < 0f)
                 return false;
 
             ResourceCost cost = plan.ResCost;
@@ -296,16 +299,15 @@ namespace Game.Ai.V2
                 return true;
 
             PlayerSetupData player = root.Setup;
-            return Preserves(ResourceType.Human, cost.human, AiConfigV2.surplusHumanReserve)
-                && Preserves(ResourceType.Energy, cost.energy, AiConfigV2.surplusEnergyReserve)
-                && Preserves(ResourceType.Materials, cost.materials, AiConfigV2.surplusMaterialsReserve)
-                && Preserves(ResourceType.Tech, cost.tech, AiConfigV2.surplusTechReserve);
+            return Has(ResourceType.Human, cost.human)
+                && Has(ResourceType.Energy, cost.energy)
+                && Has(ResourceType.Materials, cost.materials)
+                && Has(ResourceType.Tech, cost.tech);
 
-            bool Preserves(ResourceType type, int spend, int configuredReserve)
+            bool Has(ResourceType type, int spend)
             {
                 float available = Mathf.Max(0f, AiResourceReservation.Available(root, player, type));
-                float protectedFloor = Mathf.Min(configuredReserve, available);
-                return available - spend >= protectedFloor;
+                return available >= Mathf.Max(0, spend);
             }
         }
 
