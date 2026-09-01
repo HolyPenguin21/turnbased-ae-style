@@ -84,6 +84,24 @@ namespace Game.Ai.V2
             return MissionValidity.Valid;
         }
 
+        // Every Explore PROPOSAL's focus hex from a planning pass — funded, deferred, or unrouted
+        // alike. MissionOutcomeLedger.RegisterProposals rows all of them before allocation, so the
+        // bounded stale-Explore replacement (below) must avoid the whole set, not just the foci
+        // that reach the execution queue, or a synthesised StableMissionKey can bind onto a
+        // deferred proposal's row. Shared verbatim by the main pipeline AND StrategicReactionPass
+        // so the two identical lifecycles can never drift on this.
+        public static HashSet<HexCoord> CollectExploreProposalFoci(IEnumerable<MissionProposal> missions)
+        {
+            var foci = new HashSet<HexCoord>();
+            if (missions == null)
+                return foci;
+            foreach (MissionProposal m in missions)
+                if (m?.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget smt
+                    && smt.Kind == ScoutTargetKind.Explore)
+                    foci.Add(smt.FocusHex);
+            return foci;
+        }
+
         // Bounded, deterministic replacement for a stale Explore. Returns a still-unvisited frontier
         // hex from the turn's own snapshot the mover could be re-pointed at, or null. Ranked from
         // the mover's CURRENT position (`from`), not the old objective. `takenFoci` is every

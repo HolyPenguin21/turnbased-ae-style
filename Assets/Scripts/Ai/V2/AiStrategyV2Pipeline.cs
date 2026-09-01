@@ -570,16 +570,11 @@ namespace Game.Ai.V2
             }
 
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
-            //     Hand the executor every Explore proposal's focus from this pass — funded, deferred
-            //     or unrouted alike. The ledger rowed all of them (RegisterProposals above), so the
-            //     bounded stale-Explore replacement must steer clear of the whole set, not just the
-            //     foci that reached the execution queue, or a synthesised key could collide with a
-            //     deferred proposal's row.
-            var exploreProposalFoci = new HashSet<HexCoord>();
-            foreach (MissionProposal m in missions)
-                if (m?.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget smt
-                    && smt.Kind == ScoutTargetKind.Explore)
-                    exploreProposalFoci.Add(smt.FocusHex);
+            //     Hand the executor every Explore proposal's focus from this pass (RegisterProposals
+            //     above rowed all of them) so the bounded stale-Explore replacement can't synthesise
+            //     a key that collides with a deferred proposal's ledger row. StrategicReactionPass
+            //     uses the SAME helper for its identical lifecycle.
+            HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
 
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);

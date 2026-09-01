@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -174,7 +175,12 @@ namespace Game.Ai.V2
 
             result.Provisioned += provisioned.Count;
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot);
+            // Same lifecycle as the main pipeline: outcomeLedger.RegisterProposals(missions) rowed
+            // every Explore proposal (incl. deferred), so the stale-Explore replacement picker must
+            // be told the whole focus set, not just what reached the queue. Shared helper keeps the
+            // two passes from drifting.
+            HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
             result.Executed += executed.Count(MissionRevalidator.WasAttempt);
             foreach (ExecutionResult er in executed)
             {
