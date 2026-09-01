@@ -47,24 +47,25 @@ namespace Game.Ai.V2
             // continuation gate so a small Monte-Carlo drop (the observed ~0.78 -> ~0.41 case) does
             // not produce the impossible state "Hard/CLAIM actor #X" + "readyActors=[none]".
             //
-            // Fresh missions never enter here, and an incumbent that lost defender coverage or fell
-            // below the continuation safety floor is still excluded normally.
+            // If the incumbent passes, PIN the operation to it. PrepareRaidAssignments deliberately
+            // sorts actors by activation/power and otherwise has no knowledge of PreferredMover; if
+            // we left fresh actors in the set it could silently switch a Hard operation to another
+            // army and orphan the physical force continuity just protected. If the incumbent fails
+            // the continuation gate, the strict fresh set remains available as a legitimate fallback.
             if (proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
                 && proposal.PreferredMoverArmyId.HasValue)
             {
                 int incumbentId = proposal.PreferredMoverArmyId.Value;
-                if (!ids.Contains(incumbentId))
+                RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
+                    snap, target, defenders, incumbentId);
+                if (incumbent.Feasible)
                 {
-                    RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
-                        snap, target, defenders, incumbentId);
-                    if (incumbent.Feasible)
-                    {
-                        ids.Add(incumbentId);
-                        AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE targetArmy={target.TargetArmyId} "
-                            + $"actor={incumbentId} win={incumbent.ProjectedWinChance:0.00} "
-                            + "reason=durable_hard_incumbent_passed_continuation_gate");
-                    }
+                    ids.Clear();
+                    ids.Add(incumbentId);
+                    AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE targetArmy={target.TargetArmyId} "
+                        + $"actor={incumbentId} win={incumbent.ProjectedWinChance:0.00} "
+                        + "reason=durable_hard_incumbent_passed_continuation_gate");
                 }
             }
 
