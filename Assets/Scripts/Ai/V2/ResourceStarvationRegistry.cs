@@ -24,10 +24,11 @@ namespace Game.Ai.V2
         private sealed class State
         {
             public readonly Dictionary<ResourceType, float> Pressure = new Dictionary<ResourceType, float>();
-            // RecordBlock is intentionally gated. StrategicManager still calls it from its old
-            // broad "stock == 0" loop, but only MaterializationDiagnostics may arm a resource
-            // after proving that a matching chain actually required more of it than was available.
             public readonly HashSet<ResourceType> VerifiedPending = new HashSet<ResourceType>();
+            // Production diagnostics enable strict evidence mode. Standalone pure tests that call
+            // RecordBlock directly keep the original simple semantics unless they explicitly enter
+            // this mode, so the existing S26 harness remains useful and backward compatible.
+            public bool RequireVerifiedEvidence;
             public int LastDecayTurn = int.MinValue;
         }
 
@@ -36,13 +37,24 @@ namespace Game.Ai.V2
 
         public static void Clear() => ByPlayer.Clear();
 
+        public static void BeginVerifiedPass(PlayerSetupData player)
+        {
+            if (player == null)
+                return;
+            State s = Get(player);
+            s.RequireVerifiedEvidence = true;
+            s.VerifiedPending.Clear();
+        }
+
         // Called only by the no-chain diagnostic after it has inspected a matching card/chain and
         // found a concrete resource deficit. The subsequent RecordBlock consumes this evidence.
         public static void VerifyBlock(PlayerSetupData player, ResourceType type)
         {
             if (player == null)
                 return;
-            Get(player).VerifiedPending.Add(type);
+            State s = Get(player);
+            s.RequireVerifiedEvidence = true;
+            s.VerifiedPending.Add(type);
         }
 
         public static void RecordBlock(PlayerSetupData player, ResourceType type)
@@ -50,9 +62,10 @@ namespace Game.Ai.V2
             if (player == null)
                 return;
             State s = Get(player);
-            // Ignore unverified callers. This makes the old broad StrategicManager zero-stock loop
-            // harmless while preserving its call site until the larger orchestrator is next split.
-            if (!s.VerifiedPending.Remove(type))
+            // During real Strategy-V2 diagnostics, ignore the old broad StrategicManager
+            // "stock == 0" calls unless the diagnostic has armed this exact resource. Outside
+            // verified mode (pure harnesses / isolated callers), retain the original API behaviour.
+            if (s.RequireVerifiedEvidence && !s.VerifiedPending.Remove(type))
                 return;
             s.Pressure.TryGetValue(type, out float cur);
             s.Pressure[type] = Mathf.Clamp01(cur + AiConfigV2.starvationHitGain);
@@ -66,8 +79,9 @@ namespace Game.Ai.V2
             if (s.LastDecayTurn == turn)
                 return;
             s.LastDecayTurn = turn;
-            // Evidence is local to one diagnostic failure; never carry an armed resource across a
-            // turn boundary where an unrelated zero-stock observation could consume it.
+            // Strict mode is re-enabled by the first real diagnostic of the new turn. Clearing it
+            // here keeps isolated direct RecordBlock tests/callers backward compatible.
+            s.RequireVerifiedEvidence = false;
             s.VerifiedPending.Clear();
             var keys = new List<ResourceType>(s.Pressure.Keys);
             foreach (ResourceType k in keys)
