@@ -1,3 +1,4 @@
+using System.Linq;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -74,6 +75,21 @@ namespace Game.Ai.V2
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
+        // Shared V2 projected-capacity predicate. Mirrors ArmyActions.DeployUnitFromCard: capacity
+        // is evaluated after the incoming card joins, so a first hero may raise a full 2/2 army to
+        // (for example) 3/5 instead of being rejected by the old pre-join HasRoom value.
+        internal static bool CanFitAfterDeploy(ArmyData target, CardDefinition def)
+        {
+            if (target == null || def == null)
+                return false;
+            if (target.IsAirfield)
+                return true; // V2 rejects aviation cards earlier; airfield capacity is handled elsewhere.
+            int projectedCapacity = target.Capacity;
+            if (def.cardType == CardType.Hero && !target.Members.Any(m => m.IsHero))
+                projectedCapacity = def.commandRating;
+            return projectedCapacity >= target.Members.Count + 1;
+        }
+
         // Full preflight of the CreateArmy -> DeployUnitFromCard sequence. No spend, no mutation.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan, out string reason)
@@ -102,20 +118,22 @@ namespace Game.Ai.V2
                     break; // a fresh army always has room for the first member
                 case DeploymentKind.ReusableShell:
                     if (plan.TargetArmy == null || plan.TargetArmy.Members.Count != 0
-                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex) || !plan.TargetArmy.HasRoom)
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                        || !CanFitAfterDeploy(plan.TargetArmy, def))
                     { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
                     break;
                 case DeploymentKind.Garrison:
                     if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || !plan.TargetArmy.IsGarrison
-                        || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy))
-                    { reason = "garrison no longer a valid deposit target (reserved slots)"; return false; }
+                        || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy)
+                        || !CanFitAfterDeploy(plan.TargetArmy, def))
+                    { reason = "garrison no longer a valid deposit target (reserved slots/capacity)"; return false; }
                     break;
                 default: // ExistingArmy
                     if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count == 0
-                        || !plan.TargetArmy.HasRoom)
-                    { reason = "target army no longer valid / has no room"; return false; }
+                        || !CanFitAfterDeploy(plan.TargetArmy, def))
+                    { reason = "target army no longer valid / projected roster has no room"; return false; }
                     break;
             }
 
