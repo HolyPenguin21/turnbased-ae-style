@@ -119,10 +119,11 @@ namespace Game.Ai.V2
             var projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
             var selected = new List<RaidAssemblyTransfer>();
 
-            // §12 — a heroless host may take ONE eligible same-hex hero (garrison or another local
-            // container). Preference: CombatLeader > Flexible > SupportOperator. This is applied
-            // before body donation because a hero both adds a body and, via CommandRating, can
-            // lift the whole stack's EffectiveArmyPower.
+            // §12 — a heroless host may take ONE eligible same-hex hero from a safe donor
+            // (typically the garrison). Preference: CombatLeader > Flexible > SupportOperator.
+            // A lone-hero container is intentionally left to Housekeeping first: Provisioning's
+            // canonical raid transaction never empties donor containers, so the planner must not
+            // promise a transfer the executor will reject.
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
                 (ArmyData heroDonor, UnitData hero) = PickAttachableHero(owner, host, excludeArmyIds);
@@ -208,14 +209,16 @@ namespace Game.Ai.V2
         }
 
         // §12 — the best same-hex hero that may legally join `host`, or (null, null).
-        // CombatLeader > Flexible > SupportOperator, then a stable donor-id tiebreak.
+        // CombatLeader > Flexible > SupportOperator, then a stable donor-id tiebreak. A donor must
+        // retain at least one member because Provisioning enforces that same transaction boundary.
         private static (ArmyData donor, UnitData hero) PickAttachableHero(PlayerSetupData owner,
             ArmyData host, ISet<int> excludeArmyIds)
         {
             var candidates = new List<(ArmyData donor, UnitData hero)>();
             foreach (ArmyData donor in ArmyRegistry.AllForOwner(owner))
             {
-                if (donor == null || donor.Id == host.Id || !donor.Hex.Equals(host.Hex)
+                if (donor == null || donor.Id == host.Id || donor.Members.Count <= 1
+                    || !donor.Hex.Equals(host.Hex)
                     || donor.IsPrison || donor.IsAirfield || donor.IsAirArmy || AiArmyRoles.IsSoloRecce(donor)
                     || (excludeArmyIds != null && excludeArmyIds.Contains(donor.Id)))
                     continue;
