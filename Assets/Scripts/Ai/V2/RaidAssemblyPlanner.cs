@@ -273,8 +273,13 @@ namespace Game.Ai.V2
                 && live.Members.Count > 0;
         }
 
+        // Deliberately structural, NOT `CurrentMovement > 0`. A Hard raid incumbent that already
+        // made productive progress earlier in the same turn is still the correct actor. Let the
+        // live Provisioning seam reject that spent actor as MoverContended/RetryNextTurn; treating
+        // zero remaining movement here as AssemblyInfeasible poisons a valid multi-turn raid with
+        // a structural cooldown and is exactly what stranded Dead Tide in the T7 log.
         internal static bool IsReadyRaidActor(ArmySnapshot a) =>
-            IsStructuralRaidActor(a) && a.CurrentMovement > 0;
+            IsStructuralRaidActor(a);
 
         private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover)
