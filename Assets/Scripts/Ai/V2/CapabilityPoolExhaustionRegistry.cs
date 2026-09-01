@@ -6,10 +6,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  CAPABILITY POOL EXHAUSTION REGISTRY  (Strategy V2)
     // ===========================================================================================
-    //  The GENERAL contract behind the earlier Scout-only special case
-    //  (StrategicReactionPass.IsExhaustedScoutPoolFailure): once the WHOLE relevant capability pool
-    //  is PROVEN unable to execute a demand/mission in the current allocation scope, the bounded
-    //  pack -> provision -> re-pack loop must stop handing the same pool the same work.
+    //  The GENERAL contract that replaced the earlier Scout-only special case: once the WHOLE
+    //  relevant capability pool is PROVEN unable to execute a demand/mission in the current
+    //  allocation scope, the bounded pack -> provision -> re-pack loop must stop handing the same
+    //  pool the same work.
     //
     //  INDIVIDUAL failure  (one actor/card/army could not) is NOT exhaustion — the re-pack must
     //  still get a chance to route the work to a different member of the pool.
@@ -152,7 +152,7 @@ namespace Game.Ai.V2
             return CapabilityPoolKind.None;
         }
 
-        // The POOL-WIDE proof. Generalises IsExhaustedScoutPoolFailure: a contention/shortage-class
+        // The POOL-WIDE proof, generalised from the retired Scout-only check: a contention/shortage-class
         // failure PLUS a snapshot in which the pool's own eligibility rule finds zero candidates
         // when this cycle's tentative claims are ignored. A genuinely-transient contention (a
         // second capable actor really exists) returns false so the normal re-pack fallback lives.

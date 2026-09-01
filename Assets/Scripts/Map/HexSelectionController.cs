@@ -1090,8 +1090,13 @@ namespace Game.Map
                     if (definition == null)
                         continue;
                     CardDefinition captured = definition;
+                    // Route through the shared infrastructure transaction (same door the AI's
+                    // BuildingPlayExecutor uses) rather than the world primitive directly — the
+                    // primitive still runs and still shows its own rejection hints, but a throw
+                    // after the spend now rolls the whole transaction back (AP, resources,
+                    // facility slot, hero move points, a half-registered new site).
                     actions.Add(new HexActionDescriptor($"Build {definition.displayName}",
-                        () => TryBuildExtractionFacility(captured, coord, human), captured));
+                        () => InfrastructureActions.TryBuildExtractionSite(this, captured, coord, human), captured));
                 }
             }
 

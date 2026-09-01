@@ -12,10 +12,12 @@ namespace Game.Ai.V2
     //  Game.Map.InfrastructureActions (the SAME entry point the human UI uses). This class no
     //  longer assembles any spend/create/refund sequence itself — it only:
     //    · resolves the card instance's effective play cost,
-    //    · calls InfrastructureActions.TryFoundBase / TryPlaceFacility,
+    //    · calls InfrastructureActions.TryFoundBase / TryPlaceFacility / TryBuildExtractionSite,
     //    · removes the AI's own card from AiHandData.Hand ONLY on Ok.
-    //  The hero-built extraction facility path stays on HexSelectionController
-    //  .TryBuildExtractionFacility, which is itself already fully atomic.
+    //  The hero-built extraction path also goes through InfrastructureActions.TryBuildExtractionSite
+    //  (same as the human UI): the world primitive HexSelectionController.TryBuildExtractionFacility
+    //  is NOT atomic on its own — the wrapper captures and restores the full pre-transaction state
+    //  (AP, resources, facility slot, hero move points, a half-registered new site) on a throw.
     // ===========================================================================================
     public sealed class BuildingPlayResult
     {
