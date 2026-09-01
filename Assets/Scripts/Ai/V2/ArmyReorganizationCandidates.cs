@@ -76,11 +76,7 @@ namespace Game.Ai.V2
 
                     VState swapped = TrySwap(state, srcId, combatHero, dstId, supportCommander);
                     if (swapped != null)
-                    {
-                        swapped.Transfers[swapped.Transfers.Count - 1].Reason =
-                            "replace support operator with combat-capable field commander";
                         yield return swapped;
-                    }
                 }
             }
 
