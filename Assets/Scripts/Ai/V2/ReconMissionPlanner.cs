@@ -78,7 +78,7 @@ namespace Game.Ai.V2
             foreach (ScoutCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
                 .OrderByDescending(x => x.LocalAdmissionScore)
-                .ThenByDescending(x => x.Target.Kind == ScoutTargetKind.Explore ? x.FreshNeighbors : 0)
+                .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x)))
                 picked.Add(c);
 
@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                 .Where(x => x.Tier == CommitmentTier.None)
                 .Concat(fresh.Where(f => !incumbentKeys.Contains(CandidateKey(f))))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
-                .ThenByDescending(x => x.Target.Kind == ScoutTargetKind.Explore ? x.FreshNeighbors : 0)
+                .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x));
             int ordinaryCount = 0;
             foreach (ScoutCandidate c in ordinary)
@@ -122,13 +122,18 @@ namespace Game.Ai.V2
                 return null;
 
             ReconObjective o;
-            if (si.Kind == ScoutTargetKind.Explore)
+            if (ReconScoutKinds.IsExplore(si.Kind))
                 o = ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex);
             else if (ReconScoutKinds.IsRefresh(si.Kind))
                 o = ReconObjectiveEvaluator.RefreshAt(snap, si.FocusHex);
-            else
+            else if (ReconScoutKinds.IsSurveil(si.Kind))
                 o = ReconObjectiveEvaluator.SurveilOf(snap,
                     ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
+            else
+            {
+                AiDebugLog.Write($"[AI][V2][Recon] intent materialize reject — unknown Scout kind {(int)si.Kind}");
+                return null;
+            }
 
             if (o == null)
                 return null;
@@ -139,11 +144,12 @@ namespace Game.Ai.V2
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             bool refresh = o.Kind == ReconObjectiveKind.Refresh;
+            bool surveil = o.Kind == ReconObjectiveKind.Surveil;
             float rawSubDesire = explore
                 ? bd.ReconExplorePressure
                 : refresh
                     ? bd.ReconRefreshPressure
-                    : bd.ReconSurveillance;
+                    : surveil ? bd.ReconSurveillance : 0f;
 
             // Global Recon intensity is already owned by Radar. Here only the sub-driver orders
             // concrete alternatives inside each lane. Explore retains a local floor while a real
@@ -183,11 +189,18 @@ namespace Game.Ai.V2
                     + $"intrinsicLAS {F(intrinsicAdmission)}"
                     + RouteExplain(route, routeMultiplier);
             }
-            else
+            else if (surveil)
             {
                 explain = $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
                     + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
                     + $"base {F(o.BaseValue)} x surv {F(rawSubDesire)}";
+            }
+            else
+            {
+                // ReconObjectiveKind is an internal closed enum, but keep the planner fail-closed if
+                // another value is ever added without materialization semantics here.
+                admission = 0f;
+                explain = $"UnknownReconObjective kind={(int)o.Kind} suppressed";
             }
 
             return new ScoutCandidate(target, o.BaseValue, admission, explain,
