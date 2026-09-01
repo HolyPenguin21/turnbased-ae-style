@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                     ctx.RecordArmyVisit(other, to, from);
                     res.Applied++;
                     res.StateChanged = true;
-                    // §16 — a hero-for-body swap that leads a formation reads with the hero's role.
+                    // §16 — a hero-for-body/hero swap that leads a formation reads with the hero's role.
                     string swapRole = unit.IsHero
                         ? $" role={Game.Ai.V2.HeroRoleEvaluator.Classify(unit)}" : "";
                     AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — swapped {unit.Name} #{from.Id} "
@@ -169,7 +169,12 @@ namespace Game.Ai.V2
             // candidate is structurally illegal here rather than silently spending another axis's AP.
             if (to.HasActivatedThisTurn && unit.ActivationApCost > 0)
             { why = "would spend AP on activated destination"; return false; }
-            if (!to.HasRoom) { why = "destination full"; return false; }
+            // Mirror ArmyActions.TransferMember's projected-roster capacity rule exactly. A hero
+            // may legally join a currently-full no-hero army because its CommandRating raises the
+            // resulting capacity; using to.HasRoom here recreated the planner/runtime mismatch.
+            var projected = new List<UnitData>(to.Members) { unit };
+            if (ArmyData.ComputeCapacity(projected, to.IsGarrison) < projected.Count)
+            { why = "destination would exceed projected capacity"; return false; }
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
             if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
@@ -181,9 +186,10 @@ namespace Game.Ai.V2
         {
             if (!CommonPreflight(player, armyA, armyB, commitments, out why))
                 return false;
-            // §9 — a garrison IS allowed on exactly one side, but only for the hero-formation
-            // trade: a hero leaves the garrison and a non-hero enters it (never the reverse, and
-            // never garrison<->garrison). The garrison's own release rule still governs the hero.
+            // A garrison may participate on one side when a hero leaves it. The field-side member
+            // may be either a body (forming a previously heroless army) OR another hero (returning
+            // a SupportOperator to base while a CombatLeader takes command). Never allow a
+            // non-hero to be the member leaving the garrison through this Housekeeping-owned path.
             bool garrisonA = armyA.IsGarrison;
             bool garrisonB = armyB.IsGarrison;
             if (garrisonA && garrisonB) { why = "garrison<->garrison swap not owned by housekeeping"; return false; }
@@ -191,9 +197,8 @@ namespace Game.Ai.V2
             {
                 ArmyData garr = garrisonA ? armyA : armyB;
                 UnitData leaving = garrisonA ? unitA : unitB;   // garrison -> field
-                UnitData entering = garrisonA ? unitB : unitA;  // field -> garrison
-                if (!leaving.IsHero || entering.IsHero)
-                { why = "garrison swap must send a hero out and a non-hero in"; return false; }
+                if (!leaving.IsHero)
+                { why = "garrison swap must send a hero out"; return false; }
                 if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
                 { why = "garrison hero release breaks security"; return false; }
             }
