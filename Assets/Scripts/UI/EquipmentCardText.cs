@@ -19,6 +19,25 @@ namespace Game.UI
             return string.Join(", ", grant.hostTypeTags);
         }
 
+        // The unit types this equipment can be hung on — the class tags when the grant names
+        // specific ones ("Infantry, Vehicle"), otherwise the allowed host kind ("Any unit",
+        // "Any hero", "Any unit or hero"). Same ANY-match rule EquipmentSystem.CanAttachCore
+        // enforces. Empty only when the grant declares no host kinds at all.
+        public static string AttachTargets(EquipmentGrant grant)
+        {
+            if (grant == null)
+                return string.Empty;
+            string tags = HostTags(grant);
+            if (!string.IsNullOrEmpty(tags))
+                return tags;
+            bool unit = grant.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Unit);
+            bool hero = grant.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Hero);
+            if (unit && hero) return "Any unit or hero";
+            if (unit) return "Any unit";
+            if (hero) return "Any hero";
+            return string.Empty;
+        }
+
         // Abilities the grant ADDS — abbreviated via GameConfig, raw PrettyName fallback when
         // config is null (e.g. the battle grid, which has no catalog handy). Empty when none.
         public static string AddedAbilities(EquipmentGrant grant, GameConfig config)

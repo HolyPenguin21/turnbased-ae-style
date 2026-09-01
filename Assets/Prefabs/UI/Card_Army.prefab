@@ -335,7 +335,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 61636f53d0b54db47a62f6fbffe2b9c8, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -388,6 +388,7 @@ MonoBehaviour:
   - {fileID: 1980000000000010258}
   - {fileID: 1980000000000010268}
   equipmentArtToggle: {fileID: 537768790359190566}
+  skillsText: {fileID: 1980000000000010024}
 --- !u!114 &1980000000000010006
 MonoBehaviour:
   m_ObjectHideFlags: 0

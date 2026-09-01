@@ -239,9 +239,10 @@ namespace Game.UI
             SetBadge(4, cost != null ? cost.tech : 0);
         }
 
-        // Preview mode: who the card fits, the skills it grants and the stats it changes. An
-        // Equipment card reads its grant via EquipmentCardText (host tags, added abilities, stat
-        // changes); any other card lists its own abilities. Hidden when there's nothing to say.
+        // Preview mode: for an Equipment card, only the unit types it can be attached to (see
+        // EquipmentCardText.AttachTargets) — the added abilities / stat changes stay in the
+        // modal's right-hand detail panel. Any other card lists its own tags + abilities.
+        // Hidden when there's nothing to say.
         private void RefreshSkillsText(CardDefinition card, GameConfig config)
         {
             if (skillsText == null)
@@ -253,7 +254,7 @@ namespace Game.UI
             }
             else if (card.cardType == CardType.Equipment)
             {
-                text = EquipmentCardText.CardFace(card, config);
+                text = EquipmentCardText.AttachTargets(card.equipment);
             }
             else
             {
