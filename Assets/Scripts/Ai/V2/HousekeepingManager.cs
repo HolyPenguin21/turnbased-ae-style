@@ -97,6 +97,8 @@ namespace Game.Ai.V2
                 result.StateChanged |= exec.StateChanged;
                 result.TransfersApplied += exec.Applied;
                 result.TransfersFailed += exec.Failed;
+
+                LogUnresolvedStructuralDefects(group, plan);
             }
 
             if (root != null && root.ActionPoints != apBefore)
@@ -109,6 +111,46 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] housekeeping — groups {result.GroupsPlanned}, "
                 + $"operations applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
                 + $"stateChanged {(result.StateChanged ? 1 : 0)}, apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
+        }
+
+        // §16 — final decisions are logged by the executor; this adds the important UNRESOLVED
+        // structural defects a debug run needs, without flooding the log with every rejected
+        // candidate. Only containers the plan did not touch are reported.
+        private static void LogUnresolvedStructuralDefects(LocalForceGroup group, ReorganizationPlan plan)
+        {
+            if (group?.Containers == null || plan == null)
+                return;
+            foreach (ReorgContainer c in group.Containers)
+            {
+                bool touched = false;
+                foreach (PlannedTransfer t in plan.Transfers)
+                    if (t.FromArmyId == c.ArmyId || t.ToArmyId == c.ArmyId) { touched = true; break; }
+                if (touched)
+                    continue;
+
+                if (c.Role == ReorgPhysicalRole.ProtectedMissionArmy && c.MemberCount <= 1)
+                {
+                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — singleton #{c.ArmyId} "
+                        + "protected reason=StrategicCapabilityLease/mission");
+                    continue;
+                }
+
+                bool herolessViableFormation = c.IsMutableGround && c.CanChangeComposition
+                    && !c.SingletonExempt && c.MemberCount >= 2
+                    && !c.Units.Exists(u => u.IsHero) && ReorgViability.IsViable(c.Units);
+                if (!herolessViableFormation)
+                    continue;
+
+                bool benchedCombatHero = false;
+                foreach (ReorgContainer g in group.Containers)
+                    if (g.CanChangeComposition && g.Units.Exists(u => u.IsHero
+                        && u.HeroRole != HeroOperationalRole.SupportOperator
+                        && (g.IsGarrison ? g.Units.Count > 1 : g.Units.Count == 1)))
+                        benchedCombatHero = true;
+
+                AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — heroless formation #{c.ArmyId} "
+                    + $"unresolved reason={(benchedCombatHero ? "activation_ap_or_capacity_blocked" : "no_benched_combat_leader")}");
+            }
         }
     }
 }

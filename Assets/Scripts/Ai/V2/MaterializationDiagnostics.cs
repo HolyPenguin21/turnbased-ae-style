@@ -19,6 +19,7 @@ namespace Game.Ai.V2
                 return "diag unavailable";
 
             int matching = 0, traitMatching = 0, placements = 0, preflight = 0;
+            int opDeliver = 0, resReject = 0;
             float minDirectNeed = float.PositiveInfinity;
             var failures = new Dictionary<string, int>();
             bool solo = demand.Capability == CapabilityKind.ScoutCapability;
@@ -58,7 +59,25 @@ namespace Game.Ai.V2
                         {
                             BaseCardInHand = card,
                             ProjectedAbilities = projectedAbilities,
+                            Deploy = opt,
+                            FinalCapability = demand.Capability,
                         };
+                        // §15 — mirror the REAL candidate builder's next gates so the reported
+                        // postGate cannot say "passes" while every candidate is discarded here.
+                        if (!MaterializationCandidateBuilder.CanDeliverDemandOperationally(diagnosticPlan, demand))
+                        {
+                            string k = $"{card.Definition.displayName}: {opt.Kind} cannot operationally deliver {demand.Capability}";
+                            failures.TryGetValue(k, out int oc);
+                            failures[k] = oc + 1;
+                            continue;
+                        }
+                        opDeliver++;
+                        ResourceCost chainCost = Game.Ai.AiCardCost.PlayResources(card);
+                        if (chainCost != null && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
+                        {
+                            resReject++;
+                            continue;
+                        }
                         float followupAp = CapabilityQualityEvaluator.ProjectedActivationApCost(diagnosticPlan)
                             + stealthSurcharge + demand.MinimumFollowupAp;
                         minDirectNeed = System.Math.Min(minDirectNeed, deployAp + reservedFollowup + followupAp);
@@ -79,7 +98,7 @@ namespace Game.Ai.V2
                 : string.Join(" | ", failures.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
                     .Select(kv => kv.Value > 1 ? $"{kv.Key} x{kv.Value}" : kv.Key));
 
-            string postGate = "-";
+            string postGate;
             string directNeed = "-";
             if (!float.IsPositiveInfinity(minDirectNeed))
             {
@@ -92,9 +111,16 @@ namespace Game.Ai.V2
                 else
                     postGate = "direct-passes-post-preflight";
             }
+            else if (preflight > 0 && opDeliver == 0)
+                postGate = "operational-delivery-gate";  // §15 — preflight passed, no placement can deliver
+            else if (preflight > 0 && resReject > 0 && resReject == opDeliver)
+                postGate = "chain-resources";
+            else
+                postGate = "-";
 
             return $"diag hand={hand.Hand.Count} {AiCardLog.Hand(hand)} freeSlot={(hand.HasFreeSlot ? 1 : 0)} "
                 + $"match={matching} trait={traitMatching} placements={placements} preflight={preflight} "
+                + $"opDeliver={opDeliver} resReject={resReject} "
                 + $"fails=[{failText}] directNeedMin={directNeed} postGate={postGate} "
                 + $"axis={axis:0.##} discrete={discrete:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
         }

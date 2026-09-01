@@ -558,7 +558,7 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
         }
 
-        private static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
+        internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
         {
             if (p == null || demand == null) return false;
             switch (demand.Capability)
