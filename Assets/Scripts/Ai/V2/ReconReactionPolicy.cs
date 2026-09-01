@@ -15,16 +15,6 @@ namespace Game.Ai.V2
     //  Called only after authoritative movement/vision/stealth state has settled. It never reads
     //  TrueWorld and never emits a multi-step plan. One decision is valid for one immediate action;
     //  after that action the executor must call this policy again on the new live state.
-    //
-    //  Priority is safety-first:
-    //    1) a scout personally exposed to a stronger known enemy -> Flee;
-    //    2) a still-hidden scout inside a known detector envelope -> EvadeDetector;
-    //    3) a hidden scout standing on a now-confirmed undefended hostile structure -> Capture;
-    //    4) an adjacent visible weak solo Recce that is overwhelmingly beatable -> opportunistic attack;
-    //    5) otherwise Continue.
-    //
-    //  This keeps "discovery" separate from "reaction". AiMapMemory/VisionSystem tell us what is
-    //  now known; this class decides what Recon does with that knowledge.
     // ===========================================================================================
     public enum ReconReactionAction
     {
@@ -65,9 +55,6 @@ namespace Game.Ai.V2
 
     internal static class ReconReactionPolicy
     {
-        // Opportunistic combat is intentionally much stricter than normal Raid admission. Recon
-        // is not a combat lane: only an overwhelmingly favourable fight against another solo Recce
-        // is worth breaking scouting tempo for.
         private const float AttackOpportunityWinChance = 0.80f;
         private const float StrongEnemyFleeWinChance = 0.50f;
 
@@ -83,18 +70,10 @@ namespace Game.Ai.V2
 
             bool inStealth = IsArmyInStealth(army);
 
-            // A remembered non-neutral army only becomes a Flee trigger when THIS scout is exposed
-            // to that owner (ordinary visible scout, or a hidden scout personally detected by it)
-            // and the actual WorthIt comparison says Recon is not favoured. A still-hidden scout
-            // does not magically know that an enemy has detected it: ArmyFullyHiddenFrom is exactly
-            // the authoritative per-observer visibility predicate.
             ReconReactionDecision? flee = FindStrongExposedThreat(player, map, army, inStealth);
             if (flee.HasValue)
                 return Log(army, assignment, flee.Value);
 
-            // If we are still genuinely hidden but a known Recce source can challenge stealth from
-            // here, prefer one immediate lower-risk adjacent step. This is an evasion reaction,
-            // not a new strategic assignment and not a cached path.
             if (inStealth && CurrentDetectorRisk(player, army.Hex) > 0f)
             {
                 HexCoord? evade = PickLowerDetectorRiskStep(player, map, army, turn);
@@ -104,11 +83,6 @@ namespace Game.Ai.V2
                         "known detector envelope; lower-risk adjacent step exists"));
             }
 
-            // Hidden-entry facility/base sequence. The scout has already arrived without capturing
-            // because BuildingRegistry correctly rejects invisible attackers. Only CURRENTLY visible
-            // structure state is read here. Re-check exposed danger above happened first, and the
-            // defender scan below is live/observer-aware. Executor may now decloak and call the one
-            // authoritative CaptureOrDestroyIfUndefended method; that method checks defenders again.
             if (inStealth && IsSafeCaptureOpportunity(player, army))
             {
                 return Log(army, assignment, new ReconReactionDecision(
@@ -116,9 +90,6 @@ namespace Game.Ai.V2
                     "hidden entry confirmed an undefended hostile structure"));
             }
 
-            // Recon may opportunistically remove another scout, but never invent a combat target
-            // from memory. Target must be CURRENTLY visible/contactable, adjacent, solo Recce and
-            // overwhelmingly favourable through the shared WorthIt estimator.
             ReconReactionDecision? attack = FindWeakScoutOpportunity(player, map, army);
             if (attack.HasValue)
                 return Log(army, assignment, attack.Value);
@@ -139,7 +110,11 @@ namespace Game.Ai.V2
                 if (inStealth && StealthSystem.ArmyFullyHiddenFrom(army, sighting.Owner))
                     continue;
 
-                float hexBonus = WorthIt.HexDefenseBonus(sighting.Hex, map);
+                // Do NOT call WorthIt.HexDefenseBonus on a stale/non-visible enemy position: that
+                // helper includes live BuildingRegistry and would leak a structure change through
+                // fog. Terrain is immutable/public and safe; structural defence is added only when
+                // the hex is currently visible to this player.
+                float hexBonus = HonestHexDefenseBonus(player, map, sighting.Hex);
                 float win = sighting.Defenders != null && sighting.Defenders.Count > 0
                     ? WorthIt.WinChance(army, sighting.Defenders, hexBonus)
                     : WorthIt.WinChance(army, sighting.DefenseSum + hexBonus, sighting.AttackSum);
@@ -177,14 +152,12 @@ namespace Game.Ai.V2
 
                 List<Game.Units.UnitData> visible = StealthSystem.TargetableMembersFor(target, player).ToList();
                 float enemyAttack = WorthIt.AttackSum(visible);
+                // CURRENTLY visible target, so the full live hex bonus is honest here.
                 float enemyDefense = WorthIt.DefenseSum(visible) + WorthIt.HexDefenseBonus(h, map);
                 float win = WorthIt.WinChance(army, enemyDefense, enemyAttack);
                 if (win < bestWin)
                     continue;
 
-                // If the scout is in stealth, it cannot initiate contact until it voluntarily
-                // decloaks. The executor owns that one authoritative state transition immediately
-                // before the attack move; this policy only says the opportunity is good enough.
                 bestWin = win;
                 best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity,
                     h, target.Id, win, "adjacent visible solo Recce is overwhelmingly beatable");
@@ -261,6 +234,25 @@ namespace Game.Ai.V2
                     detectors++;
             }
             return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
+        }
+
+        private static float HonestHexDefenseBonus(PlayerSetupData player, HexMap map, HexCoord hex)
+        {
+            float bonus = 0f;
+            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
+                bonus += terrain.defenseModifier;
+
+            if (VisionSystem.IsVisible(player, hex))
+            {
+                BuildingData live = BuildingRegistry.FindAt(hex);
+                if (live != null && live.IsBase)
+                    bonus += live.Defense;
+            }
+            // If not visible, deliberately keep only terrain. AiMapMemory remembers building
+            // identity/owner but not its numeric Defense value, so inventing the current live value
+            // here would violate the memory contract. Conservative strategic building treatment can
+            // be added later by storing the observed defense in KnownBuilding itself.
+            return bonus;
         }
 
         private static bool IsArmyInStealth(ArmyData army) =>
