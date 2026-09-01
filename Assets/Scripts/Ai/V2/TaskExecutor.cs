@@ -85,12 +85,16 @@ namespace Game.Ai.V2
             {
                 ProvisionedMission pm = queue[missionIndex];
                 var result = new ExecutionResult { Key = pm.Key, IsReplacement = pm.IsReplacement, Source = pm };
+                // Captured before the mover lookup so the AP invariant (§2.1) also covers the
+                // "mover gone before the first step" early exit.
+                int apBefore = root != null ? root.ActionPoints : 0;
                 ArmyData army = Resolve(player, pm.MoverArmyId);
                 if (army == null)
                 {
                     result.StartHex = pm.ExecutionHex;
                     result.FinalHex = pm.ExecutionHex;
                     result.StopReason = ExecutionStopReason.MoverLost;
+                    ApCheck(pm, apBefore, root, result);
                     results.Add(result);
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
                     continue;
@@ -98,7 +102,6 @@ namespace Game.Ai.V2
 
                 result.StartHex = army.Hex;
                 result.FinalHex = army.Hex;
-                int apBefore = root != null ? root.ActionPoints : 0;
 
                 // --- Live mission revalidation. An earlier mission in this batch may have moved the
                 //     world under this one. A stale mission spends no AP, plays no card, and is

@@ -102,27 +102,33 @@ namespace Game.Ai.V2
                 // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
                 // checks the requesting axis's discrete entitlement and live affordability, and
                 // only then runs the authoritative build. A shortfall => nothing spent, not built.
-                V2ResourceStamp infraBefore = AiV2Trace.Stamp(root);
+                // §2.4 — independent controlled-state snapshot around the op (building count,
+                // filled facility slots, army movement, resources), NOT derived from the op's own
+                // result. A failed build that changed any of these is a rollback leak.
+                V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
                 InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
                     snap, player, root, hand, ctx, istate.Demand, ledger);
-                V2ResourceStamp infraAfter = AiV2Trace.Stamp(root);
+                V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
                 if (infra.StateChanged)
                     result.StateChanged = true;
-                // §2.4 — a FAILED infra op must have rolled back every controlled resource.
                 AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
                     infra.StateChanged, infraBefore, infraAfter);
                 if (infra.Built)
                 {
                     // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
                     // ledger records an already-permitted action, never grants overdraft.
-                    // §2.3 — real AP delta == reported spend == axis debit for this committed action.
-                    AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
-                        infraBefore.Ap - infraAfter.Ap, infra.ApSpent, infra.ApSpent > 0f ? infra.ApSpent : 0f);
+                    // §2.3 — measure the REAL ledger balance drop around Debit so the check
+                    // compares three independently sourced facts (physical / reported / ledger).
+                    float infraLedgerBefore = ledger.Balance(istate.Demand.RequestingAxis);
                     if (infra.ApSpent > 0f)
                     {
                         ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
                         result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
                     }
+                    float infraLedgerAfter = ledger.Balance(istate.Demand.RequestingAxis);
+                    AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
+                        infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
+                        infraLedgerBefore - infraLedgerAfter);
                     istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
                     result.CardsPlayed++;
                     result.InfrastructureBuilt++;
@@ -197,11 +203,6 @@ namespace Game.Ai.V2
                 int chainApAfter = root.ActionPoints;
                 chainAttempts++;
 
-                // §2.3 — this committed Phase-A chain: real AP delta == reported spend == the
-                // amount debited to the requesting axis (ledger.Debit below is fed play.ApSpent).
-                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                    chainApBefore - chainApAfter, play.ApSpent, play.ApSpent > 0f ? play.ApSpent : 0f);
-
                 // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
                 // from the plan shape + MaterializationResult; no scoring change.
                 result.MaterializationAttempts++;
@@ -221,11 +222,20 @@ namespace Game.Ai.V2
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
                 if (play.StateChanged)
                     result.StateChanged = true;
+
+                // §2.3 — measure the REAL AxisBudgetLedger balance drop around Debit, BEFORE any
+                // discrete follow-up borrow moves balances, so the check has three independently
+                // sourced facts: physical AP delta, the chain's reported ApSpent, and the actual
+                // ledger debit (catches a missing / wrong-axis / wrong-amount Debit).
+                float chainLedgerBefore = ledger.Balance(chosenDemand.RequestingAxis);
                 if (play.ApSpent > 0f)
                 {
                     ledger.Debit(chosenDemand.RequestingAxis, play.ApSpent);
                     result.AddDebit(chosenDemand.RequestingAxis, play.ApSpent);
                 }
+                float chainLedgerAfter = ledger.Balance(chosenDemand.RequestingAxis);
+                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
+                    chainApBefore - chainApAfter, play.ApSpent, chainLedgerBefore - chainLedgerAfter);
 
                 if (!play.Deployed)
                 {

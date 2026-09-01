@@ -63,6 +63,8 @@ namespace Game.Ai.V2
             if (hand == null)
             {
                 AiDebugLog.Write("[AI][V2] reaction — pending invalidation consumed, but no AI hand is available; defer to next turn");
+                // The round opened a scope; close it with a [STATE] line on this early exit too.
+                AiV2Trace.LogState(rtrace.Id, rStart, AiV2Trace.Stamp(root));
                 yield break;
             }
 
@@ -111,7 +113,7 @@ namespace Game.Ai.V2
                     m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             foreach (MissionProposal m in missions)
-                AiDebugLog.Write($"[AI][V2]   reaction mission — [{m.AttemptId}] causeDemand={m.CauseDemandTraceId} "
+                AiDebugLog.Write($"[AI][V2]   reaction mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} "
                     + $"{m.Kind} base {m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
             result.Missions += missions.Count;
 

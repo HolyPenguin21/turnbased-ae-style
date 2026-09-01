@@ -280,10 +280,14 @@ namespace Game.Ai.V2
         // built; it then rides through FundedEntry → ProvisionedMission → ExecutionResult →
         // MissionOutcomeLedger → MissionTurnOutcome → MissionContinuity.
         public string AttemptId;
-        // The DemandTraceId of the capability shortage that was blocking this exact operation, or
-        // "none". CONSERVATIVE: set only on an exact target-hex + capability match (spec §1.6) —
-        // never inferred from the shared axis, never a forced Demand→Mission 1:1.
-        public string CauseDemandTraceId = "none";
+        // Every DemandTraceId whose capability shortage was blocking this exact operation (an
+        // exact target-hex + capability match — never inferred from the shared axis, spec §1.6).
+        // A SET, not a forced 1:1: a raid gated by both a Hero and a FieldCombatPower shortage
+        // links both. Empty => "none".
+        public readonly System.Collections.Generic.List<string> CauseDemandTraceIds =
+            new System.Collections.Generic.List<string>();
+        public string CauseDemandTrace =>
+            CauseDemandTraceIds.Count == 0 ? "none" : "[" + string.Join(",", CauseDemandTraceIds) + "]";
         // Set ONLY on a bounded live stale-Explore replacement (MissionRevalidator): the AttemptId
         // of the superseded attempt. The replacement carries its own fresh AttemptId + identity.
         public string ReplacementOfAttemptId;
@@ -503,7 +507,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
-                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTraceId} {m.Kind} baseValue "
+                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
                     + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "

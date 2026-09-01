@@ -79,6 +79,38 @@ namespace Game.Ai.V2
             + $"M {Materials}→{end.Materials} T {Tech}→{end.Tech}";
     }
 
+    // Independent snapshot of the CONTROLLED game state a failed infrastructure op must not have
+    // touched (spec §2.4). Deliberately NOT derived from InfraFulfillResult / StateChanged — the
+    // whole point is to check the system with evidence it did not produce itself. Owned-building
+    // count + filled facility-slot count catch a leaked Base / extraction facility; the army
+    // movement sum catches a hero whose move was spent by a half-applied build.
+    public readonly struct V2InfraWorldStamp
+    {
+        public readonly bool Valid;
+        public readonly int OwnedBuildings;
+        public readonly int FilledFacilitySlots;
+        public readonly int ArmyMovementSum;
+        public readonly V2ResourceStamp Resources;
+
+        public V2InfraWorldStamp(int ownedBuildings, int filledSlots, int armyMovementSum, V2ResourceStamp res)
+        {
+            Valid = true;
+            OwnedBuildings = ownedBuildings;
+            FilledFacilitySlots = filledSlots;
+            ArmyMovementSum = armyMovementSum;
+            Resources = res;
+        }
+
+        public bool SameAs(V2InfraWorldStamp o) =>
+            OwnedBuildings == o.OwnedBuildings && FilledFacilitySlots == o.FilledFacilitySlots
+            && ArmyMovementSum == o.ArmyMovementSum && Resources.SameAs(o.Resources);
+
+        public string Diff(V2InfraWorldStamp end) =>
+            $"{Resources.Transition(end.Resources)} buildings {OwnedBuildings}→{end.OwnedBuildings} "
+            + $"facilitySlots {FilledFacilitySlots}→{end.FilledFacilitySlots} "
+            + $"armyMove {ArmyMovementSum}→{end.ArmyMovementSum}";
+    }
+
     public static class AiV2Trace
     {
         private static readonly Dictionary<PlayerSetupData, V2TraceScope> Scopes =
@@ -113,12 +145,13 @@ namespace Game.Ai.V2
         // -----------------------------------------------------------------------------------------
         //  Demand -> Mission causal link  (spec §1.6)
         // -----------------------------------------------------------------------------------------
-        //  CONSERVATIVE and best-effort. A link is stamped ONLY when a mission's own target hex
-        //  exactly matches a demand's TargetHex for a compatible capability/kind — i.e. the
-        //  capability shortage that demand reported is the one that was blocking this exact
-        //  operation. Never inferred from the shared axis alone. Every unmatched mission keeps
-        //  CauseDemandTraceId = "none". Demand and Mission are enumerated independently from the
-        //  same frozen objective set, so there is deliberately NO forced 1:1 mapping.
+        //  CONSERVATIVE and best-effort. A demand is linked ONLY when a mission's own target hex
+        //  exactly matches that demand's TargetHex for a compatible capability/kind — i.e. the
+        //  capability shortage it reported was blocking this exact operation. Never inferred from
+        //  the shared axis. The link is a SET, not a 1:1: a raid can be gated by both a Hero and a
+        //  FieldCombatPower shortage, and mislabelling it "D01 → Raid" (dropping D02) is worse
+        //  than "[D01,D02]". Every unmatched mission stays at "none". Demand and Mission are still
+        //  enumerated independently — this only annotates a link that already exists.
         public static void CorrelateDemandsToMissions(IReadOnlyList<AxisDemand> demands,
             IReadOnlyList<MissionProposal> missions)
         {
@@ -126,9 +159,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
             {
                 if (m == null) continue;
-                if (!string.IsNullOrEmpty(m.CauseDemandTraceId) && m.CauseDemandTraceId != "none")
-                    continue;
-                m.CauseDemandTraceId = "none";
+                m.CauseDemandTraceIds.Clear();
                 if (!TryMissionFocus(m, out HexCoord focus))
                     continue;
                 foreach (AxisDemand d in demands)
@@ -137,11 +168,8 @@ namespace Game.Ai.V2
                         continue;
                     if (!DemandFitsMissionKind(d, m))
                         continue;
-                    if (d.TargetHex.Value.Equals(focus))
-                    {
-                        m.CauseDemandTraceId = d.TraceId;
-                        break;
-                    }
+                    if (d.TargetHex.Value.Equals(focus) && !m.CauseDemandTraceIds.Contains(d.TraceId))
+                        m.CauseDemandTraceIds.Add(d.TraceId);
                 }
             }
         }
@@ -182,6 +210,24 @@ namespace Game.Ai.V2
         }
 
         private static int Res(PlayerRoot root, ResourceType t) => Mathf.RoundToInt(root.GetResource(t));
+
+        // Independent controlled-state snapshot for the failed-infrastructure rollback check.
+        public static V2InfraWorldStamp InfraStamp(PlayerSetupData player, PlayerRoot root)
+        {
+            if (player == null) return default;
+            int buildings = 0, slots = 0, movement = 0;
+            foreach (BuildingData b in BuildingRegistry.AllBuildings())
+            {
+                if (b == null || b.Owner != player) continue;
+                buildings++;
+                if (b.FacilitySlots != null)
+                    for (int i = 0; i < b.FacilitySlots.Length; i++)
+                        if (b.FacilitySlots[i] != null) slots++;
+            }
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+                if (a != null) movement += Mathf.Max(0, a.CurrentMovement);
+            return new V2InfraWorldStamp(buildings, slots, movement, Stamp(root));
+        }
 
         public static void LogState(string scopeId, V2ResourceStamp start, V2ResourceStamp end,
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
@@ -232,7 +278,11 @@ namespace Game.Ai.V2
                 Check("OK", attemptId, "ProvisionEnvelope", detail, cf, cm, cl);
         }
 
-        // §2.3 — a committed Phase-A action: physical AP delta == reported spend == axis debit.
+        // §2.3 — a committed Phase-A action: three INDEPENDENTLY sourced facts must agree —
+        //  physicalDelta (root AP before/after), reportedSpend (the action's own ApSpent), and
+        //  axisDebit (the REAL AxisBudgetLedger.Balance drop for the requesting axis, measured by
+        //  the caller around ledger.Debit and BEFORE any discrete follow-up borrow). Catches a
+        //  missing Debit, a Debit to the wrong axis, or a Debit of the wrong amount.
         //  AxisBudgetLedger owns Phase-A entitlement/spend only; this is NOT compared against any
         //  later mission execution spend (that is ResourceAllocator / _lockedClaims territory).
         public static void CheckPhaseAAp(string demandTraceId, DesireAxis axis,
@@ -247,14 +297,17 @@ namespace Game.Ai.V2
                 Check("OK", demandTraceId, "PhaseAApAccounting", detail, cf, cm, cl);
         }
 
-        // §2.4 — a FAILED infrastructure op must have left the controlled resource state untouched.
+        // §2.4 — a FAILED infrastructure op must have left the controlled game state untouched.
+        //  The `before`/`after` stamps are the INDEPENDENT evidence (building count, filled
+        //  facility slots, army movement, resources); `stateChanged` is only OR'd in as an extra
+        //  trigger, never trusted as proof of a clean rollback on its own.
         public static void CheckInfrastructureRollback(string demandTraceId, bool built, bool stateChanged,
-            V2ResourceStamp before, V2ResourceStamp after,
+            V2InfraWorldStamp before, V2InfraWorldStamp after,
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
         {
             if (built) return;                              // success path is not this invariant
             if (!before.Valid || !after.Valid) return;
-            string detail = $"{before.Transition(after)} stateChanged={(stateChanged ? 1 : 0)}";
+            string detail = $"{before.Diff(after)} stateChanged={(stateChanged ? 1 : 0)}";
             if (!before.SameAs(after) || stateChanged)
                 Check("ERROR", demandTraceId, "InfrastructureRollbackLeak", detail, cf, cm, cl);
             else
