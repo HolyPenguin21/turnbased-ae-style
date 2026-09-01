@@ -39,6 +39,51 @@ namespace Game.Ai.V2
                     yield return c;
             }
 
+            // 0.25 §8/§9 — if a viable combat formation is already led by a SupportOperator while
+            // a better combat-capable hero is benched locally, exchange the commanders. This is
+            // intentionally a hero-for-hero swap: the support hero goes back to the garrison/lone
+            // bench instead of being discarded into a random body slot, membership counts stay
+            // fixed, and both post-swap capacities are validated by TrySwap/ArmyActions.
+            foreach (int dstId in armyIds)
+            {
+                ReorgContainer dst = state.Meta[dstId];
+                if (!IsFieldContainer(dst) || !dst.CanChangeComposition
+                    || !ReorgViability.IsViable(state.Roster[dstId]))
+                    continue;
+                List<ReorgUnit> dstUnits = state.Roster[dstId];
+                ReorgUnit supportCommander = dstUnits.FirstOrDefault(u => u != null && u.IsHero);
+                if (supportCommander == null || supportCommander.HeroRole != HeroOperationalRole.SupportOperator)
+                    continue;
+
+                foreach (int srcId in armyIds)
+                {
+                    if (srcId == dstId)
+                        continue;
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!src.CanDonate || !src.CanReceive || !src.CanChangeComposition)
+                        continue;
+                    List<ReorgUnit> srcUnits = state.Roster[srcId];
+                    bool srcIsBench = src.IsGarrison
+                        || (IsFieldContainer(src) && srcUnits.Count == 1 && srcUnits[0].IsHero);
+                    if (!srcIsBench)
+                        continue;
+
+                    ReorgUnit combatHero = BestBenchedHeroForField(srcUnits);
+                    if (combatHero == null)
+                        continue;
+                    if (src.IsGarrison && !GarrisonMayRelease(srcUnits, combatHero, src))
+                        continue;
+
+                    VState swapped = TrySwap(state, srcId, combatHero, dstId, supportCommander);
+                    if (swapped != null)
+                    {
+                        swapped.Transfers[swapped.Transfers.Count - 1].Reason =
+                            "replace support operator with combat-capable field commander";
+                        yield return swapped;
+                    }
+                }
+            }
+
             // 0.5 §9 — give a heroless viable field formation a suitable benched combat hero from
             // the local garrison or a lone-hero container. Direct move when the destination has a
             // free slot; otherwise a canonical hero-for-body swap (the "no room in either army"
