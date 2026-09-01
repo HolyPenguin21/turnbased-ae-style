@@ -162,7 +162,9 @@ namespace Game.Ai.V2
             bool assemblableViable = o.CanCoverAllDefenders
                 && o.AssemblableWinChance >= AiConfigV2.raidMinViableWinChance;
             bool haveViable = o.GatePassed || readyViable || assemblableViable;
-            bool needsHero = !readyViable && !report.HeroAvailable;
+            // A missing hero is only a projected shortage when no legal heroless assemblable force
+            // already clears the target. Hero is a capacity option, not a Raid prerequisite.
+            bool needsHero = !haveViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
 
             float targetPower = AiPower.EffectiveArmyPowerFromProfiles(DefendersOf(snap, o.TargetArmyId));
