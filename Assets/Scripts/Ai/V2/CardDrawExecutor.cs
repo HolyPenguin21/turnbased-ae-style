@@ -9,9 +9,13 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Canonical hand replenishment, SEPARATE from CardPlayExecutor (deploy and draw are not one
     //  transaction). Uses AiHandData.DrawOne — the same PopRandomCard + AddCard path the human's
-    //  OnDrawClicked uses, with DrawOne itself refusing to overflow the hand capacity. Never an
-    //  AI-only deck rule. Only surplus preparation calls this, and only when a slot is genuinely
-    //  free, the deck is non-empty, the draw AP is affordable, and reserves still hold.
+    //  OnDrawClicked uses, with DrawOne itself refusing to overflow the hand capacity.
+    //
+    //  IMPORTANT: terminal Draw is the LAST strategic fallback. Before consuming its AP this seam
+    //  checks StrategicMaintenancePolicy for actions that Phase-B materialization cannot express:
+    //  Base capacity upgrades, internal Facility placement, equipment for already-deployed units,
+    //  and standalone Research/Production. If one is available we leave the AP untouched and let
+    //  Housekeeping's pre-reorganisation maintenance pass execute it authoritatively.
     // ===========================================================================================
     public static class CardDrawExecutor
     {
@@ -24,6 +28,16 @@ namespace Game.Ai.V2
         {
             if (!CanCycle(root, hand, ctx))
                 return false;
+
+            if (AiHandRegistry.TryGetOwner(hand, out PlayerSetupData maintenanceOwner)
+                && maintenanceOwner != null
+                && StrategicMaintenancePolicy.HasPriorityAction(maintenanceOwner, root, hand, ctx))
+            {
+                AiDebugLog.Write("[AI][V2]   strat.B terminal — preserve AP: strategic maintenance "
+                    + "(facility capacity / facility placement / equipment / generation) outranks Draw");
+                return false;
+            }
+
             CardData card = hand.DrawOne();
             if (card == null)
                 return false;
