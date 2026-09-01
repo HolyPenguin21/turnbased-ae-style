@@ -39,6 +39,62 @@ namespace Game.Ai.V2
                     yield return c;
             }
 
+            // 0.5 §9 — give a heroless viable field formation a suitable benched combat hero from
+            // the local garrison or a lone-hero container. Direct move when the destination has a
+            // free slot; otherwise a canonical hero-for-body swap (the "no room in either army"
+            // case the user called out — SwapMembers keeps both headcounts fixed while the hero
+            // raises the destination's own Capacity). The greedy loop fills one formation per
+            // iteration, so multiple heroless formations are led round-robin.
+            foreach (int dstId in armyIds)
+            {
+                ReorgContainer dst = state.Meta[dstId];
+                if (!IsFieldContainer(dst) || !dst.CanReceive)
+                    continue;
+                List<ReorgUnit> dstUnits = state.Roster[dstId];
+                if (dstUnits.Any(u => u.IsHero) || dstUnits.Count(u => !u.IsHero) < 2
+                    || !ReorgViability.IsViable(dstUnits))
+                    continue;
+
+                foreach (int srcId in armyIds)
+                {
+                    if (srcId == dstId)
+                        continue;
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!src.CanDonate)
+                        continue;
+                    List<ReorgUnit> srcUnits = state.Roster[srcId];
+                    bool srcIsBench = src.IsGarrison
+                        || (IsFieldContainer(src) && srcUnits.Count == 1 && srcUnits[0].IsHero);
+                    if (!srcIsBench)
+                        continue;
+
+                    ReorgUnit hero = BestBenchedHeroForField(srcUnits);
+                    if (hero == null)
+                        continue;
+                    if (src.IsGarrison && !GarrisonMayRelease(srcUnits, hero, src))
+                        continue;
+
+                    VState moved = TryMoveOne(state, srcId, dstId, hero,
+                        "assign benched combat hero to heroless field formation");
+                    if (moved != null)
+                    {
+                        yield return moved;
+                        continue;
+                    }
+
+                    ReorgUnit weakestBody = state.Roster[dstId]
+                        .Where(u => !u.IsHero && !u.IsCommitted && !u.IsAviation
+                            && !state.MovedUnitKeys.Contains(u.Key))
+                        .OrderBy(u => u.Power).ThenBy(u => u.Key)
+                        .FirstOrDefault();
+                    if (weakestBody == null)
+                        continue;
+                    VState swapped = TrySwap(state, srcId, hero, dstId, weakestBody);
+                    if (swapped != null)
+                        yield return swapped;
+                }
+            }
+
             // 1. Absorb/combine only a STRUCTURALLY DEGRADED occupied mutable field container.
             // WorthPlanning also admits healthy groups now so the composition pass below can run;
             // therefore it can no longer serve as the implicit guard that kept viable armies out
@@ -172,6 +228,20 @@ namespace Game.Ai.V2
                         }
                 }
             }
+        }
+
+        // §8/§9 — the best benched hero to lead a field formation: never a SupportOperator
+        // (Housekeeping keeps those for base/research/production; an urgent raid takes its own
+        // support-fallback path). CombatLeader before Flexible, then combat leadership, then key.
+        private static ReorgUnit BestBenchedHeroForField(List<ReorgUnit> roster)
+        {
+            return roster
+                .Where(u => u != null && u.IsHero && !u.IsCommitted
+                    && u.HeroRole != HeroOperationalRole.SupportOperator)
+                .OrderByDescending(u => u.HeroRole == HeroOperationalRole.CombatLeader ? 1 : 0)
+                .ThenByDescending(u => u.HeroCombatLeadership)
+                .ThenBy(u => u.Key)
+                .FirstOrDefault();
         }
 
         private static IEnumerable<int> OrderedDestinations(VState state, List<int> armyIds, int srcId)

@@ -17,6 +17,13 @@ namespace Game.Ai.V2
             float composition = 0f;
             bool anyViable = false;
 
+            // §9 — formation-leadership bookkeeping. A "benched" hero sits in a garrison or a lone
+            // hero container; a heroless viable field formation is only a fixable defect when such
+            // a hero exists in the same group.
+            int benchedCombatCapable = 0;   // CombatLeader or Flexible, available to lead
+            int unledViableFields = 0;
+            int supportLedWhileCombatBenched = 0;
+
             foreach (int id in s.Meta.Keys.OrderBy(x => x))
             {
                 ReorgContainer meta = s.Meta[id];
@@ -36,6 +43,10 @@ namespace Game.Ai.V2
                     garrisonDeficit += Math.Max(0, meta.GarrisonNonHeroFloor - nonHero);
                     if (units.Count == 0 && meta.GarrisonNonHeroFloor > 0)
                         garrisonDeficit++;
+                    if (meta.CanChangeComposition)
+                        benchedCombatCapable += units.Count(u => u != null && u.IsHero
+                            && u.HeroRole != HeroOperationalRole.SupportOperator
+                            && GarrisonMayRelease(units, u, meta));
                     continue;
                 }
 
@@ -47,6 +58,10 @@ namespace Game.Ai.V2
                 if (!meta.SingletonExempt && ReorgViability.IsSingletonShape(units))
                     singles++;
 
+                bool loneHero = units.Count == 1 && units[0].IsHero;
+                if (loneHero && units[0].HeroRole != HeroOperationalRole.SupportOperator)
+                    benchedCombatCapable++;
+
                 if (ReorgViability.IsViable(units))
                 {
                     anyViable = true;
@@ -54,6 +69,12 @@ namespace Game.Ai.V2
                     if (p < minStrength)
                         minStrength = p;
                     composition += ReorgViability.CompositionQuality(units);
+
+                    ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
+                    if (commander == null && units.Count(u => !u.IsHero) >= 2)
+                        unledViableFields++;
+                    else if (commander != null && commander.HeroRole == HeroOperationalRole.SupportOperator)
+                        supportLedWhileCombatBenched++;
                 }
                 else if (!meta.SingletonExempt)
                 {
@@ -61,9 +82,15 @@ namespace Game.Ai.V2
                 }
             }
 
+            // Only an unled/support-led formation that a benched combat hero could actually take
+            // over is a defect the planner can act on.
+            int formationDefect = benchedCombatCapable > 0
+                ? Math.Min(unledViableFields + supportLedWhileCombatBenched, benchedCombatCapable)
+                : 0;
+
             float negMin = anyViable ? -minStrength : 0f;
             return new Outcome(garrisonDeficit, legality, singles, nonViable, commandWaste,
-                negMin, -composition, s.Transfers.Count);
+                formationDefect, negMin, -composition, s.Transfers.Count);
         }
 
         // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster

@@ -85,6 +85,17 @@ namespace Game.Ai.V2
                 if (ReorgViability.HasCommanderUpgrade(c))
                     return true;
 
+            // §9 — a heroless (or support-led) viable field formation plus a benched combat hero
+            // that could lead it is worth a planning pass even if nothing else is degraded.
+            bool benchedCombatHero = Containers.Any(c => c.CanChangeComposition && c.Units.Any(u =>
+                u != null && u.IsHero && u.HeroRole != HeroOperationalRole.SupportOperator
+                && (c.IsGarrison ? c.Units.Count > 1 : c.Units.Count == 1)));
+            bool unledFormation = Containers.Any(c => c.IsMutableGround && c.CanChangeComposition
+                && !c.SingletonExempt && c.Units.Count >= 2 && !c.Units.Any(u => u.IsHero)
+                && ReorgViability.IsViable(c.Units));
+            if (benchedCombatHero && unledFormation)
+                return true;
+
             int viableMutableFields = 0;
             foreach (ReorgContainer c in Containers)
             {

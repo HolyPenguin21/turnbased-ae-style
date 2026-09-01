@@ -36,6 +36,10 @@ namespace HousekeepingSim
             Scenario19_CommanderReorderRaisesModelledCapacity();
             Scenario20_CommanderTieBreakIsDeterministic();
             Scenario21_LeasedSingletonNeverFolded();
+            Scenario22_AssignsCombatLeaderToHerolessTwoBodyArmy();
+            Scenario23_PrefersCombatHeroOverSupportHero();
+            Scenario24_SupportHeroStaysWhenBetterLeaderExists();
+            Scenario25_GarrisonSecurityNotBrokenToFormArmy();
 
             Console.WriteLine();
             Console.WriteLine($"housekeeping-sim: {_passed} passed, {_failed} failed");
@@ -243,7 +247,7 @@ namespace HousekeepingSim
             var weak = Hero(3, cr: 2);
             var strong = Hero(3, cr: 6);
             var garr = Garrison(1, floor: 0, weak, strong, U(3), U(3));
-            var field = Field(2, U(8), U(8));
+            var field = Field(2, Hero(4, cr: 3), U(8));
             var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
 
             Check("18 a commander reorder is planned", plan.Transfers.Count == 1 && plan.Transfers[0].IsReorder);
@@ -271,7 +275,7 @@ namespace HousekeepingSim
             Check("19 capacity after reorder is the strong hero's rating", ReorgViability.Capacity(after, true) == 7);
 
             var garr = Garrison(1, floor: 0, weak, strong, U(3), U(3));
-            var field = Field(2, U(8), U(8));
+            var field = Field(2, Hero(4, cr: 3), U(8));
             var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
             var reordered = plan.ExpectedMembership[1]
                 .Select(k => new[] { weak, strong }.FirstOrDefault(h => h.Key == k) ?? U0(k)).ToList();
@@ -289,7 +293,7 @@ namespace HousekeepingSim
                 var h1 = Hero(3, cr: 4);
                 var h2 = Hero(3, cr: 4);
                 var garr = Garrison(1, floor: 0, h1, h2, U(3), U(3));
-                var field = Field(2, U(8), U(8));
+                var field = Field(2, Hero(4, cr: 3), U(8));
                 var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
                 return (plan.Transfers.Count, plan.Transfers.Count > 0 ? plan.Transfers[0].UnitKey : -1);
             }
@@ -305,7 +309,7 @@ namespace HousekeepingSim
                 var top = Hero(3, cr: 8);
                 var low = Hero(3, cr: 2);
                 var garr = Garrison(1, floor: 0, mid, top, low, U(3), U(3), U(3));
-                var field = Field(2, U(8), U(8));
+                var field = Field(2, Hero(4, cr: 3), U(8));
                 var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
                 return (plan.Transfers.Count, plan.Transfers.Count > 0 ? plan.Transfers[0].UnitKey : -1,
                     plan.Transfers.Count > 0 && plan.Transfers[0].IsReorder);
@@ -330,6 +334,69 @@ namespace HousekeepingSim
                 !plan.ExpectedMembership.ContainsKey(1) || plan.ExpectedMembership[1].Count == 1);
         }
 
+        // §9 — a heroless viable two-body field army next to a garrison with a spare combat hero
+        // gets that hero (via a hero-for-body swap, since a heroless 2-body army is at capacity).
+        private static void Scenario22_AssignsCombatLeaderToHerolessTwoBodyArmy()
+        {
+            _nextKey = 0;
+            var leader = Hero(3, cr: 5, HeroOperationalRole.CombatLeader);
+            var garr = Garrison(1, floor: 1, leader, U(3), U(3));
+            var field = Field(2, U(6), U(6));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+
+            bool heroReachesField = plan.ExpectedMembership.TryGetValue(2, out var f)
+                && f.Contains(leader.Key);
+            Check("22 the benched combat hero ends up leading the field formation", heroReachesField);
+            Check("22 the field formation is no longer heroless", heroReachesField);
+            Check("22 garrison keeps its non-hero security floor",
+                plan.ExpectedMembership[1].Count(k => k != leader.Key) >= 2 - 0 /* U keys */
+                && plan.ExpectedMembership[1].Count >= 2);
+        }
+
+        // §9/§8 — with both a combat hero and a support hero benched, the combat hero is the one
+        // sent to the field formation.
+        private static void Scenario23_PrefersCombatHeroOverSupportHero()
+        {
+            _nextKey = 0;
+            var support = Hero(2, cr: 6, HeroOperationalRole.SupportOperator);
+            var leader = Hero(3, cr: 4, HeroOperationalRole.CombatLeader);
+            var garr = Garrison(1, floor: 1, support, leader, U(3), U(3));
+            var field = Field(2, U(6), U(6));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+
+            bool leaderToField = plan.ExpectedMembership.TryGetValue(2, out var f) && f.Contains(leader.Key);
+            bool supportStays = plan.ExpectedMembership[1].Contains(support.Key);
+            Check("23 the combat leader goes to the field formation", leaderToField);
+            Check("23 the support hero is preserved in the garrison", supportStays);
+        }
+
+        // §9/§8 — a lone support hero is NOT dragged into a field formation just because one is
+        // heroless; support heroes stay for base/research/production duty.
+        private static void Scenario24_SupportHeroStaysWhenBetterLeaderExists()
+        {
+            _nextKey = 0;
+            var support = Hero(2, cr: 6, HeroOperationalRole.SupportOperator);
+            var garr = Garrison(1, floor: 1, support, U(3), U(3));
+            var field = Field(2, U(6), U(6));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+            bool supportMoved = plan.ExpectedMembership.TryGetValue(2, out var f) && f.Contains(support.Key);
+            Check("24 a lone support hero is not pulled into the field formation", !supportMoved);
+        }
+
+        // §9 — the hero-for-formation move never drops a garrison below its non-hero security floor.
+        private static void Scenario25_GarrisonSecurityNotBrokenToFormArmy()
+        {
+            _nextKey = 0;
+            var leader = Hero(3, cr: 5, HeroOperationalRole.CombatLeader);
+            // floor 2, exactly 2 non-hero members -> a hero-out/body-in swap is fine (headcount
+            // preserved), but a plain hero donation that also needed a body later must not breach it.
+            var garr = Garrison(1, floor: 2, leader, U(3), U(3));
+            var field = Field(2, U(6), U(6));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+            int garrNonHeroEnd = plan.ExpectedMembership[1].Count(k => k != leader.Key);
+            Check("25 garrison never falls below its non-hero floor", garrNonHeroEnd >= 2);
+        }
+
         private static ReorgUnit U0(int key) => new ReorgUnit
         {
             Key = key, IsHero = false, CommandRating = 0, Power = 3, Range = 1,
@@ -343,10 +410,12 @@ namespace HousekeepingSim
             TypeTags = new[] { tag }, ActivationApCost = activationApCost, HasRecce = recce,
         };
 
-        private static ReorgUnit Hero(float power, int cr) => new ReorgUnit
+        private static ReorgUnit Hero(float power, int cr,
+            HeroOperationalRole role = HeroOperationalRole.CombatLeader) => new ReorgUnit
         {
             Key = _nextKey++, IsHero = true, CommandRating = cr, Power = power, Range = 1,
             TypeTags = new[] { UnitTypeTag.Hero }, ActivationApCost = 0,
+            HeroRole = role, HeroCombatLeadership = cr + power,
         };
 
         private static ReorgContainer Field(int id, params ReorgUnit[] units) => new ReorgContainer

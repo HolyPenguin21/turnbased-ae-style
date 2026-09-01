@@ -27,18 +27,23 @@ namespace Game.Ai.V2
             // hero. Ranked as a formation-quality term: above generic strength/composition, below
             // the hard legality/singleton/viability invariants.
             public readonly int CommandCapacityWaste;
+            // §9 — count of heroless/support-led viable field formations a benched combat hero
+            // could take over. Ranked as a formation-quality term, below command-capacity waste
+            // and above generic strength/composition.
+            public readonly int FormationDefect;
             public readonly float NegMinStrength;
             public readonly float NegComposition;
             public readonly int Operations;
 
             public Outcome(int gd, int legal, int singles, int nonViable, int commandWaste,
-                float negMin, float negComp, int operations)
+                int formationDefect, float negMin, float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
                 Singletons = singles;
                 NonViable = nonViable;
                 CommandCapacityWaste = commandWaste;
+                FormationDefect = formationDefect;
                 NegMinStrength = negMin;
                 NegComposition = negComp;
                 Operations = operations;
@@ -51,6 +56,7 @@ namespace Game.Ai.V2
                 c = Singletons.CompareTo(o.Singletons); if (c != 0) return c;
                 c = NonViable.CompareTo(o.NonViable); if (c != 0) return c;
                 c = CommandCapacityWaste.CompareTo(o.CommandCapacityWaste); if (c != 0) return c;
+                c = FormationDefect.CompareTo(o.FormationDefect); if (c != 0) return c;
                 if (NegMinStrength < o.NegMinStrength - FloatEps) return -1;
                 if (NegMinStrength > o.NegMinStrength + FloatEps) return 1;
                 if (NegComposition < o.NegComposition - FloatEps) return -1;

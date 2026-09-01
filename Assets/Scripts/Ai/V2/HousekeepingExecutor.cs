@@ -176,9 +176,22 @@ namespace Game.Ai.V2
         {
             if (!CommonPreflight(player, armyA, armyB, commitments, out why))
                 return false;
-            // Planner only proposes field-field composition swaps. Keeping that boundary here avoids
-            // inventing a second simultaneous garrison-floor replacement rule in Housekeeping.
-            if (armyA.IsGarrison || armyB.IsGarrison) { why = "garrison swap not owned by housekeeping"; return false; }
+            // §9 — a garrison IS allowed on exactly one side, but only for the hero-formation
+            // trade: a hero leaves the garrison and a non-hero enters it (never the reverse, and
+            // never garrison<->garrison). The garrison's own release rule still governs the hero.
+            bool garrisonA = armyA.IsGarrison;
+            bool garrisonB = armyB.IsGarrison;
+            if (garrisonA && garrisonB) { why = "garrison<->garrison swap not owned by housekeeping"; return false; }
+            if (garrisonA || garrisonB)
+            {
+                ArmyData garr = garrisonA ? armyA : armyB;
+                UnitData leaving = garrisonA ? unitA : unitB;   // garrison -> field
+                UnitData entering = garrisonA ? unitB : unitA;  // field -> garrison
+                if (!leaving.IsHero || entering.IsHero)
+                { why = "garrison swap must send a hero out and a non-hero in"; return false; }
+                if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
+                { why = "garrison hero release breaks security"; return false; }
+            }
             if (movedUnits.Contains(unitA) || movedUnits.Contains(unitB)) { why = "swap member already moved this plan"; return false; }
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }
             if (unitA.IsAviation || unitB.IsAviation) { why = "aviation unit"; return false; }
