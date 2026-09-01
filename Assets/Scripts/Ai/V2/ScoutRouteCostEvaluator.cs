@@ -41,8 +41,7 @@ namespace Game.Ai.V2
 
         public static Assessment Evaluate(WorldSnapshot snap, ScoutMissionTarget target)
         {
-            bool ground = target != null
-                && (target.Kind == ScoutTargetKind.Explore || ReconScoutKinds.IsRefresh(target.Kind));
+            bool ground = ReconScoutKinds.IsGround(target.Kind);
             if (snap?.Self?.Armies == null || !ground)
                 return new Assessment(true, 0, 0, 0, 1, 0, 1f);
 
@@ -90,7 +89,7 @@ namespace Game.Ai.V2
 
             int remaining = Math.Max(0, mover.CurrentMovement - movementCost);
             bool reachesThisTurn = mover.CurrentMovement >= movementCost;
-            bool explore = kind == ScoutTargetKind.Explore;
+            bool explore = ReconScoutKinds.IsExplore(kind);
             bool canFollowThrough = explore && reachesThisTurn && remaining > 0
                 && HasAffordableFreshNeighbor(snap, map, focus, remaining);
             // Refresh can continue tactically after satisfying its anchor, but the proposal owns one
@@ -130,7 +129,7 @@ namespace Game.Ai.V2
             // Only Explore treats ordinary already-visited ground as low-information re-treading.
             // Refresh deliberately revisits old ground, so applying scoutExploredRouteFloor here
             // would suppress exactly the route class Refresh is supposed to use.
-            if (kind == ScoutTargetKind.Explore)
+            if (ReconScoutKinds.IsExplore(kind))
             {
                 ISet<HexCoord> visited = snap.MapKnowledge?.VisitedHexSet;
                 if (visited != null && stepHexes.Count > 0)
