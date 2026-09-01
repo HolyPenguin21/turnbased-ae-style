@@ -539,6 +539,20 @@ namespace Game.Ai.V2
         // Keep in step with ArmyData if those ever change.
         public const int armyBaseCapacityNoHero = 2;
         public const int garrisonBaseCapacityNoHero = 4;
+
+        // --- Hero operational-role model (spec §8). A combat-leadership score from canonical hero
+        //     data only: CommandRating (how large a force it can lead) plus the hero's own
+        //     AiPower.ToPowerUnit contribution (HitPoints / Initiative / Resistance / Fate —
+        //     heroes carry NO Attack/Defense). Never card or display names. A hero carrying a
+        //     Researcher/Assembler support vocation whose score is below heroRoleFlexibleCombatFloor
+        //     is a SupportOperator (preserve it for base/research/production duty); a non-support
+        //     hero at or above heroRoleCombatLeaderFloor is a CombatLeader; everything else is
+        //     Flexible. The classification is a PREFERENCE, never an absolute bar — an urgent raid
+        //     may still take a SupportOperator.
+        public const float heroRoleCommandWeight = 1.0f;
+        public const float heroRoleCombatContributionWeight = 0.6f;
+        public const float heroRoleCombatLeaderFloor = 7f;
+        public const float heroRoleFlexibleCombatFloor = 8f;
         // FutureUtility term weights / values.
         public const float surplusApCostWeight = 0.20f;
         public const float surplusResourceCostWeight = 0.05f;

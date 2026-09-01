@@ -33,6 +33,9 @@ namespace Game.Ai.V2
         public int Key;
         public bool IsHero;
         public int CommandRating;
+        // §8 — canonical hero operational-role signals, 0 / Flexible for non-heroes.
+        public float HeroCombatLeadership;
+        public HeroOperationalRole HeroRole;
         public float Power;
         public int Range;
         public IReadOnlyList<UnitTypeTag> TypeTags = Array.Empty<UnitTypeTag>();

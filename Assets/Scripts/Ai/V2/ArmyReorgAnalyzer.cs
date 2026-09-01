@@ -134,6 +134,8 @@ namespace Game.Ai.V2
                     Key = key,
                     IsHero = u.IsHero,
                     CommandRating = u.CommandRating,
+                    HeroCombatLeadership = u.IsHero ? HeroRoleEvaluator.CombatLeadershipScore(u) : 0f,
+                    HeroRole = u.IsHero ? HeroRoleEvaluator.Classify(u) : HeroOperationalRole.Flexible,
                     Power = pu.BasePower,
                     Range = pu.Range,
                     TypeTags = pu.Tags.ToList(),

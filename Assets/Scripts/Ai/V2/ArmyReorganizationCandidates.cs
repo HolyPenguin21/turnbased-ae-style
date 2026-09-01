@@ -22,8 +22,13 @@ namespace Game.Ai.V2
                 if (heroes.Count < 2)
                     continue;
                 ReorgUnit current = heroes[0];
+                // §7 primary rule is maximum legal capacity == CommandRating; §8 role and combat
+                // leadership only break CommandRating ties deterministically.
                 ReorgUnit best = heroes
                     .OrderByDescending(h => h.CommandRating)
+                    .ThenByDescending(h => (int)h.HeroRole == (int)HeroOperationalRole.CombatLeader ? 2
+                        : (int)h.HeroRole == (int)HeroOperationalRole.Flexible ? 1 : 0)
+                    .ThenByDescending(h => h.HeroCombatLeadership)
                     .ThenByDescending(h => h.Power)
                     .ThenBy(h => h.Key)
                     .First();

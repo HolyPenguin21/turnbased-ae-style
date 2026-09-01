@@ -37,6 +37,7 @@ namespace CapabilityQualitySim
             S20_TerminalDrawConfigReconciled();
             S21_PhaseBStrategicHeroClaim();
             S22_RaidReadinessPowerVsAssembly();
+            S23_HeroOperationalRole();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -349,6 +350,46 @@ namespace CapabilityQualitySim
             Check("22b real shortfall -> NeedsAssembly is false", !rb.NeedsAssembly);
             Check("22b real shortfall -> RequestedPower is the real deficit",
                 Math.Abs(rb.RequestedPower - 9f) < 0.01f);
+        }
+
+        // Spec §8 / §20 — hero operational-role classification from canonical stats only.
+        private static void S23_HeroOperationalRole()
+        {
+            // Heroes carry no Attack/Defense — combat merit comes from CommandRating plus the
+            // canonical AiPower contribution (HitPoints / Initiative / Resistance / Fate).
+            var combatHero = new Game.Units.UnitData
+            {
+                Name = "A", IsHero = true, CommandRating = 7,
+                HitPointsMax = 6, HitPointsCurrent = 6, Initiative = 4, Resistance = 2, Fate = 4,
+            };
+            var researchHero = new Game.Units.UnitData
+            {
+                Name = "B", IsHero = true, CommandRating = 3,
+                HitPointsMax = 2, HitPointsCurrent = 2, Initiative = 1, Resistance = 1, Fate = 1,
+            };
+            researchHero.Abilities.Add(Game.Cards.UnitAbilities.Researcher);
+
+            var strongResearcher = new Game.Units.UnitData
+            {
+                Name = "C", IsHero = true, CommandRating = 8,
+                HitPointsMax = 8, HitPointsCurrent = 8, Initiative = 5, Resistance = 3, Fate = 5,
+            };
+            strongResearcher.Abilities.Add(Game.Cards.UnitAbilities.Assembler);
+
+            Check("23a a stat-strong non-support hero is a CombatLeader",
+                HeroRoleEvaluator.Classify(combatHero) == HeroOperationalRole.CombatLeader);
+            Check("23b a weak research hero is a SupportOperator",
+                HeroRoleEvaluator.Classify(researchHero) == HeroOperationalRole.SupportOperator);
+            Check("23c a stat-strong support hero is Flexible (usable either way)",
+                HeroRoleEvaluator.Classify(strongResearcher) == HeroOperationalRole.Flexible);
+            Check("23d field-command ordering puts the combat leader ahead of the weak researcher",
+                HeroRoleEvaluator.CompareForFieldCommand(combatHero, researchHero) < 0);
+            Check("23e classification ignores display name",
+                HeroRoleEvaluator.Classify(new Game.Units.UnitData
+                {
+                    Name = "Rusty Miller", IsHero = true, CommandRating = 7,
+                    HitPointsMax = 6, HitPointsCurrent = 6, Initiative = 4, Resistance = 2, Fate = 4,
+                }) == HeroOperationalRole.CombatLeader);
         }
 
         private static void Check(string label, bool ok)
