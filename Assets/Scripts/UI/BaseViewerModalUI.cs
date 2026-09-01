@@ -18,9 +18,9 @@ namespace Game.UI
     // simpler than ArmyViewerModalUI: nothing here is ever reordered or moved once placed (see
     // BaseSlotCardUI), so the grid is a plain GridLayoutGroup-driven layout with no manual
     // slot-position/drag-reorder machinery at all. Upgrading the Base (grants the next Facility
-    // slot + Defense/Resistance) and improving/repairing either the Base or a placed Facility
-    // both happen via a small hover-revealed button pair on the relevant cell (see
-    // BaseSlotCardUI's Improve/Repair buttons) rather than a title-bar context button.
+    // slot + Defense/Resistance) and repairing the Base happen via hover-revealed buttons on the
+    // Base cell. Internal Facility improvement is deliberately disabled until that gameplay
+    // feature has authoritative effects worth exposing.
     public class BaseViewerModalUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -41,7 +41,7 @@ namespace Game.UI
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
         // Only needed to look up the hex's own effective yield for a Collect-tagged Facility's
-        // improve-cap check (see IsFacilityAtYieldCap) — nothing else here touches the map.
+        // dormant upgrade implementation — nothing else here touches the map.
         [SerializeField] private HexMap map;
 
         // Read by BaseSlotCardUI (via the modal reference it already keeps) for GameConfig.
@@ -51,8 +51,20 @@ namespace Game.UI
         private readonly List<BaseSlotCardUI> _cards = new List<BaseSlotCardUI>();
         private BuildingData _currentBuilding;
         private Canvas _canvas;
+        // Mirrors ArmyViewerModalUI's ownership boundary: an enemy building uses this exact same
+        // viewer, but inspection must never expose any gameplay mutation. Show() also auto-hardens
+        // when the live CurrentPlayer is not the building owner, so a wrong call site cannot turn
+        // into an ownership exploit merely because it forgot to call ShowReadOnly().
+        private bool _readOnly;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+        public bool IsReadOnly => _readOnly;
+
+        // UI code reads this to decide whether management controls may be exposed. Gameplay
+        // methods below repeat the same guard themselves; hiding a button is never authorization.
+        public bool CanManageCurrentBuilding => !_readOnly && _currentBuilding != null
+            && (turnController == null || turnController.CurrentPlayer == null
+                || turnController.CurrentPlayer == _currentBuilding.Owner);
 
         // Same purpose as ArmyViewerModalUI.Closed — HexSelectionController re-runs SelectHex
         // on close so an Upgrade purchased in here (new Facility slot, higher Defense/
@@ -64,7 +76,8 @@ namespace Game.UI
         public event Action VisibilityChanged;
 
         // Read by CardHandUI to know which building a dropped Facility card should join (see
-        // TryDeployIntoBaseModal) — mirrors ArmyViewerModalUI.CurrentArmy.
+        // TryDeployIntoBaseModal) — mirrors ArmyViewerModalUI.CurrentArmy. The actual drop path
+        // must still pass TryPlaceFacility, which enforces CanManageCurrentBuilding.
         public BuildingData CurrentBuilding => _currentBuilding;
 
         public bool ContainsScreenPoint(Vector2 screenPosition)
@@ -88,9 +101,30 @@ namespace Game.UI
 
         public void Show(BuildingData building)
         {
-            if (panelRoot != null)
-                panelRoot.SetActive(true);
             _currentBuilding = building;
+            _readOnly = building != null && turnController != null && turnController.CurrentPlayer != null
+                && building.Owner != turnController.CurrentPlayer;
+            ActivatePanel();
+        }
+
+        // Same building data and detail presentation as Show(), but no Upgrade/Repair/drop actions.
+        // Used for a currently visible foreign building — unlike remembered army snapshots this
+        // viewer intentionally does not fabricate last-seen Facility state that the memory layer
+        // does not currently store.
+        public void ShowReadOnly(BuildingData building)
+        {
+            _currentBuilding = building;
+            _readOnly = true;
+            ActivatePanel();
+        }
+
+        private void ActivatePanel()
+        {
+            if (panelRoot != null)
+            {
+                panelRoot.SetActive(true);
+                panelRoot.transform.SetAsLastSibling();
+            }
             RefreshTitle();
             RefreshGrid();
             ShowBaseSummary();
@@ -104,6 +138,7 @@ namespace Game.UI
                 panelRoot.SetActive(false);
             ClearGrid();
             _currentBuilding = null;
+            _readOnly = false;
             if (wasShowing)
             {
                 Closed?.Invoke();
@@ -170,8 +205,8 @@ namespace Game.UI
             if (_currentBuilding == null)
                 return;
 
-            // Level is meaningless for a non-tiered building (see BuildingData.HasTieredUnlock)
-            // — a resource site never upgrades, so showing "Level 1" forever would just be noise.
+            // Level is meaningful only for the Base/Citadel itself. Internal Facility upgrade UI
+            // is intentionally suppressed until it has a complete gameplay contract.
             string levelLine = _currentBuilding.HasTieredUnlock ? $"Level {_currentBuilding.Level}\n" : string.Empty;
             if (detailText1 != null)
                 detailText1.text = $"{_currentBuilding.Name}\n" +
@@ -198,7 +233,7 @@ namespace Game.UI
                 detailArt.gameObject.SetActive(true);
             }
             if (detailText1 != null)
-                detailText1.text = $"{facility.Name}\nUpgrade Level: {facility.UpgradeLevel}";
+                detailText1.text = facility.Name;
             if (detailText2 != null)
                 detailText2.text = FormatAbilities(facility.Abilities);
         }
@@ -212,15 +247,11 @@ namespace Game.UI
         }
 
         // Called by CardHandUI when a Facility card is dropped onto this open modal (see
-        // TryDeployIntoBaseModal) — screenPosition is the drop's raw screen coordinates, same
-        // convention as ArmyViewerModalUI.TryDropUnit. For a citadel/card-built Base, cell 0
-        // (the Base itself) is never a valid target; a resource site has no such cell at all
-        // (see RefreshGrid), so every cell there is a Facility slot. A locked or already-filled
-        // slot silently rejects the drop (card snaps back to hand — CardHandUI's own failure
-        // path).
+        // TryDeployIntoBaseModal). A read-only/foreign viewer rejects before resolving a slot,
+        // so merely inspecting an enemy Base can never become a back door into its FacilitySlots.
         public bool TryPlaceFacility(CardDefinition definition, Vector2 screenPosition)
         {
-            if (_currentBuilding == null || definition == null)
+            if (!CanManageCurrentBuilding || _currentBuilding == null || definition == null)
                 return false;
 
             // Only a Base/Citadel takes Facility cards — matches the direct hex-drop path's own
@@ -286,12 +317,9 @@ namespace Game.UI
             return gameConfig.baseUpgradeTiers[tierIndex];
         }
 
-        // Same idea as PeekNextUpgradeTier, but for a placed Facility's own Improve button (see
-        // ImproveFacility) — null for a Facility with no Collect ability at all (those Improve
-        // for free, nothing to preview), once every tier's been bought, or once it's already
-        // collecting the hex's full yield for its resource (see IsFacilityAtYieldCap — an extra
-        // tier there would raise a number nothing ever reads, since collection is capped at the
-        // hex's own yield either way).
+        // Retained as gameplay support for a later Facility-upgrade pass, but the current UI does
+        // not expose it. Keeping one canonical implementation avoids deleting already-authored
+        // collection math merely because its button is intentionally disabled for now.
         public BaseUpgradeTier PeekNextFacilityUpgradeTier(FacilityData facility)
         {
             if (facility == null || gameConfig == null || gameConfig.facilityUpgradeTiers == null)
@@ -306,15 +334,10 @@ namespace Game.UI
             return gameConfig.facilityUpgradeTiers[tierIndex];
         }
 
-        // Read by BaseSlotCardUI to decide whether a Facility cell's Improve button should show
-        // at all — true for a cosmetic-only Facility (free no-op improve, out of scope to hide)
-        // or a Collect-tagged one still short of the hex's yield; false once it's already at cap
-        // (see IsFacilityAtYieldCap) — improving further would raise a number the actual
-        // collection math (GameTurnController.CollectResourceIncome) already clamps away.
-        public bool CanImproveFacility(FacilityData facility)
-        {
-            return facility != null && !IsFacilityAtYieldCap(facility);
-        }
+        // Internal Facility Improve is intentionally disabled in the UI in this stabilization
+        // pass. The method remains for compatibility with any old prefab/code references, but no
+        // BaseSlotCardUI should advertise it as an available action.
+        public bool CanImproveFacility(FacilityData facility) => false;
 
         // True once this building's total collection of the Facility's resource (its own
         // baked-in ability, if any, plus every placed Facility for that type — see
@@ -355,12 +378,12 @@ namespace Game.UI
 
         // Called by BaseSlotCardUI's Improve button on cell 0 — spends the current tier's cost,
         // raises Level (unlocking the next Facility slot via UnlockedFacilitySlots) and
-        // Defense/Resistance. Blocked + hinted, same pattern as ArmyViewerModalUI.CreateArmy,
-        // once every tier in gameConfig.baseUpgradeTiers has been bought (Level - 1 == tier
-        // count) or if unaffordable.
+        // Defense/Resistance. Ownership is rechecked here even though the read-only UI hides the
+        // button, because visibility is not an authorization boundary.
         public void UpgradeBase()
         {
-            if (_currentBuilding == null || gameConfig == null || gameConfig.baseUpgradeTiers == null)
+            if (!CanManageCurrentBuilding || _currentBuilding == null
+                || gameConfig == null || gameConfig.baseUpgradeTiers == null)
                 return;
 
             int tierIndex = _currentBuilding.Level - 1;
@@ -390,26 +413,22 @@ namespace Game.UI
             ShowBaseSummary();
         }
 
-        // Called by BaseSlotCardUI's Repair button on cell 0 — only ever enabled when Structure
-        // Points aren't already full (see BaseSlotCardUI.OnPointerEnter); nothing can currently
-        // damage a building, so this exists for correctness rather than because it's reachable
-        // today.
+        // Called by BaseSlotCardUI's Repair button on cell 0. Same ownership guard as UpgradeBase.
         public void RepairBase()
         {
-            if (_currentBuilding == null)
+            if (!CanManageCurrentBuilding || _currentBuilding == null)
                 return;
             _currentBuilding.StructurePointsCurrent = _currentBuilding.StructurePointsMax;
             ShowBaseSummary();
         }
 
-        // Called by a Facility cell's Improve button. A resource-collecting Facility (see
-        // UnitAbilities.CollectAbilities) has a real paid upgrade — each tier raises its
-        // per-turn contribution by 1 (see GameTurnController's collection math) — everything
-        // else (Research Facility/Lab and any other cosmetic-only Facility) keeps the original
-        // free no-op stub, since their behavior is out of scope this pass.
+        // Legacy/dormant Facility upgrade implementation. The current BaseSlotCardUI does not
+        // expose this action, but the hard ownership guard stays here so old references cannot
+        // mutate a foreign building from a read-only inspection session.
         public void ImproveFacility(int facilityIndex)
         {
-            if (_currentBuilding == null || facilityIndex < 0 || facilityIndex >= _currentBuilding.TotalFacilitySlots)
+            if (!CanManageCurrentBuilding || _currentBuilding == null
+                || facilityIndex < 0 || facilityIndex >= _currentBuilding.TotalFacilitySlots)
                 return;
             FacilityData facility = _currentBuilding.FacilitySlots[facilityIndex];
             if (facility == null)
@@ -417,8 +436,8 @@ namespace Game.UI
 
             if (!facility.Abilities.Overlaps(UnitAbilities.CollectAbilities))
             {
-                facility.UpgradeLevel++;
-                ShowFacilityDetail(facility);
+                // No gameplay effect exists for these facilities yet. Do not manufacture a fake
+                // level counter merely because an old call site reached this method.
                 return;
             }
 

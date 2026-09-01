@@ -17,7 +17,7 @@ namespace Game.UI
     // locked ("NOT AVAILABLE", non-interactive), empty (unlocked, droppable — see
     // BaseViewerModalUI.TryPlaceFacility), or filled with a placed FacilityData. Nothing here
     // is ever dragged back out or reordered ("place and forget"), so unlike ArmyUnitCardUI this
-    // has no drag handlers at all — just click-for-detail and hover-for-Improve/Repair.
+    // has no drag handlers at all — just click-for-detail and Base-only management controls.
     public class BaseSlotCardUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         [SerializeField] private Image artImage;
@@ -56,15 +56,12 @@ namespace Game.UI
         private bool _occupied;
         private bool _isBaseCell;
         private string _defaultNameText;
-        // Whether Improve has anything to do on this cell — the Base cell always does
-        // (UpgradeBase), a Facility cell only once something's actually placed there.
         private bool _canImprove;
 
         private void Awake()
         {
-            // Wired here rather than per-Setup since a fresh instance is created every
-            // RefreshGrid anyway (see BaseViewerModalUI.RefreshGrid) — ShowUpgradeCostPreview
-            // itself decides whether there's actually a tier to preview for this particular cell.
+            // A cost preview is now meaningful only for the Base/Citadel cell. Facility Improve
+            // is intentionally not exposed until its gameplay contract is implemented.
             AddHoverTrigger(improveButton, ShowUpgradeCostPreview, HideUpgradeCostPreview);
         }
 
@@ -90,14 +87,9 @@ namespace Game.UI
                 statusText.text = _locked ? "NOT AVAILABLE" : string.Empty;
                 statusText.gameObject.SetActive(_locked);
             }
-            // Abilities listed underneath the name, abbreviated per GameConfig.
-            // abilityAbbreviations (see GameConfig.FormatAbilities) — read via the modal
-            // reference this cell already keeps rather than needing its own separate config field.
             GameConfig config = modal.GameConfig;
             string baseAbilities = config != null ? config.FormatAbilities(building.Abilities) : string.Join(" ", building.Abilities);
             string facilityAbilities = _facility != null ? (config != null ? config.FormatAbilities(_facility.Abilities) : string.Join(" ", _facility.Abilities)) : string.Empty;
-            // Level used to be inlined here too ("Lv X") — now has its own slot in statsRow
-            // below (see RefreshStatsRow), so showing it here as well would just repeat it.
             _defaultNameText = isBaseCell
                 ? building.Name + (!string.IsNullOrEmpty(baseAbilities) ? "\n" + baseAbilities : string.Empty)
                 : _facility != null ? _facility.Name + (!string.IsNullOrEmpty(facilityAbilities) ? "\n" + facilityAbilities : string.Empty) : string.Empty;
@@ -111,29 +103,24 @@ namespace Game.UI
 
             RefreshStatsRow(isBaseCell, building);
 
-            // Hover-revealed (see OnPointerEnter/OnPointerExit) — hidden by default until then.
             if (improveButton != null)
                 improveButton.gameObject.SetActive(false);
             if (repairButton != null)
                 repairButton.gameObject.SetActive(false);
 
-            // A Facility cell only offers Improve while there's actually something to gain from
-            // it — a Collect-tagged Facility already at the hex's yield cap has nothing left to
-            // improve (see BaseViewerModalUI.CanImproveFacility); cosmetic-only Facilities always
-            // pass (their Improve is a free no-op, out of scope to hide).
-            _canImprove = isBaseCell || (_facility != null && modal.CanImproveFacility(_facility));
+            // Only the Base/Citadel cell has a real Improve action in the current rules, and only
+            // its owner may manage it. Internal Facility cards remain inspectable but actionless.
+            _canImprove = isBaseCell && modal.CanManageCurrentBuilding;
             if (improveButton != null)
             {
                 improveButton.onClick.RemoveAllListeners();
-                if (isBaseCell)
+                if (_canImprove)
                     improveButton.onClick.AddListener(() => _modal.UpgradeBase());
-                else if (_facility != null)
-                    improveButton.onClick.AddListener(() => _modal.ImproveFacility(facilityIndex));
             }
             if (repairButton != null)
             {
                 repairButton.onClick.RemoveAllListeners();
-                if (isBaseCell)
+                if (isBaseCell && modal.CanManageCurrentBuilding)
                     repairButton.onClick.AddListener(() => _modal.RepairBase());
             }
         }
@@ -167,14 +154,15 @@ namespace Game.UI
                 _modal?.ShowFacilityDetail(_facility);
         }
 
-        // Repair only ever shows on the Base's own cell, and only while it's actually short of
-        // full Structure Points — a Facility cell never gets one at all (see class comment).
+        // Repair only ever shows on an owned Base's own cell, and only while it's actually short
+        // of full Structure Points. Read-only enemy views expose no management controls.
         public void OnPointerEnter(PointerEventData eventData)
         {
             if (_locked || !_occupied)
                 return;
             if (repairButton != null)
-                repairButton.gameObject.SetActive(_isBaseCell && _building.StructurePointsCurrent < _building.StructurePointsMax);
+                repairButton.gameObject.SetActive(_isBaseCell && _modal != null && _modal.CanManageCurrentBuilding
+                    && _building.StructurePointsCurrent < _building.StructurePointsMax);
             if (improveButton != null)
                 improveButton.gameObject.SetActive(_canImprove);
         }
@@ -185,21 +173,15 @@ namespace Game.UI
                 repairButton.gameObject.SetActive(false);
             if (improveButton != null)
                 improveButton.gameObject.SetActive(false);
+            HideUpgradeCostPreview();
         }
 
-        // Reveals a row of cost badges — one coloured circle + number per non-zero cost
-        // component, AP first — in the gap below the name while the Improve button itself is
-        // hovered. Same for the Base's own cell (PeekNextUpgradeTier) and a Collect-tagged
-        // Facility cell (PeekNextFacilityUpgradeTier) — a cosmetic-only Facility (e.g. Research
-        // Facility/Lab) has no tier to preview, so nothing shows for it. Reverted on exit by
-        // HideUpgradeCostPreview.
+        // Base/Citadel upgrade cost only. Facility Improve is deliberately disabled.
         private void ShowUpgradeCostPreview()
         {
-            if (_modal == null || costPreviewRoot == null)
+            if (_modal == null || costPreviewRoot == null || !_isBaseCell || !_modal.CanManageCurrentBuilding)
                 return;
-            BaseUpgradeTier tier = _isBaseCell
-                ? _modal.PeekNextUpgradeTier(_building)
-                : _facility != null ? _modal.PeekNextFacilityUpgradeTier(_facility) : null;
+            BaseUpgradeTier tier = _modal.PeekNextUpgradeTier(_building);
             if (tier == null)
                 return;
 

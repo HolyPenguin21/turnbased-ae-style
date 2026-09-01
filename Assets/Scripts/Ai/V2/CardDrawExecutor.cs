@@ -9,9 +9,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Canonical hand replenishment, SEPARATE from CardPlayExecutor (deploy and draw are not one
     //  transaction). Uses AiHandData.DrawOne — the same PopRandomCard + AddCard path the human's
-    //  OnDrawClicked uses, with DrawOne itself refusing to overflow the hand capacity. Never an
-    //  AI-only deck rule. Only surplus preparation calls this, and only when a slot is genuinely
-    //  free, the deck is non-empty, the draw AP is affordable, and reserves still hold.
+    //  OnDrawClicked uses, with DrawOne itself refusing to overflow the hand capacity.
+    //
+    //  IMPORTANT: terminal Draw is the LAST strategic fallback. Before consuming its AP this seam
+    //  checks the post-strategy actions Phase-B materialization cannot express directly:
+    //  Base capacity/internal Facility maintenance, Equipment on already-deployed units,
+    //  standalone Research/Production, and decisive movement toward an honestly-known enemy
+    //  Citadel once the ordinary army-targeted Raid lane has no contact left. If one is available
+    //  we leave the AP untouched and let Housekeeping's pre-reorganisation pass execute it.
     // ===========================================================================================
     public static class CardDrawExecutor
     {
@@ -24,6 +29,16 @@ namespace Game.Ai.V2
         {
             if (!CanCycle(root, hand, ctx))
                 return false;
+
+            if (AiHandRegistry.TryGetOwner(hand, out PlayerSetupData maintenanceOwner)
+                && maintenanceOwner != null
+                && (StrategicMaintenancePolicy.HasPriorityAction(maintenanceOwner, root, hand, ctx)
+                    || StrategicPressureAdvance.HasAction(maintenanceOwner, root, hand, ctx)))
+            {
+                AiDebugLog.Write("[AI][V2]   strat.B terminal — preserve AP: strategic maintenance/pressure outranks Draw");
+                return false;
+            }
+
             CardData card = hand.DrawOne();
             if (card == null)
                 return false;
