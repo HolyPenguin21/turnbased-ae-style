@@ -179,6 +179,13 @@ namespace Game.Ai.V2
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance(d.RequestingAxis))}, "
                             + $"discrete {F(ledger.DiscreteAdmissionBudget(d.RequestingAxis))}, "
                             + $"followup reserved {F(reserved)}); {diag}");
+
+                        // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
+                        // resource stock is a starvation signal for that resource (own state only).
+                        if (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon)
+                            foreach (ResourceType rt in ResourceBundle.All)
+                                if (root.GetResource(rt) <= 0f)
+                                    ResourceStarvationRegistry.RecordBlock(player, rt);
                     }
                     break;
                 }

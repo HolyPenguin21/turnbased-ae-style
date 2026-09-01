@@ -15,10 +15,13 @@ namespace Game.Ai.V2
             ActorCommitments commitments, PlayerSetupData player)
         {
             var demands = new List<AxisDemand>();
+            // §17 — decay the resource-starvation feedback once per turn before it is read.
+            if (player != null && snap != null)
+                ResourceStarvationRegistry.DecayOncePerTurn(player, snap.TurnNumber);
             demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player));
             demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             demands.AddRange(DefenceDemands(snap, breakdown));
-            demands.AddRange(EconomyDemands(snap, breakdown));
+            demands.AddRange(EconomyDemands(snap, breakdown, player));
             demands.AddRange(DevelopmentDemands(snap, breakdown));
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
@@ -436,7 +439,7 @@ namespace Game.Ai.V2
         //  with opponent income; this layer only emits work when a concrete site is actionable.
         //  One demand at a time.
         // ---------------------------------------------------------------------------------------
-        private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b)
+        private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b, PlayerSetupData player)
         {
             IReadOnlyList<KeyValuePair<HexCoord, ResourceType>> resourceHexes = s?.Known?.ResourceHexes;
             if (resourceHexes == null || resourceHexes.Count == 0 || s.Self == null)
@@ -481,6 +484,40 @@ namespace Game.Ai.V2
                     Explain = $"{rh.Value} income {s.Self.PerTurnIncome.Get(rh.Value):0.##} below target "
                         + $"{s.Economy.IncomeTarget.Get(rh.Value):0.##}; known unbuilt site @({rh.Key.Q},{rh.Key.R})",
                 };
+            }
+
+            if (emitted == 0)
+            {
+                // §17 — even with income targets covered, if AGG/RCN chains keep stalling for an
+                // empty resource stock, value ONE known unbuilt extraction site for that resource.
+                foreach (KeyValuePair<HexCoord, ResourceType> rh in resourceHexes
+                    .OrderBy(x => x.Key.Q).ThenBy(x => x.Key.R))
+                {
+                    if (knownBuilt.Contains(rh.Key))
+                        continue;
+                    float pressure = ResourceStarvationRegistry.Pressure(player, rh.Value);
+                    if (pressure < AiConfigV2.starvationEconomyTrigger)
+                        continue;
+                    float value = 40f + AiConfigV2.starvationEconomyValueBonus * Mathf.Clamp01(pressure);
+                    AiDebugLog.Write($"[AI][V2][Demand][Economy] decision=CREATE hex=({rh.Key.Q},{rh.Key.R}) "
+                        + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 "
+                        + $"reason=repeated_strategic_starvation pressure={pressure:0.##} value={value:0.#}");
+                    yield return new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Economy,
+                        Capability = CapabilityKind.EconomicInfrastructure,
+                        DesiredAmount = 1,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = rh.Key,
+                        EconomyResourceType = rh.Value,
+                        Value = value,
+                        Explain = $"{rh.Value} stock repeatedly starved strategic chains "
+                            + $"(pressure {pressure:0.##}); known unbuilt site @({rh.Key.Q},{rh.Key.R})",
+                    };
+                    emitted++;
+                    break;
+                }
             }
 
             if (emitted == 0)

@@ -40,6 +40,7 @@ namespace CapabilityQualitySim
             S23_HeroOperationalRole();
             S24_ExploreValidityContract();
             S25_ScoutTrailRetrace();
+            S26_ResourceStarvationFeedback();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -472,6 +473,39 @@ namespace CapabilityQualitySim
                 ScoutTrailRegistry.RecentTrailHits(player, army, new[] { H(1, 0) }) == 0);
 
             ScoutTrailRegistry.ClearAll();
+        }
+
+        // Spec §17 — resource-starvation feedback is smooth, bounded, decays once per turn, and
+        // expires when the shortage stops. Uses only own state.
+        private static void S26_ResourceStarvationFeedback()
+        {
+            var p = new Game.Players.PlayerSetupData { Nickname = "E", IsHuman = false };
+            var HUM = Game.Economy.ResourceType.Human;
+            var ENE = Game.Economy.ResourceType.Energy;
+
+            ResourceStarvationRegistry.Clear();
+            Check("26a no history -> zero pressure", ResourceStarvationRegistry.Pressure(p, HUM) == 0f);
+
+            ResourceStarvationRegistry.RecordBlock(p, HUM);
+            ResourceStarvationRegistry.RecordBlock(p, HUM);
+            float after2 = ResourceStarvationRegistry.Pressure(p, HUM);
+            Check("26b repeated blocks raise pressure above the Economy trigger",
+                after2 >= AiConfigV2.starvationEconomyTrigger && after2 <= 1f);
+            Check("26c an unrelated resource stays unpressured",
+                ResourceStarvationRegistry.Pressure(p, ENE) == 0f);
+
+            ResourceStarvationRegistry.DecayOncePerTurn(p, 5);
+            float afterDecay = ResourceStarvationRegistry.Pressure(p, HUM);
+            Check("26d decay lowers pressure", afterDecay < after2);
+            ResourceStarvationRegistry.DecayOncePerTurn(p, 5); // same turn -> no double decay
+            Check("26e decay is once per turn", ResourceStarvationRegistry.Pressure(p, HUM) == afterDecay);
+
+            for (int t = 6; t < 20; t++)
+                ResourceStarvationRegistry.DecayOncePerTurn(p, t);
+            Check("26f pressure expires to zero when the shortage stops",
+                ResourceStarvationRegistry.Pressure(p, HUM) == 0f);
+
+            ResourceStarvationRegistry.Clear();
         }
 
         private static void Check(string label, bool ok)

@@ -562,6 +562,15 @@ namespace Game.Ai.V2
         public const float scoutImmediateReversalFactor = 0.55f;   // multiply route value on a reversal
         public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
+
+        // --- Resource-starvation economic feedback (spec §17, P2). Bounded, decaying pressure
+        //     raised when AGG/RCN strategic chains keep failing for lack of a specific empty
+        //     resource stock; consumed as ONE bounded Economy value bump on a known extraction
+        //     site for that resource. Fast decay so it expires within a couple of quiet turns.
+        public const float starvationHitGain = 0.34f;          // EWMA add per recorded block, clamp01
+        public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
+        public const float starvationEconomyTrigger = 0.5f;    // below this -> no extra Economy demand
+        public const float starvationEconomyValueBonus = 35f;  // max added to the site's Value
         // FutureUtility term weights / values.
         public const float surplusApCostWeight = 0.20f;
         public const float surplusResourceCostWeight = 0.05f;
