@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Game.Cards;
 using Game.Combat;
 using Game.Economy;
@@ -9,21 +10,26 @@ using UnityEngine;
 namespace Game.Map
 {
     // ===========================================================================================
-    //  INFRASTRUCTURE ACTIONS  (shared authoritative domain transaction)
+    //  INFRASTRUCTURE ACTIONS  (shared authoritative infrastructure transaction)
     // ===========================================================================================
-    //  The SINGLE owner of "found a Base" / "place a Facility" as an all-or-nothing transaction.
-    //  Both the human UI (CardHandUI.TryBuildBase / TryDeployFacilityToHex) and AI Strategy V2
-    //  (BuildingPlayExecutor) call these — neither one assembles the spend/create/refund sequence
-    //  itself any more. Legality is defined ONCE here (CanFoundBase / CanPlaceFacility); Try* is
-    //  exactly that check plus the mutation.
+    //  The SINGLE owner of "found a Base" / "place a Facility" / "build an extraction site" as an
+    //  all-or-nothing transaction, shared by the human UI (CardHandUI) and AI Strategy V2
+    //  (BuildingPlayExecutor). Legality is defined once (CanFoundBase / CanPlaceFacility); Try* is
+    //  that check plus the mutation.
     //
-    //  ATOMICITY by ORDERING, not by after-the-fact rollback: the ONLY fallible step (SpawnBuilding
-    //  / FacilityData.FromDefinition) runs BEFORE any AP/resource is spent. If it fails, nothing
-    //  was spent and nothing was created. Everything after the spend — the spend itself
-    //  (SpendActionPoints / PayFrom on amounts already checked with CanSpendActionPoints /
-    //  CanAfford) and the facility-slot assignment / merge carry-over — is pure arithmetic / array
-    //  writes that cannot fail. A defensive catch still un-registers + destroys a just-created
-    //  building and refunds, so an unexpected throw can never leave a half-applied state.
+    //  TRANSACTION MODEL. AP + resources are spent FIRST (a pure, fully-reversible numeric change)
+    //  and the world-mutating primitive (SpawnBuilding / TryBuildExtractionFacility) is the LAST
+    //  step and the commit point:
+    //    · primitive reports failure  -> AP + resources are refunded to the exact pre-transaction
+    //      value; the primitive's own guard means it mutated nothing. FULLY ATOMIC.
+    //    · primitive THROWS            -> AP + resources are refunded, and any half-applied world
+    //      state the primitive left is rolled back best-effort: a building it registered over an
+    //      existing resource site is un-registered and the site re-registered; a garrison it
+    //      spawned (Barracks base) that did not exist before is removed. A hard error is logged.
+    //      The one thing that cannot be undone is StealthSystem's fog-of-war reveal — that is
+    //      information, not reservation/army-limbo state, and this path only happens when the
+    //      scene itself is misconfigured (null prefab, etc.).
+    //    · primitive succeeds         -> the only remaining steps are infallible array writes.
     //
     //  These methods do NOT touch any hand: the caller removes its own card representation
     //  (CardHandUI.RemoveCard for the human, AiHandData.Hand for the AI) ONLY when Ok is true.
@@ -66,11 +72,7 @@ namespace Game.Map
             return occupied <= BuildingData.DefaultTotalFacilitySlots;
         }
 
-        // ------------------------------------------------------------------- Base ----
-        //  `apCost` / `resourceCost` are the card INSTANCE's effective play cost (a
-        //  Research/Production card pays activationApCost and no ResourceCost) — the caller passes
-        //  them so this stays agnostic to card-instance semantics.
-
+        // ================================================================= Base =====
         public static bool CanFoundBase(CardDefinition definition, HexCoord hex, PlayerSetupData owner,
             int apCost, ResourceCost resourceCost, out string reason)
         {
@@ -106,59 +108,85 @@ namespace Game.Map
             BuildingData existing = BuildingRegistry.FindAt(hex);
             FacilityData[] carriedOver = existing?.FacilitySlots;
             MapObjectVisual oldVisual = existing?.Visual;
+            bool ownerGarrisonExistedBefore = ArmyRegistry.AllAt(hex).Any(a => a != null && a.IsGarrison && a.Owner == owner);
 
-            // --- fallible step FIRST, before any spend ---
-            BuildingData building;
+            // --- reversible spend FIRST ---
+            int apBefore = root.ActionPoints;
+            root.SpendActionPoints(apCost);
+            resourceCost?.PayFrom(root);
+
+            // --- commit: SpawnBuilding is the point of no return ---
+            BuildingData building = null;
+            bool threw = false;
             try
             {
                 building = hexSelection.SpawnBuilding(definition, hex, owner);
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Infra] SpawnBuilding threw: {e.Message}");
-                return InfrastructureBuildOutcome.Fail("SpawnBuilding threw");
+                threw = true;
+                Debug.LogError($"[Infra] SpawnBuilding threw ({e.Message}); rolling back the transaction");
             }
+
             if (building == null)
-                return InfrastructureBuildOutcome.Fail("SpawnBuilding refused (missing scene config)");
-
-            int apBefore = root.ActionPoints;
-            try
             {
-                root.SpendActionPoints(apCost);
-                resourceCost?.PayFrom(root);
-
-                if (oldVisual != null)
-                    UnityEngine.Object.Destroy(oldVisual.gameObject);
-                if (carriedOver != null)
-                {
-                    int slot = 0;
-                    foreach (FacilityData facility in carriedOver)
-                    {
-                        if (facility == null) continue;
-                        while (slot < building.FacilitySlots.Length && building.FacilitySlots[slot] != null)
-                            slot++;
-                        if (slot >= building.FacilitySlots.Length) break;
-                        building.FacilitySlots[slot] = facility;
-                        slot++;
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                // Unreachable in practice (spends were pre-validated); full rollback anyway.
-                Debug.LogError($"[Infra] TryFoundBase post-spawn threw: {e.Message}; rolling back");
-                BuildingRegistry.Unregister(hex);
-                if (building.Visual != null)
-                    UnityEngine.Object.Destroy(building.Visual.gameObject);
+                if (threw)
+                    RollbackPartialSpawn(hexSelection, hex, owner, existing, ownerGarrisonExistedBefore);
                 root.ActionPoints = apBefore;
                 Refund(root, resourceCost);
-                return InfrastructureBuildOutcome.Fail("exception during build; rolled back");
+                return InfrastructureBuildOutcome.Fail(threw
+                    ? "SpawnBuilding threw; transaction rolled back"
+                    : "SpawnBuilding refused (missing scene config); rolled back");
             }
 
+            // --- infallible finalize: merge a carried-over resource site ---
+            if (oldVisual != null)
+                UnityEngine.Object.Destroy(oldVisual.gameObject);
+            if (carriedOver != null)
+            {
+                int slot = 0;
+                foreach (FacilityData facility in carriedOver)
+                {
+                    if (facility == null) continue;
+                    while (slot < building.FacilitySlots.Length && building.FacilitySlots[slot] != null)
+                        slot++;
+                    if (slot >= building.FacilitySlots.Length) break;
+                    building.FacilitySlots[slot] = facility;
+                    slot++;
+                }
+            }
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 
-        // ---------------------------------------------------------------- Facility ----
+        // Best-effort undo of a SpawnBuilding that partially mutated the world before throwing.
+        private static void RollbackPartialSpawn(HexSelectionController hexSelection, HexCoord hex,
+            PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore)
+        {
+            BuildingData now = BuildingRegistry.FindAt(hex);
+            if (now != null && now != siteBefore)
+            {
+                if (now.Visual != null)
+                    UnityEngine.Object.Destroy(now.Visual.gameObject);
+                BuildingRegistry.Unregister(hex);
+            }
+            if (siteBefore != null && BuildingRegistry.FindAt(hex) == null)
+                BuildingRegistry.Register(hex, siteBefore);
+
+            if (!ownerGarrisonExistedBefore)
+            {
+                ArmyData orphan = ArmyRegistry.AllAt(hex)
+                    .FirstOrDefault(a => a != null && a.IsGarrison && a.Owner == owner && a.Members.Count == 0);
+                if (orphan != null)
+                {
+                    if (orphan.Controller != null)
+                        UnityEngine.Object.Destroy(orphan.Controller.gameObject);
+                    ArmyRegistry.Unregister(orphan);
+                }
+            }
+            hexSelection?.RestackArmiesOn(hex, null);
+        }
+
+        // ============================================================= Facility =====
         public static bool CanPlaceFacility(CardDefinition definition, HexCoord baseHex, PlayerSetupData owner,
             int apCost, ResourceCost resourceCost, out string reason)
         {
@@ -190,7 +218,7 @@ namespace Game.Map
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             int slotIndex = building.FindFirstAvailableFacilitySlot();
 
-            // --- fallible step FIRST, before any spend ---
+            // Fallible step (malformed grantedAbilities) FIRST, before any spend.
             FacilityData facility;
             try
             {
@@ -205,10 +233,60 @@ namespace Game.Map
             int apBefore = root.ActionPoints;
             root.SpendActionPoints(apCost);
             resourceCost?.PayFrom(root);
-            building.FacilitySlots[slotIndex] = facility;
+            building.FacilitySlots[slotIndex] = facility;   // infallible commit
             return InfrastructureBuildOutcome.Success(building, slotIndex, apBefore - root.ActionPoints);
         }
 
+        // ===================================================== extraction site =====
+        //  HexSelectionController.TryBuildExtractionFacility now builds its FacilityData before the
+        //  spend and does everything after infallibly, so it is atomic for every real failure
+        //  (it checks affordability before spending -> a false return means zero spend). This
+        //  wrapper additionally measures the AP + resource delta and, on a THROW or on a
+        //  false-but-something-was-spent, refunds the exact delta so the AI axis ledger and the
+        //  human's pool are never left short.
+        public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
+            CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
+        {
+            if (hexSelection == null || facilityDefinition == null || owner == null)
+                return InfrastructureBuildOutcome.Fail("bad args");
+            if (!HexSelectionController.HasOwnHeroArmyAt(hex, owner))
+                return InfrastructureBuildOutcome.Fail("no hero-led army on the resource hex");
+            PlayerRoot root = PlayerRootRegistry.FindFor(owner);
+            if (root == null)
+                return InfrastructureBuildOutcome.Fail("no player root");
+
+            int apBefore = root.ActionPoints;
+            int[] resBefore = SnapshotResources(root);
+
+            bool ok;
+            bool threw = false;
+            try
+            {
+                ok = hexSelection.TryBuildExtractionFacility(facilityDefinition, hex, owner);
+            }
+            catch (Exception e)
+            {
+                ok = false;
+                threw = true;
+                Debug.LogError($"[Infra] TryBuildExtractionFacility threw: {e.Message}");
+            }
+
+            int apSpent = apBefore - root.ActionPoints;
+            if (!ok)
+            {
+                if (apSpent != 0 || ResourcesMoved(resBefore, root))
+                {
+                    root.ActionPoints = apBefore;
+                    RestoreResources(root, resBefore);
+                }
+                return InfrastructureBuildOutcome.Fail(threw
+                    ? "TryBuildExtractionFacility threw; spend rolled back"
+                    : "TryBuildExtractionFacility rejected the hex");
+            }
+            return InfrastructureBuildOutcome.Success(BuildingRegistry.FindAt(hex), -1, apSpent);
+        }
+
+        // -------------------------------------------------------------- helpers ----
         private static void Refund(PlayerRoot root, ResourceCost cost)
         {
             if (root == null || cost == null) return;
@@ -217,6 +295,31 @@ namespace Game.Map
                 int amount = cost.Get(t);
                 if (amount > 0)
                     root.AddResource(t, amount);
+            }
+        }
+
+        private static int[] SnapshotResources(PlayerRoot root)
+        {
+            var v = new int[Res.Length];
+            for (int i = 0; i < Res.Length; i++)
+                v[i] = root.GetResource(Res[i]);
+            return v;
+        }
+
+        private static bool ResourcesMoved(int[] before, PlayerRoot root)
+        {
+            for (int i = 0; i < Res.Length; i++)
+                if (before[i] != root.GetResource(Res[i])) return true;
+            return false;
+        }
+
+        private static void RestoreResources(PlayerRoot root, int[] before)
+        {
+            for (int i = 0; i < Res.Length; i++)
+            {
+                int delta = before[i] - root.GetResource(Res[i]);
+                if (delta != 0)
+                    root.AddResource(Res[i], delta);
             }
         }
     }

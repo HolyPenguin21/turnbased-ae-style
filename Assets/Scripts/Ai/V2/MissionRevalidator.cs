@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using Game.Map;
@@ -85,10 +86,13 @@ namespace Game.Ai.V2
 
         // Bounded, deterministic replacement for a stale Explore. Returns a still-unvisited frontier
         // hex from the turn's own snapshot the mover could be re-pointed at, or null. Ranked from
-        // the mover's CURRENT position (`from`), not the old objective. Never re-plans. A mission
-        // that is ITSELF a replacement never gets replaced again (one hop, bounded).
+        // the mover's CURRENT position (`from`), not the old objective. `takenFoci` is every
+        // ExecutionHex already owned by another mission in the execution queue — the replacement
+        // must NOT pick one of them, or its synthesised StableMissionKey(Scout,Explore,hex) would
+        // collide with that mission's row in MissionOutcomeLedger. Never re-plans. A mission that
+        // is ITSELF a replacement never gets replaced again (one hop, bounded).
         public static bool TryPickReplacementExploreFocus(WorldSnapshot snapshot, PlayerSetupData player,
-            ProvisionedMission pm, HexCoord from, out HexCoord focus)
+            ProvisionedMission pm, HexCoord from, ISet<HexCoord> takenFoci, out HexCoord focus)
         {
             focus = default;
             if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
@@ -99,6 +103,8 @@ namespace Game.Ai.V2
             foreach (FrontierHexSnapshot f in snapshot.MapKnowledge.Frontier)
             {
                 if (VisionSystem.IsVisited(player, f.Hex) || f.Hex.Equals(pm.ExecutionHex))
+                    continue;
+                if (takenFoci != null && takenFoci.Contains(f.Hex))
                     continue;
                 if (AiMapMemory.KnownEnemySightingAt(player, f.Hex).HasValue)
                     continue;

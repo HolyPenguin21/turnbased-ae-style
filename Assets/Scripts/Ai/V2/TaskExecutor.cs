@@ -105,9 +105,21 @@ namespace Game.Ai.V2
                 // replacement mission — its OWN fresh StableMissionKey and ScoutMissionTarget — is
                 // appended to the queue for this same loop to run. One hop per mission, hard cap on
                 // the pass, deterministic frontier pick, no pipeline re-run (spec §5, §6).
+                // Every ExecutionHex already owned by a mission in the queue (originals AND
+                // replacements added this pass) — the replacement picker must avoid them so a
+                // synthesised StableMissionKey can never collide with another mission's ledger row.
+                HashSet<HexCoord> takenFoci = null;
+                if (validity == MissionValidity.StaleGoalMet)
+                {
+                    takenFoci = new HashSet<HexCoord>();
+                    for (int qi = 0; qi < queue.Count; qi++)
+                        if (qi != missionIndex && queue[qi] != null)
+                            takenFoci.Add(queue[qi].ExecutionHex);
+                }
+
                 if (validity == MissionValidity.StaleGoalMet
                     && replacementsUsed < AiConfigV2.maxReplacementMissionsPerPass
-                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, army.Hex, out HexCoord replFocus)
+                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, army.Hex, takenFoci, out HexCoord replFocus)
                     && !VisionSystem.IsVisited(player, replFocus))
                 {
                     ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus);

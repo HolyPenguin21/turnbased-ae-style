@@ -1,4 +1,3 @@
-using System;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -102,34 +101,22 @@ namespace Game.Ai.V2
         }
 
         // -------------------------------------------------------- extraction site ----
-        //  TryBuildExtractionFacility owns the whole transaction (hero-on-hex, AP, resources,
-        //  hero move) — no hand card is involved.
+        //  Delegates to the shared transaction (measures + refunds the AP/resource delta on a
+        //  throw or a false-but-spent outcome) — no hand card is involved.
         public static BuildingPlayResult BuildExtractionFacility(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, CardDefinition facilityDef, HexCoord hex)
         {
             if (player == null || root == null || ctx?.HexSelection == null || facilityDef == null)
                 return BuildingPlayResult.Fail("missing args");
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex, player))
-                return BuildingPlayResult.Fail("no hero-led army on the resource hex");
 
-            int apStart = root.ActionPoints;
-            bool ok;
-            try
-            {
-                ok = ctx.HexSelection.TryBuildExtractionFacility(facilityDef, hex, player);
-            }
-            catch (Exception e)
-            {
-                AiDebugLog.Write($"[AI][V2][ERROR] TryBuildExtractionFacility threw: {e.Message}");
-                ok = false;
-            }
-            float apSpent = apStart - root.ActionPoints;
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryBuildExtractionSite(
+                ctx.HexSelection, facilityDef, hex, player);
             return new BuildingPlayResult
             {
-                Built = ok,
-                StateChanged = ok || apSpent > 0f,
-                ApSpent = apSpent,
-                FailReason = ok ? null : "TryBuildExtractionFacility rejected the hex",
+                Built = outcome.Ok,
+                StateChanged = outcome.Ok,
+                ApSpent = outcome.ApSpent,
+                FailReason = outcome.Ok ? null : outcome.FailReason,
             };
         }
     }

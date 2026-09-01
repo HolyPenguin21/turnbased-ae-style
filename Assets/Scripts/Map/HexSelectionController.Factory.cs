@@ -299,9 +299,16 @@ namespace Game.Map
                 return false;
             }
 
+            // Build the Facility object BEFORE the spend: FacilityData.FromDefinition is the only
+            // step from here to the return that can throw (a malformed grantedAbilities list).
+            // Everything after the spend — slot assignment, the hero's move-point cost, and (for a
+            // new site) marker + registry — is infallible in normal operation, so the AP/resource
+            // spend is effectively the commit point.
+            FacilityData facility = FacilityData.FromDefinition(definition);
+
             root.SpendActionPoints(definition.apCost);
             definition.resourceCost.PayFrom(root);
-            building.FacilitySlots[slotIndex] = FacilityData.FromDefinition(definition);
+            building.FacilitySlots[slotIndex] = facility;
 
             // Building a facility is that hero's whole action for the turn — it costs whatever
             // move points its army had left, same as spending a full move order rather than just
