@@ -229,10 +229,15 @@ namespace Game.UI
             string text = $"{unit.Name}\n";
             if (unit.TypeTags.Count > 0)
                 text += $"{string.Join(", ", unit.TypeTags)}\n";
+            // Attack / Defense / Range are omitted for a hero card — a hero fights through
+            // Command Rating / Fate / Initiative, not a per-unit combat stat block, so those
+            // three numbers are meaningless noise on a hero (per the user's own request).
+            if (!unit.IsHero)
+                text +=
+                    $"Attack {unit.Attack}\n" +
+                    $"{defenseLine}\n" +
+                    $"Range {unit.Range}\n";
             text +=
-                $"Attack {unit.Attack}\n" +
-                $"{defenseLine}\n" +
-                $"Range {unit.Range}\n" +
                 $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                 $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +
                 $"Initiative {unit.Initiative}";

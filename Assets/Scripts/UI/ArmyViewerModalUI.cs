@@ -370,10 +370,15 @@ namespace Game.UI
                 string text = $"{unit.Name}\n";
                 if (unit.TypeTags.Count > 0)
                     text += $"{string.Join(", ", unit.TypeTags)}\n";
+                // Attack / Defense / Range are omitted for a hero card — a hero fights through
+                // Command Rating / Fate / Initiative, not a per-unit combat stat block, so those
+                // three numbers are meaningless noise on a hero (per the user's own request).
+                if (!unit.IsHero)
+                    text +=
+                        $"Attack {unit.Attack}\n" +
+                        $"{defenseLine}\n" +
+                        $"Range {unit.Range}\n";
                 text +=
-                    $"Attack {unit.Attack}\n" +
-                    $"{defenseLine}\n" +
-                    $"Range {unit.Range}\n" +
                     $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
                     $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}\n" +
                     $"Initiative {unit.Initiative}";
@@ -806,10 +811,10 @@ namespace Game.UI
         private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
 
         // Default detail-panel state — the army's own aggregate stats, shown whenever nothing
-        // is selected (on open, on switching army, after a drag-and-drop move). Stealth is stub
-        // text (no mechanic behind it yet); Experience/Battle Honors/Prestige are declined
-        // mechanics (see MECHANICS_CHECKLIST.md pt. 10) and are omitted entirely rather than
-        // stubbed. Leader/capacity, Movement Range and Fate Points are real, computed from
+        // is selected (on open, on switching army, after a drag-and-drop move).
+        // Experience/Battle Honors/Prestige are declined mechanics (see MECHANICS_CHECKLIST.md
+        // pt. 10) and are omitted entirely rather than stubbed. Leader/capacity, Movement Range
+        // and Fate Points are real, computed from
         // Members. Terrain/Construction Def mirror BattleParticipantColumnUI's own identical
         // lookup for the in-battle version of this same info — shown here too so the player can
         // see what this army's hex would give it before it's actually attacked.
@@ -848,7 +853,7 @@ namespace Game.UI
             }
 
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
-                $"{fatePoints} Fate Points\nNot Stealth Capable\n" +
+                $"{fatePoints} Fate Points\n" +
                 $"Move: {_currentArmy.CurrentMovement}/{_currentArmy.MaxMovement}\n" +
                 $"Terrain Def: {terrainDefMod:+0;-0;+0}\nConstruction Def: {buildingDefMod:+0;-0;+0}";
         }
