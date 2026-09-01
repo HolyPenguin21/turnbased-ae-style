@@ -40,6 +40,7 @@ namespace Game.Ai.V2
             result.FinalHex = army.Hex;
 
             ReconMode requestedMode = pm.ScoutKind == ScoutTargetKind.Surveil
+                                      || ReconScoutKinds.IsRefresh(pm.ScoutKind)
                 ? ReconMode.Refresh
                 : ReconMode.Explore;
             HexCoord strategicAnchor = pm.FocusHex;
@@ -153,9 +154,6 @@ namespace Game.Ai.V2
                             continue; // fresh live reaction + step selection after the world mutation
                         }
 
-                        // Another authoritative condition blocked capture. Do not spin on the same
-                        // opportunity; stop this provisioned attempt and let the next strategic pass
-                        // rebuild from the now-refreshed world.
                         stop = ExecutionStopReason.TargetInvalidated;
                         break;
                     }
@@ -204,9 +202,7 @@ namespace Game.Ai.V2
 
                 if (!next.HasValue)
                 {
-                    stop = reaction.Action == ReconReactionAction.Flee
-                        ? ExecutionStopReason.NoSafeStep
-                        : ExecutionStopReason.NoSafeStep;
+                    stop = ExecutionStopReason.NoSafeStep;
                     break;
                 }
 
@@ -214,8 +210,6 @@ namespace Game.Ai.V2
                 {
                     ExitArmyStealth(army);
                     VisionSystem.RecomputeFor(player);
-                    // Opportunity is one-step and live. Decloaking can expose new danger or remove
-                    // the target; verify the same target is still contactable before committing.
                     ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, player);
                     if (targetNow == null || !reaction.TargetArmyId.HasValue
                         || targetNow.Id != reaction.TargetArmyId.Value)
@@ -236,8 +230,8 @@ namespace Game.Ai.V2
 
                 HexCoord beforeHex = army.Hex;
                 var move = AiDecision.Move(army, next.Value,
-                    $"V2 recon continuous — {actionWhy}; mode={assignment.Mode}; "
-                    + $"anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})",
+                    $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
+                    + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})",
                     null, 0f, AiTaskCategory.Reconnaissance);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
@@ -275,9 +269,6 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                // VisionSystem/AiMapMemory have already settled inside the authoritative move path.
-                // New contacts become strategic interrupts, but no longer force the actor to keep
-                // walking toward a stale focus or stop merely because that focus was completed.
                 HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
                 HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
                 int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
@@ -305,6 +296,7 @@ namespace Game.Ai.V2
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] {pm.Key} actor=#{pm.MoverArmyId} "
+                + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps={result.StepsMoved} ap−{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"objective={(result.ReachedGoal ? "met" : "open")} stop={stop}");
@@ -315,15 +307,28 @@ namespace Game.Ai.V2
         {
             if (result.ReachedGoal)
                 return;
-            bool met = pm.ScoutKind == ScoutTargetKind.Surveil
-                ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
-                    pm.TrackedArmyId, pm.BaselineObservedTurn)
-                : ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+
+            bool met;
+            if (pm.ScoutKind == ScoutTargetKind.Surveil)
+            {
+                met = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
+                    pm.TrackedArmyId, pm.BaselineObservedTurn);
+            }
+            else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
+            {
+                met = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
+            }
+            else
+            {
+                met = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+            }
+
             if (met)
             {
                 result.ReachedGoal = true;
-                AiDebugLog.Write($"[AI][V2][Recon][Objective] [{pm.Mission?.AttemptId}] {pm.Key} met; "
-                    + "durable actor assignment continues while movement remains");
+                AiDebugLog.Write($"[AI][V2][Recon][Objective] [{pm.Mission?.AttemptId}] {pm.Key} "
+                    + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} met; durable actor assignment continues "
+                    + "while movement remains");
             }
         }
 
