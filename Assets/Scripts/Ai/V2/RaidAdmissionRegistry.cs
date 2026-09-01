@@ -30,15 +30,37 @@ namespace Game.Ai.V2
             var excluded = new HashSet<int>();
             var ids = new List<int>();
 
-            // RaidAssemblyPlanner always returns the strongest currently-eligible ready actor.
-            // Re-run while excluding each hit to enumerate the whole set without duplicating its
-            // eligibility or WorthIt rules here.
+            // RaidAssemblyPlanner.Plan always applies the STRICT fresh-raid win gate and returns the
+            // strongest currently-eligible ready actor. Re-run while excluding each hit to enumerate
+            // the whole fresh set without duplicating its eligibility or WorthIt rules here.
             while (true)
             {
                 RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, excluded);
                 if (!plan.Feasible || !excluded.Add(plan.BaseArmyId))
                     break;
                 ids.Add(plan.BaseArmyId);
+            }
+
+            // A started Hard Raid is not a fresh admission decision. Its PreferredMover already
+            // passed the strict gate when the operation began and continuity/ActorCommitments owns
+            // that physical actor across turns. Re-test that exact incumbent through the bounded
+            // continuation gate so a small Monte-Carlo drop (the observed ~0.78 -> ~0.41 case) does
+            // not produce the impossible state "Hard/CLAIM actor #X" + "readyActors=[none]".
+            //
+            // Fresh missions never enter here, and an incumbent that lost defender coverage or fell
+            // below the continuation safety floor is still excluded normally.
+            if (proposal.FromDurableIntent
+                && proposal.DurableFundingTier == CommitmentTier.Hard
+                && proposal.PreferredMoverArmyId.HasValue)
+            {
+                int incumbentId = proposal.PreferredMoverArmyId.Value;
+                if (!ids.Contains(incumbentId))
+                {
+                    RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
+                        snap, target, defenders, incumbentId);
+                    if (incumbent.Feasible)
+                        ids.Add(incumbentId);
+                }
             }
 
             ByProposal.Remove(proposal);
