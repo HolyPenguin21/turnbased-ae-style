@@ -39,11 +39,26 @@ namespace Game.Ai.V2
             result.StartHex = army.Hex;
             result.FinalHex = army.Hex;
 
-            ReconMode requestedMode = pm.ScoutKind == ScoutTargetKind.Surveil
-                                      || ReconScoutKinds.IsRefresh(pm.ScoutKind)
-                ? ReconMode.Refresh
-                : ReconMode.Explore;
-            HexCoord strategicAnchor = pm.FocusHex;
+            if (!ReconScoutKinds.IsExplore(pm.ScoutKind)
+                && !ReconScoutKinds.IsRefresh(pm.ScoutKind)
+                && !ReconScoutKinds.IsSurveil(pm.ScoutKind))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.ApSpent = 0f;
+                AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
+                    + $"unknown Scout kind {(int)pm.ScoutKind}; fail closed before movement");
+                yield break;
+            }
+
+            ReconMode requestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
+                ? ReconMode.Explore
+                : ReconMode.Refresh;
+            // Surveil's FocusHex is the enemy/contact being observed. Provisioning already chose a
+            // safe observation vantage in ExecutionHex; use that as the strategic heading so the
+            // continuous ground planner does not undo the vantage decision by walking at the enemy.
+            HexCoord strategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
+                ? pm.ExecutionHex
+                : pm.FocusHex;
             ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, army.Id,
                 army.Hex, strategicAnchor, requestedMode, ctx.TurnNumber);
 
@@ -309,7 +324,7 @@ namespace Game.Ai.V2
                 return;
 
             bool met;
-            if (pm.ScoutKind == ScoutTargetKind.Surveil)
+            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
                 met = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
                     pm.TrackedArmyId, pm.BaselineObservedTurn);
@@ -318,9 +333,13 @@ namespace Game.Ai.V2
             {
                 met = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
             }
-            else
+            else if (ReconScoutKinds.IsExplore(pm.ScoutKind))
             {
                 met = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+            }
+            else
+            {
+                met = false;
             }
 
             if (met)
@@ -364,9 +383,10 @@ namespace Game.Ai.V2
             var scout = army.Members[0];
             if (!StealthSystem.CanEnterStealth(scout))
                 return false;
-            if (root == null || !root.CanSpendActionPoints(army.ActivationApCost + 1))
+            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
+            if (root == null || !root.CanSpendActionPoints(army.ActivationApCost + stealthAp))
                 return false;
-            root.SpendActionPoints(AiConfigV2.scoutOptionalStealthAp);
+            root.SpendActionPoints(stealthAp);
             StealthSystem.EnterStealth(scout);
             entered = true;
             return true;
