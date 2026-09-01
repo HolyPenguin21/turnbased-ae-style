@@ -59,7 +59,12 @@ namespace Game.Ai.V2
                     RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
                         snap, target, defenders, incumbentId);
                     if (incumbent.Feasible)
+                    {
                         ids.Add(incumbentId);
+                        AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE targetArmy={target.TargetArmyId} "
+                            + $"actor={incumbentId} win={incumbent.ProjectedWinChance:0.00} "
+                            + "reason=durable_hard_incumbent_passed_continuation_gate");
+                    }
                 }
             }
 
