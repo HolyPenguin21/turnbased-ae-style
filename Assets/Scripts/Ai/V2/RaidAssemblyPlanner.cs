@@ -119,6 +119,27 @@ namespace Game.Ai.V2
             var projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
             var selected = new List<RaidAssemblyTransfer>();
 
+            // §12 — a heroless host may take ONE eligible same-hex hero (garrison or another local
+            // container). Preference: CombatLeader > Flexible > SupportOperator. This is applied
+            // before body donation because a hero both adds a body and, via CommandRating, can
+            // lift the whole stack's EffectiveArmyPower.
+            if (!projectedUnits.Any(u => u != null && u.IsHero))
+            {
+                (ArmyData heroDonor, UnitData hero) = PickAttachableHero(owner, host, excludeArmyIds);
+                if (hero != null)
+                {
+                    var withHero = new List<UnitData>(projectedUnits) { hero };
+                    if (ArmyData.ComputeCapacity(withHero, host.IsGarrison) >= withHero.Count)
+                    {
+                        projectedUnits.Add(hero);
+                        projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
+                        selected.Add(new RaidAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
+                        if (Clears(projectedProfiles, defenders, out float hWin, out bool hCover))
+                            return FinishAssembly(host, selected, hWin, hCover);
+                    }
+                }
+            }
+
             IEnumerable<ArmySnapshot> donorSnaps = snap.Self.Armies
                 .Where(d => d != null && d.ArmyId != host.Id && d.Owner == owner
                     && d.Hex.Equals(host.Hex) && !d.IsPrison && !d.IsAir && !d.IsSoloRecce
@@ -155,27 +176,70 @@ namespace Game.Ai.V2
                 projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
                 selected.Add(new RaidAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
 
-                if (!Clears(projectedProfiles, defenders, out float win, out bool cover))
-                    continue;
-
-                var plan = new RaidAssemblyPlan
-                {
-                    Feasible = true,
-                    BaseArmyId = host.Id,
-                    NeedsAssembly = true,
-                    ProjectedWinChance = win,
-                    CoversAllDefenders = cover,
-                };
-                foreach (RaidAssemblyTransfer t in selected)
-                {
-                    plan.Transfers.Add(t);
-                    if (!plan.MergeArmyIds.Contains(t.DonorArmyId))
-                        plan.MergeArmyIds.Add(t.DonorArmyId);
-                }
-                return plan;
+                if (Clears(projectedProfiles, defenders, out float win, out bool cover))
+                    return FinishAssembly(host, selected, win, cover);
             }
 
+            // The hero alone (no bodies available/needed) may already clear.
+            if (selected.Count > 0 && Clears(projectedProfiles, defenders, out float wOnly, out bool cOnly))
+                return FinishAssembly(host, selected, wOnly, cOnly);
+
             return RaidAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
+        }
+
+        private static RaidAssemblyPlan FinishAssembly(ArmyData host,
+            IReadOnlyList<RaidAssemblyTransfer> selected, float win, bool cover)
+        {
+            var plan = new RaidAssemblyPlan
+            {
+                Feasible = true,
+                BaseArmyId = host.Id,
+                NeedsAssembly = true,
+                ProjectedWinChance = win,
+                CoversAllDefenders = cover,
+            };
+            foreach (RaidAssemblyTransfer t in selected)
+            {
+                plan.Transfers.Add(t);
+                if (!plan.MergeArmyIds.Contains(t.DonorArmyId))
+                    plan.MergeArmyIds.Add(t.DonorArmyId);
+            }
+            return plan;
+        }
+
+        // §12 — the best same-hex hero that may legally join `host`, or (null, null).
+        // CombatLeader > Flexible > SupportOperator, then a stable donor-id tiebreak.
+        private static (ArmyData donor, UnitData hero) PickAttachableHero(PlayerSetupData owner,
+            ArmyData host, ISet<int> excludeArmyIds)
+        {
+            var candidates = new List<(ArmyData donor, UnitData hero)>();
+            foreach (ArmyData donor in ArmyRegistry.AllForOwner(owner))
+            {
+                if (donor == null || donor.Id == host.Id || !donor.Hex.Equals(host.Hex)
+                    || donor.IsPrison || donor.IsAirfield || donor.IsAirArmy || AiArmyRoles.IsSoloRecce(donor)
+                    || (excludeArmyIds != null && excludeArmyIds.Contains(donor.Id)))
+                    continue;
+                foreach (UnitData h in donor.Members)
+                {
+                    if (h == null || !h.IsHero || h.IsAviation)
+                        continue;
+                    if (!donor.CanLeaveWithoutOvercrowding(h))
+                        continue;
+                    if (donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(owner, donor, h))
+                        continue;
+                    if (host.HasActivatedThisTurn && h.ActivationApCost > 0)
+                        continue;
+                    candidates.Add((donor, h));
+                }
+            }
+            if (candidates.Count == 0)
+                return (null, null);
+            candidates.Sort((x, y) =>
+            {
+                int c = HeroRoleEvaluator.CompareForFieldCommand(x.hero, y.hero);
+                return c != 0 ? c : x.donor.Id.CompareTo(y.donor.Id);
+            });
+            return candidates[0];
         }
 
         private static float UnitCombatValue(UnitData u) =>

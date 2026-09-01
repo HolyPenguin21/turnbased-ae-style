@@ -630,6 +630,7 @@ namespace Game.Ai.V2
             var projectedUnits = new List<UnitData>(host.Members);
             if (plan.NeedsAssembly)
             {
+                int heroTransfers = 0;
                 foreach (RaidAssemblyTransfer t in plan.Transfers)
                 {
                     if (t?.Unit == null)
@@ -641,9 +642,16 @@ namespace Game.Ai.V2
                     if (session.ClaimedArmyIds.Contains(donor.Id))
                         return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                             $"raid donor #{donor.Id} was claimed by an earlier mission this cycle"));
+                    // §12 — at most ONE hero may be attached, only to a currently heroless host,
+                    // and only through the canonical garrison-release / capacity / activation
+                    // guards below (a hero uses CanSpareGarrisonMember's Members.Count > 1 rule).
+                    bool unitIsHero = t.Unit.IsHero;
+                    if (unitIsHero && (++heroTransfers > 1 || projectedUnits.Any(u => u != null && u.IsHero)))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid host #{host.Id} may take at most one hero and only when heroless"));
                     if (donor.IsPrison || donor.IsAirfield || AviationRules.IsAirArmy(donor)
                         || AiArmyRoles.IsSoloRecce(donor) || !donor.Members.Contains(t.Unit)
-                        || t.Unit.IsHero || t.Unit.IsAviation)
+                        || t.Unit.IsAviation)
                         return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                             $"raid donor #{donor.Id} / unit {t.Unit.Name} is no longer legal"));
                     if (!donor.CanLeaveWithoutOvercrowding(t.Unit)
