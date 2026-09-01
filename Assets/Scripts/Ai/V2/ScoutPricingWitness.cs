@@ -46,13 +46,14 @@ namespace Game.Ai.V2
             {
                 var target = (ScoutMissionTarget)item.mission.Target;
                 bool requiredStealth = target.Stealth == StealthRequirement.Required;
+                bool groundTarget = ReconScoutKinds.IsGround(target.Kind);
                 var list = new List<Candidate>();
                 foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
                 {
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, requiredStealth);
                     list.Add(new Candidate(mover, pc.RequiredAp,
-                        target.Kind == ScoutTargetKind.Explore ? pc.EtaTurns : 0,
-                        target.Kind == ScoutTargetKind.Explore ? pc.Distance : 0));
+                        groundTarget ? pc.EtaTurns : 0,
+                        groundTarget ? pc.Distance : 0));
                 }
                 list.Sort((a, b) =>
                 {
@@ -94,7 +95,8 @@ namespace Game.Ai.V2
                 r.ApMinimum = assignmentSafeAp;
                 r.ApDesired = assignmentSafeAp;
                 r.ApMaximum = Mathf.Max(r.ApMaximum, assignmentSafeAp);
-                if (((ScoutMissionTarget)m.Target).Kind == ScoutTargetKind.Explore)
+                ScoutTargetKind kind = ((ScoutMissionTarget)m.Target).Kind;
+                if (ReconScoutKinds.IsGround(kind))
                 {
                     r.EtaTurns = c.Eta;
                     r.EstimatedDistance = c.Distance;
