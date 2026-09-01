@@ -359,7 +359,7 @@ namespace Game.UI
             // front, before the stat/effect block, so it's visible before Create is pressed.
             // One line here covers both Research and Production (shared DescribeCard) and every
             // card type, Equipment included.
-            sb.AppendLine($"Challenge Difficulty: {Mathf.Max(0, card.fate)} Successes");
+            sb.AppendLine($"Difficulty: {Mathf.Max(0, card.fate)}");
 
             switch (card.cardType)
             {

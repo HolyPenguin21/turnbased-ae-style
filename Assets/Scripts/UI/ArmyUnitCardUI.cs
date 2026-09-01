@@ -248,11 +248,28 @@ namespace Game.UI
                 return;
             string text;
             if (card == null)
+            {
                 text = string.Empty;
+            }
             else if (card.cardType == CardType.Equipment)
+            {
                 text = EquipmentCardText.CardFace(card, config);
+            }
             else
-                text = config != null ? config.FormatAbilitiesDetailed(card.grantedAbilities) : string.Empty;
+            {
+                // Lead with the unit type tags this card is filed under ("Bio, Infantry") — the
+                // types it fits — before the granted-ability list, same "who it fits first" order
+                // as the Equipment face's host tags. Silently skipped when the card has no tags.
+                string tags = card.unitTypeTags != null && card.unitTypeTags.Count > 0
+                    ? string.Join(", ", card.unitTypeTags)
+                    : string.Empty;
+                string abilities = config != null
+                    ? config.FormatAbilitiesDetailed(card.grantedAbilities)
+                    : string.Empty;
+                text = !string.IsNullOrEmpty(tags) && !string.IsNullOrEmpty(abilities)
+                    ? tags + "\n" + abilities
+                    : tags + abilities;
+            }
             skillsText.text = text;
             skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }

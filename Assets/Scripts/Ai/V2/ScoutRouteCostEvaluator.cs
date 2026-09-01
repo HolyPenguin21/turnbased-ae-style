@@ -49,7 +49,7 @@ namespace Game.Ai.V2
 
         public static Assessment Evaluate(WorldSnapshot snap, ScoutMissionTarget target)
         {
-            if (snap?.Self?.Armies == null || target == null || target.Kind != ScoutTargetKind.Explore)
+            if (snap?.Self?.Armies == null || target.Kind != ScoutTargetKind.Explore)
                 return new Assessment(true, 0, 0, 0, 1, 0, 1f);
 
             HexMap map = ResolveMap();
