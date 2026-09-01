@@ -41,7 +41,7 @@ namespace Game.Ai.V2
                     return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                         ContactArmyId, 0, 0);
                 ScoutTargetKind sub = Kind == ReconObjectiveKind.Refresh
-                    ? ReconScoutKinds.Refresh
+                    ? ScoutTargetKind.Refresh
                     : ScoutTargetKind.Explore;
                 return new MissionIntentKey(MissionKind.Scout, (int)sub, 0, FocusHex.Q, FocusHex.R);
             }
@@ -52,7 +52,7 @@ namespace Game.Ai.V2
             FocusHex = FocusHex,
             Kind = Kind == ReconObjectiveKind.Surveil
                 ? ScoutTargetKind.Surveil
-                : Kind == ReconObjectiveKind.Refresh ? ReconScoutKinds.Refresh : ScoutTargetKind.Explore,
+                : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
             Contact = Kind == ReconObjectiveKind.Surveil ? Contact : null,
             Stealth = Stealth,
             DetectionRisk = DetectionRisk,
@@ -136,9 +136,10 @@ namespace Game.Ai.V2
 
             // Bound enumeration before MissionLayer's ordinary cross-objective beam. Keep a wider
             // pool than execution capacity so several scouts can spread, but do not hand hundreds
-            // of stale hexes to the allocator on a late-game map.
+            // of stale hexes to the allocator on a late-game map. Use the effective policy cap so
+            // ReconOnly's 3-scout acceptance mode is represented here too.
             int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
-                AiConfigV2.maxConcurrentReconExecutions * 3);
+                ReconConcurrencyPolicy.HardCap * 3);
             return candidates
                 .OrderByDescending(o => o.BaseValue)
                 .ThenByDescending(o => o.AgeTurns)
