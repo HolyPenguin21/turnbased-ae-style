@@ -372,9 +372,6 @@ namespace Game.Ai.V2
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
                         if (!AbilitiesSatisfyCapability(projected, def.cardType, cap)) continue;
-                        bool addsStealth = !AbilityParams.AbilitiesHaveAnyStealth(baseAbilities)
-                            && AbilityParams.AbilitiesHaveAnyStealth(projected);
-                        if (!addsStealth) continue;
                         MaterializationPlan att = MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
                             card, i, eq, j, opt, projected);
                         att.FinalCapability = cap;
@@ -385,7 +382,7 @@ namespace Game.Ai.V2
                             continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, att)) continue;
                         att.Score = SurplusUtility(att, inv, recce, hero, hand, projected)
-                            + AiConfigV2.surplusAttachTraitBonus - AiConfigV2.stratChainAttachStepPenalty;
+                            - AiConfigV2.stratChainAttachStepPenalty;
                         candidates.Add(att);
                     }
                 }
@@ -397,28 +394,77 @@ namespace Game.Ai.V2
                     reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
                 {
                     CardDefinition gd = g.CardDef;
-                    if (g.ProducesEquipment || gd.isAviation
-                        || (gd.cardType != CardType.Unit && gd.cardType != CardType.Hero))
+                    if (gd == null || gd.isAviation)
                         continue;
-                    bool recce = AbilityParams.AbilitiesHaveAnyRecce(gd.grantedAbilities);
-                    bool hero = gd.cardType == CardType.Hero;
-                    CapabilityKind cap = recce ? CapabilityKind.ScoutCapability
-                        : hero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
-                    bool soloOnly = cap == CapabilityKind.ScoutCapability;
-                    IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
-                    AxisDemand strategicClaim = UnresolvedClaimFor(reservation, cap, genAbilities);
 
-                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly))
+                    if (g.ProducesEquipment)
+                    {
+                        if (gd.equipment == null || !hand.HasFreeSlot)
+                            continue;
+
+                        for (int i = 0; i < handList.Count; i++)
+                        {
+                            CardData host = handList[i];
+                            CardDefinition hd = host?.Definition;
+                            if (hd == null || hd.isAviation || host.Equipment != null
+                                || (hd.cardType != CardType.Unit && hd.cardType != CardType.Hero)
+                                || !EquipmentDefFitsHostDef(gd, hd))
+                                continue;
+
+                            IReadOnlyList<string> hostAbilities = EffectiveAbilities(hd, null);
+                            List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
+                            bool recce = AbilityParams.AbilitiesHaveAnyRecce(projected);
+                            bool hero = hd.cardType == CardType.Hero;
+                            CapabilityKind cap = recce ? CapabilityKind.ScoutCapability
+                                : hero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
+                            bool soloOnly = cap == CapabilityKind.ScoutCapability;
+                            AxisDemand strategicClaim = UnresolvedClaimFor(reservation, cap, projected);
+
+                            foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly))
+                            {
+                                MaterializationPlan genEq = MakeGeneratedPlan(
+                                    MaterializationChainKind.GenerateAttachDeploy, null, g,
+                                    baseInHand: host, baseIdx: i, generatedIsEquipment: true,
+                                    opt: opt, projected: projected);
+                                genEq.FinalCapability = cap;
+                                if (strategicClaim != null && !CanDeliverDemandOperationally(genEq, strategicClaim))
+                                    continue;
+                                if (!StrategicManager.ReservesOkAfterChain(root, genEq))
+                                    continue;
+
+                                float util = (SurplusUtility(genEq, inv, recce, hero, hand, projected)
+                                              - AiConfigV2.stratChainGenerationStepPenalty
+                                              - AiConfigV2.stratChainAttachStepPenalty)
+                                             * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
+                                                 Mathf.Clamp01(g.SuccessChance));
+                                genEq.Score = util;
+                                candidates.Add(genEq);
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (gd.cardType != CardType.Unit && gd.cardType != CardType.Hero)
+                        continue;
+                    bool genRecce = AbilityParams.AbilitiesHaveAnyRecce(gd.grantedAbilities);
+                    bool genHero = gd.cardType == CardType.Hero;
+                    CapabilityKind genCap = genRecce ? CapabilityKind.ScoutCapability
+                        : genHero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
+                    bool genSoloOnly = genCap == CapabilityKind.ScoutCapability;
+                    IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
+                    AxisDemand genStrategicClaim = UnresolvedClaimFor(reservation, genCap, genAbilities);
+
+                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments, genSoloOnly))
                     {
                         MaterializationPlan gen = MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
                             null, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                             projected: genAbilities);
-                        gen.FinalCapability = cap;
-                        if (strategicClaim != null && !CanDeliverDemandOperationally(gen, strategicClaim))
+                        gen.FinalCapability = genCap;
+                        if (genStrategicClaim != null && !CanDeliverDemandOperationally(gen, genStrategicClaim))
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, gen)) continue;
-                        float util = (SurplusUtility(gen, inv, recce, hero, hand, genAbilities)
+                        float util = (SurplusUtility(gen, inv, genRecce, genHero, hand, genAbilities)
                                       - AiConfigV2.stratChainGenerationStepPenalty)
                                      * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
                                          Mathf.Clamp01(g.SuccessChance));
@@ -743,11 +789,102 @@ namespace Game.Ai.V2
             float oversupply = recce && inv != null
                 && inv.ReadyScouts + inv.ReserveScouts >= AiConfigV2.surplusScoutOversupplyAt
                 ? AiConfigV2.surplusOversupplyPenalty : 0f;
+            float readiness = recce ? 0f : SurplusCombatReadinessUtility(p);
+            float equipmentUpgrade = p.UsesEquipment ? EquipmentUpgradeUtility(p) : 0f;
             float resSum = ResourceCostSum(p.ResCost);
             return scarcity + versatility + traits + handPressure + recurringApIncome
+                + readiness + equipmentUpgrade
                 - AiConfigV2.surplusApCostWeight * p.ApCost
                 - AiConfigV2.surplusResourceCostWeight * resSum
                 - oversupply + PlacementBonus(p.Deploy.Kind);
+        }
+
+        // Phase B is not only disposal of stranded resources: deploying a combat card now is
+        // readiness purchased for future turns. Rank that investment with the same AiPower model
+        // WorldAnalysis uses, and prefer reinforcement when it improves an existing formation's
+        // composition instead of treating every Unit card as the same generic +0.25 utility.
+        private static float SurplusCombatReadinessUtility(MaterializationPlan p)
+        {
+            CardDefinition def = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
+            if (def == null || def.isAviation
+                || (def.cardType != CardType.Unit && def.cardType != CardType.Hero))
+                return 0f;
+
+            AiPower.PowerUnit incoming = AiPower.ToPowerUnit(def);
+            float marginal = incoming.BasePower;
+            ArmyData dest = p.Deploy.Army;
+            if (p.Deploy.Kind == DeploymentKind.ExistingArmy
+                && dest != null && !dest.IsGarrison && dest.Members != null && dest.Members.Count > 0)
+            {
+                List<AiPower.PowerUnit> before = dest.Members
+                    .Where(u => u != null && !u.IsAviation)
+                    .Select(AiPower.ToPowerUnit)
+                    .ToList();
+                float oldPower = AiPower.EffectiveArmyPower(before);
+                before.Add(incoming);
+                float newPower = AiPower.EffectiveArmyPower(before);
+                marginal = Mathf.Max(incoming.BasePower * 0.25f, newPower - oldPower);
+            }
+
+            // defencePerBodyPowerEstimate is already the project's notional "one useful combat
+            // body" power scale. Cap prevents one exceptional card from drowning all cost/risk.
+            return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate), 0f, 2f);
+        }
+
+        private static float EquipmentUpgradeUtility(MaterializationPlan p)
+        {
+            CardDefinition host = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
+            CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
+            EquipmentGrant grant = eq?.equipment;
+            if (host == null || grant == null)
+                return 0f;
+
+            var before = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = host.attack,
+                [EquipmentStat.Defense] = host.defenseRating,
+                [EquipmentStat.Resistance] = host.resistanceRating,
+                [EquipmentStat.Range] = host.range,
+                [EquipmentStat.HitPoints] = host.hitPoints,
+                [EquipmentStat.MoveMax] = host.moveMax,
+                [EquipmentStat.Initiative] = host.initiative,
+                [EquipmentStat.ActivationApCost] = host.activationApCost,
+                [EquipmentStat.CommandRating] = host.commandRating,
+                [EquipmentStat.Fate] = host.fate,
+            };
+            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, host.grantedAbilities);
+
+            int After(EquipmentStat stat)
+            {
+                return predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value)
+                    ? value : before[stat];
+            }
+
+            float combatDelta =
+                Mathf.Max(0, After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
+                + Mathf.Max(0, After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
+                + Mathf.Max(0, After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
+                + Mathf.Max(0, After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
+                + Mathf.Max(0, After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
+            if (host.cardType == CardType.Hero)
+                combatDelta += Mathf.Max(0, After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
+                               * AiConfigV2.powerHeroFateWeight;
+
+            float tactical = 0f;
+            tactical += Mathf.Max(0, After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
+            tactical += Mathf.Max(0, After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
+            tactical += Mathf.Max(0, before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
+            tactical += Mathf.Max(0, After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
+
+            int addedAbilities = 0;
+            if (predicted.Abilities != null)
+                foreach (string a in predicted.Abilities)
+                    if (host.grantedAbilities == null || !host.grantedAbilities.Contains(a))
+                        addedAbilities++;
+            tactical += addedAbilities * 0.15f;
+
+            return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate) + tactical,
+                0f, 1.5f);
         }
 
         private static float SurplusScarcity(CapabilityInventory inv, bool recce, bool hero)
