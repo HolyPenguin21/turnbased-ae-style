@@ -76,6 +76,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - CollectHuman
@@ -84,6 +89,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 0
     displayName: Energy Extractor
     art: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
@@ -107,6 +119,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - CollectEnergy
@@ -115,6 +132,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 0
     displayName: Materials Extractor
     art: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
@@ -138,6 +162,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - CollectMaterials
@@ -146,6 +175,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   - id: 0
     displayName: Tech Extractor
     art: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
@@ -169,6 +205,11 @@ MonoBehaviour:
     range: 1
     hitPoints: 1
     initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
     unitTypeTags: 
     grantedAbilities:
     - CollectTech
@@ -177,6 +218,13 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
   facilityUpgradeTiers:
   - apCost: 2
     cost:
@@ -225,6 +273,8 @@ MonoBehaviour:
     abbreviation: r1s6
   - ability: Stealth4
     abbreviation: Stealth4
+  - ability: AA
+    abbreviation: 
   - ability: ApBonus
     abbreviation: AP+2
   - ability: Barracks
@@ -316,9 +366,8 @@ MonoBehaviour:
     - terrainName: Desert
       texture: {fileID: 2800000, guid: b735d60120e9c464f8406fa1c2ea2301, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: b2b79c3c96f83eb47b868085d50c674c, type: 3}
-      - {fileID: 2800000, guid: cd7198626cb935b4da570bd20470d18a, type: 3}
       - {fileID: 2800000, guid: 83c1fc375e2ee1a44a275661b2f8aa05, type: 3}
+      - {fileID: 2800000, guid: cd7198626cb935b4da570bd20470d18a, type: 3}
       baselineWeight: 90
       resourceYields:
         human: 0
@@ -368,7 +417,6 @@ MonoBehaviour:
   minPlayers: 2
   maxPlayers: 6
   playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}
-  initiativeDicePrice: 1
   moveArrowStyle:
     segmentsPerLeg: 20
     curveBend: 0

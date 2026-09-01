@@ -36,7 +36,7 @@ MonoBehaviour:
   - tag: r1s6
     description: Army vision +1 hex. Detection strength 6.
   - tag: Stealth4
-    description: Unit can enter stealth (4 defensive hide dice).
+    description: Unit can enter stealth
   - tag: AA
     description: Can intercept air targets
   - tag: ApBonus

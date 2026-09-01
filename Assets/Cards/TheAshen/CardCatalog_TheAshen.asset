@@ -412,8 +412,8 @@ MonoBehaviour:
       statChanges: []
   - id: 9
     displayName: Hooded
-    art: {fileID: 21300000, guid: 735824846a4304645a8b477d61e13d9e, type: 3}
-    detailArt: {fileID: 21300000, guid: eb23825e602b7ec4aa14e02fbf5bb72b, type: 3}
+    art: {fileID: 21300000, guid: d76728da71291f046a090e5cb0b83cbb, type: 3}
+    detailArt: {fileID: 21300000, guid: d8148ceee197ac949b4f7a314f174a68, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -457,8 +457,8 @@ MonoBehaviour:
       statChanges: []
   - id: 10
     displayName: Dust Runner
-    art: {fileID: 21300000, guid: 6c8777d1b75ec1e4686d389be6be3b4f, type: 3}
-    detailArt: {fileID: 21300000, guid: 7ae764e72b70df140b17b980599843b5, type: 3}
+    art: {fileID: 21300000, guid: c89f9e169a628084e9ba04c7270a331b, type: 3}
+    detailArt: {fileID: 21300000, guid: 97564682629380b4197ebc4ffacb5df1, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -500,8 +500,8 @@ MonoBehaviour:
       statChanges: []
   - id: 11
     displayName: Tech Scrapper
-    art: {fileID: 21300000, guid: 6c828ebd159427246b7b028ed2d6a336, type: 3}
-    detailArt: {fileID: 21300000, guid: b47fc4d3dec26bc48aa4ac74e68689ee, type: 3}
+    art: {fileID: 21300000, guid: 62291ed7674a410439a8a9dad2893dd1, type: 3}
+    detailArt: {fileID: 21300000, guid: ce666647bdc66fa4aa80d8895e2f177e, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -543,8 +543,8 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     displayName: AA Rad Hunter
-    art: {fileID: 21300000, guid: 9927ae6eeb12f804a880e87f411f29dd, type: 3}
-    detailArt: {fileID: 21300000, guid: edc3d80d8adeccd4aa22b214fff7b239, type: 3}
+    art: {fileID: 21300000, guid: db09506f895008949a636cec77987fc4, type: 3}
+    detailArt: {fileID: 21300000, guid: 5df75208883fbc74b9fdfba8d3774f3e, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -586,8 +586,8 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     displayName: LI Ash Drifter
-    art: {fileID: 21300000, guid: d340d646803302c4b820dc327a0583d4, type: 3}
-    detailArt: {fileID: 21300000, guid: a3bd25c8086e1ec46ad654b92346f23f, type: 3}
+    art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
+    detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -628,8 +628,8 @@ MonoBehaviour:
       statChanges: []
   - id: 14
     displayName: LI Ash Runner
-    art: {fileID: 21300000, guid: 65c89f7c095128e42919a46bcfcf35b1, type: 3}
-    detailArt: {fileID: 21300000, guid: b16ac6f2510ac7445a8264545e3e3abd, type: 3}
+    art: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
+    detailArt: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
@@ -670,8 +670,8 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     displayName: MI Iron Husk
-    art: {fileID: 21300000, guid: 416e13f1b10664146a6ef2b5e0390660, type: 3}
-    detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
+    art: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
+    detailArt: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
@@ -712,8 +712,8 @@ MonoBehaviour:
       statChanges: []
   - id: 16
     displayName: Scav Carrier
-    art: {fileID: 21300000, guid: 50ea9173e748b7044892089a3e8d0430, type: 3}
-    detailArt: {fileID: 21300000, guid: 5869dd47ae5b22c4eaa69569a41f1759, type: 3}
+    art: {fileID: 21300000, guid: 7c353224512ec5342a538ea957adfdb5, type: 3}
+    detailArt: {fileID: 21300000, guid: 69682a9ed5a6c274fbde578d89cf73e0, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
@@ -754,8 +754,8 @@ MonoBehaviour:
       statChanges: []
   - id: 17
     displayName: Rad Brute
-    art: {fileID: 21300000, guid: d4fecf0dfb18ce34f9c5bc3f3ce2abc2, type: 3}
-    detailArt: {fileID: 21300000, guid: 16a15e076d001c8499e6a7c1149058d0, type: 3}
+    art: {fileID: 21300000, guid: 9033fed8d61a1214c83844a0b618ad62, type: 3}
+    detailArt: {fileID: 21300000, guid: 661841b42d56f8245a50642456db15fc, type: 3}
     faction: 4
     cardType: 1
     apCost: 3
@@ -798,8 +798,8 @@ MonoBehaviour:
       statChanges: []
   - id: 18
     displayName: HI Ash Walker
-    art: {fileID: 21300000, guid: a3318c5139165c94fb81a5e940cef118, type: 3}
-    detailArt: {fileID: 21300000, guid: 3ea59d657101a8a4ab53926d9e1aeacc, type: 3}
+    art: {fileID: 21300000, guid: 6ed8570f1fe48a440893bb9dd4af5b3c, type: 3}
+    detailArt: {fileID: 21300000, guid: 4e88c907f33698f499d63cf4162b4647, type: 3}
     faction: 4
     cardType: 1
     apCost: 3
@@ -840,8 +840,8 @@ MonoBehaviour:
       statChanges: []
   - id: 19
     displayName: BS Grave Engine
-    art: {fileID: 21300000, guid: fdc14e08d3ffe0940bce1a2ef9da540e, type: 3}
-    detailArt: {fileID: 21300000, guid: 5ce8e35ac974f3347a15a5f564224da9, type: 3}
+    art: {fileID: 21300000, guid: e8c4d9a01faeee9449e49c1e9fd8ab6d, type: 3}
+    detailArt: {fileID: 21300000, guid: 55bcaa95a0a348a4f9e0b0feda0607ff, type: 3}
     faction: 4
     cardType: 1
     apCost: 5
@@ -882,8 +882,8 @@ MonoBehaviour:
       statChanges: []
   - id: 20
     displayName: MT Rust Tank
-    art: {fileID: 21300000, guid: 026bfcfa33cd247478012438377fb5f0, type: 3}
-    detailArt: {fileID: 21300000, guid: 239cccefd5ea78344adba7ac0ef70dfe, type: 3}
+    art: {fileID: 21300000, guid: b9746bf4a9b039749b2ec4a2f07dcf0e, type: 3}
+    detailArt: {fileID: 21300000, guid: c971b0de2a0c2ca44af82aecc1069eb0, type: 3}
     faction: 4
     cardType: 1
     apCost: 4
@@ -924,8 +924,8 @@ MonoBehaviour:
       statChanges: []
   - id: 21
     displayName: Leviathan
-    art: {fileID: 21300000, guid: 45b07eefadb6f5348911c8d573ff5a63, type: 3}
-    detailArt: {fileID: 21300000, guid: 49a1362e66c8c3f41863504915a07e8f, type: 3}
+    art: {fileID: 21300000, guid: 1a7bc8a88297fdc4781e5f4053ba411f, type: 3}
+    detailArt: {fileID: 21300000, guid: 41a75469951167d4a971863dc6e54c63, type: 3}
     faction: 4
     cardType: 1
     apCost: 5
@@ -966,8 +966,8 @@ MonoBehaviour:
       statChanges: []
   - id: 22
     displayName: Scrap Mortar
-    art: {fileID: 21300000, guid: 28100ed5b3524b246a6152dace64a840, type: 3}
-    detailArt: {fileID: 21300000, guid: 3d2689852cf6a674c82e8854e1dc27b1, type: 3}
+    art: {fileID: 21300000, guid: efa5fad9a47aefc448acd94b7659be69, type: 3}
+    detailArt: {fileID: 21300000, guid: 5f2f1e1cf491a8f48aeddd0b7f047e20, type: 3}
     faction: 4
     cardType: 1
     apCost: 3
@@ -1008,8 +1008,8 @@ MonoBehaviour:
       statChanges: []
   - id: 23
     displayName: Colossus
-    art: {fileID: 21300000, guid: a1c5c512a5300c2429f7a1a0ec2fca42, type: 3}
-    detailArt: {fileID: 21300000, guid: 8abc5f26f3a782a48b216f264ea732cf, type: 3}
+    art: {fileID: 21300000, guid: adb2a86f5ba326b49916a3783aacc613, type: 3}
+    detailArt: {fileID: 21300000, guid: cbc176a82da4c9b4fa3104c331e01fea, type: 3}
     faction: 4
     cardType: 1
     apCost: 4
@@ -1051,8 +1051,8 @@ MonoBehaviour:
       statChanges: []
   - id: 24
     displayName: Ash Howitzer
-    art: {fileID: 21300000, guid: abff434567eaa434f956f1b5cae6acde, type: 3}
-    detailArt: {fileID: 21300000, guid: d74666f79453083478b02daf45396343, type: 3}
+    art: {fileID: 21300000, guid: f5dcd42f65057d84b8ab7c19dc945cd3, type: 3}
+    detailArt: {fileID: 21300000, guid: bba88ccc99c1d9046a4fe6d072a55598, type: 3}
     faction: 4
     cardType: 1
     apCost: 4
@@ -1094,8 +1094,8 @@ MonoBehaviour:
       statChanges: []
   - id: 25
     displayName: Striker
-    art: {fileID: 21300000, guid: c5e00d5b15e757444a012ee9b326e3e1, type: 3}
-    detailArt: {fileID: 21300000, guid: e129ac4dab53f3b46b9fef9258fef7df, type: 3}
+    art: {fileID: 21300000, guid: d4a121c31ae111744ba193cd95d401e0, type: 3}
+    detailArt: {fileID: 21300000, guid: 52b44dec01bbb764ab4797240d80f9f1, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
@@ -1137,8 +1137,8 @@ MonoBehaviour:
       statChanges: []
   - id: 26
     displayName: Scrapwing
-    art: {fileID: 21300000, guid: 117b0fcd4b429a946a3048ea1bfbae8f, type: 3}
-    detailArt: {fileID: 21300000, guid: 4ace6849b2cf1bb4b9369042df22ddb3, type: 3}
+    art: {fileID: 21300000, guid: 26c9f88c50c9c4842930f5d8e37bf87f, type: 3}
+    detailArt: {fileID: 21300000, guid: de5cbecd1e1dd8c48a36d03cb7b4abe2, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
@@ -1166,6 +1166,48 @@ MonoBehaviour:
     unitTypeTags: 01000000
     grantedAbilities:
     - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 27
+    displayName: HT Boomstick
+    art: {fileID: 21300000, guid: d5a53f2a6c4b76441a0946bea6253378, type: 3}
+    detailArt: {fileID: 21300000, guid: 5f4d7e6111348284290d73b35f035a66, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000002000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0

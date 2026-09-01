@@ -47,7 +47,7 @@ MonoBehaviour:
     - cardKey: The Ashen/AA Rad Hunter
       count: 1
     - cardKey: The Ashen/LI Ash Drifter
-      count: 2
+      count: 0
     - cardKey: The Ashen/LI Ash Runner
       count: 2
     - cardKey: The Ashen/MI Iron Husk
@@ -55,7 +55,7 @@ MonoBehaviour:
     - cardKey: The Ashen/Scav Carrier
       count: 0
     - cardKey: The Ashen/Rad Brute
-      count: 2
+      count: 1
     - cardKey: The Ashen/HI Ash Walker
       count: 1
     - cardKey: The Ashen/BS Grave Engine
@@ -79,6 +79,8 @@ MonoBehaviour:
     - cardKey: Neutral/b_Factory
       count: 1
     - cardKey: Neutral/b_Intel
+      count: 1
+    - cardKey: The Ashen/HT Boomstick
       count: 1
   - deckName: Iron Concord Starter
     faction: 0
