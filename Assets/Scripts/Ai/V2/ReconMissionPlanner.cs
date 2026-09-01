@@ -55,6 +55,15 @@ namespace Game.Ai.V2
                 return proposals;
 
             IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
+            if (snap.MapContext != null
+                && snap.MapContext.ExploredFraction >= 0.80f
+                && breakdown.ReconRefreshPressure > breakdown.ReconExplorePressure + 0.01f)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Acceptance] scenario=refresh-dominates-explored status=PASS "
+                    + $"explored={snap.MapContext.ExploredFraction:0.00} "
+                    + $"exploreP={breakdown.ReconExplorePressure:0.00} refreshP={breakdown.ReconRefreshPressure:0.00}");
+            }
+
             var fresh = new List<ScoutCandidate>();
             foreach (ReconObjective o in objectives)
                 fresh.Add(ToCandidate(snap, o, breakdown));
@@ -164,6 +173,13 @@ namespace Game.Ai.V2
                 ? Mathf.Clamp01(o.FreshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm))
                 : 0f;
             bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
+
+            if (refresh && snap.Known?.Buildings != null
+                && snap.Known.Buildings.Any(b => b.Hex.Equals(o.FocusHex)))
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Acceptance] scenario=stale-facility-refresh status=PASS "
+                    + $"age={o.AgeTurns} strategic={o.StrategicRelevance:0.00}");
+            }
 
             ScoutMissionTarget target = o.ToTarget();
             float intrinsicAdmission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
