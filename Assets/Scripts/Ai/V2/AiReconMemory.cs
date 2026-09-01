@@ -53,7 +53,13 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, ReconObservation>> ByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<int, ReconObservation>>();
 
-        public static void Clear() => ByPlayer.Clear();
+        public static void Clear()
+        {
+            ByPlayer.Clear();
+            // Enemy-contact memory and per-hex observation memory share the V2 lifecycle seam so
+            // starting a new game can never leave IntelAge state keyed to old PlayerSetupData.
+            AiReconIntelMemory.Clear();
+        }
 
         // Called once per V2 scan with the current honest (non-neutral) sightings (V1's memory,
         // which itself keeps a sighting up to enemySightingMemoryTurns after it was last SEEN).
@@ -69,6 +75,12 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
+
+            // This is the existing WorldAnalysis scan seam, so use it to advance the separate
+            // per-hex IntelAge clock as well. No hidden information is read: VisionSystem owns the
+            // current-visible set and this only stamps those exact hexes with `turn`.
+            AiReconIntelMemory.ObserveCurrentVisibility(player, turn);
+
             if (!ByPlayer.TryGetValue(player, out Dictionary<int, ReconObservation> store))
                 ByPlayer[player] = store = new Dictionary<int, ReconObservation>();
 
