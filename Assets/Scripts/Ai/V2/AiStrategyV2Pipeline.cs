@@ -249,10 +249,10 @@ namespace Game.Ai.V2
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
     public enum MissionKind { Scout, Raid }
 
-    // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Surveil -> a stale honest
-    // contact's last-known hex (Contact non-null). No IMissionTarget hierarchy yet — MissionProposal
-    // still boxes this into Target as object; the cast lives in one place (TaskExecutor / ScoutCostModel).
-    public enum ScoutTargetKind { Explore, Surveil }
+    // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
+    // observed hex whose frozen IntelAge is stale; Surveil -> a stale honest contact's last-known
+    // hex (Contact non-null). The numeric identities remain Explore=0, Surveil=1, Refresh=2.
+    public enum ScoutTargetKind { Explore, Surveil, Refresh }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a
