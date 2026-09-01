@@ -7,15 +7,17 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer. It now has TWO deliberately separate pieces:
+    //  Last ordinary mutating V2 layer. It now has THREE deliberately separated pieces:
+    //    · decisive strategic pressure (may move/spend activation AP) toward an honestly-known
+    //      enemy Citadel after the army-targeted Raid lane runs out of contacts;
     //    · bounded strategic maintenance (may spend AP/resources): internal Facility placement,
     //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
     //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
     //
     //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
-    //  maintenance actions run, and only after maintenance is exhausted do we enter the zero-AP
+    //  pressure/maintenance actions run, and only after those settle do we enter the zero-AP
     //  Analyzer -> Planner -> Executor reorganisation pass. The AP invariant below therefore
-    //  starts AFTER maintenance and still protects Step 8C's structural operations from drift.
+    //  starts AFTER all strategic actions and still protects structural cleanup from drift.
     // ===========================================================================================
     public sealed class HousekeepingResult
     {
@@ -54,13 +56,39 @@ namespace Game.Ai.V2
                     ReconObjectiveEvaluator.Enumerate(snapshot));
             }
 
+            // Structure pressure is movement, so execute it before the synchronous maintenance
+            // actions below. Terminal Draw has already declined to consume its activation budget.
+            if (hand != null && player != null && root != null && ctx != null)
+            {
+                StrategicPressurePlan pressure = StrategicPressureAdvance.BuildPlan(
+                    player, root, hand, ctx, commitments);
+                if (pressure != null)
+                {
+                    bool pressureChanged = false;
+                    yield return StrategicPressureAdvance.Execute(
+                        player, root, ctx, pressure, changed => pressureChanged = changed);
+                    if (pressureChanged)
+                    {
+                        result.MaintenanceActions++;
+                        result.StateChanged = true;
+                        snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+                        commitments = ActorCommitments.FromIntents(
+                            MissionIntentRegistry.GetOrCreate(player).All,
+                            snapshot,
+                            ReconObjectiveEvaluator.Enumerate(snapshot));
+                    }
+                }
+            }
+
             // Terminal Draw has already declined to consume AP whenever this policy has a useful
             // action. Execute a small bounded number here. Each success refreshes the operational
             // snapshot so a capacity upgrade can expose a Facility placement next, and generation
             // of Equipment can expose an attach on the following iteration.
             if (hand != null && player != null && root != null && ctx != null)
             {
-                for (int i = 0; i < StrategicMaintenancePolicy.MaxActionsPerTurn; i++)
+                int remaining = System.Math.Max(0,
+                    StrategicMaintenancePolicy.MaxActionsPerTurn - result.MaintenanceActions);
+                for (int i = 0; i < remaining; i++)
                 {
                     if (!StrategicMaintenancePolicy.TryExecuteBest(snapshot, player, root, hand, ctx))
                         break;
@@ -69,7 +97,7 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
                 }
                 if (result.MaintenanceActions > 0)
-                    AiDebugLog.Write($"[AI][V2] housekeeping maintenance — {result.MaintenanceActions} action(s) executed before structural cleanup");
+                    AiDebugLog.Write($"[AI][V2] housekeeping maintenance — {result.MaintenanceActions} strategic action(s) executed before structural cleanup");
             }
 
             Run(player, root, ctx, commitments, result);
@@ -93,7 +121,7 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // Maintenance above is allowed to spend. From THIS line onward reorganisation owns no
+            // Pressure/maintenance above may spend. From THIS line onward reorganisation owns no
             // AP, preserving the original Step-8C invariant exactly where it matters.
             int apBefore = root != null ? root.ActionPoints : 0;
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
@@ -126,10 +154,10 @@ namespace Game.Ai.V2
             {
                 result.ApInvariantViolated = true;
                 AiDebugLog.Write($"[AI][V2][ERROR] housekeeping AP invariant violated — AP {apBefore}->{root.ActionPoints}. "
-                    + "Structural reorganisation owns no AP; strategic maintenance is measured before this boundary.");
+                    + "Structural reorganisation owns no AP; strategic pressure/maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping — maintenance {result.MaintenanceActions}, "
+            AiDebugLog.Write($"[AI][V2] housekeeping — strategicActions {result.MaintenanceActions}, "
                 + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
                 + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
