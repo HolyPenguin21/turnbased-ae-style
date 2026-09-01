@@ -35,6 +35,7 @@ namespace CapabilityQualitySim
             S19_OptionalStealthGuardsAndClaims();
 
             S20_TerminalDrawConfigReconciled();
+            S21_PhaseBStrategicHeroClaim();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -271,6 +272,44 @@ namespace CapabilityQualitySim
                 FieldInfo f = typeof(AiConfigV2).GetField(name, BindingFlags.Public | BindingFlags.Static);
                 Check($"20c retired speculative reserve '{name}' is gone", f == null);
             }
+        }
+
+        // Spec §2 / §21 — Phase B surplus must not treat a card as generic surplus while it is
+        // still strategically claimed by an unresolved capability demand it could satisfy. The
+        // claim lookup is the pure gate that withholds a non-delivering placement during
+        // candidate construction; once the demand is gone the same card is free surplus again.
+        private static void S21_PhaseBStrategicHeroClaim()
+        {
+            var res = new MaterializationReservation();
+            var heroDemand = new AxisDemand
+            {
+                TraceId = "T-heroclaim",
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.Hero,
+                DesiredAmount = 1f,
+                Value = 39f,
+                RequiredTraits = TraitPreference.None,
+            };
+            res.UnresolvedDemands.Add(heroDemand);
+
+            AxisDemand claim = MaterializationCandidateBuilder.UnresolvedClaimFor(
+                res, CapabilityKind.Hero, null);
+            Check("21a hero card is strategically claimed while a Hero demand is unresolved",
+                ReferenceEquals(claim, heroDemand));
+
+            AxisDemand scoutClaim = MaterializationCandidateBuilder.UnresolvedClaimFor(
+                res, CapabilityKind.ScoutCapability, null);
+            Check("21b an unrelated capability is not claimed by the Hero demand", scoutClaim == null);
+
+            heroDemand.DesiredAmount = 0f;
+            AxisDemand goneClaim = MaterializationCandidateBuilder.UnresolvedClaimFor(
+                res, CapabilityKind.Hero, null);
+            Check("21c once the Hero demand is satisfied the card is free generic surplus", goneClaim == null);
+
+            res.UnresolvedDemands.Clear();
+            AxisDemand noClaim = MaterializationCandidateBuilder.UnresolvedClaimFor(
+                res, CapabilityKind.Hero, null);
+            Check("21d no unresolved demands -> no strategic claim", noClaim == null);
         }
 
         private static void Check(string label, bool ok)

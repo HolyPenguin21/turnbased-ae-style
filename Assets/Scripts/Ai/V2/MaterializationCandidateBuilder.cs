@@ -326,12 +326,20 @@ namespace Game.Ai.V2
                 bool soloOnly = cap == CapabilityKind.ScoutCapability;
                 IReadOnlyList<string> baseAbilities = EffectiveAbilities(def, card.Equipment);
 
+                // §2 — if this card is still strategically relevant to an unresolved capability
+                // demand, Phase B may only spend it on a placement that would actually deliver
+                // that capability. Otherwise no candidate is generated and the card stays in hand
+                // until Phase A resolves the demand or it drops out of the unresolved set.
+                AxisDemand strategicClaim = UnresolvedClaimFor(reservation, cap, baseAbilities);
+
                 foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
                 {
                     if (!CardPlayExecutor.Preflight(player, root, hand, ctx, opt.Bind(card), out _)) continue;
                     MaterializationPlan direct = MakeExistingPlan(MaterializationChainKind.Direct, null,
                         card, i, null, -1, opt, baseAbilities);
                     direct.FinalCapability = cap;
+                    if (strategicClaim != null && !CanDeliverDemandOperationally(direct, strategicClaim))
+                        continue;
                     if (StrategicManager.ReservesOkAfterChain(root, direct))
                     {
                         direct.Score = SurplusUtility(direct, inv, recce, hero, hand, baseAbilities);
@@ -378,6 +386,7 @@ namespace Game.Ai.V2
                         : hero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
                     bool soloOnly = cap == CapabilityKind.ScoutCapability;
                     IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
+                    AxisDemand strategicClaim = UnresolvedClaimFor(reservation, cap, genAbilities);
 
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly))
                     {
@@ -385,6 +394,8 @@ namespace Game.Ai.V2
                             null, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                             projected: genAbilities);
                         gen.FinalCapability = cap;
+                        if (strategicClaim != null && !CanDeliverDemandOperationally(gen, strategicClaim))
+                            continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, gen)) continue;
                         float util = (SurplusUtility(gen, inv, recce, hero, hand, genAbilities)
@@ -528,6 +539,23 @@ namespace Game.Ai.V2
             if (!ChainResourcesAffordable(root, player, p.ResCost)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;
             sink.Add((p, followupAp, p.ExpectedTraits));
+        }
+
+        // §2 — the best still-unresolved strategic demand this surplus card would be relevant to,
+        // or null. A non-null result means Phase B must not spend the card on a placement that
+        // cannot operationally deliver `cap`; it is held in hand instead.
+        internal static AxisDemand UnresolvedClaimFor(MaterializationReservation reservation,
+            CapabilityKind cap, IReadOnlyList<string> projectedAbilities)
+        {
+            if (reservation == null || reservation.UnresolvedDemands.Count == 0)
+                return null;
+            TraitPreference projTraits = TraitsOf(projectedAbilities);
+            return reservation.UnresolvedDemands
+                .Where(d => d != null && d.DesiredAmount > 0f && d.Capability == cap
+                    && (projTraits & d.RequiredTraits) == d.RequiredTraits)
+                .OrderByDescending(d => d.Value)
+                .ThenBy(d => (int)d.RequestingAxis)
+                .FirstOrDefault();
         }
 
         private static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)

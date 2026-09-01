@@ -251,8 +251,8 @@ namespace Game.Ai.V2
 
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                 CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
-                float delivered = DeliveredCapabilityAmount(chosenDemand, inv, afterInv);
-                bool operationallyDelivered = delivered > AiConfigV2.allocatorSliceEpsilon;
+                bool operationallyDelivered = FinalizeOperationalDelivery(player, ctx, snap, plan,
+                    chosenDemand, inv, afterInv, armyIdsBefore, out float delivered);
 
                 float borrowed = 0f;
                 if (operationallyDelivered)
@@ -262,9 +262,6 @@ namespace Game.Ai.V2
                         alreadyReserved + selected.FollowupAp);
                     ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
                     selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
-
-                    IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, snap, plan, chosenDemand);
-                    StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, chosenDemand.Capability, leased);
                     result.CapabilityDeliveries++;
                 }
                 else
@@ -449,6 +446,31 @@ namespace Game.Ai.V2
             }
         }
 
+        // §3 — the ONE post-delivery finalization path shared by Phase A, Phase B and (through
+        // those two) the bounded StrategicReactionPass. It owns delivered-capability measurement
+        // and the Housekeeping capability lease for every army created/modified to satisfy a live
+        // strategic demand, so a later Phase A / Phase B divergence cannot silently drop the lease
+        // again. Callers still own the parts that genuinely differ by phase: Phase A's discrete
+        // follow-up AP borrow against the axis ledger, and each phase's own residual bookkeeping.
+        private static bool FinalizeOperationalDelivery(PlayerSetupData player, AiTurnContext ctx,
+            WorldSnapshot afterSnap, MaterializationPlan plan, AxisDemand demand,
+            CapabilityInventory before, CapabilityInventory after, HashSet<int> armyIdsBefore,
+            out float delivered)
+        {
+            delivered = DeliveredCapabilityAmount(demand, before, after);
+            if (delivered <= AiConfigV2.allocatorSliceEpsilon)
+                return false;
+            IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
+            StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, demand.Capability, leased);
+            return true;
+        }
+
+        private static bool PlanBaseIsHeroCard(MaterializationPlan plan)
+        {
+            CardDefinition def = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
+            return def != null && def.cardType == CardType.Hero;
+        }
+
         private static bool CanDeliverResidualOperationally(MaterializationPlan plan, AxisDemand demand)
         {
             if (plan == null || demand == null)
@@ -522,6 +544,19 @@ namespace Game.Ai.V2
                         + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
                         + "evaluate as generic surplus");
 
+                // §2 — a Hero card that still matches an unresolved Hero demand must never be spent
+                // as generic surplus through a placement that delivers 0 Hero. Candidate
+                // construction (MaterializationCandidateBuilder.BestSurplus) already withholds such
+                // placements; this is the belt-and-braces stop so the hero is left in hand rather
+                // than burned into the garrison while the demand stays actionable.
+                if (matchedResidual != null && residual == null
+                    && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
+                        + $"unresolved {matchedResidual} but no placement delivers it; keep in hand, stop surplus");
+                    break;
+                }
+
                 if (residual == null && pick.Value.utility < admission.EffectiveThreshold)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
@@ -541,6 +576,8 @@ namespace Game.Ai.V2
                         + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
                         + $"resSlack {F(admission.ResourceSlackFactor)})");
 
+                var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
+                    .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
                 MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
                 result.MaterializationAttempts++;
                 if (play.Deployed) result.MaterializationsSucceeded++;
@@ -571,18 +608,25 @@ namespace Game.Ai.V2
 
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                 CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
-                float delivered = residual != null ? DeliveredCapabilityAmount(residual, inv, afterInv) : 0f;
-                if (residual != null && delivered > AiConfigV2.allocatorSliceEpsilon)
+                float delivered = 0f;
+                // §3 — Phase B now runs the SAME finalization path as Phase A: an army it created
+                // or modified to satisfy a strategic residual gets the Housekeeping capability
+                // lease, so the later zero-AP structural pass can no longer fold that force away
+                // in the same turn it was materialized.
+                bool operationalResidual = residual != null && FinalizeOperationalDelivery(
+                    player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
+                if (operationalResidual)
                 {
                     residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
                     if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
                         result.Reservation.UnresolvedDemands.Remove(residual);
+                    result.CapabilityDeliveries++;
                 }
                 AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
                     + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
                     + $"delivered {F(delivered)}, {plan.StableKey})");
 
-                if (residual != null && delivered > AiConfigV2.allocatorSliceEpsilon)
+                if (operationalResidual)
                 {
                     StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
                     AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
