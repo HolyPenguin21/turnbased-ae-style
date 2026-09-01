@@ -19,6 +19,7 @@ namespace Game.Ai.V2
         public int StartedTurn;
         public int LastProgressTurn;
         public int LastModeSwitchTurn;
+        public int LastStrategicReassignmentTurn;
     }
 
     public static class ReconAssignmentRegistry
@@ -28,8 +29,15 @@ namespace Game.Ai.V2
 
         // One strategic turn of hysteresis is enough to stop two proposals in the same pass from
         // ping-ponging an actor between Explore and Refresh, while still allowing the next turn's
-        // changed information picture to retask it immediately.
+        // changed information picture to retask it.
         private const int ModeHoldTurns = 1;
+
+        // Strategic heading is durable independently of a proposal's focus hex. A different mission
+        // in the SAME turn may not rewrite anchor/sector merely because it was materialised later.
+        // Reassignment becomes legal after one strategic turn, immediately after a mode change,
+        // when the old anchor has been reached, or after a real no-progress stall.
+        private const int StrategicReassignmentHoldTurns = 1;
+        private const int StrategicStallTurns = 2;
 
         public static void ClearAll() => ByPlayer.Clear();
 
@@ -45,24 +53,56 @@ namespace Game.Ai.V2
                 assignment = New(armyId, currentHex, strategicAnchor, requestedMode, turn);
                 byArmy[armyId] = assignment;
                 AiDebugLog.Write($"[AI][V2][Recon][Assignment] actor=#{armyId} mode={requestedMode} "
-                    + $"sector={assignment.StrategicSector} start={turn}");
+                    + $"anchor=({strategicAnchor.Q},{strategicAnchor.R}) sector={assignment.StrategicSector} start={turn}");
                 return assignment;
             }
 
-            // Mission objectives refresh the actor's strategic prior, but never become its durable
-            // identity. Mode switching is deliberately hysteretic: the same-turn allocator cannot
-            // thrash the actor, while a later turn may change Explore <-> Refresh as the map ages.
+            // Mission objectives are strategic priors, never durable destination identities.
+            // Mode switching and strategic heading reassignment are separate hysteresis decisions.
+            bool modeChanged = false;
             if (assignment.Mode != requestedMode
                 && turn - assignment.LastModeSwitchTurn >= ModeHoldTurns)
             {
                 ReconMode old = assignment.Mode;
                 assignment.Mode = requestedMode;
                 assignment.LastModeSwitchTurn = turn;
+                modeChanged = true;
                 AiDebugLog.Write($"[AI][V2][Recon][Assignment] actor=#{armyId} mode {old}→{requestedMode} turn={turn}");
             }
 
-            assignment.StrategicAnchor = strategicAnchor;
-            assignment.StrategicSector = ReconDirectionModel.Sector(currentHex, strategicAnchor);
+            if (!assignment.StrategicAnchor.Equals(strategicAnchor))
+            {
+                ReconSector requestedSector = ReconDirectionModel.Sector(currentHex, strategicAnchor);
+                bool oldAnchorReached = currentHex.Equals(assignment.StrategicAnchor);
+                bool stalled = turn - assignment.LastProgressTurn >= StrategicStallTurns;
+                bool holdExpired = turn - assignment.LastStrategicReassignmentTurn >= StrategicReassignmentHoldTurns;
+                bool allow = modeChanged || oldAnchorReached || stalled || holdExpired;
+
+                if (allow)
+                {
+                    HexCoord oldAnchor = assignment.StrategicAnchor;
+                    ReconSector oldSector = assignment.StrategicSector;
+                    assignment.StrategicAnchor = strategicAnchor;
+                    assignment.StrategicSector = requestedSector;
+                    assignment.LastStrategicReassignmentTurn = turn;
+
+                    string reason = modeChanged ? "mode-change"
+                        : oldAnchorReached ? "anchor-reached"
+                        : stalled ? "stalled"
+                        : "hold-expired";
+                    AiDebugLog.Write($"[AI][V2][Recon][Assignment] actor=#{armyId} reassign "
+                        + $"anchor=({oldAnchor.Q},{oldAnchor.R})→({strategicAnchor.Q},{strategicAnchor.R}) "
+                        + $"sector={oldSector}→{requestedSector} reason={reason} turn={turn}");
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI][V2][Recon][Assignment] actor=#{armyId} keep "
+                        + $"anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R}) "
+                        + $"sector={assignment.StrategicSector}; suppress incoming=({strategicAnchor.Q},{strategicAnchor.R}) "
+                        + $"requestedSector={requestedSector} reason=strategic-hold turn={turn}");
+                }
+            }
+
             return assignment;
         }
 
@@ -126,6 +166,7 @@ namespace Game.Ai.V2
             StartedTurn = turn,
             LastProgressTurn = turn,
             LastModeSwitchTurn = turn,
+            LastStrategicReassignmentTurn = turn,
         };
     }
 }
