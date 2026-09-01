@@ -12,10 +12,11 @@ namespace Game.Ai.V2
     //  OnDrawClicked uses, with DrawOne itself refusing to overflow the hand capacity.
     //
     //  IMPORTANT: terminal Draw is the LAST strategic fallback. Before consuming its AP this seam
-    //  checks StrategicMaintenancePolicy for actions that Phase-B materialization cannot express:
-    //  Base capacity upgrades, internal Facility placement, equipment for already-deployed units,
-    //  and standalone Research/Production. If one is available we leave the AP untouched and let
-    //  Housekeeping's pre-reorganisation maintenance pass execute it authoritatively.
+    //  checks the post-strategy actions Phase-B materialization cannot express directly:
+    //  Base capacity/internal Facility maintenance, Equipment on already-deployed units,
+    //  standalone Research/Production, and decisive movement toward an honestly-known enemy
+    //  Citadel once the ordinary army-targeted Raid lane has no contact left. If one is available
+    //  we leave the AP untouched and let Housekeeping's pre-reorganisation pass execute it.
     // ===========================================================================================
     public static class CardDrawExecutor
     {
@@ -31,10 +32,10 @@ namespace Game.Ai.V2
 
             if (AiHandRegistry.TryGetOwner(hand, out PlayerSetupData maintenanceOwner)
                 && maintenanceOwner != null
-                && StrategicMaintenancePolicy.HasPriorityAction(maintenanceOwner, root, hand, ctx))
+                && (StrategicMaintenancePolicy.HasPriorityAction(maintenanceOwner, root, hand, ctx)
+                    || StrategicPressureAdvance.HasAction(maintenanceOwner, root, hand, ctx)))
             {
-                AiDebugLog.Write("[AI][V2]   strat.B terminal — preserve AP: strategic maintenance "
-                    + "(facility capacity / facility placement / equipment / generation) outranks Draw");
+                AiDebugLog.Write("[AI][V2]   strat.B terminal — preserve AP: strategic maintenance/pressure outranks Draw");
                 return false;
             }
 
