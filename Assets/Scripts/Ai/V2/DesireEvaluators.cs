@@ -36,9 +36,12 @@ namespace Game.Ai.V2
     //    raidOpportunity — "a profitable target I can take right now" (opportunity + surplus +
     //                      relativeEdge + momentum).  `opportunity` comes from the shared
     //                      CombatOpportunityAnalyzer — never a private aggression-only estimator.
-    //    warPressure     — "built out, economy fine, time to break the main opponent"
+    //    warPressure     — "built out, economy fine, time to break a KNOWN opponent/neutral target"
     //                      (potentialSaturation + surplus + ecoGate + relativeEdge).
-    //    raw = max(raidOpportunity, warPressure) * (UnderSiege ? aggSiegeDamp : 1).
+    //    raw = knownTargetGate * max(raidOpportunity, warPressure)
+    //          * (UnderSiege ? aggSiegeDamp : 1).
+    //    Military readiness without a known raid target is NOT aggression; in the blind opening it
+    //    must leave budget to Recon so a neutral/enemy target can actually be discovered first.
     //
     //  The breakdown (DesireBreakdown) is returned alongside the vector so MissionLayer picks the
     //  RIGHT mission from it (exploration -> VisitHex, surveillance -> watch a stale zone,
@@ -51,39 +54,29 @@ namespace Game.Ai.V2
     //  rise/fall handling belongs with the Defence evaluator, a later step.
     // ===========================================================================================
 
-    // Response-curve primitives. Everything else (Clamp01 / Lerp / SmoothStep) is Mathf as-is.
     internal static class Curves
     {
-        // 0 below lo, 1 at/above hi, linear between.
         public static float Ramp(float v, float lo, float hi) =>
             Mathf.Clamp01((v - lo) / Mathf.Max(0.0001f, hi - lo));
 
         public static float InvRamp(float v, float lo, float hi) => 1f - Ramp(v, lo, hi);
     }
 
-    // Step-3 evaluator output — the "why" behind each axis. Not just debug: MissionLayer reads it.
     public sealed class DesireBreakdown
     {
-        // --- Recon (one axis, three contributions) ---
         public float ReconExploration;
         public float ReconSurveillance;
         public float ReconEnemyBlindness;
 
-        // --- Aggression (one axis, two drivers over shared sub-terms) ---
-        public float AggRaidOpportunity;   // driver
-        public float AggWarPressure;       // driver
+        public float AggRaidOpportunity;
+        public float AggWarPressure;
         public float AggOpportunity;
         public float AggSurplus;
         public float AggRelativeEdge;
         public float AggPotentialSaturation;
-        public float AggMomentum;          // Clamp01(0.5 + 0.5*enemyLossPulse - 0.5*ownLossPulse)
+        public float AggMomentum;
 
-        // Carried through verbatim so downstream reuses this analysis, never re-derives it.
         public CombatOpportunity BestOpportunity = CombatOpportunity.None;
-        // Step 9 — the WHOLE shared combat-opportunity report from this cycle's Aggression
-        // evaluation, frozen here so AggressionObjectiveEvaluator can turn it into frozen Raid
-        // objectives and DemandLayer / AggressionMissionPlanner read the same set. The Raid lane
-        // never re-scans the world (spec §9, AC #5).
         public CombatOpportunityReport OpportunityReport = new CombatOpportunityReport();
         public float RequiredDefensiveReserve;
         public float OffensiveFreePower;
@@ -96,9 +89,6 @@ namespace Game.Ai.V2
         public Radar Radar;
     }
 
-    // Per-player cross-turn state — V2's own, same static-registry shape as V1's AiStrategyRegistry.
-    // Holds the only things step 3 needs to carry between turns: the smoothed axis values and the
-    // material for the two loss pulses.
     public sealed class AiRadarState
     {
         public readonly Dictionary<DesireAxis, float> Smoothed = new Dictionary<DesireAxis, float>();
@@ -106,10 +96,6 @@ namespace Game.Ai.V2
         public float EnemyLossPulse;
         public float OwnLossPulse;
         public int LastTurn = -1;
-
-        // Honest, positioned enemy contacts seen last turn. Matched contact-to-contact next turn
-        // (owner + within enemyLossMatchRadius) so a force merely walking out of vision — the
-        // contact disappearing entirely — is NOT counted as an enemy loss.
         public List<ObservedContact> PrevObservedEnemies = new List<ObservedContact>();
 
         public struct ObservedContact
@@ -137,9 +123,6 @@ namespace Game.Ai.V2
         public static void Clear() => ByPlayer.Clear();
     }
 
-    // ===========================================================================================
-    //  THE EVALUATOR ENTRY POINT
-    // ===========================================================================================
     public static class StrategyLayer
     {
         public static RadarAssessment Evaluate(WorldSnapshot snapshot, AiRadarState state)
@@ -160,11 +143,9 @@ namespace Game.Ai.V2
 
             bool underSiege = snapshot.Threat != null && snapshot.Threat.UnderSiege;
 
-            // ---- momentum pulses (the only step that needs cross-turn state) ----
             UpdateLossPulses(snapshot, state, out float enemyDropFrac, out float ownDropFrac);
             float momentum = Mathf.Clamp01(0.5f + 0.5f * state.EnemyLossPulse - 0.5f * state.OwnLossPulse);
 
-            // ================= RECON =================
             float exploration = ReconExploration(snapshot);
             float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
@@ -177,7 +158,6 @@ namespace Game.Ai.V2
             breakdown.ReconSurveillance = surveillance;
             breakdown.ReconEnemyBlindness = blindness;
 
-            // ================= AGGRESSION =================
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
             float opportunity = opp.Best.HasTarget ? opp.Best.OpportunityScore : 0f;
 
@@ -209,8 +189,11 @@ namespace Game.Ai.V2
                 + AiConfigV2.aggWarWeightEcoGate * ecoGate
                 + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
 
-            float rawAggression = Mathf.Clamp01(Mathf.Max(raidOpportunity, warPressure))
-                * (underSiege ? AiConfigV2.aggSiegeDamp : 1f);
+            bool hasKnownCombatTarget = opp.All != null && opp.All.Count > 0;
+            float rawAggression = hasKnownCombatTarget
+                ? Mathf.Clamp01(Mathf.Max(raidOpportunity, warPressure))
+                    * (underSiege ? AiConfigV2.aggSiegeDamp : 1f)
+                : 0f;
 
             breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
             breakdown.AggWarPressure = Mathf.Clamp01(warPressure);
@@ -224,7 +207,6 @@ namespace Game.Ai.V2
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
 
-            // ---- smoothing: Recon + Aggression only ----
             float recon = Smooth(state, DesireAxis.Recon, rawRecon);
             float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);
 
@@ -234,11 +216,9 @@ namespace Game.Ai.V2
             desires.Raw[DesireAxis.Economy] = AiConfigV2.desirePlaceholderInactive;
             desires.Raw[DesireAxis.Development] = AiConfigV2.desirePlaceholderInactive;
 
-            // ---- out-of-simplex scalars: raw, unsmoothed ----
             desires.MilitaryThreat = MilitaryThreat(snapshot, underSiege);
             desires.EconomicRunway = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ecoSecurity));
 
-            // ---- persist cross-turn state ----
             state.PrevOwnPower = snapshot.Self.TotalPower;
             state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
             state.LastTurn = snapshot.TurnNumber;
@@ -250,25 +230,12 @@ namespace Game.Ai.V2
             return new RadarAssessment { Desires = desires, Breakdown = breakdown, Radar = radar };
         }
 
-        // ---------------------------------------------------------------- Recon ----
-
-        // DECAYING contribution. Driven by ExplorableUnknownFrac — the share of the map that is
-        // still dark AND still reachable on foot (WorldAnalysis floods the frontier outward). The
-        // slice locked behind an enemy citadel or a hostile guard is already excluded from that
-        // number, so no separate floor is needed; it hits 0 exactly when the frontier empties.
-        // No turn term — decay is state-driven. (Build-order step 4 — replaces reconUnreachableFloor.)
         private static float ReconExploration(WorldSnapshot snap)
         {
             float explorable = snap.MapKnowledge != null ? snap.MapKnowledge.ExplorableUnknownFrac : 0f;
             return Curves.Ramp(explorable, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
         }
 
-        // SUSTAINED contribution. A non-burning baseline (there is always value in re-scanning hex
-        // content, resource sites, keeping vision current) plus a bump for the share of TARGETABLE
-        // contacts gone stale. "Targetable" == honest AND positioned: a Cheat Region/Unknown
-        // contact has no hex a Scout could be sent to (type invariant), so counting it here would
-        // raise surveillance desire with no surveil mission able to answer it — that uncertainty
-        // is enemyBlindness's job. Stale == LastKnown (Exact means we see it right now).
         private static float ReconSurveillance(WorldSnapshot snap)
         {
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
@@ -286,12 +253,6 @@ namespace Game.Ai.V2
                 + AiConfigV2.reconStaleShareWeight * staleShare);
         }
 
-        // "We know an opponent is fielded but have zero honest CONCRETE position on it." Binary
-        // magnitude. Must read the SAME contract ReconSurveillance does — snap.Threat.Contacts,
-        // which since build-order step 4 also carries AiReconMemory's historical LastKnown entries.
-        // Reading snap.Known.EnemySightings instead would double-count: a contact that has aged out
-        // of V1's 2-turn memory but still has an honest last-known hex would raise Surveillance
-        // ("I know a stale position") AND Blindness ("I know no position") at the same time.
         private static float ReconEnemyBlindness(WorldSnapshot snap)
         {
             bool opponentFielded = snap.TrueWorld?.Opponents != null
@@ -301,13 +262,6 @@ namespace Game.Ai.V2
             return (opponentFielded && !hasConcreteHonestPosition) ? AiConfigV2.reconBlindnessMagnitude : 0f;
         }
 
-        // ---------------------------------------------------------------- Aggression ----
-
-        // OffensiveFreePower = TotalPower - RequiredDefensiveReserve, where the reserve is what the
-        // ThreatModel says we need to hold home confidently: per threatened Citadel/Base/Facility,
-        // the strongest threatening contact's power * a confidence margin. Garrison force ABOVE
-        // that reserve counts as usable — the surplus grows from security-optional strength, not
-        // from army size alone.
         private static void ComputeSurplus(WorldSnapshot snap, out float requiredReserve, out float freePower)
         {
             var perAsset = new Dictionary<HexCoord, float>();
@@ -332,9 +286,6 @@ namespace Game.Ai.V2
             freePower = Mathf.Max(0f, snap.Self.TotalPower - reserve);
         }
 
-        // Out-of-simplex absolute scalar — the normalised vector can't tell "40% to Defence because
-        // nothing else competed" from "40% is nowhere near enough". Top Severity on a Citadel/Base
-        // asset, forced up when the AI is behaving as if besieged.
         private static float MilitaryThreat(WorldSnapshot snap, bool underSiege)
         {
             float top = 0f;
@@ -348,12 +299,9 @@ namespace Game.Ai.V2
             return Mathf.Clamp01(top);
         }
 
-        // ---------------------------------------------------------------- pulses / state ----
-
         private static void UpdateLossPulses(WorldSnapshot snap, AiRadarState state,
             out float enemyDropFrac, out float ownDropFrac)
         {
-            // --- own losses: no fog, straight TotalPower delta ---
             float curOwn = snap.Self.TotalPower;
             ownDropFrac = (state.LastTurn >= 0 && state.PrevOwnPower > 1f)
                 ? Mathf.Clamp01((state.PrevOwnPower - curOwn) / state.PrevOwnPower)
@@ -361,7 +309,6 @@ namespace Game.Ai.V2
             state.OwnLossPulse = Mathf.Max(state.OwnLossPulse * AiConfigV2.lossPulseDecay,
                 Curves.Ramp(ownDropFrac, AiConfigV2.lossPulseRampLo, AiConfigV2.lossPulseRampHi));
 
-            // --- enemy losses: observed-only, matched contact-to-contact ---
             enemyDropFrac = 0f;
             List<AiRadarState.ObservedContact> current = CurrentObservedEnemies(snap);
             if (state.LastTurn >= 0 && state.PrevObservedEnemies != null && state.PrevObservedEnemies.Count > 0)
@@ -381,7 +328,7 @@ namespace Game.Ai.V2
                             bestIdx = i;
                         }
                     }
-                    if (bestIdx < 0) continue;              // contact vanished — not a loss
+                    if (bestIdx < 0) continue;
                     matchedPrevTotal += prev.Power;
                     drop += Mathf.Max(0f, prev.Power - pool[bestIdx].Power);
                     pool.RemoveAt(bestIdx);
@@ -425,8 +372,6 @@ namespace Game.Ai.V2
             state.Smoothed[axis] = smoothed;
             return smoothed;
         }
-
-        // ---------------------------------------------------------------- log ----
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
