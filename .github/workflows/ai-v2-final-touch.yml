@@ -1,0 +1,51 @@
+name: Align AI V2 economy telemetry
+
+on:
+  push:
+    branches:
+      - fix/ai-v2-recon-strategy-loop
+    paths:
+      - .github/workflows/ai-v2-final-touch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ai-v2-recon-strategy-loop
+          fetch-depth: 0
+      - name: Patch telemetry
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('Assets/Scripts/Ai/V2/DemandLayer.cs')
+          text = p.read_text()
+          replacements = [
+              ("//  ECO — a resource type with NO income source AND a known unbuilt resource hex for it.\n        //  This is a structural gap (the AI is not extracting a resource it could be), not a\n        //  surplus opportunity. One demand at a time.",
+               "//  ECO — a resource type whose recurring income is BELOW the sustainable target AND a\n        //  known unbuilt resource hex exists for it. The target combines own deck/card cadence\n        //  with opponent income; this layer only emits work when a concrete site is actionable.\n        //  One demand at a time."),
+              ("+ $\"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=no_income_source_for_type\");",
+               "+ $\"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=income_below_target\");"),
+              ("Explain = $\"no income for {rh.Value}; known unbuilt {rh.Value} site @({rh.Key.Q},{rh.Key.R})\",",
+               "Explain = $\"{rh.Value} income {s.Self.PerTurnIncome.Get(rh.Value):0.##} below target \"\n                        + $\"{s.Economy.IncomeTarget.Get(rh.Value):0.##}; known unbuilt site @({rh.Key.Q},{rh.Key.R})\","),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected one match, got {text.count(old)} for {old[:60]!r}')
+              text = text.replace(old, new, 1)
+          p.write_text(text)
+          Path('.github/workflows/ai-v2-final-touch.yml').unlink()
+          PY
+          git diff --check
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(ai-v2): align economy demand telemetry"
+          git push origin HEAD:fix/ai-v2-recon-strategy-loop
