@@ -18,6 +18,11 @@ namespace Game.Ai.V2
             if (demand == null || hand == null)
                 return "diag unavailable";
 
+            bool strategicStarvationAxis = demand.RequestingAxis == DesireAxis.Aggression
+                || demand.RequestingAxis == DesireAxis.Recon;
+            if (strategicStarvationAxis)
+                ResourceStarvationRegistry.BeginVerifiedPass(player);
+
             int matching = 0, traitMatching = 0, placements = 0, preflight = 0;
             int opDeliver = 0, resReject = 0;
             float minDirectNeed = float.PositiveInfinity;
@@ -123,7 +128,7 @@ namespace Game.Ai.V2
             // §17 — starvation pressure is now evidence-based. The old StrategicManager call
             // still loops over zero-stock resources after this method, but ResourceStarvationRegistry
             // ignores unverified calls. Arm+consume only deficits this diagnostic actually proved.
-            if (demand.RequestingAxis == DesireAxis.Aggression || demand.RequestingAxis == DesireAxis.Recon)
+            if (strategicStarvationAxis)
             {
                 foreach (ResourceType type in verifiedResourceBlocks)
                 {
