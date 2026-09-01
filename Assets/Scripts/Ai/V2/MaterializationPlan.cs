@@ -100,10 +100,12 @@ namespace Game.Ai.V2
         private float score;
         public float Score
         {
-            get => score;
-            set
+            // Keep the stored value raw and derive the Phase-B-only placement correction on read.
+            // That makes the correction idempotent if a caller later re-scores a plan and also
+            // avoids object-initializer ordering coupling between Score, OwnerAxis and Deploy.
+            get
             {
-                score = value;
+                float adjusted = score;
 
                 // Phase A owns explicit placement semantics through the requested capability, so
                 // keep its historical Garrison > Existing > Shell ordering intact. Phase B is
@@ -117,10 +119,12 @@ namespace Game.Ai.V2
                     && (FinalCapability == CapabilityKind.FieldCombatPower
                         || FinalCapability == CapabilityKind.Hero))
                 {
-                    score -= AiConfigV2.stratPlacementGarrisonBonus
-                             + AiConfigV2.stratPlacementReusableShellBonus;
+                    adjusted -= AiConfigV2.stratPlacementGarrisonBonus
+                                + AiConfigV2.stratPlacementReusableShellBonus;
                 }
+                return adjusted;
             }
+            set => score = value;
         }
         public string StableKey;
         public string Explain;
