@@ -32,6 +32,10 @@ namespace HousekeepingSim
             Scenario15_HealthyFullArmiesCanImproveCompositionBySwap();
             Scenario16_FirstHeroCapacityOrderMirrorsGameplay();
             Scenario17_NoUnitTouchedTwiceInOnePlan();
+            Scenario18_GarrisonPromotesHighestCapacityHeroToCommander();
+            Scenario19_CommanderReorderRaisesModelledCapacity();
+            Scenario20_CommanderTieBreakIsDeterministic();
+            Scenario21_LeasedSingletonNeverFolded();
 
             Console.WriteLine();
             Console.WriteLine($"housekeeping-sim: {_passed} passed, {_failed} failed");
@@ -230,6 +234,107 @@ namespace HousekeepingSim
             }
             Check("17 planner never schedules the same unit twice", touched.Count == touched.Distinct().Count());
         }
+
+        // §7 — a garrison holding two heroes, the weaker one first, is reordered so the
+        // highest-CommandRating hero becomes commander. Zero-AP, membership preserved.
+        private static void Scenario18_GarrisonPromotesHighestCapacityHeroToCommander()
+        {
+            _nextKey = 0;
+            var weak = Hero(3, cr: 2);
+            var strong = Hero(3, cr: 6);
+            var garr = Garrison(1, floor: 0, weak, strong, U(3), U(3));
+            var field = Field(2, U(8), U(8));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+
+            Check("18 a commander reorder is planned", plan.Transfers.Count == 1 && plan.Transfers[0].IsReorder);
+            Check("18 reorder targets the garrison", plan.Transfers[0].FromArmyId == 1);
+            Check("18 the promoted hero is the higher-CommandRating one", plan.Transfers[0].UnitKey == strong.Key);
+            Check("18 expected roster now leads with the strong hero",
+                plan.ExpectedMembership[1].Count > 0 && plan.ExpectedMembership[1][0] == strong.Key);
+            Check("18 membership is unchanged (nothing added/removed)",
+                plan.ExpectedMembership[1].Count == 4
+                && plan.ExpectedMembership[1].OrderBy(k => k).SequenceEqual(
+                    new[] { weak.Key, strong.Key }.Concat(
+                        plan.ExpectedMembership[1].Where(k => k != weak.Key && k != strong.Key)).OrderBy(k => k)));
+        }
+
+        // §7 — the reorder uses the canonical ArmyData.ComputeCapacity semantics mirrored by
+        // ReorgViability.Capacity; after it, the modelled capacity is the strong hero's rating.
+        private static void Scenario19_CommanderReorderRaisesModelledCapacity()
+        {
+            _nextKey = 0;
+            var weak = Hero(3, cr: 2);
+            var strong = Hero(3, cr: 7);
+            var before = new List<ReorgUnit> { weak, strong, U(3), U(3) };
+            Check("19 capacity before reorder is the weak hero's rating", ReorgViability.Capacity(before, true) == 2);
+            var after = new List<ReorgUnit> { strong, weak, U(3), U(3) };
+            Check("19 capacity after reorder is the strong hero's rating", ReorgViability.Capacity(after, true) == 7);
+
+            var garr = Garrison(1, floor: 0, weak, strong, U(3), U(3));
+            var field = Field(2, U(8), U(8));
+            var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+            var reordered = plan.ExpectedMembership[1]
+                .Select(k => new[] { weak, strong }.FirstOrDefault(h => h.Key == k) ?? U0(k)).ToList();
+            Check("19 planned order yields the canonical higher capacity",
+                ReorgViability.Capacity(reordered, true) == 7);
+        }
+
+        // §7 — equal capacity heroes trigger no reorder (and no churn); identical input yields
+        // an identical plan across repeated runs.
+        private static void Scenario20_CommanderTieBreakIsDeterministic()
+        {
+            (int count, int firstKey) Run()
+            {
+                _nextKey = 0;
+                var h1 = Hero(3, cr: 4);
+                var h2 = Hero(3, cr: 4);
+                var garr = Garrison(1, floor: 0, h1, h2, U(3), U(3));
+                var field = Field(2, U(8), U(8));
+                var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+                return (plan.Transfers.Count, plan.Transfers.Count > 0 ? plan.Transfers[0].UnitKey : -1);
+            }
+            var a = Run();
+            var b = Run();
+            Check("20 equal-CR heroes produce no reorder", a.count == 0);
+            Check("20 repeated runs are identical", a == b);
+
+            (int, int, bool) Run3()
+            {
+                _nextKey = 0;
+                var mid = Hero(3, cr: 3);
+                var top = Hero(3, cr: 8);
+                var low = Hero(3, cr: 2);
+                var garr = Garrison(1, floor: 0, mid, top, low, U(3), U(3), U(3));
+                var field = Field(2, U(8), U(8));
+                var plan = ArmyReorganizationPlanner.Plan(Group(garr, field));
+                return (plan.Transfers.Count, plan.Transfers.Count > 0 ? plan.Transfers[0].UnitKey : -1,
+                    plan.Transfers.Count > 0 && plan.Transfers[0].IsReorder);
+            }
+            var c1 = Run3();
+            var c2 = Run3();
+            Check("20 three-hero best pick is deterministic", c1 == c2 && c1.Item3);
+        }
+
+        // §7/§10 — a strategically-leased singleton (ProtectedMissionArmy) is never folded away,
+        // even next to a viable field army that could absorb it.
+        private static void Scenario21_LeasedSingletonNeverFolded()
+        {
+            _nextKey = 0;
+            var leased = Protected(1, U(5));
+            var viable = Field(2, U(4), U(4));
+            var spare = Field(3, U(4), U(4));
+            var plan = ArmyReorganizationPlanner.Plan(Group(leased, viable, spare));
+            bool touchesLeased = plan.Transfers.Any(t => t.FromArmyId == 1 || t.ToArmyId == 1);
+            Check("21 leased singleton container is never touched", !touchesLeased);
+            Check("21 leased singleton keeps its member",
+                !plan.ExpectedMembership.ContainsKey(1) || plan.ExpectedMembership[1].Count == 1);
+        }
+
+        private static ReorgUnit U0(int key) => new ReorgUnit
+        {
+            Key = key, IsHero = false, CommandRating = 0, Power = 3, Range = 1,
+            TypeTags = new[] { UnitTypeTag.Infantry },
+        };
 
         private static ReorgUnit U(float power, int range = 1, bool recce = false,
             UnitTypeTag tag = UnitTypeTag.Infantry, int activationApCost = 0) => new ReorgUnit

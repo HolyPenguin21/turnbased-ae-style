@@ -12,6 +12,7 @@ namespace Game.Ai.V2
             int legality = 0;
             int singles = 0;
             int nonViable = 0;
+            int commandWaste = 0;
             float minStrength = float.MaxValue;
             float composition = 0f;
             bool anyViable = false;
@@ -23,6 +24,11 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.Capacity(units, meta.IsGarrison) < units.Count)
                     legality++;
+
+                // §7 — commander order is a formation-quality concern for every reorderable
+                // container, garrison included. Accumulate before the garrison early-out.
+                if (meta.CanChangeComposition)
+                    commandWaste += CommandCapacityWaste(units);
 
                 if (meta.IsGarrison)
                 {
@@ -56,8 +62,28 @@ namespace Game.Ai.V2
             }
 
             float negMin = anyViable ? -minStrength : 0f;
-            return new Outcome(garrisonDeficit, legality, singles, nonViable,
+            return new Outcome(garrisonDeficit, legality, singles, nonViable, commandWaste,
                 negMin, -composition, s.Transfers.Count);
+        }
+
+        // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster
+        // order here mirrors the live ArmyData.Members order (Analyzer preserves it; a planned
+        // commander reorder rewrites it), so units[firstHero] is the container's real commander
+        // and ReorgViability.Capacity already reads its CommandRating.
+        private static int CommandCapacityWaste(List<ReorgUnit> units)
+        {
+            int bestCr = 0;
+            int firstCr = -1;
+            foreach (ReorgUnit u in units)
+            {
+                if (u == null || !u.IsHero)
+                    continue;
+                if (firstCr < 0)
+                    firstCr = u.CommandRating;
+                if (u.CommandRating > bestCr)
+                    bestCr = u.CommandRating;
+            }
+            return firstCr < 0 ? 0 : Math.Max(0, bestCr - firstCr);
         }
     }
 }

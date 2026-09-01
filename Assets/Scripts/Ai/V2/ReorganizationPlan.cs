@@ -14,7 +14,12 @@ namespace Game.Ai.V2
         public readonly int SwapUnitKey;
         public readonly string Reason;
 
+        // -2 = a zero-AP commander reorder inside one container (FromArmyId == ToArmyId, UnitKey
+        // is the hero to promote to first). Not a member transfer, not a swap.
+        private const int ReorderSentinel = -2;
+
         public bool IsSwap => SwapUnitKey >= 0;
+        public bool IsReorder => SwapUnitKey == ReorderSentinel;
 
         public PlannedTransfer(int unitKey, int fromArmyId, int toArmyId, string reason)
             : this(unitKey, fromArmyId, toArmyId, -1, reason) { }
@@ -30,6 +35,9 @@ namespace Game.Ai.V2
 
         public static PlannedTransfer Swap(int unitAKey, int armyAId, int unitBKey, int armyBId, string reason) =>
             new PlannedTransfer(unitAKey, armyAId, armyBId, unitBKey, reason);
+
+        public static PlannedTransfer Reorder(int heroKey, int armyId, string reason) =>
+            new PlannedTransfer(heroKey, armyId, armyId, ReorderSentinel, reason);
     }
 
     public sealed class ReorganizationPlan
@@ -48,9 +56,11 @@ namespace Game.Ai.V2
         {
             if (IsEmpty)
                 return $"({Q},{R}) no-op";
-            IEnumerable<string> ops = Transfers.Select(t => t.IsSwap
-                ? $"swap u{t.UnitKey}:#{t.FromArmyId}<->u{t.SwapUnitKey}:#{t.ToArmyId}"
-                : $"u{t.UnitKey}:#{t.FromArmyId}->#{t.ToArmyId}");
+            IEnumerable<string> ops = Transfers.Select(t => t.IsReorder
+                ? $"commander u{t.UnitKey}:#{t.FromArmyId}"
+                : t.IsSwap
+                    ? $"swap u{t.UnitKey}:#{t.FromArmyId}<->u{t.SwapUnitKey}:#{t.ToArmyId}"
+                    : $"u{t.UnitKey}:#{t.FromArmyId}->#{t.ToArmyId}");
             return $"({Q},{R}) {Transfers.Count} reorg operation(s): {string.Join(", ", ops)}";
         }
     }

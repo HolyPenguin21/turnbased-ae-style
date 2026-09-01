@@ -48,6 +48,32 @@ namespace Game.Ai.V2
                     break;
                 }
 
+                if (t.IsReorder)
+                {
+                    // §7 — zero-AP commander promotion. No transfer, no AP, membership unchanged.
+                    if (from.Owner != player || !ArmyRegistry.AllForOwner(player).Contains(from))
+                    {
+                        Fail(res, plan, $"reorder rejected #{from.Id} ({unit.Name}) — container no longer owned/registered");
+                        break;
+                    }
+                    if (commitments != null && commitments.IsArmyClaimed(from.Id))
+                    {
+                        Fail(res, plan, $"reorder rejected #{from.Id} — became mission-claimed");
+                        break;
+                    }
+                    int oldCap = from.Capacity;
+                    if (!from.TryReorderCommander(unit, out string reorderFail))
+                    {
+                        Fail(res, plan, $"reorder failed #{from.Id} ({unit.Name}) ({reorderFail})");
+                        break;
+                    }
+                    res.Applied++;
+                    res.StateChanged = true;
+                    AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — commander reorder army #{from.Id} "
+                        + $"-> {unit.Name} capacity {oldCap}->{from.Capacity} ({t.Reason})");
+                    continue;
+                }
+
                 if (t.IsSwap)
                 {
                     if (!analysis.UnitByKey.TryGetValue(t.SwapUnitKey, out UnitData other) || other == null)

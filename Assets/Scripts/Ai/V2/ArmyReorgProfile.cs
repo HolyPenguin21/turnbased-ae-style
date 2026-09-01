@@ -76,6 +76,12 @@ namespace Game.Ai.V2
             if (Containers.Count < AiConfigV2.housekeepingMinContainersForGroup)
                 return false;
 
+            // §7 — a container (field OR garrison) whose commander is not its highest-capacity
+            // hero is worth a zero-AP planning pass on its own.
+            foreach (ReorgContainer c in Containers)
+                if (ReorgViability.HasCommanderUpgrade(c))
+                    return true;
+
             int viableMutableFields = 0;
             foreach (ReorgContainer c in Containers)
             {
@@ -127,6 +133,29 @@ namespace Game.Ai.V2
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsMutableGround && IsSingletonShape(c.Units);
+
+        // §7 — the container holds >= 2 heroes and its current commander (first hero in roster
+        // order, i.e. the one ComputeCapacity reads) does not have the highest CommandRating
+        // available, so a zero-AP reorder would raise its legal capacity.
+        public static bool HasCommanderUpgrade(ReorgContainer c)
+        {
+            if (c == null || !c.CanChangeComposition)
+                return false;
+            int first = -1;
+            int best = 0;
+            int heroes = 0;
+            foreach (ReorgUnit u in c.Units)
+            {
+                if (u == null || !u.IsHero)
+                    continue;
+                heroes++;
+                if (first < 0)
+                    first = u.CommandRating;
+                if (u.CommandRating > best)
+                    best = u.CommandRating;
+            }
+            return heroes >= 2 && first >= 0 && best > first;
+        }
 
         // Mirrors ArmyData.ComputeCapacity exactly: preserve roster order, first hero wins; for a
         // no-hero roster ask the canonical gameplay function for its default instead of duplicating

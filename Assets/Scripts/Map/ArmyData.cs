@@ -174,5 +174,23 @@ namespace Game.Map
             int index = unit.IsHero ? Members.Count(m => m.IsHero) : Members.Count;
             Members.Insert(index, unit);
         }
+
+        // Canonical zero-AP roster-order operation: make `hero` the FIRST member, so
+        // ComputeCapacity reads ITS CommandRating (see that method — first hero wins). Pure
+        // reorder — membership, unit identities and count are unchanged, nothing is spent, and
+        // the very next Capacity read reflects the new order. Heroes stay a contiguous prefix
+        // because `hero` is itself a hero moving to the front. Rejects a non-hero, a unit not in
+        // this army, or a hero that is already first (no-op).
+        public bool TryReorderCommander(UnitData hero, out string fail)
+        {
+            fail = null;
+            if (hero == null || !hero.IsHero) { fail = "not a hero"; return false; }
+            int idx = Members.IndexOf(hero);
+            if (idx < 0) { fail = "hero not in this army"; return false; }
+            if (idx == 0) { fail = "hero is already the commander"; return false; }
+            Members.RemoveAt(idx);
+            Members.Insert(0, hero);
+            return true;
+        }
     }
 }

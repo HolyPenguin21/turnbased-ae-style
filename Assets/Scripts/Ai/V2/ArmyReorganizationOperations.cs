@@ -5,6 +5,26 @@ namespace Game.Ai.V2
 {
     public static partial class ArmyReorganizationPlanner
     {
+        // §7 — zero-AP roster reorder inside one container: move `hero` to the front of the
+        // roster (heroes stay a contiguous prefix). Membership and counts are unchanged.
+        private static VState TryReorderCommander(VState state, int armyId, ReorgUnit hero)
+        {
+            VState c = state.Clone();
+            List<ReorgUnit> roster = c.Roster[armyId];
+            ReorgUnit u = roster.FirstOrDefault(x => x.Key == hero.Key);
+            if (u == null || !u.IsHero || u.IsCommitted || c.MovedUnitKeys.Contains(u.Key))
+                return null;
+            int idx = roster.IndexOf(u);
+            if (idx <= 0)
+                return null;
+            roster.RemoveAt(idx);
+            roster.Insert(0, u);
+            c.Transfers.Add(PlannedTransfer.Reorder(u.Key, armyId,
+                "promote highest-capacity hero to commander"));
+            c.MovedUnitKeys.Add(u.Key);
+            return c;
+        }
+
         private static VState TryWholeFold(VState state, int srcId, int dstId)
         {
             List<ReorgUnit> source = state.Roster[srcId];

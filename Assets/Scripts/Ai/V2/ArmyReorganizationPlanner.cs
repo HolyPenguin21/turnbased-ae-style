@@ -22,16 +22,23 @@ namespace Game.Ai.V2
             public readonly int Legality;
             public readonly int Singletons;
             public readonly int NonViable;
+            // §7 — sum over mutable multi-hero containers of (best hero CommandRating − first hero
+            // CommandRating). Zero when every such container is already led by its highest-capacity
+            // hero. Ranked as a formation-quality term: above generic strength/composition, below
+            // the hard legality/singleton/viability invariants.
+            public readonly int CommandCapacityWaste;
             public readonly float NegMinStrength;
             public readonly float NegComposition;
             public readonly int Operations;
 
-            public Outcome(int gd, int legal, int singles, int nonViable, float negMin, float negComp, int operations)
+            public Outcome(int gd, int legal, int singles, int nonViable, int commandWaste,
+                float negMin, float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
                 Singletons = singles;
                 NonViable = nonViable;
+                CommandCapacityWaste = commandWaste;
                 NegMinStrength = negMin;
                 NegComposition = negComp;
                 Operations = operations;
@@ -43,6 +50,7 @@ namespace Game.Ai.V2
                 c = Legality.CompareTo(o.Legality); if (c != 0) return c;
                 c = Singletons.CompareTo(o.Singletons); if (c != 0) return c;
                 c = NonViable.CompareTo(o.NonViable); if (c != 0) return c;
+                c = CommandCapacityWaste.CompareTo(o.CommandCapacityWaste); if (c != 0) return c;
                 if (NegMinStrength < o.NegMinStrength - FloatEps) return -1;
                 if (NegMinStrength > o.NegMinStrength + FloatEps) return 1;
                 if (NegComposition < o.NegComposition - FloatEps) return -1;

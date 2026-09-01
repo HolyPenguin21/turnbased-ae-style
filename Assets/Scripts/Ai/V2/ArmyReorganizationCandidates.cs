@@ -9,6 +9,31 @@ namespace Game.Ai.V2
         {
             List<int> armyIds = state.Meta.Keys.OrderBy(id => id).ToList();
 
+            // 0. Commander reorder — zero-AP, membership-preserving. For any reorderable container
+            // (field OR garrison) holding >= 2 heroes whose first hero is not the highest
+            // CommandRating, promote the strongest hero so ComputeCapacity reads its rating.
+            foreach (int armyId in armyIds)
+            {
+                ReorgContainer meta = state.Meta[armyId];
+                if (!meta.CanChangeComposition)
+                    continue;
+                List<ReorgUnit> units = state.Roster[armyId];
+                var heroes = units.Where(u => u.IsHero).ToList();
+                if (heroes.Count < 2)
+                    continue;
+                ReorgUnit current = heroes[0];
+                ReorgUnit best = heroes
+                    .OrderByDescending(h => h.CommandRating)
+                    .ThenByDescending(h => h.Power)
+                    .ThenBy(h => h.Key)
+                    .First();
+                if (ReferenceEquals(best, current) || best.CommandRating <= current.CommandRating)
+                    continue;
+                VState c = TryReorderCommander(state, armyId, best);
+                if (c != null)
+                    yield return c;
+            }
+
             // 1. Absorb/combine only a STRUCTURALLY DEGRADED occupied mutable field container.
             // WorthPlanning also admits healthy groups now so the composition pass below can run;
             // therefore it can no longer serve as the implicit guard that kept viable armies out
