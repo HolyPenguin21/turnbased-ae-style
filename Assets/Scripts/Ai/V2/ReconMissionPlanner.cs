@@ -7,12 +7,12 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7 continuity, + step 7.1 beam)
+    //  RECON MISSION PLANNER
     // ===========================================================================================
-    //  Fresh target value is local (frontier information / contact staleness). The global Recon
-    //  sub-driver still orders Explore vs Surveil, but Explore keeps a bounded local floor: a
-    //  discontinuous global explorable fraction must not turn a concrete 5-neighbour frontier job
-    //  into LAS~=0 while the objective itself still exists. Radar remains the global AP owner.
+    //  Three explicit Recon sub-kinds share one strategic axis:
+    //    Explore — new ground information; ground route/terrain witness.
+    //    Refresh — stale previously-observed information; ground route/terrain witness.
+    //    Surveil — stale enemy contact; observation-vantage semantics in provisioning.
     // ===========================================================================================
     internal static class MissionLayer
     {
@@ -20,8 +20,6 @@ namespace Game.Ai.V2
         {
             public readonly ScoutMissionTarget Target;
             public readonly float BaseValue;
-            // Cost-aware local score. The intrinsic information/risk value is adjusted only by the
-            // terrain/tempo witness for Explore; Surveil remains unchanged.
             public readonly float LocalAdmissionScore;
             public readonly string Explain;
             public readonly int FreshNeighbors;
@@ -123,9 +121,15 @@ namespace Game.Ai.V2
             if (si == null)
                 return null;
 
-            ReconObjective o = si.Kind == ScoutTargetKind.Explore
-                ? ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex)
-                : ReconObjectiveEvaluator.SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
+            ReconObjective o;
+            if (si.Kind == ScoutTargetKind.Explore)
+                o = ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex);
+            else if (ReconScoutKinds.IsRefresh(si.Kind))
+                o = ReconObjectiveEvaluator.RefreshAt(snap, si.FocusHex);
+            else
+                o = ReconObjectiveEvaluator.SurveilOf(snap,
+                    ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
+
             if (o == null)
                 return null;
             return ToCandidate(snap, o, bd).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
@@ -134,11 +138,12 @@ namespace Game.Ai.V2
         private static ScoutCandidate ToCandidate(WorldSnapshot snap, ReconObjective o, DesireBreakdown bd)
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
+            bool refresh = o.Kind == ReconObjectiveKind.Refresh;
             float rawSubDesire = explore ? bd.ReconExploration : bd.ReconSurveillance;
-            // The radar already carries the global Recon intensity. Here the sub-driver is only an
-            // Explore-vs-Surveil local preference. Preserve a quarter-strength local Explore signal
-            // while a concrete frontier objective exists, so reachability/flood discontinuities do
-            // not collapse a valid mission to zero and continuity does not cling to a 0-LAS ghost.
+
+            // Global Recon intensity is already owned by Radar. Here only the sub-driver orders
+            // concrete alternatives inside the lane. Explore retains a local floor while a real
+            // frontier objective exists; Refresh/Surveil follow surveillance pressure directly.
             float localSubDesire = explore
                 ? Mathf.Lerp(0.25f, 1f, Mathf.Clamp01(rawSubDesire))
                 : Mathf.Clamp01(rawSubDesire);
@@ -152,24 +157,43 @@ namespace Game.Ai.V2
             ScoutMissionTarget target = o.ToTarget();
             float intrinsicAdmission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
             ScoutRouteCostEvaluator.Assessment route = ScoutRouteCostEvaluator.Evaluate(snap, target);
-            float routeMultiplier = explore && route.HasRoute ? route.AdmissionMultiplier : 1f;
+            bool ground = explore || refresh;
+            float routeMultiplier = ground && route.HasRoute ? route.AdmissionMultiplier : 1f;
             float admission = intrinsicAdmission * routeMultiplier;
 
-            string explain = explore
-                ? $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
-                  + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
-                  + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(rawSubDesire)} "
-                  + $"localFloor {F(localSubDesire)} intrinsicLAS {F(intrinsicAdmission)}"
-                  + (route.HasRoute
-                      ? $" routeMP {route.MovementCost} eta {route.EtaTurns} visitsNow {route.ExpectedVisitsThisTurn} "
-                        + $"remainMP {route.RemainingMovementAtFocus} routeX {F(routeMultiplier)}"
-                      : " route unknown")
-                : $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
-                  + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
-                  + $"base {F(o.BaseValue)} x surv {F(rawSubDesire)}";
+            string explain;
+            if (explore)
+            {
+                explain = $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
+                    + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(rawSubDesire)} "
+                    + $"localFloor {F(localSubDesire)} intrinsicLAS {F(intrinsicAdmission)}"
+                    + RouteExplain(route, routeMultiplier);
+            }
+            else if (refresh)
+            {
+                explain = $"Refresh @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} "
+                    + $"strategic {F(o.StrategicRelevance)} direction {F(o.DirectionPressure)} prox {F(proximity)}"
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x surv {F(rawSubDesire)} "
+                    + $"intrinsicLAS {F(intrinsicAdmission)}"
+                    + RouteExplain(route, routeMultiplier);
+            }
+            else
+            {
+                explain = $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
+                    + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
+                    + $"base {F(o.BaseValue)} x surv {F(rawSubDesire)}";
+            }
+
             return new ScoutCandidate(target, o.BaseValue, admission, explain,
                 freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
+
+        private static string RouteExplain(ScoutRouteCostEvaluator.Assessment route, float multiplier) =>
+            route.HasRoute
+                ? $" routeMP {route.MovementCost} eta {route.EtaTurns} visitsNow {route.ExpectedVisitsThisTurn} "
+                  + $"remainMP {route.RemainingMovementAtFocus} routeX {F(multiplier)}"
+                : " route unknown";
 
         private static float ComputeLocalAdmissionScore(float baseValue, float subDesire, float detectionRisk) =>
             baseValue * subDesire
