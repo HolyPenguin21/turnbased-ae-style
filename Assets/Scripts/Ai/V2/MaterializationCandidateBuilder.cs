@@ -40,6 +40,7 @@ namespace Game.Ai.V2
                 return opts;
 
             bool isUnit = def.cardType == CardType.Unit;
+            bool isHero = def.cardType == CardType.Hero;
             List<ArmyData> own = ArmyRegistry.AllForOwner(player).Where(a => a != null).OrderBy(a => a.Id).ToList();
 
             foreach (HexCoord hex in snap.Self.BaseHexes)
@@ -71,7 +72,17 @@ namespace Game.Ai.V2
                     // strategic demand needs. CardPlayExecutor/ArmyActions enforce the same rule.
                     if (a.Members.Count == 0 || !CardPlayExecutor.CanFitAfterDeploy(a, def))
                         continue;
+                    // IsPlainReserveArmy intentionally means "heroless AND currently has room" for
+                    // generic placement callers. A Hero card is the one exception here: it may lead
+                    // a full heroless non-Recce ground formation when its projected CommandRating
+                    // creates the needed slot. Keep that exception local to prospective Hero-card
+                    // placement instead of weakening the global reserve-army predicate for Units.
+                    bool heroCanLeadFullFormation = isHero
+                        && !a.IsAirfield && !a.IsAirArmy
+                        && !AbilityParams.ArmyHasAnyRecce(a)
+                        && a.Members.All(u => u != null && !u.IsHero && !u.IsAviation);
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
+                        || heroCanLeadFullFormation
                         || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a));
                     if (ok)
                         opts.Add(new PlacementOption(hex, DeploymentKind.ExistingArmy, a));
