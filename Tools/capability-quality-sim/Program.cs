@@ -36,6 +36,7 @@ namespace CapabilityQualitySim
 
             S20_TerminalDrawConfigReconciled();
             S21_PhaseBStrategicHeroClaim();
+            S22_RaidReadinessPowerVsAssembly();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -310,6 +311,44 @@ namespace CapabilityQualitySim
             AxisDemand noClaim = MaterializationCandidateBuilder.UnresolvedClaimFor(
                 res, CapabilityKind.Hero, null);
             Check("21d no unresolved demands -> no strategic claim", noClaim == null);
+        }
+
+        // Spec §11 / §22 — a raid that is not executable purely because its forces are badly
+        // arranged must report NeedsAssembly, never a phantom +1 FieldCombatPower. A genuine
+        // numeric shortfall must still report NeedsPower with the real deficit.
+        private static void S22_RaidReadinessPowerVsAssembly()
+        {
+            float margin = AiConfigV2.raidCombatPowerMargin;
+            float targetPower = 13f;
+            float required = Math.Max(1f, targetPower * margin);
+
+            var obj = new AggressionObjective { TargetArmyId = 7, TargetPower = targetPower };
+
+            // (a) plenty of numeric power + a raid-eligible hero, but no legal ready force (null
+            //     snapshot -> RaidAssemblyPlanner infeasible).
+            var surplus = new CapabilityInventory
+            {
+                RaidAvailableFieldPower = required + 6.7f,
+                AvailableHeroes = 1,
+            };
+            RaidOperationalReadiness ra = RaidOperationalReadiness.Evaluate(
+                null, obj, Array.Empty<Game.Ai.WorthIt.DefenderProfile>(), null, surplus);
+            Check("22a numeric surplus -> NeedsPower is false", !ra.NeedsPower);
+            Check("22a numeric surplus -> RequestedPower is 0", ra.RequestedPower <= 0.0001f);
+            Check("22a numeric surplus -> NeedsAssembly is true", ra.NeedsAssembly);
+
+            // (b) genuine numeric shortfall.
+            var short_ = new CapabilityInventory
+            {
+                RaidAvailableFieldPower = required - 9f,
+                AvailableHeroes = 1,
+            };
+            RaidOperationalReadiness rb = RaidOperationalReadiness.Evaluate(
+                null, obj, Array.Empty<Game.Ai.WorthIt.DefenderProfile>(), null, short_);
+            Check("22b real shortfall -> NeedsPower is true", rb.NeedsPower);
+            Check("22b real shortfall -> NeedsAssembly is false", !rb.NeedsAssembly);
+            Check("22b real shortfall -> RequestedPower is the real deficit",
+                Math.Abs(rb.RequestedPower - 9f) < 0.01f);
         }
 
         private static void Check(string label, bool ok)

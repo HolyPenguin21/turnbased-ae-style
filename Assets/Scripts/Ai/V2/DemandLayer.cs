@@ -250,6 +250,20 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (chosenReadiness.NeedsAssembly)
+            {
+                // §11 — enough numeric power and a raid-eligible hero exist; the target is not
+                // executable only because no legal same-hex formation clears the estimator. That
+                // is an organization gap owned by RaidAssembly / Housekeeping / the bounded
+                // re-admission — buying more FieldCombatPower would not help.
+                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=DEFER targetArmy={chosen.TargetArmyId} "
+                    + $"reason=assembly_gap detail=\"{chosenReadiness.AssemblyReason}\" "
+                    + $"freePower={inv.RaidAvailableFieldPower:0.#} requiredPower={chosenReadiness.RequiredPower:0.#} "
+                    + $"freeHeroes={inv.AvailableHeroes} committedHeroes={inv.CommittedHeroes} blocked={blocked} "
+                    + $"readyDetail=\"{chosenReadiness.ReadyReason}\"");
+                yield break;
+            }
+
             if (chosenReadiness.NeedsHero)
             {
                 AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "

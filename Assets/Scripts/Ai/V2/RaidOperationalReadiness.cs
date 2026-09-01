@@ -17,7 +17,12 @@ namespace Game.Ai.V2
         public float RequestedPower;
         public bool NeedsPower;
         public bool NeedsHero;
+        // §11 — the AI has enough numeric field power and at least one raid-eligible hero, but no
+        // legal already-formed OR transactionally assemblable same-hex force clears the estimator.
+        // This is an organization gap, NOT a FieldCombatPower shortage: nothing new must be bought.
+        public bool NeedsAssembly;
         public string PowerReason;
+        public string AssemblyReason;
         public string ReadyReason;
 
         public bool ReadyExecutable => ReadyPlan != null && ReadyPlan.Feasible;
@@ -33,8 +38,13 @@ namespace Game.Ai.V2
             float requiredPower = Mathf.Max(1f, objective.TargetPower * AiConfigV2.raidCombatPowerMargin);
             float numericDeficit = Mathf.Max(0f, requiredPower - inventory.RaidAvailableFieldPower);
             bool executable = ready.Feasible;
-            bool needsPower = !executable;
-            bool needsHero = !executable && inventory.AvailableHeroes <= 0;
+
+            // §11 — NeedsPower means an ACTUAL numeric power deficiency, nothing else. A structural
+            // assembly failure with sufficient numeric power is NeedsAssembly, and never inflates
+            // a phantom +1 FieldCombatPower request.
+            bool needsPower = numericDeficit > AiConfigV2.allocatorSliceEpsilon;
+            bool needsHero = !executable && !needsPower && inventory.AvailableHeroes <= 0;
+            bool needsAssembly = !executable && !needsPower && !needsHero;
 
             return new RaidOperationalReadiness
             {
@@ -42,12 +52,14 @@ namespace Game.Ai.V2
                 Inventory = inventory,
                 RequiredPower = requiredPower,
                 NumericPowerDeficit = numericDeficit,
-                RequestedPower = needsPower ? Mathf.Max(1f, numericDeficit) : 0f,
+                RequestedPower = needsPower ? numericDeficit : 0f,
                 NeedsPower = needsPower,
                 NeedsHero = needsHero,
-                PowerReason = numericDeficit > AiConfigV2.allocatorSliceEpsilon
-                    ? "free_field_power_below_requirement"
-                    : "no_ready_free_army_clears_estimator",
+                NeedsAssembly = needsAssembly,
+                PowerReason = "free_field_power_below_requirement",
+                AssemblyReason = needsHero
+                    ? "no_raid_eligible_hero_anywhere"
+                    : "sufficient_power_no_legal_ready_or_assemblable_force",
                 ReadyReason = ready.Reason ?? "ready-force solver rejected the target",
             };
         }
