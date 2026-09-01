@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Map
@@ -238,12 +240,15 @@ namespace Game.Map
         }
 
         // ===================================================== extraction site =====
-        //  HexSelectionController.TryBuildExtractionFacility now builds its FacilityData before the
-        //  spend and does everything after infallibly, so it is atomic for every real failure
-        //  (it checks affordability before spending -> a false return means zero spend). This
-        //  wrapper additionally measures the AP + resource delta and, on a THROW or on a
-        //  false-but-something-was-spent, refunds the exact delta so the AI axis ledger and the
-        //  human's pool are never left short.
+        //  HexSelectionController.TryBuildExtractionFacility builds its FacilityData before the
+        //  spend, but AFTER the spend it does several more world mutations: the facility-slot
+        //  write, zeroing the acting hero-army's move points, and (for a brand-new site) the
+        //  marker + BuildingRegistry.Register + RestackArmiesOn. Its own affordability checks all
+        //  run before the spend, so a plain `false` return with nothing spent means nothing was
+        //  mutated. This wrapper captures every piece of post-spend state up front and, on a THROW
+        //  or on a false-return-that-nevertheless-spent, restores ALL of it -- AP, resources,
+        //  facility slots, hero move points, and a half-registered new site -- so a failed build
+        //  leaves the game state exactly as before (same contract as TryFoundBase).
         public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
         {
@@ -257,6 +262,15 @@ namespace Game.Map
 
             int apBefore = root.ActionPoints;
             int[] resBefore = SnapshotResources(root);
+
+            // Everything TryBuildExtractionFacility can mutate after its (pre-spend) checks,
+            // captured so a throw or a spent-but-false return can be fully undone.
+            BuildingData siteBefore = BuildingRegistry.FindAt(hex);
+            bool wasNewSite = siteBefore == null;
+            FacilityData[] slotsBefore = siteBefore != null
+                ? (FacilityData[])siteBefore.FacilitySlots.Clone()
+                : null;
+            List<(UnitData Member, int Move)> moveBefore = SnapshotHeroArmyMovement(hex, owner);
 
             bool ok;
             bool threw = false;
@@ -274,16 +288,71 @@ namespace Game.Map
             int apSpent = apBefore - root.ActionPoints;
             if (!ok)
             {
-                if (apSpent != 0 || ResourcesMoved(resBefore, root))
+                // A throw can land after the (infallible-in-practice) post-spend mutations even
+                // when apCost / resourceCost are both zero, so restore on ANY throw, not only on a
+                // measured spend. A plain false return only ever happens before the spend.
+                if (threw || apSpent != 0 || ResourcesMoved(resBefore, root))
                 {
                     root.ActionPoints = apBefore;
                     RestoreResources(root, resBefore);
+                    RestoreHeroArmyMovement(moveBefore);
+                    if (wasNewSite)
+                        RollbackPartialExtractionSite(hexSelection, hex, siteBefore);
+                    else
+                        RestoreFacilitySlots(siteBefore, slotsBefore);
                 }
                 return InfrastructureBuildOutcome.Fail(threw
-                    ? "TryBuildExtractionFacility threw; spend rolled back"
+                    ? "TryBuildExtractionFacility threw; transaction rolled back"
                     : "TryBuildExtractionFacility rejected the hex");
             }
             return InfrastructureBuildOutcome.Success(BuildingRegistry.FindAt(hex), -1, apSpent);
+        }
+
+        // Best-effort undo of a new resource SITE that TryBuildExtractionFacility registered before
+        // it threw: destroy the fresh marker, drop the registry entry, re-resolve the hex layout.
+        private static void RollbackPartialExtractionSite(HexSelectionController hexSelection,
+            HexCoord hex, BuildingData siteBefore)
+        {
+            BuildingData now = BuildingRegistry.FindAt(hex);
+            if (now != null && now != siteBefore)
+            {
+                if (now.Visual != null)
+                    UnityEngine.Object.Destroy(now.Visual.gameObject);
+                BuildingRegistry.Unregister(hex);
+            }
+            hexSelection?.RestackArmiesOn(hex, null);
+        }
+
+        private static void RestoreFacilitySlots(BuildingData building, FacilityData[] before)
+        {
+            if (building == null || before == null) return;
+            int n = Math.Min(building.FacilitySlots.Length, before.Length);
+            for (int i = 0; i < n; i++)
+                building.FacilitySlots[i] = before[i];
+        }
+
+        // Move points of every member of every one of `owner`'s hero-led armies on `hex` -- the
+        // superset of what TryBuildExtractionFacility zeroes (it charges the whole build to one
+        // acting army's remaining movement). Restore is idempotent for the armies it left alone.
+        private static List<(UnitData Member, int Move)> SnapshotHeroArmyMovement(HexCoord hex, PlayerSetupData owner)
+        {
+            var snap = new List<(UnitData, int)>();
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+            {
+                if (army == null || army.Owner != owner || !army.Members.Exists(m => m.IsHero))
+                    continue;
+                foreach (UnitData member in army.Members)
+                    snap.Add((member, member.MoveCurrent));
+            }
+            return snap;
+        }
+
+        private static void RestoreHeroArmyMovement(List<(UnitData Member, int Move)> before)
+        {
+            if (before == null) return;
+            foreach ((UnitData member, int move) in before)
+                if (member != null)
+                    member.MoveCurrent = move;
         }
 
         // -------------------------------------------------------------- helpers ----

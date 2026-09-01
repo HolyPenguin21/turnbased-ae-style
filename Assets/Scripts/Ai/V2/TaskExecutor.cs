@@ -62,9 +62,14 @@ namespace Game.Ai.V2
         // `snapshot` (the turn's own WorldSnapshot) is used ONLY for the bounded stale-Explore
         // replacement's frontier pick — never re-planned. Telemetry counters are NOT touched here:
         // the caller derives every count from `results` exactly once (spec §11).
+        // `reservedExploreFoci` is every Explore PROPOSAL's focus hex from this pass — funded,
+        // deferred, or unrouted alike. MissionOutcomeLedger.RegisterProposals rowed all of them
+        // before allocation, so the bounded stale-Explore replacement below must avoid every one
+        // (not just the foci that reached the execution queue) or a synthesised StableMissionKey
+        // could bind onto a deferred proposal's ledger row.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null)
+            WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null)
         {
             if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
                 yield break;
@@ -106,8 +111,10 @@ namespace Game.Ai.V2
                 // appended to the queue for this same loop to run. One hop per mission, hard cap on
                 // the pass, deterministic frontier pick, no pipeline re-run (spec §5, §6).
                 // Every ExecutionHex already owned by a mission in the queue (originals AND
-                // replacements added this pass) — the replacement picker must avoid them so a
-                // synthesised StableMissionKey can never collide with another mission's ledger row.
+                // replacements added this pass) PLUS every Explore proposal's focus from this pass
+                // (funded or deferred — the ledger rowed them all) — the replacement picker must
+                // avoid them so a synthesised StableMissionKey can never collide with another
+                // mission's / a deferred proposal's ledger row.
                 HashSet<HexCoord> takenFoci = null;
                 if (validity == MissionValidity.StaleGoalMet)
                 {
@@ -115,6 +122,9 @@ namespace Game.Ai.V2
                     for (int qi = 0; qi < queue.Count; qi++)
                         if (qi != missionIndex && queue[qi] != null)
                             takenFoci.Add(queue[qi].ExecutionHex);
+                    if (reservedExploreFoci != null)
+                        foreach (HexCoord h in reservedExploreFoci)
+                            takenFoci.Add(h);
                 }
 
                 if (validity == MissionValidity.StaleGoalMet
