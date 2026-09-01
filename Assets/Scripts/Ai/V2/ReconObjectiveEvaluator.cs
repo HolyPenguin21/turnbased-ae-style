@@ -1,51 +1,58 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  RECON OBJECTIVE EVALUATOR  (Strategy V2 — the single Recon-opportunity enumeration)
+    //  RECON OBJECTIVE EVALUATOR
     // ===========================================================================================
-    //  "One estimator, many stages" applied to Recon opportunities. Frontier hexes + stale honest
-    //  contacts are turned into ReconObjective once per AI turn, right after the radar. Both
-    //  DemandLayer (sizing Scout capacity) and MissionLayer (building Scout proposals) read THIS —
-    //  neither re-scans the frontier / contact list or re-derives an objective's value.
-    //
-    //  FROZEN FOR THE TURN. Computed BEFORE StrategicManager mutates own forces. Strategic Manager
-    //  changes which SCOUT can execute an objective, never which objectives exist — so the list is
-    //  NOT recomputed after the operational-state refresh. The value math here is the exact math
-    //  MissionLayer used inline before this split (byte-for-byte); MissionLayer keeps only the
-    //  mission-planning-specific LocalAdmissionScore (BaseValue x Recon sub-desire x risk).
+    //  One frozen turn produces three explicit Recon opportunity classes:
+    //    Explore  — never/ground-unvisited frontier information.
+    //    Refresh  — previously observed map information whose IntelAge is stale again.
+    //    Surveil  — stale last-known enemy contact that requires an observation vantage.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore, Surveil }
+    public enum ReconObjectiveKind { Explore, Refresh, Surveil }
 
     public sealed class ReconObjective
     {
         public ReconObjectiveKind Kind;
         public HexCoord FocusHex;
-        public int ContactArmyId;              // Surveil only (0 for Explore)
+        public int ContactArmyId;              // Surveil only
         public EnemyContactSnapshot Contact;   // Surveil only
 
-        public float BaseValue;                // 0..100 intrinsic merit — becomes MissionProposal.BaseValue
-        public float DetectionRisk;            // [0..1]
+        public float BaseValue;
+        public float DetectionRisk;
         public StealthRequirement Stealth;
 
-        // raw inputs kept for the "why" log / downstream tie-breaks
         public int FreshNeighbors;
         public int DistanceFromBase;
         public int AgeTurns;
         public float Severity;
+        public float StrategicRelevance;
+        public float DirectionPressure;
 
-        public MissionIntentKey IntentKey =>
-            Kind == ReconObjectiveKind.Surveil
-                ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, ContactArmyId, 0, 0)
-                : new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0, FocusHex.Q, FocusHex.R);
+        public MissionIntentKey IntentKey
+        {
+            get
+            {
+                if (Kind == ReconObjectiveKind.Surveil)
+                    return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
+                        ContactArmyId, 0, 0);
+                ScoutTargetKind sub = Kind == ReconObjectiveKind.Refresh
+                    ? ReconScoutKinds.Refresh
+                    : ScoutTargetKind.Explore;
+                return new MissionIntentKey(MissionKind.Scout, (int)sub, 0, FocusHex.Q, FocusHex.R);
+            }
+        }
 
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
-            Kind = Kind == ReconObjectiveKind.Surveil ? ScoutTargetKind.Surveil : ScoutTargetKind.Explore,
+            Kind = Kind == ReconObjectiveKind.Surveil
+                ? ScoutTargetKind.Surveil
+                : Kind == ReconObjectiveKind.Refresh ? ReconScoutKinds.Refresh : ScoutTargetKind.Explore,
             Contact = Kind == ReconObjectiveKind.Surveil ? Contact : null,
             Stealth = Stealth,
             DetectionRisk = DetectionRisk,
@@ -54,8 +61,6 @@ namespace Game.Ai.V2
 
     public static class ReconObjectiveEvaluator
     {
-        // Every strategic Recon opportunity in this snapshot: one per frontier hex, one per stale
-        // honest positioned contact.
         public static List<ReconObjective> Enumerate(WorldSnapshot snap)
         {
             var list = new List<ReconObjective>();
@@ -66,14 +71,17 @@ namespace Game.Ai.V2
             if (frontier != null)
                 foreach (FrontierHexSnapshot f in frontier)
                 {
-                    // §6 — the SAME Explore validity contract the continuity layer uses, so a
-                    // focus can never be simultaneously "runnable fresh objective" here and
-                    // "objective no longer valid" in MissionContinuity against one snapshot.
                     if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
                         continue;
                     list.Add(BuildExplore(snap, f.Hex, f.FreshNeighbors, f.DistanceFromNearestBase,
                         f.EnemyExposure, f.StealthDetectionRisk));
                 }
+
+            // Generic Refresh is NOT enemy-contact surveillance. It revisits map information the
+            // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
+            // hexes by construction and current-visible hexes naturally have age 0.
+            List<ReconObjective> refresh = BuildRefreshObjectives(snap);
+            list.AddRange(refresh);
 
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
             if (contacts != null)
@@ -84,13 +92,8 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // Re-materialise ONE Explore objective whose hex may have left the frontier (wave band
-        // moved) — the incumbent-intent path, NOT a re-scan for new objectives.
         public static ReconObjective ExploreAt(WorldSnapshot snap, HexCoord hex)
         {
-            // §6 — validity is the shared runnable contract, NOT the fresh-neighbour count. An
-            // unvisited, unblocked frontier focus is re-materialisable even with 0 fresh
-            // neighbours; `fresh` then only feeds the objective's value/scoring.
             if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, hex))
                 return null;
             int fresh = ScoutObjectiveEvaluator.ExploreStillOpen(snap, hex);
@@ -101,10 +104,49 @@ namespace Game.Ai.V2
             return BuildExplore(snap, hex, fresh, distBase, exposed, stealthRisk);
         }
 
+        public static ReconObjective RefreshAt(WorldSnapshot snap, HexCoord hex)
+        {
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
+                || age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                return null;
+            if (snap?.MapKnowledge?.ScoutHardBlockedHexes != null
+                && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(hex))
+                return null;
+            return BuildRefresh(snap, hex, age);
+        }
+
         public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c) =>
             c == null ? null : BuildSurveil(snap, c);
 
-        // --------------------------------------------------------------------------------------
+        private static List<ReconObjective> BuildRefreshObjectives(WorldSnapshot snap)
+        {
+            var candidates = new List<ReconObjective>();
+            foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
+            {
+                int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
+                if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                    continue;
+                if (snap.MapKnowledge.ScoutHardBlockedHexes != null
+                    && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(kv.Key))
+                    continue;
+                ReconObjective o = BuildRefresh(snap, kv.Key, age);
+                if (o != null)
+                    candidates.Add(o);
+            }
+
+            // Bound enumeration before MissionLayer's ordinary cross-objective beam. Keep a wider
+            // pool than execution capacity so several scouts can spread, but do not hand hundreds
+            // of stale hexes to the allocator on a late-game map.
+            int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
+                AiConfigV2.maxConcurrentReconExecutions * 3);
+            return candidates
+                .OrderByDescending(o => o.BaseValue)
+                .ThenByDescending(o => o.AgeTurns)
+                .ThenBy(o => o.FocusHex.Q)
+                .ThenBy(o => o.FocusHex.R)
+                .Take(cap)
+                .ToList();
+        }
 
         private static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
             int distFromBase, bool enemyExposure, bool stealthDetectionRisk)
@@ -133,6 +175,52 @@ namespace Game.Ai.V2
                 Stealth = req,
                 FreshNeighbors = freshNeighbors,
                 DistanceFromBase = distFromBase,
+            };
+        }
+
+        private static ReconObjective BuildRefresh(WorldSnapshot snap, HexCoord hex, int age)
+        {
+            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
+            int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
+            float stale = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
+                AiConfigV2.scoutSurveilStaleTurnsHi);
+            float proximity = Proximity(distBase);
+
+            float strategic = StrategicRefreshRelevance(snap, hex);
+            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snap);
+            ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
+            float directional = direction?.EnemyDirectionSectors != null
+                && direction.EnemyDirectionSectors.TryGetValue(sector, out float pressure)
+                    ? Mathf.Clamp01(pressure)
+                    : 0f;
+            if (direction?.KnownEnemyCitadelDirection == sector)
+                directional = Mathf.Max(directional, 0.75f);
+
+            // Refresh is information maintenance: age is primary, then known strategic content and
+            // the sanitized six-sector enemy pressure; proximity keeps it from sending a ground
+            // scout across the entire map for an equally stale low-value cell.
+            const float staleW = 0.45f;
+            const float strategicW = 0.30f;
+            const float directionW = 0.15f;
+            const float proximityW = 0.10f;
+            float quality = Mathf.Clamp01(staleW * stale + strategicW * strategic
+                + directionW * directional + proximityW * proximity);
+            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin,
+                AiConfigV2.scoutBaseValueMax, quality);
+
+            bool exposed = EnemyExposedAt(snap, hex);
+            float risk = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
+            return new ReconObjective
+            {
+                Kind = ReconObjectiveKind.Refresh,
+                FocusHex = hex,
+                BaseValue = baseValue,
+                DetectionRisk = risk,
+                Stealth = exposed ? StealthRequirement.Required : StealthRequirement.None,
+                DistanceFromBase = distBase,
+                AgeTurns = age,
+                StrategicRelevance = strategic,
+                DirectionPressure = directional,
             };
         }
 
@@ -178,6 +266,35 @@ namespace Game.Ai.V2
             };
         }
 
+        private static float StrategicRefreshRelevance(WorldSnapshot snap, HexCoord hex)
+        {
+            float relevance = 0f;
+            if (snap.Known?.Buildings != null)
+                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+                {
+                    int d = HexGridMath.Distance(b.Hex, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, b.IsStartingCitadel ? 1f : 0.85f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.50f);
+                }
+
+            if (snap.Known?.ResourceHexes != null)
+                foreach (KeyValuePair<HexCoord, Game.Economy.ResourceType> r in snap.Known.ResourceHexes)
+                {
+                    int d = HexGridMath.Distance(r.Key, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, 0.75f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.40f);
+                }
+
+            if (snap.Known?.EventGuardHexes != null)
+                foreach (HexCoord e in snap.Known.EventGuardHexes)
+                {
+                    int d = HexGridMath.Distance(e, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, 0.80f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.45f);
+                }
+            return relevance;
+        }
+
         private static float Proximity(int distanceFromNearestBase) =>
             Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
 
@@ -192,8 +309,6 @@ namespace Game.Ai.V2
             return best == int.MaxValue ? 0 : best;
         }
 
-        // Inline mirrors of the frontier scan's enemy-exposure annotation, for a materialised
-        // Explore intent whose focus hex dropped out of MapKnowledge.Frontier. Same constants.
         private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
         {
             IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
