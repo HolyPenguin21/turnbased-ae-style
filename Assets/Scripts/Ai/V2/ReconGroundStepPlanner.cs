@@ -100,7 +100,10 @@ namespace Game.Ai.V2
                 || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
                 return false;
 
-            bool hidden = StealthSystem.ArmyFullyHidden(army);
+            // Owner-facing stealth state. We deliberately do not ask whether some enemy has
+            // personally detected the scout here: that is observer-specific reaction state, not
+            // a property of whether this actor is itself currently in stealth.
+            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
             ArmyData visibleOccupant = VisionSystem.IsVisible(player, h)
                 ? BattleInitiator.FindEnemyAt(h, player)
                 : null;
