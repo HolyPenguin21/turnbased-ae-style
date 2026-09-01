@@ -61,11 +61,15 @@ namespace Game.Ai.V2
                         continue;
                     if (a.IsGarrison)
                     {
-                        if (PlacementRules.CanDepositIntoGarrison(a))
+                        if (PlacementRules.CanDepositIntoGarrison(a)
+                            && CardPlayExecutor.CanFitAfterDeploy(a, def))
                             opts.Add(new PlacementOption(hex, DeploymentKind.Garrison, a));
                         continue;
                     }
-                    if (!a.HasRoom || a.Members.Count == 0)
+                    // Projected capacity, not pre-join HasRoom: a first hero may legally turn a
+                    // full 2/2 body formation into 3/N and is exactly the placement a live Hero
+                    // strategic demand needs. CardPlayExecutor/ArmyActions enforce the same rule.
+                    if (a.Members.Count == 0 || !CardPlayExecutor.CanFitAfterDeploy(a, def))
                         continue;
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
                         || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a));
@@ -363,6 +367,11 @@ namespace Game.Ai.V2
                         MaterializationPlan att = MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
                             card, i, eq, j, opt, projected);
                         att.FinalCapability = cap;
+                        // Same strategic-claim protection as Direct/GeneratedDeploy. An attached
+                        // variant must not become a back door that burns a live Hero/Field card in
+                        // a zero-delivery placement merely because the equipment raised utility.
+                        if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
+                            continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, att)) continue;
                         att.Score = SurplusUtility(att, inv, recce, hero, hand, projected)
                             + AiConfigV2.surplusAttachTraitBonus - AiConfigV2.stratChainAttachStepPenalty;
