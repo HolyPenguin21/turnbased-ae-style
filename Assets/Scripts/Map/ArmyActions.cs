@@ -106,6 +106,23 @@ namespace Game.Map
                 failReason = $"The airfield at {targetArmy.Hex} is full.";
                 return false;
             }
+            // Capacity must be evaluated against the roster AFTER this card joins. A hero can
+            // legitimately turn a full no-hero 2/2 formation into (for example) a legal 3/5
+            // formation, while a low-CommandRating hero can also make a previously roomy
+            // no-hero garrison too small. Using the old targetArmy.HasRoom check before spawn
+            // cannot represent either case and made AI planner feasibility disagree with the
+            // canonical gameplay action.
+            if (!targetArmy.IsAirfield)
+            {
+                int projectedCapacity = targetArmy.Capacity;
+                if (definition.cardType == CardType.Hero && !targetArmy.Members.Any(m => m.IsHero))
+                    projectedCapacity = definition.commandRating;
+                if (projectedCapacity < targetArmy.Members.Count + 1)
+                {
+                    failReason = $"{definition.displayName} would exceed {targetArmy.Name}'s capacity after deployment.";
+                    return false;
+                }
+            }
 
             bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
             int apCost = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
@@ -204,10 +221,18 @@ namespace Game.Map
                 failReason = $"The airfield at {target.Hex} is full.";
                 return false;
             }
-            if (!target.IsAirfield && !target.HasRoom)
+            if (!target.IsAirfield)
             {
-                failReason = $"{target.Name} is full — can't move {unit.Name} in.";
-                return false;
+                // Canonical projected-roster capacity check. In particular, a hero joining a
+                // currently-full 2/2 no-hero army may raise its capacity and therefore fit; the
+                // old target.HasRoom pre-check rejected that legal transition before the hero's
+                // CommandRating could be considered.
+                var projectedTarget = new List<UnitData>(target.Members) { unit };
+                if (ArmyData.ComputeCapacity(projectedTarget, target.IsGarrison) < projectedTarget.Count)
+                {
+                    failReason = $"{unit.Name} wouldn't fit in {target.Name} after the transfer.";
+                    return false;
+                }
             }
 
             if (!source.CanLeaveWithoutOvercrowding(unit))
