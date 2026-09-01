@@ -29,10 +29,12 @@ namespace Game.Ai.V2
     //                 per-unit WorthIt.DefenderProfiles). Buildings, event guards and cheat-region
     //                 contacts are deferred to the live tier (steps 6/9), where a garrison read is
     //                 available.
-    //    * roster   : own on-map non-hero members + hand unit cards, top (cap-1) by profile power,
-    //                 cap = best obtainable hero's CommandRating. A composition-aware profile
-    //                 compose and the live AiResourcePool / CanLeaveWithoutOvercrowding gates are
-    //                 the live tier's job.
+    //    * roster   : own on-map non-hero members + hand unit cards, top N by profile power where N
+    //                 is the real projected body-slot count: CommandRating-1 when a hero leads the
+    //                 stack, otherwise the no-hero base capacity. A hero is therefore an optional
+    //                 capacity amplifier, not a prerequisite for raiding with a legal heroless force.
+    //                 A composition-aware profile compose and the live AiResourcePool /
+    //                 CanLeaveWithoutOvercrowding gates are the live tier's job.
     //    * cost     : BattleCostProxy = 1 - AssemblableWinChance. The real cost-of-victory
     //                 (WorthIt.Estimate survivor-HP / critical-after-win) needs a live forming
     //                 ArmyData and lands with Provisioning.
@@ -63,7 +65,7 @@ namespace Game.Ai.V2
         public readonly float TargetValue;            // 0..assetValueArmyCap, reuses AiConfigV2.assetValueArmy*
         public readonly float Confidence;             // knowledge-tier confidence of the sighting
 
-        public readonly bool GatePassed;              // hero obtainable AND CanCoverAll AND win >= min
+        public readonly bool GatePassed;              // CanCoverAll AND win >= min; hero is optional
         public readonly float OpportunityScore;       // 0..1 — exactly 0 when GatePassed is false
 
         public CombatOpportunity(bool hasTarget, HexCoord targetHex, int targetArmyId, PlayerSetupData targetOwner, bool targetIsNeutral,
@@ -134,6 +136,9 @@ namespace Game.Ai.V2
 
             bool heroAvailable = heroCap > 0;
             int cap = heroAvailable ? heroCap : NoHeroStackCapacity;
+            // Hero profiles are not part of ownBodies/handBodies; when a hero supplies the capacity
+            // it consumes one roster slot itself. A heroless formation consumes no hidden hero slot.
+            int bodySlots = heroAvailable ? Mathf.Max(0, cap - 1) : Mathf.Max(0, cap);
             report.HeroAvailable = heroAvailable;
             report.AssemblableCap = cap;
 
@@ -149,7 +154,7 @@ namespace Game.Ai.V2
             List<WorthIt.DefenderProfile> assemblableRoster = ownBodies
                 .Concat(handBodies)
                 .OrderByDescending(ProfilePower)
-                .Take(Mathf.Max(0, cap - 1))
+                .Take(bodySlots)
                 .ToList();
 
             // ---- ETA basis: our nearest structurally usable field force / a move budget ------
@@ -187,7 +192,10 @@ namespace Game.Ai.V2
                     AiPower.EffectiveArmyPowerFromProfiles(defenders) / AiConfigV2.assetValueArmyPowerDivisor);
                 float confidence = ConfidenceFor(snap, t.Hex);
 
-                bool gate = heroAvailable && cover && asmWin >= AiConfigV2.opportunityMinViableWinChance;
+                // A hero is useful because it can raise capacity, but it is not a game-rule
+                // prerequisite for Raid. If a legal heroless roster covers the defenders and clears
+                // the shared win bar, enemy and neutral targets must both become real opportunities.
+                bool gate = cover && asmWin >= AiConfigV2.opportunityMinViableWinChance;
                 float score = 0f;
                 if (gate)
                 {
