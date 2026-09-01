@@ -51,7 +51,7 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
-            if (pm.ScoutKind == ScoutTargetKind.Surveil)
+            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
                 if (ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId,
                         pm.BaselineObservedTurn))
@@ -70,6 +70,14 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
+            // Never silently reinterpret a future/invalid Scout kind as Explore. The enum has three
+            // explicit semantics and every lifecycle stage must reject values it does not understand.
+            if (!ReconScoutKinds.IsExplore(pm.ScoutKind))
+            {
+                AiDebugLog.Write($"[AI][V2][Recon] revalidate reject — unknown Scout kind {(int)pm.ScoutKind}");
+                return MissionValidity.StaleTargetInvalidated;
+            }
+
             // Explore only. Physical visitation is completion here; generic Refresh intentionally
             // does NOT share this shortcut.
             if (VisionSystem.IsVisited(player, pm.ExecutionHex))
@@ -86,7 +94,7 @@ namespace Game.Ai.V2
                 return foci;
             foreach (MissionProposal m in missions)
                 if (m?.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget smt
-                    && smt.Kind == ScoutTargetKind.Explore)
+                    && ReconScoutKinds.IsExplore(smt.Kind))
                     foci.Add(smt.FocusHex);
             return foci;
         }
@@ -96,7 +104,7 @@ namespace Game.Ai.V2
         {
             focus = default;
             if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
-                || pm.Kind != MissionKind.Scout || pm.ScoutKind != ScoutTargetKind.Explore)
+                || pm.Kind != MissionKind.Scout || !ReconScoutKinds.IsExplore(pm.ScoutKind))
                 return false;
 
             FrontierHexSnapshot? best = null;
