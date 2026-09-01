@@ -38,6 +38,7 @@ namespace CapabilityQualitySim
             S21_PhaseBStrategicHeroClaim();
             S22_RaidReadinessPowerVsAssembly();
             S23_HeroOperationalRole();
+            S24_ExploreValidityContract();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -390,6 +391,50 @@ namespace CapabilityQualitySim
                     Name = "Rusty Miller", IsHero = true, CommandRating = 7,
                     HitPointsMax = 6, HitPointsCurrent = 6, Initiative = 4, Resistance = 2, Fate = 4,
                 }) == HeroOperationalRole.CombatLeader);
+        }
+
+        // Spec §6 / §19 — ONE Explore validity contract. An unvisited, unblocked frontier focus
+        // stays a valid runnable objective even with zero fresh immediate neighbours, so it can
+        // never be simultaneously "retire Explore X" (continuity) and "create Explore X" (fresh
+        // enumeration) against the same snapshot.
+        private static void S24_ExploreValidityContract()
+        {
+            Game.HexGrid.HexCoord H(int q, int r) => new Game.HexGrid.HexCoord(q, r);
+            var focus = H(4, -2);
+
+            // A boxed-in but unvisited frontier focus: on map, not visited, not blocked, but
+            // every neighbour already visited.
+            var all = new HashSet<Game.HexGrid.HexCoord> { focus };
+            var visited = new HashSet<Game.HexGrid.HexCoord>();
+            foreach (var n in Game.HexGrid.HexGridMath.Neighbors(focus))
+            {
+                all.Add(n);
+                visited.Add(n);
+            }
+            var snap = new WorldSnapshot
+            {
+                MapKnowledge = new MapKnowledgeSnapshot
+                {
+                    AllHexes = new List<Game.HexGrid.HexCoord>(all),
+                    VisitedHexSet = visited,
+                    ScoutHardBlockedHexes = new HashSet<Game.HexGrid.HexCoord>(),
+                },
+            };
+            var intent = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus };
+
+            Check("24a a boxed-in unvisited frontier focus has 0 fresh neighbours",
+                ScoutObjectiveEvaluator.ExploreStillOpen(snap, focus) == 0);
+            Check("24b it is still a runnable Explore objective",
+                ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, focus));
+            Check("24c the durable intent is NOT retired against that same snapshot",
+                ScoutObjectiveEvaluator.IsIntentStillValid(snap, intent));
+
+            // Once actually visited it is legitimately retired.
+            visited.Add(focus);
+            Check("24d a visited focus is no longer runnable",
+                !ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, focus));
+            Check("24e a visited focus retires the durable intent",
+                !ScoutObjectiveEvaluator.IsIntentStillValid(snap, intent));
         }
 
         private static void Check(string label, bool ok)

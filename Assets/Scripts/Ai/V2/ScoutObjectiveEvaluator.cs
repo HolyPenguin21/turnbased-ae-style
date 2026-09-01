@@ -63,7 +63,29 @@ namespace Game.Ai.V2
                 EnemyContactSnapshot contact = SurveilContact(snap, intent.TrackedArmyId);
                 return contact != null && contact.LastObservedTurn <= intent.BaselineObservedTurn;
             }
-            return ExploreStillOpen(snap, intent.FocusHex) > 0;
+            // §6 — ONE Explore validity contract, shared with fresh Recon objective enumeration
+            // (ReconObjectiveEvaluator). FreshNeighbors == 0 is a productivity/value signal, NOT
+            // an invalidation: an unvisited, unblocked frontier focus stays a coherent objective
+            // even when every immediate neighbour is currently visited — reaching it still marks
+            // its own tile and can expand the frontier.
+            return IsExploreFocusRunnable(snap, intent.FocusHex);
+        }
+
+        // THE authoritative Explore validity predicate. An Explore focus is a runnable objective
+        // iff it is a real map hex that has not been visited and is not scout-hard-blocked.
+        public static bool IsExploreFocusRunnable(WorldSnapshot snap, HexCoord focus)
+        {
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            if (mk?.AllHexes == null)
+                return false;
+            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            if (!onMap.Contains(focus))
+                return false;
+            if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(focus))
+                return false;
+            if (mk.ScoutHardBlockedHexes != null && mk.ScoutHardBlockedHexes.Contains(focus))
+                return false;
+            return true;
         }
 
         // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no
@@ -85,18 +107,11 @@ namespace Game.Ai.V2
         // left to discover there, so the intent is stale.
         public static int ExploreStillOpen(WorldSnapshot snap, HexCoord focus)
         {
-            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
-            if (mk?.AllHexes == null)
+            if (!IsExploreFocusRunnable(snap, focus))
                 return 0;
 
+            MapKnowledgeSnapshot mk = snap.MapKnowledge;
             var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
-            if (!onMap.Contains(focus))
-                return 0;
-            if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(focus))
-                return 0;
-            if (mk.ScoutHardBlockedHexes != null && mk.ScoutHardBlockedHexes.Contains(focus))
-                return 0;
-
             int fresh = 0;
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {

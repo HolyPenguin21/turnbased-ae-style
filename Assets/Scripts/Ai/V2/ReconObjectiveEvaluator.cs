@@ -65,8 +65,15 @@ namespace Game.Ai.V2
             IReadOnlyList<FrontierHexSnapshot> frontier = snap.MapKnowledge.Frontier;
             if (frontier != null)
                 foreach (FrontierHexSnapshot f in frontier)
+                {
+                    // §6 — the SAME Explore validity contract the continuity layer uses, so a
+                    // focus can never be simultaneously "runnable fresh objective" here and
+                    // "objective no longer valid" in MissionContinuity against one snapshot.
+                    if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
+                        continue;
                     list.Add(BuildExplore(snap, f.Hex, f.FreshNeighbors, f.DistanceFromNearestBase,
                         f.EnemyExposure, f.StealthDetectionRisk));
+                }
 
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
             if (contacts != null)
@@ -81,9 +88,12 @@ namespace Game.Ai.V2
         // moved) — the incumbent-intent path, NOT a re-scan for new objectives.
         public static ReconObjective ExploreAt(WorldSnapshot snap, HexCoord hex)
         {
-            int fresh = ScoutObjectiveEvaluator.ExploreStillOpen(snap, hex);
-            if (fresh <= 0)
+            // §6 — validity is the shared runnable contract, NOT the fresh-neighbour count. An
+            // unvisited, unblocked frontier focus is re-materialisable even with 0 fresh
+            // neighbours; `fresh` then only feeds the objective's value/scoring.
+            if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, hex))
                 return null;
+            int fresh = ScoutObjectiveEvaluator.ExploreStillOpen(snap, hex);
             int distBase = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Count > 0
                 ? MinDist(snap.Self.BaseHexes, hex) : 0;
             bool exposed = EnemyExposedAt(snap, hex);
