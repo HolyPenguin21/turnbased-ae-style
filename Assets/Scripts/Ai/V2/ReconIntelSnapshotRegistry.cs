@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         public static bool TryGetLastObservedTurn(WorldSnapshot snapshot, HexCoord hex, out int lastObservedTurn)
         {
             lastObservedTurn = 0;
-            PlayerSetupData player = snapshot?.Self?.Player;
+            PlayerSetupData player = ResolvePlayer(snapshot);
             return player != null
                 && ByPlayer.TryGetValue(player, out Entry e)
                 && e.Turn == snapshot.TurnNumber
@@ -57,7 +57,7 @@ namespace Game.Ai.V2
 
         public static IReadOnlyDictionary<HexCoord, int> LastObservedFor(WorldSnapshot snapshot)
         {
-            PlayerSetupData player = snapshot?.Self?.Player;
+            PlayerSetupData player = ResolvePlayer(snapshot);
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e)
                 || e.Turn != snapshot.TurnNumber || e.LastObserved == null)
                 return new Dictionary<HexCoord, int>();
@@ -83,6 +83,32 @@ namespace Game.Ai.V2
                 count++;
             }
             return count > 0 ? Mathf.Clamp01(sum / count) : 0f;
+        }
+
+        // WorldSnapshot deliberately has no player identity field. Resolve the frozen owner from
+        // honest self-state without inventing one: normally any own army gives the owner directly;
+        // the citadel fallback keeps an eliminated/temporarily army-less player unambiguous.
+        private static PlayerSetupData ResolvePlayer(WorldSnapshot snapshot)
+        {
+            if (snapshot?.Self == null)
+                return null;
+
+            if (snapshot.Self.Armies != null)
+                foreach (ArmySnapshot army in snapshot.Self.Armies)
+                    if (army?.Owner != null)
+                        return army.Owner;
+
+            HexCoord citadel = snapshot.Self.Citadel;
+            foreach (KeyValuePair<PlayerSetupData, Entry> kv in ByPlayer)
+            {
+                PlayerSetupData p = kv.Key;
+                if (p == null || kv.Value == null || kv.Value.Turn != snapshot.TurnNumber
+                    || !p.CitadelHexQ.HasValue || !p.CitadelHexR.HasValue)
+                    continue;
+                if (p.CitadelHexQ.Value == citadel.Q && p.CitadelHexR.Value == citadel.R)
+                    return p;
+            }
+            return null;
         }
     }
 }
