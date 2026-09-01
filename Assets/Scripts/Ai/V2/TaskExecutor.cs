@@ -47,8 +47,14 @@ namespace Game.Ai.V2
         //  IsReplacement — this result belongs to the synthesised replacement mission (its own
         //                  fresh StableMissionKey). Counted once as a replacement, and normally
         //                  as an execution attempt / success on its own merits.
+        //  Source        — the ProvisionedMission that produced this result. The caller uses it to
+        //                  register a REPLACEMENT (whose proposal was never in the pre-execution
+        //                  RegisterProposals set) into the MissionOutcomeLedger before recording
+        //                  its execution, so continuity/reconciliation sees it too — not only
+        //                  telemetry.
         public bool Replaced;
         public bool IsReplacement;
+        public ProvisionedMission Source;
     }
 
     internal static class TaskExecutor
@@ -73,7 +79,7 @@ namespace Game.Ai.V2
             for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
             {
                 ProvisionedMission pm = queue[missionIndex];
-                var result = new ExecutionResult { Key = pm.Key, IsReplacement = pm.IsReplacement };
+                var result = new ExecutionResult { Key = pm.Key, IsReplacement = pm.IsReplacement, Source = pm };
                 ArmyData army = Resolve(player, pm.MoverArmyId);
                 if (army == null)
                 {
@@ -101,7 +107,7 @@ namespace Game.Ai.V2
                 // the pass, deterministic frontier pick, no pipeline re-run (spec §5, §6).
                 if (validity == MissionValidity.StaleGoalMet
                     && replacementsUsed < AiConfigV2.maxReplacementMissionsPerPass
-                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, out HexCoord replFocus)
+                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, army.Hex, out HexCoord replFocus)
                     && !VisionSystem.IsVisited(player, replFocus))
                 {
                     ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus);

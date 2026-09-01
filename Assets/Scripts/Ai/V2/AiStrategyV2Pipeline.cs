@@ -573,7 +573,18 @@ namespace Game.Ai.V2
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot);
             foreach (ExecutionResult er in executed)
+            {
+                // A synthesised replacement's proposal was never in the pre-execution
+                // RegisterProposals set — register it here so continuity/reconciliation sees the
+                // new Explore too (not only telemetry). Its fresh StableMissionKey keeps it
+                // distinct from the superseded mission.
+                if (er.IsReplacement && er.Source?.Mission != null)
+                {
+                    ledger.RegisterProposals(new[] { er.Source.Mission });
+                    ledger.RecordProvisionSuccess(er.Source.Mission, er.Source);
+                }
                 ledger.RecordExecution(er);
+            }
             ledger.RecordDeferrals(allocation.Deferred);
             // Post-execution LIVE pass — a mission run later this turn may have met an earlier
             // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the

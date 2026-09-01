@@ -1,7 +1,5 @@
 using System;
-using System.Linq;
 using Game.Cards;
-using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -11,29 +9,19 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  BUILDING PLAY EXECUTOR  (Strategy V2 — infrastructure card execution)
     // ===========================================================================================
-    //  The single V2 path for INFRASTRUCTURE (Base / Facility / hero-built extraction site). It
-    //  drives the SAME domain primitives the human UI drives — the game has no single atomic
-    //  "play an infrastructure card" transaction, so CardHandUI itself assembles the identical
-    //  sequence (see CardHandUI.TryBuildBase / TryDeployFacilityToHex):
-    //
-    //    · CardType.Base      -> HexSelectionController.SpawnBuilding
-    //    · CardType.Facility  -> BuildingData.FacilitySlots[i] = FacilityData.FromDefinition(def)
-    //    · extraction site    -> HexSelectionController.TryBuildExtractionFacility  (already fully
-    //                            atomic — it validates hero presence + AP + resources and spends
-    //                            them itself)
-    //
-    //  ATOMICITY. Every observable mutation is fenced behind an EXHAUSTIVE preflight (card in hand,
-    //  AP affordable, resources affordable, target legal, free slot). Once preflight passes, the
-    //  mutation steps cannot fail — SpendActionPoints / PayFrom / the primitive / Hand.Remove all
-    //  succeed on already-validated inputs. The whole sequence is wrapped so that an unexpected
-    //  throw is reported as a failure rather than leaving a half-built state, and cost figures are
-    //  the card instance's EFFECTIVE play cost (parity with the human path — a
-    //  Research/Production card pays activationApCost and no ResourceCost).
+    //  A THIN AI-side wrapper over the shared authoritative domain transaction
+    //  Game.Map.InfrastructureActions (the SAME entry point the human UI uses). This class no
+    //  longer assembles any spend/create/refund sequence itself — it only:
+    //    · resolves the card instance's effective play cost,
+    //    · calls InfrastructureActions.TryFoundBase / TryPlaceFacility,
+    //    · removes the AI's own card from AiHandData.Hand ONLY on Ok.
+    //  The hero-built extraction facility path stays on HexSelectionController
+    //  .TryBuildExtractionFacility, which is itself already fully atomic.
     // ===========================================================================================
     public sealed class BuildingPlayResult
     {
         public bool Built;
-        public float ApSpent;          // real PlayerRoot AP delta
+        public float ApSpent;
         public bool StateChanged;
         public bool CardConsumed;
         public string FailReason;
@@ -43,141 +31,79 @@ namespace Game.Ai.V2
 
     public static class BuildingPlayExecutor
     {
-        // ---------------------------------------------------------------------- Base ----
-        public static bool PreflightBaseCard(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, CardData card, HexCoord hex, out string reason)
+        // Non-mutating "could this Base card be founded here right now" — the SAME rule
+        // InfrastructureActions.TryFoundBase enforces. Used by InfrastructureFulfillment's hex scan.
+        public static bool CanFoundBaseAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
+            CardData card, HexCoord hex, out string reason)
         {
             reason = null;
-            if (player == null || root == null || hand == null || ctx?.HexSelection == null || card == null)
+            if (player == null || hand == null || ctx?.HexSelection == null || card?.Definition == null)
             { reason = "missing args"; return false; }
-            CardDefinition def = card.Definition;
-            if (def == null || def.cardType != CardType.Base)
-            { reason = $"card type {def?.cardType} is not a Base"; return false; }
             if (!hand.Hand.Contains(card))
             { reason = "card not in hand"; return false; }
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex, player))
-            { reason = "founding a Base needs one of your hero-led armies on the hex"; return false; }
-            if (ArmyRegistry.AllAt(hex).Any(a => a != null && a.Owner != null && a.Owner != player))
-            { reason = "hex is contested"; return false; }
-            if (BuildingRegistry.FindAt(hex) != null)
-            { reason = "hex already has a building"; return false; }
-            if (!root.CanSpendActionPoints(card.EffectivePlayApCost))
-            { reason = $"need {card.EffectivePlayApCost} AP"; return false; }
-            ResourceCost cost = card.EffectivePlayResourceCost;
-            if (cost != null && !cost.CanAfford(root))
-            { reason = "resource cost unaffordable"; return false; }
-            if (!string.IsNullOrEmpty(def.requiredBuildingAbility)
-                && !PlacementRules.HasRequiredBuilding(player, hex, def))
-            { reason = $"no owned '{def.requiredBuildingAbility}' building at the hex"; return false; }
-            return true;
+            return InfrastructureActions.CanFoundBase(card.Definition, hex, player,
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);
         }
 
+        public static bool CanPlaceFacilityAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
+            CardData card, HexCoord baseHex, out string reason)
+        {
+            reason = null;
+            if (player == null || hand == null || card?.Definition == null)
+            { reason = "missing args"; return false; }
+            if (!hand.Hand.Contains(card))
+            { reason = "card not in hand"; return false; }
+            return InfrastructureActions.CanPlaceFacility(card.Definition, baseHex, player,
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);
+        }
+
+        // -------------------------------------------------------------------- Base ----
         public static BuildingPlayResult PlayBaseCard(PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex)
         {
-            if (!PreflightBaseCard(player, root, hand, ctx, card, hex, out string reason))
-                return BuildingPlayResult.Fail(reason);
-
-            int apStart = root.ActionPoints;
-            try
-            {
-                // SpawnBuilding refuses (returns null) BEFORE any mutation on a missing-config
-                // argument and otherwise always succeeds; it touches no AP/resource/hand itself.
-                BuildingData building = ctx.HexSelection.SpawnBuilding(card.Definition, hex, player);
-                if (building == null)
-                    return BuildingPlayResult.Fail("SpawnBuilding refused (missing scene config)");
-
-                root.SpendActionPoints(card.EffectivePlayApCost);
-                card.EffectivePlayResourceCost?.PayFrom(root);
-                hand.Hand.Remove(card);
-
-                return new BuildingPlayResult
-                {
-                    Built = true, CardConsumed = true, StateChanged = true,
-                    ApSpent = apStart - root.ActionPoints,
-                };
-            }
-            catch (Exception e)
-            {
-                AiDebugLog.Write($"[AI][V2][ERROR] BuildingPlayExecutor.PlayBaseCard threw after preflight: {e.Message}");
-                return new BuildingPlayResult
-                {
-                    Built = false, StateChanged = true,
-                    ApSpent = apStart - root.ActionPoints,
-                    FailReason = "exception during build sequence",
-                };
-            }
-        }
-
-        // ------------------------------------------------------------------ Facility ----
-        //  A CardType.Facility card placed into a free slot of one of the player's own Bases —
-        //  the SAME operation CardHandUI.TryDeployFacilityToHex performs. This is the path that
-        //  actually creates a Research/Production capability (WorldAnalysis.HasDevFacility reads
-        //  BuildingData.HasFacilityWithAbility, i.e. a filled slot, not a building ability).
-        public static bool PreflightFacilityCard(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, CardData card, HexCoord baseHex, out string reason, out BuildingData building)
-        {
-            reason = null;
-            building = null;
-            if (player == null || root == null || hand == null || card == null)
-            { reason = "missing args"; return false; }
-            CardDefinition def = card.Definition;
-            if (def == null || def.cardType != CardType.Facility)
-            { reason = $"card type {def?.cardType} is not a Facility"; return false; }
+            if (player == null || hand == null || ctx?.HexSelection == null || card?.Definition == null)
+                return BuildingPlayResult.Fail("missing args");
             if (!hand.Hand.Contains(card))
-            { reason = "card not in hand"; return false; }
-            building = BuildingRegistry.FindAt(baseHex);
-            if (building == null || building.Owner != player || !building.IsBase)
-            { reason = "no owned Base at the hex"; return false; }
-            if (building.FindFirstAvailableFacilitySlot() < 0)
-            { reason = "Base has no free Facility slot"; return false; }
-            if (!root.CanSpendActionPoints(card.EffectivePlayApCost))
-            { reason = $"need {card.EffectivePlayApCost} AP"; return false; }
-            ResourceCost cost = card.EffectivePlayResourceCost;
-            if (cost != null && !cost.CanAfford(root))
-            { reason = "resource cost unaffordable"; return false; }
-            return true;
+                return BuildingPlayResult.Fail("card not in hand");
+
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
+                ctx.HexSelection, card.Definition, hex, player,
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost);
+            if (!outcome.Ok)
+                return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
+
+            hand.Hand.Remove(card);   // caller-owned hand, only on success
+            return new BuildingPlayResult
+            {
+                Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
+            };
         }
 
+        // ---------------------------------------------------------------- Facility ----
         public static BuildingPlayResult PlayFacilityCard(PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, CardData card, HexCoord baseHex)
         {
-            if (!PreflightFacilityCard(player, root, hand, ctx, card, baseHex, out string reason, out BuildingData building))
-                return BuildingPlayResult.Fail(reason);
+            if (player == null || hand == null || card?.Definition == null)
+                return BuildingPlayResult.Fail("missing args");
+            if (!hand.Hand.Contains(card))
+                return BuildingPlayResult.Fail("card not in hand");
 
-            int apStart = root.ActionPoints;
-            try
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
+                card.Definition, baseHex, player,
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost);
+            if (!outcome.Ok)
+                return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
+
+            hand.Hand.Remove(card);
+            return new BuildingPlayResult
             {
-                int slotIndex = building.FindFirstAvailableFacilitySlot();
-                if (slotIndex < 0)
-                    return BuildingPlayResult.Fail("Base free slot vanished between preflight and play");
-
-                root.SpendActionPoints(card.EffectivePlayApCost);
-                card.EffectivePlayResourceCost?.PayFrom(root);
-                building.FacilitySlots[slotIndex] = FacilityData.FromDefinition(card.Definition);
-                hand.Hand.Remove(card);
-
-                return new BuildingPlayResult
-                {
-                    Built = true, CardConsumed = true, StateChanged = true,
-                    ApSpent = apStart - root.ActionPoints,
-                };
-            }
-            catch (Exception e)
-            {
-                AiDebugLog.Write($"[AI][V2][ERROR] BuildingPlayExecutor.PlayFacilityCard threw after preflight: {e.Message}");
-                return new BuildingPlayResult
-                {
-                    Built = false, StateChanged = true,
-                    ApSpent = apStart - root.ActionPoints,
-                    FailReason = "exception during facility deploy",
-                };
-            }
+                Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
+            };
         }
 
         // -------------------------------------------------------- extraction site ----
         //  TryBuildExtractionFacility owns the whole transaction (hero-on-hex, AP, resources,
-        //  hero move). These cards are never in hand — no hand boundary here.
+        //  hero move) — no hand card is involved.
         public static BuildingPlayResult BuildExtractionFacility(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, CardDefinition facilityDef, HexCoord hex)
         {

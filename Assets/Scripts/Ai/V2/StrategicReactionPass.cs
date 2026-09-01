@@ -177,7 +177,14 @@ namespace Game.Ai.V2
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot);
             result.Executed += executed.Count(MissionRevalidator.WasAttempt);
             foreach (ExecutionResult er in executed)
+            {
+                if (er.IsReplacement && er.Source?.Mission != null)
+                {
+                    outcomeLedger.RegisterProposals(new[] { er.Source.Mission });
+                    outcomeLedger.RecordProvisionSuccess(er.Source.Mission, er.Source);
+                }
                 outcomeLedger.RecordExecution(er);
+            }
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());

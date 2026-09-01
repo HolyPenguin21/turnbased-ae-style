@@ -84,17 +84,17 @@ namespace Game.Ai.V2
         }
 
         // Bounded, deterministic replacement for a stale Explore. Returns a still-unvisited frontier
-        // hex from the turn's own snapshot the mover could be re-pointed at, or null. Never re-plans.
-        // A mission that is ITSELF a replacement never gets replaced again (one hop, bounded).
+        // hex from the turn's own snapshot the mover could be re-pointed at, or null. Ranked from
+        // the mover's CURRENT position (`from`), not the old objective. Never re-plans. A mission
+        // that is ITSELF a replacement never gets replaced again (one hop, bounded).
         public static bool TryPickReplacementExploreFocus(WorldSnapshot snapshot, PlayerSetupData player,
-            ProvisionedMission pm, out HexCoord focus)
+            ProvisionedMission pm, HexCoord from, out HexCoord focus)
         {
             focus = default;
             if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
                 || pm.Kind != MissionKind.Scout || pm.ScoutKind != ScoutTargetKind.Explore)
                 return false;
 
-            HexCoord from = pm.ExecutionHex;
             FrontierHexSnapshot? best = null;
             foreach (FrontierHexSnapshot f in snapshot.MapKnowledge.Frontier)
             {

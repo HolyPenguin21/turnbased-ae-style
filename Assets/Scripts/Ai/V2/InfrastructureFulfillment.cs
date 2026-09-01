@@ -167,10 +167,10 @@ namespace Game.Ai.V2
                 return null;
 
             HexCoord? baseHex = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase && b.FindFirstAvailableFacilitySlot() >= 0)
+                .Where(b => b != null && b.Owner == player && b.IsBase)
                 .Select(b => (HexCoord?)b.Hex)
                 .OrderBy(h => h.Value.Q).ThenBy(h => h.Value.R)
-                .FirstOrDefault();
+                .FirstOrDefault(h => BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h.Value, out _));
             if (baseHex == null)
                 return null;
 

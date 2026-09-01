@@ -605,27 +605,7 @@ namespace Game.UI
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
                 return false;
             BuildingData existing = BuildingRegistry.FindAt(hex);
-            return existing == null || CanMergeIntoResourceSite(existing);
-        }
-
-        // A dragged Base card can land on a hex that already has a hero-built resource site (see
-        // HexSelectionController.TryBuildExtractionFacility) as long as the new Base's own slot
-        // capacity can fit every extraction Facility already built there (see TryBuildBase,
-        // which carries them over) — capacity, not currently-unlocked count, so pre-existing
-        // facilities are grandfathered in even before the fresh Base's Level has "earned" that
-        // many slots.
-        private static bool CanMergeIntoResourceSite(BuildingData existing)
-        {
-            // Identified by HasTieredUnlock=false rather than a separate ability tag — a
-            // hero-built resource site is the only kind of building that's ever false here (see
-            // HexSelectionController.TryBuildExtractionFacility).
-            if (existing.HasTieredUnlock)
-                return false;
-            int occupied = 0;
-            foreach (FacilityData facility in existing.FacilitySlots)
-                if (facility != null)
-                    occupied++;
-            return occupied <= BuildingData.DefaultTotalFacilitySlots;
+            return existing == null || InfrastructureActions.CanMergeIntoResourceSite(existing);
         }
 
         // A Facility card dropped straight onto a hex (not the open modal) — valid wherever the
@@ -780,67 +760,17 @@ namespace Game.UI
             if (human == null)
                 return false;
 
-            BuildingData existing = BuildingRegistry.FindAt(hex.Value);
-            if (existing != null && !CanMergeIntoResourceSite(existing))
+            // The whole spend + create + refund sequence is the shared authoritative transaction
+            // (Game.Map.InfrastructureActions) — the AI plays a Base through the exact same door.
+            // Effective instance cost: a Research/Production-created card pays activationApCost and
+            // no ResourceCost.
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
+                hexSelection, definition, hex.Value, human,
+                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
+            if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Can't build {definition.displayName} here — this hex already has a building.");
+                turnController.ShowSpawnHint($"Can't build {definition.displayName} here — {outcome.FailReason}.");
                 return false;
-            }
-            if (!HexSelectionController.HasOwnHeroArmyAt(hex.Value, human))
-            {
-                turnController.ShowSpawnHint($"Can't build {definition.displayName} here — needs one of your armies with a Hero on this hex.");
-                return false;
-            }
-            if (BattleInitiator.FindEnemyAt(hex.Value, human) != null)
-            {
-                turnController.ShowSpawnHint($"Can't build {definition.displayName} here — an enemy army holds this hex.");
-                return false;
-            }
-
-            PlayerRoot root = PlayerRootRegistry.FindFor(human);
-            if (root == null)
-                return false;
-
-            // Effective instance cost: a Research/Production-created card pays activationApCost
-            // and no ResourceCost (already paid at Create). Ordinary cards resolve 1:1 to
-            // definition.apCost / definition.resourceCost.
-            int apCost = card.Data.EffectivePlayApCost;
-            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
-            if (!root.CanSpendActionPoints(apCost))
-            {
-                turnController.ShowSpawnHint($"Not enough action points to build {definition.displayName}.");
-                return false;
-            }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
-            {
-                turnController.ShowSpawnHint($"Not enough resources to build {definition.displayName}.");
-                return false;
-            }
-
-            root.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(root);
-
-            // Absorb whatever was already built on a bare resource site into the new Base's own
-            // slots (see CanMergeIntoResourceSite) before its old marker is replaced.
-            FacilityData[] carriedOver = existing?.FacilitySlots;
-            if (existing != null && existing.Visual != null)
-                Destroy(existing.Visual.gameObject);
-
-            BuildingData building = hexSelection.SpawnBuilding(definition, hex.Value, human);
-            if (building != null && carriedOver != null)
-            {
-                int slot = 0;
-                foreach (FacilityData facility in carriedOver)
-                {
-                    if (facility == null)
-                        continue;
-                    while (slot < building.FacilitySlots.Length && building.FacilitySlots[slot] != null)
-                        slot++;
-                    if (slot >= building.FacilitySlots.Length)
-                        break;
-                    building.FacilitySlots[slot] = facility;
-                    slot++;
-                }
             }
 
             // Founding/merging a Base here can enable Research/Production on the selected hex.
@@ -977,36 +907,16 @@ namespace Game.UI
             if (!IsValidFacilityHexDropTarget(definition, human, hex.Value))
                 return false; // not the player's own Base — nothing to say, same as any other irrelevant drop
 
-            BuildingData building = BuildingRegistry.FindAt(hex.Value);
-            int slotIndex = building.FindFirstAvailableFacilitySlot();
-            if (slotIndex < 0)
+            // Same shared authoritative transaction the AI uses. Effective instance cost — a
+            // Research/Production-created card pays activationApCost and no ResourceCost.
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
+                definition, hex.Value, human,
+                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
+            if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"{building.Name} has no free Facility slot for {definition.displayName}.");
+                turnController.ShowSpawnHint($"Can't deploy {definition.displayName} — {outcome.FailReason}.");
                 return false;
             }
-
-            PlayerRoot root = PlayerRootRegistry.FindFor(human);
-            if (root == null)
-                return false;
-
-            // Effective instance cost — see TryBuildBase. Produced cards skip the (already paid)
-            // ResourceCost and use activationApCost.
-            int apCost = card.Data.EffectivePlayApCost;
-            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
-            if (!root.CanSpendActionPoints(apCost))
-            {
-                turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
-                return false;
-            }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
-            {
-                turnController.ShowSpawnHint($"Not enough resources to deploy {definition.displayName}.");
-                return false;
-            }
-
-            root.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(root);
-            building.FacilitySlots[slotIndex] = FacilityData.FromDefinition(definition);
 
             // A Lab/Factory Facility dropped straight onto the hex can enable Research/Production.
             hexSelection.RefreshSelectedHexIf(hex.Value);
