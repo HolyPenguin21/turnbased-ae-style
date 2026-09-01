@@ -7,19 +7,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer: local same-hex army/garrison structural reorganisation.
-    //  A pending Recon strategic interrupt is consumed immediately before housekeeping by the one
-    //  bounded StrategicReactionPass; only after that pass settles do we run the zero-AP structural
-    //  cleanup below. Analyzer -> pure deterministic Planner -> canonical Executor.
+    //  Last ordinary mutating V2 layer. It now has TWO deliberately separate pieces:
+    //    · bounded strategic maintenance (may spend AP/resources): internal Facility placement,
+    //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
+    //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
     //
-    //  AP OWNERSHIP: housekeepingApReserve is currently 0. Therefore every planned/executed
-    //  transfer/swap must be zero-cost under ArmyActions' real activated-destination rule. The
-    //  executor enforces that before mutation; this manager also records a turn-end invariant
-    //  violation if AP changed anyway, protecting against future gameplay-rule drift.
+    //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
+    //  maintenance actions run, and only after maintenance is exhausted do we enter the zero-AP
+    //  Analyzer -> Planner -> Executor reorganisation pass. The AP invariant below therefore
+    //  starts AFTER maintenance and still protects Step 8C's structural operations from drift.
     // ===========================================================================================
     public sealed class HousekeepingResult
     {
         public bool StateChanged;
+        public int MaintenanceActions;
         public int GroupsPlanned;
         public int TransfersApplied;
         public int TransfersFailed;
@@ -35,22 +36,40 @@ namespace Game.Ai.V2
             if (result == null)
                 result = new HousekeepingResult();
 
-            // Phase B deliberately preserves AP while a discovery interrupt is pending. Consume it
-            // here before structural cleanup, then rebuild the FULL world snapshot because the
+            // Phase B deliberately preserves AP while a discovery/hand interrupt is pending.
+            // Consume it here before maintenance, then rebuild the FULL world snapshot because the
             // reaction may have changed both own forces and honest map knowledge.
             var reaction = new StrategicReactionResult();
             yield return StrategicReactionPass.ExecuteIfPending(snapshot, player, root, ctx, reaction);
             result.Reaction = reaction;
+            AiHandData hand = AiHandRegistry.Peek(player);
             if (reaction.Ran)
             {
                 result.StateChanged |= reaction.StateChanged;
-                AiHandData hand = AiHandRegistry.Peek(player);
                 if (hand != null)
                     snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
                 commitments = ActorCommitments.FromIntents(
                     MissionIntentRegistry.GetOrCreate(player).All,
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
+            }
+
+            // Terminal Draw has already declined to consume AP whenever this policy has a useful
+            // action. Execute a small bounded number here. Each success refreshes the operational
+            // snapshot so a capacity upgrade can expose a Facility placement next, and generation
+            // of Equipment can expose an attach on the following iteration.
+            if (hand != null && player != null && root != null && ctx != null)
+            {
+                for (int i = 0; i < StrategicMaintenancePolicy.MaxActionsPerTurn; i++)
+                {
+                    if (!StrategicMaintenancePolicy.TryExecuteBest(snapshot, player, root, hand, ctx))
+                        break;
+                    result.MaintenanceActions++;
+                    result.StateChanged = true;
+                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                }
+                if (result.MaintenanceActions > 0)
+                    AiDebugLog.Write($"[AI][V2] housekeeping maintenance — {result.MaintenanceActions} action(s) executed before structural cleanup");
             }
 
             Run(player, root, ctx, commitments, result);
@@ -74,6 +93,8 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // Maintenance above is allowed to spend. From THIS line onward reorganisation owns no
+            // AP, preserving the original Step-8C invariant exactly where it matters.
             int apBefore = root != null ? root.ActionPoints : 0;
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
             if (analysis.Groups.Count == 0)
@@ -105,12 +126,13 @@ namespace Game.Ai.V2
             {
                 result.ApInvariantViolated = true;
                 AiDebugLog.Write($"[AI][V2][ERROR] housekeeping AP invariant violated — AP {apBefore}->{root.ActionPoints}. "
-                    + "Step 8C owns no AP while housekeepingApReserve is 0.");
+                    + "Structural reorganisation owns no AP; strategic maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping — groups {result.GroupsPlanned}, "
-                + $"operations applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
-                + $"stateChanged {(result.StateChanged ? 1 : 0)}, apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
+            AiDebugLog.Write($"[AI][V2] housekeeping — maintenance {result.MaintenanceActions}, "
+                + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
+                + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
+                + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }
 
         // §16 — final decisions are logged by the executor; this adds the important UNRESOLVED
