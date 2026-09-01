@@ -563,9 +563,15 @@ namespace Game.Ai.V2
             {
                 lc.Value.Resolve(eps, out float strictScale, out float remainderConsumed, out bool overclaim);
                 if (overclaim)
+                {
+                    // §2.2 — surface the same fact as a structured invariant error tied to the
+                    // concrete MissionAttemptId, not just a context-free allocator WARN.
+                    AiV2Trace.CheckError(lc.Value.Mission?.AttemptId, "ProvisionClaimExceedsEnvelope",
+                        $"claimed={LogNum(lc.Value.ClaimedAp)} granted={LogNum(lc.Value.GrantedAp)} key={lc.Key}");
                     AiDebugLog.Write($"[AI][V2] allocator — WARN locked claim {LogNum(lc.Value.ClaimedAp)} "
                         + $"exceeds granted {LogNum(lc.Value.GrantedAp)} for {lc.Key} — clamped (provisioning "
                         + "must stay within Tentative)");
+                }
                 lockedTotal += Mathf.Min(lc.Value.ClaimedAp, lc.Value.GrantedAp);
                 lockedRemainderConsumed += remainderConsumed;
                 foreach (KeyValuePair<DesireAxis, float> kv in lc.Value.StrictDraw)
@@ -1134,7 +1140,7 @@ namespace Game.Ai.V2
                     .Where(kv => kv.Value.Ap > AiConfigV2.allocatorSliceEpsilon)
                     .Select(kv => $"{DesireAxes.Abbrev(kv.Key)} {LogNum(kv.Value.Ap)}"));
                 AiDebugLog.Write($"[AI][V2]   {(fe.IsCommitment ? "commit" : "fund  ")} "
-                    + $"{StableMissionKey.For(fe.Mission)} base {LogNum(fe.Mission.BaseValue)} "
+                    + $"[{fe.Mission.AttemptId}] {StableMissionKey.For(fe.Mission)} base {LogNum(fe.Mission.BaseValue)} "
                     + $"ap {LogNum(fe.Tentative.Ap)} draw[{draw}] rem+ {LogNum(fe.RemainderTopUp.Ap)} "
                     + $"{fe.Stage.ToString().ToLowerInvariant()}");
             }
@@ -1150,7 +1156,7 @@ namespace Game.Ai.V2
                             ? $"reason={d.CooldownReason ?? "StructuralFailure"} start=t{d.CooldownStartedTurn} "
                               + $"until=t{d.CooldownUntilTurn} remaining={Mathf.Max(0, d.CooldownUntilTurn - turn + 1)}"
                             : "";
-                AiDebugLog.Write($"[AI][V2]   defer {StableMissionKey.For(d.Mission)} "
+                AiDebugLog.Write($"[AI][V2]   defer [{d.Mission?.AttemptId}] {StableMissionKey.For(d.Mission)} "
                     + $"base {LogNum(d.Mission.BaseValue)} — {d.Reason} {why}");
             }
 

@@ -140,7 +140,8 @@ namespace Game.Ai.V2
         // mission's identity (spec §5). It reuses only the physical mover + AP claim (already
         // reserved for that mover this turn). Deterministic: `newFocus` came from a totally-ordered
         // frontier pick.
-        public static ProvisionedMission BuildExploreReplacement(ProvisionedMission stale, HexCoord newFocus)
+        public static ProvisionedMission BuildExploreReplacement(ProvisionedMission stale, HexCoord newFocus,
+            PlayerSetupData player = null)
         {
             var target = new ScoutMissionTarget
             {
@@ -156,6 +157,10 @@ namespace Game.Ai.V2
                 BaseValue = stale?.Mission?.BaseValue ?? 0f,
                 Explain = "live replacement for a stale Explore focus",
                 PreferredMoverArmyId = stale?.MoverArmyId,
+                // §1.5 — its OWN fresh attempt id in the current pass, linked back to the
+                // superseded attempt. Never inherits the stale proposal's identity.
+                AttemptId = AiV2Trace.CurrentScope(player)?.NextMissionAttemptId(),
+                ReplacementOfAttemptId = stale?.Mission?.AttemptId,
             };
             return new ProvisionedMission
             {

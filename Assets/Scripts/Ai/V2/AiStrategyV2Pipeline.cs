@@ -272,6 +272,22 @@ namespace Game.Ai.V2
     // --- Stage 4 output: a concrete thing the AI could do, with the resources it would need.
     public sealed class MissionProposal
     {
+        // --- Correlation (AiV2Trace debuggability pass) ---------------------------------------
+        // AttemptId — this proposal's id for THIS planning pass ("{scope}-M01"). A fresh id every
+        // pass (a re-materialised intent is a NEW attempt of a durable objective). Distinct from
+        // StableMissionKey (stable proposal/execution identity) and MissionIntentKey (durable
+        // multi-turn intent). Assigned by the orchestrator right after the pass's mission list is
+        // built; it then rides through FundedEntry → ProvisionedMission → ExecutionResult →
+        // MissionOutcomeLedger → MissionTurnOutcome → MissionContinuity.
+        public string AttemptId;
+        // The DemandTraceId of the capability shortage that was blocking this exact operation, or
+        // "none". CONSERVATIVE: set only on an exact target-hex + capability match (spec §1.6) —
+        // never inferred from the shared axis, never a forced Demand→Mission 1:1.
+        public string CauseDemandTraceId = "none";
+        // Set ONLY on a bounded live stale-Explore replacement (MissionRevalidator): the AttemptId
+        // of the superseded attempt. The replacement carries its own fresh AttemptId + identity.
+        public string ReplacementOfAttemptId;
+
         public MissionKind Kind;
         public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
@@ -382,6 +398,11 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // Correlation scope for this whole main pass (T{turn}-P{colorIndex}-M) + the physical
+            // resource totals it opens with, for the end-of-Main [STATE] control line (spec §2.7).
+            V2TraceScope trace = AiV2Trace.BeginMain(player, ctx.TurnNumber);
+            V2ResourceStamp stateStart = AiV2Trace.Stamp(root);
+
             // Turn-scoped activity record (main vs reaction vs total). Reset here so a stale
             // Reaction bucket from last turn can never leak into this turn's Total.
             V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
@@ -472,10 +493,17 @@ namespace Game.Ai.V2
             // interleaves the two lanes by BaseValue.
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives));
+            // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
+            // list order, stable across the re-pack loop), then bind the conservative
+            // Demand→Mission causal link (spec §1.6).
+            foreach (MissionProposal m in missions)
+                if (m != null && string.IsNullOrEmpty(m.AttemptId))
+                    m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
+            AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
-                AiDebugLog.Write($"[AI][V2]   mission — {m.Kind} baseValue "
+                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTraceId} {m.Kind} baseValue "
                     + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
@@ -537,7 +565,9 @@ namespace Game.Ai.V2
                         session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
                         ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
                         provisioned.Add(result.Provisioned);
-                        AiDebugLog.Write($"[AI][V2]   provision {key} — OK mover #{result.Provisioned.MoverArmyId} "
+                        AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
+                            result.Provisioned.ClaimedAp, fe.Tentative.Ap);
+                        AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
                             + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
                             + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
                             + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
@@ -554,7 +584,7 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                        AiDebugLog.Write($"[AI][V2]   provision {key} — FAIL {result.Failure.Kind} "
+                        AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                     }
                 }
@@ -615,6 +645,11 @@ namespace Game.Ai.V2
                 postCommitments, phaseA.Reservation);
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+
+            // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
+            // invariant and the bounded reaction pass logs its own [STATE]; captured here so the
+            // Main line means the main phase.
+            AiV2Trace.LogState(trace.Id, stateStart, AiV2Trace.Stamp(root));
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
             //    The LAST mutating AI layer: deterministic, same-hex army/garrison REORGANISATION

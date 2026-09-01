@@ -692,7 +692,7 @@ namespace Game.Ai.V2
                 if (donor == null || !ArmyActions.TransferMember(t.Unit, donor, host, ctx.HexSelection, out why))
                 {
                     bool rollbackOk = RollbackAssembly(player, host, applied, ctx);
-                    AiDebugLog.Write($"[AI][V2]   raid provision {key} — assembly transaction failed on "
+                    AiDebugLog.Write($"[AI][V2]   raid provision [{m.AttemptId}] {key} — assembly transaction failed on "
                         + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}");
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                         rollbackOk ? $"atomic raid assembly rejected: {why}" : $"raid assembly failed and rollback was incomplete: {why}"));
@@ -703,7 +703,7 @@ namespace Game.Ai.V2
             foreach (int d in claimedDonors)
                 session.ClaimedArmyIds.Add(d);
 
-            AiDebugLog.Write($"[AI][V2]   raid provision {key} — OK host #{host.Id} "
+            AiDebugLog.Write($"[AI][V2]   raid provision [{m.AttemptId}] {key} — OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}" 
                 + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"ap {N(activationAp)} -> ({targetHex.Q},{targetHex.R})");

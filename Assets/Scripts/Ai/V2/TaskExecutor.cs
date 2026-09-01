@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                     result.FinalHex = pm.ExecutionHex;
                     result.StopReason = ExecutionStopReason.MoverLost;
                     results.Add(result);
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
                     continue;
                 }
 
@@ -132,7 +132,7 @@ namespace Game.Ai.V2
                     && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, army.Hex, takenFoci, out HexCoord replFocus)
                     && !VisionSystem.IsVisited(player, replFocus))
                 {
-                    ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus);
+                    ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus, player);
                     if (!MissionRevalidator.IsStale(MissionRevalidator.Validate(player, root, ctx, repl)))
                     {
                         result.FinalHex = army.Hex;
@@ -140,13 +140,17 @@ namespace Game.Ai.V2
                         result.ReachedGoal = true;        // the ORIGINAL objective genuinely was met
                         result.Replaced = true;
                         result.StopReason = ExecutionStopReason.ReachedGoal;
+                        ApCheck(pm, apBefore, root, result);
                         results.Add(result);
 
                         queue.Add(repl);
                         replacementsUsed++;
-                        AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus already satisfied; "
+                        AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — Explore focus already satisfied; "
                             + $"superseded → replacement {repl.Key} for mover #{repl.MoverArmyId} "
                             + $"@({replFocus.Q},{replFocus.R}) (fresh identity, no replan)");
+                        // §1.5 — the replacement attempt is a NEW attempt id linked back to the one it supersedes.
+                        AiDebugLog.Write($"[AI][V2] exec [{repl.Mission?.AttemptId}] replacementOf={pm.Mission?.AttemptId} "
+                            + $"stableKey={repl.Key}");
                         continue;
                     }
                 }
@@ -161,8 +165,9 @@ namespace Game.Ai.V2
                         : validity == MissionValidity.StaleGoalMet
                             ? ExecutionStopReason.ReachedGoal
                             : ExecutionStopReason.TargetInvalidated;
+                    ApCheck(pm, apBefore, root, result);
                     results.Add(result);
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — revalidation: {validity}; "
+                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — revalidation: {validity}; "
                         + "no movement, 0 AP, not a successful execution");
                     continue;
                 }
@@ -170,6 +175,7 @@ namespace Game.Ai.V2
                 if (pm.Kind == MissionKind.Raid)
                 {
                     yield return RunRaid(player, root, ctx, pm, result, apBefore);
+                    ApCheck(pm, apBefore, root, result);
                     results.Add(result);
                     continue;
                 }
@@ -179,8 +185,9 @@ namespace Game.Ai.V2
                     result.ReachedGoal = true;
                     result.StopReason = ExecutionStopReason.ReachedGoal;
                     result.ApSpent = 0f;
+                    ApCheck(pm, apBefore, root, result);
                     results.Add(result);
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — surveil already satisfied before start — no movement, 0 AP");
+                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — surveil already satisfied before start — no movement, 0 AP");
                     continue;
                 }
 
@@ -192,8 +199,9 @@ namespace Game.Ai.V2
                     result.ReachedGoal = true;
                     result.StopReason = ExecutionStopReason.ReachedGoal;
                     result.ApSpent = 0f;
+                    ApCheck(pm, apBefore, root, result);
                     results.Add(result);
-                    AiDebugLog.Write($"[AI][V2] exec {pm.Key} — Explore focus already visited before start — stale batch mission completed with no movement, 0 AP");
+                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — Explore focus already visited before start — stale batch mission completed with no movement, 0 AP");
                     continue;
                 }
 
@@ -204,8 +212,9 @@ namespace Game.Ai.V2
                         result.FinalHex = army.Hex;
                         result.StopReason = ExecutionStopReason.RequiredStealthUnavailable;
                         result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                        ApCheck(pm, apBefore, root, result);
                         results.Add(result);
-                        AiDebugLog.Write($"[AI][V2] exec {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter required stealth; mission aborted for this turn");
+                        AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — WARN mover #{pm.MoverArmyId} could not enter required stealth; mission aborted for this turn");
                         continue;
                     }
                     result.EnteredStealth |= enteredStealth;
@@ -264,7 +273,7 @@ namespace Game.Ai.V2
                         {
                             primaryExploreSatisfied = true;
                             result.ReachedGoal = true;
-                            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — primary Explore focus satisfied "
+                            AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — primary Explore focus satisfied "
                                 + $"at ({army.Hex.Q},{army.Hex.R}); assigned=({executionHex.Q},{executionHex.R}) "
                                 + $"movement={army.CurrentMovement}");
                         }
@@ -286,7 +295,7 @@ namespace Game.Ai.V2
 
                             movementGoal = continuation.Value;
                             doingExploreFollowThrough = true;
-                            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — post-goal follow-through "
+                            AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — post-goal follow-through "
                                 + $"from=({army.Hex.Q},{army.Hex.R}) primary=({executionHex.Q},{executionHex.R}) "
                                 + $"next=({movementGoal.Q},{movementGoal.R}) movement={army.CurrentMovement}");
                         }
@@ -395,9 +404,10 @@ namespace Game.Ai.V2
                 result.FinalHex = army?.Hex ?? result.FinalHex;
                 result.StopReason = stop;
                 result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                ApCheck(pm, apBefore, root, result);
                 results.Add(result);
 
-                AiDebugLog.Write($"[AI][V2] exec {pm.Key} — ({result.StartHex.Q},{result.StartHex.R})→"
+                AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — ({result.StartHex.Q},{result.StartHex.R})→"
                     + $"({result.FinalHex.Q},{result.FinalHex.R}) steps {result.StepsMoved} "
                     + $"ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} stop {stop}"
                     + (result.ReachedGoal ? " (goal)" : ""));
@@ -459,7 +469,7 @@ namespace Game.Ai.V2
             result.FinalHex = Resolve(player, pm.MoverArmyId)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — raid ({result.StartHex.Q},{result.StartHex.R})→"
+            AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — raid ({result.StartHex.Q},{result.StartHex.R})→"
                 + $"({result.FinalHex.Q},{result.FinalHex.R}) steps {result.StepsMoved} "
                 + $"ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} stop {stop}"
                 + (result.ReachedGoal ? " (target gone)" : ""));
@@ -467,6 +477,14 @@ namespace Game.Ai.V2
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+
+        // §2.1 — the real AP the turn's pool lost while this mission executed must equal the AP the
+        // ExecutionResult reports it spent. TaskExecutor already derives ApSpent from that same
+        // physical delta, so this only fires on a genuine desync (a path that reports 0 but moved
+        // AP, or an AP refund).
+        private static void ApCheck(ProvisionedMission pm, int apBefore, PlayerRoot root, ExecutionResult result) =>
+            AiV2Trace.CheckExecutionAp(pm?.Mission?.AttemptId, apBefore,
+                root != null ? root.ActionPoints : apBefore, result != null ? result.ApSpent : 0f);
 
         private static bool IsSurveilSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
             pm.ScoutKind == ScoutTargetKind.Surveil
@@ -518,7 +536,7 @@ namespace Game.Ai.V2
             });
 
             float slack = Mathf.Max(0f, root.ActionPoints - Mathf.Max(0f, mandatoryApClaims));
-            AiDebugLog.Write($"[AI][V2] exec {pm.Key} — scout stealth {eval.ToCompact()} "
+            AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — scout stealth {eval.ToCompact()} "
                 + $"ap={root.ActionPoints} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
                 + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)} draw={(drawAvailable ? 1 : 0)}");
 

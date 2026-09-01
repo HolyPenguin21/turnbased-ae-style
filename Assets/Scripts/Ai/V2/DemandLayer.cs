@@ -20,6 +20,13 @@ namespace Game.Ai.V2
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown));
             demands.AddRange(DevelopmentDemands(snap, breakdown));
+            // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
+            // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
+            // ToString from here — into Phase A and every [CHECK] line raised for the demand.
+            V2TraceScope scope = AiV2Trace.CurrentScope(player);
+            foreach (AxisDemand d in demands)
+                if (d != null && string.IsNullOrEmpty(d.TraceId))
+                    d.TraceId = scope?.NextDemandId() ?? "?";
             foreach (AxisDemand d in demands)
                 AiDebugLog.Write($"[AI][V2]   demand — {d} | {d.Explain}");
             return demands;

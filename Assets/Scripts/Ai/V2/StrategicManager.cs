@@ -102,14 +102,22 @@ namespace Game.Ai.V2
                 // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
                 // checks the requesting axis's discrete entitlement and live affordability, and
                 // only then runs the authoritative build. A shortfall => nothing spent, not built.
+                V2ResourceStamp infraBefore = AiV2Trace.Stamp(root);
                 InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
                     snap, player, root, hand, ctx, istate.Demand, ledger);
+                V2ResourceStamp infraAfter = AiV2Trace.Stamp(root);
                 if (infra.StateChanged)
                     result.StateChanged = true;
+                // §2.4 — a FAILED infra op must have rolled back every controlled resource.
+                AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
+                    infra.StateChanged, infraBefore, infraAfter);
                 if (infra.Built)
                 {
                     // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
                     // ledger records an already-permitted action, never grants overdraft.
+                    // §2.3 — real AP delta == reported spend == axis debit for this committed action.
+                    AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
+                        infraBefore.Ap - infraAfter.Ap, infra.ApSpent, infra.ApSpent > 0f ? infra.ApSpent : 0f);
                     if (infra.ApSpent > 0f)
                     {
                         ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
@@ -183,9 +191,16 @@ namespace Game.Ai.V2
                 MaterializationPlan plan = selected.Plan;
                 var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
                     .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
+                int chainApBefore = root.ActionPoints;
                 MaterializationResult play = MaterializationExecutor.Execute(
                     snap, player, root, hand, ctx, plan, commitments);
+                int chainApAfter = root.ActionPoints;
                 chainAttempts++;
+
+                // §2.3 — this committed Phase-A chain: real AP delta == reported spend == the
+                // amount debited to the requesting axis (ledger.Debit below is fed play.ApSpent).
+                AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
+                    chainApBefore - chainApAfter, play.ApSpent, play.ApSpent > 0f ? play.ApSpent : 0f);
 
                 // Production telemetry (spec §12) — attempts/successes per chain stage. Derived
                 // from the plan shape + MaterializationResult; no scoring change.
@@ -275,6 +290,7 @@ namespace Game.Ai.V2
             AxisDemand d = state.Demand;
             return new AxisDemand
             {
+                TraceId = d.TraceId,
                 RequestingAxis = d.RequestingAxis,
                 Value = d.Value,
                 TargetHex = d.TargetHex,

@@ -52,6 +52,10 @@ namespace Game.Ai.V2
             result.Rounds++;
             result.DiscoveredTargets += targetIds.Count;
 
+            // Correlation scope for this bounded round: round 0 -> T{turn}-P{c}-R1, round 1 -> …-R2.
+            V2TraceScope rtrace = AiV2Trace.BeginReaction(player, ctx.TurnNumber, round);
+            V2ResourceStamp rStart = AiV2Trace.Stamp(root);
+
             // A bounded reaction round is a fresh capability-exhaustion scope: Phase A below may
             // materialise new capability, so nothing the main pass marked exhausted carries in.
             CapabilityPoolExhaustionRegistry.BeginRound(player, ctx.TurnNumber, round + 1);
@@ -102,6 +106,13 @@ namespace Game.Ai.V2
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives));
+            foreach (MissionProposal m in missions)
+                if (m != null && string.IsNullOrEmpty(m.AttemptId))
+                    m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
+            AiV2Trace.CorrelateDemandsToMissions(demands, missions);
+            foreach (MissionProposal m in missions)
+                AiDebugLog.Write($"[AI][V2]   reaction mission — [{m.AttemptId}] causeDemand={m.CauseDemandTraceId} "
+                    + $"{m.Kind} base {m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
             result.Missions += missions.Count;
 
             List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
@@ -140,7 +151,9 @@ namespace Game.Ai.V2
                         session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp);
                         outcomeLedger.RecordProvisionSuccess(fe.Mission, provision.Provisioned);
                         provisioned.Add(provision.Provisioned);
-                        AiDebugLog.Write($"[AI][V2]   reaction provision {key} — OK mover "
+                        AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
+                            provision.Provisioned.ClaimedAp, fe.Tentative.Ap);
+                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — OK mover "
                             + $"#{provision.Provisioned.MoverArmyId} ap "
                             + $"{provision.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)}");
                     }
@@ -156,7 +169,7 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
-                        AiDebugLog.Write($"[AI][V2]   reaction provision {key} — FAIL "
+                        AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — FAIL "
                             + $"{provision.Failure.Kind} [{provision.Failure.Disposition}] "
                             + provision.Failure.Detail);
                     }
@@ -241,6 +254,8 @@ namespace Game.Ai.V2
                 + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "
                 + $"executed {executed.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
                 + $"draws {phaseB.CardsDrawn}");
+            // End-of-round physical resource control totals (spec §2.7).
+            AiV2Trace.LogState(rtrace.Id, rStart, AiV2Trace.Stamp(root));
 
             if (StrategicInterruptRegistry.HasPendingFollowup(player, ctx.TurnNumber))
             {

@@ -222,6 +222,13 @@ namespace Game.Ai.V2
             StableMissionKey k = StableMissionKey.For(m);
             if (!_rows.TryGetValue(k, out Row r))
                 _rows[k] = r = new Row();
+            // §2.5 — two DIFFERENT logical attempts must not silently share one StableMissionKey.
+            // Re-registering the SAME attempt (same object, or same AttemptId — proposals then
+            // commitments) is expected and stays silent.
+            if (r.Proposal != null && !ReferenceEquals(r.Proposal, m)
+                && !string.Equals(r.Proposal.AttemptId, m?.AttemptId, StringComparison.Ordinal))
+                AiV2Trace.CheckError(m?.AttemptId, "DuplicateStableMissionKey",
+                    $"key={k} existingAttempt={r.Proposal.AttemptId ?? "?"} incomingAttempt={m?.AttemptId ?? "?"}");
             if (r.Proposal == null) r.Proposal = m;
             return r;
         }
@@ -259,7 +266,10 @@ namespace Game.Ai.V2
             if (result == null) return;
             if (!_rows.TryGetValue(result.Key, out Row r))
             {
-                AiDebugLog.Write($"[AI][V2] ledger — WARN execution for unregistered mission {result.Key}, ignored");
+                // §2.6 — an execution with no RegisterProposals row is a broken registration
+                // contract, not a gameplay outcome. Keep the old "ignored" info in the detail.
+                AiV2Trace.CheckError(result.Source?.Mission?.AttemptId, "ExecutionWithoutRegisteredProposal",
+                    $"stableKey={result.Key} (execution result ignored — no ledger row)");
                 return;
             }
             r.Execution = result;
@@ -295,7 +305,7 @@ namespace Game.Ai.V2
                 if (satisfied)
                 {
                     r.LiveSatisfiedOverride = true;
-                    AiDebugLog.Write($"[AI][V2] ledger — {MissionIntentKey.For(r.Proposal)} objective met by "
+                    AiDebugLog.Write($"[AI][V2] ledger — [{r.Proposal.AttemptId}] {MissionIntentKey.For(r.Proposal)} objective met by "
                         + "another action this turn (post-execution live pass)");
                 }
             }
@@ -582,12 +592,20 @@ namespace Game.Ai.V2
                 seen.Add(o.IntentKey);
                 state.TryGet(o.IntentKey, out MissionIntent intent);
 
+                // One anchor line per attempt so grep of a MissionAttemptId shows the outcome
+                // between the execution and the continuity transition (spec §1.4).
+                string aid = o.Proposal?.AttemptId;
+                AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
+                    + (o.ObjectiveSatisfied ? " satisfied" : "")
+                    + (o.StructuralFailure ? " structural" : "")
+                    + $" {o.IntentKey}");
+
                 if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
                 {
                     if (intent != null)
                     {
                         state.Remove(o.IntentKey);
-                        AiDebugLog.Write($"[AI][V2] continuity — {o.IntentKey} COMPLETED, retired");
+                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
                     }
                     continue;
                 }
@@ -597,7 +615,7 @@ namespace Game.Ai.V2
                     if (intent != null) state.Remove(o.IntentKey);
                     string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
                     StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
-                    AiDebugLog.Write($"[AI][V2] continuity — {o.IntentKey} structural failure ({reason}), retired + cooldown");
+                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
                     continue;
                 }
 
@@ -606,7 +624,7 @@ namespace Game.Ai.V2
                     if (intent != null)
                     {
                         state.Remove(o.IntentKey);
-                        AiDebugLog.Write($"[AI][V2] continuity — {o.IntentKey} failed ({Describe(o)}), retired");
+                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
                     }
                     continue;
                 }
@@ -712,13 +730,13 @@ namespace Game.Ai.V2
             {
                 state.Remove(intent.IntentKey);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
-                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (stall "
+                AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} reaped (stall "
                     + $"{intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, age "
                     + $"{intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
             }
             else
             {
-                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} advanced "
+                AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} advanced "
                     + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
                     + (capabilityUnavailable ? $", suspended CapabilityUnavailable:{o.ProvisionFailureKindValue}" : "") + ")");
             }
@@ -751,7 +769,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = o.MoverArmyId,
             };
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} created ({intent.Funding}, "
+            AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} created ({intent.Funding}, "
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
         }
 
@@ -782,7 +800,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = o.MoverArmyId,
             };
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
+            AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
 
         private static bool ShouldReap(MissionIntent i)

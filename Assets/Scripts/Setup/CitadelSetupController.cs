@@ -141,6 +141,7 @@ namespace Game.Setup
             Game.Ai.V2.MissionIntentRegistry.Clear();    // Strategy V2 per-player durable mission-intent store (step 7)
             Game.Ai.V2.CapabilityPoolExhaustionRegistry.Clear(); // Strategy V2 per-turn capability-pool exhaustion scope
             Game.Ai.V2.V2TurnActivityTelemetry.Clear();          // Strategy V2 per-turn main/reaction/total activity record
+            Game.Ai.V2.AiV2Trace.Clear();                        // Strategy V2 per-player debuggability trace scopes (correlation ids)
             Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
             Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
             AiResourceReservation.Clear();

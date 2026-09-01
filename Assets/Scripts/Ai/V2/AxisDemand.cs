@@ -44,6 +44,11 @@ namespace Game.Ai.V2
 
     public sealed class AxisDemand
     {
+        // Turn-scoped correlation id (AiV2Trace — "{scope}-D01"). Assigned by DemandLayer.Generate
+        // once the full demand list for the pass exists; carried into StrategicManager Phase A and
+        // every [CHECK] line raised for this demand. Null only in a bare unit test / sim.
+        public string TraceId;
+
         public DesireAxis RequestingAxis;
 
         // Strategic merit of the UNMET opportunity behind this demand, on the same 0..100 scale
@@ -98,7 +103,8 @@ namespace Game.Ai.V2
         public float RequiredCapabilityPower;
 
         public override string ToString() =>
-            $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
+            (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
+            + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
             + (RequiredTraits != TraitPreference.None ? $" !{RequiredTraits}" : "")
             + (PreferredTraits != TraitPreference.None ? $" ~{PreferredTraits}" : "")
             + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")
