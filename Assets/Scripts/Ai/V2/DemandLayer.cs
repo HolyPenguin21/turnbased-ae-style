@@ -468,7 +468,12 @@ namespace Game.Ai.V2
             }
 
             if (emitted == 0)
-                AiDebugLog.Write("[AI][V2][Demand][Economy] decision=SATISFIED reason=every_known_site_built_or_type_has_income");
+            {
+                bool hasIncomeGap = ResourceBundle.All.Any(t => !HasIncomeFor(s, t));
+                AiDebugLog.Write(hasIncomeGap
+                    ? "[AI][V2][Demand][Economy] decision=NONE reason=income_gap_but_no_actionable_known_site"
+                    : "[AI][V2][Demand][Economy] decision=SATISFIED reason=known_income_targets_covered_or_sites_built");
+            }
         }
 
         // ---------------------------------------------------------------------------------------
@@ -511,9 +516,12 @@ namespace Game.Ai.V2
 
         private static bool HasIncomeFor(WorldSnapshot s, ResourceType type)
         {
-            if (s?.Self?.PerTurnIncome != null && s.Self.PerTurnIncome.Get(type) > 0f)
+            if (s?.Self == null || s.Economy == null)
+                return false;
+            float target = Mathf.Max(0f, s.Economy.IncomeTarget.Get(type));
+            if (target <= AiConfigV2.allocatorSliceEpsilon)
                 return true;
-            return false;
+            return s.Self.PerTurnIncome.Get(type) + AiConfigV2.allocatorSliceEpsilon >= target;
         }
     }
 }

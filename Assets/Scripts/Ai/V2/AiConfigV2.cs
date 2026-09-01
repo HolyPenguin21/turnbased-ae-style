@@ -544,6 +544,9 @@ namespace Game.Ai.V2
         public const float surplusResourceCostWeight = 0.05f;
         public const float surplusHeroVersatility = 0.35f;
         public const float surplusUnitVersatility = 0.25f;
+        // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
+        // a generic low-value garrison body in Phase B, without bypassing required Phase-A demands.
+        public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
         public const float surplusScarcityHigh = 1.0f;
         public const float surplusScarcityMed = 0.5f;

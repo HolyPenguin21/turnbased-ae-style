@@ -128,7 +128,8 @@ namespace Game.Ai.V2
                 + $"(absFloor={P(eco.AbsFloor)} rel={F(eco.RelativePressure)} bottleneck={P(eco.BottleneckPressure)}) "
                 + $"| deckNeed H/E/M/T={F(eco.DeckResourceNeed.Human)}/{F(eco.DeckResourceNeed.Energy)}/"
                 + $"{F(eco.DeckResourceNeed.Materials)}/{F(eco.DeckResourceNeed.Tech)} "
-                + $"targetIncome/turn={F(eco.DeckResourceNeed.Sum / System.Math.Max(0.0001f, AiConfigV2.economyDeckNeedHorizonTurns))} "
+                + $"| targetIncome H/E/M/T={F(eco.IncomeTarget.Human)}/{F(eco.IncomeTarget.Energy)}/"
+                + $"{F(eco.IncomeTarget.Materials)}/{F(eco.IncomeTarget.Tech)} total={F(eco.IncomeTarget.Sum)} "
                 + $"actualIncome={F(self.PerTurnIncome.Sum)}");
             foreach (EconomyResourceStanding rs in eco.PerType)
                 AiDebugLog.Write($"[AI][V2]     eco.{rs.Type} own={F(rs.OwnIncome)} fieldMedian={F(rs.FieldMedianIncome)} "
@@ -543,9 +544,45 @@ namespace Game.Ai.V2
             AccumulateCardCosts(snap.Self.Deck, ref need);
             eco.DeckResourceNeed = need;
 
-            float target = need.Sum / Mathf.Max(0.0001f, AiConfigV2.economyDeckNeedHorizonTurns);
-            float actual = snap.Self.PerTurnIncome.Sum;
-            eco.AbsFloor = target <= 0.0001f ? 1f : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(actual / target));
+            // Do NOT treat the whole remaining deck as something income must repay inside a fixed
+            // three-turn window. That made a normal opening deck (e.g. 67 total resource points)
+            // report a nonsensical ~22 income/turn target. The sustainable target is per resource:
+            //   1) what one typical remaining playable card asks for, and
+            //   2) what the opponent field currently earns.
+            // We need to keep pace with the larger of those two signals. Existing stockpile is a
+            // runway buffer for SECURITY, but never inflates/deflates the target itself.
+            int remainingPlayableCards = snap.Self.Hand.Count(card =>
+                    card?.Definition != null
+                    && (card.Definition.cardType == CardType.Unit || card.Definition.cardType == CardType.Hero
+                        || card.Definition.cardType == CardType.Facility || card.Definition.cardType == CardType.Base))
+                + snap.Self.Deck.Count(d => d != null
+                    && (d.cardType == CardType.Unit || d.cardType == CardType.Hero
+                        || d.cardType == CardType.Facility || d.cardType == CardType.Base));
+            float cadenceDenom = Mathf.Max(1f, remainingPlayableCards);
+            float runwayTurns = Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+            var incomeTarget = new ResourceBundle();
+            float coverageAccum = 0f;
+            float worstCoverage = 1f;
+            foreach (EconomyResourceStanding rs in perType)
+            {
+                float cardCadence = need.Get(rs.Type) / cadenceDenom;
+                float target = Mathf.Max(cardCadence, rs.FieldMedianIncome);
+                incomeTarget.Add(rs.Type, target);
+
+                float smoothCoverage = 1f;
+                if (target > 0.0001f)
+                {
+                    float stockRunwayPerTurn = snap.Self.Stockpile.Get(rs.Type) / runwayTurns;
+                    float effectiveSupply = rs.OwnIncome + Mathf.Min(target, stockRunwayPerTurn);
+                    float coverage = Mathf.Clamp01(effectiveSupply / target);
+                    smoothCoverage = Mathf.SmoothStep(0f, 1f, coverage);
+                }
+                coverageAccum += smoothCoverage;
+                worstCoverage = Mathf.Min(worstCoverage, smoothCoverage);
+            }
+            eco.IncomeTarget = incomeTarget;
+            float meanCoverage = coverageAccum / Mathf.Max(1, ResourceBundle.All.Length);
+            eco.AbsFloor = Mathf.Clamp01(0.65f * meanCoverage + 0.35f * worstCoverage);
 
             float relTerm = (eco.RelativePressure + 1f) * 0.5f;
             float wSum = AiConfigV2.economySecurityAbsWeight + AiConfigV2.economySecurityRelWeight

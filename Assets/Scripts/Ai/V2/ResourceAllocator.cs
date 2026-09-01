@@ -28,9 +28,9 @@ namespace Game.Ai.V2
     //      queue head with the highest BaseValue.
     //   2. A mission may be funded from SEVERAL axes at once: its AxisContribution is normalised to
     //      shares, and funding it at AP C draws C*share[axis] from each slice.
-    //   3. Positive slice leftovers become one fungible REMAINDER pool that can only top up
-    //      ALREADY-funded missions toward Desired then Max. A deferred mission is never resurrected
-    //      by remainder, and remainder loses all axis identity once collected.
+    //   3. Positive slice leftovers become one fungible REMAINDER pool. Missions deferred ONLY
+    //      for InsufficientBudget get one second admission pass from it (all non-budget gates are
+    //      rechecked); what remains then tops up funded missions toward Desired/Max.
     //   4. The allocator NEVER assigns a concrete army / mover. MoverKnown is ignored here.
     //
     //  RE-ALLOCATE ON FAIL — BOUNDED (risk 2)
@@ -956,6 +956,74 @@ namespace Game.Ai.V2
             }
             remainder = Mathf.Max(0f, remainder - lockedRemainderConsumed);
             alloc.RemainderGenerated = new ResourceVector(remainder);
+
+            // 5b. Spillover admission: strict radar slices remain the first pass, but once their
+            // positive leftovers have explicitly lost axis identity, a mission deferred ONLY on
+            // InsufficientBudget gets one more admission attempt from the common remainder. This
+            // is not general overdraft: conflict/capacity/physical gates are rechecked and the
+            // mission receives only its executable AP minimum; ordinary top-up happens afterwards.
+            List<DeferredEntry> spillover = alloc.Deferred
+                .Where(d => d != null && d.Reason == DeferReason.InsufficientBudget && d.Mission != null)
+                .ToList();
+            foreach (DeferredEntry deferred in spillover)
+            {
+                if (remainder <= eps)
+                    break;
+
+                MissionProposal m = deferred.Mission;
+                float min = ApMinimum(m);
+                if (min <= eps || remainder + eps < min)
+                    continue;
+
+                ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
+                bool conflict = lane != ExecutionLane.None
+                    && (alloc.Funded.Any(fe => fe.Mission != null
+                            && MissionAdmissionPolicy.LaneFor(fe.Mission) == lane
+                            && MissionAdmissionPolicy.Conflicts(fe.Mission, m))
+                        || _lockedClaims.Values.Any(lc => MissionAdmissionPolicy.LaneFor(lc.Mission) == lane
+                            && MissionAdmissionPolicy.Conflicts(lc.Mission, m)));
+                if (conflict || AtCapacity(lane))
+                    continue;
+
+                ResourceVector physMin = PhysicalMinimum(m);
+                if (physMin.AnyPhysical && !physicalRemaining.CoversPhysical(physMin, eps))
+                    continue;
+
+                var v = new ResourceVector(min);
+                var funded = new FundedEntry
+                {
+                    Mission = m,
+                    Priority = priority++,
+                    Tentative = v,
+                    IsCommitment = false,
+                    Stage = FundingStage.Remainder,
+                    RemainderTopUp = v,
+                    PhysicalDraw = physMin,
+                };
+                alloc.Funded.Add(funded);
+                alloc.Deferred.Remove(deferred);
+                remainder -= min;
+                alloc.RemainderSpent += v;
+                physicalRemaining = (physicalRemaining - physMin).ClampLow0();
+                alloc.PhysicalFunded += physMin;
+                ConsumeSlot(lane);
+
+                AiDebugLog.Write($"[AI][V2] allocator spillover — FUND {StableMissionKey.For(m)} "
+                    + $"ap={LogNum(min)} from common remainder; left={LogNum(remainder)}");
+            }
+
+            // Stage-4 starvation telemetry was computed before spillover existed. If every budget-
+            // starved fresh decision was just recovered, do not leave a stale starvation flag.
+            if (alloc.CommitmentsStarveFreshDecisions && alloc.Funded.Any(f => f.IsCommitment))
+            {
+                float minCommitBase = alloc.Funded.Where(f => f.IsCommitment).Min(f => f.Mission.BaseValue);
+                bool stillStarvedOnBudget = alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
+                    && d.Mission != null && d.Mission.BaseValue > minCommitBase);
+                bool stillStarvedOnCapacity = alloc.Deferred.Any(d => d.Reason == DeferReason.ExecutionCapacity)
+                    && alloc.Funded.Any(f => f.IsCommitment
+                        && MissionAdmissionPolicy.LaneFor(f.Mission) != ExecutionLane.None);
+                alloc.CommitmentsStarveFreshDecisions = stillStarvedOnBudget || stillStarvedOnCapacity;
+            }
 
             List<FundedEntry> topUpOrder = alloc.Funded
                 .Where(fe => !fe.IsCommitment)
