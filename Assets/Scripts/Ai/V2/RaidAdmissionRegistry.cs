@@ -30,15 +30,43 @@ namespace Game.Ai.V2
             var excluded = new HashSet<int>();
             var ids = new List<int>();
 
-            // RaidAssemblyPlanner always returns the strongest currently-eligible ready actor.
-            // Re-run while excluding each hit to enumerate the whole set without duplicating its
-            // eligibility or WorthIt rules here.
+            // RaidAssemblyPlanner.Plan always applies the STRICT fresh-raid win gate and returns the
+            // strongest currently-eligible ready actor. Re-run while excluding each hit to enumerate
+            // the whole fresh set without duplicating its eligibility or WorthIt rules here.
             while (true)
             {
                 RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, excluded);
                 if (!plan.Feasible || !excluded.Add(plan.BaseArmyId))
                     break;
                 ids.Add(plan.BaseArmyId);
+            }
+
+            // A started Hard Raid is not a fresh admission decision. Its PreferredMover already
+            // passed the strict gate when the operation began and continuity/ActorCommitments owns
+            // that physical actor across turns. Re-test that exact incumbent through the bounded
+            // continuation gate so a small Monte-Carlo drop (the observed ~0.78 -> ~0.41 case) does
+            // not produce the impossible state "Hard/CLAIM actor #X" + "readyActors=[none]".
+            //
+            // If the incumbent passes, PIN the operation to it. PrepareRaidAssignments deliberately
+            // sorts actors by activation/power and otherwise has no knowledge of PreferredMover; if
+            // we left fresh actors in the set it could silently switch a Hard operation to another
+            // army and orphan the physical force continuity just protected. If the incumbent fails
+            // the continuation gate, the strict fresh set remains available as a legitimate fallback.
+            if (proposal.FromDurableIntent
+                && proposal.DurableFundingTier == CommitmentTier.Hard
+                && proposal.PreferredMoverArmyId.HasValue)
+            {
+                int incumbentId = proposal.PreferredMoverArmyId.Value;
+                RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
+                    snap, target, defenders, incumbentId);
+                if (incumbent.Feasible)
+                {
+                    ids.Clear();
+                    ids.Add(incumbentId);
+                    AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE targetArmy={target.TargetArmyId} "
+                        + $"actor={incumbentId} win={incumbent.ProjectedWinChance:0.00} "
+                        + "reason=durable_hard_incumbent_passed_continuation_gate");
+                }
             }
 
             ByProposal.Remove(proposal);

@@ -42,6 +42,18 @@ namespace Game.Ai.V2
 
     public static class RaidAssemblyPlanner
     {
+        // Starting a raid and continuing an already-started operation are deliberately different
+        // decisions. Fresh admission still requires raidMinViableWinChance (0.65 today). Once a
+        // Hard raid has actually left its staging hex, however, small Monte-Carlo variance / loss
+        // of same-hex donor availability must not instantly turn the incumbent actor into a
+        // structural AssemblyInfeasible failure. The assigned incumbent may continue while it
+        // still covers every known defender and keeps at least this lower safety floor.
+        //
+        // 0.40 is intentionally conservative: it fixes the observed 0.78-start -> ~0.41-next-turn
+        // discontinuity without authorising a clearly hopeless attack. Fresh raids never see this
+        // floor because Plan() remains on the normal 0.65 gate.
+        private const float ContinuationWinChanceFloor = 0.40f;
+
         public static RaidAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds)
         {
@@ -53,10 +65,13 @@ namespace Game.Ai.V2
             if (eligible.Count == 0)
                 return RaidAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
 
-            // Already-formed force always wins over reorganisation.
+            // Already-formed force always wins over reorganisation. This is FRESH admission, so it
+            // must retain the normal strict raid bar; continuation hysteresis is only for an actor
+            // that was explicitly assigned to an already-started durable Raid.
             foreach (ArmySnapshot a in eligible)
             {
-                RaidAssemblyPlan exact = PlanForArmy(snap, target, defenders, a.ArmyId);
+                RaidAssemblyPlan exact = PlanForArmyAtThreshold(
+                    snap, target, defenders, a.ArmyId, AiConfigV2.raidMinViableWinChance);
                 if (exact.Feasible)
                     return exact;
             }
@@ -75,11 +90,18 @@ namespace Game.Ai.V2
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
         }
 
-        // Exact feasibility for one actor. Provisioning's batch assignment uses this to preserve an
-        // injective mapping between independently-ready hosts. If the exact assignment becomes
-        // stale, the fallback Plan() above may still form a minimal same-hex package.
+        // Exact feasibility for one ALREADY ASSIGNED actor. Fresh actor admission is performed by
+        // Plan() above at the strict raidMinViableWinChance. Provisioning calls this method only
+        // after its batch assignment has picked a concrete actor; RaidAdmissionRegistry additionally
+        // uses it for the PreferredMover of a durable Hard Raid. That incumbent gets bounded
+        // continuation hysteresis so a valid multi-turn operation is not destroyed by the stricter
+        // start gate on every subsequent turn.
         public static RaidAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId) =>
+            PlanForArmyAtThreshold(snap, target, defenders, armyId, ContinuationWinChanceFloor);
+
+        private static RaidAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap, RaidMissionTarget target,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance)
         {
             if (snap?.Self?.Armies == null)
                 return RaidAssemblyPlan.Infeasible("no own-force snapshot");
@@ -91,8 +113,10 @@ namespace Game.Ai.V2
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-            if (!Clears(roster, defenders, out float win, out bool cover))
-                return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} does not clear the shared raid estimator");
+            if (!Clears(roster, defenders, minWinChance, out float win, out bool cover))
+                return RaidAssemblyPlan.Infeasible(
+                    $"raid actor #{armyId} does not clear the assigned-actor raid estimator "
+                    + $"(win {win:0.00} < {minWinChance:0.00} or coverage missing)");
 
             return new RaidAssemblyPlan
             {
@@ -282,14 +306,19 @@ namespace Game.Ai.V2
             IsStructuralRaidActor(a);
 
         private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover) =>
+            Clears(attackers, defenders, AiConfigV2.raidMinViableWinChance, out win, out cover);
+
+        private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, float minWinChance,
+            out float win, out bool cover)
         {
             cover = ProfilesCoverAll(attackers, defenders);
             win = defenders.Count == 0
                 ? 1f
                 : WorthIt.WinChance((IReadOnlyCollection<WorthIt.DefenderProfile>)attackers,
                     (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-            return cover && win >= AiConfigV2.raidMinViableWinChance;
+            return cover && win >= minWinChance;
         }
 
         private static bool ProfilesCoverAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
