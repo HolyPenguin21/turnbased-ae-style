@@ -20,6 +20,8 @@ namespace Game.Ai.V2
         {
             public readonly ScoutMissionTarget Target;
             public readonly float BaseValue;
+            // Cost-aware local score. The intrinsic information/risk value is adjusted only by the
+            // terrain/tempo witness for Explore; Surveil remains unchanged.
             public readonly float LocalAdmissionScore;
             public readonly string Explain;
             public readonly int FreshNeighbors;
@@ -57,7 +59,7 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
             var fresh = new List<ScoutCandidate>();
             foreach (ReconObjective o in objectives)
-                fresh.Add(ToCandidate(o, breakdown));
+                fresh.Add(ToCandidate(snap, o, breakdown));
 
             var incumbents = new List<ScoutCandidate>();
             if (activeIntents != null)
@@ -126,10 +128,10 @@ namespace Game.Ai.V2
                 : ReconObjectiveEvaluator.SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
             if (o == null)
                 return null;
-            return ToCandidate(o, bd).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
+            return ToCandidate(snap, o, bd).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId);
         }
 
-        private static ScoutCandidate ToCandidate(ReconObjective o, DesireBreakdown bd)
+        private static ScoutCandidate ToCandidate(WorldSnapshot snap, ReconObjective o, DesireBreakdown bd)
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             float rawSubDesire = explore ? bd.ReconExploration : bd.ReconSurveillance;
@@ -146,16 +148,26 @@ namespace Game.Ai.V2
                 ? Mathf.Clamp01(o.FreshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm))
                 : 0f;
             bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
+
+            ScoutMissionTarget target = o.ToTarget();
+            float intrinsicAdmission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
+            ScoutRouteCostEvaluator.Assessment route = ScoutRouteCostEvaluator.Evaluate(snap, target);
+            float routeMultiplier = explore && route.HasRoute ? route.AdmissionMultiplier : 1f;
+            float admission = intrinsicAdmission * routeMultiplier;
+
             string explain = explore
                 ? $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
                   + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
                   + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(rawSubDesire)} "
-                  + $"localFloor {F(localSubDesire)}"
+                  + $"localFloor {F(localSubDesire)} intrinsicLAS {F(intrinsicAdmission)}"
+                  + (route.HasRoute
+                      ? $" routeMP {route.MovementCost} eta {route.EtaTurns} visitsNow {route.ExpectedVisitsThisTurn} "
+                        + $"remainMP {route.RemainingMovementAtFocus} routeX {F(routeMultiplier)}"
+                      : " route unknown")
                 : $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
                   + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
                   + $"base {F(o.BaseValue)} x surv {F(rawSubDesire)}";
-            return new ScoutCandidate(o.ToTarget(), o.BaseValue,
-                ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk), explain,
+            return new ScoutCandidate(target, o.BaseValue, admission, explain,
                 freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
 

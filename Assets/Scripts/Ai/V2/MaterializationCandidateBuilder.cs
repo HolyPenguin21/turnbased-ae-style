@@ -690,11 +690,13 @@ namespace Game.Ai.V2
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
             float handPressure = hand.HasFreeSlot ? 0f : AiConfigV2.surplusHandPressureBonus;
+            float recurringApIncome = projected != null && projected.Contains(UnitAbilities.ApBonus)
+                ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
             float oversupply = recce && inv != null
                 && inv.ReadyScouts + inv.ReserveScouts >= AiConfigV2.surplusScoutOversupplyAt
                 ? AiConfigV2.surplusOversupplyPenalty : 0f;
             float resSum = ResourceCostSum(p.ResCost);
-            return scarcity + versatility + traits + handPressure
+            return scarcity + versatility + traits + handPressure + recurringApIncome
                 - AiConfigV2.surplusApCostWeight * p.ApCost
                 - AiConfigV2.surplusResourceCostWeight * resSum
                 - oversupply + PlacementBonus(p.Deploy.Kind);

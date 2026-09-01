@@ -417,9 +417,10 @@ namespace Game.Ai.V2
         }
 
         // ---------------------------------------------------------------------------------------
-        //  ECO — a resource type with NO income source AND a known unbuilt resource hex for it.
-        //  This is a structural gap (the AI is not extracting a resource it could be), not a
-        //  surplus opportunity. One demand at a time.
+        //  ECO — a resource type whose recurring income is BELOW the sustainable target AND a
+        //  known unbuilt resource hex exists for it. The target combines own deck/card cadence
+        //  with opponent income; this layer only emits work when a concrete site is actionable.
+        //  One demand at a time.
         // ---------------------------------------------------------------------------------------
         private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b)
         {
@@ -452,7 +453,7 @@ namespace Game.Ai.V2
                 emitted++;
 
                 AiDebugLog.Write($"[AI][V2][Demand][Economy] decision=CREATE hex=({rh.Key.Q},{rh.Key.R}) "
-                    + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=no_income_source_for_type");
+                    + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=income_below_target");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
@@ -463,12 +464,18 @@ namespace Game.Ai.V2
                     TargetHex = rh.Key,
                     EconomyResourceType = rh.Value,
                     Value = 55f,
-                    Explain = $"no income for {rh.Value}; known unbuilt {rh.Value} site @({rh.Key.Q},{rh.Key.R})",
+                    Explain = $"{rh.Value} income {s.Self.PerTurnIncome.Get(rh.Value):0.##} below target "
+                        + $"{s.Economy.IncomeTarget.Get(rh.Value):0.##}; known unbuilt site @({rh.Key.Q},{rh.Key.R})",
                 };
             }
 
             if (emitted == 0)
-                AiDebugLog.Write("[AI][V2][Demand][Economy] decision=SATISFIED reason=every_known_site_built_or_type_has_income");
+            {
+                bool hasIncomeGap = ResourceBundle.All.Any(t => !HasIncomeFor(s, t));
+                AiDebugLog.Write(hasIncomeGap
+                    ? "[AI][V2][Demand][Economy] decision=NONE reason=income_gap_but_no_actionable_known_site"
+                    : "[AI][V2][Demand][Economy] decision=SATISFIED reason=known_income_targets_covered_or_sites_built");
+            }
         }
 
         // ---------------------------------------------------------------------------------------
@@ -511,9 +518,12 @@ namespace Game.Ai.V2
 
         private static bool HasIncomeFor(WorldSnapshot s, ResourceType type)
         {
-            if (s?.Self?.PerTurnIncome != null && s.Self.PerTurnIncome.Get(type) > 0f)
+            if (s?.Self == null || s.Economy == null)
+                return false;
+            float target = Mathf.Max(0f, s.Economy.IncomeTarget.Get(type));
+            if (target <= AiConfigV2.allocatorSliceEpsilon)
                 return true;
-            return false;
+            return s.Self.PerTurnIncome.Get(type) + AiConfigV2.allocatorSliceEpsilon >= target;
         }
     }
 }

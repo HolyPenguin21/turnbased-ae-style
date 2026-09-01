@@ -86,8 +86,16 @@ namespace Game.Ai
     public static class AiHandRegistry
     {
         private static readonly Dictionary<PlayerSetupData, AiHandData> ByPlayer = new Dictionary<PlayerSetupData, AiHandData>();
+        // Reverse lookup is intentionally registry-owned rather than stored on AiHandData: the hand
+        // remains plain card/deck data, while low-level draw execution can still identify which AI
+        // player's strategic interrupt must be raised when a boundary draw changes the hand.
+        private static readonly Dictionary<AiHandData, PlayerSetupData> OwnerByHand = new Dictionary<AiHandData, PlayerSetupData>();
 
-        public static void Clear() => ByPlayer.Clear();
+        public static void Clear()
+        {
+            ByPlayer.Clear();
+            OwnerByHand.Clear();
+        }
 
         // Non-creating read — for callers (e.g. the pre-turn Initiative capacity analysis) that
         // may look at an AI hand if one already exists but must NOT bring one into being just to
@@ -95,6 +103,12 @@ namespace Game.Ai
         // never had a hand built yet.
         public static AiHandData Peek(PlayerSetupData player) =>
             player != null && ByPlayer.TryGetValue(player, out AiHandData hand) ? hand : null;
+
+        public static bool TryGetOwner(AiHandData hand, out PlayerSetupData player)
+        {
+            player = null;
+            return hand != null && OwnerByHand.TryGetValue(hand, out player) && player != null;
+        }
 
         // `capacity` is optional so the many callers that only need to read an existing hand don't
         // have to thread the scene's MaxHandSize through — they pass null and leave whatever
@@ -110,11 +124,15 @@ namespace Game.Ai
             {
                 hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10);
                 ByPlayer[player] = hand;
+                OwnerByHand[hand] = player;
             }
             else if (capacity.HasValue)
             {
                 hand.SetCapacity(capacity.Value);
             }
+            // Defensive repair for test/setup code that may have survived a registry reset in an
+            // unusual order: any returned hand must always have a reverse owner mapping.
+            OwnerByHand[hand] = player;
             return hand;
         }
     }

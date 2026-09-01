@@ -287,6 +287,12 @@ namespace Game.Ai.V2
         // fixed threshold.
         public ResourceBundle DeckResourceNeed;
 
+        // Sustainable per-turn income target by resource. Unlike DeckResourceNeed this is NOT
+        // "pay the remaining deck within N turns": it is the larger of the field-median income
+        // and this deck's average per-card resource cadence. Stockpile runway affects security,
+        // not the target itself.
+        public ResourceBundle IncomeTarget;
+
         public float RelativePressure;    // [-1..1]  <0 behind the field, >0 ahead
         public float BottleneckPressure;  // [0..1]   how bad the single worst resource is
         public float AbsFloor;            // [0..1]   income vs DeckResourceNeed/horizon, smoothstepped
