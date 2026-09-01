@@ -1,24 +1,28 @@
 namespace Game.Ai.V2
 {
-    // ScoutTargetKind predates the Recon deep-rework and is declared in the central pipeline
-    // contract. Refresh is kept explicit here as a typed sentinel rather than masquerading as
-    // Explore or Surveil; enum values are stable integral contracts in C#, so this remains a real
-    // ScoutTargetKind value and flows through StableMissionKey.SubKind without a broad edit to the
-    // monolithic pipeline contract file. A later contract-cleanup may add the named enum member
-    // directly without changing the persisted numeric identity.
+    // Small semantic helpers for the three explicit Scout target kinds. Keeping these predicates
+    // central avoids scattered two-way assumptions as Recon evolves while the enum itself remains
+    // the authoritative contract and stable persisted identity.
     public static class ReconScoutKinds
     {
-        public static readonly ScoutTargetKind Refresh = (ScoutTargetKind)2;
+        public const ScoutTargetKind Refresh = ScoutTargetKind.Refresh;
 
-        public static bool IsRefresh(ScoutTargetKind kind) => (int)kind == (int)Refresh;
+        public static bool IsRefresh(ScoutTargetKind kind) => kind == ScoutTargetKind.Refresh;
         public static bool IsExplore(ScoutTargetKind kind) => kind == ScoutTargetKind.Explore;
         public static bool IsSurveil(ScoutTargetKind kind) => kind == ScoutTargetKind.Surveil;
 
+        public static bool IsGround(ScoutTargetKind kind) =>
+            kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh;
+
         public static string Name(ScoutTargetKind kind)
         {
-            if (IsRefresh(kind)) return "Refresh";
-            if (IsSurveil(kind)) return "Surveil";
-            return "Explore";
+            switch (kind)
+            {
+                case ScoutTargetKind.Refresh: return "Refresh";
+                case ScoutTargetKind.Surveil: return "Surveil";
+                case ScoutTargetKind.Explore: return "Explore";
+                default: return $"Unknown({(int)kind})";
+            }
         }
     }
 }
