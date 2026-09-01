@@ -8,25 +8,28 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT OBJECTIVE EVALUATOR  (Strategy V2 build-order step 7 — the single completion/validity home)
     // ===========================================================================================
-    //  "Is this scout objective done / still worth pursuing" was being answered in three places
-    //  independently (ProvisioningManager, TaskExecutor.IsSurveilSatisfied, and — as of step 7 —
-    //  the continuity layer). That is exactly the kind of drift ScoutCostModel was extracted to
-    //  prevent. One home now:
+    //  One home for Explore / generic Refresh / contact Surveil lifecycle rules.
     //
     //    · LIVE overloads  — read the mutated world directly (VisionSystem / AiMapMemory). Called
     //                        at execution / provisioning time, where post-mutation live state IS
     //                        the truth and there is no fog on our own observations this turn.
-    //    · SNAPSHOT overload (IsIntentStillValid) — reads ONLY the turn's WorldSnapshot. Called by
-    //                        MissionLayer when it re-materialises a durable intent, so proposal
-    //                        creation never queries a mutable game system.
+    //    · SNAPSHOT overload (IsIntentStillValid) — reads ONLY the turn's WorldSnapshot plus the
+    //                        frozen Recon IntelAge sidecar captured with that snapshot.
     // ===========================================================================================
     public static class ScoutObjectiveEvaluator
     {
         // ---- LIVE (execution / provisioning / post-execution) --------------------------------
 
-        // Explore is done the moment its focus hex is VISITED (only standing on a hex marks it so).
+        // Explore is done only by physical ground visitation.
         public static bool IsExploreSatisfiedLive(PlayerSetupData player, HexCoord focus) =>
             VisionSystem.IsVisited(player, focus);
+
+        // Generic Refresh is an OBSERVATION objective. The focus was selected from stale frozen
+        // IntelAge, so observing it again now is sufficient regardless of whether a ground unit
+        // physically visits it. This preserves Observed != Visited and is future-compatible with
+        // AirRecon refreshing information without claiming ground visitation.
+        public static bool IsRefreshSatisfiedLive(PlayerSetupData player, HexCoord focus) =>
+            VisionSystem.IsVisible(player, focus);
 
         // Surveil is an INFORMATION objective: the focus hex visible again, OR the tracked army
         // honestly re-sighted ANYWHERE with a SeenTurn past the baseline. Honest memory only —
@@ -46,13 +49,8 @@ namespace Game.Ai.V2
 
         // ---- SNAPSHOT (mission-layer re-materialisation) ------------------------------------
 
-        // Is a durable intent still a coherent thing to pursue against THIS snapshot? Not
-        // "satisfied" (that retires it as a win); "still valid" gates whether MissionLayer should
-        // bother re-materialising it at all. NOTE this DOES fold in "already satisfied": a Surveil
-        // whose tracked army has been honestly re-observed SINCE the intent's baseline (by this
-        // scout, another scout, or any other action) is done — the snapshot knows via
-        // EnemyContactSnapshot.LastObservedTurn, so an intent must not keep chasing a fix it
-        // already has. ResolveActive purges what this rejects; the retirement is logged there.
+        // Is a durable intent still coherent against THIS frozen snapshot? This also folds in
+        // already-satisfied state so completed intents are retired instead of re-materialised.
         public static bool IsIntentStillValid(WorldSnapshot snap, ScoutIntent intent)
         {
             if (snap == null || intent == null)
@@ -63,16 +61,22 @@ namespace Game.Ai.V2
                 EnemyContactSnapshot contact = SurveilContact(snap, intent.TrackedArmyId);
                 return contact != null && contact.LastObservedTurn <= intent.BaselineObservedTurn;
             }
-            // §6 — ONE Explore validity contract, shared with fresh Recon objective enumeration
-            // (ReconObjectiveEvaluator). FreshNeighbors == 0 is a productivity/value signal, NOT
-            // an invalidation: an unvisited, unblocked frontier focus stays a coherent objective
-            // even when every immediate neighbour is currently visited — reaching it still marks
-            // its own tile and can expand the frontier.
+
+            if (ReconScoutKinds.IsRefresh(intent.Kind))
+            {
+                // A Refresh intent is valid only while the frozen IntelAge still says the focus is
+                // genuinely stale. If another observer refreshed it before this scan, age is 0 and
+                // the intent is already complete. Never-observed is not Refresh and returns false.
+                return ReconIntelSnapshotRegistry.TryGetIntelAge(snap, intent.FocusHex, out int age)
+                    && age >= AiConfigV2.scoutSurveilStaleTurnsLo
+                    && IsRefreshFocusRunnable(snap, intent.FocusHex);
+            }
+
             return IsExploreFocusRunnable(snap, intent.FocusHex);
         }
 
-        // THE authoritative Explore validity predicate. An Explore focus is a runnable objective
-        // iff it is a real map hex that has not been visited and is not scout-hard-blocked.
+        // THE authoritative Explore validity predicate. An Explore focus is runnable iff it is a
+        // real map hex that has not been physically visited and is not scout-hard-blocked.
         public static bool IsExploreFocusRunnable(WorldSnapshot snap, HexCoord focus)
         {
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
@@ -88,9 +92,21 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Refresh explicitly allows previously visited ground; revisitation is the point. The only
+        // structural gates are real on-map geometry and the shared Scout hard-block set.
+        public static bool IsRefreshFocusRunnable(WorldSnapshot snap, HexCoord focus)
+        {
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            if (mk?.AllHexes == null)
+                return false;
+            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            if (!onMap.Contains(focus))
+                return false;
+            return mk.ScoutHardBlockedHexes == null || !mk.ScoutHardBlockedHexes.Contains(focus);
+        }
+
         // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no
-        // longer has one (re-observed, aged out of AiReconMemory, or only a cheat-region signal
-        // remains). Read from the snapshot's by-army lookup, never AiReconMemory directly.
+        // longer has one. Read from the frozen snapshot lookup, never AiReconMemory directly.
         public static EnemyContactSnapshot SurveilContact(WorldSnapshot snap, int? trackedArmyId)
         {
             if (!trackedArmyId.HasValue || snap?.Threat?.ReconContactByArmyId == null)
@@ -102,9 +118,6 @@ namespace Game.Ai.V2
                 ? c : null;
         }
 
-        // How many still-openable neighbours an Explore focus hex has against this snapshot: 0 ==
-        // the hex is visited, hard-blocked, or fully boxed in by visited/blocked ground — nothing
-        // left to discover there, so the intent is stale.
         public static int ExploreStillOpen(WorldSnapshot snap, HexCoord focus)
         {
             if (!IsExploreFocusRunnable(snap, focus))
