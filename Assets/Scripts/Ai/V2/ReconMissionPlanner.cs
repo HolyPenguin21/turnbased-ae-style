@@ -139,11 +139,16 @@ namespace Game.Ai.V2
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             bool refresh = o.Kind == ReconObjectiveKind.Refresh;
-            float rawSubDesire = explore ? bd.ReconExploration : bd.ReconSurveillance;
+            float rawSubDesire = explore
+                ? bd.ReconExplorePressure
+                : refresh
+                    ? bd.ReconRefreshPressure
+                    : bd.ReconSurveillance;
 
             // Global Recon intensity is already owned by Radar. Here only the sub-driver orders
-            // concrete alternatives inside the lane. Explore retains a local floor while a real
-            // frontier objective exists; Refresh/Surveil follow surveillance pressure directly.
+            // concrete alternatives inside each lane. Explore retains a local floor while a real
+            // frontier objective exists; generic Refresh follows frozen IntelAge pressure while
+            // contact-specific Surveil keeps its own stale-contact surveillance pressure.
             float localSubDesire = explore
                 ? Mathf.Lerp(0.25f, 1f, Mathf.Clamp01(rawSubDesire))
                 : Mathf.Clamp01(rawSubDesire);
@@ -166,7 +171,7 @@ namespace Game.Ai.V2
             {
                 explain = $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
                     + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
-                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x explore {F(rawSubDesire)} "
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x exploreP {F(rawSubDesire)} "
                     + $"localFloor {F(localSubDesire)} intrinsicLAS {F(intrinsicAdmission)}"
                     + RouteExplain(route, routeMultiplier);
             }
@@ -174,7 +179,7 @@ namespace Game.Ai.V2
             {
                 explain = $"Refresh @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} "
                     + $"strategic {F(o.StrategicRelevance)} direction {F(o.DirectionPressure)} prox {F(proximity)}"
-                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x surv {F(rawSubDesire)} "
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x refreshP {F(rawSubDesire)} "
                     + $"intrinsicLAS {F(intrinsicAdmission)}"
                     + RouteExplain(route, routeMultiplier);
             }
