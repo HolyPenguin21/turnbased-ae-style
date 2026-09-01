@@ -107,9 +107,6 @@ namespace Game.Ai.V2
             ArmyData visibleOccupant = VisionSystem.IsVisible(player, h)
                 ? BattleInitiator.FindEnemyAt(h, player)
                 : null;
-            // Actor-state-aware topology: a visible combat member would initiate contact and may
-            // not use an occupied neutral/enemy hex as routine Recon. A fully hidden solo Recce has
-            // no initiating member and authoritative contact rules allow it to pass through.
             if (visibleOccupant != null && BattleInitiator.CanInitiateContact(army))
                 return false;
 
@@ -143,13 +140,33 @@ namespace Game.Ai.V2
                 information = stale + 0.25f * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
             }
 
-            float heading = ReconDirectionModel.Sector(army.Hex, h) == assignment.StrategicSector ? 1f : 0f;
+            ReconSector stepSector = ReconDirectionModel.Sector(army.Hex, h);
+            float heading = stepSector == assignment.StrategicSector ? 1f : 0f;
             float movementEfficiency = 1f / moveCost;
             float trailFactor = TrailFactor(player, army.Id, h, visited, assignment.Mode);
             float safetyFactor = Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);
 
-            float score = (information + heading + movementEfficiency) * trailFactor * safetyFactor;
-            string reason = $"info={information:0.00} heading={heading:0.00} mpEff={movementEfficiency:0.00}";
+            // Multi-scout deconfliction is a preference, never a hard reservation. A second/third
+            // scout may still enter the same corridor when terrain/safety leaves no better option,
+            // but equal candidates in unclaimed sectors win. Nearby strategic anchors are weighted
+            // more strongly than merely sharing a broad six-way sector.
+            int sectorClaims = ReconAssignmentRegistry.OtherSectorClaims(player, army.Id, stepSector);
+            int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
+                Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
+            float coverageFactor = 1f / (1f + 0.30f * sectorClaims + 0.55f * nearbyClaims);
+
+            // Explore should not willingly terminate in a zero-frontier pocket when another step
+            // with comparable value can keep the wave moving. Refresh is allowed to visit a stale
+            // dead-end because the information itself may be the objective.
+            float deadEndFactor = assignment.Mode == ReconMode.Explore && !visited && fresh == 0
+                ? 0.70f
+                : 1f;
+
+            float score = (information + heading + movementEfficiency)
+                * trailFactor * safetyFactor * coverageFactor * deadEndFactor;
+            string reason = $"info={information:0.00} heading={heading:0.00} mpEff={movementEfficiency:0.00} "
+                + $"coverage={coverageFactor:0.00}(sectorClaims={sectorClaims},near={nearbyClaims}) "
+                + $"deadEnd={deadEndFactor:0.00}";
             choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk, reason);
             return true;
         }
@@ -161,25 +178,39 @@ namespace Game.Ai.V2
             if (depth <= 0 || movementLeft <= 0)
                 return 0f;
 
+            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
             float best = 0f;
             foreach (HexCoord h in HexGridMath.Neighbors(from))
             {
                 if (seen.Contains(h) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
-                if (cost > movementLeft || AiMapMemory.IsScoutDangerous(player, h))
+                if (cost > movementLeft
+                    || AiMapMemory.IsScoutDangerous(player, h)
+                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
+                    continue;
+                if (!hidden && AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
+                    continue;
+                float detectorRisk = DetectorRisk(player, h);
+                if (hidden && detectorRisk >= 1f)
                     continue;
 
                 bool visited = VisionSystem.IsVisited(player, h);
                 int fresh = FreshNeighborCount(player, map, h);
                 float local;
                 if (assignment.Mode == ReconMode.Explore)
-                    local = (visited ? 0f : 1f) + Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
+                    local = (visited ? 0f : 1f)
+                        + Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
                 else
                     local = AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age)
                         ? Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
                             AiConfigV2.scoutSurveilStaleTurnsHi, age)
                         : 0f;
+
+                int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
+                    Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
+                local *= 1f / (1f + 0.35f * nearbyClaims);
+                local *= Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);
 
                 seen.Add(h);
                 float continuation = Lookahead(player, map, army, assignment, turn, h,
