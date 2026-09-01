@@ -757,6 +757,9 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
+      - stat: 3
+        amount: 1
+        isOverride: 1
   - id: 16
     displayName: it Heavy MG
     art: {fileID: 21300000, guid: 241d483b351130549a4cf5634570cc5e, type: 3}

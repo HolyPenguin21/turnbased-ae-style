@@ -28,13 +28,13 @@ MonoBehaviour:
   - tag: Pyrokinetic
     description: +2 DMG vs Bio targets
   - tag: r1s0
-    description: Army vision +1 hex. Detection strength 0.
+    description: Vision +1
   - tag: r1s4
-    description: Army vision +1 hex. Detection strength 4.
+    description: Vision +1, Detection =4
   - tag: r1s5
-    description: Army vision +1 hex. Detection strength 5.
+    description: Vision +1, Detection =5
   - tag: r1s6
-    description: Army vision +1 hex. Detection strength 6.
+    description: Vision +1, Detection =6
   - tag: Stealth4
     description: Unit can enter stealth
   - tag: AA
