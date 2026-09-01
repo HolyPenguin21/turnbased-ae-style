@@ -97,7 +97,31 @@ namespace Game.Ai.V2
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // free hand slots the chain needs at its most crowded moment (0 or 1)
 
-        public float Score;                       // ranking value (Phase A) / FutureUtility (Phase B)
+        private float score;
+        public float Score
+        {
+            get => score;
+            set
+            {
+                score = value;
+
+                // Phase A owns explicit placement semantics through the requested capability, so
+                // keep its historical Garrison > Existing > Shell ordering intact. Phase B is
+                // different: generic combat surplus is proactive FIELD readiness. Without this
+                // correction the shared +0.30 garrison preference beats NewArmy/ReusableShell and
+                // silently parks strong tanks/heroes at home even when no defence demand exists.
+                // Remove the generic garrison bonus and add one shell-sized opportunity penalty so
+                // ExistingArmy > ReusableShell/NewArmy > Garrison for unclaimed combat surplus.
+                if (!OwnerAxis.HasValue
+                    && Deploy.Kind == DeploymentKind.Garrison
+                    && (FinalCapability == CapabilityKind.FieldCombatPower
+                        || FinalCapability == CapabilityKind.Hero))
+                {
+                    score -= AiConfigV2.stratPlacementGarrisonBonus
+                             + AiConfigV2.stratPlacementReusableShellBonus;
+                }
+            }
+        }
         public string StableKey;
         public string Explain;
 
