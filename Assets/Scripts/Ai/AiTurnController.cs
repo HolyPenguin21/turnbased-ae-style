@@ -1287,9 +1287,16 @@ namespace Game.Ai
                 foreach (UnitData member in army.Members.ToList())
                     if (member.IsHidden)
                     {
+                        // §4 — the ONLY voluntary AI scout reveal path. Canonical ExitStealth,
+                        // only immediately before a contact/takeover action, never during
+                        // Explore/Develop repositioning. Tagged so a debug run can prove why a
+                        // hidden scout became visible; ordinary movement emits no such line.
                         Game.Map.StealthSystem.ExitStealth(member);
-                        string why = wantsBuildingTakeover ? "capture/destroy a building" : $"a {decision.Task.Kind} action";
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" leaves stealth before {why}.");
+                        string reason = wantsBuildingTakeover
+                            ? "capture_or_destroy_building"
+                            : $"pre_action_{decision.Task.Kind}";
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" ScoutStealthExit "
+                            + $"reason={reason} (immediately before the action)");
                     }
             }
 
@@ -1387,6 +1394,11 @@ namespace Game.Ai
             // resets the clock, a no-op order (moveResult != success, army.Hex == before) never does.
             if (!army.Hex.Equals(before) && decision.Task != null && decision.Task.Kind == AiTaskKind.VisitHex)
                 decision.Task.VisitLastProgressTurn = ctx.TurnNumber;
+
+            // §5 — record the actual step for a solo scout so V2 route ranking can prefer fresh
+            // ground over re-treading this trail. Bounded; never blocks a hex.
+            if (!army.Hex.Equals(before) && AiArmyRoles.IsSoloRecce(army))
+                Game.Ai.V2.ScoutTrailRegistry.RecordStep(player, army.Id, before, army.Hex);
 
             yield return WaitStep(ctx);
         }

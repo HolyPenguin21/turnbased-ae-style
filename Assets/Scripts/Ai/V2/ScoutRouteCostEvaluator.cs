@@ -108,9 +108,49 @@ namespace Game.Ai.V2
             float tempoFactor = expectedVisits >= 2 ? 1.30f
                 : expectedVisits == 1 ? 1f
                 : 1f / Math.Max(1f, eta);
-            float multiplier = Mathf.Clamp(terrainFactor * tempoFactor, 0.25f, 1.50f);
+
+            // §5 — bounded retrace penalty. Prefer new information + forward progress over the
+            // shortest geometric route back through ground this scout has just crossed. Three
+            // tiers: immediate reversal (strongest), recent trail, ordinary older-visited route
+            // (lightest). Never a hard block — visited hexes stay legal and win when they are the
+            // only / far cheaper / safer route.
+            float retraceFactor = RetraceFactor(snap, mover, path);
+            float multiplier = Mathf.Clamp(terrainFactor * tempoFactor * retraceFactor, 0.20f, 1.50f);
 
             return new Assessment(true, movementCost, distance, eta, expectedVisits, remaining, multiplier);
+        }
+
+        // 1.0 = a wholly fresh route. Lower as the route reverses onto the just-left hex,
+        // re-treads the recent trail, or runs largely through already-visited territory.
+        private static float RetraceFactor(WorldSnapshot snap, ArmySnapshot mover, HexPath path)
+        {
+            if (mover?.Owner == null || path?.Hexes == null || path.Hexes.Count < 2)
+                return 1f;
+
+            var stepHexes = new List<HexCoord>(path.Hexes.Count - 1);
+            for (int i = 1; i < path.Hexes.Count; i++)
+                stepHexes.Add(path.Hexes[i]);
+
+            float factor = 1f;
+            if (ScoutTrailRegistry.IsImmediateReversal(mover.Owner, mover.ArmyId, stepHexes[0]))
+                factor *= AiConfigV2.scoutImmediateReversalFactor;
+
+            int trailHits = ScoutTrailRegistry.RecentTrailHits(mover.Owner, mover.ArmyId, stepHexes);
+            if (trailHits > 0)
+                factor *= 1f / (1f + AiConfigV2.scoutRecentTrailPenaltyPerHex * trailHits);
+
+            ISet<HexCoord> visited = snap.MapKnowledge?.VisitedHexSet;
+            if (visited != null && stepHexes.Count > 0)
+            {
+                int visitedHits = 0;
+                foreach (HexCoord h in stepHexes)
+                    if (visited.Contains(h))
+                        visitedHits++;
+                float visitedFrac = (float)visitedHits / stepHexes.Count;
+                factor *= Mathf.Lerp(1f, AiConfigV2.scoutExploredRouteFloor, visitedFrac);
+            }
+
+            return factor;
         }
 
         private static bool HasAffordableFreshNeighbor(WorldSnapshot snap, HexMap map, HexCoord focus, int movement)

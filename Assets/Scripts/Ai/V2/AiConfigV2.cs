@@ -553,6 +553,15 @@ namespace Game.Ai.V2
         public const float heroRoleCombatContributionWeight = 0.6f;
         public const float heroRoleCombatLeaderFloor = 7f;
         public const float heroRoleFlexibleCombatFloor = 8f;
+
+        // --- Scout retrace / backtrack route penalty (spec §5). Bounded, snapshot- + short-trail
+        //     scoped; never a hard block. scoutTrailLength hexes of recent movement are kept per
+        //     scout. Immediate A->B->A reversal is the strongest penalty; re-treading the recent
+        //     trail is next; an ordinary older-visited route is weighted most lightly (its floor).
+        public const int scoutTrailLength = 8;
+        public const float scoutImmediateReversalFactor = 0.55f;   // multiply route value on a reversal
+        public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
+        public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
         // FutureUtility term weights / values.
         public const float surplusApCostWeight = 0.20f;
         public const float surplusResourceCostWeight = 0.05f;

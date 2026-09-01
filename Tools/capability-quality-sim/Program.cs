@@ -39,6 +39,7 @@ namespace CapabilityQualitySim
             S22_RaidReadinessPowerVsAssembly();
             S23_HeroOperationalRole();
             S24_ExploreValidityContract();
+            S25_ScoutTrailRetrace();
 
             Console.WriteLine();
             Console.WriteLine($"capability-quality-sim: {_passed} passed, {_failed} failed");
@@ -435,6 +436,42 @@ namespace CapabilityQualitySim
                 !ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, focus));
             Check("24e a visited focus retires the durable intent",
                 !ScoutObjectiveEvaluator.IsIntentStillValid(snap, intent));
+        }
+
+        // Spec §5 / §19 — bounded per-scout trail. Immediate reversal onto the just-left hex is
+        // detected; recent-trail hexes are counted; nothing is ever hard-blocked; the ring is
+        // bounded by scoutTrailLength.
+        private static void S25_ScoutTrailRetrace()
+        {
+            Game.HexGrid.HexCoord H(int q, int r) => new Game.HexGrid.HexCoord(q, r);
+            var player = new Game.Players.PlayerSetupData { Nickname = "S", IsHuman = false };
+            const int army = 1;
+
+            ScoutTrailRegistry.ClearAll();
+            Check("25a no trail -> no reversal", !ScoutTrailRegistry.IsImmediateReversal(player, army, H(1, 0)));
+            Check("25a no trail -> 0 recent hits",
+                ScoutTrailRegistry.RecentTrailHits(player, army, new[] { H(1, 0), H(2, 0) }) == 0);
+
+            // Walk A(0,0) -> B(1,0) -> C(2,0).
+            ScoutTrailRegistry.RecordStep(player, army, H(0, 0), H(1, 0));
+            ScoutTrailRegistry.RecordStep(player, army, H(1, 0), H(2, 0));
+
+            Check("25b stepping back onto the just-left hex is an immediate reversal",
+                ScoutTrailRegistry.IsImmediateReversal(player, army, H(1, 0)));
+            Check("25c a fresh forward step is not a reversal",
+                !ScoutTrailRegistry.IsImmediateReversal(player, army, H(3, 0)));
+            Check("25d a route through recent trail hexes is counted",
+                ScoutTrailRegistry.RecentTrailHits(player, army, new[] { H(1, 0), H(2, 0), H(3, 0) }) == 2);
+            Check("25e a wholly fresh route has 0 recent hits",
+                ScoutTrailRegistry.RecentTrailHits(player, army, new[] { H(3, 0), H(4, 0) }) == 0);
+
+            // Ring is bounded: after many steps, an old hex drops out of "recent".
+            for (int i = 3; i < 3 + AiConfigV2.scoutTrailLength + 4; i++)
+                ScoutTrailRegistry.RecordStep(player, army, H(i - 1, 0), H(i, 0));
+            Check("25f the recent ring is bounded by scoutTrailLength",
+                ScoutTrailRegistry.RecentTrailHits(player, army, new[] { H(1, 0) }) == 0);
+
+            ScoutTrailRegistry.ClearAll();
         }
 
         private static void Check(string label, bool ok)
