@@ -173,8 +173,11 @@ namespace Game.UI
 
             equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null);
 
-            // Preview-only element — never part of the Army Viewer's own card face.
-            if (skillsText != null)
+            // Preview-only element — never part of the Army Viewer's own card face. On the
+            // Card_Army prefab skillsText and moveText are wired to the SAME label (it plays
+            // "abilities" here, "attach targets" in SetupPreview), so only hide it when it's a
+            // genuinely separate object — otherwise this would blank the abilities line above.
+            if (skillsText != null && skillsText != moveText)
                 skillsText.gameObject.SetActive(false);
         }
 
@@ -198,7 +201,9 @@ namespace Game.UI
             }
             if (nameText != null)
                 nameText.text = card != null ? card.displayName : string.Empty;
-            if (moveText != null)
+            // Skip when moveText is the SAME label as skillsText (Card_Army prefab wiring) —
+            // RefreshSkillsText owns that line in preview mode and would only overwrite this.
+            if (moveText != null && moveText != skillsText)
             {
                 string formatted = card != null && config != null
                     ? config.FormatAbilities(card.grantedAbilities)
