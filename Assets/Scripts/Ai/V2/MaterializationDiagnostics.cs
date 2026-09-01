@@ -22,6 +22,7 @@ namespace Game.Ai.V2
             int opDeliver = 0, resReject = 0;
             float minDirectNeed = float.PositiveInfinity;
             var failures = new Dictionary<string, int>();
+            var verifiedResourceBlocks = new HashSet<ResourceType>();
             bool solo = demand.Capability == CapabilityKind.ScoutCapability;
             foreach (CardData card in hand.Hand.Where(c => c?.Definition != null))
             {
@@ -76,6 +77,16 @@ namespace Game.Ai.V2
                         if (chainCost != null && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
                         {
                             resReject++;
+                            foreach (ResourceType type in ResourceBundle.All)
+                            {
+                                int need = chainCost.Get(type);
+                                if (need <= 0)
+                                    continue;
+                                int available = UnityEngine.Mathf.FloorToInt(
+                                    Game.Ai.AiResourceReservation.Available(root, player, type));
+                                if (available < need)
+                                    verifiedResourceBlocks.Add(type);
+                            }
                             continue;
                         }
                         float followupAp = CapabilityQualityEvaluator.ProjectedActivationApCost(diagnosticPlan)
@@ -87,6 +98,37 @@ namespace Game.Ai.V2
                     string detailed = DetailFailure(root, player, card, reason);
                     failures.TryGetValue(detailed, out int count);
                     failures[detailed] = count + 1;
+
+                    // CardPlayExecutor can reject resources before the branch above reaches its
+                    // explicit chain-resource gate. Capture the exact deficit here too, but only
+                    // for a capability/trait-matching card examined by this demand diagnostic.
+                    ResourceCost preflightCost = Game.Ai.AiCardCost.PlayResources(card);
+                    if (root != null && player != null && preflightCost != null
+                        && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
+                    {
+                        foreach (ResourceType type in ResourceBundle.All)
+                        {
+                            int need = preflightCost.Get(type);
+                            if (need <= 0)
+                                continue;
+                            int available = UnityEngine.Mathf.FloorToInt(
+                                Game.Ai.AiResourceReservation.Available(root, player, type));
+                            if (available < need)
+                                verifiedResourceBlocks.Add(type);
+                        }
+                    }
+                }
+            }
+
+            // §17 — starvation pressure is now evidence-based. The old StrategicManager call
+            // still loops over zero-stock resources after this method, but ResourceStarvationRegistry
+            // ignores unverified calls. Arm+consume only deficits this diagnostic actually proved.
+            if (demand.RequestingAxis == DesireAxis.Aggression || demand.RequestingAxis == DesireAxis.Recon)
+            {
+                foreach (ResourceType type in verifiedResourceBlocks)
+                {
+                    ResourceStarvationRegistry.VerifyBlock(player, type);
+                    ResourceStarvationRegistry.RecordBlock(player, type);
                 }
             }
 
