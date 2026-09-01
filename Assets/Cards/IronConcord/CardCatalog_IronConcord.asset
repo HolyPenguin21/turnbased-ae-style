@@ -57,9 +57,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags: 
+      hostTypeTags:
       hostKinds: 00000000
-      clearAbilityFamilies: 
+      clearAbilityFamilies:
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -413,8 +413,8 @@ MonoBehaviour:
       statChanges: []
   - id: 9
     displayName: Scout
-    art: {fileID: 21300000, guid: 7e65b43206e25644a92f7a085751e399, type: 3}
-    detailArt: {fileID: 21300000, guid: feecf6b864fc56146a95a2db56533466, type: 3}
+    art: {fileID: 21300000, guid: ae599b6d5cb137f4881d5bacf72afc38, type: 3}
+    detailArt: {fileID: 21300000, guid: da5a5866dbe867d4386251a8b9147e63, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -457,8 +457,8 @@ MonoBehaviour:
       statChanges: []
   - id: 10
     displayName: RC Vehicle
-    art: {fileID: 21300000, guid: 1045d74c3da1d834cb79582813054193, type: 3}
-    detailArt: {fileID: 21300000, guid: cc1844df7f78c8a449adf0d76a8afe81, type: 3}
+    art: {fileID: 21300000, guid: 06998ca246d9c0a43b29560a3d6e324c, type: 3}
+    detailArt: {fileID: 21300000, guid: c9601829c5e8a7945a5f4e10893f9edc, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -544,8 +544,8 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     displayName: Scrapper
-    art: {fileID: 21300000, guid: d1449874bf410124b903c1b7bdc65064, type: 3}
-    detailArt: {fileID: 21300000, guid: dc56310fd0e88ce4ab44b5a2269f4d84, type: 3}
+    art: {fileID: 21300000, guid: 9c7b525310f95be4f8cd65388473244e, type: 3}
+    detailArt: {fileID: 21300000, guid: 1038189a8d04c9a4fab8eead630c6c89, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -672,8 +672,8 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     displayName: Iron guards
-    art: {fileID: 21300000, guid: d947f00e53dba894898a7c929bd64aa1, type: 3}
-    detailArt: {fileID: 21300000, guid: 71b9a21e35ca278418585b647419d6ed, type: 3}
+    art: {fileID: 21300000, guid: 48ea88ef584457644987104d0d7fd910, type: 3}
+    detailArt: {fileID: 21300000, guid: dd439945d6465794f8f5a812cc772667, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
@@ -953,7 +953,7 @@ MonoBehaviour:
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000002000000
     grantedAbilities: []
@@ -1104,7 +1104,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
+      human: 0
       energy: 2
       materials: 1
       tech: 3
@@ -1147,7 +1147,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 3
+      human: 0
       energy: 4
       materials: 2
       tech: 5
@@ -1189,7 +1189,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
+      human: 0
       energy: 3
       materials: 1
       tech: 3
@@ -1226,8 +1226,8 @@ MonoBehaviour:
       statChanges: []
   - id: 28
     displayName: Wasp
-    art: {fileID: 21300000, guid: 0582081bc468587498a85a13b5b174e1, type: 3}
-    detailArt: {fileID: 21300000, guid: bdaf62ff179c5cc488dff9bbd18e1c49, type: 3}
+    art: {fileID: 21300000, guid: 84d9c85f5603102449c7e9dd75ca7676, type: 3}
+    detailArt: {fileID: 21300000, guid: 9ff958975ba2145429be228d6e50c7cf, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
@@ -1269,8 +1269,8 @@ MonoBehaviour:
       statChanges: []
   - id: 29
     displayName: Rusty Vulture
-    art: {fileID: 21300000, guid: 561d3ea5c445ffb4c8037400a6b5c810, type: 3}
-    detailArt: {fileID: 21300000, guid: 2a8c873ddb383d447b6f045e4f44f453, type: 3}
+    art: {fileID: 21300000, guid: cb7141a8b0c93e04fb581e4e232fcb06, type: 3}
+    detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
@@ -1318,7 +1318,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
+      human: 0
       energy: 2
       materials: 1
       tech: 3
@@ -1341,6 +1341,48 @@ MonoBehaviour:
     unitTypeTags: 07000000
     grantedAbilities:
     - Hyperkinetic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 31
+    displayName: BS Plasma
+    art: {fileID: 21300000, guid: 0833075ebae03c643b05630c6a008134, type: 3}
+    detailArt: {fileID: 21300000, guid: db84012ab66a8a7469999c8dd3096d52, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 1
+      tech: 4
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    resistanceRating: 3
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000002000000
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0

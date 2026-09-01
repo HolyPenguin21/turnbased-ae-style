@@ -846,7 +846,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 5
     resourceCost:
-      human: 1
+      human: 0
       energy: 2
       materials: 2
       tech: 3
@@ -972,10 +972,10 @@ MonoBehaviour:
     cardType: 1
     apCost: 3
     resourceCost:
-      human: 1
+      human: 0
       energy: 2
       materials: 1
-      tech: 3
+      tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
@@ -1014,7 +1014,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 1
+      human: 0
       energy: 3
       materials: 2
       tech: 3
@@ -1057,7 +1057,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 4
     resourceCost:
-      human: 3
+      human: 0
       energy: 4
       materials: 3
       tech: 5
