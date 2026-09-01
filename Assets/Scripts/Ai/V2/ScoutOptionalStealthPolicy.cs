@@ -46,7 +46,7 @@ namespace Game.Ai.V2
 
     public struct OptionalStealthInputs
     {
-        public float LegDetectionRisk;      // max honest risk known before first activation
+        public float LegDetectionRisk;      // max honest KNOWN risk before first activation
         public bool MoverAlreadyHidden;
         public bool MoverIsStrategicBody;
         public int ApRemaining;
@@ -66,9 +66,20 @@ namespace Game.Ai.V2
 
     public static class ScoutOptionalStealthPolicy
     {
+        // Optional stealth is currently used by Explore; Surveil routes are Required-stealth and
+        // never reach this policy. Entering an unvisited frontier is therefore not "risk 0" merely
+        // because no detector has been discovered yet: the whole purpose of the move is to reveal
+        // information we do not have. This conservative baseline is deliberately below a known
+        // detector's normalised risk and still has to beat the AP/draw opportunity-cost test below.
+        // It makes a fresh stealth scout hide BEFORE its first blind step when 1 AP is genuinely
+        // spare, instead of waiting until discovery has already activated the army and made
+        // EnterStealth impossible for the rest of the turn.
+        private const float UnknownFrontierRisk = 0.35f;
+
         public static OptionalStealthEvaluation Evaluate(in OptionalStealthInputs x)
         {
-            float risk = Mathf.Clamp01(x.LegDetectionRisk);
+            float knownRisk = Mathf.Clamp01(x.LegDetectionRisk);
+            float risk = Mathf.Max(knownRisk, UnknownFrontierRisk);
             float mandatory = Mathf.Max(0f, x.MandatoryApClaims);
             float slack = Mathf.Max(0f, x.ApRemaining - mandatory);
 
@@ -99,7 +110,8 @@ namespace Game.Ai.V2
                     ? OptionalStealthDecision.Enter
                     : OptionalStealthDecision.Skip;
 
-            string explain = $"risk={risk.ToString("0.00", CultureInfo.InvariantCulture)} "
+            string explain = $"knownRisk={knownRisk.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"effectiveRisk={risk.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"protect={protection.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"apOpp={apOpportunity.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)}";
