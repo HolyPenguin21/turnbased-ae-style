@@ -52,16 +52,18 @@ namespace Game.Ai.V2
                 candidates.Add(new Candidate(h, FreshNeighborCount(player, map, h), moveCost));
             }
 
-            Candidate? best = candidates
+            if (candidates.Count == 0)
+                return null;
+
+            Candidate best = candidates
                 .OrderByDescending(c => c.InformationPerMovement)
                 .ThenByDescending(c => c.FreshNeighbors)
                 .ThenBy(c => c.MoveCost)
                 .ThenBy(c => c.Hex.Q)
                 .ThenBy(c => c.Hex.R)
-                .Cast<Candidate?>()
-                .FirstOrDefault();
+                .First();
 
-            return best.HasValue ? best.Value.Hex : (HexCoord?)null;
+            return best.Hex;
         }
 
         private static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)
