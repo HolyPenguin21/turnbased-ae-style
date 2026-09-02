@@ -230,7 +230,7 @@ namespace Game.Ai.V2
                     case ReconReactionAction.Continue:
                     default:
                         ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
-                            player, ctx.Map, army, assignment, ctx.TurnNumber);
+                            player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
                         if (choice.HasValue)
                             next = choice.Value.Hex;
                         actionWhy = assignment.Mode.ToString();

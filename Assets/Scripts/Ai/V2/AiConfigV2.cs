@@ -312,6 +312,22 @@ namespace Game.Ai.V2
         public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
         public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1
         public const int scoutProximityRampHi = 12;              // base-distance: at/over this -> proximity 0
+
+        // Spec §4/§8/§9/§12 — home/local exploration pressure. A soft strategic preference (never a
+        // hard leash): Citadel/base local coverage first, then regional expansion, then distant
+        // exploration. "Home" is the starting Citadel AND every owned base hex, whichever is nearest.
+        //  Objective level: Explore BaseValue leans harder on closeness-to-home than the generic
+        //  proximity term, and its proximity ramp decays across the local->regional band (not out to
+        //  distance 12) so a nearby frontier out-scores an equally informative distant one while
+        //  meaningful nearby unknown remains.
+        public const float scoutExploreHomeProximityWeight = 0.55f; // vs scoutInfoGainWeight 0.45 in the Explore quality blend
+        public const int scoutExploreProximityRampHi = 7;           // Explore-only: home-distance at/over this -> home proximity 0
+        //  Live step level: an adjacent step that increases distance from the nearest home asset is
+        //  penalized while local unexplored coverage is still materially incomplete; the penalty
+        //  fades to nothing once the local ring is well covered or the scout is already outside it.
+        public const int scoutStepHomeLocalRingRadius = 4;          // hexes from nearest home asset that count as "local"
+        public const float scoutStepHomeOutwardPenaltyWeight = 0.45f; // max fraction shaved off an outward step's score when localGap=1
+        public const float scoutStepHomeInwardBonusWeight = 0.10f;  // small reward for a step that closes home distance while local gaps remain
         public const int scoutSurveilStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
         public const int scoutSurveilStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
 

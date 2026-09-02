@@ -41,17 +41,20 @@ namespace Game.Ai.V2
         }
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn)
+            ReconAssignment assignment, int turn, WorldSnapshot snapshot = null)
         {
             if (player == null || map == null || army == null || assignment == null
                 || army.CurrentMovement <= 0)
                 return null;
 
+            // Spec §4 — soft home/local exploration pressure for this step's ranking.
+            HomePressure home = HomePressure.Build(player, map, army, snapshot);
+
             int depth = Math.Max(2, Math.Min(4, army.CurrentMovement));
             var choices = new List<StepChoice>();
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!TryScoreImmediate(player, map, army, assignment, turn, h, out StepChoice baseChoice))
+                if (!TryScoreImmediate(player, map, army, assignment, turn, h, home, out StepChoice baseChoice))
                     continue;
 
                 // Small bounded forecast: value unique useful continuation, but return only h.
@@ -86,8 +89,67 @@ namespace Game.Ai.V2
             return best;
         }
 
+        // Spec §4 — a soft, per-step "prefer to complete local Citadel/base coverage before racing
+        // outward" preference. Never a hard leash: the penalty is bounded and fades to nothing once
+        // the local ring is well covered (localGap→0) or the scout is already outside it.
+        internal readonly struct HomePressure
+        {
+            public readonly bool Active;
+            public readonly int CurDist;
+            public readonly float LocalGap;
+            private readonly List<HexCoord> _anchors;
+
+            private HomePressure(bool active, int curDist, float localGap, List<HexCoord> anchors)
+            {
+                Active = active; CurDist = curDist; LocalGap = localGap; _anchors = anchors;
+            }
+
+            public int DistOf(HexCoord h)
+            {
+                if (_anchors == null || _anchors.Count == 0) return 0;
+                int best = int.MaxValue;
+                foreach (HexCoord a in _anchors)
+                    best = Math.Min(best, HexGridMath.Distance(a, h));
+                return best == int.MaxValue ? 0 : best;
+            }
+
+            public static HomePressure Build(PlayerSetupData player, HexMap map, ArmyData army,
+                WorldSnapshot snapshot)
+            {
+                var anchors = new List<HexCoord>();
+                if (snapshot?.Self?.BaseHexes != null)
+                    anchors.AddRange(snapshot.Self.BaseHexes);
+                if (snapshot?.Self != null)
+                    anchors.Add(snapshot.Self.Citadel);
+                if (anchors.Count == 0 && player != null
+                    && player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
+                    anchors.Add(new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
+                if (anchors.Count == 0 || map == null || army == null)
+                    return new HomePressure(false, 0, 0f, null);
+
+                int curDist = int.MaxValue;
+                foreach (HexCoord a in anchors)
+                    curDist = Math.Min(curDist, HexGridMath.Distance(a, army.Hex));
+
+                int radius = Math.Max(1, AiConfigV2.scoutStepHomeLocalRingRadius);
+                int inRing = 0, unexplored = 0;
+                var counted = new HashSet<HexCoord>();
+                foreach (HexCoord a in anchors)
+                    foreach (HexCoord h in HexGridMath.HexesInRange(a, radius))
+                    {
+                        if (!counted.Add(h) || !map.TryGetTerrainAt(h, out _))
+                            continue;
+                        inRing++;
+                        if (!VisionSystem.IsVisited(player, h) && !AiMapMemory.IsScoutDangerous(player, h))
+                            unexplored++;
+                    }
+                float localGap = inRing > 0 ? Mathf.Clamp01((float)unexplored / inRing) : 0f;
+                return new HomePressure(true, curDist == int.MaxValue ? 0 : curDist, localGap, anchors);
+            }
+        }
+
         private static bool TryScoreImmediate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn, HexCoord h, out StepChoice choice)
+            ReconAssignment assignment, int turn, HexCoord h, HomePressure home, out StepChoice choice)
         {
             choice = default;
             if (!map.TryGetTerrainAt(h, out var terrain))
@@ -172,12 +234,32 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepUndefendedBuildingBonus
                 : 0f;
 
+            // Spec §4 — soft outward-distance penalty. An Explore step that increases distance from
+            // the nearest Citadel/base beyond the local ring is shaved while nearby unexplored
+            // territory remains (scaled by localGap); a step that closes home distance gets a small
+            // reward for filling local gaps. Fades to ~1.0 once local coverage is good. Not a leash:
+            // clamped, and zero effect for distant/enemy-driven work once localGap→0.
+            float homeFactor = 1f;
+            int homeDist = 0, homeDelta = 0;
+            if (home.Active && assignment.Mode == ReconMode.Explore)
+            {
+                homeDist = home.DistOf(h);
+                homeDelta = homeDist - home.CurDist;
+                if (homeDelta > 0 && homeDist > AiConfigV2.scoutStepHomeLocalRingRadius)
+                    homeFactor -= AiConfigV2.scoutStepHomeOutwardPenaltyWeight * home.LocalGap;
+                else if (homeDelta < 0 && home.LocalGap > 0f)
+                    homeFactor += AiConfigV2.scoutStepHomeInwardBonusWeight * home.LocalGap;
+                homeFactor = Mathf.Clamp(homeFactor, 0.30f, 1.15f);
+            }
+
             float score = (information + heading + movementEfficiency + buildingBonus)
-                * trailFactor * safetyFactor * coverageFactor * deadEndFactor;
+                * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
             string reason = $"info={information:0.00} heading={heading:0.00} mpEff={movementEfficiency:0.00} "
                 + $"building={buildingBonus:0.00} "
                 + $"coverage={coverageFactor:0.00}(sectorClaims={sectorClaims},near={nearbyClaims}) "
-                + $"deadEnd={deadEndFactor:0.00}";
+                + $"deadEnd={deadEndFactor:0.00} "
+                + $"homeDist={homeDist} homeDelta={homeDelta:+0;-0;0} localGap={home.LocalGap:0.00} "
+                + $"homeFactor={homeFactor:0.00}";
             choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk, reason);
             return true;
         }

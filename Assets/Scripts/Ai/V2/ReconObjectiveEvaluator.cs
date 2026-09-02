@@ -170,12 +170,19 @@ namespace Game.Ai.V2
             int distFromBase, bool enemyExposure, bool stealthDetectionRisk)
         {
             float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
-            float proximity = Proximity(distFromBase);
 
-            float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutStrategicProximityWeight;
+            // Spec §4 — "home" is the nearest of the starting Citadel and every owned base hex, not
+            // only BaseHexes. Explore leans harder on closeness-to-home than the generic proximity
+            // term and decays it across the local->regional band, so a nearby frontier out-scores an
+            // equally informative distant one while meaningful nearby unknown territory remains.
+            int homeDist = HomeDistance(snap, hex, distFromBase);
+            float homeProximity = Curves.InvRamp(homeDist,
+                AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutExploreProximityRampHi);
+
+            float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutExploreHomeProximityWeight;
             float quality = Mathf.Clamp01(
                 (AiConfigV2.scoutInfoGainWeight * infoGain
-                 + AiConfigV2.scoutStrategicProximityWeight * proximity) / Mathf.Max(0.0001f, wSum));
+                 + AiConfigV2.scoutExploreHomeProximityWeight * homeProximity) / Mathf.Max(0.0001f, wSum));
             float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
 
             StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
@@ -324,6 +331,21 @@ namespace Game.Ai.V2
 
         private static float Proximity(int distanceFromNearestBase) =>
             Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
+
+        // Spec §4 — nearest of {starting Citadel} ∪ {owned base hexes}. WorldAnalysis folds the
+        // Citadel into BaseHexes, but it is min'd in explicitly here so this stays correct even if
+        // that ever changes, and falls back to the frontier's precomputed base distance.
+        internal static int HomeDistance(WorldSnapshot snap, HexCoord hex, int fallbackDistFromBase)
+        {
+            int best = int.MaxValue;
+            IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
+            if (bases != null)
+                foreach (HexCoord b in bases)
+                    best = Mathf.Min(best, HexGridMath.Distance(b, hex));
+            if (snap?.Self != null)
+                best = Mathf.Min(best, HexGridMath.Distance(snap.Self.Citadel, hex));
+            return best == int.MaxValue ? Mathf.Max(0, fallbackDistFromBase) : best;
+        }
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to)
         {

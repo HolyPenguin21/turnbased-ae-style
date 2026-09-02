@@ -38,6 +38,7 @@ namespace Game.Ai.V2
         }
 
         private static HexMap _cachedMap;
+        private static bool _mapResolveFailed;
 
         public static Assessment Evaluate(WorldSnapshot snap, ScoutMissionTarget target)
         {
@@ -173,11 +174,22 @@ namespace Game.Ai.V2
 
         private static HexMap ResolveMap()
         {
-            if (_cachedMap != null)
+            if (_cachedMap != null || _mapResolveFailed)
                 return _cachedMap;
+            try
+            {
 #pragma warning disable CS0618
-            _cachedMap = UnityEngine.Object.FindObjectOfType<HexMap>();
+                _cachedMap = UnityEngine.Object.FindObjectOfType<HexMap>();
 #pragma warning restore CS0618
+            }
+            catch (System.Exception)
+            {
+                // Headless / test harness contexts (no Unity runtime): the route witness then
+                // degrades to the same "no map" branch the caller already handles — a trivially
+                // available route — instead of taking down the whole planner pass.
+                _mapResolveFailed = true;
+                _cachedMap = null;
+            }
             return _cachedMap;
         }
 
