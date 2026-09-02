@@ -179,14 +179,19 @@ namespace Game.Ai.V2
         public bool HasDevFacility;
         public bool HasDevOperator;
 
-        // AI-RECON-02 — aircraft parked in this player's owned airfield storage that could fly a
-        // recon sortie THIS turn: counted greedily against the live AP budget and the
-        // reservation-net Energy budget (the exact AiAviationSupport.CanAffordLaunch gate), capped
-        // at the number of stored aviation units. DemandLayer counts these as ready observation
-        // capacity so it does not build a redundant ground Scout for an observation lane a hangar
-        // helicopter can already cover. Stored aircraft are Members of the airfield army, not
-        // standalone air armies, so they never appear in Armies.
-        public int LaunchableStoredAircraft;
+        // AI-RECON-02 — air OBSERVATION capacity, from the shared ReconAirCapacityPolicy (the same
+        // slot cap + launch-subset + AP/Energy gate ReconAirExecutor launches against):
+        //   AirborneReconWings         — own wings already flying a durable ReconAssignment; each is
+        //                                an active observation lane the executor will continue.
+        //   SpareAirObservationSorties — ADDITIONAL recon sorties launchable this turn, bounded by
+        //                                MaxAirReconActorsPerTurn minus in-flight air slots AND by
+        //                                one greedy pass over the shared post-reservation AP/Energy
+        //                                budget (ready standalone wings, then storage launch
+        //                                subsets — each accepted sortie consumes its own AP/Energy).
+        // DemandLayer counts these so it does not build a redundant ground Scout for an observation
+        // lane a helicopter already covers.
+        public int AirborneReconWings;
+        public int SpareAirObservationSorties;
     }
 
     // =======================================================================================

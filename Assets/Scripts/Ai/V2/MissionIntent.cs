@@ -93,6 +93,10 @@ namespace Game.Ai.V2
     public sealed class ScoutIntent
     {
         public ScoutTargetKind Kind;
+        // AI-RECON-02 — this durable lane's requirement is a stealthy one. Lets ReconCapacitySnapshot
+        // exclude an active stealth lane from GENERIC capacity: aviation and an ordinary scout can't
+        // serve it, so counting it as generic supply would mask a real generic deficit.
+        public bool RequiresStealth;
         public HexCoord FocusHex;
         public int? TrackedArmyId;
         public int BaselineObservedTurn;
@@ -180,6 +184,7 @@ namespace Game.Ai.V2
         public DeferReason? AllocationDeferReason;
         public ProvisionFailureKind? ProvisionFailureKindValue;
         public ScoutTargetKind ScoutKind;
+        public bool ScoutRequiresStealth;   // AI-RECON-02 — provisioned Scout requirement was a stealth one
         public HexCoord FocusHex;
         public int? TrackedArmyId;
         public int BaselineObservedTurn;
@@ -340,6 +345,7 @@ namespace Game.Ai.V2
                     {
                         o.HasScoutPayload = true;
                         o.ScoutKind = r.Provisioned.ScoutKind;
+                        o.ScoutRequiresStealth = r.Provisioned.RequiresStealth;
                         o.FocusHex = r.Provisioned.FocusHex;
                         o.TrackedArmyId = r.Provisioned.TrackedArmyId;
                         o.BaselineObservedTurn = r.Provisioned.BaselineObservedTurn;
@@ -903,6 +909,7 @@ namespace Game.Ai.V2
             {
                 intent.Scout.FocusHex = o.FocusHex;
                 intent.Scout.Kind = o.ScoutKind;
+                intent.Scout.RequiresStealth = o.ScoutRequiresStealth;
                 if (o.TrackedArmyId.HasValue)
                     intent.Scout.TrackedArmyId = o.TrackedArmyId;
             }
@@ -993,6 +1000,7 @@ namespace Game.Ai.V2
             MissionIntentKey oldKey = owner.IntentKey;
             owner.Scout.FocusHex = o.FocusHex;
             owner.Scout.Kind = o.ScoutKind;
+            owner.Scout.RequiresStealth = o.ScoutRequiresStealth;
             owner.Scout.TrackedArmyId = o.ScoutKind == ScoutTargetKind.Surveil ? o.TrackedArmyId : null;
             // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
             // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
@@ -1015,6 +1023,7 @@ namespace Game.Ai.V2
             var si = new ScoutIntent
             {
                 Kind = o.ScoutKind,
+                RequiresStealth = o.ScoutRequiresStealth,
                 FocusHex = o.FocusHex,
                 TrackedArmyId = o.TrackedArmyId,
                 BaselineObservedTurn = o.BaselineObservedTurn,

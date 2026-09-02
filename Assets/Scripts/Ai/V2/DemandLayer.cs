@@ -118,6 +118,8 @@ namespace Game.Ai.V2
             var observationRunnable = runnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var groundVisitRunnable = runnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
             var stealthRunnable = runnable.Where(IsStealthObjective).ToList();
+            var stealthObsRunnable = stealthRunnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
+            var stealthGroundRunnable = stealthRunnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
 
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
                 snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
@@ -133,8 +135,10 @@ namespace Game.Ai.V2
             int stealthFree = ScoutMoverSelector.Eligible(snap,
                 new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed).Count;
             int desiredStealthLanes = Mathf.Min(stealthRunnable.Count,
-                ReconConcurrencyPolicy.DesiredForClass(snap, stealthRunnable,
-                    ReconConcurrencyPolicy.ReconCoverageClass.Combined));
+                ReconConcurrencyPolicy.DesiredForClass(snap, stealthObsRunnable,
+                    ReconConcurrencyPolicy.ReconCoverageClass.Observation)
+                + ReconConcurrencyPolicy.DesiredForClass(snap, stealthGroundRunnable,
+                    ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal));
             int missStealth = Mathf.Max(0, desiredStealthLanes - stealthFree);
 
             // --- Generic (non-stealth) capacity deficits, persistence-gated.
@@ -146,13 +150,17 @@ namespace Game.Ai.V2
             int groundNew = groundPersist ? capacity.GroundTraversalDeficit : 0;
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
-            //     served first, then generic gets whatever room is left AND stays under the globally
-            //     useful concurrency ceiling (so an idle portfolio can't grow past what is useful).
+            //     served first. Generic then gets whatever HardCap room is left AND may only chase
+            //     the gap between the globally useful GENERIC concurrency and the GENERIC usable
+            //     capacity already in hand (active generic lanes + idle scouts + air) — so a
+            //     portfolio can't grow past what is useful even across several turns (review P1).
             int roomForNew = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - activeReconExecutions);
             int stealthNew = Mathf.Min(missStealth, roomForNew);
-            int genericCeilingRoom = Mathf.Max(0,
-                Mathf.Min(roomForNew - stealthNew, capacity.CombinedDesiredConcurrency - activeReconExecutions));
-            int genericNew = Mathf.Min(obsNew + groundNew, genericCeilingRoom);
+            int additionalGenericNeeded = Mathf.Max(0,
+                capacity.CombinedDesiredConcurrency - capacity.ExistingCombinedUsableCapacity);
+            int genericNew = Mathf.Min(
+                Mathf.Min(obsNew + groundNew, additionalGenericNeeded),
+                Mathf.Max(0, roomForNew - stealthNew));
 
             const float reconFixedOverheadAp = 0f;
 
@@ -169,6 +177,7 @@ namespace Game.Ai.V2
                     + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
                     + $"missStealth={missStealth} stealthFree={stealthFree} active={activeReconExecutions} "
                     + $"hard={ReconConcurrencyPolicy.HardCap} combinedCeiling={capacity.CombinedDesiredConcurrency} "
+                    + $"existingUsable={capacity.ExistingCombinedUsableCapacity} addlGenericNeeded={additionalGenericNeeded} "
                     + $"roomForNew={roomForNew} blocked={blocked}");
                 yield break;
             }
@@ -204,9 +213,10 @@ namespace Game.Ai.V2
                     + $"profile=generic desired={genericNew} reason=persistent_usable_capacity_deficit "
                     + $"obsDeficit={capacity.ObservationDeficit}(streak={obsStreak}) "
                     + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(streak={groundStreak}) "
-                    + $"readyWing={capacity.ReadyAirObservationActors.Count} airborne={capacity.AirborneObservationActors.Count} "
-                    + $"readyHangar={capacity.ReadyStoredAirObservationCapacity} combinedCeiling={capacity.CombinedDesiredConcurrency} "
-                    + $"runnable={runnable.Count} blocked={blocked} target=({best.FocusHex.Q},{best.FocusHex.R})");
+                    + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
+                    + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingUsable={capacity.ExistingCombinedUsableCapacity} "
+                    + $"addlGenericNeeded={additionalGenericNeeded} runnable={runnable.Count} blocked={blocked} "
+                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
@@ -219,9 +229,9 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"persistent usable-capacity deficit (obs {capacity.ObservationDeficit}, "
-                        + $"groundTraversal {capacity.GroundTraversalDeficit}; readyWing "
-                        + $"{capacity.ReadyAirObservationActors.Count}, airborne {capacity.AirborneObservationActors.Count}, "
-                        + $"readyHangar {capacity.ReadyStoredAirObservationCapacity}); want {genericNew}; blocked {blocked}",
+                        + $"groundTraversal {capacity.GroundTraversalDeficit}; airborneAir "
+                        + $"{capacity.AirborneReconLanes}, spareAir {capacity.SpareAirObservationSorties}); "
+                        + $"want {genericNew}; blocked {blocked}",
                 };
             }
         }

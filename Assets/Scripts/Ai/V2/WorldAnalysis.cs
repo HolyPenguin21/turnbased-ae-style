@@ -201,7 +201,9 @@ namespace Game.Ai.V2
             self.HandCapacity = hand?.Capacity ?? 0;
             self.HasFreeHandSlot = hand?.HasFreeSlot ?? false;
 
-            self.LaunchableStoredAircraft = CountLaunchableStoredAircraft(player, root);
+            ReconAirObservationCapacity airObs = ReconAirCapacityPolicy.Evaluate(player, root);
+            self.AirborneReconWings = airObs.AirborneReconWings;
+            self.SpareAirObservationSorties = airObs.SpareSorties;
 
             self.HasDevFacility = BuildingRegistry.AllBuildings().Any(b => b != null && b.Owner == player
                 && (b.HasFacilityWithAbility(UnitAbilities.Research) || b.HasFacilityWithAbility(UnitAbilities.Production)));
@@ -244,42 +246,6 @@ namespace Game.Ai.V2
 
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
-
-        // AI-RECON-02 — how many aircraft sitting in owned airfield storage could actually be
-        // launched on a recon sortie this turn. Greedy over the shared AP + reservation-net Energy
-        // budgets using the cheapest-per-unit launch costs (parity with AiAviationSupport.
-        // CanAffordLaunch, which is the real pre-launch gate), capped at the stored aviation count.
-        private static int CountLaunchableStoredAircraft(PlayerSetupData player, PlayerRoot root)
-        {
-            if (player == null || root == null)
-                return 0;
-
-            int stored = 0;
-            int minApCost = int.MaxValue;
-            int minEnergyCost = int.MaxValue;
-            foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
-            {
-                ArmyData airfield = Game.Aviation.AviationRules.FindAirfieldAt(hex, player);
-                if (airfield == null)
-                    continue;
-                foreach (UnitData ac in airfield.Members)
-                {
-                    if (ac == null || !ac.IsAviation)
-                        continue;
-                    stored++;
-                    minApCost = Mathf.Min(minApCost, Mathf.Max(0, ac.ActivationApCost));
-                    minEnergyCost = Mathf.Min(minEnergyCost, Mathf.Max(0, ac.LaunchEnergyCost));
-                }
-            }
-            if (stored == 0)
-                return 0;
-
-            int apBudget = Mathf.Max(0, root.ActionPoints);
-            int energyBudget = Mathf.Max(0, AiResourceReservation.Available(root, player, ResourceType.Energy));
-            int byAp = minApCost > 0 ? apBudget / minApCost : stored;
-            int byEnergy = minEnergyCost > 0 ? energyBudget / minEnergyCost : stored;
-            return Mathf.Clamp(Mathf.Min(byAp, byEnergy), 0, stored);
-        }
 
         private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {

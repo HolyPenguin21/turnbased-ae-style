@@ -22,7 +22,8 @@ namespace Game.Ai.V2
     // the ordinary first-move Energy-reservation seam already understood by AiAviationSupport.
     internal static class ReconAirExecutor
     {
-        private const int MaxAirActorsPerTurn = 2;
+        // Per-turn air-recon actor cap and the storage launch-subset rule now live in the shared
+        // ReconAirCapacityPolicy so ReconCapacitySnapshot enforces the exact same limits.
 
         public static IEnumerator RunFallback(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot)
@@ -79,13 +80,13 @@ namespace Game.Ai.V2
 
             foreach (ArmyData air in active)
             {
-                if (actorsUsed >= MaxAirActorsPerTurn) break;
+                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
                 yield return RunActor(player, root, ctx, snapshot, air);
                 used.Add(air.Id);
                 actorsUsed++;
             }
 
-            if (actorsUsed >= MaxAirActorsPerTurn)
+            if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
             {
                 airSkips.Add("actorLimitReached");
                 AirFallbackSummary("stop after in-flight actors");
@@ -108,7 +109,7 @@ namespace Game.Ai.V2
 
             foreach (ArmyData air in candidates)
             {
-                if (actorsUsed >= MaxAirActorsPerTurn) break;
+                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
                 bool moved = false;
                 yield return RunActor(player, root, ctx, snapshot, air, value => moved = value);
                 if (moved)
@@ -117,7 +118,7 @@ namespace Game.Ai.V2
                     airSkips.Add("readyAircraftNoUsefulStep");
             }
 
-            if (actorsUsed >= MaxAirActorsPerTurn)
+            if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
             {
                 airSkips.Add("actorLimitReached");
                 AirFallbackSummary("stop after ready aircraft");
@@ -129,7 +130,7 @@ namespace Game.Ai.V2
                 airSkips.Add("noOwnedAirfield");
             foreach (HexCoord airfieldHex in AiAviationSupport.OwnedAirfieldHexes(player).ToList())
             {
-                if (actorsUsed >= MaxAirActorsPerTurn) break;
+                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
                 ArmyData stored = AviationRules.FindAirfieldAt(airfieldHex, player);
                 if (stored == null || stored.Members.Count < AiConfig.aviationLaunchMinReadyAircraft)
                 {
@@ -227,6 +228,7 @@ namespace Game.Ai.V2
                 launchSortie.RecordStep(launched.Hex);
                 launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, first.Value.Score);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                AiMapMemory.RecordAirReconTarget(player, launched.Hex, ctx.TurnNumber);
                 LogVisitedInvariant(player, first.Value.Hex, firstVisitedBefore, "storage-launch-first-step");
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
                     + $"launch=({airfieldHex.Q},{airfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
@@ -551,6 +553,11 @@ namespace Game.Ai.V2
 
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
+            // AI-AIR-01 §5 — stamp every hex this sortie actually observed so a later route's
+            // RedundancyPenalty / hard "repeats a recent air observation" reject has real data
+            // (V2 never calls AiAviationSupport.ContinueSortie, which was the only V1 stamper).
+            if (!after.Equals(before))
+                AiMapMemory.RecordAirReconTarget(player, after, ctx.TurnNumber);
             AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
                 + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
         }
@@ -715,21 +722,10 @@ namespace Game.Ai.V2
                 ? ReconMode.Explore : ReconMode.Refresh;
         }
 
-        // §P0 — the minimum useful aircraft subset for one recon sortie, cheapest activation
-        // first. Deterministic tie-break on the canonical storage roster order.
-        private static List<UnitData> SelectReconLaunchSubset(IReadOnlyList<UnitData> stored)
-        {
-            int want = Math.Max(1, AiConfig.aviationLaunchMinReadyAircraft);
-            return stored
-                .Select((u, i) => (u, i))
-                .Where(t => t.u != null)
-                .OrderBy(t => t.u.LaunchEnergyCost)
-                .ThenBy(t => t.u.ActivationApCost)
-                .ThenBy(t => t.i)
-                .Take(want)
-                .Select(t => t.u)
-                .ToList();
-        }
+        // §P0 — the minimum useful aircraft subset for one recon sortie. Shared with
+        // ReconCapacitySnapshot via ReconAirCapacityPolicy so both read one rule.
+        private static List<UnitData> SelectReconLaunchSubset(IReadOnlyList<UnitData> stored) =>
+            ReconAirCapacityPolicy.SelectReconLaunchSubset(stored);
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);

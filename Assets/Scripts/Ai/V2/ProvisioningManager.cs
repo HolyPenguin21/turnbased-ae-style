@@ -28,6 +28,10 @@ namespace Game.Ai.V2
         public ResourceVector ClaimedPhysical;
         public float ClaimedAp;
         public bool StealthApReserved;
+        // AI-RECON-02 — this Scout mission's requirement is a stealthy one (StealthRequirement.
+        // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
+        // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
+        public bool RequiresStealth;
         public bool IsReplacement;
     }
 
@@ -557,6 +561,7 @@ namespace Game.Ai.V2
                 BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
                 ClaimedAp = realNeed,
                 StealthApReserved = stealthAp > 0,
+                RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
             });
         }
 
