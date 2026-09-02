@@ -89,6 +89,32 @@ namespace Game.Ai.V2
                     if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
                         && c.Position.HasValue)
                         list.Add(BuildSurveil(snap, c));
+
+            // Ground acceptance telemetry is evaluated from this frozen strategic snapshot. Resolve
+            // the owner only from honest self armies; if none exist there is no scout execution to
+            // validate and the scenario correctly remains NOT_OBSERVED.
+            var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
+            if (auditPlayer != null)
+            {
+                ReconAcceptanceAudit.RecordDirectionBoundary(auditPlayer, snap.TurnNumber,
+                    ReconDirectionModel.Build(snap));
+
+                if (refresh.Count > 0)
+                {
+                    float bestExplore = list
+                        .Where(o => o != null && o.Kind == ReconObjectiveKind.Explore)
+                        .Select(o => o.BaseValue)
+                        .DefaultIfEmpty(0f)
+                        .Max();
+                    float bestRefresh = refresh
+                        .Where(o => o != null)
+                        .Select(o => o.BaseValue)
+                        .DefaultIfEmpty(0f)
+                        .Max();
+                    ReconAcceptanceAudit.RecordMostlyExploredPressure(auditPlayer, snap.TurnNumber,
+                        snap.MapKnowledge.ExplorableUnknownFrac, bestExplore, bestRefresh);
+                }
+            }
             return list;
         }
 
@@ -211,7 +237,7 @@ namespace Game.Ai.V2
 
             bool exposed = EnemyExposedAt(snap, hex);
             float risk = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
-            return new ReconObjective
+            var objective = new ReconObjective
             {
                 Kind = ReconObjectiveKind.Refresh,
                 FocusHex = hex,
@@ -223,6 +249,15 @@ namespace Game.Ai.V2
                 StrategicRelevance = strategic,
                 DirectionPressure = directional,
             };
+
+            if (strategic > 0f)
+            {
+                var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
+                if (auditPlayer != null)
+                    ReconAcceptanceAudit.RecordStaleStrategicRefresh(auditPlayer, snap.TurnNumber,
+                        hex, age, strategic);
+            }
+            return objective;
         }
 
         private static ReconObjective BuildSurveil(WorldSnapshot snap, EnemyContactSnapshot c)
