@@ -23,6 +23,9 @@ namespace Game.Ai.V2
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown, player));
             demands.AddRange(DevelopmentDemands(snap, breakdown));
+            // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
+            // an Aggression / Defence combat demand already covers the same ground this pass.
+            demands.AddRange(BaselineForceReadinessDemands(snap, player, commitments, demands));
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
             // ToString from here — into Phase A and every [CHECK] line raised for the demand.
@@ -164,6 +167,11 @@ namespace Game.Ai.V2
             int groundPart = groundNew;
             int obsPart = Mathf.Min(obsNew, Mathf.Max(0, usefulGenericRoom - groundPart));
             int genericNew = Mathf.Min(groundPart + obsPart, Mathf.Max(0, roomForNew - stealthNew));
+            // Split the materialised count back onto its two requirement classes (ground floor
+            // first) so each emitted demand carries a TargetHex / ScoutContext / Value that
+            // actually matches the deficit it is being created for (review round 5).
+            int matGround = Mathf.Min(groundPart, genericNew);
+            int matObs = genericNew - matGround;
 
             const float reconFixedOverheadAp = 0f;
 
@@ -207,34 +215,57 @@ namespace Game.Ai.V2
                 };
             }
 
-            if (genericNew > 0)
+            if (matGround > 0)
             {
-                var genericPool = groundPart > 0 ? groundVisitRunnable : observationRunnable;
-                ReconObjective best = genericPool.FirstOrDefault(o => !IsStealthObjective(o))
-                    ?? runnable.FirstOrDefault(o => !IsStealthObjective(o)) ?? runnable[0];
+                ReconObjective best = groundVisitRunnable.FirstOrDefault(o => !IsStealthObjective(o))
+                    ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
-                    + $"profile=generic desired={genericNew} reason=persistent_usable_capacity_deficit "
-                    + $"obsDeficit={capacity.ObservationDeficit}(streak={obsStreak}) "
+                    + $"profile=generic-ground desired={matGround} reason=persistent_ground_traversal_deficit "
                     + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(streak={groundStreak}) "
-                    + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
-                    + $"groundPart={groundPart} obsPart={obsPart} runnable={runnable.Count} blocked={blocked} "
+                    + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
                     + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
                     Capability = CapabilityKind.ScoutCapability,
-                    DesiredAmount = genericNew,
+                    DesiredAmount = matGround,
                     RequiredTraits = TraitPreference.None,
                     PreferredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"persistent usable-capacity deficit (obs {capacity.ObservationDeficit}, "
-                        + $"groundTraversal {capacity.GroundTraversalDeficit}; airborneAir "
-                        + $"{capacity.AirborneReconLanes}, spareAir {capacity.SpareAirObservationSorties}); "
-                        + $"want {genericNew}; blocked {blocked}",
+                    Explain = $"persistent GroundTraversal deficit {capacity.GroundTraversalDeficit} "
+                        + $"(aviation cannot substitute a physical visit); want {matGround}; blocked {blocked}",
+                };
+            }
+
+            if (matObs > 0)
+            {
+                ReconObjective best = observationRunnable.FirstOrDefault(o => !IsStealthObjective(o))
+                    ?? observationRunnable.FirstOrDefault() ?? runnable[0];
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
+                    + $"profile=generic-observation desired={matObs} reason=persistent_observation_deficit "
+                    + $"obsDeficit={capacity.ObservationDeficit}(streak={obsStreak}) "
+                    + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
+                    + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
+                    + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
+                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Recon,
+                    Capability = CapabilityKind.ScoutCapability,
+                    DesiredAmount = matObs,
+                    RequiredTraits = TraitPreference.None,
+                    PreferredTraits = TraitPreference.Stealth,
+                    MinimumFollowupAp = reconFixedOverheadAp,
+                    TargetHex = best.FocusHex,
+                    Value = best.BaseValue,
+                    ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
+                    Explain = $"persistent Observation deficit {capacity.ObservationDeficit} "
+                        + $"(net of airborne {capacity.AirborneReconLanes} + spare air {capacity.SpareAirObservationSorties}); "
+                        + $"want {matObs}; blocked {blocked}",
                 };
             }
         }
