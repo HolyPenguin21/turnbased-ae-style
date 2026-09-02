@@ -186,7 +186,12 @@ namespace Game.Ai.V2
             if ((commitments != null && commitments.IsArmyClaimed(army.Id))
                 || StrategicCapabilityLeaseRegistry.IsLeased(player, army.Id))
                 return ReorgPhysicalRole.ProtectedMissionArmy;
-            if (AiArmyRoles.IsSoloRecce(army))
+            // §P1 — the SoloRecce role protects a scout only while it actually has recon WORK: a
+            // live ReconAssignment (claim/lease already returned ProtectedMissionArmy above). An
+            // idle scout-shaped army with no assignment is just an ordinary singleton the zero-AP
+            // reorg pass may fold or reuse.
+            if (AiArmyRoles.IsSoloRecce(army)
+                && ReconAssignmentRegistry.TryGet(player, army.Id, out _))
                 return ReorgPhysicalRole.SoloRecce;
             if (army.Members.Count == 0)
                 return ReorgPhysicalRole.EmptyReusableArmy;

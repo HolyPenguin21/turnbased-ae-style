@@ -6,6 +6,7 @@ using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -53,12 +54,26 @@ namespace Game.Ai.V2
                 .ToList();
 
             int ownedAirfields = AiAviationSupport.OwnedAirfieldHexes(player).Count();
-            int totalAircraft = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a))
+            // §P2 — three DISTINCT counts, never one ambiguous "aircraft=" that reads 0 while a
+            // hangar holds two: aircraft parked in airfield storage, aircraft already airborne,
+            // and aircraft sitting ready on their own airfield with no task.
+            int storedAircraftCount = AiAviationSupport.OwnedAirfieldHexes(player)
+                .Select(h => AviationRules.FindAirfieldAt(h, player))
+                .Where(s => s != null)
+                .Sum(s => s.Members.Count);
+            int airborneAircraft = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
+                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player))
+                .Sum(a => Math.Max(1, a.Members.Count));
+            int readyOnAirfield = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
+                    && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+                    && AiTaskRegistry.TaskFor(player, a) == null)
                 .Sum(a => Math.Max(1, a.Members.Count));
 
             void AirFallbackSummary(string exit) => AiDebugLog.Write(
-                $"[AI][V2][Recon][Air] fallback — {exit}: airfields={ownedAirfields} aircraft={totalAircraft} "
+                $"[AI][V2][Recon][Air] fallback — {exit}: airfields={ownedAirfields} "
+                + $"stored={storedAircraftCount} airborne={airborneAircraft} ready={readyOnAirfield} "
                 + $"inFlightWithAssignment={active.Count} sortiesThisPass={actorsUsed} "
                 + $"skips=[{(airSkips.Count > 0 ? string.Join(",", airSkips) : "none")}]");
 
@@ -122,15 +137,21 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                var storedAircraft = stored.Members.ToList();
-                if (!AiAviationSupport.CanAffordLaunch(root, player, storedAircraft))
+                // §P0 — a recon sortie needs ONE seeing aircraft, not the whole hangar. Launching
+                // every stored wing as a single stack sums their activation AP/Energy and
+                // permanently sinks the step score negative (spec §29 — air recon is an
+                // information fallback, never a mass sortie). Take the cheapest-to-activate
+                // minimum subset; the rest stay ready in storage.
+                var launchSubset = SelectReconLaunchSubset(stored.Members);
+                if (!AiAviationSupport.CanAffordLaunch(root, player, launchSubset))
                 {
                     airSkips.Add("launchApEnergyUnavailable");
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({airfieldHex.Q},{airfieldHex.R}) "
-                        + $"aircraft={storedAircraft.Count} — launch AP/Energy unavailable; skip");
+                        + $"aircraft={launchSubset.Count}/{stored.Members.Count} — launch AP/Energy unavailable; skip");
                     continue;
                 }
 
+                var storedAircraft = launchSubset;
                 var launchCandidate = new AirStrikeTask.LaunchCandidate(airfieldHex, null, storedAircraft);
                 ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
                     player, ctx, launchCandidate, snapshot, requestedMode, ctx.TurnNumber);
@@ -672,10 +693,34 @@ namespace Game.Ai.V2
                     + $"marked ground Visited at ({hex.Q},{hex.R})");
         }
 
-        // Spec §29 — aviation serves Intelligence Refresh only. It reveals hexes but never marks
-        // them ground-Visited, so it must never be tasked as an Exploration/Visit mover regardless
-        // of how dark the map still is. The Explore mode stays a ground-only concept.
-        private static ReconMode RequestedMode(WorldSnapshot snapshot) => ReconMode.Refresh;
+        // Spec §29 / §P1 — aviation still only REVEALS a hex and never marks it ground-Visited
+        // (LogVisitedInvariant enforces that on every step). Its INFORMATION WEIGHTING, however,
+        // now follows the real map: while a large fraction of the whole board is still
+        // never-observed — including hexes no ground scout can reach — value that unknown
+        // territory (Explore weighting) instead of only re-checking stale known hexes (Refresh
+        // weighting). Air Recon runs after every provisioned ground scout on its own actors, so
+        // this can never close a mandatory ground Explore/Visit.
+        private static ReconMode RequestedMode(WorldSnapshot snapshot)
+        {
+            float darkFrac = snapshot?.MapKnowledge?.UnknownFrac ?? 0f;
+            return darkFrac >= AiConfigV2.airReconExploreDarkFloor ? ReconMode.Explore : ReconMode.Refresh;
+        }
+
+        // §P0 — the minimum useful aircraft subset for one recon sortie, cheapest activation
+        // first. Deterministic tie-break on the canonical storage roster order.
+        private static List<UnitData> SelectReconLaunchSubset(IReadOnlyList<UnitData> stored)
+        {
+            int want = Math.Max(1, AiConfig.aviationLaunchMinReadyAircraft);
+            return stored
+                .Select((u, i) => (u, i))
+                .Where(t => t.u != null)
+                .OrderBy(t => t.u.LaunchEnergyCost)
+                .ThenBy(t => t.u.ActivationApCost)
+                .ThenBy(t => t.i)
+                .Take(want)
+                .Select(t => t.u)
+                .ToList();
+        }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);

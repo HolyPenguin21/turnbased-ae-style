@@ -457,7 +457,7 @@ namespace Game.Ai.V2
             // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, then apply the
             //     centralized execution scope. In ReconOnly this cleanly retires stale Raid intents
             //     before ActorCommitments or the allocator can protect them.
-            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
+            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
             activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout

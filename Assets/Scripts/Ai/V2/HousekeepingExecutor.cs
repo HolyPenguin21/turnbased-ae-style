@@ -178,6 +178,16 @@ namespace Game.Ai.V2
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
             if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
+            // §P1 — a garrison that currently holds a real defensive power reserve must not be
+            // dropped below it by a zero-AP structural move.
+            if (from.IsGarrison)
+            {
+                float beforePower = AiPower.EffectiveArmyPower(from.Members);
+                if (beforePower >= AiConfigV2.housekeepingGarrisonReservePower
+                    && AiPower.EffectiveArmyPower(from.Members.Where(m => m != unit))
+                        < AiConfigV2.housekeepingGarrisonReservePower)
+                { why = "garrison power reserve"; return false; }
+            }
             return true;
         }
 

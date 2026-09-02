@@ -203,10 +203,13 @@ namespace Game.Ai.V2
                     if (donorId == weakId)
                         continue;
                     ReorgContainer donor = state.Meta[donorId];
-                    bool donorField = IsFieldContainer(donor);
-                    if ((!donorField && !donor.IsGarrison) || !donor.CanDonate)
+                    // §P1 — the garrison is a defensive stack, not a spare-parts bin. Housekeeping
+                    // never lends garrison bodies to make a purposeless weak/shell field army
+                    // structurally viable; that force is folded/absorbed instead (steps 1-2), or
+                    // left for a deliberate AP-owning path (SecureBase / RaidAssembly / Defence).
+                    if (!IsFieldContainer(donor) || !donor.CanDonate)
                         continue;
-                    if (donorField && !ReorgViability.IsViable(state.Roster[donorId]))
+                    if (!ReorgViability.IsViable(state.Roster[donorId]))
                         continue;
                     VState c = TrySeed(state, donorId, weakId);
                     if (c != null)

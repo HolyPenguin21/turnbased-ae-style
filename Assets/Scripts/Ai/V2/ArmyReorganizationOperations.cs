@@ -196,9 +196,25 @@ namespace Game.Ai.V2
             ReorgContainer meta)
         {
             if (u.IsHero)
-                return garrison.Count > 1;
-            int remainingNonHero = garrison.Count(x => !x.IsHero) - 1;
-            return remainingNonHero >= meta.GarrisonNonHeroFloor;
+            {
+                if (garrison.Count <= 1)
+                    return false;
+            }
+            else
+            {
+                int remainingNonHero = garrison.Count(x => !x.IsHero) - 1;
+                if (remainingNonHero < meta.GarrisonNonHeroFloor)
+                    return false;
+            }
+            // §P1 — headcount is not enough: a garrison that currently HOLDS a real defensive
+            // power reserve must not be dropped below it by a zero-AP reorg move (a small,
+            // already-below-reserve second base is still governed by the headcount floor above,
+            // exactly as before).
+            float before = ReorgViability.EffectivePower(garrison);
+            if (before < AiConfigV2.housekeepingGarrisonReservePower)
+                return true;
+            var after = garrison.Where(x => x != u).ToList();
+            return ReorgViability.EffectivePower(after) >= AiConfigV2.housekeepingGarrisonReservePower;
         }
     }
 }

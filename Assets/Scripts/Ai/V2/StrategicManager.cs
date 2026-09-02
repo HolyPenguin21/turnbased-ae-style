@@ -512,6 +512,36 @@ namespace Game.Ai.V2
         private static float ArbitrationScore(PhaseACandidate c) =>
             Mathf.Max(0f, c.State.Demand.Value) * Mathf.Max(0.0001f, c.Plan.Score);
 
+        // §P1 — multiplier on the surplus-admission threshold for a generic garrison deposit when
+        // the garrison is already a strong defensive stack (>= a fraction of BestStackPotential)
+        // and no asset is threatened. 1f otherwise.
+        private static float GarrisonSaturationThresholdMult(WorldSnapshot snap, MaterializationPlan plan,
+            AxisDemand residual)
+        {
+            if (residual != null || plan == null || plan.Deploy.Kind != DeploymentKind.Garrison
+                || snap?.Self == null)
+                return 1f;
+            bool assetThreat = snap.Threat?.Threats != null && snap.Threat.Threats.Count > 0;
+            if (assetThreat)
+                return 1f;
+            float reserve = AiConfigV2.garrisonSaturatedReserveFractionOfBestStack
+                * Mathf.Max(0f, snap.Self.BestStackPotential);
+            return reserve > 0f && snap.Self.GarrisonPower >= reserve
+                ? AiConfigV2.garrisonSaturatedSurplusThresholdMult : 1f;
+        }
+
+        // §P1 — a generic (no-residual) surplus chain would create a fresh lone-member army at a
+        // hex that already holds our garrison, which Housekeeping folds again the same turn.
+        private static bool GenericSurplusWouldChurn(PlayerSetupData player, MaterializationPlan plan)
+        {
+            if (plan == null || plan.Kind != MaterializationChainKind.Direct)
+                return false;
+            if (plan.Deploy.Kind != DeploymentKind.NewArmy && plan.Deploy.Kind != DeploymentKind.ReusableShell)
+                return false;
+            return ArmyRegistry.AllForOwner(player)
+                .Any(a => a != null && a.IsGarrison && a.Hex.Equals(plan.Deploy.Hex));
+        }
+
         public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
             MaterializationReservation carriedReservation)
@@ -568,12 +598,32 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                if (residual == null && pick.Value.utility < admission.EffectiveThreshold)
+                // §P1 — once the garrison is a strong defensive stack and nothing threatens an
+                // asset, a generic (no-residual) card whose only placement is "into the garrison"
+                // must clear a much higher bar, so the loop stops and stranded AP converts to
+                // draws instead of grinding the garrison from 6 to 40+ power with threats=0.
+                float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
+                float effThreshold = admission.EffectiveThreshold * satMult;
+
+                // §P1 — a generic surplus card must not FOUND a lone-member army at a hex that
+                // already holds our garrison: Housekeeping reclassifies it as a structural defect
+                // the same turn (create -> fold -> reseed). A genuine forward outpost away from
+                // any base of ours is still allowed.
+                if (residual == null && GenericSurplusWouldChurn(player, plan))
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                        + "generic surplus would found a lone-member army at a base hex housekeeping "
+                        + "folds the same turn; stop surplus");
+                    break;
+                }
+
+                if (residual == null && pick.Value.utility < effThreshold)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
-                        + $"util {F(pick.Value.utility)} < threshold {F(admission.EffectiveThreshold)} "
+                        + $"util {F(pick.Value.utility)} < threshold {F(effThreshold)} "
                         + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                        + $"resSlack {F(admission.ResourceSlackFactor)}), stop");
+                        + $"resSlack {F(admission.ResourceSlackFactor)}"
+                        + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")}), stop");
                     break;
                 }
 
@@ -583,9 +633,10 @@ namespace Game.Ai.V2
                         + "(operational strategic residual outranks generic surplus)");
                 else
                     AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
-                        + $"util {F(pick.Value.utility)} >= threshold {F(admission.EffectiveThreshold)} "
+                        + $"util {F(pick.Value.utility)} >= threshold {F(effThreshold)} "
                         + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                        + $"resSlack {F(admission.ResourceSlackFactor)})");
+                        + $"resSlack {F(admission.ResourceSlackFactor)}"
+                        + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")})");
 
                 var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
                     .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
@@ -683,9 +734,21 @@ namespace Game.Ai.V2
             ref int surplusActionsUsed)
         {
             int played = 0;
+            int reservedUsed = 0;
             List<string> lastBlocked = null;
-            for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
+            // §P0 — the non-combat lane shares maxSurplusActionsPerTurn with the materialization
+            // surplus loop, but is GUARANTEED surplusNonCombatReservedActions plays beyond an
+            // exhausted shared budget. Without this a run of generic garrison dumps drains the
+            // whole budget, a playable stored-Aviation card is never actually played, and it then
+            // blocks RunTerminalDraws from converting stranded AP (the card is "actionable" but
+            // nothing plays it) — leaving it in hand for turns.
+            while (true)
             {
+                bool sharedBudgetLeft = surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn;
+                bool reservedLeft = reservedUsed < AiConfigV2.surplusNonCombatReservedActions;
+                if (!sharedBudgetLeft && !reservedLeft)
+                    break;
+
                 NonCombatCardPlayer.NonCombatPlay play =
                     NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out List<string> blocked);
                 lastBlocked = blocked;
@@ -712,8 +775,12 @@ namespace Game.Ai.V2
                         result.EquipmentAssignmentsSucceeded++;
                     }
                     played++;
+                    if (surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn)
+                        surplusActionsUsed++;
+                    else
+                        reservedUsed++;
                     AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {play.Kind} {play.Explain} "
-                        + $"(ap {F(apSpent)})");
+                        + $"(ap {F(apSpent)}{(reservedUsed > 0 ? ", reserved slot" : "")})");
                     snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                 }
                 else
@@ -754,7 +821,11 @@ namespace Game.Ai.V2
                     AxisDemand residual = matchedResidual != null
                         && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual) ? matchedResidual : null;
                     SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
-                    if (residual != null || pick.Value.utility >= adm.EffectiveThreshold)
+                    float termThreshold = adm.EffectiveThreshold
+                        * GarrisonSaturationThresholdMult(snap, pick.Value.plan, residual);
+                    if (residual == null && GenericSurplusWouldChurn(player, pick.Value.plan))
+                        termThreshold = float.MaxValue;
+                    if (residual != null || pick.Value.utility >= termThreshold)
                         actionable = residual != null
                             ? $"an operational residual demand ({pick.Value.plan.StableKey})"
                             : $"a worthwhile surplus chain ({pick.Value.plan.StableKey})";

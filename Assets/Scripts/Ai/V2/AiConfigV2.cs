@@ -536,6 +536,19 @@ namespace Game.Ai.V2
         // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
         // next turn — convert it to card option value, bounded by this many draws per turn.
         public const int maxTerminalDrawsPerTurn = 4;
+        // Phase B non-combat lane (Aviation / Base / Facility). Guaranteed minimum actions the
+        // non-combat lane may still take AFTER the shared maxSurplusActionsPerTurn budget was
+        // fully spent by the materialization-surplus loop, so a playable stored-Aviation card can
+        // never be starved for turns while it simultaneously blocks terminal AP->draw conversion.
+        public const int surplusNonCombatReservedActions = 1;
+        // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
+        // already a strong defensive stack and nothing threatens an asset: the surplus-admission
+        // threshold is multiplied by this so the loop stops (and converts stranded AP to draws)
+        // instead of grinding the garrison from 6 to 40+ power with threats=0.
+        public const float garrisonSaturatedSurplusThresholdMult = 6f;
+        // The garrison counts as "already strong enough" for the cap above once its EffectivePower
+        // is at least this fraction of the player's best assemblable stack (BestStackPotential).
+        public const float garrisonSaturatedReserveFractionOfBestStack = 0.60f;
         // NOTE: the old speculative Phase-B floors (surplusApReserve / surplus{Human,Energy,
         // Materials,Tech}Reserve) are RETIRED. Phase B runs AFTER ordinary mission execution;
         // AP cannot be banked and there is no resource/AP-costing late V2 stage (housekeeping is
@@ -557,6 +570,12 @@ namespace Game.Ai.V2
         // "non-viable" — a conservative structural floor, NOT a battle prediction. A singleton
         // (one non-hero member) and a lone hero are non-viable regardless of this number.
         public const float housekeepingViabilityPowerFloor = 6f;
+        // A garrison donor in the zero-AP reorg pass must leave the garrison with at least this
+        // much EffectivePower, ON TOP OF the non-hero headcount floor — so Housekeeping can never
+        // strip a strong Citadel to prop up a weak field army. (The reorg pass also no longer uses
+        // the garrison as a seed donor for a purposeless shell at all — this is defence in depth
+        // for the benched-hero lending paths and smaller second-base garrisons.)
+        public const float housekeepingGarrisonReservePower = 20f;
         // Fewer than this many friendly containers (garrison + field armies) on one hex -> there
         // is nothing to reorganise, the hex is skipped.
         public const int housekeepingMinContainersForGroup = 2;
@@ -644,6 +663,13 @@ namespace Game.Ai.V2
         public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
         public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
         public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
+        // Air Recon flips from Refresh-only scoring to never-observed (Explore) weighting once at
+        // least this fraction of the WHOLE map is still never-observed dark — so aviation keeps
+        // valuing genuinely unknown territory (including ground-unreachable hexes) even after the
+        // explorable frontier has mostly closed. Aviation still only reveals; it never marks a hex
+        // ground-Visited, and it runs after every provisioned ground scout so it cannot displace a
+        // mandatory ground Explore/Visit.
+        public const float airReconExploreDarkFloor = 0.25f;
 
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,

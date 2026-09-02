@@ -155,7 +155,18 @@ namespace Game.Ai.V2
                 };
             }
 
-            if (missGeneric > 0)
+            // §P1 — concurrency counts only ACTIVE durable intents; this counts the physical
+            // scout-capable inventory (armies already in the cheap dedicated IsSoloRecce shape).
+            // Generic Phase B must not found a fifth solo scout while three already sit idle
+            // between missions — wait for one to free up instead.
+            int scoutPortfolio = snap.Self.Armies?.Count(a => a != null && a.IsSoloRecce) ?? 0;
+            if (missGeneric > 0 && scoutPortfolio >= desiredConcurrency && scoutPortfolio > activeReconExecutions)
+            {
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=scout_portfolio_saturated "
+                    + $"portfolio={scoutPortfolio} desired={desiredConcurrency} active={activeReconExecutions} "
+                    + $"idle={scoutPortfolio - activeReconExecutions} missGeneric={missGeneric}");
+            }
+            else if (missGeneric > 0)
             {
                 ReconObjective best = topN.FirstOrDefault(o =>
                     o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f)) ?? runnable[0];

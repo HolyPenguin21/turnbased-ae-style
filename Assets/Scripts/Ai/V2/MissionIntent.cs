@@ -488,7 +488,8 @@ namespace Game.Ai.V2
 
     internal static class MissionContinuityLayer
     {
-        public static List<MissionIntent> ResolveActive(PlayerSetupData player, WorldSnapshot snap)
+        public static List<MissionIntent> ResolveActive(PlayerSetupData player, WorldSnapshot snap,
+            IReadOnlyList<ReconObjective> reconObjectives = null)
         {
             var active = new List<MissionIntent>();
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
@@ -607,6 +608,13 @@ namespace Game.Ai.V2
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
 
+            // §P1 — if desired concurrency has fallen below the number of active durable Scout
+            // lanes (map mostly explored, fewer reachable regions), retire the surplus lanes
+            // instead of carrying them forever. A "not create more" cap alone leaves earlier
+            // lanes alive; this actively sheds them.
+            if (reconObjectives != null)
+                TrimSurplusReconLanes(player, active, state, snap, reconObjectives);
+
             // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
             // Recon operational role, ACROSS Explore / Refresh / Surveil (Surveil keeps its own
             // tracked-army key model but not a separate physical claim). ReconcileAfterTurn
@@ -621,6 +629,49 @@ namespace Game.Ai.V2
                     $"actor=#{g.Key} intents=[{string.Join(", ", g.Select(i => i.IntentKey.ToString()))}]");
             }
             return active;
+        }
+
+        // §P1 — retire durable Scout lanes in excess of the current desired concurrency. Keeps at
+        // least one, never touches a Hard-funded lane, drops least-committed / newest / most-
+        // stalled first.
+        private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
+            MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
+        {
+            var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null).ToList();
+            if (scoutLanes.Count <= 1)
+                return;
+
+            var runnable = reconObjectives
+                .Where(o => o != null && o.BaseValue > 0f)
+                .OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.IntentKey)
+                .ToList();
+            int desired = System.Math.Max(1, ReconConcurrencyPolicy.DesiredTotal(snap, runnable));
+            int surplus = scoutLanes.Count - desired;
+            if (surplus <= 0)
+                return;
+
+            var victims = scoutLanes
+                .OrderBy(i => (int)i.Funding)
+                .ThenByDescending(i => i.CreatedTurn)
+                .ThenByDescending(i => i.StallTurns)
+                .ThenByDescending(i => i.IntentKey)
+                .ToList();
+            int dropped = 0;
+            foreach (MissionIntent v in victims)
+            {
+                if (dropped >= surplus)
+                    break;
+                if (v.Funding >= CommitmentTier.Hard)
+                    continue;
+                state.Remove(v.IntentKey);
+                active.Remove(v);
+                if (v.PreferredMoverArmyId.HasValue)
+                    ReconAssignmentRegistry.Retire(player, v.PreferredMoverArmyId.Value, "recon lane surplus trim");
+                dropped++;
+                AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
+                    + $"(active {scoutLanes.Count} > desired {desired})");
+            }
         }
 
         // Spec §1 — re-point a stale ground scout intent's live waypoint at the nearest still-
