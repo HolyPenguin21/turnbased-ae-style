@@ -14,25 +14,21 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  AIR RECON — RECON-ONLY FALLBACK
     // ===========================================================================================
-    //  Ground Recon remains the primary executor. This phase runs once, after the ordinary V2
-    //  mission batch, and may consume only resources that are still physically available.
+    //  Ground Recon remains primary. This phase runs after the ordinary V2 mission batch and may
+    //  consume only resources that are physically still available.
     //
-    //  Deliberate first implementation boundary:
-    //    · same-turn sorties only: current/launch airfield -> information objective -> safe airfield;
-    //    · the whole boomerang is proven by AiAviationSupport before launch;
-    //    · every physical transition is ONE hex through AiTurnController.MoveArmyRoutine;
-    //    · after every hex the route is re-planned against newly-known AA / landing capacity;
-    //    · if forward safety is no longer provable, the aircraft immediately turns for the best
-    //      reachable airfield using AiAviationSupport.TryReplan;
-    //    · observation updates AiReconIntelMemory, never VisionSystem.Visited. Aircraft therefore
-    //      refresh intelligence without falsely completing a ground Explore objective;
-    //    · a target recently flown toward is suppressed by AiMapMemory's AirRecon cooldown, giving
-    //      explicit diminishing returns instead of repetitive stale-hex loops.
+    //  First V2 boundary:
+    //    · same-turn sorties only: airfield -> information objective -> safe owned airfield;
+    //    · the complete boomerang must fit CURRENT movement, not theoretical max movement;
+    //    · every transition is one hex through AiTurnController.MoveArmyRoutine;
+    //    · after every hex the complete remainder is re-planned against newly-known AA/capacity;
+    //    · if forward safety is lost, the aircraft turns for the best currently reachable airfield;
+    //    · observation refreshes AiReconIntelMemory but must never mark ground VisionSystem.Visited;
+    //    · recently-flown targets are suppressed to create explicit diminishing returns.
     //
-    //  Multi-turn helicopter sorties intentionally stay out of this first V2 pass. They require a
-    //  durable aviation intent/landing reservation in V2; reusing V1 AiTaskRegistry for that would
-    //  violate V2's state-ownership boundary. Same-turn sorties give us the full authoritative
-    //  movement/AA/observation loop without introducing a second persistence model.
+    //  Multi-turn helicopter sorties intentionally stay outside this first pass. They need a V2
+    //  durable aviation assignment + landing reservation. Reusing V1 AiTaskRegistry for persistence
+    //  would create a second state-ownership model inside Strategy V2.
     // ===========================================================================================
     internal static class AirReconV2
     {
@@ -54,8 +50,6 @@ namespace Game.Ai.V2
             public float InformationValue;
             public float OpportunityCost;
             public float NetValue;
-
-            public bool FromStorage => ExistingArmy == null;
         }
 
         public static IEnumerator RunFallback(WorldSnapshot snapshot, PlayerSetupData player,
@@ -86,15 +80,12 @@ namespace Game.Ai.V2
                     + $"route={plan.Sortie.TotalCost}");
 
                 bool sortieChanged = false;
-                yield return Execute(player, root, ctx, plan, v => sortieChanged |= v);
+                yield return Execute(player, ctx, plan, v => sortieChanged |= v);
                 if (!sortieChanged)
                     yield break;
 
                 executed++;
                 changed?.Invoke(true);
-                // The strategic objective set remains the frozen turn set. Current observation and
-                // the target cooldown below prevent a second pass from selecting already-completed
-                // information, even if MaxSortiesPerTurn is raised later.
             }
         }
 
@@ -113,13 +104,11 @@ namespace Game.Ai.V2
                     || ObservedThisTurn(player, objective.FocusHex, ctx.TurnNumber))
                     continue;
 
-                // Air is a fallback, not a replacement for a cheap ground hop. Explore/Refresh that
-                // a ground Recce can finish in one turn stays with the ground executor. Surveil has
-                // observation-vantage semantics and is allowed to compete even when a scout exists.
+                // Air is fallback, not a replacement for a cheap ground hop. Surveil is observation
+                // semantics and may compete even when a ground scout can physically approach it.
                 if (objective.Kind != ReconObjectiveKind.Surveil)
                 {
-                    ScoutRouteCostEvaluator.Assessment ground =
-                        ScoutRouteCostEvaluator.Evaluate(snapshot, objective.ToTarget());
+                    var ground = ScoutRouteCostEvaluator.Evaluate(snapshot, objective.ToTarget());
                     if (ground.HasRoute && ground.EtaTurns <= 1)
                         continue;
                 }
@@ -149,9 +138,9 @@ namespace Game.Ai.V2
             Candidate best = null;
             int freeEnergy = AiResourceReservation.Available(root, player, ResourceType.Energy);
 
-            // Already-formed air armies at owned airfields cost no launch mutation. Ignore anything
-            // carrying a V1 task: V2 must never steal a formation whose ownership predates the V2
-            // turn switch.
+            // Existing air formations are eligible only while sitting on an owned airfield and not
+            // owned by a legacy V1 task. A theoretical sortie that does not fit CURRENT movement is
+            // rejected even if the shared planner can prove it against max movement.
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (!AviationRules.IsValidAirArmy(army) || army.CurrentMovement <= 0
@@ -161,7 +150,7 @@ namespace Game.Ai.V2
 
                 AiAviationSupport.Sortie? sortie =
                     AiAviationSupport.TryPlanSortie(army, objective.FocusHex, ctx.Map, player);
-                if (!sortie.HasValue)
+                if (!sortie.HasValue || sortie.Value.TotalCost > army.CurrentMovement)
                     continue;
 
                 int ap = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
@@ -175,9 +164,9 @@ namespace Game.Ai.V2
                     best = c;
             }
 
-            // Stored aircraft use the exact same launch subset policy as V1: a ready airfield's
-            // stored group launches together. TryPlanSortieFromStorage proves both route legs and
-            // landing capacity before the free TryLaunch mutation is allowed to happen.
+            // Stored aircraft use V1's authoritative launch-group rule. Pre-filter with the minimum
+            // effective current movement of the selected group; launch is then re-proved once the
+            // actual ArmyData exists, before any paid movement occurs.
             foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(hex, player);
@@ -194,6 +183,10 @@ namespace Game.Ai.V2
                 if (!sortie.HasValue)
                     continue;
 
+                int currentMove = aircraft.Min(AviationRules.EffectiveMoveCurrent);
+                if (currentMove <= 0 || sortie.Value.TotalCost > currentMove)
+                    continue;
+
                 int ap = aircraft.Sum(u => u.ActivationApCost);
                 int energy = aircraft.Sum(u => u.LaunchEnergyCost);
                 Candidate c = MakeCandidate(objective, null, hex, aircraft, sortie.Value,
@@ -208,11 +201,9 @@ namespace Game.Ai.V2
             HexCoord launchHex, List<UnitData> stored, AiAviationSupport.Sortie sortie,
             int ap, int energy, float informationValue, int apAvailable, int energyAvailable)
         {
-            // Absolute spend matters, but scarcity matters too: spending the last AP/Energy point is
-            // more expensive than the same sortie from a deep reserve. The route term is the
-            // physical opportunity cost of tying the wing up for more movement this turn.
             float apScarcity = apAvailable > 0 ? ap / (float)apAvailable : (ap > 0 ? 1f : 0f);
-            float energyScarcity = energyAvailable > 0 ? energy / (float)energyAvailable : (energy > 0 ? 1f : 0f);
+            float energyScarcity = energyAvailable > 0
+                ? energy / (float)energyAvailable : (energy > 0 ? 1f : 0f);
             float opportunity = ap * ApOpportunityWeight + energy * EnergyOpportunityWeight
                 + sortie.TotalCost * AiConfig.airReconDistancePenalty
                 + apScarcity * 8f + energyScarcity * 8f;
@@ -232,11 +223,13 @@ namespace Game.Ai.V2
             };
         }
 
-        private static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+        private static IEnumerator Execute(PlayerSetupData player, AiTurnContext ctx,
             Candidate plan, System.Action<bool> changed)
         {
+            bool visitedBefore = VisionSystem.IsVisited(player, plan.Objective.FocusHex);
             ArmyData airArmy = plan.ExistingArmy;
             bool launchedFromStorage = false;
+
             if (airArmy == null)
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(plan.LaunchHex, player);
@@ -256,17 +249,15 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 launchedFromStorage = true;
-                changed?.Invoke(true);
+                // TryLaunch is provisional here. Do not report lasting state-change until a paid
+                // aviation step succeeds; a failed preflight is rolled back to the airfield below.
             }
 
-            // Re-prove the boomerang after launch and immediately before the first paid move.
-            // If anything changed since planning, a just-formed group is rolled back to storage
-            // without having spent activation AP/Energy.
             AiAviationSupport.Sortie? live =
                 AiAviationSupport.TryPlanSortie(airArmy, plan.Objective.FocusHex, ctx.Map, player);
-            if (!live.HasValue)
+            if (!live.HasValue || live.Value.TotalCost > airArmy.CurrentMovement)
             {
-                AiDebugLog.Write("[AI][V2][Recon][Air] cancel — safe outbound+return no longer provable before first step");
+                AiDebugLog.Write("[AI][V2][Recon][Air] cancel — safe same-turn outbound+return no longer fits current movement before first step");
                 if (launchedFromStorage)
                     ReturnUnmovedLaunchToStorage(airArmy, player, ctx);
                 yield break;
@@ -278,10 +269,9 @@ namespace Game.Ai.V2
             int guard = Mathf.Max(2, airArmy.CurrentMovement + 2);
             int steps = 0;
 
-            AiMapMemory.RecordAirReconTarget(player, plan.Objective.FocusHex, ctx.TurnNumber);
             AiDebugLog.Write($"[AI][V2][Recon][Air] launch/continue \"{airArmy.Name}\" "
                 + $"target=({plan.Objective.FocusHex.Q},{plan.Objective.FocusHex.R}) "
-                + $"landing=({landing.Q},{landing.R})");
+                + $"landing=({landing.Q},{landing.R}) movement={airArmy.CurrentMovement}");
 
             while (guard-- > 0 && airArmy != null && airArmy.CurrentMovement > 0)
             {
@@ -297,15 +287,14 @@ namespace Game.Ai.V2
                 HexCoord? next = null;
                 if (outbound)
                 {
-                    // Strict outbound rule: known AA anywhere on the newly-planned complete sortie
-                    // invalidates forward progress. A newly revealed AA zone therefore takes effect
-                    // before the next hex, not after the aircraft has followed a cached route.
+                    // Re-prove the COMPLETE remaining boomerang every hex. Newly discovered known AA,
+                    // landing-capacity changes, or spent movement can invalidate forward progress.
                     live = AiAviationSupport.TryPlanSortie(airArmy,
                         plan.Objective.FocusHex, ctx.Map, player);
-                    if (!live.HasValue)
+                    if (!live.HasValue || live.Value.TotalCost > airArmy.CurrentMovement)
                     {
                         outbound = false;
-                        AiDebugLog.Write("[AI][V2][Recon][Air] forward plan invalidated (AA/landing/range); emergency return");
+                        AiDebugLog.Write("[AI][V2][Recon][Air] forward plan invalidated (AA/landing/current movement); emergency return");
                         continue;
                     }
                     landing = live.Value.LandingHex;
@@ -331,26 +320,35 @@ namespace Game.Ai.V2
                         AviationActions.LandInSlotOrder(airArmy, ctx.HexSelection);
                         break;
                     }
+
                     HexPath ret = HexPathfinder.FindPath(ctx.Map, airArmy.Hex, landing, flatCost: true);
-                    if (ret?.Hexes == null || ret.Hexes.Count < 2)
+                    int returnSteps = ret?.Hexes != null ? ret.Hexes.Count - 1 : int.MaxValue;
+                    if (ret?.Hexes == null || ret.Hexes.Count < 2 || returnSteps > airArmy.CurrentMovement)
+                    {
+                        AiDebugLog.Write("[AI][V2][Recon][Air] return replan is not affordable with current movement; hold");
                         break;
+                    }
                     next = ret.Hexes[1];
                 }
 
                 if (!next.HasValue)
                     break;
 
+                bool wasOutboundStep = outbound;
                 HexCoord before = airArmy.Hex;
                 var decision = AiDecision.Move(airArmy, next.Value,
-                    outbound ? "V2 AirRecon — one-hex information step" : "V2 AirRecon — one-hex safe return",
+                    wasOutboundStep ? "V2 AirRecon — one-hex information step" : "V2 AirRecon — one-hex safe return",
                     null, 0f, AiTaskCategory.Reconnaissance);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-                airArmy = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => a.Id == airArmy.Id && AviationRules.IsValidAirArmy(a));
-                if (airArmy == null)
+                // MoveArmyRoutine mutates the registered ArmyData in place. Treat disappearance from
+                // the owner's registry as authoritative loss instead of depending on an army-id API.
+                bool stillRegistered = ArmyRegistry.AllForOwner(player)
+                    .Any(a => ReferenceEquals(a, airArmy));
+                if (!stillRegistered || !AviationRules.IsValidAirArmy(airArmy))
                 {
+                    changed?.Invoke(true);
                     AiDebugLog.Write("[AI][V2][Recon][Air] mover lost during authoritative aviation step");
                     yield break;
                 }
@@ -364,12 +362,8 @@ namespace Game.Ai.V2
                 steps++;
                 changed?.Invoke(true);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                if (outbound)
+                if (wasOutboundStep)
                     AiMapMemory.RecordAirReconTarget(player, plan.Objective.FocusHex, ctx.TurnNumber);
-
-                // Do not special-case an opportunistic air strike/challenge here. The authoritative
-                // move resolver already handled it. We only refresh information and then re-plan the
-                // next hex from the survivor's actual state.
             }
 
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
@@ -378,10 +372,17 @@ namespace Game.Ai.V2
             if (airArmy != null && AviationRules.IsOwnedAirfieldAt(airArmy.Hex, player))
                 AviationActions.LandInSlotOrder(airArmy, ctx.HexSelection);
 
+            bool visitedAfter = VisionSystem.IsVisited(player, plan.Objective.FocusHex);
+            if (!visitedBefore && visitedAfter)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][ERROR] aircraft changed ground Visited "
+                    + $"focus=({plan.Objective.FocusHex.Q},{plan.Objective.FocusHex.R}) 0->1");
+            }
+
+            string at = airArmy != null ? $"({airArmy.Hex.Q},{airArmy.Hex.R})" : "(lost)";
             AiDebugLog.Write($"[AI][V2][Recon][Air] finish \"{airArmy?.Name ?? "lost"}\" "
-                + $"steps={steps} observed={(observed ? 1 : 0)} "
-                + $"at=({airArmy?.Hex.Q},{airArmy?.Hex.R}) "
-                + $"visitedGround={(VisionSystem.IsVisited(player, plan.Objective.FocusHex) ? 1 : 0)}");
+                + $"steps={steps} observed={(observed ? 1 : 0)} at={at} "
+                + $"visitedGround={(visitedBefore ? 1 : 0)}->{(visitedAfter ? 1 : 0)}");
         }
 
         private static void ReturnUnmovedLaunchToStorage(ArmyData airArmy, PlayerSetupData player,
@@ -400,6 +401,7 @@ namespace Game.Ai.V2
             HexCoord hex = airArmy.Hex;
             ctx.HexSelection?.DeleteArmyIfEmptied(airArmy);
             ctx.HexSelection?.RestackArmiesOn(hex, null);
+            AiDebugLog.Write("[AI][V2][Recon][Air] provisional launch rolled back to storage");
         }
 
         private static bool ObservedThisTurn(PlayerSetupData player, HexCoord hex, int turn) =>
