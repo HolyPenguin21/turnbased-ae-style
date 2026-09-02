@@ -151,7 +151,8 @@ namespace Game.Ai.V2
             foreach (FundedEntry fe in open)
             {
                 var target = (ScoutMissionTarget)fe.Mission.Target;
-                cands.Add(BuildExecutionCandidates(session.Snapshot, ctx, player, target, session.ClaimedArmyIds));
+                cands.Add(BuildExecutionCandidates(session.Snapshot, ctx, player, target, session.ClaimedArmyIds,
+                    fe.Mission.ReservedMoverArmyId));
             }
 
             var chosen = new int[open.Count];
@@ -224,13 +225,28 @@ namespace Game.Ai.V2
             snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id)?.EffectiveArmyPower ?? float.MaxValue;
 
         private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
-            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
+            int? reservedMoverArmyId = null)
         {
             var list = new List<ScoutExecutionCandidate>();
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
 
-            foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, excludeArmyIds))
+            // AI-RECON-01 — the reservation planner already bound a concrete scout to this mission.
+            // Restrict the candidate set to it; only if it has since become ineligible (invalidation
+            // — spec §7) fall back to a rematch across the remaining free scouts.
+            List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
+            if (reservedMoverArmyId.HasValue)
+            {
+                var bound = movers.Where(a => a.ArmyId == reservedMoverArmyId.Value).ToList();
+                if (bound.Count > 0)
+                    movers = bound;
+                else
+                    AiDebugLog.Write($"[AI][V2][ReconActor] reserved mover #{reservedMoverArmyId.Value} for "
+                        + $"({target.FocusHex.Q},{target.FocusHex.R}) no longer eligible at provision — rematch across free scouts");
+            }
+
+            foreach (ArmySnapshot mover in movers)
             {
                 if (!surveil)
                 {

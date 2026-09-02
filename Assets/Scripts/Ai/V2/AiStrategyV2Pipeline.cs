@@ -304,6 +304,13 @@ namespace Game.Ai.V2
         // (a tie-break, not a reservation). null for a fresh proposal.
         public int? PreferredMoverArmyId;
 
+        // AI-RECON-01 — the concrete scout ReconActorReservationPlanner reserved for this Recon
+        // mission BEFORE the allocator funded it. Unlike PreferredMoverArmyId (a soft tie-break)
+        // this is a hard binding: ProvisioningManager restricts the mission's assignment to this
+        // actor, falling back to a free-scout rematch only if it has become unusable by provisioning
+        // time (invalidation — spec §7). null when no actor could be reserved.
+        public int? ReservedMoverArmyId;
+
         // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
         // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
         // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments, never through the
@@ -499,6 +506,13 @@ namespace Game.Ai.V2
                 missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                     activeIntents, aggressionObjectives));
             missions = AiStrategyV2Scope.ApplyMissionScope(missions);
+            // AI-RECON-01 — bind each surviving Recon proposal to a concrete eligible scout BEFORE
+            // the allocator funds it (dedup jobs, seed the reservation context from continuity +
+            // this-turn claims, match scarce jobs first, drop proposals with no distinct actor or
+            // beyond the still-unmet concurrency). ProvisioningManager then receives an already
+            // actor-bound Recon mission and MoverContended reverts to a defensive-only outcome.
+            ReconActorReservationPlanner.Plan(snapshot, ctx, player, missions, actorCommitments,
+                activeIntents, reconObjectives);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
             // Demand→Mission causal link (spec §1.6).
