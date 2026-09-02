@@ -608,11 +608,12 @@ namespace Game.Ai.V2
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
 
             // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
-            // Recon operational role. ReconcileAfterTurn re-focuses an actor's existing role rather
-            // than creating a second; this check catches any future regression that breaks that.
+            // Recon operational role, ACROSS Explore / Refresh / Surveil (Surveil keeps its own
+            // tracked-army key model but not a separate physical claim). ReconcileAfterTurn
+            // re-focuses an actor's existing role rather than creating a second; this check catches
+            // any future regression that breaks that.
             foreach (IGrouping<int, MissionIntent> g in active
-                .Where(i => i.Kind == MissionKind.Scout && i.Scout != null
-                    && i.Scout.Kind != ScoutTargetKind.Surveil && i.PreferredMoverArmyId.HasValue)
+                .Where(i => i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId.HasValue)
                 .GroupBy(i => i.PreferredMoverArmyId.Value))
             {
                 if (g.Count() <= 1) continue;
@@ -908,24 +909,23 @@ namespace Game.Ai.V2
             }
         }
 
-        // Spec §1 — the physical scout that produced this fresh scout outcome already owns a durable
-        // Explore/Refresh role under a different focus-hex key (a new opportunistic mission ran on a
-        // mover that continuity already tracks). Re-point that existing role at the new waypoint and
-        // re-key its registry slot, preserving CreatedTurn / TurnsActive / CumulativeApSpent /
-        // StepsMovedTotal / PreferredMoverArmyId, instead of creating a second durable intent for the
-        // same actor. Returns true when it absorbed the outcome.
+        // Spec §1/§10 — the physical scout that produced this fresh scout outcome already owns a
+        // durable Recon role (Explore / Refresh / Surveil) under a different key: a new
+        // opportunistic mission ran on a mover continuity already tracks. Re-point that existing
+        // role at the new objective and re-key its registry slot, preserving CreatedTurn /
+        // TurnsActive / CumulativeApSpent / StepsMovedTotal / PreferredMoverArmyId, instead of
+        // creating a second durable intent for the same physical actor. Ownership is actor-
+        // exclusive across all three Recon sub-kinds. Returns true when it absorbed the outcome.
         private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
             MissionTurnOutcome o, int turn, AiAllocatorState allocState)
         {
-            if (!o.HasScoutPayload || o.ScoutKind == ScoutTargetKind.Surveil
-                || o.MoverArmyId == null || o.MoverArmyId.Value == 0)
+            if (!o.HasScoutPayload || o.MoverArmyId == null || o.MoverArmyId.Value == 0)
                 return false;
 
             MissionIntent owner = null;
             foreach (MissionIntent it in state.All)
             {
-                if (it.Kind != MissionKind.Scout || it.Scout == null
-                    || it.Scout.Kind == ScoutTargetKind.Surveil)
+                if (it.Kind != MissionKind.Scout || it.Scout == null)
                     continue;
                 if (it.PreferredMoverArmyId == o.MoverArmyId && !it.IntentKey.Equals(o.IntentKey))
                 {
@@ -939,8 +939,12 @@ namespace Game.Ai.V2
             MissionIntentKey oldKey = owner.IntentKey;
             owner.Scout.FocusHex = o.FocusHex;
             owner.Scout.Kind = o.ScoutKind;
-            if (o.TrackedArmyId.HasValue)
-                owner.Scout.TrackedArmyId = o.TrackedArmyId;
+            owner.Scout.TrackedArmyId = o.ScoutKind == ScoutTargetKind.Surveil ? o.TrackedArmyId : null;
+            // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
+            // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
+            owner.Funding = o.ScoutKind == ScoutTargetKind.Surveil
+                ? (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.Soft)
+                : (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.None);
             owner.IntentKey = MissionIntentKey.For(owner);
             state.Remove(oldKey);
             state.Put(owner);

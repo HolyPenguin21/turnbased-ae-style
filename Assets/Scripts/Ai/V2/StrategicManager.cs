@@ -645,9 +645,69 @@ namespace Game.Ai.V2
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
+
+            // Spec §5/§13 — the non-combat lane: Aviation / Base / Facility / standalone Equipment
+            // cards the materialization chain cannot body. Runs in every mode; each play goes
+            // through the same canonical gameplay API the human UI uses, and every card left in
+            // hand carries a real gameplay reason (no AP/resources/destination/capacity/host),
+            // never "wrong card type" / "ReconOnly".
+            snap = RunNonCombatSurplus(snap, player, root, hand, ctx, result);
+
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
                 result.StateChanged = true;
             return result;
+        }
+
+        private static WorldSnapshot RunNonCombatSurplus(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result)
+        {
+            int played = 0;
+            List<string> lastBlocked = null;
+            for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
+            {
+                NonCombatCardPlayer.NonCombatPlay play =
+                    NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out List<string> blocked);
+                lastBlocked = blocked;
+                if (play == null)
+                    break;
+
+                result.MaterializationAttempts++;
+                bool ok = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx,
+                    out float apSpent, out string fail);
+                if (ok)
+                {
+                    result.MaterializationsSucceeded++;
+                    result.CardsPlayed++;
+                    result.StateChanged = true;
+                    if (play.Kind == NonCombatCardPlayer.PlayKind.Base
+                        || play.Kind == NonCombatCardPlayer.PlayKind.Facility)
+                    {
+                        result.InfrastructureAttempts++;
+                        result.InfrastructureBuilt++;
+                    }
+                    else if (play.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+                    {
+                        result.EquipmentAssignmentAttempts++;
+                        result.EquipmentAssignmentsSucceeded++;
+                    }
+                    played++;
+                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {play.Kind} {play.Explain} "
+                        + $"(ap {F(apSpent)})");
+                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {play.Kind} {play.Explain} "
+                        + $"did not play ({fail}); stop");
+                    break;
+                }
+            }
+
+            AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {played}"
+                + (lastBlocked != null && lastBlocked.Count > 0
+                    ? $"; still blocked [{string.Join(", ", lastBlocked)}]"
+                    : "; nothing blocked"));
+            return snap;
         }
 
         private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,

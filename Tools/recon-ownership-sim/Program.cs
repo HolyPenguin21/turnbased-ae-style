@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
 
@@ -22,8 +23,10 @@ namespace ReconOwnershipSim
             ScenarioB_StaleDuplicateCannotInflateActorCount();
             ScenarioC_EventInterruptionIsProductiveStopNotFailed();
             ScenarioD_AlreadyCombatLockedIsBlockedNotFailed();
+            ScenarioE_SurveilShareActorExclusivity();
             ScenarioF_LocalExploreOutranksEquallyInformativeDistant();
             ScenarioG_ReconOnlyIsolatesMissionsNotHandManagement();
+            ScenarioG2_EveryCardTypeHasAPhaseBLane();
 
             Console.WriteLine();
             Console.WriteLine($"recon-ownership-sim: {_passed} passed, {_failed} failed");
@@ -147,6 +150,53 @@ namespace ReconOwnershipSim
                 MissionIntentRegistry.GetOrCreate(me).Count == 1);
         }
 
+        // §1/§10 (P1 follow-up) — actor-exclusive ownership spans Explore / Refresh / Surveil.
+        // A mover that already owns an Explore role and then produces a Surveil outcome keeps ONE
+        // durable intent (re-focused to Surveil), not two.
+        private static void ScenarioE_SurveilShareActorExclusivity()
+        {
+            PlayerSetupData me = Fresh("E");
+
+            MissionContinuityLayer.ReconcileAfterTurn(me, 1,
+                new[] { ExploreOutcome(H(2, 0), mover: 10, steps: 3, ap: 1f) });
+            MissionIntent before = MissionIntentRegistry.GetOrCreate(me).All.Single();
+            int created = before.CreatedTurn;
+
+            MissionContinuityLayer.ReconcileAfterTurn(me, 2,
+                new[] { SurveilOutcome(H(6, 2), trackedArmy: 77, mover: 10, steps: 2, ap: 1f) });
+
+            var intents = MissionIntentRegistry.GetOrCreate(me).All.ToList();
+            Check("E1 mover #10 still owns exactly one durable Recon intent (Explore -> Surveil)",
+                intents.Count == 1 && intents[0].PreferredMoverArmyId == 10);
+            Check("E2 the single role was re-focused to Surveil",
+                intents[0].Scout != null && intents[0].Scout.Kind == ScoutTargetKind.Surveil
+                && intents[0].Scout.TrackedArmyId == 77);
+            Check("E3 re-focus preserved the accumulated identity (CreatedTurn)",
+                intents[0].CreatedTurn == created);
+            Check("E4 no actor owns more than one durable Recon role across ALL sub-kinds",
+                intents.Where(i => i.Scout != null && i.PreferredMoverArmyId.HasValue)
+                    .GroupBy(i => i.PreferredMoverArmyId.Value).All(g => g.Count() == 1));
+        }
+
+        // §5/§13 — every strategic hand card category maps to a Phase-B play lane. Card type is
+        // never on its own a dead end: Unit/Hero go to the materialization chain, everything else
+        // to the non-combat lane.
+        private static void ScenarioG2_EveryCardTypeHasAPhaseBLane()
+        {
+            Check("G2a Unit -> materialization chain (no non-combat lane)",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Unit)) == null);
+            Check("G2b Hero -> materialization chain",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Hero)) == null);
+            Check("G2c Base -> non-combat Base lane",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Base)) == NonCombatCardPlayer.PlayKind.Base);
+            Check("G2d Facility -> non-combat Facility lane",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Facility)) == NonCombatCardPlayer.PlayKind.Facility);
+            Check("G2e Equipment -> non-combat Equipment lane",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Equipment)) == NonCombatCardPlayer.PlayKind.Equipment);
+            Check("G2f Aviation Unit -> non-combat Aviation lane (not the ground chain)",
+                NonCombatCardPlayer.LaneFor(Def(CardType.Unit, aviation: true)) == NonCombatCardPlayer.PlayKind.Aviation);
+        }
+
         // §4 — a nearby frontier out-scores an equally informative distant one while meaningful
         // nearby unknown remains; distance from home (Citadel + bases) materially drives the value.
         private static void ScenarioF_LocalExploreOutranksEquallyInformativeDistant()
@@ -266,6 +316,63 @@ namespace ReconOwnershipSim
                 ReachedGoal = false,
                 StopReason = stop,
                 BlockedBeforeMovement = blockedBeforeMovement,
+                ApSpent = ap,
+            });
+            return led.Finalize().Single();
+        }
+
+        private static CardDefinition Def(CardType type, bool aviation = false) => new CardDefinition
+        {
+            displayName = $"{type}{(aviation ? "-Air" : "")}",
+            cardType = type,
+            isAviation = aviation,
+        };
+
+        private static MissionTurnOutcome SurveilOutcome(HexCoord focus, int trackedArmy, int mover,
+            int steps, float ap)
+        {
+            var t = new ScoutMissionTarget
+            {
+                FocusHex = focus,
+                Kind = ScoutTargetKind.Surveil,
+                Stealth = StealthRequirement.Required,
+                DetectionRisk = 0f,
+            };
+            var p = new MissionProposal
+            {
+                Kind = MissionKind.Scout,
+                Target = t,
+                BaseValue = 45f,
+                LocalAdmissionScore = 45f,
+                Requirements = new MissionRequirements
+                {
+                    MoverKnown = false, ApMinimum = ap, ApDesired = ap, ApMaximum = ap, EtaTurns = 1,
+                },
+            };
+            p.Axes.Value[DesireAxis.Recon] = 1f;
+
+            var led = new MissionOutcomeLedger();
+            led.RegisterProposals(new[] { p });
+            led.RecordProvisionSuccess(p, new ProvisionedMission
+            {
+                Mission = p,
+                Key = StableMissionKey.For(p),
+                Kind = MissionKind.Scout,
+                ScoutKind = ScoutTargetKind.Surveil,
+                MoverArmyId = mover,
+                FocusHex = focus,
+                ExecutionHex = focus,
+                TrackedArmyId = trackedArmy,
+                BaselineObservedTurn = 0,
+                ClaimedAp = ap,
+            });
+            led.RecordExecution(new ExecutionResult
+            {
+                Key = StableMissionKey.For(p),
+                StepsMoved = steps,
+                EnteredStealth = false,
+                ReachedGoal = false,
+                StopReason = ExecutionStopReason.OutOfMovement,
                 ApSpent = ap,
             });
             return led.Finalize().Single();
