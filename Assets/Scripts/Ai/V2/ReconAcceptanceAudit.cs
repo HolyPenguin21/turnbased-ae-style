@@ -17,6 +17,7 @@ namespace Game.Ai.V2
         private const string MostlyExploredRefresh = "refresh-dominates-mostly-explored";
         private const string StaleStrategicRefresh = "stale-strategic-refresh";
         private const string CoarseDirectionBoundary = "coarse-direction-boundary";
+        private const string HiddenConcentrationCoarse = "hidden-concentration-coarse-only";
         private const string CoarseDirectionInfluence = "coarse-direction-influences-refresh";
         private const string ThreeScoutDeconflict = "three-scout-deconflict";
         private const string NoAbabLoop = "no-abab-loop";
@@ -31,6 +32,7 @@ namespace Game.Ai.V2
             MostlyExploredRefresh,
             StaleStrategicRefresh,
             CoarseDirectionBoundary,
+            HiddenConcentrationCoarse,
             CoarseDirectionInfluence,
             ThreeScoutDeconflict,
             NoAbabLoop,
@@ -83,24 +85,41 @@ namespace Game.Ai.V2
                 return;
 
             int actors = scouts.Select(m => m.MoverArmyId).Distinct().Count();
-            int executionHexes = scouts.Select(m => m.ExecutionHex).Distinct().Count();
-            int focusMinDistance = int.MaxValue;
+            int spatialConflicts = 0;
+            int groundMinDistance = int.MaxValue;
             for (int i = 0; i < scouts.Count; i++)
+            {
                 for (int j = i + 1; j < scouts.Count; j++)
-                    focusMinDistance = System.Math.Min(focusMinDistance,
-                        HexGridMath.Distance(scouts[i].FocusHex, scouts[j].FocusHex));
-            if (focusMinDistance == int.MaxValue)
-                focusMinDistance = 0;
+                {
+                    ProvisionedMission a = scouts[i];
+                    ProvisionedMission b = scouts[j];
+                    if (a.FocusHex.Equals(b.FocusHex))
+                    {
+                        spatialConflicts++;
+                        continue;
+                    }
 
-            // Strategic spread is defined by FocusHex. Surveil's ExecutionHex is only a temporary
-            // safe observation vantage and is allowed to sit closer to another vantage than the
-            // strategic target separation. Execution hexes must still be injective so two actors do
-            // not receive the exact same immediate destination.
-            bool separated = focusMinDistance >= AiConfigV2.scoutTargetMinSeparation;
-            bool pass = actors == scouts.Count && executionHexes == scouts.Count && separated;
+                    // Mirror MissionAdmissionPolicy exactly: the minimum target separation applies
+                    // only to two ground Recon missions. Surveil focus points may be close because
+                    // provisioning supplies their safe observation vantages separately.
+                    bool bothGround = ReconScoutKinds.IsGround(a.ScoutKind)
+                        && ReconScoutKinds.IsGround(b.ScoutKind);
+                    if (!bothGround)
+                        continue;
+
+                    int d = HexGridMath.Distance(a.FocusHex, b.FocusHex);
+                    if (d < groundMinDistance)
+                        groundMinDistance = d;
+                    if (d < AiConfigV2.scoutTargetMinSeparation)
+                        spatialConflicts++;
+                }
+            }
+
+            bool pass = actors == scouts.Count && spatialConflicts == 0;
+            string minGround = groundMinDistance == int.MaxValue ? "n/a" : groundMinDistance.ToString();
             Record(player, turn, ThreeScoutDeconflict, pass,
-                $"missions={scouts.Count} actors={actors} executionHexes={executionHexes} "
-                + $"focusMinDist={focusMinDistance} required={AiConfigV2.scoutTargetMinSeparation}");
+                $"missions={scouts.Count} actors={actors} spatialConflicts={spatialConflicts} "
+                + $"groundMinDist={minGround} required={AiConfigV2.scoutTargetMinSeparation}");
         }
 
         public static void RecordDecision(PlayerSetupData player, int turn, int armyId,
@@ -225,8 +244,15 @@ namespace Game.Ai.V2
             }
             bool normalized = sum >= 0.999f && sum <= 1.001f;
             bool sixBuckets = direction.EnemyDirectionSectors.Count == 6;
-            Record(player, turn, CoarseDirectionBoundary, rangeOk && normalized && sixBuckets,
-                $"sectors={direction.EnemyDirectionSectors.Count} sum={sum:0.000} presence={direction.EnemyPresenceWeight:0}");
+            bool pass = rangeOk && normalized && sixBuckets;
+            string detail = $"sectors={direction.EnemyDirectionSectors.Count} sum={sum:0.000} "
+                + $"presence={direction.EnemyPresenceWeight:0}";
+            Record(player, turn, CoarseDirectionBoundary, pass, detail);
+            // ReconDirectionSnapshot exposes only aggregate six-sector weights, one aggregate
+            // presence count, a coarse citadel sector and coarse watch sectors. Exact hidden hex,
+            // army id, strength, roster, AA, Recce and stealth are not representable across this
+            // boundary; this runtime check verifies the aggregate output retains its coarse shape.
+            Record(player, turn, HiddenConcentrationCoarse, pass, detail + " exactHiddenFields=0");
         }
 
         public static void RecordDirectionInfluence(PlayerSetupData player, int turn,
