@@ -38,6 +38,7 @@ namespace Game.Ai.V2
         public readonly int LaunchCost;
         public readonly int Committed;
         public readonly int ProtectedHand;
+        public readonly int ProtectedDeck;
         public readonly int Spendable;
         public readonly float InformationValue;
         public readonly float OpportunityCost;
@@ -45,14 +46,15 @@ namespace Game.Ai.V2
         public readonly string Reason;
 
         public ReconAirEnergyDecision(bool allowed, int stock, int launchCost, int committed,
-            int protectedHand, int spendable, float informationValue, float opportunityCost,
-            float finalUtility, string reason)
+            int protectedHand, int protectedDeck, int spendable, float informationValue,
+            float opportunityCost, float finalUtility, string reason)
         {
             Allowed = allowed;
             Stock = stock;
             LaunchCost = launchCost;
             Committed = committed;
             ProtectedHand = protectedHand;
+            ProtectedDeck = protectedDeck;
             Spendable = spendable;
             InformationValue = informationValue;
             OpportunityCost = opportunityCost;
@@ -64,7 +66,7 @@ namespace Game.Ai.V2
         // the aircraft did or did not fly.
         public string ToLog(string actorLabel) =>
             $"[AI][V2][Recon][Air][Energy] {actorLabel} stock={Stock} cost={LaunchCost} "
-            + $"committed={Committed} protectedHand={ProtectedHand} spendable={Spendable} "
+            + $"committed={Committed} protectedHand={ProtectedHand} protectedDeck={ProtectedDeck} spendable={Spendable} "
             + $"informationValue={InformationValue:0.00} oppCost={OpportunityCost:0.00} "
             + $"finalUtility={FinalUtility:0.00} decision={(Allowed ? "LAUNCH" : "NO_LAUNCH")} reason={Reason}";
     }
@@ -85,18 +87,20 @@ namespace Game.Ai.V2
             int launchEnergyCost, float informationValue, int excludeArmyId)
         {
             if (player == null || root == null)
-                return new ReconAirEnergyDecision(false, 0, launchEnergyCost, 0, 0, 0,
+                return new ReconAirEnergyDecision(false, 0, launchEnergyCost, 0, 0, 0, 0,
                     informationValue, 0f, 0f, "missing player/root");
 
             int stock = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            int committed = CommittedAirReconEnergy(player, excludeArmyId);
+            int committed = CommittedAirActivationEnergy(player, excludeArmyId);
             int protectedHand = ProtectedHandEnergy(root, player);
-            int spendable = Mathf.Max(0, stock - committed - protectedHand);
+            int protectedDeck = ProtectedNearTermDrawEnergy(player);
+            int spendable = Mathf.Max(0, stock - committed - protectedHand - protectedDeck);
 
             // §42 first pass: hard reserve. A launch may never dip into committed or protected Energy.
             if (launchEnergyCost > spendable)
                 return new ReconAirEnergyDecision(false, stock, launchEnergyCost, committed, protectedHand,
-                    spendable, informationValue, 0f, 0f, "energy_reserved_for_playable_high_value_card");
+                    protectedDeck, spendable, informationValue, 0f, 0f,
+                    "energy_reserved_for_playable_high_value_card");
 
             // §41.5 / §43 soft term — a marginal sortie is trimmed when spendable Energy is thin
             // relative to near-term income; a healthy runway makes the same sortie cheap.
@@ -109,17 +113,19 @@ namespace Game.Ai.V2
 
             if (finalUtility < AiConfigV2.reconAirEnergyMinUtility)
                 return new ReconAirEnergyDecision(false, stock, launchEnergyCost, committed, protectedHand,
-                    spendable, informationValue, opportunityCost, finalUtility,
+                    protectedDeck, spendable, informationValue, opportunityCost, finalUtility,
                     "energy_opportunity_cost_exceeds_information_value");
 
             return new ReconAirEnergyDecision(true, stock, launchEnergyCost, committed, protectedHand,
-                spendable, informationValue, opportunityCost, finalUtility, "ok");
+                protectedDeck, spendable, informationValue, opportunityCost, finalUtility, "ok");
         }
 
-        // Energy that OTHER already-airborne AirRecon wings still owe on their own first activation
-        // this turn. V2 pays activation for real on the wing's first MoveArmy step, so a wing that
-        // has already activated owes nothing; one still sitting un-activated after launch does.
-        private static int CommittedAirReconEnergy(PlayerSetupData player, int excludeArmyId)
+        // Energy that OTHER already-airborne air wings still owe on their own first activation this
+        // turn — both AirRecon and AirStrike sorties. V2 pays activation for real on the wing's
+        // first MoveArmy step, so an already-activated wing owes nothing; one still sitting
+        // un-activated after launch does, and a later spend must not eat it (spec §41.1
+        // "already committed/funded actions").
+        private static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId)
         {
             int total = 0;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -128,19 +134,25 @@ namespace Game.Ai.V2
                     continue;
                 if (!AviationRules.IsValidAirArmy(army))
                     continue;
-                if (!ReconAssignmentRegistry.TryGet(player, army.Id, out _))
+                bool inFlightSortie = ReconAssignmentRegistry.TryGet(player, army.Id, out _)
+                    || (AiTaskRegistry.TaskFor(player, army) is AiTask t
+                        && (t.Kind == AiTaskKind.AirRecon || t.Kind == AiTaskKind.AirStrike));
+                if (!inFlightSortie)
                     continue;
                 total += Mathf.Max(0, army.ActivationEnergyCost);
             }
             return total;
         }
 
-        // §41.2 / §44 — Energy a currently-PLAYABLE hand card would need. "Playable" = every
-        // non-Energy resource cost and the play-time AP cost are already satisfiable from the live
-        // stock; a card blocked only by Energy still counts (that Energy is exactly what we protect).
-        // Weighting: the single largest such card in full, plus reconAirEnergyExtraHandFraction of
-        // the rest — never the whole deck (§44), never a card already played, never one that needs
-        // resources the AI does not have.
+        // §41.2 / §44 — Energy a currently-PLAYABLE, HIGH-VALUE hand card would need. "Playable" =
+        // every non-Energy resource cost and the play-time AP cost are already satisfiable from the
+        // live stock; a card blocked only by Energy still counts (that Energy is exactly what we
+        // protect). "High value" is proxied by an Energy cost of at least
+        // reconAirEnergyHighValueMinCost — a cheap trick that costs 0-1 Energy is not the
+        // strategically significant unit/hero/aviation card §41.2 means. Weighting: the single
+        // largest such card in full, plus reconAirEnergyExtraHandFraction of the rest — never the
+        // whole deck (§44), never a card already played, never one that needs resources the AI
+        // does not have.
         private static int ProtectedHandEnergy(PlayerRoot root, PlayerSetupData player)
         {
             AiHandData hand = AiHandRegistry.Peek(player);
@@ -153,7 +165,7 @@ namespace Game.Ai.V2
                 if (card == null)
                     continue;
                 int energy = AiCardCost.PlayResource(card, ResourceType.Energy);
-                if (energy <= 0)
+                if (energy < AiConfigV2.reconAirEnergyHighValueMinCost)
                     continue;
                 if (!root.CanSpendActionPoints(AiCardCost.PlayAp(card)))
                     continue;
@@ -170,6 +182,37 @@ namespace Game.Ai.V2
             int largest = energyCosts.Max();
             int rest = energyCosts.Sum() - largest;
             return largest + Mathf.RoundToInt(AiConfigV2.reconAirEnergyExtraHandFraction * rest);
+        }
+
+        // §44 — a LOW-weight allowance for the Energy the turn's likely next draw would need. This
+        // is the expected Energy of one random still-drawable deck card, scaled by
+        // reconAirEnergyDeckDrawFraction — deliberately NOT the whole remaining deck's appetite
+        // (§44 "не складывать Energy cost всей колоды"). Zero once the deck is empty or the hand is
+        // full (no draw is coming).
+        //
+        // §41.4 Research/Production opportunity is intentionally not added here: under ReconOnly no
+        // such action exists, and when Full V2 returns its own funded Develop actions already claim
+        // their Energy through the pipeline before AirRecon is evaluated.
+        private static int ProtectedNearTermDrawEnergy(PlayerSetupData player)
+        {
+            AiHandData hand = AiHandRegistry.Peek(player);
+            if (hand == null || !hand.HasFreeSlot || !hand.HasCardsLeftToDraw)
+                return 0;
+
+            int count = 0;
+            long sum = 0;
+            foreach (Game.Cards.CardDefinition def in hand.RemainingDeck)
+            {
+                if (def == null)
+                    continue;
+                count++;
+                sum += Mathf.Max(0, def.resourceCost != null ? def.resourceCost.Get(ResourceType.Energy) : 0);
+            }
+            if (count == 0)
+                return 0;
+
+            float expectedNextDrawEnergy = (float)sum / count;
+            return Mathf.RoundToInt(AiConfigV2.reconAirEnergyDeckDrawFraction * expectedNextDrawEnergy);
         }
     }
 }
