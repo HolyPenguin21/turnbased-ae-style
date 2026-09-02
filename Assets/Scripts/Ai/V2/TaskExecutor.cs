@@ -189,7 +189,7 @@ namespace Game.Ai.V2
                 if (pm.Kind == MissionKind.Scout)
                 {
                     yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
-                        queue, missionIndex);
+                        queue, missionIndex, snapshot);
                     ApCheck(pm, apBefore, root, result);
                     results.Add(result);
                     continue;

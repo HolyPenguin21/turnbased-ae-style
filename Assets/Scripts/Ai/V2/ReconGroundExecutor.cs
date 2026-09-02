@@ -27,7 +27,7 @@ namespace Game.Ai.V2
     {
         public static IEnumerator Run(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisionedMission pm, ExecutionResult result, int apBefore,
-            IReadOnlyList<ProvisionedMission> queue, int missionIndex)
+            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot = null)
         {
             ArmyData army = Resolve(player, pm.MoverArmyId);
             if (army == null || ctx?.Map == null)
@@ -36,6 +36,11 @@ namespace Game.Ai.V2
                 result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                 yield break;
             }
+
+            // Spec §25 — strategic scores for the score-based Explore<->Refresh mode hysteresis in
+            // ReconAssignmentRegistry. Same raw signals the strategic layer's sub-pressures use.
+            float exploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
+            float refreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot);
 
             ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
             if (missionIndex == 0)
@@ -66,7 +71,7 @@ namespace Game.Ai.V2
                 ? pm.ExecutionHex
                 : pm.FocusHex;
             ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, army.Id,
-                army.Hex, strategicAnchor, requestedMode, ctx.TurnNumber);
+                army.Hex, strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
 
             // A Required-stealth mission must enter before the first activation/move. Do not let
             // the new continuous loop weaken the existing AP/activation contract.
@@ -128,7 +133,7 @@ namespace Game.Ai.V2
                 // Re-anchor the durable actor assignment from the newest strategic objective, but
                 // do not recreate it and do not turn the anchor into a fixed route destination.
                 assignment = ReconAssignmentRegistry.GetOrCreate(player, army.Id, army.Hex,
-                    strategicAnchor, requestedMode, ctx.TurnNumber);
+                    strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
 
                 ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
                     player, ctx.Map, army, assignment, ctx.TurnNumber);

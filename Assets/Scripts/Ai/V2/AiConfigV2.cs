@@ -578,6 +578,7 @@ namespace Game.Ai.V2
         public const float scoutFleeDetectorWeight = 2.5f;          // penalty per unit of known detector risk at the flee hex
         public const float scoutFleeBacktrackWeight = 0.5f;         // penalty per recent scout-trail hit at the flee hex
         public const int reconAssignmentModeHoldTurns = 1;         // ReconAssignmentRegistry — min turns between Explore<->Refresh mode switches for one actor
+        public const float reconModeSwitchMargin = 0.15f;          // ...and the requested mode's strategic score must beat the current mode's by at least this (spec §25 — score-based, not just time-based)
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
         public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early
         public const int reconConcurrencyReconOnlyHardCap = 3;     // ReconConcurrencyPolicy — max concurrent scouts in the isolated ReconOnly acceptance environment
