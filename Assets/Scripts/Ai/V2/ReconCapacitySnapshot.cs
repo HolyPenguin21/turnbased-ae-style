@@ -74,7 +74,8 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> groundVisitRunnable,
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments,
-            PlayerSetupData player)
+            PlayerSetupData player,
+            ReconAirReservationState airReservation = null)
         {
             var obsGeneric = (observationRunnable ?? System.Array.Empty<ReconObjective>())
                 .Where(o => !IsStealth(o)).ToList();
@@ -91,8 +92,15 @@ namespace Game.Ai.V2
                     snap, groundGeneric, ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal),
                 CombinedDesiredConcurrency = Mathf.Min(allGeneric.Count, ReconConcurrencyPolicy.DesiredForClass(
                     snap, allGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Combined)),
-                AirborneReconLanes = Mathf.Max(0, snap?.Self?.AirborneReconWings ?? 0),
-                SpareAirObservationSorties = Mathf.Max(0, snap?.Self?.SpareAirObservationSorties ?? 0),
+                // AI-RECON-01 — air observation capacity is only what the Recon Air Reservation
+                // Prepass has actually PINNED + resource-protected this turn, never a fresh unpinned
+                // ReconAirCapacityPolicy re-evaluation the pipeline never committed to (that was the
+                // phantom-capacity path: model says the helicopter covers a lane, nothing reserved
+                // its AP/Energy, Phase A spends it, the sortie can't launch).
+                AirborneReconLanes = Mathf.Max(0, airReservation?.ReservedAirborneWings
+                    ?? snap?.Self?.AirborneReconWings ?? 0),
+                SpareAirObservationSorties = Mathf.Max(0, airReservation?.ReservedLaunchSorties
+                    ?? snap?.Self?.SpareAirObservationSorties ?? 0),
             };
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();

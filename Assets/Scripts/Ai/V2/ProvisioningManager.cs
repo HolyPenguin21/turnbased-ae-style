@@ -151,12 +151,24 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
+            // AI-RECON-01 — scouts reserved by ReconActorReservationPlanner for OTHER funded, not-yet-
+            // provisioned Recon jobs. If a mission's own reserved scout has become ineligible and it
+            // has to rematch across free scouts, it must NOT poach one of these — that would turn a
+            // valid sibling job into a false MoverContended.
+            var reservedElsewhere = new HashSet<int>();
+            foreach (FundedEntry fe in open)
+                if (fe.Mission.ReservedMoverArmyId.HasValue)
+                    reservedElsewhere.Add(fe.Mission.ReservedMoverArmyId.Value);
+
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
             foreach (FundedEntry fe in open)
             {
                 var target = (ScoutMissionTarget)fe.Mission.Target;
+                var otherReserved = new HashSet<int>(reservedElsewhere);
+                if (fe.Mission.ReservedMoverArmyId.HasValue)
+                    otherReserved.Remove(fe.Mission.ReservedMoverArmyId.Value);
                 cands.Add(BuildExecutionCandidates(session.Snapshot, ctx, player, target, session.ClaimedArmyIds,
-                    fe.Mission.ReservedMoverArmyId));
+                    fe.Mission.ReservedMoverArmyId, otherReserved));
             }
 
             var chosen = new int[open.Count];
@@ -230,7 +242,7 @@ namespace Game.Ai.V2
 
         private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
-            int? reservedMoverArmyId = null)
+            int? reservedMoverArmyId = null, ISet<int> reservedElsewhere = null)
         {
             var list = new List<ScoutExecutionCandidate>();
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
@@ -238,16 +250,27 @@ namespace Game.Ai.V2
 
             // AI-RECON-01 — the reservation planner already bound a concrete scout to this mission.
             // Restrict the candidate set to it; only if it has since become ineligible (invalidation
-            // — spec §7) fall back to a rematch across the remaining free scouts.
+            // — spec §7) fall back to a rematch across the remaining free scouts, still EXCLUDING
+            // scouts reserved for other funded Recon jobs so the rematch can't poach a sibling.
             List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
             if (reservedMoverArmyId.HasValue)
             {
                 var bound = movers.Where(a => a.ArmyId == reservedMoverArmyId.Value).ToList();
                 if (bound.Count > 0)
+                {
                     movers = bound;
+                }
                 else
+                {
+                    if (reservedElsewhere != null && reservedElsewhere.Count > 0)
+                        movers = movers.Where(a => !reservedElsewhere.Contains(a.ArmyId)).ToList();
                     AiDebugLog.Write($"[AI][V2][ReconActor] reserved mover #{reservedMoverArmyId.Value} for "
                         + $"({target.FocusHex.Q},{target.FocusHex.R}) no longer eligible at provision — rematch across free scouts");
+                }
+            }
+            else if (reservedElsewhere != null && reservedElsewhere.Count > 0)
+            {
+                movers = movers.Where(a => !reservedElsewhere.Contains(a.ArmyId)).ToList();
             }
 
             foreach (ArmySnapshot mover in movers)

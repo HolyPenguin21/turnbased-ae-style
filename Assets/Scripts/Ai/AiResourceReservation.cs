@@ -25,7 +25,20 @@ namespace Game.Ai
 
         private static readonly Dictionary<AiTask, int[]> ReservedByTask = new Dictionary<AiTask, int[]>();
 
-        public static void Clear() => ReservedByTask.Clear();
+        // AI-RECON-01 — Strategy V2 has no V1 AiTask bookkeeping, so it cannot express "this
+        // resource is set aside for a planned-but-unlaunched recon air sortie" through ReservedByTask.
+        // The V2 pipeline installs this hook (ReconAirReservationRegistry) so every V2 spend path
+        // that already asks Available() — GenerationSource, MaterializationCandidateBuilder,
+        // ReconAirCapacityPolicy, StrategicMaintenancePolicy, StrategicManager.ReservesOkAfterChain
+        // — nets out the protected AP/Energy without each re-implementing the lookup. Null when no
+        // reservation is active (the normal case for a bare unit test / the V1 path).
+        public static System.Func<PlayerSetupData, ResourceType, int> V2ExtraReservation;
+
+        public static void Clear()
+        {
+            ReservedByTask.Clear();
+            V2ExtraReservation = null;
+        }
 
         // Called once per turn `task` is still active (see AiTurnController.AdvanceEconomyTask,
         // both while the hero is still travelling and once arrived) — tops each resource type up
@@ -95,7 +108,10 @@ namespace Game.Ai
             if (root == null)
                 return 0;
             if (AiConfig.aiStrategyV2Enabled)
-                return root.GetResource(type);
+            {
+                int v2Reserved = V2ExtraReservation != null ? Math.Max(0, V2ExtraReservation(player, type)) : 0;
+                return Math.Max(0, root.GetResource(type) - v2Reserved);
+            }
             return root.GetResource(type) - TotalReservedExcluding(player, type, excluding);
         }
 

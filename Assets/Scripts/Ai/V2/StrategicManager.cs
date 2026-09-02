@@ -974,7 +974,8 @@ namespace Game.Ai.V2
             return drawn > 0;
         }
 
-        internal static bool ReservesOkAfterChain(PlayerRoot root, MaterializationPlan plan)
+        internal static bool ReservesOkAfterChain(PlayerRoot root, MaterializationPlan plan,
+            PlayerSetupData player = null)
         {
             if (root == null || plan == null)
                 return false;
@@ -990,9 +991,12 @@ namespace Game.Ai.V2
                 && Has(ResourceType.Materials, cost.materials)
                 && Has(ResourceType.Tech, cost.tech);
 
+            // AI-RECON-01 — go through AiResourceReservation.Available so the recon-air reservation's
+            // protected Energy is netted out here too: Phase A must not commit a materialisation
+            // chain that spends Energy a planned-but-unlaunched recon sortie is holding.
             bool Has(ResourceType type, int spend)
             {
-                float available = Mathf.Max(0f, root.GetResource(type));
+                float available = Mathf.Max(0f, Game.Ai.AiResourceReservation.Available(root, player, type));
                 return available >= Mathf.Max(0, spend);
             }
         }

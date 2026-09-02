@@ -359,7 +359,7 @@ namespace Game.Ai.V2
                     direct.FinalCapability = cap;
                     if (strategicClaim != null && !CanDeliverDemandOperationally(direct, strategicClaim))
                         continue;
-                    if (StrategicManager.ReservesOkAfterChain(root, direct))
+                    if (StrategicManager.ReservesOkAfterChain(root, direct, player))
                     {
                         direct.Score = SurplusUtility(snap, direct, inv, recce, hero, hand, baseAbilities);
                         candidates.Add(direct);
@@ -384,7 +384,7 @@ namespace Game.Ai.V2
                         // a zero-delivery placement merely because the equipment raised utility.
                         if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
                             continue;
-                        if (!StrategicManager.ReservesOkAfterChain(root, att)) continue;
+                        if (!StrategicManager.ReservesOkAfterChain(root, att, player)) continue;
                         att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected)
                             - AiConfigV2.stratChainAttachStepPenalty;
                         candidates.Add(att);
@@ -433,7 +433,7 @@ namespace Game.Ai.V2
                                 genEq.FinalCapability = cap;
                                 if (strategicClaim != null && !CanDeliverDemandOperationally(genEq, strategicClaim))
                                     continue;
-                                if (!StrategicManager.ReservesOkAfterChain(root, genEq))
+                                if (!StrategicManager.ReservesOkAfterChain(root, genEq, player))
                                     continue;
 
                                 float util = (SurplusUtility(snap, genEq, inv, recce, hero, hand, projected)
@@ -467,7 +467,7 @@ namespace Game.Ai.V2
                         if (genStrategicClaim != null && !CanDeliverDemandOperationally(gen, genStrategicClaim))
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
-                        if (!StrategicManager.ReservesOkAfterChain(root, gen)) continue;
+                        if (!StrategicManager.ReservesOkAfterChain(root, gen, player)) continue;
                         float util = (SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities)
                                       - AiConfigV2.stratChainGenerationStepPenalty)
                                      * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,

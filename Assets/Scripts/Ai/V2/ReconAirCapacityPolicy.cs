@@ -47,6 +47,31 @@ namespace Game.Ai.V2
         }
     }
 
+    // AI-RECON-01 — the same greedy result as ReconAirObservationCapacity, but with the concrete
+    // slots so ReconAirReservationPrepass can pin specific actors and protect their exact AP/Energy.
+    internal readonly struct AirObservationSlot
+    {
+        public readonly int? ActorId;   // a ready standalone wing's army id; null for a hangar launch subset
+        public readonly int Ap;
+        public readonly int Energy;
+
+        public AirObservationSlot(int? actorId, int ap, int energy)
+        {
+            ActorId = actorId;
+            Ap = ap;
+            Energy = energy;
+        }
+    }
+
+    internal sealed class ReconAirObservationDetail
+    {
+        public readonly List<int> AirborneWingIds = new List<int>();
+        public int AirborneUnactivatedEnergy;                 // first-activation Energy airborne wings still owe this turn
+        public readonly List<AirObservationSlot> AcceptedSpareSlots = new List<AirObservationSlot>();
+        public int AirborneReconWings => AirborneWingIds.Count;
+        public int SpareSorties => AcceptedSpareSlots.Count;
+    }
+
     internal static class ReconAirCapacityPolicy
     {
         // Was ReconAirExecutor.MaxAirActorsPerTurn — hoisted so the capacity snapshot honours the
@@ -73,8 +98,15 @@ namespace Game.Ai.V2
 
         public static ReconAirObservationCapacity Evaluate(PlayerSetupData player, PlayerRoot root)
         {
+            ReconAirObservationDetail d = EvaluateDetailed(player, root);
+            return new ReconAirObservationCapacity(d.AirborneReconWings, d.SpareSorties);
+        }
+
+        public static ReconAirObservationDetail EvaluateDetailed(PlayerSetupData player, PlayerRoot root)
+        {
+            var detail = new ReconAirObservationDetail();
             if (player == null || root == null)
-                return default;
+                return detail;
 
             List<ArmyData> ownAir = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && AviationRules.IsValidAirArmy(a))
@@ -85,9 +117,18 @@ namespace Game.Ai.V2
                 || (AiTaskRegistry.TaskFor(player, a) is AiTask t
                     && (t.Kind == AiTaskKind.AirRecon || t.Kind == AiTaskKind.AirStrike));
 
-            int airborneReconWings = ownAir.Count(a =>
-                !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                && ReconAssignmentRegistry.TryGet(player, a.Id, out _));
+            foreach (ArmyData a in ownAir)
+                if (!AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+                    && ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+                    detail.AirborneWingIds.Add(a.Id);
+            int airborneReconWings = detail.AirborneWingIds.Count;
+
+            // First-activation Energy EVERY in-flight air wing still owes this turn — AirStrike
+            // included (parity with ReconAirEnergyPolicy's committed term; an already-activated wing
+            // owes nothing). ReconAirReservationPrepass protects this too.
+            foreach (ArmyData a in ownAir)
+                if (!a.HasActivatedThisTurn && InFlightAir(a))
+                    detail.AirborneUnactivatedEnergy += Mathf.Max(0, a.ActivationEnergyCost);
 
             // ReconAirExecutor's per-turn actor counter (actorsUsed) is only incremented for RECON
             // actors it drives: in-flight wings with a ReconAssignment, then ready standalone recon
@@ -97,23 +138,20 @@ namespace Game.Ai.V2
             // recon wings consume a slot here (review round 4, P1).
             int spareSlots = Mathf.Max(0, MaxAirReconActorsPerTurn - airborneReconWings);
             if (spareSlots == 0)
-                return new ReconAirObservationCapacity(airborneReconWings, 0);
+                return detail;
 
-            // Local shared budget: post-reservation AP/Energy minus the first-activation Energy
-            // EVERY in-flight air wing still owes this turn — AirStrike included (parity with
-            // ReconAirEnergyPolicy's committed term; an already-activated wing owes nothing).
+            // Local shared budget: post-reservation AP/Energy minus the airborne first-activation
+            // Energy above.
             int apBudget = Mathf.Max(0, root.ActionPoints);
-            int energyBudget = Mathf.Max(0, AiResourceReservation.Available(root, player, ResourceType.Energy));
-            foreach (ArmyData a in ownAir)
-                if (!a.HasActivatedThisTurn && InFlightAir(a))
-                    energyBudget = Mathf.Max(0, energyBudget - Mathf.Max(0, a.ActivationEnergyCost));
+            int energyBudget = Mathf.Max(0,
+                AiResourceReservation.Available(root, player, ResourceType.Energy) - detail.AirborneUnactivatedEnergy);
 
             // Ordered EXACTLY as ReconAirExecutor launches (review round 4, P1): ready standalone
             // wings first, in the executor's own sort, THEN one storage launch subset per owned
             // airfield in OwnedAirfieldHexes order. NOT a global cheapest-first sort — that could
             // "afford" a combination the executor would never reach (a pricey ready wing it meets
             // first eats the budget before a cheap hangar sortie).
-            var orderedCosts = new List<(int ap, int energy)>();
+            var ordered = new List<AirObservationSlot>();
 
             foreach (ArmyData a in ownAir
                 .Where(a => AviationRules.IsOwnedAirfieldAt(a.Hex, player)
@@ -123,7 +161,8 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
                 .ThenBy(a => a.Id))
             {
-                orderedCosts.Add((a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
+                ordered.Add(new AirObservationSlot(a.Id,
+                    a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
@@ -136,23 +175,23 @@ namespace Game.Ai.V2
                 List<UnitData> subset = SelectReconLaunchSubset(airfield.Members);
                 if (subset.Count == 0)
                     continue;
-                orderedCosts.Add((subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
+                ordered.Add(new AirObservationSlot(null,
+                    subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
                     subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
             }
 
-            int spare = 0;
-            foreach ((int ap, int energy) in orderedCosts)
+            foreach (AirObservationSlot slot in ordered)
             {
-                if (spare >= spareSlots)
+                if (detail.AcceptedSpareSlots.Count >= spareSlots)
                     break;
-                if (ap > apBudget || energy > energyBudget)
+                if (slot.Ap > apBudget || slot.Energy > energyBudget)
                     continue;   // executor moves on to the next candidate in order (does not reorder)
-                apBudget -= ap;
-                energyBudget -= energy;
-                spare++;
+                apBudget -= slot.Ap;
+                energyBudget -= slot.Energy;
+                detail.AcceptedSpareSlots.Add(slot);
             }
 
-            return new ReconAirObservationCapacity(airborneReconWings, spare);
+            return detail;
         }
     }
 }

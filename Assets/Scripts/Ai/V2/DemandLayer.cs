@@ -193,7 +193,8 @@ namespace Game.Ai.V2
             var stealthGroundRunnable = stealthRunnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
 
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
-                snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
+                snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player,
+                ReconAirReservationRegistry.ForTurn(player, snap.TurnNumber));
             AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
                 + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
                 + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "

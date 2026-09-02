@@ -473,6 +473,16 @@ namespace Game.Ai.V2
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
 
+            // AI-RECON-01 — Recon Air Reservation / Capacity Prepass. BEFORE DemandLayer + Phase A:
+            //     pins which concrete air actor / launch subset counts as guaranteed Observation
+            //     capacity this turn and protects its AP/Energy (via AiResourceReservation's V2 hook
+            //     + the ledger debit below + the allocator's physical Energy pool) so Phase A can't
+            //     spend it out from under the capacity model. Ownership + resource protection only —
+            //     no route/target selection (AIR-01) or multi-turn sortie planning (AIR-02).
+            ReconAirReservationPrepass.Run(snapshot, player, root, activeIntents, actorCommitments, reconObjectives);
+            ReconAirReservationState airReservation =
+                ReconAirReservationRegistry.ForTurn(player, snapshot.TurnNumber);
+
             // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
             //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
@@ -483,8 +493,12 @@ namespace Game.Ai.V2
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
             //     debits the requesting axis here; the mission allocator then seeds its slices from
             //     this same ledger — NO second radar split.
-            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(snapshot.Self?.ActionPoints ?? 0, radar);
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
+            // AI-RECON-01 — the reserved recon-air launch AP is protected off the top, exactly like
+            // the HousekeepingManager reserve, so Phase A's per-axis entitlement never includes it.
+            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
+                UnityEngine.Mathf.Max(0f, (snapshot.Self?.ActionPoints ?? 0) - airReservation.ProtectedAp), radar);
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}"
+                + (airReservation.ProtectedAp > 0f ? $" (recon-air protAp {airReservation.ProtectedAp:0.#})" : ""));
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
@@ -513,7 +527,8 @@ namespace Game.Ai.V2
             // this-turn claims, match scarce jobs first, drop proposals with no distinct actor or
             // beyond the still-unmet concurrency). ProvisioningManager then receives an already
             // actor-bound Recon mission and MoverContended reverts to a defensive-only outcome.
-            ReconActorReservationPlanner.Plan(snapshot, ctx, player, missions, actorCommitments,
+            var reconActorCtx = new ReconActorReservationContext();
+            ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
                 activeIntents, reconObjectives);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
@@ -550,7 +565,8 @@ namespace Game.Ai.V2
 
             // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
             //    many packing -> ordered tentative allocation. No second radar split.
-            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player, apLedger);
+            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
+                apLedger, airReservation.ProtectedEnergy);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
 
@@ -620,6 +636,16 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
+                        // AI-RECON-01 — a Scout miss that frees its reserved scout (the objective was
+                        // met / invalidated elsewhere, no executable step, or contention) returns the
+                        // actor + its concurrency slot to the context so the Rematch below can bind it
+                        // to another still-live job this same turn.
+                        if (fe.Mission.Kind == MissionKind.Scout
+                            && (result.Failure.Kind == ProvisionFailureKind.TargetSatisfied
+                                || result.Failure.Kind == ProvisionFailureKind.TargetInvalidated
+                                || result.Failure.Kind == ProvisionFailureKind.NoExecutableStep
+                                || result.Failure.Kind == ProvisionFailureKind.MoverContended))
+                            ReconActorReservationPlanner.ReleaseForProvisionFailure(reconActorCtx, fe.Mission);
                         AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                     }
@@ -630,7 +656,16 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
                     break;
                 }
-                if (!session.HasNewFailures || session.Converged || ++reallocPass >= AiConfigV2.maxReallocIterations)
+                // AI-RECON-01 — release the reserved scouts of budget-deferred Recon jobs and
+                // rematch every still-live one before the next Pack. This is the "budget failed ->
+                // release actor + resources -> rematch remaining jobs" leg of the reservation
+                // lifecycle: e.g. a pricey Surveil reserved the only free scout, could not be
+                // funded, and a cheap Explore that was left unreserved now takes that scout.
+                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, snapshot, ctx, player,
+                    missions, allocation.Deferred);
+                if (!reconRematched && (!session.HasNewFailures || session.Converged))
+                    break;
+                if (++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;
                 allocation = session.Pack();
                 AccrueFundedKeys(allocation);
@@ -645,6 +680,10 @@ namespace Game.Ai.V2
 
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
+            // AI-RECON-01 — TaskExecutor's terminal ReconAirExecutor.RunFallback has now had its
+            // chance to launch the reserved sortie. Drop the AP/Energy protection so Strategic
+            // Manager Phase B and end-of-turn telemetry see the real remaining pool.
+            ReconAirReservationPrepass.ReleaseProtection(player);
             foreach (ExecutionResult er in executed)
             {
                 // A synthesised replacement's proposal was never in the pre-execution

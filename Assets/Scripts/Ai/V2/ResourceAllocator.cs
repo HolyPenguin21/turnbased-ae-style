@@ -230,6 +230,9 @@ namespace Game.Ai.V2
         // fund a backup the same turn.
         ExecutionCapacity,         // the mission's execution lane is already at K (locked + commitments + funded)
         MissionConflict,           // pairwise-conflicts a currently funded / locked mission in the same lane
+        // AI-RECON-01 — a Recon proposal with no bound scout yet. NOT a failure / cooldown: the
+        // planner's Rematch pass can still bind a freed actor to it this same turn.
+        ReconActorUnreserved,
     }
 
     public sealed class DeferredEntry
@@ -361,12 +364,13 @@ namespace Game.Ai.V2
     {
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            AxisBudgetLedger ledger = null)
+            AxisBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
-                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger);
+                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
+                protectedPhysicalEnergy);
         }
     }
 
@@ -383,6 +387,12 @@ namespace Game.Ai.V2
         // instead of re-splitting current AP by the radar (NO second radar split). Null in a bare
         // unit test / sim -> fall back to radar * pool as before.
         private readonly AxisBudgetLedger _ledger;
+
+        // AI-RECON-01 — Energy the Recon Air Reservation Prepass has set aside for a
+        // planned-but-unlaunched recon sortie. Netted out of the global physical Energy pool so a
+        // raid / materialisation chain the allocator funds cannot spend it (parity with the ledger
+        // AP debit the pipeline applies before Phase A).
+        private readonly float _protectedPhysicalEnergy;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         // Step 6 repricing feedback (risk 2). A mission that failed provisioning with
@@ -466,7 +476,8 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null)
+            List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null,
+            float protectedPhysicalEnergy = 0f)
         {
             _snap = snap;
             _radar = radar;
@@ -474,6 +485,7 @@ namespace Game.Ai.V2
             _commitments = commitments;
             _state = state;
             _ledger = ledger;
+            _protectedPhysicalEnergy = Mathf.Max(0f, protectedPhysicalEnergy);
         }
 
         // Step 6 calls this after a real atomic provisioning failure. Takes the whole FundedEntry
@@ -613,7 +625,10 @@ namespace Game.Ai.V2
             //     (spec §19.5 — a re-pack can never re-hand-out the same physical units). AP stays
             //     on the radar slices above; physical is a flat atomic gate below.
             ResourceBundle stock = _snap?.Self?.Stockpile ?? default;
-            var physicalPool = new ResourceVector(0f, stock.Human, stock.Energy, stock.Materials, stock.Tech);
+            // AI-RECON-01 — the recon-air reservation's protected Energy is not part of the pool the
+            // allocator may hand to a raid / materialisation chain.
+            float poolEnergy = Mathf.Max(0f, stock.Energy - _protectedPhysicalEnergy);
+            var physicalPool = new ResourceVector(0f, stock.Human, poolEnergy, stock.Materials, stock.Tech);
             var lockedPhysical = ResourceVector.Zero;
             foreach (LockedAllocation lc in _lockedClaims.Values)
                 lockedPhysical += lc.PhysicalClaim;
@@ -811,6 +826,17 @@ namespace Game.Ai.V2
                     if (shares == null)
                     {
                         alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
+                        continue;
+                    }
+
+                    // AI-RECON-01 — a Recon proposal is fundable only once ReconActorReservationPlanner
+                    // has bound a concrete scout to it. An unbound one is NOT rejected / on cooldown /
+                    // structurally impossible — the planner's Rematch pass (driven from the pipeline's
+                    // re-pack loop) may bind an actor freed by a budget defer / provisioning failure
+                    // this same turn and a later Pack() then funds it.
+                    if (m.Kind == MissionKind.Scout && m.ReservedMoverArmyId == null)
+                    {
+                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ReconActorUnreserved });
                         continue;
                     }
 
