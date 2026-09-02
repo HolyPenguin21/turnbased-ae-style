@@ -65,8 +65,21 @@ namespace Game.Ai.V2
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
             WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null)
         {
-            if (provisioned == null || provisioned.Count == 0 || ctx?.Map == null)
+            if (ctx?.Map == null)
                 yield break;
+
+            // Strategic acceptance evidence can exist even when allocation/provisioning produces no
+            // executable Scout this turn. Emit the summary anyway so those checks are visible rather
+            // than silently disappearing behind an empty execution batch.
+            if (provisioned == null || provisioned.Count == 0)
+            {
+                if (AiStrategyV2Scope.IsReconOnly)
+                {
+                    ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+                    ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
+                }
+                yield break;
+            }
 
             var queue = new List<ProvisionedMission>(provisioned);
             if (AiStrategyV2Scope.IsReconOnly)
