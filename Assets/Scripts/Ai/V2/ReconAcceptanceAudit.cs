@@ -84,24 +84,25 @@ namespace Game.Ai.V2
 
             int actors = scouts.Select(m => m.MoverArmyId).Distinct().Count();
             int executionHexes = scouts.Select(m => m.ExecutionHex).Distinct().Count();
-            int minDistance = int.MaxValue;
+            int focusMinDistance = int.MaxValue;
             for (int i = 0; i < scouts.Count; i++)
                 for (int j = i + 1; j < scouts.Count; j++)
-                    minDistance = System.Math.Min(minDistance,
-                        HexGridMath.Distance(scouts[i].ExecutionHex, scouts[j].ExecutionHex));
-            if (minDistance == int.MaxValue)
-                minDistance = 0;
+                    focusMinDistance = System.Math.Min(focusMinDistance,
+                        HexGridMath.Distance(scouts[i].FocusHex, scouts[j].FocusHex));
+            if (focusMinDistance == int.MaxValue)
+                focusMinDistance = 0;
 
-            bool separated = minDistance >= AiConfigV2.scoutTargetMinSeparation;
+            // Strategic spread is defined by FocusHex. Surveil's ExecutionHex is only a temporary
+            // safe observation vantage and is allowed to sit closer to another vantage than the
+            // strategic target separation. Execution hexes must still be injective so two actors do
+            // not receive the exact same immediate destination.
+            bool separated = focusMinDistance >= AiConfigV2.scoutTargetMinSeparation;
             bool pass = actors == scouts.Count && executionHexes == scouts.Count && separated;
             Record(player, turn, ThreeScoutDeconflict, pass,
                 $"missions={scouts.Count} actors={actors} executionHexes={executionHexes} "
-                + $"minDist={minDistance} required={AiConfigV2.scoutTargetMinSeparation}");
+                + $"focusMinDist={focusMinDistance} required={AiConfigV2.scoutTargetMinSeparation}");
         }
 
-        // Called immediately before every authoritative one-hex move. On the second and later step
-        // this proves that a fresh decision was produced FROM the previous live end hex instead of
-        // consuming a cached multi-step route.
         public static void RecordDecision(PlayerSetupData player, int turn, int armyId,
             HexCoord from, HexCoord to, string reason)
         {
@@ -123,10 +124,6 @@ namespace Game.Ai.V2
             trace.Decisions++;
         }
 
-        // Called only after MoveArmyRoutine reports a real position transition and after live
-        // visibility has settled. A-B-A-B is detected on authoritative end positions, not planner
-        // candidates. Intel freshness is verified against the same current-turn sidecar used by the
-        // tactical Refresh logic.
         public static void RecordStep(PlayerSetupData player, int turn, int armyId,
             HexCoord from, HexCoord to)
         {
@@ -196,8 +193,6 @@ namespace Game.Ai.V2
         public static void RecordMostlyExploredPressure(PlayerSetupData player, int turn,
             float explorableUnknownFrac, float explorePressure, float refreshPressure)
         {
-            // "Mostly explored" is an acceptance state, not a universal tuning threshold. Keep the
-            // runtime audit conservative and only judge maps with <=25% explorable unknown area.
             if (explorableUnknownFrac > 0.25f)
                 return;
             Record(player, turn, MostlyExploredRefresh, refreshPressure >= explorePressure,
@@ -286,7 +281,6 @@ namespace Game.Ai.V2
 
             Status incoming = pass ? Status.Pass : Status.Fail;
             state.StatusByScenario.TryGetValue(scenario, out Status previous);
-            // A later failure overrides an earlier pass; a pass never erases a failure.
             Status final = previous == Status.Fail || incoming == Status.Fail ? Status.Fail : Status.Pass;
             state.StatusByScenario[scenario] = final;
 
