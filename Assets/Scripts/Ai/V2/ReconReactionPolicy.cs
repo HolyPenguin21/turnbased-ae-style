@@ -55,8 +55,8 @@ namespace Game.Ai.V2
 
     internal static class ReconReactionPolicy
     {
-        private const float AttackOpportunityWinChance = 0.80f;
-        private const float StrongEnemyFleeWinChance = 0.50f;
+        private const float AttackOpportunityWinChance = AiConfigV2.scoutReactionAttackWinChance;
+        private const float StrongEnemyFleeWinChance = AiConfigV2.scoutReactionFleeWinChance;
 
         public static ReconReactionDecision Evaluate(PlayerSetupData player, HexMap map, ArmyData army,
             ReconAssignment assignment, int turn)

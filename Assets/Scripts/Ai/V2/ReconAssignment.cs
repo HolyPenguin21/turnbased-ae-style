@@ -30,14 +30,14 @@ namespace Game.Ai.V2
         // One strategic turn of hysteresis is enough to stop two proposals in the same pass from
         // ping-ponging an actor between Explore and Refresh, while still allowing the next turn's
         // changed information picture to retask it.
-        private const int ModeHoldTurns = 1;
+        private const int ModeHoldTurns = AiConfigV2.reconAssignmentModeHoldTurns;
 
         // Strategic heading is durable independently of a proposal's focus hex. A different mission
         // in the SAME turn may not rewrite anchor/sector merely because it was materialised later.
         // Reassignment becomes legal after one strategic turn, immediately after a mode change,
         // when the old anchor has been reached, or after a real no-progress stall.
-        private const int StrategicReassignmentHoldTurns = 1;
-        private const int StrategicStallTurns = 2;
+        private const int StrategicReassignmentHoldTurns = AiConfigV2.reconAssignmentReassignHoldTurns;
+        private const int StrategicStallTurns = AiConfigV2.reconAssignmentStallTurns;
 
         public static void ClearAll() => ByPlayer.Clear();
 

@@ -563,6 +563,27 @@ namespace Game.Ai.V2
         public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
 
+        // --- Ground Recon reaction / assignment / concurrency / step-scoring tunables (spec §24).
+        //     Previously scattered as private/internal consts and inline literals across
+        //     ReconReactionPolicy / ReconAssignment / ReconConcurrencyPolicy / ReconGroundStepPlanner.
+        public const float scoutReactionAttackWinChance = 0.80f;   // ReconReactionPolicy — min win chance for an opportunistic solo-Recce attack
+        public const float scoutReactionFleeWinChance = 0.50f;     // ReconReactionPolicy — flee when the worst exposed known threat drops our win chance below this
+        public const int reconAssignmentModeHoldTurns = 1;         // ReconAssignmentRegistry — min turns between Explore<->Refresh mode switches for one actor
+        public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
+        public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early
+        public const int reconConcurrencyReconOnlyHardCap = 3;     // ReconConcurrencyPolicy — max concurrent scouts in the isolated ReconOnly acceptance environment
+        public const float reconConcurrencySecondLaneMinBaseValue = 50f;
+        public const float reconConcurrencySecondLaneMinRelValue = 0.80f;
+        public const float reconConcurrencySecondLaneMinDarkFrac = 0.35f;
+        public const float reconConcurrencyThirdLaneMinBaseValue = 40f;
+        public const float reconConcurrencyThirdLaneMinRelValue = 0.65f;
+        public const float reconConcurrencyThirdLaneMinDarkFrac = 0.55f;
+        public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
+        public const float scoutStepCoverageNearbyWeight = 0.55f;
+        public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
+        public const float scoutStepRefreshFreshNeighborWeight = 0.25f; // Refresh info term weight on fresh-neighbour count (Explore uses the full weight)
+        public const float scoutLookaheadNearbyClaimWeight = 0.35f;     // bounded-lookahead per-hex nearby-claim discount
+
         // =======================================================================================
         //  AIR RECON PER-STEP FLIGHT SCORING  (ReconAirStepPlanner, spec §24 — no scattered magic
         //  numbers). "Information" is the never-observed / stale-IntelAge value inside the wing's

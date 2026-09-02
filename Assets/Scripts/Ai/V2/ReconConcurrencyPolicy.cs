@@ -13,18 +13,18 @@ namespace Game.Ai.V2
         // ReconOnly is the isolated Ground-Recon acceptance environment. It deliberately permits a
         // three-scout portfolio so deconfliction/spread can be exercised without changing the Full
         // strategy's historical K=2 tuning before the Ground Recon acceptance suite passes.
-        internal const int ReconOnlyHardCap = 3;
+        internal const int ReconOnlyHardCap = AiConfigV2.reconConcurrencyReconOnlyHardCap;
 
-        internal const float SecondLaneMinBaseValue = 50f;
-        internal const float SecondLaneMinRelativeValue = 0.80f;
-        internal const float SecondLaneMinExplorableUnknownFrac = 0.35f;
+        internal const float SecondLaneMinBaseValue = AiConfigV2.reconConcurrencySecondLaneMinBaseValue;
+        internal const float SecondLaneMinRelativeValue = AiConfigV2.reconConcurrencySecondLaneMinRelValue;
+        internal const float SecondLaneMinExplorableUnknownFrac = AiConfigV2.reconConcurrencySecondLaneMinDarkFrac;
 
         // The third lane is a coverage lane: require a materially darker map, but allow its absolute
         // objective value to be below lane two because marginal frontier/Refresh value naturally
         // falls as scouts spread. It still must retain a meaningful fraction of the best job.
-        internal const float ThirdLaneMinBaseValue = 40f;
-        internal const float ThirdLaneMinRelativeValue = 0.65f;
-        internal const float ThirdLaneMinExplorableUnknownFrac = 0.55f;
+        internal const float ThirdLaneMinBaseValue = AiConfigV2.reconConcurrencyThirdLaneMinBaseValue;
+        internal const float ThirdLaneMinRelativeValue = AiConfigV2.reconConcurrencyThirdLaneMinRelValue;
+        internal const float ThirdLaneMinExplorableUnknownFrac = AiConfigV2.reconConcurrencyThirdLaneMinDarkFrac;
 
         public static int HardCap => AiStrategyV2Scope.IsReconOnly
             ? ReconOnlyHardCap

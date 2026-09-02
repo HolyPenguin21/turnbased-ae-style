@@ -137,7 +137,8 @@ namespace Game.Ai.V2
                 float stale = intelAge < 0 ? 0f
                     : Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
                         AiConfigV2.scoutSurveilStaleTurnsHi, intelAge);
-                information = stale + 0.25f * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
+                information = stale + AiConfigV2.scoutStepRefreshFreshNeighborWeight
+                    * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
             }
 
             ReconSector stepSector = ReconDirectionModel.Sector(army.Hex, h);
@@ -153,13 +154,14 @@ namespace Game.Ai.V2
             int sectorClaims = ReconAssignmentRegistry.OtherSectorClaims(player, army.Id, stepSector);
             int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
                 Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
-            float coverageFactor = 1f / (1f + 0.30f * sectorClaims + 0.55f * nearbyClaims);
+            float coverageFactor = 1f / (1f + AiConfigV2.scoutStepCoverageSectorWeight * sectorClaims
+                + AiConfigV2.scoutStepCoverageNearbyWeight * nearbyClaims);
 
             // Explore should not willingly terminate in a zero-frontier pocket when another step
             // with comparable value can keep the wave moving. Refresh is allowed to visit a stale
             // dead-end because the information itself may be the objective.
             float deadEndFactor = assignment.Mode == ReconMode.Explore && !visited && fresh == 0
-                ? 0.70f
+                ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
             float score = (information + heading + movementEfficiency)
@@ -209,7 +211,7 @@ namespace Game.Ai.V2
 
                 int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
                     Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
-                local *= 1f / (1f + 0.35f * nearbyClaims);
+                local *= 1f / (1f + AiConfigV2.scoutLookaheadNearbyClaimWeight * nearbyClaims);
                 local *= Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);
 
                 seen.Add(h);
