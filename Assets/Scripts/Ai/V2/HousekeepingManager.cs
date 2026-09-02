@@ -14,6 +14,11 @@ namespace Game.Ai.V2
     //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
     //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
     //
+    //  ReconOnly inserts one deliberately bounded Air Recon fallback immediately after the main
+    //  ground mission batch and pending reaction handling, before generic pressure/maintenance.
+    //  The air phase can spend only real AP/Energy still left at this point and uses the shared
+    //  aviation movement/resolver; it is not structural housekeeping and is tracked separately.
+    //
     //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
     //  pressure/maintenance actions run, and only after those settle do we enter the zero-AP
     //  Analyzer -> Planner -> Executor reorganisation pass. The AP invariant below therefore
@@ -22,6 +27,7 @@ namespace Game.Ai.V2
     public sealed class HousekeepingResult
     {
         public bool StateChanged;
+        public bool AirReconExecuted;
         public int MaintenanceActions;
         public int GroupsPlanned;
         public int TransfersApplied;
@@ -54,6 +60,24 @@ namespace Game.Ai.V2
                     MissionIntentRegistry.GetOrCreate(player).All,
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
+            }
+
+            // Air Recon is intentionally AFTER the normal Ground Recon mission batch, so ground
+            // scouts get first use of the Recon axis allocation. It is also BEFORE maintenance so
+            // the sortie's AP/Energy opportunity cost is evaluated against the resources genuinely
+            // left by strategic execution, not against a fictional pre-turn pool.
+            if (AiStrategyV2Scope.IsReconOnly && player != null && root != null && ctx != null)
+            {
+                bool airChanged = false;
+                yield return AirReconV2.RunFallback(snapshot, player, root, ctx,
+                    changed => airChanged |= changed);
+                if (airChanged)
+                {
+                    result.AirReconExecuted = true;
+                    result.StateChanged = true;
+                    if (hand != null)
+                        snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                }
             }
 
             // Structure pressure is movement, so execute it before the synchronous maintenance
@@ -157,9 +181,10 @@ namespace Game.Ai.V2
                     + "Structural reorganisation owns no AP; strategic pressure/maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping — strategicActions {result.MaintenanceActions}, "
-                + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
-                + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
+            AiDebugLog.Write($"[AI][V2] housekeeping — airRecon {(result.AirReconExecuted ? 1 : 0)}, "
+                + $"strategicActions {result.MaintenanceActions}, groups {result.GroupsPlanned}, "
+                + $"operations applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
+                + $"stateChanged {(result.StateChanged ? 1 : 0)}, "
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }
 
