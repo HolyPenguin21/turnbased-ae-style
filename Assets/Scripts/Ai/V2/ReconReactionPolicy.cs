@@ -151,18 +151,51 @@ namespace Game.Ai.V2
                     continue;
 
                 List<Game.Units.UnitData> visible = StealthSystem.TargetableMembersFor(target, player).ToList();
-                float enemyAttack = WorthIt.AttackSum(visible);
+                if (visible.Count == 0)
+                    continue;
+                List<WorthIt.DefenderProfile> profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
                 // CURRENTLY visible target, so the full live hex bonus is honest here.
-                float enemyDefense = WorthIt.DefenseSum(visible) + WorthIt.HexDefenseBonus(h, map);
-                float win = WorthIt.WinChance(army, enemyDefense, enemyAttack);
-                if (win < bestWin)
+                float hexBonus = WorthIt.HexDefenseBonus(h, map);
+
+                // §17 — every safety gate, not just a raw win chance. The scout must be able to
+                // damage every defender, a win must not routinely leave it critically wounded, and
+                // the hex it would end on must not sit under a second known threat it cannot beat.
+                if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
+                    continue;
+                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus);
+                if (est.WinChance < bestWin)
+                    continue;
+                if (est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter)
+                    continue;
+                if (PostCombatPositionUnsafe(player, map, army, h, target.Id))
                     continue;
 
-                bestWin = win;
-                best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity,
-                    h, target.Id, win, "adjacent visible solo Recce is overwhelmingly beatable");
+                bestWin = est.WinChance;
+                best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity, h, target.Id,
+                    est.WinChance, "adjacent solo Recce: beatable, damage-complete, post-combat safe");
             }
             return best;
+        }
+
+        // §17 acceptable post-combat position — would any OTHER known non-neutral enemy within
+        // flee radius of `hex` be able to beat this army once it is standing there? Honest memory
+        // only; the target being attacked is excluded.
+        private static bool PostCombatPositionUnsafe(PlayerSetupData player, HexMap map, ArmyData army,
+            HexCoord hex, int excludeArmyId)
+        {
+            foreach (AiMapMemory.KnownEnemySighting s in
+                     AiMapMemory.KnownEnemySightingsNear(player, new[] { hex }, AiConfig.scoutFleeRadius))
+            {
+                if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral)
+                    continue;
+                float hexBonus = HonestHexDefenseBonus(player, map, s.Hex);
+                float win = s.Defenders != null && s.Defenders.Count > 0
+                    ? WorthIt.WinChance(army, s.Defenders, hexBonus)
+                    : WorthIt.WinChance(army, s.DefenseSum + hexBonus, s.AttackSum);
+                if (win < StrongEnemyFleeWinChance)
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsSafeCaptureOpportunity(PlayerSetupData player, ArmyData army)

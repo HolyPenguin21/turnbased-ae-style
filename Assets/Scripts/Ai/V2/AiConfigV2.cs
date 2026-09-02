@@ -567,6 +567,7 @@ namespace Game.Ai.V2
         //     Previously scattered as private/internal consts and inline literals across
         //     ReconReactionPolicy / ReconAssignment / ReconConcurrencyPolicy / ReconGroundStepPlanner.
         public const float scoutReactionAttackWinChance = 0.80f;   // ReconReactionPolicy — min win chance for an opportunistic solo-Recce attack
+        public const float scoutReactionAttackMaxCriticalAfter = 0.25f; // ...reject the attack if even a WIN leaves the scout critically wounded this often (WorthIt.BattleEstimate)
         public const float scoutReactionFleeWinChance = 0.50f;     // ReconReactionPolicy — flee when the worst exposed known threat drops our win chance below this
         public const int reconAssignmentModeHoldTurns = 1;         // ReconAssignmentRegistry — min turns between Explore<->Refresh mode switches for one actor
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
