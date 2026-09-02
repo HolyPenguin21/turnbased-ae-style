@@ -331,6 +331,17 @@ namespace Game.Ai.V2
         public const int scoutSurveilStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
         public const int scoutSurveilStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
 
+        // Spec AI-INTEL-01 — Observed != GroundVisited. `GroundVisited == false` on its own must
+        // not keep an Explore focus an attractive target: if the cell and the unvisited neighbours
+        // that make up its FreshNeighbors count were already observed recently (ground vision,
+        // static vision or an air flyby) the map information is in hand, and only the physical
+        // frontier-expansion merit (scoutExploreHomeProximityWeight) should carry the objective.
+        // The information half of the Explore quality blend is scaled by a factor that sits at this
+        // floor at IntelAge 0 and recovers linearly to 1 across scoutSurveilStaleTurnsLo..Hi. It is
+        // a floored multiplier, never a hard exclusion — a genuinely stale or strategically hot
+        // cell still scores here and, separately, as a Refresh objective.
+        public const float scoutExploreObservedInfoDiscountFloor = 0.25f;
+
         // ScoutCostModel — resources to fund THIS allocation cycle, not a multi-turn projection.
         // A ground Scout spends AP to activate and MOVEMENT (not AP) to travel; ActivationEnergy
         // is a game rule (non-zero only for a real air army, so 0 here). Stealth is a separate

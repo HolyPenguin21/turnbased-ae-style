@@ -173,6 +173,15 @@ namespace Game.Ai.V2
         {
             float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
 
+            // Spec AI-INTEL-01 — Observed != GroundVisited. If this frontier cell and its unvisited
+            // neighbours were already observed recently (ground vision, static vision or an air
+            // flyby), the exploration information is in hand; discount the info term so `GroundVisited
+            // == false` alone no longer re-selects the hex. Age-graded (value returns as intel goes
+            // stale) and floored (never a hard ban — a strategically hot cell can still win, and the
+            // same hex remains eligible as a Refresh objective). The physical frontier-expansion
+            // merit rides entirely on homeProximity below and is deliberately left untouched.
+            infoGain *= ExploreObservationFreshnessFactor(snap, hex);
+
             // Spec §4 — "home" is the nearest of the starting Citadel and every owned base hex, not
             // only BaseHexes. Explore leans harder on closeness-to-home than the generic proximity
             // term and decays it across the local->regional band, so a nearby frontier out-scores an
@@ -203,6 +212,39 @@ namespace Game.Ai.V2
                 FreshNeighbors = freshNeighbors,
                 DistanceFromBase = distFromBase,
             };
+        }
+
+        // Average [floor..1] information-retention factor over the Explore focus and the unvisited,
+        // on-map, non-blocked neighbours that make up its FreshNeighbors count. A never-observed hex
+        // contributes 1 (full exploration value); one observed this turn contributes the floor; the
+        // factor ramps back to 1 across scoutSurveilStaleTurnsLo..Hi. Mirrors the FreshNeighbors
+        // predicate in ScoutObjectiveEvaluator.ExploreStillOpen.
+        private static float ExploreObservationFreshnessFactor(WorldSnapshot snap, HexCoord focus)
+        {
+            float floor = Mathf.Clamp01(AiConfigV2.scoutExploreObservedInfoDiscountFloor);
+            float sum = HexObservationRetention(snap, focus, floor);
+            int count = 1;
+
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            var onMap = mk?.AllHexes as HashSet<HexCoord>
+                ?? (mk?.AllHexes != null ? new HashSet<HexCoord>(mk.AllHexes) : null);
+            foreach (HexCoord n in HexGridMath.Neighbors(focus))
+            {
+                if (onMap != null && !onMap.Contains(n)) continue;
+                if (mk?.VisitedHexSet != null && mk.VisitedHexSet.Contains(n)) continue;
+                if (mk != null && mk.IsBlockedForScout(n, stealthCapable: false)) continue;
+                sum += HexObservationRetention(snap, n, floor);
+                count++;
+            }
+            return count > 0 ? sum / count : 1f;
+        }
+
+        private static float HexObservationRetention(WorldSnapshot snap, HexCoord hex, float floor)
+        {
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
+                return 1f; // never observed — exploration still yields full new information
+            return Mathf.Lerp(floor, 1f, Curves.Ramp(age,
+                AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi));
         }
 
         private static ReconObjective BuildRefresh(WorldSnapshot snap, HexCoord hex, int age)
