@@ -250,7 +250,7 @@ namespace Game.Ai.V2
                     && (sortie.Phase == ReconAirPhase.Return || !forwardStepUseful);
                 if (mustReturn)
                 {
-                    HexCoord? returnStep = PickReturnStep(player, ctx.Map, air, out HexCoord landing,
+                    HexCoord? returnStep = PickReturnStep(player, ctx.Map, air, sortie, out HexCoord landing,
                         out string returnReason);
                     if (!returnStep.HasValue)
                     {
@@ -314,6 +314,10 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked — another task owns aircraft");
                     break;
                 }
+                // Track the planner's latest outbound landing so the first Return-phase step has a
+                // baseline to apply landing hysteresis against (spec §38).
+                sortie.ChosenLandingHex = choice.Value.LandingHex;
+                sortie.HasChosenLanding = true;
 
                 if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex, reservationTask))
                 {
@@ -361,7 +365,7 @@ namespace Game.Ai.V2
         }
 
         private static HexCoord? PickReturnStep(PlayerSetupData player, HexMap map, ArmyData air,
-            out HexCoord landing, out string reason)
+            ReconAirSortieState sortie, out HexCoord landing, out string reason)
         {
             landing = default;
             reason = null;
@@ -369,8 +373,8 @@ namespace Game.Ai.V2
             HexCoord? sameTurn = AiAviationSupport.TryReplan(air, map, player);
             if (sameTurn.HasValue)
             {
-                landing = sameTurn.Value;
-                reason = "same-turn safest return";
+                landing = ApplyLandingHysteresis(player, map, air, sortie, sameTurn.Value, out string h);
+                reason = "same-turn safest return" + h;
                 return FirstStep(map, air.Hex, landing);
             }
 
@@ -378,14 +382,82 @@ namespace Game.Ai.V2
                 AiAviationSupport.TryReplanMultiTurnReturn(air, map, player);
             if (multi.HasValue)
             {
-                landing = multi.Value.LandingHex;
-                reason = $"multi-turn safest return t{multi.Value.RequiredTurns}";
-                HexPath p = multi.Value.PathFromActionToLanding;
-                if (p != null && p.Hexes.Count > 1)
-                    return p.Hexes[1];
+                landing = ApplyLandingHysteresis(player, map, air, sortie, multi.Value.LandingHex, out string h);
+                reason = $"multi-turn safest return t{multi.Value.RequiredTurns}" + h;
+                if (landing.Equals(multi.Value.LandingHex))
+                {
+                    HexPath p = multi.Value.PathFromActionToLanding;
+                    if (p != null && p.Hexes.Count > 1)
+                        return p.Hexes[1];
+                }
                 return FirstStep(map, air.Hex, landing);
             }
             return null;
+        }
+
+        // Spec §38 — once a sortie has locked a landing base, keep it across steps unless it is no
+        // longer a viable return target, or the fresh candidate is clearly better (materially more
+        // forward, or materially cheaper on the remaining route). Prevents airfield A<->B ping-pong
+        // on the way home while still letting a genuinely superior base win.
+        private static HexCoord ApplyLandingHysteresis(PlayerSetupData player, HexMap map, ArmyData air,
+            ReconAirSortieState sortie, HexCoord candidate, out string reason)
+        {
+            if (sortie == null || !sortie.HasChosenLanding)
+            {
+                if (sortie != null) { sortie.ChosenLandingHex = candidate; sortie.HasChosenLanding = true; }
+                reason = $" landing=adopt({candidate.Q},{candidate.R})";
+                return candidate;
+            }
+            if (sortie.ChosenLandingHex.Equals(candidate))
+            {
+                reason = $" landing=keep({candidate.Q},{candidate.R})";
+                return candidate;
+            }
+            if (!ReturnLandingStillViable(player, map, air, sortie.ChosenLandingHex))
+            {
+                reason = $" landing=switch(prev_unreachable ({sortie.ChosenLandingHex.Q},{sortie.ChosenLandingHex.R}) "
+                    + $"-> ({candidate.Q},{candidate.R}))";
+                sortie.ChosenLandingHex = candidate;
+                return candidate;
+            }
+
+            int prevForward = AiAviationSupport.NearestKnownEnemyDistance(player, sortie.ChosenLandingHex);
+            int newForward = AiAviationSupport.NearestKnownEnemyDistance(player, candidate);
+            int prevCost = PathCostOrMax(map, air, sortie.ChosenLandingHex);
+            int newCost = PathCostOrMax(map, air, candidate);
+            bool muchMoreForward = prevForward != int.MaxValue && newForward != int.MaxValue
+                && prevForward - newForward >= AiConfigV2.airReconLandingSwitchForwardMargin;
+            bool muchCheaper = prevCost - newCost >= AiConfigV2.airReconLandingSwitchCostMargin;
+            if (muchMoreForward || muchCheaper)
+            {
+                reason = $" landing=switch(forward {prevForward}->{newForward} cost {prevCost}->{newCost})";
+                sortie.ChosenLandingHex = candidate;
+                return candidate;
+            }
+            reason = $" landing=keep_hysteresis(prev ({sortie.ChosenLandingHex.Q},{sortie.ChosenLandingHex.R}) "
+                + $"vs cand ({candidate.Q},{candidate.R}) forward {prevForward}/{newForward} cost {prevCost}/{newCost})";
+            return sortie.ChosenLandingHex;
+        }
+
+        private static bool ReturnLandingStillViable(PlayerSetupData player, HexMap map, ArmyData air, HexCoord landing)
+        {
+            if (!AviationRules.IsOwnedAirfieldAt(landing, player))
+                return false;
+            if (AiAviationSupport.FreeLandingCapacity(landing, player, air) < air.Members.Count)
+                return false;
+            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
+            if (path == null)
+                return false;
+            if (AviationRules.PathMoveCost(air, path) > air.CurrentMovement)
+                return false;
+            int baseline = AiAviationSupport.KnownAaExposureAt(player, air.Hex);
+            return AiAviationSupport.KnownAaExposure(player, path) - baseline <= 0;
+        }
+
+        private static int PathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
+        {
+            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
+            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
         }
 
         private static HexCoord? FirstStep(HexMap map, HexCoord from, HexCoord to)

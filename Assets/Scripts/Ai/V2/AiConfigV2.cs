@@ -574,6 +574,12 @@ namespace Game.Ai.V2
         public const float airReconOutboundTrailOverlapPenalty = 0.30f; // per sortie-trail hex within one hex of a candidate Outbound step
         public const float airReconLateralNoveltyBonus = 0.20f;     // small bonus for an informative step that sweeps sideways rather than straight out
 
+        // Landing-base hysteresis (spec §38). Once a sortie has a chosen landing base it is kept
+        // across steps unless it stops being a viable return target, or a challenger is clearly
+        // better — so a small score wobble cannot cause airfield A<->B ping-pong on the way home.
+        public const int airReconLandingSwitchForwardMargin = 2;   // challenger must be at least this many hexes more forward (NearestKnownEnemyDistance) to take over
+        public const int airReconLandingSwitchCostMargin = 3;      // ...or at least this many MP cheaper on the remaining route home
+
         // =======================================================================================
         //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
         //  Splits the Energy stock into committed (other in-flight AirRecon activations) +
