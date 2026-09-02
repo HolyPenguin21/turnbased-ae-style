@@ -17,6 +17,7 @@ namespace Game.Ai.V2
         private const string MostlyExploredRefresh = "refresh-dominates-mostly-explored";
         private const string StaleStrategicRefresh = "stale-strategic-refresh";
         private const string CoarseDirectionBoundary = "coarse-direction-boundary";
+        private const string CoarseDirectionInfluence = "coarse-direction-influences-refresh";
         private const string ThreeScoutDeconflict = "three-scout-deconflict";
         private const string NoAbabLoop = "no-abab-loop";
         private const string PerStepReplan = "per-step-live-replan";
@@ -30,6 +31,7 @@ namespace Game.Ai.V2
             MostlyExploredRefresh,
             StaleStrategicRefresh,
             CoarseDirectionBoundary,
+            CoarseDirectionInfluence,
             ThreeScoutDeconflict,
             NoAbabLoop,
             PerStepReplan,
@@ -59,6 +61,8 @@ namespace Game.Ai.V2
 
         private static readonly Dictionary<PlayerSetupData, TurnAudit> ByPlayer =
             new Dictionary<PlayerSetupData, TurnAudit>();
+
+        public static void ClearAll() => ByPlayer.Clear();
 
         public static void BeginTurn(PlayerSetupData player, int turn)
         {
@@ -217,6 +221,15 @@ namespace Game.Ai.V2
             bool sixBuckets = direction.EnemyDirectionSectors.Count == 6;
             Record(player, turn, CoarseDirectionBoundary, rangeOk && normalized && sixBuckets,
                 $"sectors={direction.EnemyDirectionSectors.Count} sum={sum:0.000} presence={direction.EnemyPresenceWeight:0}");
+        }
+
+        public static void RecordDirectionInfluence(PlayerSetupData player, int turn,
+            HexCoord focus, float directionPressure, float baseValue)
+        {
+            if (directionPressure <= 0f)
+                return;
+            Record(player, turn, CoarseDirectionInfluence, true,
+                $"focus=({focus.Q},{focus.R}) direction={directionPressure:0.00} value={baseValue:0.0}");
         }
 
         public static void Summarize(PlayerSetupData player, int turn)
