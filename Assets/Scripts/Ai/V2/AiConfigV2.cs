@@ -647,6 +647,10 @@ namespace Game.Ai.V2
         // per turn (gradual contraction, not a one-pass collapse). Only Soft/None-funded lanes are
         // ever shed; a Hard-funded lane is kept even if it leaves active above desired.
         public const int maxReconLaneTrimPerTurn = 1;
+        // Generic Phase-B surplus may hold at most desiredConcurrency + this many scout-shaped
+        // (IsSoloRecce) armies before it stops founding more; ReconConcurrencyPolicy.HardCap is
+        // the separate absolute ceiling above that.
+        public const int scoutSurplusWarmSpare = 1;
         public const int reconDemandRegionMergeDistance = 2;         // frontier hexes within this many hexes count as one reachable unexplored region (spec §28)
         public const float reconDemandRefreshLaneThreshold = 0.55f;  // Refresh pressure at/above this earns one dedicated Refresh scout on top of the Explore-driven count
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
@@ -670,18 +674,14 @@ namespace Game.Ai.V2
         public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
         public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
         public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
-        // Air Recon flips from Refresh-only scoring to never-observed (Explore) weighting once at
-        // least this fraction of the WHOLE map is still never-observed dark — so aviation keeps
-        // valuing genuinely unknown territory (including ground-unreachable hexes) even after the
-        // explorable frontier has mostly closed. Aviation still only reveals; it never marks a hex
-        // ground-Visited, and it runs after every provisioned ground scout so it cannot displace a
-        // mandatory ground Explore/Visit.
+        // Air Recon flips from Refresh scoring to never-observed (Explore) weighting once at least
+        // this fraction of the map has NEVER been observed by anything — measured from
+        // AiReconIntelMemory (recorded intel age), the exact basis ReconAirStepPlanner.
+        // ScoreInformation scores against, NOT ground-Visited. Aviation still only reveals; it
+        // never marks a hex ground-Visited, and it runs after every provisioned ground scout so
+        // it cannot displace a mandatory ground Explore/Visit. Lower this to make aviation chase
+        // the last unknown pockets harder.
         public const float airReconExploreDarkFloor = 0.25f;
-        // ...and independently of that floor: any time the WHOLE-map unknown fraction exceeds the
-        // ground-explorable unknown fraction by at least this much, that gap is territory only
-        // aviation can ever see — always value it with never-observed (Explore) weighting even
-        // when total dark has dropped below airReconExploreDarkFloor.
-        public const float airReconGroundLockedUnknownFloor = 0.05f;
 
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,

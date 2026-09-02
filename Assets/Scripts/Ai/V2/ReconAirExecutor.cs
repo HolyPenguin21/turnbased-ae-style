@@ -124,7 +124,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            ReconMode requestedMode = RequestedMode(snapshot);
+            ReconMode requestedMode = RequestedMode(player, snapshot);
             if (ownedAirfields == 0)
                 airSkips.Add("noOwnedAirfield");
             foreach (HexCoord airfieldHex in AiAviationSupport.OwnedAirfieldHexes(player).ToList())
@@ -285,7 +285,7 @@ namespace Game.Ai.V2
                     sortie.HasClaim = true;
                 }
 
-                ReconMode mode = RequestedMode(snapshot);
+                ReconMode mode = RequestedMode(player, snapshot);
                 if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))
                     mode = existing.Mode;
 
@@ -700,16 +700,19 @@ namespace Game.Ai.V2
         // territory (Explore weighting) instead of only re-checking stale known hexes (Refresh
         // weighting). Air Recon runs after every provisioned ground scout on its own actors, so
         // this can never close a mandatory ground Explore/Visit.
-        private static ReconMode RequestedMode(WorldSnapshot snapshot)
+        private static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot)
         {
-            float unknown = snapshot?.MapKnowledge?.UnknownFrac ?? 0f;
-            float explorable = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
-            // Explore weighting while a large fraction of the whole board is still dark, OR any
-            // time there is meaningful unknown territory that ground scouts structurally cannot
-            // reach (unknown minus ground-explorable) — aviation is the only tool for it.
-            bool exploreWeighting = unknown >= AiConfigV2.airReconExploreDarkFloor
-                || (unknown - explorable) >= AiConfigV2.airReconGroundLockedUnknownFloor;
-            return exploreWeighting ? ReconMode.Explore : ReconMode.Refresh;
+            // Measure the SAME thing ReconAirStepPlanner.ScoreInformation scores against: hexes
+            // with no recorded intel age at all (never observed by anything — feet, vision or a
+            // previous flyby), NOT ground-Visited. AiReconIntelMemory.Snapshot holds every hex
+            // ever observed; TotalHexes is the on-map denominator.
+            int total = snapshot?.MapKnowledge?.TotalHexes ?? 0;
+            if (total <= 0)
+                return ReconMode.Refresh;
+            int observed = AiReconIntelMemory.Snapshot(player)?.Count ?? 0;
+            float neverObservedFrac = 1f - Math.Min(1f, observed / (float)total);
+            return neverObservedFrac >= AiConfigV2.airReconExploreDarkFloor
+                ? ReconMode.Explore : ReconMode.Refresh;
         }
 
         // §P0 — the minimum useful aircraft subset for one recon sortie, cheapest activation

@@ -559,18 +559,31 @@ namespace Game.Ai.V2
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
         // cap, across EVERY chain kind (BestSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
-        // DemandLayer portfolio cap never sees those).
-        private static bool ScoutSurplusPortfolioSaturated(PlayerSetupData player, MaterializationPlan plan)
+        // DemandLayer portfolio cap never sees those). Primary bound is the CURRENT desired
+        // concurrency + a warm spare; ReconConcurrencyPolicy.HardCap is the absolute ceiling.
+        private static bool ScoutSurplusPortfolioSaturated(PlayerSetupData player, MaterializationPlan plan,
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
             if (plan == null || plan.FinalCapability != CapabilityKind.ScoutCapability)
                 return false;
             int solo = ArmyRegistry.AllForOwner(player).Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
-            return solo >= ReconConcurrencyPolicy.HardCap;
+            if (solo >= ReconConcurrencyPolicy.HardCap)
+                return true;
+            if (reconObjectives == null)
+                return false;
+            var runnable = reconObjectives
+                .Where(o => o != null && o.BaseValue > 0f)
+                .OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.IntentKey)
+                .ToList();
+            int desired = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
+            return solo >= desired + AiConfigV2.scoutSurplusWarmSpare;
         }
 
         public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
-            MaterializationReservation carriedReservation)
+            MaterializationReservation carriedReservation,
+            IReadOnlyList<ReconObjective> reconObjectives = null)
         {
             var result = new StrategicPhaseResult
             {
@@ -643,11 +656,12 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                if (residual == null && ScoutSurplusPortfolioSaturated(player, plan))
+                if (residual == null && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                        + $"generic surplus would add a scout beyond the physical portfolio cap "
-                        + $"({ReconConcurrencyPolicy.HardCap}); stop surplus");
+                        + "generic surplus would add a scout beyond the physical portfolio "
+                        + "(desired concurrency + warm spare, hard cap "
+                        + $"{ReconConcurrencyPolicy.HardCap}); stop surplus");
                     break;
                 }
 
@@ -758,7 +772,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write("[AI][V2]   strat.B non-combat — skipped: Phase B did not end cleanly "
                     + "(strategic interrupt / failed chain); non-combat cards wait for the next pass");
 
-            if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
+            if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result, reconObjectives))
                 result.StateChanged = true;
             return result;
         }
@@ -769,6 +783,7 @@ namespace Game.Ai.V2
         {
             int played = 0;
             int reservedUsed = 0;
+            bool aviationPlayed = false;
             List<string> lastBlocked = null;
             // §P0 — the non-combat lane shares maxSurplusActionsPerTurn with the materialization
             // surplus loop, but is GUARANTEED surplusNonCombatReservedActions plays beyond an
@@ -808,6 +823,8 @@ namespace Game.Ai.V2
                         result.EquipmentAssignmentAttempts++;
                         result.EquipmentAssignmentsSucceeded++;
                     }
+                    if (play.Kind == NonCombatCardPlayer.PlayKind.Aviation)
+                        aviationPlayed = true;
                     played++;
                     if (surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn)
                         surplusActionsUsed++;
@@ -825,6 +842,36 @@ namespace Game.Ai.V2
                 }
             }
 
+            // §P0 — a DEDICATED final slot for a playable Aviation card. The generic reserve above
+            // can be fully consumed by higher-scored Base/Facility (BestPlay ranks Base 55 >
+            // Facility 45 > Aviation 40); a stored aircraft is what makes AirRecon possible, so if
+            // AP/resources still allow it, guarantee Aviation its one play regardless.
+            if (!aviationPlayed)
+            {
+                NonCombatCardPlayer.NonCombatPlay avia = NonCombatCardPlayer.BestPlay(
+                    snap, player, root, hand, ctx, out _, NonCombatCardPlayer.PlayKind.Aviation);
+                if (avia != null)
+                {
+                    result.MaterializationAttempts++;
+                    if (NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx,
+                        out float aviaAp, out string aviaFail))
+                    {
+                        result.MaterializationsSucceeded++;
+                        result.CardsPlayed++;
+                        result.StateChanged = true;
+                        played++;
+                        AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played Aviation {avia.Explain} "
+                            + $"(ap {F(aviaAp)}, dedicated aviation slot)");
+                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    }
+                    else
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.B non-combat — dedicated aviation slot: "
+                            + $"{avia.Explain} did not play ({aviaFail})");
+                    }
+                }
+            }
+
             AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {played}"
                 + (lastBlocked != null && lastBlocked.Count > 0
                     ? $"; still blocked [{string.Join(", ", lastBlocked)}]"
@@ -833,7 +880,8 @@ namespace Game.Ai.V2
         }
 
         private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result)
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result,
+            IReadOnlyList<ReconObjective> reconObjectives = null)
         {
             if (!AiConfigV2.surplusAllowDraw || root == null || hand == null || ctx == null)
                 return false;
@@ -858,7 +906,7 @@ namespace Game.Ai.V2
                     float termThreshold = adm.EffectiveThreshold
                         * GarrisonSaturationThresholdMult(snap, pick.Value.plan, residual);
                     if (residual == null && (GenericSurplusWouldChurn(player, pick.Value.plan)
-                        || ScoutSurplusPortfolioSaturated(player, pick.Value.plan)))
+                        || ScoutSurplusPortfolioSaturated(player, pick.Value.plan, snap, reconObjectives)))
                         termThreshold = float.MaxValue;
                     if (residual != null || pick.Value.utility >= termThreshold)
                         actionable = residual != null

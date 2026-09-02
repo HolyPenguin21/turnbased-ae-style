@@ -662,7 +662,7 @@ namespace Game.Ai.V2
             ActorCommitments postCommitments =
                 ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
             StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation);
+                postCommitments, phaseA.Reservation, reconObjectives);
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 

@@ -78,7 +78,7 @@ namespace Game.Ai.V2
         }
 
         public static NonCombatPlay BestPlay(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, out List<string> blocked)
+            AiHandData hand, AiTurnContext ctx, out List<string> blocked, PlayKind? onlyKind = null)
         {
             blocked = new List<string>();
             if (player == null || root == null || hand?.Hand == null || ctx == null)
@@ -87,7 +87,8 @@ namespace Game.Ai.V2
             NonCombatPlay best = null;
             void Consider(NonCombatPlay p)
             {
-                if (p != null && (best == null || p.Score > best.Score))
+                if (p != null && (onlyKind == null || p.Kind == onlyKind.Value)
+                    && (best == null || p.Score > best.Score))
                     best = p;
             }
 
