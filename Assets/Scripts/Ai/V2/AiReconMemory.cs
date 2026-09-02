@@ -39,6 +39,7 @@ namespace Game.Ai.V2
             ReconIntelSnapshotRegistry.Clear();
             ReconAssignmentRegistry.ClearAll();
             ScoutTrailRegistry.ClearAll();
+            ReconAcceptanceAudit.ClearAll();
         }
 
         // Called once per V2 scan with current honest sightings. This is also the canonical Recon
