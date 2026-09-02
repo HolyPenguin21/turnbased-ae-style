@@ -636,25 +636,18 @@ namespace Game.Ai.V2
             //     advances/retires the rest, keeps a preferred mover.
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
 
-            // S5. Strategic Manager Phase B — Surplus Preparation is deliberately disabled in
-            //     ReconOnly. It is the generic path that can otherwise create military capacity even
-            //     with AGG/DEF/ECO/DEV radar weights at zero.
+            // S5. Strategic Manager Phase B — Surplus Preparation. Spec §5/§13 — this runs in EVERY
+            //     mode, ReconOnly included: it is hand/card lifecycle management, not an operational
+            //     mission family. A combat Unit/Hero/Aviation it places may sit on the map while
+            //     Aggression/Defence missions stay disabled; that is expected in the isolated test.
+            //     Card type is never on its own a reason a legal card is left unplayed.
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments =
                 ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-            StrategicPhaseResult phaseB;
-            if (AiStrategyV2Scope.AllowSurplusPreparation)
-            {
-                phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                    postCommitments, phaseA.Reservation);
-                if (phaseB.StateChanged)
-                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
-            }
-            else
-            {
-                phaseB = new StrategicPhaseResult { Reservation = phaseA.Reservation };
-                AiDebugLog.Write("[AI][V2][Scope] PhaseB surplus preparation suppressed reason=ReconOnly");
-            }
+            StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                postCommitments, phaseA.Reservation);
+            if (phaseB.StateChanged)
+                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
             // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
             // invariant and the bounded reaction pass logs its own [STATE]; captured here so the

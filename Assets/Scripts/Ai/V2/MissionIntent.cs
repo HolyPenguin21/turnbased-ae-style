@@ -430,8 +430,22 @@ namespace Game.Ai.V2
                 case ExecutionStopReason.NeutralDiscovered:
                     o.Outcome = ExecutionOutcome.ProductiveStop;
                     break;
+                case ExecutionStopReason.HexEventStarted:
+                case ExecutionStopReason.BattleStarted:
+                    // Spec §2 — an ordinary hex event or battle interruption is NOT a structural
+                    // Recon failure. A scout that moved / entered stealth / made a discovery before
+                    // the interruption made productive progress and keeps its durable role. Only a
+                    // scout that was ALREADY combat-locked before it could take a single step
+                    // (BlockedBeforeMovement, no progress) is a recoverable Blocked.
+                    o.Outcome = (e.BlockedBeforeMovement && !o.MadeProgress)
+                        ? ExecutionOutcome.Blocked
+                        : ExecutionOutcome.ProductiveStop;
+                    if (o.Outcome == ExecutionOutcome.ProductiveStop)
+                        o.MadeProgress = true;
+                    break;
                 case ExecutionStopReason.NoSafeStep:
                 case ExecutionStopReason.MoveRejected:
+                case ExecutionStopReason.RequiredStealthUnavailable:
                     o.Outcome = ExecutionOutcome.Blocked;
                     break;
                 default:
@@ -592,6 +606,19 @@ namespace Game.Ai.V2
                     + string.Join(" ", state.All.Select(i =>
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
+
+            // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
+            // Recon operational role. ReconcileAfterTurn re-focuses an actor's existing role rather
+            // than creating a second; this check catches any future regression that breaks that.
+            foreach (IGrouping<int, MissionIntent> g in active
+                .Where(i => i.Kind == MissionKind.Scout && i.Scout != null
+                    && i.Scout.Kind != ScoutTargetKind.Surveil && i.PreferredMoverArmyId.HasValue)
+                .GroupBy(i => i.PreferredMoverArmyId.Value))
+            {
+                if (g.Count() <= 1) continue;
+                AiV2Trace.CheckError(null, "DuplicateReconActorIntent",
+                    $"actor=#{g.Key} intents=[{string.Join(", ", g.Select(i => i.IntentKey.ToString()))}]");
+            }
             return active;
         }
 
@@ -733,6 +760,8 @@ namespace Game.Ai.V2
                         }
                         if (freshScoutRole)
                         {
+                            if (TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
+                                continue;
                             CreateIntent(state, o, turn);
                             AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
                                 + "this turn; waypoint satisfied externally, durable intent created for re-focus");
@@ -772,7 +801,8 @@ namespace Game.Ai.V2
                 }
                 else if (o.MadeProgress && o.HasScoutPayload)
                 {
-                    CreateIntent(state, o, turn);
+                    if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
+                        CreateIntent(state, o, turn);
                 }
                 else if (o.HasRaidPayload && o.RaidOperationStarted)
                 {
@@ -876,6 +906,50 @@ namespace Game.Ai.V2
                     + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
                     + (capabilityUnavailable ? $", suspended CapabilityUnavailable:{o.ProvisionFailureKindValue}" : "") + ")");
             }
+        }
+
+        // Spec §1 — the physical scout that produced this fresh scout outcome already owns a durable
+        // Explore/Refresh role under a different focus-hex key (a new opportunistic mission ran on a
+        // mover that continuity already tracks). Re-point that existing role at the new waypoint and
+        // re-key its registry slot, preserving CreatedTurn / TurnsActive / CumulativeApSpent /
+        // StepsMovedTotal / PreferredMoverArmyId, instead of creating a second durable intent for the
+        // same actor. Returns true when it absorbed the outcome.
+        private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
+            MissionTurnOutcome o, int turn, AiAllocatorState allocState)
+        {
+            if (!o.HasScoutPayload || o.ScoutKind == ScoutTargetKind.Surveil
+                || o.MoverArmyId == null || o.MoverArmyId.Value == 0)
+                return false;
+
+            MissionIntent owner = null;
+            foreach (MissionIntent it in state.All)
+            {
+                if (it.Kind != MissionKind.Scout || it.Scout == null
+                    || it.Scout.Kind == ScoutTargetKind.Surveil)
+                    continue;
+                if (it.PreferredMoverArmyId == o.MoverArmyId && !it.IntentKey.Equals(o.IntentKey))
+                {
+                    owner = it;
+                    break;
+                }
+            }
+            if (owner == null)
+                return false;
+
+            MissionIntentKey oldKey = owner.IntentKey;
+            owner.Scout.FocusHex = o.FocusHex;
+            owner.Scout.Kind = o.ScoutKind;
+            if (o.TrackedArmyId.HasValue)
+                owner.Scout.TrackedArmyId = o.TrackedArmyId;
+            owner.IntentKey = MissionIntentKey.For(owner);
+            state.Remove(oldKey);
+            state.Put(owner);
+
+            o.MadeProgress = true;
+            AdvanceIntent(owner, o, turn, state, allocState);
+            AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] actor #{o.MoverArmyId} already "
+                + $"owns {oldKey}; absorbed fresh {o.IntentKey} into that durable role (no duplicate intent)");
+            return true;
         }
 
         private static void CreateIntent(MissionIntentState state, MissionTurnOutcome o, int turn)

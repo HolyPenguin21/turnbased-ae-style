@@ -80,6 +80,10 @@ namespace Game.Ai.V2
             return all.Where(m => m.Kind == MissionKind.Scout).ToList();
         }
 
-        public static bool AllowSurplusPreparation => !IsReconOnly;
+        // Spec §5/§13 — ReconOnly isolates which operational MISSIONS execute (Recon only). It is
+        // NOT a hand-management scope: StrategicManager Phase B (UseSurplus) must keep running so
+        // every legally playable card is still deployed or drawn regardless of its card type. Card
+        // type alone is never a reason a legal card is left in hand in ReconOnly.
+        public static bool AllowSurplusPreparation => true;
     }
 }

@@ -50,8 +50,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // Spec §1/§10 — concurrency is counted from DISTINCT valid physical scout actors, never
+            // from raw MissionIntent rows. Even if continuity is momentarily corrupted (two durable
+            // intents pointing at one actor), that scout must still count as exactly one execution,
+            // so a legitimately needed replacement scout is not suppressed. The duplicate itself is
+            // surfaced as a [CHECK][ERROR] by MissionContinuityLayer.ResolveActive.
             var coveredKeys = new HashSet<MissionIntentKey>();
-            int activeReconExecutions = 0;
+            var activeReconActors = new HashSet<int>();
             if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                 {
@@ -59,8 +64,9 @@ namespace Game.Ai.V2
                         || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
                         continue;
                     coveredKeys.Add(i.IntentKey);
-                    activeReconExecutions++;
+                    activeReconActors.Add(i.PreferredMoverArmyId.Value);
                 }
+            int activeReconExecutions = activeReconActors.Count;
 
             var uncovered = objectives
                 .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey))
@@ -108,7 +114,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=desired_concurrency_satisfied "
                     + $"active={activeReconExecutions} desired={desiredConcurrency} "
-                    + $"hard={AiConfigV2.maxConcurrentReconExecutions} runnable={runnable.Count} blocked={blocked}");
+                    + $"hard={ReconConcurrencyPolicy.HardCap} runnable={runnable.Count} blocked={blocked}");
                 yield break;
             }
 

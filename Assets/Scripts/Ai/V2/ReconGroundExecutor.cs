@@ -125,6 +125,10 @@ namespace Game.Ai.V2
                 if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
                 {
                     stop = ExecutionStopReason.BattleStarted;
+                    // Spec §2 — combat-locked before this Recon movement could take a single step
+                    // and with nothing productive done yet: a recoverable Blocked, not a Failed.
+                    if (result.StepsMoved == 0 && !result.EnteredStealth)
+                        result.BlockedBeforeMovement = true;
                     break;
                 }
 

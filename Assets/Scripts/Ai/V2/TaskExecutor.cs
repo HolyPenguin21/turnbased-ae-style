@@ -61,6 +61,14 @@ namespace Game.Ai.V2
         // as a ProductiveStop, NOT a Completed objective, so the durable MissionIntent is kept and
         // re-focused next turn instead of being retired — the churn the rework was meant to end.
         public bool DurableRoleContinues;
+
+        // Spec §2 — the requested Recon movement never started because the actor was ALREADY
+        // combat-locked before its first step (BattleStarted with zero progress on iteration 1).
+        // The ledger treats that as a recoverable Blocked, not a structural Failed: the durable
+        // Recon role survives and is retried once the actor can leave combat. A battle/event that
+        // interrupts a scout AFTER it has moved / entered stealth / made a discovery is a
+        // ProductiveStop instead and never sets this.
+        public bool BlockedBeforeMovement;
     }
 
     internal static class TaskExecutor
