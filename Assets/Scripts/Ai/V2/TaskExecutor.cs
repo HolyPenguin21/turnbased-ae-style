@@ -69,7 +69,11 @@ namespace Game.Ai.V2
                 yield break;
 
             var queue = new List<ProvisionedMission>(provisioned);
-            AuditThreeScoutBatch(queue);
+            if (AiStrategyV2Scope.IsReconOnly)
+            {
+                ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+                ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
+            }
             int replacementsUsed = 0;
 
             for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
@@ -191,22 +195,13 @@ namespace Game.Ai.V2
                 results.Add(result);
                 AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — unsupported mission kind {pm.Kind}");
             }
-        }
 
-        private static void AuditThreeScoutBatch(IReadOnlyList<ProvisionedMission> queue)
-        {
-            List<ProvisionedMission> scouts = queue
-                .Where(m => m != null && m.Kind == MissionKind.Scout)
-                .ToList();
-            if (scouts.Count < ReconConcurrencyPolicy.HardCap)
-                return;
-
-            int actors = scouts.Select(m => m.MoverArmyId).Distinct().Count();
-            int executionHexes = scouts.Select(m => m.ExecutionHex).Distinct().Count();
-            bool deconflicted = actors == scouts.Count && executionHexes == scouts.Count;
-            AiDebugLog.Write($"[AI][V2][Recon][Acceptance] scenario=three-scout-deconflict "
-                + $"status={(deconflicted ? "PASS" : "FAIL")} missions={scouts.Count} "
-                + $"actors={actors} executionHexes={executionHexes}");
+            // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
+            // provisioned Scout becomes stale, loses its mover, or otherwise never enters the Ground
+            // executor. Individual Ground hooks may summarize earlier; the collector is idempotent
+            // and automatically reopens the summary if later evidence changes a status.
+            if (AiStrategyV2Scope.IsReconOnly)
+                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
         private static IEnumerator RunRaid(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
