@@ -379,6 +379,15 @@ namespace Game.Ai.V2
         {
             if (e.ReachedGoal)
             {
+                // Spec §1 (review P1 #1) — a satisfied WAYPOINT for an actor whose durable
+                // Explore/Refresh role is still runnable is a ProductiveStop, not a Completed
+                // objective: the MissionIntent is kept and re-focused next turn rather than retired.
+                if (e.DurableRoleContinues)
+                {
+                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.MadeProgress = true;
+                    return;
+                }
                 o.Outcome = ExecutionOutcome.Completed;
                 o.ObjectiveSatisfied = true;
                 return;
@@ -460,6 +469,14 @@ namespace Game.Ai.V2
 
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
+            var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
+
+            // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
+            // durable intents on the same waypoint. Mutated as intents are re-pointed below.
+            var scoutFoci = new HashSet<HexCoord>();
+            foreach (MissionIntent i in state.All)
+                if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil)
+                    scoutFoci.Add(i.Scout.FocusHex);
 
             foreach (MissionIntent intent in state.All)
             {
@@ -489,8 +506,27 @@ namespace Game.Ai.V2
 
                 if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
                 {
-                    dead.Add(intent.IntentKey);
-                    AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (objective no longer valid)");
+                    // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
+                    // identity. Re-point it at the nearest still-runnable Explore frontier / stale
+                    // Refresh hex not already owned by another scout intent, re-key the ledger row
+                    // in place, and keep the intent (with its CreatedTurn / PreferredMoverArmyId /
+                    // accumulated progress). Only genuine exhaustion retires it.
+                    MissionIntentKey oldKey = intent.IntentKey;
+                    if (TryRefocusScoutIntent(snap, s, scoutFoci))
+                    {
+                        intent.IntentKey = MissionIntentKey.For(intent);
+                        intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                        intent.StallTurns = 0;
+                        if (!intent.IntentKey.Equals(oldKey))
+                            rekeys.Add((oldKey, intent));
+                        AiDebugLog.Write($"[AI][V2] continuity — {oldKey} waypoint done; re-focused to "
+                            + $"{intent.IntentKey} — durable identity kept");
+                        if (intent.Status == IntentStatus.Active)
+                            active.Add(intent);
+                        continue;
+                    }
+                    dead.Add(oldKey);
+                    AiDebugLog.Write($"[AI][V2] continuity — {oldKey} retired at turn start (no runnable re-focus)");
                     continue;
                 }
 
@@ -521,6 +557,15 @@ namespace Game.Ai.V2
             foreach (MissionIntentKey k in dead)
                 state.Remove(k);
 
+            // Apply the in-place re-keys after the enumeration so the live dictionary is never
+            // mutated mid-iteration. The intent object (and all its accumulated state) is kept;
+            // only its dictionary slot moves to the new focus-hex key.
+            foreach ((MissionIntentKey oldKey, MissionIntent it) in rekeys)
+            {
+                state.Remove(oldKey);
+                state.Put(it);
+            }
+
             active.Sort((x, y) =>
             {
                 int c = y.Funding.CompareTo(x.Funding); if (c != 0) return c;
@@ -534,6 +579,57 @@ namespace Game.Ai.V2
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
             return active;
+        }
+
+        // Spec §1 — re-point a stale ground scout intent's live waypoint at the nearest still-
+        // runnable hex of its own kind, avoiding hexes already owned by another scout intent.
+        // Mutates s.FocusHex and the shared ownedFoci set. Returns false only when nothing runnable
+        // remains, in which case the caller retires the intent.
+        private static bool TryRefocusScoutIntent(WorldSnapshot snap, ScoutIntent s, HashSet<HexCoord> ownedFoci)
+        {
+            if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil)
+                return false;
+
+            HexCoord old = s.FocusHex;
+            HexCoord? pick = null;
+            int bestDist = int.MaxValue;
+
+            if (ReconScoutKinds.IsRefresh(s.Kind))
+            {
+                foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
+                {
+                    if (kv.Key.Equals(old) || ownedFoci.Contains(kv.Key))
+                        continue;
+                    int age = System.Math.Max(0, snap.TurnNumber - kv.Value);
+                    if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                        continue;
+                    if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
+                        continue;
+                    int d = HexGridMath.Distance(old, kv.Key);
+                    if (d < bestDist) { bestDist = d; pick = kv.Key; }
+                }
+            }
+            else
+            {
+                if (snap.MapKnowledge.Frontier == null)
+                    return false;
+                foreach (FrontierHexSnapshot f in snap.MapKnowledge.Frontier)
+                {
+                    if (f.Hex.Equals(old) || ownedFoci.Contains(f.Hex))
+                        continue;
+                    if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
+                        continue;
+                    int d = HexGridMath.Distance(old, f.Hex);
+                    if (d < bestDist) { bestDist = d; pick = f.Hex; }
+                }
+            }
+
+            if (pick == null)
+                return false;
+            ownedFoci.Remove(old);
+            ownedFoci.Add(pick.Value);
+            s.FocusHex = pick.Value;
+            return true;
         }
 
         public static List<Commitment> BindFunding(IReadOnlyList<MissionIntent> activeIntents,

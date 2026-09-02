@@ -384,9 +384,14 @@ namespace Game.Ai.V2
             if (met)
             {
                 result.ReachedGoal = true;
+                // Spec §1 — for a ground Explore/Refresh actor this is a satisfied WAYPOINT, not a
+                // finished role: the durable ReconAssignment persists and the MissionIntent should
+                // be re-focused next turn, not retired. Surveil completion is a genuine done.
+                result.DurableRoleContinues = !ReconScoutKinds.IsSurveil(pm.ScoutKind)
+                    && AiArmyRoles.IsSoloRecce(Resolve(player, pm.MoverArmyId));
                 AiDebugLog.Write($"[AI][V2][Recon][Objective] [{pm.Mission?.AttemptId}] {pm.Key} "
-                    + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} met; durable actor assignment continues "
-                    + "while movement remains");
+                    + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} met; "
+                    + $"durableRoleContinues={(result.DurableRoleContinues ? 1 : 0)}");
             }
         }
 

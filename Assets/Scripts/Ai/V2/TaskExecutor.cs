@@ -54,6 +54,13 @@ namespace Game.Ai.V2
         public bool Replaced;
         public bool IsReplacement;
         public ProvisionedMission Source;
+
+        // Spec §1/§7 (review P1 #1) — set by the continuous ground Recon executor when ReachedGoal
+        // is true only because the CURRENT focus hex (a live waypoint) was satisfied, while the
+        // actor's durable Explore/Refresh role is still runnable. The ledger then classifies this
+        // as a ProductiveStop, NOT a Completed objective, so the durable MissionIntent is kept and
+        // re-focused next turn instead of being retired — the churn the rework was meant to end.
+        public bool DurableRoleContinues;
     }
 
     internal static class TaskExecutor
