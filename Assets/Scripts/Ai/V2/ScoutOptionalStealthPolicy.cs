@@ -22,16 +22,18 @@ namespace Game.Ai.V2
     {
         public readonly OptionalStealthDecision Decision;
         public readonly float Risk;
-        public readonly float Protection;
+        public readonly float Protection;         // ThreatProtectionBenefit (spec §12)
+        public readonly float RouteBenefit;      // RouteAccess + RouteShortening (spec §12)
         public readonly float ApOpportunity;
         public readonly string Explain;
 
         public OptionalStealthEvaluation(OptionalStealthDecision decision, float risk, float protection,
-            float apOpportunity, string explain)
+            float routeBenefit, float apOpportunity, string explain)
         {
             Decision = decision;
             Risk = risk;
             Protection = protection;
+            RouteBenefit = routeBenefit;
             ApOpportunity = apOpportunity;
             Explain = explain;
         }
@@ -39,7 +41,7 @@ namespace Game.Ai.V2
         public string ToCompact()
         {
             string N(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
-            return $"risk {N(Risk)} protect {N(Protection)} opportunity {N(ApOpportunity)} -> "
+            return $"risk {N(Risk)} protect {N(Protection)} route {N(RouteBenefit)} opportunity {N(ApOpportunity)} -> "
                  + (Decision == OptionalStealthDecision.Enter ? "ENTER" : "SKIP");
         }
     }
@@ -62,6 +64,14 @@ namespace Game.Ai.V2
         // further caps it by AP slack before/after stealth, so it notices loss of one draw even when
         // 4 AP -> 3 AP still leaves a different draw legal.
         public int DrawOpportunities;
+
+        // Spec §12 — stealth is route topology, not only a defensive modifier. Both [0..1],
+        // caller-supplied from the live map: RouteAccessBenefit is high when hiding unlocks an
+        // otherwise-blocked next step (a neutral/enemy occupant a visible mover would engage);
+        // RouteShorteningBenefit is high when a hidden corridor threads a cluster of occupied hexes
+        // toward the objective.
+        public float RouteAccessBenefit;
+        public float RouteShorteningBenefit;
     }
 
     public static class ScoutOptionalStealthPolicy
@@ -83,13 +93,22 @@ namespace Game.Ai.V2
             float mandatory = Mathf.Max(0f, x.MandatoryApClaims);
             float slack = Mathf.Max(0f, x.ApRemaining - mandatory);
 
+            float routeAccess = Mathf.Clamp01(x.RouteAccessBenefit);
+            float routeShorten = Mathf.Clamp01(x.RouteShorteningBenefit);
+            float routeBenefit = Mathf.Clamp01(
+                AiConfigV2.scoutStealthRouteAccessWeight * routeAccess
+                + AiConfigV2.scoutStealthRouteShorteningWeight * routeShorten);
+
             if (x.MoverAlreadyHidden)
-                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, 0f, "already hidden");
+                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, routeBenefit, 0f, "already hidden");
             if (x.StealthApCost <= 0 || slack + AiConfigV2.allocatorSliceEpsilon < x.StealthApCost)
-                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, 0f,
+                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, routeBenefit, 0f,
                     "no unclaimed AP slack for optional stealth");
-            if (risk < AiConfigV2.scoutOptionalStealthMinRisk)
-                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, 0f, "leg risk below floor");
+            // Spec §12 — the leg-risk floor is a THREAT-protection gate only. Stealth may still be
+            // worth entering purely for route access / shortening even with no known detector.
+            if (risk < AiConfigV2.scoutOptionalStealthMinRisk && routeBenefit < AiConfigV2.scoutOptionalStealthEnterMargin)
+                return new OptionalStealthEvaluation(OptionalStealthDecision.Skip, risk, 0f, routeBenefit, 0f,
+                    "leg risk below floor and no route benefit");
 
             float protection = risk * AiConfigV2.scoutOptionalStealthProtectionScale
                 * (x.MoverIsStrategicBody ? AiConfigV2.scoutOptionalStealthStrategicBodyFactor : 1f);
@@ -105,17 +124,19 @@ namespace Game.Ai.V2
                 apOpportunity += lostDraws * AiConfigV2.scoutOptionalStealthDrawOpportunity;
             }
 
+            float totalBenefit = Mathf.Clamp01(protection + routeBenefit);
             OptionalStealthDecision decision =
-                protection - apOpportunity >= AiConfigV2.scoutOptionalStealthEnterMargin
+                totalBenefit - apOpportunity >= AiConfigV2.scoutOptionalStealthEnterMargin
                     ? OptionalStealthDecision.Enter
                     : OptionalStealthDecision.Skip;
 
             string explain = $"knownRisk={knownRisk.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"effectiveRisk={risk.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"protect={protection.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"route={routeBenefit.ToString("0.00", CultureInfo.InvariantCulture)}(access={routeAccess.ToString("0.00", CultureInfo.InvariantCulture)},short={routeShorten.ToString("0.00", CultureInfo.InvariantCulture)}) "
                 + $"apOpp={apOpportunity.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)}";
-            return new OptionalStealthEvaluation(decision, risk, protection, apOpportunity, explain);
+            return new OptionalStealthEvaluation(decision, risk, protection, routeBenefit, apOpportunity, explain);
         }
     }
 }

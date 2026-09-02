@@ -486,7 +486,9 @@ namespace Game.Ai.V2
         public const float scoutOptionalStealthStrategicBodyFactor = 1.3f;// a hero-led scout's skin is worth more
         public const float scoutOptionalStealthBaseApOpportunity = 0.06f;// a spent AP is never entirely free late-turn
         public const float scoutOptionalStealthDrawOpportunity = 0.35f;  // extra opportunity cost when the spend would kill a legal draw
-        public const float scoutOptionalStealthEnterMargin = 0.10f;      // enter only when protection - opportunity clears this
+        public const float scoutOptionalStealthEnterMargin = 0.10f;      // enter only when (threatProtection + routeBenefit) - opportunity clears this
+        public const float scoutStealthRouteAccessWeight = 0.9f;         // spec §12 — RouteAccessBenefit contribution to total stealth benefit (hiding unlocks an otherwise-blocked step)
+        public const float scoutStealthRouteShorteningWeight = 0.5f;     // spec §12 — RouteShorteningBenefit contribution (a hidden corridor threads a cluster of occupied hexes)
         // Hard bound on Research/Production Challenges the Strategic Manager may ATTEMPT per AI turn
         // (Phase A + Phase B share it). Generation is resource-expensive and probabilistic — one is
         // a safe first pass; raise only against real AiDebug.log runs.

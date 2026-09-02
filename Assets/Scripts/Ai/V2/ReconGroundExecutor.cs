@@ -457,6 +457,9 @@ namespace Game.Ai.V2
             float knownRouteRisk = Mathf.Max(LegDetectionRisk(player, nextHex),
                 LegDetectionRisk(player, strategicAnchor));
 
+            RouteTopologyBenefits(player, army, nextHex, strategicAnchor,
+                out float routeAccess, out float routeShorten);
+
             var eval = ScoutOptionalStealthPolicy.Evaluate(new OptionalStealthInputs
             {
                 LegDetectionRisk = knownRouteRisk,
@@ -468,6 +471,8 @@ namespace Game.Ai.V2
                 DrawAvailable = drawAvailable,
                 DrawApCost = ctx != null ? ctx.DrawApCost : 0,
                 DrawOpportunities = drawAvailable ? AiConfigV2.maxTerminalDrawsPerTurn : 0,
+                RouteAccessBenefit = routeAccess,
+                RouteShorteningBenefit = routeShorten,
             });
 
             float slack = Mathf.Max(0f, root.ActionPoints - Mathf.Max(0f, mandatoryApClaims));
@@ -482,6 +487,39 @@ namespace Game.Ai.V2
             root.SpendActionPoints(stealthAp);
             StealthSystem.EnterStealth(scout);
             return true;
+        }
+
+        // Spec §12 — stealth as route topology. RouteAccessBenefit is 1 when a known non-own army
+        // sits on the immediate next step (or the anchor) so a visible mover would be forced to
+        // engage while a hidden one can pass; RouteShorteningBenefit rises with the density of
+        // known occupied hexes around the next step (a hidden corridor through a cluster). Honest
+        // memory only — never a TrueWorld read.
+        private static void RouteTopologyBenefits(PlayerSetupData player, ArmyData army, HexCoord nextHex,
+            HexCoord anchor, out float access, out float shorten)
+        {
+            access = 0f;
+            shorten = 0f;
+            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
+            if (hidden)
+                return; // already hidden — this policy is only asked before entering stealth
+
+            bool OccupiedByOther(HexCoord h)
+            {
+                foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                    if (s.Hex.Equals(h)) return true;
+                foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownNeutralSightings(player))
+                    if (s.Hex.Equals(h)) return true;
+                return false;
+            }
+
+            if (OccupiedByOther(nextHex) || OccupiedByOther(anchor))
+                access = 1f;
+
+            int occupiedNearby = 0;
+            foreach (HexCoord h in HexGridMath.HexesInRange(nextHex, 2))
+                if (!h.Equals(nextHex) && OccupiedByOther(h))
+                    occupiedNearby++;
+            shorten = Mathf.Clamp01(occupiedNearby / 4f);
         }
 
         private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex)
