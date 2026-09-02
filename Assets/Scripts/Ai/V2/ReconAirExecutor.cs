@@ -14,6 +14,11 @@ namespace Game.Ai.V2
     // route survives a transition. Every outbound AND return move is exactly one adjacent hex,
     // resolved by the existing authoritative aviation/movement paths, followed by live
     // visibility/IntelAge refresh and a fresh safety/reward decision.
+    //
+    // AiTaskKind.AirRecon is retained only as the EXISTING landing-slot reservation primitive.
+    // V2 never calls AiAviationSupport.ContinueSortie for these actors: ReconAssignment + the live
+    // planner own direction/mode, while the task contributes only LandingHex capacity ownership and
+    // the ordinary first-move Energy-reservation seam already understood by AiAviationSupport.
     internal static class ReconAirExecutor
     {
         private const int MaxAirActorsPerTurn = 2;
@@ -102,6 +107,7 @@ namespace Game.Ai.V2
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                     continue;
 
+                bool firstVisitedBefore = VisionSystem.IsVisited(player, first.Value.Hex);
                 var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
                     .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
                 var launchDecision = new AiDecision
@@ -124,26 +130,38 @@ namespace Game.Ai.V2
                     .OrderBy(a => a.Id)
                     .FirstOrDefault();
                 if (launched == null)
-                    continue; // LaunchRoutine either rejected or rolled the group back to storage.
+                    continue; // LaunchRoutine rejected or rolled the group back to storage.
 
-                // LaunchRoutine's temporary V1 task exists only to protect Energy and make launch +
-                // first step atomic. MoveArmyRoutine has now consumed/released that reservation.
-                // Remove the temporary route owner before V2 takes over so V1 and V2 can never both
-                // claim the same aircraft. Release is idempotent in the rare zero-progress path.
-                AiTask temporary = AiTaskRegistry.TaskFor(player, launched);
-                if (temporary != null && temporary.Kind == AiTaskKind.AirRecon)
+                AiTask reservationTask = AiTaskRegistry.TaskFor(player, launched);
+                if (launched.Hex.Equals(airfieldHex))
                 {
-                    AiResourceReservation.Release(temporary);
-                    AiTaskRegistry.Remove(player, temporary);
+                    // ContinueSortie preflight should make this rare. Do not claim a V2 actor when
+                    // the authoritative first move made zero physical progress.
+                    RemoveAirReconReservation(player, launched);
+                    AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
+                        + "first step made no progress; V2 assignment not started");
+                    continue;
+                }
+
+                // Keep LaunchRoutine's AirRecon task as a LANDING-SLOT reservation shell. Its Energy
+                // reservation was already consumed/released by MoveArmyRoutine. V2 never calls the
+                // V1 route continuation; every next target/landing is overwritten by the live V2
+                // planner before the next one-hex move.
+                if (reservationTask != null && reservationTask.Kind == AiTaskKind.AirRecon)
+                {
+                    reservationTask.AirOutbound = true;
+                    reservationTask.TargetHex = first.Value.Hex;
+                    reservationTask.LandingHex = first.Value.LandingHex;
                 }
 
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, launched.Id,
                     airfieldHex, first.Value.Hex, requestedMode, ctx.TurnNumber);
                 ReconAssignmentRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                LogVisitedInvariant(player, first.Value.Hex, firstVisitedBefore, "storage-launch-first-step");
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
                     + $"launch=({airfieldHex.Q},{airfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
-                    + $"mode={assignment.Mode}; temporary V1 AirRecon task released");
+                    + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
 
                 used.Add(launched.Id);
                 actorsUsed++;
@@ -171,6 +189,7 @@ namespace Game.Ai.V2
                 if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null)
                 {
                     ReconAssignmentRegistry.Retire(player, armyId, "air mover lost / invalid");
+                    if (air != null) RemoveAirReconReservation(player, air);
                     break;
                 }
 
@@ -183,11 +202,11 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} landed at "
                         + $"({air.Hex.Q},{air.Hex.R}); sortie complete");
                     ReconAssignmentRegistry.Retire(player, armyId, "air recon landed");
-                    RemoveTemporaryAirReconTask(player, air);
+                    RemoveAirReconReservation(player, air);
                     break;
                 }
                 if (air.CurrentMovement <= 0)
-                    break; // multi-turn assignment remains durable for next turn
+                    break; // multi-turn assignment + landing reservation remain durable next turn
 
                 ReconMode mode = RequestedMode(snapshot);
                 if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))
@@ -212,12 +231,13 @@ namespace Game.Ai.V2
                         break;
                     }
 
+                    AiTask reservation = EnsureAirReconReservation(player, air, landing, outbound: false);
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} "
                         + $"({air.Hex.Q},{air.Hex.R})->({returnStep.Value.Q},{returnStep.Value.R}) "
                         + $"landing=({landing.Q},{landing.R}) {returnReason}");
                     bool moved = false;
                     yield return MoveOne(player, ctx, air, returnStep.Value, "V2 Air Recon — safe return",
-                        () => moved = true);
+                        reservation, () => moved = true);
                     movedAny |= moved;
                     if (!moved) break;
                     ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
@@ -232,19 +252,24 @@ namespace Game.Ai.V2
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, armyId, air.Hex,
                     choice.Value.Hex, mode, ctx.TurnNumber);
                 mode = assignment.Mode;
+                AiTask reservationTask = EnsureAirReconReservation(player, air,
+                    choice.Value.LandingHex, outbound: true, target: choice.Value.Hex);
 
-                if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex))
+                if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex, reservationTask))
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} cannot afford/issue first step "
                         + $"AP{choice.Value.ActivationAp:0.#}/E{choice.Value.ActivationEnergy:0.#}; cancel/return");
                     if (atAirfield)
+                    {
                         ReconAssignmentRegistry.Retire(player, armyId, "air recon activation unaffordable");
+                        RemoveAirReconReservation(player, air);
+                    }
                     break;
                 }
 
                 bool stepMoved = false;
                 yield return MoveOne(player, ctx, air, choice.Value.Hex,
-                    $"V2 Air Recon — {mode} one-step live replan", () => stepMoved = true);
+                    $"V2 Air Recon — {mode} one-step live replan", reservationTask, () => stepMoved = true);
                 movedAny |= stepMoved;
                 if (!stepMoved) break;
                 ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
@@ -254,11 +279,11 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator MoveOne(PlayerSetupData player, AiTurnContext ctx, ArmyData air,
-            HexCoord next, string reason, Action onMoved)
+            HexCoord next, string reason, AiTask reservationTask, Action onMoved)
         {
             HexCoord before = air.Hex;
             bool visitedBefore = VisionSystem.IsVisited(player, next);
-            var decision = AiDecision.Move(air, next, reason, null, 0f, AiTaskCategory.Reconnaissance);
+            var decision = AiDecision.Move(air, next, reason, reservationTask, 0f, AiTaskCategory.Reconnaissance);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -270,14 +295,9 @@ namespace Game.Ai.V2
             // VisionSystem normally fires the sidecar event itself; this explicit stamp makes the
             // per-step Recon invariant local and writes ONLY V2 IntelAge, never Visited/EverSeen.
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-
-            bool visitedAfter = VisionSystem.IsVisited(player, next);
-            if (!visitedBefore && visitedAfter)
-                AiDebugLog.Write($"[AI][V2][Recon][Air][INVARIANT-FAIL] aircraft step unexpectedly marked ground "
-                    + $"Visited at ({next.Q},{next.R})");
-            else
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
-                    + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
+            LogVisitedInvariant(player, next, visitedBefore, "live-step");
+            AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
+                + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
         }
 
         private static HexCoord? PickReturnStep(PlayerSetupData player, HexMap map, ArmyData air,
@@ -315,13 +335,39 @@ namespace Game.Ai.V2
             return path != null && path.Hexes.Count > 1 ? path.Hexes[1] : (HexCoord?)null;
         }
 
-        private static void RemoveTemporaryAirReconTask(PlayerSetupData player, ArmyData air)
+        private static AiTask EnsureAirReconReservation(PlayerSetupData player, ArmyData air,
+            HexCoord landing, bool outbound, HexCoord? target = null)
+        {
+            AiTask task = AiTaskRegistry.TaskFor(player, air);
+            if (task == null)
+            {
+                task = new AiTask { Kind = AiTaskKind.AirRecon, Army = air };
+                AiTaskRegistry.Add(player, task);
+            }
+            if (task.Kind != AiTaskKind.AirRecon)
+                return null; // another aviation task owns this actor; caller will fail closed.
+
+            task.AirOutbound = outbound;
+            task.LandingHex = landing;
+            task.TargetHex = target ?? landing;
+            return task;
+        }
+
+        private static void RemoveAirReconReservation(PlayerSetupData player, ArmyData air)
         {
             AiTask task = air != null ? AiTaskRegistry.TaskFor(player, air) : null;
             if (task == null || task.Kind != AiTaskKind.AirRecon)
                 return;
             AiResourceReservation.Release(task);
             AiTaskRegistry.Remove(player, task);
+        }
+
+        private static void LogVisitedInvariant(PlayerSetupData player, HexCoord hex, bool visitedBefore, string phase)
+        {
+            bool visitedAfter = VisionSystem.IsVisited(player, hex);
+            if (!visitedBefore && visitedAfter)
+                AiDebugLog.Write($"[AI][V2][Recon][Air][INVARIANT-FAIL] phase={phase} aircraft unexpectedly "
+                    + $"marked ground Visited at ({hex.Q},{hex.R})");
         }
 
         private static ReconMode RequestedMode(WorldSnapshot snapshot)
