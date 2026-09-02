@@ -33,8 +33,6 @@ namespace Game.Ai.V2
             var used = new HashSet<int>();
             int actorsUsed = 0;
 
-            // Continue already-airborne V2 Recon actors first. A fuel-limited multi-turn sortie is
-            // a commitment to get home safely before a fresh aircraft is launched.
             var active = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && AviationRules.IsValidAirArmy(a)
                     && a.Controller != null && a.CurrentMovement > 0
@@ -54,8 +52,6 @@ namespace Game.Ai.V2
             if (actorsUsed >= MaxAirActorsPerTurn)
                 yield break;
 
-            // Existing formed aircraft parked over an owned airfield are cheaper to reuse than
-            // forming another group from storage, so give them first refusal.
             var candidates = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && !used.Contains(a.Id)
                     && AviationRules.IsValidAirArmy(a) && a.Controller != null && a.CurrentMovement > 0
@@ -79,12 +75,6 @@ namespace Game.Ai.V2
             if (actorsUsed >= MaxAirActorsPerTurn)
                 yield break;
 
-            // Normal parked aircraft live in an Airfield storage container, not in a mobile
-            // ArmyData. Enumerate that storage directly, but launch ONLY through V1's shared
-            // AiAviationSupport.LaunchRoutine -> AviationActions.TryLaunch path. The V2 planner
-            // supplies one adjacent action hex and a proven safe landing; LaunchRoutine then forms
-            // the army, reserves Energy, rechecks the sortie and performs the first real move as one
-            // atomic sequence. No parallel launch implementation exists here.
             ReconMode requestedMode = RequestedMode(snapshot);
             foreach (HexCoord airfieldHex in AiAviationSupport.OwnedAirfieldHexes(player).ToList())
             {
@@ -130,23 +120,17 @@ namespace Game.Ai.V2
                     .OrderBy(a => a.Id)
                     .FirstOrDefault();
                 if (launched == null)
-                    continue; // LaunchRoutine rejected or rolled the group back to storage.
+                    continue;
 
                 AiTask reservationTask = AiTaskRegistry.TaskFor(player, launched);
                 if (launched.Hex.Equals(airfieldHex))
                 {
-                    // ContinueSortie preflight should make this rare. Do not claim a V2 actor when
-                    // the authoritative first move made zero physical progress.
                     RemoveAirReconReservation(player, launched);
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
                         + "first step made no progress; V2 assignment not started");
                     continue;
                 }
 
-                // Keep LaunchRoutine's AirRecon task as a LANDING-SLOT reservation shell. Its Energy
-                // reservation was already consumed/released by MoveArmyRoutine. V2 never calls the
-                // V1 route continuation; every next target/landing is overwritten by the live V2
-                // planner before the next one-hex move.
                 if (reservationTask != null && reservationTask.Kind == AiTaskKind.AirRecon)
                 {
                     reservationTask.AirOutbound = true;
@@ -166,9 +150,6 @@ namespace Game.Ai.V2
                 used.Add(launched.Id);
                 actorsUsed++;
 
-                // The first hex already resolved authoritatively inside LaunchRoutine. Continue the
-                // remaining MP through the V2 live one-step loop immediately; every next transition
-                // gets a new score and full safe-return proof.
                 if (launched.Controller != null && launched.CurrentMovement > 0
                     && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
                     yield return RunActor(player, root, ctx, snapshot, launched, initialStepAlreadyMoved: true);
@@ -206,18 +187,15 @@ namespace Game.Ai.V2
                     break;
                 }
                 if (air.CurrentMovement <= 0)
-                    break; // multi-turn assignment + landing reservation remain durable next turn
+                    break;
 
                 ReconMode mode = RequestedMode(snapshot);
                 if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))
                     mode = existing.Mode;
 
                 ReconAirStepPlanner.StepChoice? choice =
-                    ReconAirStepPlanner.Pick(player, ctx.Map, air, snapshot, mode, ctx.TurnNumber);
+                    ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber);
 
-                // An airborne aircraft must return whenever marginal information no longer clears
-                // the opportunity floor or no complete safe onward sortie exists. A fresh aircraft
-                // simply stays parked — no AP/Energy is spent for a low-value sortie.
                 bool mustReturn = !atAirfield
                     && (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore);
                 if (mustReturn)
@@ -232,6 +210,11 @@ namespace Game.Ai.V2
                     }
 
                     AiTask reservation = EnsureAirReconReservation(player, air, landing, outbound: false);
+                    if (reservation == null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked — another task owns aircraft");
+                        break;
+                    }
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} "
                         + $"({air.Hex.Q},{air.Hex.R})->({returnStep.Value.Q},{returnStep.Value.R}) "
                         + $"landing=({landing.Q},{landing.R}) {returnReason}");
@@ -247,13 +230,16 @@ namespace Game.Ai.V2
                 if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                     break;
 
-                // Fresh actor: create durable identity only AFTER a real safe/useful first step
-                // exists. The adjacent choice is only an anchor/heading seed, never a cached route.
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, armyId, air.Hex,
                     choice.Value.Hex, mode, ctx.TurnNumber);
                 mode = assignment.Mode;
                 AiTask reservationTask = EnsureAirReconReservation(player, air,
                     choice.Value.LandingHex, outbound: true, target: choice.Value.Hex);
+                if (reservationTask == null)
+                {
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked — another task owns aircraft");
+                    break;
+                }
 
                 if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex, reservationTask))
                 {
@@ -292,8 +278,6 @@ namespace Game.Ai.V2
             if (!after.Equals(before))
                 onMoved?.Invoke();
 
-            // VisionSystem normally fires the sidecar event itself; this explicit stamp makes the
-            // per-step Recon invariant local and writes ONLY V2 IntelAge, never Visited/EverSeen.
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
             AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
@@ -345,7 +329,7 @@ namespace Game.Ai.V2
                 AiTaskRegistry.Add(player, task);
             }
             if (task.Kind != AiTaskKind.AirRecon)
-                return null; // another aviation task owns this actor; caller will fail closed.
+                return null;
 
             task.AirOutbound = outbound;
             task.LandingHex = landing;
