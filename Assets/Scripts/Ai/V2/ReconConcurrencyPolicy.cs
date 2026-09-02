@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.HexGrid;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -37,36 +38,81 @@ namespace Game.Ai.V2
                 return 0;
 
             int desired = 1;
-            if (hardCap < 2 || runnable.Count < 2)
-                return desired;
-
-            ReconObjective first = runnable[0];
-            ReconObjective second = runnable[1];
-            float best = Mathf.Max(0.0001f, first?.BaseValue ?? 0f);
-            float secondValue = Mathf.Max(0f, second?.BaseValue ?? 0f);
-            float secondRatio = secondValue / best;
             float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
 
-            if (secondValue >= SecondLaneMinBaseValue
-                && secondRatio >= SecondLaneMinRelativeValue
-                && dark >= SecondLaneMinExplorableUnknownFrac)
-                desired = 2;
-
-            // A third lane is never requested unless lane two already qualified. This keeps the
-            // concurrency curve monotonic and prevents a very dark map from skipping a weak second
-            // objective just because a third entry happens to look acceptable in isolation.
-            if (desired >= 2 && hardCap >= 3 && runnable.Count >= 3)
+            if (hardCap >= 2 && runnable.Count >= 2)
             {
-                ReconObjective third = runnable[2];
-                float thirdValue = Mathf.Max(0f, third?.BaseValue ?? 0f);
-                float thirdRatio = thirdValue / best;
-                if (thirdValue >= ThirdLaneMinBaseValue
-                    && thirdRatio >= ThirdLaneMinRelativeValue
-                    && dark >= ThirdLaneMinExplorableUnknownFrac)
-                    desired = 3;
+                ReconObjective first = runnable[0];
+                ReconObjective second = runnable[1];
+                float best = Mathf.Max(0.0001f, first?.BaseValue ?? 0f);
+                float secondValue = Mathf.Max(0f, second?.BaseValue ?? 0f);
+                float secondRatio = secondValue / best;
+
+                if (secondValue >= SecondLaneMinBaseValue
+                    && secondRatio >= SecondLaneMinRelativeValue
+                    && dark >= SecondLaneMinExplorableUnknownFrac)
+                    desired = 2;
+
+                // A third lane is never requested unless lane two already qualified. This keeps the
+                // concurrency curve monotonic and prevents a very dark map from skipping a weak
+                // second objective just because a third entry happens to look acceptable alone.
+                if (desired >= 2 && hardCap >= 3 && runnable.Count >= 3)
+                {
+                    ReconObjective third = runnable[2];
+                    float thirdValue = Mathf.Max(0f, third?.BaseValue ?? 0f);
+                    float thirdRatio = thirdValue / best;
+                    if (thirdValue >= ThirdLaneMinBaseValue
+                        && thirdRatio >= ThirdLaneMinRelativeValue
+                        && dark >= ThirdLaneMinExplorableUnknownFrac)
+                        desired = 3;
+                }
             }
 
+            // Spec §28 — coverage sizing on top of the value-driven count: never fewer scouts than
+            // distinct reachable unexplored regions (capped), plus one dedicated lane when Refresh
+            // pressure alone is high enough that an Explore-only portfolio would let the known
+            // picture rot.
+            int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
+            desired = Mathf.Max(desired, Mathf.Min(hardCap, regions));
+
+            float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
+            if (refresh >= AiConfigV2.reconDemandRefreshLaneThreshold && desired < hardCap)
+                desired += 1;
+
             return Mathf.Min(hardCap, desired);
+        }
+
+        // Coarse count of connected reachable unexplored regions: frontier hexes within
+        // reconDemandRegionMergeDistance of each other are one region. Frontier is bounded so the
+        // O(n^2) flood is cheap.
+        internal static int CountFrontierRegions(IReadOnlyList<FrontierHexSnapshot> frontier)
+        {
+            if (frontier == null || frontier.Count == 0)
+                return 0;
+            var unassigned = new HashSet<HexCoord>();
+            foreach (FrontierHexSnapshot f in frontier)
+                unassigned.Add(f.Hex);
+
+            int regions = 0;
+            var stack = new Stack<HexCoord>();
+            while (unassigned.Count > 0)
+            {
+                regions++;
+                HexCoord seed = default;
+                foreach (HexCoord h in unassigned) { seed = h; break; }
+                unassigned.Remove(seed);
+                stack.Push(seed);
+                while (stack.Count > 0)
+                {
+                    HexCoord cur = stack.Pop();
+                    var near = new List<HexCoord>();
+                    foreach (HexCoord other in unassigned)
+                        if (HexGridMath.Distance(cur, other) <= AiConfigV2.reconDemandRegionMergeDistance)
+                            near.Add(other);
+                    foreach (HexCoord n in near) { unassigned.Remove(n); stack.Push(n); }
+                }
+            }
+            return regions;
         }
 
         public static string Explain(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable)
@@ -77,9 +123,11 @@ namespace Game.Ai.V2
             float secondRatio = first > 0f ? second / first : 0f;
             float thirdRatio = first > 0f ? third / first : 0f;
             float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
+            int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
+            float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
             return $"desired={DesiredTotal(snap, runnable)} hard={HardCap} "
                 + $"best={first:0.0} second={second:0.0} r2={secondRatio:0.00} "
-                + $"third={third:0.0} r3={thirdRatio:0.00} dark={dark:0.00}";
+                + $"third={third:0.0} r3={thirdRatio:0.00} dark={dark:0.00} regions={regions} refresh={refresh:0.00}";
         }
     }
 }

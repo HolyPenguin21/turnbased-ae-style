@@ -600,6 +600,8 @@ namespace Game.Ai.V2
         public const float reconConcurrencyThirdLaneMinBaseValue = 40f;
         public const float reconConcurrencyThirdLaneMinRelValue = 0.65f;
         public const float reconConcurrencyThirdLaneMinDarkFrac = 0.55f;
+        public const int reconDemandRegionMergeDistance = 2;         // frontier hexes within this many hexes count as one reachable unexplored region (spec §28)
+        public const float reconDemandRefreshLaneThreshold = 0.55f;  // Refresh pressure at/above this earns one dedicated Refresh scout on top of the Explore-driven count
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
         public const float scoutStepCoverageNearbyWeight = 0.55f;
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
