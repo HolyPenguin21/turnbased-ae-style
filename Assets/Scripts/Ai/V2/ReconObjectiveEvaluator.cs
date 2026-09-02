@@ -90,33 +90,23 @@ namespace Game.Ai.V2
                         && c.Position.HasValue)
                         list.Add(BuildSurveil(snap, c));
 
-            // Ground acceptance telemetry is evaluated from this frozen strategic snapshot. Resolve
-            // the owner only from honest self armies; if none exist there is no scout execution to
-            // validate and the scenario correctly remains NOT_OBSERVED.
+            // Objective-level acceptance is limited to facts this layer owns: the sanitized
+            // direction boundary and whether direction pressure enters the best Refresh candidate.
+            // Explore-vs-Refresh strategic pressure is audited in MissionLayer where the matching
+            // frozen DesireBreakdown is available.
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
             {
                 ReconAcceptanceAudit.RecordDirectionBoundary(auditPlayer, snap.TurnNumber,
                     ReconDirectionModel.Build(snap));
 
-                if (refresh.Count > 0)
-                {
-                    float bestExplore = list
-                        .Where(o => o != null && o.Kind == ReconObjectiveKind.Explore)
-                        .Select(o => o.BaseValue)
-                        .DefaultIfEmpty(0f)
-                        .Max();
-                    ReconObjective topRefresh = refresh
-                        .Where(o => o != null)
-                        .OrderByDescending(o => o.BaseValue)
-                        .FirstOrDefault();
-                    float bestRefresh = topRefresh?.BaseValue ?? 0f;
-                    ReconAcceptanceAudit.RecordMostlyExploredPressure(auditPlayer, snap.TurnNumber,
-                        snap.MapKnowledge.ExplorableUnknownFrac, bestExplore, bestRefresh);
-                    if (topRefresh != null)
-                        ReconAcceptanceAudit.RecordDirectionInfluence(auditPlayer, snap.TurnNumber,
-                            topRefresh.FocusHex, topRefresh.DirectionPressure, topRefresh.BaseValue);
-                }
+                ReconObjective topRefresh = refresh
+                    .Where(o => o != null)
+                    .OrderByDescending(o => o.BaseValue)
+                    .FirstOrDefault();
+                if (topRefresh != null)
+                    ReconAcceptanceAudit.RecordDirectionInfluence(auditPlayer, snap.TurnNumber,
+                        topRefresh.FocusHex, topRefresh.DirectionPressure, topRefresh.BaseValue);
             }
             return list;
         }
