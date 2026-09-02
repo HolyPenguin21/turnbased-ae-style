@@ -806,5 +806,62 @@ namespace Game.Ai.V2
         public const float initiativeApBenefitPerExpectedAp = 4.0f;   // one expected AP is worth ~this many resource units at full pressure
         public const float initiativeTempoBenefitPerEarliness = 3.0f; // full [0..1] earliness swing is worth ~this at full tempo pressure
         public const float initiativeNetValueEpsilon = 0.01f;         // candidates within this net value are "effectively equal"
+
+        // =======================================================================================
+        //  STRATEGIC CARD EVALUATOR  (AI-MGR-01 — the shared Card x IntendedUse model used by BOTH
+        //  StrategicManager phases). Replaces ScorePlanA's cost/fit product and SurplusUtility's
+        //  additive sum with one breakdown (RoleFit / ImmediateTempo / NextTurnPotential /
+        //  CapabilityGapValue / ForceGrowthValue / ThreatResponseValue / ResourceEfficiency /
+        //  SynergyValue / Deployability / ScarcityValue / RedundancyPenalty / AlternativeUseValue /
+        //  HoldValue / ResourcePressureBenefit / HandPressureBenefit). The Hero card CLASS adds no
+        //  flat bonus or penalty — hero fitness is HeroRoleEvaluator's characteristic score, and
+        //  the only hero cost is AlternativeUseValue when a scarce hero is spent off its best use.
+        //  First-pass; tune against real AiDebug.log strat.eval lines.
+        // =======================================================================================
+        // ForceGrowthValue = SurplusCombatReadinessUtility (marginal AiPower, [0..2]) * Lerp(
+        //   baselineReadinessGrowthFloor, 1, BaselineForceReadiness.Need) * this. Keeps an ordinary
+        //   combat body worth materialising at AGG = 0 / DEF = 0 without out-bidding a real demand.
+        public const float forceGrowthValueWeight = 0.60f;
+        // Flat bonus for a card that closes a capability the AI currently lacks ENTIRELY (0 scouts,
+        // 0 heroes, no field body). Same magnitude band as surplusScarcityMed.
+        public const float capabilityGapValue = 0.50f;
+        // ThreatResponseValue (AntiArmor / AntiAir roles only) = clamp(enemyDriverPower / norm) * weight.
+        // Uses omniscient enemy power as a DIRECTIONAL strategic bias; never becomes normal AI intel.
+        public const float threatResponseNorm = 40f;
+        public const float threatResponseValueWeight = 0.30f;
+        // NextTurnPotential — a fresh independent actor (new army / reusable shell) opens next turn.
+        public const float nextTurnActorPotential = 0.15f;
+        // A non-recce body with at least this moveMax also offers the MobileCombat role.
+        public const int mobileCombatMoveMax = 5;
+        // Hero fitness for a field-command role: HeroRoleEvaluator-style leadership score / norm,
+        // clamped to cap. A weak hero scores low; there is NO flat hero bonus.
+        public const float heroLeadershipFitNorm = 8f;
+        public const float heroLeadershipFitCap = 1.20f;
+        public const float heroSupportFitValue = 0.30f;   // a Researcher/Assembler hero evaluated for the Support role
+        // HoldValue (spec §3) parts.
+        public const float holdUniqueRoleValue = 0.40f;    // a rare stealth body / a support hero while a combat leader is already fielded
+        public const float holdScarcityValue = 0.25f;      // the card carries a scarce capability (SurplusScarcity >= med)
+        public const float holdHandPressurePenalty = 0.50f;// a full hand argues against holding
+        public const float holdLostTempoPenalty = 0.35f;   // Phase B — not playing now forfeits this turn's tempo
+
+        // --- BaselineForceReadiness (spec §4) — radar-DEMAND-INDEPENDENT standing-force signal.
+        //     Need in [0..1]: high when the fielded force / combat-actor count / capability coverage
+        //     is thin for the game stage, economy and known enemy strength. Consumed by
+        //     ForceGrowthValue AND by DemandLayer.BaselineForceReadinessDemands (one low-priority
+        //     FieldCombatPower demand so an ordinary unit gets Phase-A pull, not only surplus).
+        public const int baselineReadinessStageRampLo = 2;    // turn at/under which "stage" is 0 (very little standing force expected)
+        public const int baselineReadinessStageRampHi = 18;   // turn at/over which "stage" is 1 (a full standing force is expected)
+        public const float baselineReadinessBaseTargetPower = 12f;   // minimum expected fielded power regardless of enemy
+        public const float baselineReadinessEnemyMatchFrac = 0.60f;  // ...or this fraction of known enemy strength, whichever is larger
+        public const float baselineReadinessEarlyTargetFrac = 0.35f; // fraction of the target that applies at stage 0
+        public const int baselineReadinessTargetActors = 2;          // combat-capable field actors the AI wants standing
+        public const float baselineReadinessPowerGapWeight = 0.45f;
+        public const float baselineReadinessActorGapWeight = 0.35f;
+        public const float baselineReadinessCoverGapWeight = 0.20f;
+        public const float baselineReadinessSecureDamp = 0.55f;      // a fully secure economy multiplies Need by this
+        public const float baselineReadinessGrowthFloor = 0.40f;     // ForceGrowthValue keeps at least this fraction of its marginal value at Need 0
+        public const float baselineReadinessDemandMinNeed = 0.45f;   // below this Need, DemandLayer raises no baseline demand
+        public const float baselineReadinessDemandValue = 22f;       // AxisDemand.Value ceiling for the baseline demand (scaled by Need) — deliberately low so real threats/raids outrank it
+        public const float baselineReadinessSatisfiedPower = 14f;    // free raid-eligible field power at/above this + enough actors -> no baseline demand
     }
 }

@@ -290,6 +290,10 @@ namespace Game.Ai.V2
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
             LogQualityChoice(demand, ranked);
+            MaterializationPlan win = ranked[0].plan;
+            if (win.UseBreakdown != null)
+                AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {win.StableKey} "
+                    + $"role={win.UseRole} [{win.UseBreakdown.ToCompact()}]");
             return (ranked[0].plan, ranked[0].followupAp);
         }
 
@@ -357,7 +361,7 @@ namespace Game.Ai.V2
                         continue;
                     if (StrategicManager.ReservesOkAfterChain(root, direct))
                     {
-                        direct.Score = SurplusUtility(direct, inv, recce, hero, hand, baseAbilities);
+                        direct.Score = SurplusUtility(snap, direct, inv, recce, hero, hand, baseAbilities);
                         candidates.Add(direct);
                     }
 
@@ -381,7 +385,7 @@ namespace Game.Ai.V2
                         if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
                             continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, att)) continue;
-                        att.Score = SurplusUtility(att, inv, recce, hero, hand, projected)
+                        att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected)
                             - AiConfigV2.stratChainAttachStepPenalty;
                         candidates.Add(att);
                     }
@@ -432,7 +436,7 @@ namespace Game.Ai.V2
                                 if (!StrategicManager.ReservesOkAfterChain(root, genEq))
                                     continue;
 
-                                float util = (SurplusUtility(genEq, inv, recce, hero, hand, projected)
+                                float util = (SurplusUtility(snap, genEq, inv, recce, hero, hand, projected)
                                               - AiConfigV2.stratChainGenerationStepPenalty
                                               - AiConfigV2.stratChainAttachStepPenalty)
                                              * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
@@ -464,7 +468,7 @@ namespace Game.Ai.V2
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, gen)) continue;
-                        float util = (SurplusUtility(gen, inv, genRecce, genHero, hand, genAbilities)
+                        float util = (SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities)
                                       - AiConfigV2.stratChainGenerationStepPenalty)
                                      * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
                                          Mathf.Clamp01(g.SuccessChance));
@@ -481,6 +485,10 @@ namespace Game.Ai.V2
                 .ThenByDescending(p => p.Score)
                 .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
                 .First();
+            if (bestPlan.UseBreakdown != null)
+                AiDebugLog.Write($"[AI][V2]   strat.eval B — {bestPlan.StableKey} role={bestPlan.UseRole} "
+                    + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"[{bestPlan.UseBreakdown.ToCompact()}]");
             return (bestPlan, bestPlan.Score);
         }
 
@@ -660,244 +668,34 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // AI-MGR-01 — Phase A scoring is now the shared StrategicCardEvaluator (Card x IntendedUse,
+        // BaselineForceReadiness, no flat Hero bonus). This wrapper keeps the call signature and
+        // still carries the Scout capability-quality breakdown + the new use breakdown for logging.
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
             CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap)
         {
-            float fit = TargetFit(p.Deploy.Hex, demand.TargetHex);
-            float resSum = ResourceCostSum(p.ResCost);
-            float costFactor = 1f + AiConfigV2.stratCardApCostWeight * p.ApCost
-                                  + AiConfigV2.stratChainResCostWeight * resSum;
-            float traitBonus = demand.Capability != CapabilityKind.ScoutCapability
-                               && (demand.PreferredTraits & TraitPreference.Stealth) != 0
-                               && (projected & TraitPreference.Stealth) != 0
-                ? AiConfigV2.stratTraitMatchBonus : 0f;
-            float score = (1f + traitBonus) * (0.5f + 0.5f * fit) / Mathf.Max(0.0001f, costFactor);
-            score += PlacementBonus(p.Deploy.Kind);
-            if (p.Generation != null)
-                score *= Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                    Mathf.Clamp01(p.Generation.SuccessChance));
-            float qm = CapabilityQualityEvaluator.QualityMultiplier(
-                p, demand, inv, referenceMoveMax, hasCompetingHeroDemand,
-                out MaterializationQualityBreakdown qbd);
-            p.QualityBreakdown = qbd;
-            score *= qm;
-            score -= ChainStepPenalty(p.Kind);
-            score -= ScarcityOpportunityCost(p, demand, inv);
-            score -= GarrisonSaturationPenalty(p, demand, snap);
-            return score;
-        }
-
-        // Deterministic saturation / composition-diversity penalty for a GarrisonCombatPower demand
-        // landing in an EXISTING garrison / defensive army (spec §9, §10). Same-cycle pending
-        // additions are already reflected: Phase A refreshes the snapshot after every play, so the
-        // destination's live member count / power grows between BestForDemand calls, and this
-        // penalty rises with it — steering the next defensive card to a different destination
-        // instead of always the first/strongest army.
-        private static float GarrisonSaturationPenalty(MaterializationPlan p, AxisDemand demand, WorldSnapshot snap)
-        {
-            if (demand == null || demand.Capability != CapabilityKind.GarrisonCombatPower)
-                return 0f;
-            ArmyData dest = p?.Deploy.Army;
-            if (dest == null)
-                return 0f; // a fresh army / reusable shell has no existing crowd to saturate
-
-            int members = dest.Members?.Count ?? 0;
-            float penalty = AiConfigV2.garrisonCrowdingPenaltyPerMember * members;
-
-            // Destination already meets the demanded defence power -> steep penalty (it does not
-            // need this card; a different threatened asset or a fresh body is better).
-            float destPower = 0f;
-            if (snap?.Self?.Armies != null)
-                foreach (ArmySnapshot a in snap.Self.Armies)
-                    if (a != null && a.ArmyId == dest.Id) { destPower = a.EffectiveArmyPower; break; }
-            if (demand.RequiredCapabilityPower > 0f && destPower >= demand.RequiredCapabilityPower)
-                penalty += AiConfigV2.garrisonSaturatedPenalty;
-
-            // Light composition-diversity nudge: the card's primary unit type already dominates
-            // the destination's non-hero members.
-            if (PrimaryTypeDominates(p, dest))
-                penalty += AiConfigV2.garrisonDuplicateTypePenalty;
-
-            return penalty;
-        }
-
-        private static bool PrimaryTypeDominates(MaterializationPlan p, ArmyData dest)
-        {
-            CardDefinition def = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
-            if (def?.unitTypeTags == null || def.unitTypeTags.Count == 0 || dest?.Members == null)
-                return false;
-            Game.Cards.UnitTypeTag primary = def.unitTypeTags[0];
-            int nonHero = 0, sharing = 0;
-            foreach (UnitData m in dest.Members)
-            {
-                if (m == null || m.IsHero) continue;
-                nonHero++;
-                if (m.TypeTags != null && m.TypeTags.Contains(primary)) sharing++;
-            }
-            return nonHero > 0 && sharing * 2 >= nonHero;
-        }
-
-        private static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
-        {
-            float cost = 0f;
-            if (demand.Capability != CapabilityKind.ScoutCapability
-                && (demand.RequiredTraits & TraitPreference.Stealth) == 0)
-            {
-                bool consumesExistingStealth =
-                    (p.BaseCardInHand != null && CardCarriesStealth(p.BaseCardInHand))
-                    || (p.EquipmentInHand?.Definition?.equipment != null
-                        && GrantAddsStealth(p.EquipmentInHand.Definition.equipment));
-                if (consumesExistingStealth
-                    && !(inv != null && inv.StealthScouts > AiConfigV2.stratChainStealthScarceAt))
-                    cost += AiConfigV2.stratChainScarcityPenalty;
-            }
-            if (demand.Capability != CapabilityKind.Hero && demand.Capability != CapabilityKind.ScoutCapability)
-            {
-                CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
-                if (baseDef != null && baseDef.cardType == CardType.Hero
-                    && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
-                    cost += AiConfigV2.stratChainHeroScarcityPenalty;
-            }
-            return cost;
-        }
-
-        private static float ChainStepPenalty(MaterializationChainKind k)
-        {
-            switch (k)
-            {
-                case MaterializationChainKind.AttachDeploy: return AiConfigV2.stratChainAttachStepPenalty;
-                case MaterializationChainKind.GenerateDeploy: return AiConfigV2.stratChainGenerationStepPenalty;
-                case MaterializationChainKind.GenerateAttachDeploy:
-                    return AiConfigV2.stratChainAttachStepPenalty + AiConfigV2.stratChainGenerationStepPenalty;
-                default: return 0f;
-            }
+            StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
+                p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
+            p.QualityBreakdown = cand.QualityBreakdown;
+            p.UseBreakdown = cand.Breakdown;
+            p.UseRole = cand.IntendedRole;
+            return cand.TotalUseScore;
         }
 
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
 
-        private static float SurplusUtility(MaterializationPlan p, CapabilityInventory inv, bool recce, bool hero,
-            AiHandData hand, IReadOnlyList<string> projected)
+        // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
+        // Card x IntendedRole candidate set and returns the best NetScore (play value minus the
+        // separately scored HoldValue).
+        private static float SurplusUtility(WorldSnapshot snap, MaterializationPlan p, CapabilityInventory inv,
+            bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected)
         {
-            float scarcity = SurplusScarcity(inv, recce, hero);
-            float versatility = hero ? AiConfigV2.surplusHeroVersatility : AiConfigV2.surplusUnitVersatility;
-            float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
-                ? AiConfigV2.stratTraitMatchBonus : 0f;
-            float handPressure = hand.HasFreeSlot ? 0f : AiConfigV2.surplusHandPressureBonus;
-            float recurringApIncome = projected != null && projected.Contains(UnitAbilities.ApBonus)
-                ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
-            float oversupply = recce && inv != null
-                && inv.ReadyScouts + inv.ReserveScouts >= AiConfigV2.surplusScoutOversupplyAt
-                ? AiConfigV2.surplusOversupplyPenalty : 0f;
-            float readiness = recce ? 0f : SurplusCombatReadinessUtility(p);
-            float equipmentUpgrade = p.UsesEquipment ? EquipmentUpgradeUtility(p) : 0f;
-            float resSum = ResourceCostSum(p.ResCost);
-            return scarcity + versatility + traits + handPressure + recurringApIncome
-                + readiness + equipmentUpgrade
-                - AiConfigV2.surplusApCostWeight * p.ApCost
-                - AiConfigV2.surplusResourceCostWeight * resSum
-                - oversupply + PlacementBonus(p.Deploy.Kind);
-        }
-
-        // Phase B is not only disposal of stranded resources: deploying a combat card now is
-        // readiness purchased for future turns. Rank that investment with the same AiPower model
-        // WorldAnalysis uses, and prefer reinforcement when it improves an existing formation's
-        // composition instead of treating every Unit card as the same generic +0.25 utility.
-        private static float SurplusCombatReadinessUtility(MaterializationPlan p)
-        {
-            CardDefinition def = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
-            if (def == null || def.isAviation
-                || (def.cardType != CardType.Unit && def.cardType != CardType.Hero))
-                return 0f;
-
-            AiPower.PowerUnit incoming = AiPower.ToPowerUnit(def);
-            float marginal = incoming.BasePower;
-            ArmyData dest = p.Deploy.Army;
-            if (p.Deploy.Kind == DeploymentKind.ExistingArmy
-                && dest != null && !dest.IsGarrison && dest.Members != null && dest.Members.Count > 0)
-            {
-                List<AiPower.PowerUnit> before = dest.Members
-                    .Where(u => u != null && !u.IsAviation)
-                    .Select(AiPower.ToPowerUnit)
-                    .ToList();
-                float oldPower = AiPower.EffectiveArmyPower(before);
-                before.Add(incoming);
-                float newPower = AiPower.EffectiveArmyPower(before);
-                marginal = Mathf.Max(incoming.BasePower * 0.25f, newPower - oldPower);
-            }
-
-            // defencePerBodyPowerEstimate is already the project's notional "one useful combat
-            // body" power scale. Cap prevents one exceptional card from drowning all cost/risk.
-            return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate), 0f, 2f);
-        }
-
-        private static float EquipmentUpgradeUtility(MaterializationPlan p)
-        {
-            CardDefinition host = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
-            CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
-            EquipmentGrant grant = eq?.equipment;
-            if (host == null || grant == null)
-                return 0f;
-
-            var before = new Dictionary<EquipmentStat, int>
-            {
-                [EquipmentStat.Attack] = host.attack,
-                [EquipmentStat.Defense] = host.defenseRating,
-                [EquipmentStat.Resistance] = host.resistanceRating,
-                [EquipmentStat.Range] = host.range,
-                [EquipmentStat.HitPoints] = host.hitPoints,
-                [EquipmentStat.MoveMax] = host.moveMax,
-                [EquipmentStat.Initiative] = host.initiative,
-                [EquipmentStat.ActivationApCost] = host.activationApCost,
-                [EquipmentStat.CommandRating] = host.commandRating,
-                [EquipmentStat.Fate] = host.fate,
-            };
-            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, host.grantedAbilities);
-
-            int After(EquipmentStat stat)
-            {
-                return predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value)
-                    ? value : before[stat];
-            }
-
-            float combatDelta =
-                Mathf.Max(0, After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
-                + Mathf.Max(0, After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
-                + Mathf.Max(0, After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
-                + Mathf.Max(0, After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
-                + Mathf.Max(0, After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
-            if (host.cardType == CardType.Hero)
-                combatDelta += Mathf.Max(0, After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
-                               * AiConfigV2.powerHeroFateWeight;
-
-            float tactical = 0f;
-            tactical += Mathf.Max(0, After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
-            tactical += Mathf.Max(0, After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
-            tactical += Mathf.Max(0, before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
-            tactical += Mathf.Max(0, After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
-
-            int addedAbilities = 0;
-            if (predicted.Abilities != null)
-                foreach (string a in predicted.Abilities)
-                    if (host.grantedAbilities == null || !host.grantedAbilities.Contains(a))
-                        addedAbilities++;
-            tactical += addedAbilities * 0.15f;
-
-            return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate) + tactical,
-                0f, 1.5f);
-        }
-
-        private static float SurplusScarcity(CapabilityInventory inv, bool recce, bool hero)
-        {
-            if (inv == null) return AiConfigV2.surplusScarcityLow;
-            if (recce)
-            {
-                if (inv.TotalScouts <= 0) return AiConfigV2.surplusScarcityHigh;
-                if (inv.ReadyScouts + inv.ReserveScouts <= 1) return AiConfigV2.surplusScarcityMed;
-                return AiConfigV2.surplusScarcityLow;
-            }
-            if (hero) return inv.AvailableHeroes <= 0 ? AiConfigV2.surplusScarcityMed : AiConfigV2.surplusScarcityLow;
-            return AiConfigV2.surplusScarcityLow;
+            StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreSurplus(
+                p, inv, recce, hero, hand, projected, snap);
+            p.UseBreakdown = cand.Breakdown;
+            p.UseRole = cand.IntendedRole;
+            return cand.NetScore;
         }
 
         private static IReadOnlyList<string> EffectiveAbilities(CardDefinition def, CardDefinition attachedEquipment)
@@ -952,12 +750,6 @@ namespace Game.Ai.V2
             return t;
         }
 
-        private static bool CardCarriesStealth(CardData c) =>
-            c?.Definition != null && AbilityParams.AbilitiesHaveAnyStealth(EffectiveAbilities(c.Definition, c.Equipment));
-
-        private static bool GrantAddsStealth(EquipmentGrant grant) =>
-            grant?.addAbilities != null && grant.addAbilities.Any(a => AbilityParams.TryGetStealthLevel(a, out _));
-
         private static bool EquipmentDefFitsHostDef(CardDefinition eq, CardDefinition host)
         {
             if (eq == null || eq.cardType != CardType.Equipment || eq.equipment == null) return false;
@@ -973,22 +765,5 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static float PlacementBonus(DeploymentKind k)
-        {
-            switch (k)
-            {
-                case DeploymentKind.Garrison: return AiConfigV2.stratPlacementGarrisonBonus;
-                case DeploymentKind.ExistingArmy: return AiConfigV2.stratPlacementExistingArmyBonus;
-                case DeploymentKind.ReusableShell: return AiConfigV2.stratPlacementReusableShellBonus;
-                default: return 0f;
-            }
-        }
-
-        private static float TargetFit(HexCoord deployHex, HexCoord? target)
-        {
-            if (!target.HasValue) return 0.5f;
-            int d = HexGridMath.Distance(deployHex, target.Value);
-            return Mathf.Clamp01(1f - d / Mathf.Max(1f, (float)AiConfigV2.stratTargetFitRange));
-        }
     }
 }

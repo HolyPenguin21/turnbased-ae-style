@@ -65,9 +65,15 @@ namespace Game.Ai.V2
         // strength off the same list the feasibility gate used, without re-projecting equipment.
         public System.Collections.Generic.IReadOnlyList<string> ProjectedAbilities;
 
-        // Diagnostic-only capability-quality decomposition, populated during ScorePlanA when the
+        // Diagnostic-only capability-quality decomposition, populated during scoring when the
         // final capability has a quality profile (Scout today). Never persisted or fed back.
         public MaterializationQualityBreakdown QualityBreakdown;
+
+        // Diagnostic-only Card x IntendedUse decomposition from StrategicCardEvaluator (AI-MGR-01).
+        // Populated during scoring for the winning candidate; never persisted or fed back — Score
+        // stays the single authoritative number.
+        public StrategicUseScoreBreakdown UseBreakdown;
+        public IntendedRole? UseRole;
 
         public GenerationStep Generation;          // null unless a Generate* kind
 
