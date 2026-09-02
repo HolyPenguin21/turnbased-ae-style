@@ -55,9 +55,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // Tactical ranking weights, not strategic pressure weights. AP/Energy are explicit
-        // opportunity costs: an already-activated aircraft pays zero marginal activation cost,
-        // while a fresh/storage sortie must earn enough information to justify both resources.
         private const float NeverObservedWeight = 1.00f;
         private const float StaleWeight = 0.80f;
         private const float DirectionWeight = 0.65f;
@@ -67,15 +64,19 @@ namespace Game.Ai.V2
         private const float ActivationEnergyPenalty = 0.20f;
         internal const float MinimumUsefulScore = 0.15f;
 
-        public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData airArmy,
+        public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
             WorldSnapshot snapshot, ReconMode mode, int turn)
         {
-            if (player == null || map == null || airArmy == null || snapshot?.Self == null
+            if (player == null || ctx?.Map == null || airArmy == null || snapshot?.Self == null
                 || !AviationRules.IsValidAirArmy(airArmy) || airArmy.CurrentMovement <= 0)
                 return null;
 
+            HexMap map = ctx.Map;
             ReconDirectionSnapshot direction = ReconDirectionModel.Build(snapshot);
-            int vision = EffectiveVision(snapshot, airArmy.Id);
+            // Live, not frozen. A wing launched from storage did not exist in the turn-start
+            // SelfSnapshot, and a composition-changing aviation rule must be reflected immediately.
+            int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + AbilityParams.GetBestRecceRadius(airArmy);
             float activationAp = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationApCost;
             float activationEnergy = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationEnergyCost;
             var choices = new List<StepChoice>();
@@ -95,7 +96,7 @@ namespace Game.Ai.V2
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
-                choices.Add(BuildChoice(player, map, snapshot, mode, turn, airArmy.Hex, h, landing,
+                choices.Add(BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
                     vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
             }
 
@@ -142,7 +143,7 @@ namespace Game.Ai.V2
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
-                choices.Add(BuildChoice(player, ctx.Map, snapshot, mode, turn, candidate.AirfieldHex,
+                choices.Add(BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
                     h, landing, vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
             }
 
@@ -155,8 +156,8 @@ namespace Game.Ai.V2
             return best;
         }
 
-        private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, WorldSnapshot snapshot,
-            ReconMode mode, int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
+        private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, ReconMode mode,
+            int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
             int routeCost, int requiredTurns, float activationAp, float activationEnergy,
             ReconDirectionSnapshot direction)
         {
@@ -203,12 +204,6 @@ namespace Game.Ai.V2
                 .ThenBy(c => c.Hex.Q)
                 .ThenBy(c => c.Hex.R)
                 .First();
-        }
-
-        private static int EffectiveVision(WorldSnapshot snapshot, int armyId)
-        {
-            ArmySnapshot a = snapshot?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
-            return Math.Max(0, a?.EffectiveVisionRadius ?? 0);
         }
 
         private static void ScoreInformation(PlayerSetupData player, HexMap map, HexCoord center,
