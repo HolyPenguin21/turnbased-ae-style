@@ -28,11 +28,6 @@ namespace Game.Ai.V2
         public ResourceVector ClaimedPhysical;
         public float ClaimedAp;
         public bool StealthApReserved;
-
-        // Set true ONLY on a mission synthesised by MissionRevalidator as a bounded live
-        // replacement for a stale Explore. It carries its OWN fresh StableMissionKey (Key above)
-        // and its own ScoutMissionTarget — never the superseded mission's identity. A replacement
-        // can never itself be replaced (one hop, deterministic, bounded).
         public bool IsReplacement;
     }
 
@@ -440,6 +435,7 @@ namespace Game.Ai.V2
 
             StableMissionKey key = StableMissionKey.For(m);
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
+            bool refresh = ReconScoutKinds.IsRefresh(target.Kind);
 
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
                 return ClassifyNoAssignment(session, target, surveil);
@@ -474,6 +470,17 @@ namespace Game.Ai.V2
                 if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
+            }
+            else if (refresh)
+            {
+                // A Refresh target was selected because frozen IntelAge was stale. Previously
+                // Visited ground remains valid; only a NEW current observation completes it.
+                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
+                if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"refresh focus ({focus.Q},{focus.R}) now holds a known army"));
             }
             else
             {
@@ -642,9 +649,6 @@ namespace Game.Ai.V2
                     if (session.ClaimedArmyIds.Contains(donor.Id))
                         return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                             $"raid donor #{donor.Id} was claimed by an earlier mission this cycle"));
-                    // §12 — at most ONE hero may be attached, only to a currently heroless host,
-                    // and only through the canonical garrison-release / capacity / activation
-                    // guards below (a hero uses CanSpareGarrisonMember's Members.Count > 1 rule).
                     bool unitIsHero = t.Unit.IsHero;
                     if (unitIsHero && (++heroTransfers > 1 || projectedUnits.Any(u => u != null && u.IsHero)))
                         return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(

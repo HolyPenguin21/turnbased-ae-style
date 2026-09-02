@@ -32,6 +32,13 @@ namespace Game.Ai.V2
     //    enemyBlindness— an opponent is fielded (honest opponent list) but we have zero honest
     //                    sightings of it. Magnitude only.
     //
+    //  The deep-rework keeps those raw diagnostics but derives two continuous strategic lanes:
+    //    ExplorePressure — frontier pressure from unexplored reachable ground.
+    //    RefreshPressure — frozen per-hex IntelAge pressure, never-observed cells excluded, with
+    //                      contact surveillance as a floor so known stale enemies still matter.
+    //  The frozen IntelAge snapshot is captured during WorldAnalysis and therefore cannot change
+    //  retroactively while the operational phase is moving scouts one hex at a time.
+    //
     //  AGGRESSION is ONE axis with TWO internal drivers, combined by max():
     //    raidOpportunity — "a profitable target I can take right now" (opportunity + surplus +
     //                      relativeEdge + momentum).  `opportunity` comes from the shared
@@ -67,6 +74,8 @@ namespace Game.Ai.V2
         public float ReconExploration;
         public float ReconSurveillance;
         public float ReconEnemyBlindness;
+        public float ReconExplorePressure;
+        public float ReconRefreshPressure;
 
         public float AggRaidOpportunity;
         public float AggWarPressure;
@@ -149,14 +158,20 @@ namespace Game.Ai.V2
             float exploration = ReconExploration(snapshot);
             float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
+            float explorePressure = exploration;
+            float refreshPressure = Mathf.Clamp01(Mathf.Max(
+                surveillance,
+                ReconIntelSnapshotRegistry.StalePressure(snapshot)));
             float rawRecon = Mathf.Clamp01(
-                AiConfigV2.reconWeightExploration * exploration
-                + AiConfigV2.reconWeightSurveillance * surveillance
+                AiConfigV2.reconWeightExploration * explorePressure
+                + AiConfigV2.reconWeightSurveillance * refreshPressure
                 + AiConfigV2.reconWeightBlindness * blindness);
 
             breakdown.ReconExploration = exploration;
             breakdown.ReconSurveillance = surveillance;
             breakdown.ReconEnemyBlindness = blindness;
+            breakdown.ReconExplorePressure = explorePressure;
+            breakdown.ReconRefreshPressure = refreshPressure;
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
             float opportunity = opp.Best.HasTarget ? opp.Best.OpportunityScore : 0f;
@@ -380,7 +395,9 @@ namespace Game.Ai.V2
             AiRadarState state, CombatOpportunityReport opp)
         {
             AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
-                + $"(expl {F(b.ReconExploration)} surv {F(b.ReconSurveillance)} blind {F(b.ReconEnemyBlindness)})");
+                + $"(explRaw {F(b.ReconExploration)} exploreP {F(b.ReconExplorePressure)} "
+                + $"survRaw {F(b.ReconSurveillance)} refreshP {F(b.ReconRefreshPressure)} "
+                + $"blind {F(b.ReconEnemyBlindness)})");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
                 + $"= max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)}) "
                 + $"[opp {F(b.AggOpportunity)} surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} "

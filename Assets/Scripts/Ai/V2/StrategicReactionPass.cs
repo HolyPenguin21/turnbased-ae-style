@@ -30,6 +30,21 @@ namespace Game.Ai.V2
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
         {
+            // ReconOnly isolates the current deep-rework from the legacy strategic reaction loop.
+            // The live Recon executor will own ordinary step->refresh->reaction; until that lands,
+            // do not let a contact discovery reopen Aggression/Defence/Economy/Development through
+            // this second orchestration path. Consume the turn-scoped invalidation so it cannot
+            // leak into the next turn.
+            if (AiStrategyV2Scope.IsReconOnly)
+            {
+                if (player != null && ctx != null && StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
+                {
+                    StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
+                    AiDebugLog.Write("[AI][V2][Scope] strategic reaction pass suppressed reason=ReconOnly");
+                }
+                yield break;
+            }
+
             yield return ExecuteRound(priorSnapshot, player, root, ctx,
                 result ?? new StrategicReactionResult(), 0);
         }

@@ -7,16 +7,8 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Terrain-aware, read-only route witness for Scout proposal ordering.
-    //
-    // WorldSnapshot intentionally freezes player/world state, but its current MapKnowledge payload
-    // does not carry per-hex terrain movement cost. Terrain geometry itself is immutable after map
-    // generation and is public information, so this helper reads ONLY HexMap terrain/path geometry;
-    // every ownership/threat/visited/block decision still comes from the frozen snapshot. No live
-    // army/enemy registry or vision query is used here.
-    //
-    // This is proposal VALUE, not AP pricing: ground travel spends movement points, never AP.
-    // ScoutCostModel remains the source of activation/stealth AP requirements.
+    // Terrain-aware, read-only route witness for ground Scout proposal ordering. Explore and
+    // generic Refresh use it; Surveil has separate observation-vantage semantics.
     internal static class ScoutRouteCostEvaluator
     {
         internal readonly struct Assessment
@@ -49,21 +41,20 @@ namespace Game.Ai.V2
 
         public static Assessment Evaluate(WorldSnapshot snap, ScoutMissionTarget target)
         {
-            if (snap?.Self?.Armies == null || target.Kind != ScoutTargetKind.Explore)
+            bool ground = ReconScoutKinds.IsGround(target.Kind);
+            if (snap?.Self?.Armies == null || !ground)
                 return new Assessment(true, 0, 0, 0, 1, 0, 1f);
 
             HexMap map = ResolveMap();
             if (map == null)
             {
-                // Geometry unavailable (headless/unit-test snapshot). Preserve old ordering rather
-                // than inventing a cost; tests/sims without a scene remain deterministic.
                 return new Assessment(true, 0, 0, 0, 1, 0, 1f);
             }
 
             Assessment best = Assessment.NoRoute;
             foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
             {
-                Assessment a = EvaluatePair(snap, map, mover, target.FocusHex);
+                Assessment a = EvaluatePair(snap, map, mover, target.FocusHex, target.Kind);
                 if (!a.HasRoute)
                     continue;
                 if (!best.HasRoute
@@ -76,7 +67,8 @@ namespace Game.Ai.V2
             return best;
         }
 
-        private static Assessment EvaluatePair(WorldSnapshot snap, HexMap map, ArmySnapshot mover, HexCoord focus)
+        private static Assessment EvaluatePair(WorldSnapshot snap, HexMap map, ArmySnapshot mover,
+            HexCoord focus, ScoutTargetKind kind)
         {
             Func<HexCoord, bool> block = h => !h.Equals(focus)
                 && snap.MapKnowledge?.ScoutHardBlockedHexes != null
@@ -97,32 +89,27 @@ namespace Game.Ai.V2
 
             int remaining = Math.Max(0, mover.CurrentMovement - movementCost);
             bool reachesThisTurn = mover.CurrentMovement >= movementCost;
-            bool canFollowThrough = reachesThisTurn && remaining > 0
+            bool explore = ReconScoutKinds.IsExplore(kind);
+            bool canFollowThrough = explore && reachesThisTurn && remaining > 0
                 && HasAffordableFreshNeighbor(snap, map, focus, remaining);
+            // Refresh can continue tactically after satisfying its anchor, but the proposal owns one
+            // stale-info objective. Do not count hypothetical second Refresh completions here.
             int expectedVisits = reachesThisTurn ? (canFollowThrough ? 2 : 1) : 0;
 
-            // Penalise only EXTRA terrain burden beyond plain hex distance; distance/proximity is
-            // already represented in ReconObjective.BaseValue and must not be counted twice.
             int extraTerrain = Math.Max(0, movementCost - distance);
             float terrainFactor = 1f / (1f + 0.25f * extraTerrain);
             float tempoFactor = expectedVisits >= 2 ? 1.30f
                 : expectedVisits == 1 ? 1f
                 : 1f / Math.Max(1f, eta);
 
-            // §5 — bounded retrace penalty. Prefer new information + forward progress over the
-            // shortest geometric route back through ground this scout has just crossed. Three
-            // tiers: immediate reversal (strongest), recent trail, ordinary older-visited route
-            // (lightest). Never a hard block — visited hexes stay legal and win when they are the
-            // only / far cheaper / safer route.
-            float retraceFactor = RetraceFactor(snap, mover, path);
+            float retraceFactor = RetraceFactor(snap, mover, path, kind);
             float multiplier = Mathf.Clamp(terrainFactor * tempoFactor * retraceFactor, 0.20f, 1.50f);
 
             return new Assessment(true, movementCost, distance, eta, expectedVisits, remaining, multiplier);
         }
 
-        // 1.0 = a wholly fresh route. Lower as the route reverses onto the just-left hex,
-        // re-treads the recent trail, or runs largely through already-visited territory.
-        private static float RetraceFactor(WorldSnapshot snap, ArmySnapshot mover, HexPath path)
+        private static float RetraceFactor(WorldSnapshot snap, ArmySnapshot mover, HexPath path,
+            ScoutTargetKind kind)
         {
             if (mover?.Owner == null || path?.Hexes == null || path.Hexes.Count < 2)
                 return 1f;
@@ -139,15 +126,21 @@ namespace Game.Ai.V2
             if (trailHits > 0)
                 factor *= 1f / (1f + AiConfigV2.scoutRecentTrailPenaltyPerHex * trailHits);
 
-            ISet<HexCoord> visited = snap.MapKnowledge?.VisitedHexSet;
-            if (visited != null && stepHexes.Count > 0)
+            // Only Explore treats ordinary already-visited ground as low-information re-treading.
+            // Refresh deliberately revisits old ground, so applying scoutExploredRouteFloor here
+            // would suppress exactly the route class Refresh is supposed to use.
+            if (ReconScoutKinds.IsExplore(kind))
             {
-                int visitedHits = 0;
-                foreach (HexCoord h in stepHexes)
-                    if (visited.Contains(h))
-                        visitedHits++;
-                float visitedFrac = (float)visitedHits / stepHexes.Count;
-                factor *= Mathf.Lerp(1f, AiConfigV2.scoutExploredRouteFloor, visitedFrac);
+                ISet<HexCoord> visited = snap.MapKnowledge?.VisitedHexSet;
+                if (visited != null && stepHexes.Count > 0)
+                {
+                    int visitedHits = 0;
+                    foreach (HexCoord h in stepHexes)
+                        if (visited.Contains(h))
+                            visitedHits++;
+                    float visitedFrac = (float)visitedHits / stepHexes.Count;
+                    factor *= Mathf.Lerp(1f, AiConfigV2.scoutExploredRouteFloor, visitedFrac);
+                }
             }
 
             return factor;
