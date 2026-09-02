@@ -364,13 +364,13 @@ namespace Game.Ai.V2
     {
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            AxisBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f)
+            AxisBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
                 missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
-                protectedPhysicalEnergy);
+                protectedPhysicalEnergy, protectedAp);
         }
     }
 
@@ -388,10 +388,12 @@ namespace Game.Ai.V2
         // unit test / sim -> fall back to radar * pool as before.
         private readonly AxisBudgetLedger _ledger;
 
-        // AI-RECON-01 — Energy the Recon Air Reservation Prepass has set aside for a
-        // planned-but-unlaunched recon sortie. Netted out of the global physical Energy pool so a
-        // raid / materialisation chain the allocator funds cannot spend it (parity with the ledger
-        // AP debit the pipeline applies before Phase A).
+        // AI-RECON-01 — AP / Energy the Recon Air Reservation Prepass has set aside for a
+        // planned-but-unlaunched recon sortie. Both are netted out of the allocator's own global
+        // pools (AP off the top of Pack's pool; Energy off the physical pool) so a raid /
+        // materialisation chain the allocator funds cannot spend them — parity with the ledger AP
+        // debit the pipeline applies before Phase A.
+        private readonly float _protectedAp;
         private readonly float _protectedPhysicalEnergy;
 
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
@@ -477,7 +479,7 @@ namespace Game.Ai.V2
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
             List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null,
-            float protectedPhysicalEnergy = 0f)
+            float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
         {
             _snap = snap;
             _radar = radar;
@@ -486,6 +488,7 @@ namespace Game.Ai.V2
             _state = state;
             _ledger = ledger;
             _protectedPhysicalEnergy = Mathf.Max(0f, protectedPhysicalEnergy);
+            _protectedAp = Mathf.Max(0f, protectedAp);
         }
 
         // Step 6 calls this after a real atomic provisioning failure. Takes the whole FundedEntry
@@ -560,9 +563,13 @@ namespace Game.Ai.V2
             // overdraft checks below cap against THIS, never raw AP.
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
             float reserve = Mathf.Max(0f, AiConfigV2.housekeepingApReserve);
-            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
+            // AI-RECON-01 — the recon-air launch AP the prepass reserved is off the top here too,
+            // not only in the radar ledger: commitments may overdraft an axis slice and are checked
+            // against THIS global pool, so without the debit a Hard raid could grab AP a guaranteed
+            // sortie needs and the terminal air fallback would then fail to launch.
+            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve - _protectedAp));
             alloc.InitialPool = pool;
-            alloc.ManagerReserve = new ResourceVector(reserve);
+            alloc.ManagerReserve = new ResourceVector(reserve + _protectedAp);
 
             // Locked funding provenance, resolved WATERFALL-style (remainder top-up disappears
             // first when the real claim < granted envelope; strict only shrinks below the strict
@@ -682,6 +689,15 @@ namespace Game.Ai.V2
                 StableMissionKey ckey = StableMissionKey.For(m);
                 if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;
+
+                // AI-RECON-01 (P1) — actor-before-budget applies to commitments too: a durable
+                // Soft/Hard Recon proposal ReconActorReservationPlanner could not bind a scout to
+                // must NOT get an AP reservation only to fail provisioning. Defer it unstaffed.
+                if (m.Kind == MissionKind.Scout && m.ReservedMoverArmyId == null)
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ReconActorUnreserved });
+                    continue;
+                }
 
                 Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
                 if (shares == null)

@@ -1,9 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -37,6 +40,9 @@ namespace Game.Ai.V2
     {
         public int Turn = -1;
         public readonly HashSet<int> ReservedAirActorIds = new HashSet<int>();
+        // Airfields whose hangar launch subset is a reserved sortie (storage slots have no army id
+        // yet). Telemetry / accounting only — the executor re-derives the concrete subset.
+        public readonly HashSet<HexCoord> ReservedAirfieldHexes = new HashSet<HexCoord>();
         public int ReservedAirborneWings;
         public int ReservedLaunchSorties;
         public int GuaranteedObservationLanes;
@@ -48,6 +54,7 @@ namespace Game.Ai.V2
         {
             Turn = turn;
             ReservedAirActorIds.Clear();
+            ReservedAirfieldHexes.Clear();
             ReservedAirborneWings = 0;
             ReservedLaunchSorties = 0;
             GuaranteedObservationLanes = 0;
@@ -95,7 +102,7 @@ namespace Game.Ai.V2
 
     internal static class ReconAirReservationPrepass
     {
-        public static void Run(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+        public static void Run(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             IReadOnlyList<ReconObjective> reconObjectives)
         {
@@ -140,23 +147,42 @@ namespace Game.Ai.V2
 
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
 
-            // Airborne wings are already committed capacity — always kept, and they owe their own
-            // first-activation Energy this turn.
+            // Airborne wings are already committed capacity — the executor continues them regardless
+            // of a fresh useful step, so they are always kept, and they owe their own first-
+            // activation Energy this turn.
             foreach (int id in detail.AirborneWingIds)
                 state.ReservedAirActorIds.Add(id);
             state.ReservedAirborneWings = detail.AirborneWingIds.Count;
             state.ProtectedEnergy += detail.AirborneUnactivatedEnergy;
 
-            // Reserve launch slots only up to the still-unmet observation need — never the whole
-            // spare capacity. Slots come pre-ordered exactly as the executor would launch them.
+            // Reserve launch slots only up to the still-unmet observation need, and only slots the
+            // AIR-01 route scorer would ACTUALLY fly — a physically launchable aircraft with no
+            // strategically useful route is NOT guaranteed capacity (that was the phantom-capacity
+            // path: DemandLayer suppresses a ground scout, the executor then declines the sortie).
+            // Slots are pre-ordered exactly as ReconAirExecutor launches them; the concrete aircraft
+            // the executor finally picks is re-derived by the SAME deterministic rule
+            // (ReconAirCapacityPolicy.SelectReconLaunchSubset), so this stays reservation ownership,
+            // not a second launch planner.
+            ReconMode mode = ReconAirExecutor.RequestedMode(player, snap);
             int launchNeed = UnityEngine.Mathf.Max(0, observationNeed - state.ReservedAirborneWings);
-            foreach (AirObservationSlot slot in detail.AcceptedSpareSlots.Take(launchNeed))
+            int probed = 0, rejected = 0;
+            foreach (AirObservationSlot slot in detail.AcceptedSpareSlots)
             {
+                if (state.ReservedLaunchSorties >= launchNeed)
+                    break;
+                probed++;
+                if (!SlotWouldFly(player, root, ctx, snap, mode, slot))
+                {
+                    rejected++;
+                    continue;
+                }
                 state.ReservedLaunchSorties++;
                 state.ProtectedAp += slot.Ap;
                 state.ProtectedEnergy += slot.Energy;
                 if (slot.ActorId.HasValue)
                     state.ReservedAirActorIds.Add(slot.ActorId.Value);
+                else
+                    state.ReservedAirfieldHexes.Add(slot.AirfieldHex);
             }
 
             state.GuaranteedObservationLanes = state.ReservedAirborneWings + state.ReservedLaunchSorties;
@@ -164,8 +190,40 @@ namespace Game.Ai.V2
                 + $"(airborne {state.ReservedAirborneWings} + launch {state.ReservedLaunchSorties}) "
                 + $"protAp={state.ProtectedAp:0.#} protEnergy={state.ProtectedEnergy:0.#} "
                 + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
-                + $"spareAvail={detail.SpareSorties}";
+                + $"spareAvail={detail.SpareSorties} probed={probed} routeRejected={rejected} mode={mode}";
             AiDebugLog.Write($"[AI][V2][ReconAirRes] {state.Explain}");
+        }
+
+        // Would the AIR-01 route scorer actually launch this slot? Mirrors the executor's own gates
+        // (afford + Pick / PickFromStorage useful-score + Energy opportunity policy).
+        private static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot)
+        {
+            if (ctx?.Map == null)
+                return true; // bare harness — leave the final gate to the executor
+
+            if (slot.ActorId.HasValue)
+            {
+                ArmyData wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
+                if (wing == null)
+                    return false;
+                return ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber) != null;
+            }
+
+            ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
+            if (airfield == null || airfield.Members.Count < UnityEngine.Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
+                return false;
+            List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
+            if (subset.Count == 0 || !AiAviationSupport.CanAffordLaunch(root, player, subset))
+                return false;
+            var candidate = new AirStrikeTask.LaunchCandidate(slot.AirfieldHex, null, subset);
+            ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.PickFromStorage(
+                player, ctx, candidate, snap, mode, ctx.TurnNumber);
+            if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                return false;
+            int launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
+            return ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map, launchEnergy, choice.Value.Score,
+                excludeArmyId: -1).Allowed;
         }
 
         // Called after TaskExecutor's terminal air fallback — drop the resource protection so

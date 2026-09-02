@@ -479,7 +479,7 @@ namespace Game.Ai.V2
             //     + the ledger debit below + the allocator's physical Energy pool) so Phase A can't
             //     spend it out from under the capacity model. Ownership + resource protection only —
             //     no route/target selection (AIR-01) or multi-turn sortie planning (AIR-02).
-            ReconAirReservationPrepass.Run(snapshot, player, root, activeIntents, actorCommitments, reconObjectives);
+            ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
             ReconAirReservationState airReservation =
                 ReconAirReservationRegistry.ForTurn(player, snapshot.TurnNumber);
 
@@ -566,7 +566,7 @@ namespace Game.Ai.V2
             // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
             //    many packing -> ordered tentative allocation. No second radar split.
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
-                apLedger, airReservation.ProtectedEnergy);
+                apLedger, airReservation.ProtectedEnergy, airReservation.ProtectedAp);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
 
@@ -594,7 +594,8 @@ namespace Game.Ai.V2
             int reallocPass = 0;
             while (true)
             {
-                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
+                    reconActorCtx.ReservedActorIds);
                 bool anyFailure = false;
                 bool allFailuresArePoolWide = true;
                 foreach (FundedEntry fe in allocation.Funded)
@@ -641,10 +642,7 @@ namespace Game.Ai.V2
                         // actor + its concurrency slot to the context so the Rematch below can bind it
                         // to another still-live job this same turn.
                         if (fe.Mission.Kind == MissionKind.Scout
-                            && (result.Failure.Kind == ProvisionFailureKind.TargetSatisfied
-                                || result.Failure.Kind == ProvisionFailureKind.TargetInvalidated
-                                || result.Failure.Kind == ProvisionFailureKind.NoExecutableStep
-                                || result.Failure.Kind == ProvisionFailureKind.MoverContended))
+                            && result.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
                             ReconActorReservationPlanner.ReleaseForProvisionFailure(reconActorCtx, fe.Mission);
                         AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
@@ -679,10 +677,11 @@ namespace Game.Ai.V2
             HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
 
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
-            // AI-RECON-01 — TaskExecutor's terminal ReconAirExecutor.RunFallback has now had its
-            // chance to launch the reserved sortie. Drop the AP/Energy protection so Strategic
-            // Manager Phase B and end-of-turn telemetry see the real remaining pool.
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci,
+                () => ReconAirReservationPrepass.ReleaseProtection(player));
+            // Idempotent safety net — if Execute returned before reaching the terminal air fallback
+            // (e.g. no map) the callback never fired; make sure protection is not left holding AP /
+            // Energy into Strategic Manager Phase B.
             ReconAirReservationPrepass.ReleaseProtection(player);
             foreach (ExecutionResult er in executed)
             {

@@ -79,10 +79,17 @@ namespace Game.Ai.V2
         // frozen strategic snapshot for coarse direction/mode; its IntelAge and AA checks are live.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null)
+            WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null,
+            System.Action onBeforeAirFallback = null)
         {
             if (ctx?.Map == null)
                 yield break;
+
+            // AI-RECON-01 — every strategic AP/Energy spender (Phase A, the mission allocator,
+            // provisioned ground Recon) has now run. Lift the recon-air resource protection right
+            // BEFORE the terminal air fallback so the sortie's own CanAffordLaunch sees the AP/Energy
+            // that was being held FOR it — the protection must not block its own launch.
+            void LiftAirProtection() => onBeforeAirFallback?.Invoke();
 
             // Strategic acceptance evidence can exist even when allocation/provisioning produces no
             // executable Scout this turn. Air Recon is also intentionally a terminal fallback, so
@@ -92,6 +99,7 @@ namespace Game.Ai.V2
             {
                 if (AiStrategyV2Scope.IsReconOnly)
                     ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+                LiftAirProtection();
                 yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
                 if (AiStrategyV2Scope.IsReconOnly)
                     ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
@@ -230,6 +238,7 @@ namespace Game.Ai.V2
             // first claim on the turn pool; only then may an aircraft spend remaining AP/Energy.
             // This also makes its activation costs real opportunity costs rather than budget it can
             // pre-empt from a funded ground mission.
+            LiftAirProtection();
             yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
 
             // TaskExecutor owns the batch lifecycle, so the summary is still written when the last

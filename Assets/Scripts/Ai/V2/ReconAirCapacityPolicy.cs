@@ -51,13 +51,15 @@ namespace Game.Ai.V2
     // slots so ReconAirReservationPrepass can pin specific actors and protect their exact AP/Energy.
     internal readonly struct AirObservationSlot
     {
-        public readonly int? ActorId;   // a ready standalone wing's army id; null for a hangar launch subset
+        public readonly int? ActorId;       // a ready standalone wing's army id; null for a hangar launch subset
+        public readonly HexCoord AirfieldHex; // the launching airfield when ActorId is null; default otherwise
         public readonly int Ap;
         public readonly int Energy;
 
-        public AirObservationSlot(int? actorId, int ap, int energy)
+        public AirObservationSlot(int? actorId, HexCoord airfieldHex, int ap, int energy)
         {
             ActorId = actorId;
+            AirfieldHex = airfieldHex;
             Ap = ap;
             Energy = energy;
         }
@@ -161,7 +163,7 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
                 .ThenBy(a => a.Id))
             {
-                ordered.Add(new AirObservationSlot(a.Id,
+                ordered.Add(new AirObservationSlot(a.Id, default,
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
@@ -175,7 +177,7 @@ namespace Game.Ai.V2
                 List<UnitData> subset = SelectReconLaunchSubset(airfield.Members);
                 if (subset.Count == 0)
                     continue;
-                ordered.Add(new AirObservationSlot(null,
+                ordered.Add(new AirObservationSlot(null, hex,
                     subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
                     subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
             }

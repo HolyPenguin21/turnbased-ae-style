@@ -773,7 +773,7 @@ namespace Game.Ai.V2
         // territory (Explore weighting) instead of only re-checking stale known hexes (Refresh
         // weighting). Air Recon runs after every provisioned ground scout on its own actors, so
         // this can never close a mandatory ground Explore/Visit.
-        private static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot)
+        internal static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot)
         {
             // Measure the SAME thing ReconAirStepPlanner.ScoreInformation scores against: hexes
             // with no recorded intel age at all (never observed by anything — feet, vision or a

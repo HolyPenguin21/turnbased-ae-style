@@ -130,14 +130,16 @@ namespace Game.Ai.V2
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation)
+            ProvisioningSession session, TentativeAllocation allocation,
+            IReadOnlyCollection<int> reconReservedActorIds = null)
         {
-            PrepareScoutAssignments(player, ctx, session, allocation);
+            PrepareScoutAssignments(player, ctx, session, allocation, reconReservedActorIds);
             PrepareRaidAssignments(session, allocation);
         }
 
         private static void PrepareScoutAssignments(PlayerSetupData player, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation)
+            ProvisioningSession session, TentativeAllocation allocation,
+            IReadOnlyCollection<int> reconReservedActorIds)
         {
             var open = new List<FundedEntry>();
             if (allocation?.Funded != null)
@@ -151,11 +153,15 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
-            // AI-RECON-01 — scouts reserved by ReconActorReservationPlanner for OTHER funded, not-yet-
-            // provisioned Recon jobs. If a mission's own reserved scout has become ineligible and it
-            // has to rematch across free scouts, it must NOT poach one of these — that would turn a
-            // valid sibling job into a false MoverContended.
+            // AI-RECON-01 — scouts reserved by ReconActorReservationPlanner for ANY other Recon job,
+            // not just the funded ones. If a mission's own reserved scout has become ineligible and
+            // it has to rematch across free scouts, it must NOT poach a scout still bound to a
+            // sibling job (funded, deferred, or awaiting a later re-pack) — that turns a valid
+            // sibling into a false MoverContended and makes the reservation context lie.
             var reservedElsewhere = new HashSet<int>();
+            if (reconReservedActorIds != null)
+                foreach (int id in reconReservedActorIds)
+                    reservedElsewhere.Add(id);
             foreach (FundedEntry fe in open)
                 if (fe.Mission.ReservedMoverArmyId.HasValue)
                     reservedElsewhere.Add(fe.Mission.ReservedMoverArmyId.Value);
