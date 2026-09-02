@@ -31,10 +31,18 @@ namespace Game.Ai.V2
             // Energy opportunity policy and the minimum-useful-score gate below decide whether any
             // sortie is actually worth launching, in Full V2 exactly as in ReconOnly.
             if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
+            {
+                // Spec §6 — never leave "AirRecon path never reached" and "AirRecon evaluated and
+                // chose not to fly" indistinguishable in the log.
+                AiDebugLog.Write("[AI][V2][Recon][Air] fallback — not reached ("
+                    + $"player={(player != null ? 1 : 0)} root={(root != null ? 1 : 0)} "
+                    + $"map={(ctx?.Map != null ? 1 : 0)} snapshot={(snapshot?.Self != null ? 1 : 0)})");
                 yield break;
+            }
 
             var used = new HashSet<int>();
             int actorsUsed = 0;
+            var airSkips = new List<string>();
 
             var active = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && AviationRules.IsValidAirArmy(a)
@@ -43,6 +51,16 @@ namespace Game.Ai.V2
                     && ReconAssignmentRegistry.TryGet(player, a.Id, out _))
                 .OrderBy(a => a.Id)
                 .ToList();
+
+            int ownedAirfields = AiAviationSupport.OwnedAirfieldHexes(player).Count();
+            int totalAircraft = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && AviationRules.IsValidAirArmy(a))
+                .Sum(a => Math.Max(1, a.Members.Count));
+
+            void AirFallbackSummary(string exit) => AiDebugLog.Write(
+                $"[AI][V2][Recon][Air] fallback — {exit}: airfields={ownedAirfields} aircraft={totalAircraft} "
+                + $"inFlightWithAssignment={active.Count} sortiesThisPass={actorsUsed} "
+                + $"skips=[{(airSkips.Count > 0 ? string.Join(",", airSkips) : "none")}]");
 
             foreach (ArmyData air in active)
             {
@@ -53,7 +71,11 @@ namespace Game.Ai.V2
             }
 
             if (actorsUsed >= MaxAirActorsPerTurn)
+            {
+                airSkips.Add("actorLimitReached");
+                AirFallbackSummary("stop after in-flight actors");
                 yield break;
+            }
 
             var candidates = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && !used.Contains(a.Id)
@@ -66,6 +88,9 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.Id)
                 .ToList();
 
+            if (candidates.Count == 0)
+                airSkips.Add("noReadyAircraftOffAirfieldTask");
+
             foreach (ArmyData air in candidates)
             {
                 if (actorsUsed >= MaxAirActorsPerTurn) break;
@@ -73,22 +98,34 @@ namespace Game.Ai.V2
                 yield return RunActor(player, root, ctx, snapshot, air, value => moved = value);
                 if (moved)
                     actorsUsed++;
+                else
+                    airSkips.Add("readyAircraftNoUsefulStep");
             }
 
             if (actorsUsed >= MaxAirActorsPerTurn)
+            {
+                airSkips.Add("actorLimitReached");
+                AirFallbackSummary("stop after ready aircraft");
                 yield break;
+            }
 
             ReconMode requestedMode = RequestedMode(snapshot);
+            if (ownedAirfields == 0)
+                airSkips.Add("noOwnedAirfield");
             foreach (HexCoord airfieldHex in AiAviationSupport.OwnedAirfieldHexes(player).ToList())
             {
                 if (actorsUsed >= MaxAirActorsPerTurn) break;
                 ArmyData stored = AviationRules.FindAirfieldAt(airfieldHex, player);
                 if (stored == null || stored.Members.Count < AiConfig.aviationLaunchMinReadyAircraft)
+                {
+                    airSkips.Add(stored == null ? "airfieldEmpty" : "belowMinReadyAircraft");
                     continue;
+                }
 
                 var storedAircraft = stored.Members.ToList();
                 if (!AiAviationSupport.CanAffordLaunch(root, player, storedAircraft))
                 {
+                    airSkips.Add("launchApEnergyUnavailable");
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({airfieldHex.Q},{airfieldHex.R}) "
                         + $"aircraft={storedAircraft.Count} — launch AP/Energy unavailable; skip");
                     continue;
@@ -98,7 +135,10 @@ namespace Game.Ai.V2
                 ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
                     player, ctx, launchCandidate, snapshot, requestedMode, ctx.TurnNumber);
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                {
+                    airSkips.Add("noUsefulRefreshStep");
                     continue;
+                }
 
                 // §40–44 — a routine refresh sortie must not dip into Energy a playable high-value
                 // hand card (or another in-flight AirRecon activation) still needs.
@@ -107,7 +147,10 @@ namespace Game.Ai.V2
                     storageLaunchEnergy, first.Value.Score, excludeArmyId: -1);
                 AiDebugLog.Write(storageEnergy.ToLog($"airfield=({airfieldHex.Q},{airfieldHex.R})"));
                 if (!storageEnergy.Allowed)
+                {
+                    airSkips.Add("energyReserveRejectedLaunch");
                     continue;
+                }
 
                 bool firstVisitedBefore = VisionSystem.IsVisited(player, first.Value.Hex);
                 var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
@@ -132,12 +175,16 @@ namespace Game.Ai.V2
                     .OrderBy(a => a.Id)
                     .FirstOrDefault();
                 if (launched == null)
+                {
+                    airSkips.Add("launchFormedNoAircraft");
                     continue;
+                }
 
                 AiTask reservationTask = AiTaskRegistry.TaskFor(player, launched);
                 if (launched.Hex.Equals(airfieldHex))
                 {
                     RemoveAirReconReservation(player, launched);
+                    airSkips.Add("launchFirstStepNoProgress");
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
                         + "first step made no progress; V2 assignment not started");
                     continue;
@@ -171,6 +218,8 @@ namespace Game.Ai.V2
                     && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
                     yield return RunActor(player, root, ctx, snapshot, launched, initialStepAlreadyMoved: true);
             }
+
+            AirFallbackSummary(actorsUsed > 0 ? "done" : "evaluated, no sortie");
         }
 
         private static IEnumerator RunActor(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,

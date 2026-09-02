@@ -479,6 +479,7 @@ namespace Game.Ai.V2
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
+            int handAtStart = hand?.Hand?.Count ?? 0;
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments);
 
@@ -536,6 +537,21 @@ namespace Game.Ai.V2
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player, apLedger);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
+
+            // Spec §8 — distinguish "funded on the FINAL allocation pack" from "distinct missions
+            // funded at any point this turn". After a pack -> provision -> re-pack loop these differ
+            // legitimately (a mission funded on pass 1, provisioned, then dropped from the last
+            // pack), and reporting only the last pack next to cumulative provisioned/executed
+            // counters reads as an inconsistency during debugging.
+            var fundedKeysThisTurn = new HashSet<StableMissionKey>();
+            void AccrueFundedKeys(TentativeAllocation a)
+            {
+                if (a?.Funded == null) return;
+                foreach (FundedEntry fe in a.Funded)
+                    if (fe?.Mission != null)
+                        fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+            }
+            AccrueFundedKeys(allocation);
 
             // 6. Provision the funded missions through the ONE atomic door, with the bounded
             //    pack -> provision -> re-pack loop (risk 2). Mover assignment across the funded set
@@ -601,6 +617,7 @@ namespace Game.Ai.V2
                 if (!session.HasNewFailures || session.Converged || ++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;
                 allocation = session.Pack();
+                AccrueFundedKeys(allocation);
             }
 
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
@@ -649,6 +666,25 @@ namespace Game.Ai.V2
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
+            // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
+            // hand card was or was not played this turn. Per-card blocking reasons are on the
+            // strat.A/strat.B diag lines above (fails=[card: needs H/E/M/T=…] / defer … / hold …).
+            // "remaining" carries NO "blocked=ReconOnly / wrongAxis" reason: Phase B runs in every
+            // mode and card type alone never suppresses a legal card.
+            int mPlayed = phaseA.CardsPlayed + phaseB.CardsPlayed;
+            int mGen = phaseA.GeneratedCardsSucceeded + phaseB.GeneratedCardsSucceeded;
+            int mEquip = phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
+            int mInfra = phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
+            int mDrawn = phaseA.CardsDrawn + phaseB.CardsDrawn;
+            int handEnd = hand?.Hand?.Count ?? 0;
+            AiDebugLog.Write($"[AI][V2][StrategicManager][Summary] handStart={handAtStart} "
+                + $"played={mPlayed} (phaseA {phaseA.CardsPlayed}, phaseB {phaseB.CardsPlayed}) "
+                + $"generated={mGen} equipAttached={mEquip} infraBuilt={mInfra} drawn={mDrawn} "
+                + $"handEnd={handEnd} remaining={System.Math.Max(0, handEnd)} "
+                + $"matAttempts={phaseA.MaterializationAttempts + phaseB.MaterializationAttempts} "
+                + $"capDeliveries={phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries} "
+                + "blockedReasons=see strat.A/strat.B diag lines (never ReconOnly/wrongAxis)");
+
             // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
             // invariant and the bounded reaction pass logs its own [STATE]; captured here so the
             // Main line means the main phase.
@@ -668,7 +704,10 @@ namespace Game.Ai.V2
             V2PhaseActivity main = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
             main.DemandsRaised = demands.Count;
             main.MissionsConsidered = missions.Count;
-            main.MissionsFunded = allocation.Funded.Count;
+            // §8 — the activity bucket's peers (Provisioned, ExecutionAttempts, …) are all
+            // full-turn cumulative, so MissionsFunded is the distinct-missions-funded-this-turn
+            // count, not just the last pack's.
+            main.MissionsFunded = fundedKeysThisTurn.Count;
             main.Provisioned = provisioned.Count;
             main.ExecutionAttempts = executed.Count(MissionRevalidator.WasAttempt);
             main.ExecutionsSucceeded = executed.Count(MissionRevalidator.WasGenuineExecution);
@@ -688,8 +727,8 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
-                + $"funded {allocation.Funded.Count}, provisioned {provisioned.Count}, "
-                + $"executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
+                + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
+                + $"provisioned {provisioned.Count}, executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
