@@ -702,8 +702,14 @@ namespace Game.Ai.V2
         // this can never close a mandatory ground Explore/Visit.
         private static ReconMode RequestedMode(WorldSnapshot snapshot)
         {
-            float darkFrac = snapshot?.MapKnowledge?.UnknownFrac ?? 0f;
-            return darkFrac >= AiConfigV2.airReconExploreDarkFloor ? ReconMode.Explore : ReconMode.Refresh;
+            float unknown = snapshot?.MapKnowledge?.UnknownFrac ?? 0f;
+            float explorable = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
+            // Explore weighting while a large fraction of the whole board is still dark, OR any
+            // time there is meaningful unknown territory that ground scouts structurally cannot
+            // reach (unknown minus ground-explorable) — aviation is the only tool for it.
+            bool exploreWeighting = unknown >= AiConfigV2.airReconExploreDarkFloor
+                || (unknown - explorable) >= AiConfigV2.airReconGroundLockedUnknownFloor;
+            return exploreWeighting ? ReconMode.Explore : ReconMode.Refresh;
         }
 
         // §P0 — the minimum useful aircraft subset for one recon sortie, cheapest activation

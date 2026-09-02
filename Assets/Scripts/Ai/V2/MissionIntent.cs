@@ -631,9 +631,9 @@ namespace Game.Ai.V2
             return active;
         }
 
-        // §P1 — retire durable Scout lanes in excess of the current desired concurrency. Keeps at
-        // least one, never touches a Hard-funded lane, drops least-committed / newest / most-
-        // stalled first.
+        // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
+        // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
+        // already accounts for any Hard-funded lanes that are being kept regardless.
         private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
             MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
@@ -647,30 +647,33 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.IntentKey)
                 .ToList();
             int desired = System.Math.Max(1, ReconConcurrencyPolicy.DesiredTotal(snap, runnable));
-            int surplus = scoutLanes.Count - desired;
-            if (surplus <= 0)
-                return;
 
-            var victims = scoutLanes
+            var shedable = scoutLanes
+                .Where(i => i.Funding < CommitmentTier.Hard)
                 .OrderBy(i => (int)i.Funding)
                 .ThenByDescending(i => i.CreatedTurn)
                 .ThenByDescending(i => i.StallTurns)
                 .ThenByDescending(i => i.IntentKey)
                 .ToList();
+            int hardKept = scoutLanes.Count - shedable.Count;
+            // How many shedable lanes exceed the room left under `desired` after the Hard lanes.
+            int surplus = shedable.Count - System.Math.Max(0, desired - hardKept);
+            if (surplus <= 0)
+                return;
+
             int dropped = 0;
-            foreach (MissionIntent v in victims)
+            foreach (MissionIntent v in shedable)
             {
-                if (dropped >= surplus)
+                if (dropped >= surplus || dropped >= AiConfigV2.maxReconLaneTrimPerTurn)
                     break;
-                if (v.Funding >= CommitmentTier.Hard)
-                    continue;
                 state.Remove(v.IntentKey);
                 active.Remove(v);
                 if (v.PreferredMoverArmyId.HasValue)
                     ReconAssignmentRegistry.Retire(player, v.PreferredMoverArmyId.Value, "recon lane surplus trim");
                 dropped++;
                 AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
-                    + $"(active {scoutLanes.Count} > desired {desired})");
+                    + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
+                    + $"shed 1/{surplus} this turn)");
             }
         }
 

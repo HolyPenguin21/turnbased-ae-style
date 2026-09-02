@@ -530,16 +530,42 @@ namespace Game.Ai.V2
                 ? AiConfigV2.garrisonSaturatedSurplusThresholdMult : 1f;
         }
 
-        // §P1 — a generic (no-residual) surplus chain would create a fresh lone-member army at a
-        // hex that already holds our garrison, which Housekeeping folds again the same turn.
+        // §P1 — a generic (no-residual) surplus chain of ANY kind (Direct / Attach / Generate*)
+        // that founds a fresh lone-member army (NewArmy / ReusableShell) on a hex where a garrison
+        // OR an already-viable friendly field army sits: Housekeeping folds/absorbs that
+        // lone-member army the same turn (create -> fold). A genuine forward outpost — no base and
+        // no viable force of ours on the hex — is still allowed.
         private static bool GenericSurplusWouldChurn(PlayerSetupData player, MaterializationPlan plan)
         {
-            if (plan == null || plan.Kind != MaterializationChainKind.Direct)
+            if (plan == null)
                 return false;
             if (plan.Deploy.Kind != DeploymentKind.NewArmy && plan.Deploy.Kind != DeploymentKind.ReusableShell)
                 return false;
-            return ArmyRegistry.AllForOwner(player)
-                .Any(a => a != null && a.IsGarrison && a.Hex.Equals(plan.Deploy.Hex));
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+            {
+                if (a == null || !a.Hex.Equals(plan.Deploy.Hex))
+                    continue;
+                if (a.IsGarrison)
+                    return true;
+                if (a.IsPrison || a.IsAirArmy || a.IsAirfield || AiArmyRoles.IsSoloRecce(a))
+                    continue;
+                if (a.Members.Count >= 2
+                    && AiPower.EffectiveArmyPower(a.Members) >= AiConfigV2.housekeepingViabilityPowerFloor)
+                    return true;
+            }
+            return false;
+        }
+
+        // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
+        // cap, across EVERY chain kind (BestSurplus treats a recce card as ScoutCapability and
+        // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
+        // DemandLayer portfolio cap never sees those).
+        private static bool ScoutSurplusPortfolioSaturated(PlayerSetupData player, MaterializationPlan plan)
+        {
+            if (plan == null || plan.FinalCapability != CapabilityKind.ScoutCapability)
+                return false;
+            int solo = ArmyRegistry.AllForOwner(player).Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
+            return solo >= ReconConcurrencyPolicy.HardCap;
         }
 
         public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,
@@ -612,8 +638,16 @@ namespace Game.Ai.V2
                 if (residual == null && GenericSurplusWouldChurn(player, plan))
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                        + "generic surplus would found a lone-member army at a base hex housekeeping "
-                        + "folds the same turn; stop surplus");
+                        + "generic surplus would found a lone-member army housekeeping folds the "
+                        + "same turn; stop surplus");
+                    break;
+                }
+
+                if (residual == null && ScoutSurplusPortfolioSaturated(player, plan))
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                        + $"generic surplus would add a scout beyond the physical portfolio cap "
+                        + $"({ReconConcurrencyPolicy.HardCap}); stop surplus");
                     break;
                 }
 
@@ -823,17 +857,21 @@ namespace Game.Ai.V2
                     SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
                     float termThreshold = adm.EffectiveThreshold
                         * GarrisonSaturationThresholdMult(snap, pick.Value.plan, residual);
-                    if (residual == null && GenericSurplusWouldChurn(player, pick.Value.plan))
+                    if (residual == null && (GenericSurplusWouldChurn(player, pick.Value.plan)
+                        || ScoutSurplusPortfolioSaturated(player, pick.Value.plan)))
                         termThreshold = float.MaxValue;
                     if (residual != null || pick.Value.utility >= termThreshold)
                         actionable = residual != null
                             ? $"an operational residual demand ({pick.Value.plan.StableKey})"
                             : $"a worthwhile surplus chain ({pick.Value.plan.StableKey})";
                 }
-                // §5/§13 — a drawn Aviation / Base / Facility / Equipment card is just as actionable
-                // as a Unit chain. Without this the terminal loop keeps burning AP into draws past a
-                // perfectly legal non-combat card and never fires MarkHandOpportunity for it.
-                if (actionable == null
+                // §5/§13 — a non-combat Aviation / Base / Facility / Equipment card a DRAW has just
+                // revealed is as actionable as a Unit chain (fires MarkHandOpportunity below).
+                // §P0 — but a non-combat card that was ALREADY in hand at the start of this loop
+                // was offered to RunNonCombatSurplus this turn and declined (shared budget +
+                // reserved slots exhausted); it must NOT now strand every AP by blocking the whole
+                // terminal draw. Only a fresh (drawn>0) reveal stops the loop.
+                if (actionable == null && drawn > 0
                     && NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out _) is { } ncPlay)
                     actionable = $"a playable {ncPlay.Kind} card ({ncPlay.Explain})";
 

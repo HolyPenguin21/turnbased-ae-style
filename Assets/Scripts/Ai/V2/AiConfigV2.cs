@@ -540,7 +540,10 @@ namespace Game.Ai.V2
         // non-combat lane may still take AFTER the shared maxSurplusActionsPerTurn budget was
         // fully spent by the materialization-surplus loop, so a playable stored-Aviation card can
         // never be starved for turns while it simultaneously blocks terminal AP->draw conversion.
-        public const int surplusNonCombatReservedActions = 1;
+        // >= 2 so a same-turn playable Base AND Aviation both clear (BestPlay ranks Base above
+        // Aviation, so a single reserved slot could take Base and leave Aviation stuck). Real AP
+        // still bounds it — NonCombatCardPlayer.Execute fails and stops the lane when unaffordable.
+        public const int surplusNonCombatReservedActions = 2;
         // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
         // already a strong defensive stack and nothing threatens an asset: the surplus-admission
         // threshold is multiplied by this so the loop stops (and converts stranded AP to draws)
@@ -640,6 +643,10 @@ namespace Game.Ai.V2
         public const float reconConcurrencyThirdLaneMinBaseValue = 40f;
         public const float reconConcurrencyThirdLaneMinRelValue = 0.65f;
         public const float reconConcurrencyThirdLaneMinDarkFrac = 0.55f;
+        // §P1 — when active durable Scout lanes exceed desired concurrency, shed at most this many
+        // per turn (gradual contraction, not a one-pass collapse). Only Soft/None-funded lanes are
+        // ever shed; a Hard-funded lane is kept even if it leaves active above desired.
+        public const int maxReconLaneTrimPerTurn = 1;
         public const int reconDemandRegionMergeDistance = 2;         // frontier hexes within this many hexes count as one reachable unexplored region (spec §28)
         public const float reconDemandRefreshLaneThreshold = 0.55f;  // Refresh pressure at/above this earns one dedicated Refresh scout on top of the Explore-driven count
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
@@ -670,6 +677,11 @@ namespace Game.Ai.V2
         // ground-Visited, and it runs after every provisioned ground scout so it cannot displace a
         // mandatory ground Explore/Visit.
         public const float airReconExploreDarkFloor = 0.25f;
+        // ...and independently of that floor: any time the WHOLE-map unknown fraction exceeds the
+        // ground-explorable unknown fraction by at least this much, that gap is territory only
+        // aviation can ever see — always value it with never-observed (Explore) weighting even
+        // when total dark has dropped below airReconExploreDarkFloor.
+        public const float airReconGroundLockedUnknownFloor = 0.05f;
 
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,

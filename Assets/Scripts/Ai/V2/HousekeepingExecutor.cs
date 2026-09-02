@@ -207,10 +207,21 @@ namespace Game.Ai.V2
             {
                 ArmyData garr = garrisonA ? armyA : armyB;
                 UnitData leaving = garrisonA ? unitA : unitB;   // garrison -> field
+                UnitData entering = garrisonA ? unitB : unitA;  // field  -> garrison
                 if (!leaving.IsHero)
                 { why = "garrison swap must send a hero out"; return false; }
                 if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
                 { why = "garrison hero release breaks security"; return false; }
+                // §P1 — a garrison that currently holds its defensive power reserve must not be
+                // dropped below it by the swap either (strong hero out, weak body in).
+                float garrBefore = AiPower.EffectiveArmyPower(garr.Members);
+                if (garrBefore >= AiConfigV2.housekeepingGarrisonReservePower)
+                {
+                    var garrAfter = garr.Members.Where(m => m != leaving).ToList();
+                    garrAfter.Add(entering);
+                    if (AiPower.EffectiveArmyPower(garrAfter) < AiConfigV2.housekeepingGarrisonReservePower)
+                    { why = "garrison power reserve"; return false; }
+                }
             }
             if (movedUnits.Contains(unitA) || movedUnits.Contains(unitB)) { why = "swap member already moved this plan"; return false; }
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }

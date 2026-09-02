@@ -171,6 +171,13 @@ namespace Game.Ai.V2
                 || ReorgViability.Capacity(afterB, bMeta.IsGarrison) < afterB.Count)
                 return null;
 
+            // §P1 — a garrison side of the swap must keep its defensive power reserve (same
+            // "only if currently above it" semantics as GarrisonMayRelease).
+            if (aMeta.IsGarrison && !GarrisonRosterKeepsReserve(a, afterA))
+                return null;
+            if (bMeta.IsGarrison && !GarrisonRosterKeepsReserve(b, afterB))
+                return null;
+
             a.Clear(); a.AddRange(afterA);
             b.Clear(); b.AddRange(afterB);
             c.Transfers.Add(PlannedTransfer.Swap(ua.Key, aId, ub.Key, bId,
@@ -210,10 +217,16 @@ namespace Game.Ai.V2
             // power reserve must not be dropped below it by a zero-AP reorg move (a small,
             // already-below-reserve second base is still governed by the headcount floor above,
             // exactly as before).
-            float before = ReorgViability.EffectivePower(garrison);
-            if (before < AiConfigV2.housekeepingGarrisonReservePower)
+            return GarrisonRosterKeepsReserve(garrison, garrison.Where(x => x != u).ToList());
+        }
+
+        // §P1 — true when `after` (the garrison's projected roster) still holds the defensive
+        // power reserve, OR the garrison was already below it before the move (then only the
+        // headcount floor governs, unchanged behaviour).
+        private static bool GarrisonRosterKeepsReserve(List<ReorgUnit> before, List<ReorgUnit> after)
+        {
+            if (ReorgViability.EffectivePower(before) < AiConfigV2.housekeepingGarrisonReservePower)
                 return true;
-            var after = garrison.Where(x => x != u).ToList();
             return ReorgViability.EffectivePower(after) >= AiConfigV2.housekeepingGarrisonReservePower;
         }
     }
