@@ -58,9 +58,10 @@ namespace Game.Ai.V2
 
     internal static class TaskExecutor
     {
-        // `snapshot` is used only by the bounded stale-Explore replacement picker. The new ground
-        // Recon executor never follows this frozen snapshot as a route: it uses live state for
-        // every tactical transition.
+        // `snapshot` is used by the bounded stale-Explore replacement picker and by the terminal
+        // Air Recon pass. Ground Recon never follows it as a route: live tactical transitions still
+        // read current world state after every authoritative movement step. Air receives only the
+        // frozen strategic snapshot for coarse direction/mode; its IntelAge and AA checks are live.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
             WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null)
@@ -69,13 +70,15 @@ namespace Game.Ai.V2
                 yield break;
 
             // Strategic acceptance evidence can exist even when allocation/provisioning produces no
-            // executable Scout this turn. Emit the summary anyway so those checks are visible rather
-            // than silently disappearing behind an empty execution batch.
+            // executable Scout this turn. Air Recon is also intentionally a terminal fallback, so
+            // it must still get a chance to continue/return a multi-turn aircraft on an otherwise
+            // empty mission batch.
             if (provisioned == null || provisioned.Count == 0)
             {
                 if (AiStrategyV2Scope.IsReconOnly)
                 {
                     ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+                    yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
                     ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
                 }
                 yield break;
@@ -208,6 +211,13 @@ namespace Game.Ai.V2
                 results.Add(result);
                 AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — unsupported mission kind {pm.Kind}");
             }
+
+            // Air Recon is terminal by design: provisioned ground Recon/other allowed work gets
+            // first claim on the turn pool; only then may an aircraft spend remaining AP/Energy.
+            // This also makes its activation costs real opportunity costs rather than budget it can
+            // pre-empt from a funded ground mission.
+            if (AiStrategyV2Scope.IsReconOnly)
+                yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
 
             // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
             // provisioned Scout becomes stale, loses its mover, or otherwise never enters the Ground
