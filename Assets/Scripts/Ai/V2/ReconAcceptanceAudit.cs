@@ -214,6 +214,12 @@ namespace Game.Ai.V2
         {
             if (explorableUnknownFrac > 0.25f)
                 return;
+            // Authoritative strategic pressures are normalized [0..1]. ReconObjectiveEvaluator in
+            // older intermediate commits also called this seam with objective BaseValues (15..65);
+            // ignore such non-pressure evidence so only MissionLayer's DesireBreakdown comparison
+            // can decide this acceptance scenario.
+            if (explorePressure > 1.0001f || refreshPressure > 1.0001f)
+                return;
             Record(player, turn, MostlyExploredRefresh, refreshPressure >= explorePressure,
                 $"dark={explorableUnknownFrac:0.00} explore={explorePressure:0.00} refresh={refreshPressure:0.00}");
         }
