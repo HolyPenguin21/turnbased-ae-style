@@ -76,11 +76,10 @@ namespace Game.Ai.V2
             if (provisioned == null || provisioned.Count == 0)
             {
                 if (AiStrategyV2Scope.IsReconOnly)
-                {
                     ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-                    yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
+                yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
+                if (AiStrategyV2Scope.IsReconOnly)
                     ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
-                }
                 yield break;
             }
 
@@ -216,8 +215,7 @@ namespace Game.Ai.V2
             // first claim on the turn pool; only then may an aircraft spend remaining AP/Energy.
             // This also makes its activation costs real opportunity costs rather than budget it can
             // pre-empt from a funded ground mission.
-            if (AiStrategyV2Scope.IsReconOnly)
-                yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
+            yield return ReconAirExecutor.RunFallback(player, root, ctx, snapshot);
 
             // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
             // provisioned Scout becomes stale, loses its mover, or otherwise never enters the Ground

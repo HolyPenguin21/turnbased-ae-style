@@ -26,8 +26,11 @@ namespace Game.Ai.V2
         public static IEnumerator RunFallback(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot)
         {
-            if (!AiStrategyV2Scope.IsReconOnly || player == null || root == null || ctx?.Map == null
-                || snapshot?.Self == null)
+            // Spec §29 / review P1 #3 — AirRecon is not tied to the temporary ReconOnly isolation.
+            // It runs whenever there is a snapshot to fly against; per-airfield readiness, the
+            // Energy opportunity policy and the minimum-useful-score gate below decide whether any
+            // sortie is actually worth launching, in Full V2 exactly as in ReconOnly.
+            if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
                 yield break;
 
             var used = new HashSet<int>();
