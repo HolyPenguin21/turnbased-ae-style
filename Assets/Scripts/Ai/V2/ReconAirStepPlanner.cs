@@ -65,7 +65,7 @@ namespace Game.Ai.V2
         internal const float MinimumUsefulScore = 0.15f;
 
         public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
-            WorldSnapshot snapshot, ReconMode mode, int turn)
+            WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null)
         {
             if (player == null || ctx?.Map == null || airArmy == null || snapshot?.Self == null
                 || !AviationRules.IsValidAirArmy(airArmy) || airArmy.CurrentMovement <= 0)
@@ -97,12 +97,13 @@ namespace Game.Ai.V2
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
                 choices.Add(BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
-                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
+                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction, sortieState));
             }
 
             StepChoice? best = ChooseBest(choices);
             if (best.HasValue)
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Step] actor=#{airArmy.Id} mode={mode} "
+                    + $"phase={(sortieState != null ? sortieState.Phase.ToString() : "Outbound")} "
                     + $"from=({airArmy.Hex.Q},{airArmy.Hex.R}) to=({best.Value.Hex.Q},{best.Value.Hex.R}) "
                     + $"landing=({best.Value.LandingHex.Q},{best.Value.LandingHex.R}) "
                     + $"score={best.Value.Score:0.00} {best.Value.Reason}");
@@ -159,7 +160,7 @@ namespace Game.Ai.V2
         private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, ReconMode mode,
             int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
             int routeCost, int requiredTurns, float activationAp, float activationEnergy,
-            ReconDirectionSnapshot direction)
+            ReconDirectionSnapshot direction, ReconAirSortieState sortieState = null)
         {
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
@@ -184,9 +185,26 @@ namespace Game.Ai.V2
                 - ActivationApPenalty * activationAp
                 - ActivationEnergyPenalty * activationEnergy;
 
+            // Boomerang shaping (spec §33 / §48) — Outbound only, always subordinate to the shared
+            // aviation safety filter that already vetted every candidate here. Discourage hugging
+            // the way out; nudge toward an informative sideways sweep instead of a pure radial
+            // out-and-back.
+            int trailOverlap = 0;
+            bool lateral = false;
+            if (sortieState != null && sortieState.Phase == ReconAirPhase.Outbound)
+            {
+                trailOverlap = sortieState.TrailAdjacency(h);
+                score -= AiConfigV2.airReconOutboundTrailOverlapPenalty * trailOverlap;
+                lateral = information > 0.01f
+                    && HexGridMath.Distance(sortieState.LaunchHex, h) <= HexGridMath.Distance(sortieState.LaunchHex, from);
+                if (lateral)
+                    score += AiConfigV2.airReconLateralNoveltyBonus;
+            }
+
             string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "
                 + $"dir={sectorPressure:0.00} route={routeCost}/t{requiredTurns} "
-                + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#}";
+                + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#} "
+                + $"trailOverlap={trailOverlap} lateral={(lateral ? 1 : 0)}";
             return new StepChoice(h, landing, score, neverObserved, staleInformation,
                 sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, reason);
         }

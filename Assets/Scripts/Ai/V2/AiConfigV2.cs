@@ -564,6 +564,17 @@ namespace Game.Ai.V2
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
 
         // =======================================================================================
+        //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,
+        //  spec §33 / §34 / §48). Outbound presses toward information with a soft boomerang nudge;
+        //  a single Turning pivot step is logged once one trigger fires; Return then prioritises a
+        //  safe landing. All soft — the shared aviation safety filter always wins. First-pass.
+        // =======================================================================================
+        public const float airReconTurningMarginalGainFloor = 0.35f; // Outbound step score <= this * best Outbound step so far -> pivot to Return
+        public const int airReconTurningMpReserveSlack = 1;          // pivot once MP left after the step would exceed the proven return cost by no more than this
+        public const float airReconOutboundTrailOverlapPenalty = 0.30f; // per sortie-trail hex within one hex of a candidate Outbound step
+        public const float airReconLateralNoveltyBonus = 0.20f;     // small bonus for an informative step that sweeps sideways rather than straight out
+
+        // =======================================================================================
         //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
         //  Splits the Energy stock into committed (other in-flight AirRecon activations) +
         //  protected (a playable high-value hand card's need) + spendable, so a routine refresh

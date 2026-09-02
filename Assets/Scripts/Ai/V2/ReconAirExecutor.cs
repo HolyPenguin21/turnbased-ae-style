@@ -150,6 +150,11 @@ namespace Game.Ai.V2
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, launched.Id,
                     airfieldHex, first.Value.Hex, requestedMode, ctx.TurnNumber);
                 ReconAssignmentRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
+                // Seed the per-sortie boomerang/phase state from the real launch hex so the trail
+                // and Outbound phase begin at the airfield, not one hex out.
+                ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, airfieldHex);
+                launchSortie.RecordStep(launched.Hex);
+                launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, first.Value.Score);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                 LogVisitedInvariant(player, first.Value.Hex, firstVisitedBefore, "storage-launch-first-step");
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
@@ -179,6 +184,7 @@ namespace Game.Ai.V2
                 if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null)
                 {
                     ReconAssignmentRegistry.Retire(player, armyId, "air mover lost / invalid");
+                    ReconAirSortieRegistry.Retire(player, armyId);
                     if (air != null) RemoveAirReconReservation(player, air);
                     break;
                 }
@@ -189,24 +195,59 @@ namespace Game.Ai.V2
                 bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
                 if (atAirfield && movedAny)
                 {
-                    AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} landed at "
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Landing at "
                         + $"({air.Hex.Q},{air.Hex.R}); sortie complete");
                     ReconAssignmentRegistry.Retire(player, armyId, "air recon landed");
+                    ReconAirSortieRegistry.Retire(player, armyId);
                     RemoveAirReconReservation(player, air);
                     break;
                 }
                 if (air.CurrentMovement <= 0)
                     break;
 
+                ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, armyId, air.Hex);
+
                 ReconMode mode = RequestedMode(snapshot);
                 if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))
                     mode = existing.Mode;
 
                 ReconAirStepPlanner.StepChoice? choice =
-                    ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber);
+                    ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+
+                // Phase transitions (spec §34). While still Outbound, a single pivot step is taken
+                // once marginal information gain has dropped or the MP left after the step would
+                // barely cover the proven return; after that the sortie is Return-bound.
+                if (!atAirfield && sortie.Phase == ReconAirPhase.Outbound && choice.HasValue)
+                {
+                    sortie.BestOutboundStepScore = Math.Max(sortie.BestOutboundStepScore, choice.Value.Score);
+                    int mpSlackAfterStep = air.CurrentMovement - choice.Value.RouteCost;
+                    bool marginalDrop = sortie.BestOutboundStepScore > 0.01f
+                        && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * sortie.BestOutboundStepScore;
+                    // The MP-reserve pivot is a same-turn boomerang concept only. A deliberate
+                    // multi-turn sortie keeps its own fuel-safety proof in AiAviationSupport and
+                    // must not be turned back after one step.
+                    bool returnReserve = choice.Value.RequiredTurns <= 1
+                        && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
+                    if (marginalDrop || returnReserve)
+                    {
+                        string why = returnReserve ? "return_reserve" : "marginal_gain";
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning reason={why} "
+                            + $"stepScore={choice.Value.Score:0.00} best={sortie.BestOutboundStepScore:0.00} "
+                            + $"mpSlackAfter={mpSlackAfterStep}");
+                        sortie.Phase = ReconAirPhase.Return;
+                    }
+                }
+
+                bool forwardStepUseful = choice.HasValue
+                    && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
+                if (!atAirfield && sortie.Phase == ReconAirPhase.Outbound && !forwardStepUseful)
+                {
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning reason=no_safe_forward_step");
+                    sortie.Phase = ReconAirPhase.Return;
+                }
 
                 bool mustReturn = !atAirfield
-                    && (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore);
+                    && (sortie.Phase == ReconAirPhase.Return || !forwardStepUseful);
                 if (mustReturn)
                 {
                     HexCoord? returnStep = PickReturnStep(player, ctx.Map, air, out HexCoord landing,
@@ -224,19 +265,26 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked — another task owns aircraft");
                         break;
                     }
-                    AiDebugLog.Write($"[AI][V2][Recon][Air][Return] actor=#{armyId} "
+                    // §34 — a Return step may still be informative when it coincides with the safe
+                    // way home, but never a detour that risks the landing: the step itself is always
+                    // returnStep.
+                    bool alsoInformative = choice.HasValue && choice.Value.Hex.Equals(returnStep.Value)
+                        && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Return "
                         + $"({air.Hex.Q},{air.Hex.R})->({returnStep.Value.Q},{returnStep.Value.R}) "
-                        + $"landing=({landing.Q},{landing.R}) {returnReason}");
+                        + $"landing=({landing.Q},{landing.R}) informative={(alsoInformative ? 1 : 0)} {returnReason}");
                     bool moved = false;
                     yield return MoveOne(player, ctx, air, returnStep.Value, "V2 Air Recon — safe return",
                         reservation, () => moved = true);
                     movedAny |= moved;
                     if (!moved) break;
+                    ArmyData afterReturn = Resolve(player, armyId);
+                    if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
                     ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
 
-                if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                if (!forwardStepUseful)
                     break;
 
                 // §40–44 — Energy opportunity cost is charged once, at the launching activation.
@@ -281,9 +329,11 @@ namespace Game.Ai.V2
 
                 bool stepMoved = false;
                 yield return MoveOne(player, ctx, air, choice.Value.Hex,
-                    $"V2 Air Recon — {mode} one-step live replan", reservationTask, () => stepMoved = true);
+                    $"V2 Air Recon — {mode} {sortie.Phase} one-step live replan", reservationTask, () => stepMoved = true);
                 movedAny |= stepMoved;
                 if (!stepMoved) break;
+                ArmyData afterStep = Resolve(player, armyId);
+                if (afterStep != null) sortie.RecordStep(afterStep.Hex);
                 ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
             }
 
