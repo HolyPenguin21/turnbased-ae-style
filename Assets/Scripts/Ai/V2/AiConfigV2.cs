@@ -576,6 +576,11 @@ namespace Game.Ai.V2
         public const float scoutImmediateReversalFactor = 0.55f;   // multiply route value on a reversal
         public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
+        // Spec §3/§7 — a ground Explore/Refresh candidate whose route witness found NO path from any
+        // eligible mover ("route unknown") is penalized, not treated as a healthy known route. Soft:
+        // a genuinely unreachable objective still stays selectable if nothing better exists, so a
+        // scout is never idle when only unknown-route work remains.
+        public const float scoutRouteUnknownAdmissionMultiplier = 0.35f;
 
         // --- Ground Recon reaction / assignment / concurrency / step-scoring tunables (spec §24).
         //     Previously scattered as private/internal consts and inline literals across

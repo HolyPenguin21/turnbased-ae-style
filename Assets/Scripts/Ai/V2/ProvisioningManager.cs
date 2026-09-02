@@ -234,6 +234,20 @@ namespace Game.Ai.V2
             {
                 if (!surveil)
                 {
+                    // Spec §3 — an (objective, actor) pair only enters the assignment solve if THIS
+                    // actor can currently take a safe first step toward the objective. Without this
+                    // the solver reserves a physical scout for a Refresh/Explore that provisioning
+                    // already knows cannot move (NoExecutableStep), starving an executable Explore
+                    // incumbent with a false MoverContended. Executability is actor-specific: a
+                    // different eligible mover with a real route still yields its own candidate, and
+                    // the objective is never globally dropped here.
+                    if (ctx?.Map != null)
+                    {
+                        ArmyData liveMover = ResolveArmy(player, mover.ArmyId);
+                        if (liveMover == null
+                            || VisitHexTask.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
+                            continue;
+                    }
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
@@ -438,7 +452,7 @@ namespace Game.Ai.V2
             bool refresh = ReconScoutKinds.IsRefresh(target.Kind);
 
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
-                return ClassifyNoAssignment(session, target, surveil);
+                return ClassifyNoAssignment(session, player, ctx, target, surveil);
 
             int moverArmyId = exec.Army.ArmyId;
             ArmyData army = ResolveArmy(player, moverArmyId);
@@ -531,7 +545,7 @@ namespace Game.Ai.V2
         }
 
         private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
-            ScoutMissionTarget target, bool surveil)
+            PlayerSetupData player, AiTurnContext ctx, ScoutMissionTarget target, bool surveil)
         {
             WorldSnapshot snap = session.Snapshot;
             bool needStealth = target.Stealth == StealthRequirement.Required;
@@ -541,8 +555,29 @@ namespace Game.Ai.V2
                     "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
 
             if (!surveil)
+            {
+                // Spec §3/§10 — an unassigned ground Explore/Refresh is only MoverContended if a
+                // capable UNCLAIMED scout that could actually take a safe first step toward the
+                // focus was preferred elsewhere. If unclaimed eligible scouts exist but NONE can
+                // reach the focus this turn, that is NoExecutableStep, not contention — so a stuck
+                // impossible Refresh never reads as if it stole an executable Explore's mover.
+                var freeEligible = ScoutMoverSelector.Eligible(snap, target, session.ClaimedArmyIds).ToList();
+                if (freeEligible.Count > 0 && ctx?.Map != null)
+                {
+                    bool anyReachable = freeEligible.Any(mv =>
+                    {
+                        ArmyData live = ResolveArmy(player, mv.ArmyId);
+                        return live != null
+                            && VisitHexTask.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
+                    });
+                    if (!anyReachable)
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            $"eligible scout(s) exist but none can take a safe first step toward "
+                            + $"({target.FocusHex.Q},{target.FocusHex.R}) this turn"));
+                }
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "a capable solo Recce exists but is spent / activated / taken this cycle"));
+            }
 
             bool anyStructuralVantage = ScoutMoverSelector.StructuralCandidates(snap, target)
                 .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);

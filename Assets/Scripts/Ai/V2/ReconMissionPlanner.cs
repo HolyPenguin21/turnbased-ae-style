@@ -182,7 +182,14 @@ namespace Game.Ai.V2
             float intrinsicAdmission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
             ScoutRouteCostEvaluator.Assessment route = ScoutRouteCostEvaluator.Evaluate(snap, target);
             bool ground = explore || refresh;
-            float routeMultiplier = ground && route.HasRoute ? route.AdmissionMultiplier : 1f;
+            // Spec §3/§7 — "route unknown" (no eligible mover can path to the focus) is a real
+            // negative signal, not a neutral one. Penalize it instead of keeping the full multiplier
+            // so an impossible Refresh cannot out-rank an executable Explore during admission.
+            float routeMultiplier = !ground
+                ? 1f
+                : route.HasRoute
+                    ? route.AdmissionMultiplier
+                    : AiConfigV2.scoutRouteUnknownAdmissionMultiplier;
             float admission = intrinsicAdmission * routeMultiplier;
 
             string explain;
@@ -224,7 +231,7 @@ namespace Game.Ai.V2
             route.HasRoute
                 ? $" routeMP {route.MovementCost} eta {route.EtaTurns} visitsNow {route.ExpectedVisitsThisTurn} "
                   + $"remainMP {route.RemainingMovementAtFocus} routeX {F(multiplier)}"
-                : " route unknown";
+                : $" route unknown routeX {F(multiplier)} (penalized)";
 
         private static float ComputeLocalAdmissionScore(float baseValue, float subDesire, float detectionRisk) =>
             baseValue * subDesire
