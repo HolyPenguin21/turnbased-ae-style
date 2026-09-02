@@ -182,20 +182,23 @@ namespace Game.Ai.V2
                 - AiConfigV2.airReconActivationApPenalty * activationAp
                 - AiConfigV2.airReconActivationEnergyPenalty * activationEnergy;
 
-            // Boomerang shaping (spec §33 / §48) — Outbound only, always subordinate to the shared
-            // aviation safety filter that already vetted every candidate here. Discourage hugging
-            // the way out; nudge toward an informative sideways sweep instead of a pure radial
-            // out-and-back.
+            // Boomerang shaping (spec §33 / §48) — Outbound and the Turning pivot only, always
+            // subordinate to the shared aviation safety filter that already vetted every candidate
+            // here. Discourage hugging the way out; nudge toward an informative sideways sweep
+            // instead of a pure radial out-and-back. The pivot step leans on this hardest — that is
+            // what makes Turning a real lateral bend rather than an instant U-turn.
             int trailOverlap = 0;
             bool lateral = false;
-            if (sortieState != null && sortieState.Phase == ReconAirPhase.Outbound)
+            if (sortieState != null
+                && (sortieState.Phase == ReconAirPhase.Outbound || sortieState.Phase == ReconAirPhase.Turning))
             {
+                float lateralWeight = sortieState.Phase == ReconAirPhase.Turning ? 2f : 1f;
                 trailOverlap = sortieState.TrailAdjacency(h);
                 score -= AiConfigV2.airReconOutboundTrailOverlapPenalty * trailOverlap;
                 lateral = information > 0.01f
                     && HexGridMath.Distance(sortieState.LaunchHex, h) <= HexGridMath.Distance(sortieState.LaunchHex, from);
                 if (lateral)
-                    score += AiConfigV2.airReconLateralNoveltyBonus;
+                    score += lateralWeight * AiConfigV2.airReconLateralNoveltyBonus;
             }
 
             string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "

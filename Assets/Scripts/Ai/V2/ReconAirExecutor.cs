@@ -231,18 +231,34 @@ namespace Game.Ai.V2
                     if (marginalDrop || returnReserve)
                     {
                         string why = returnReserve ? "return_reserve" : "marginal_gain";
-                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning reason={why} "
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Turning reason={why} "
                             + $"stepScore={choice.Value.Score:0.00} best={sortie.BestOutboundStepScore:0.00} "
                             + $"mpSlackAfter={mpSlackAfterStep}");
-                        sortie.Phase = ReconAirPhase.Return;
+                        sortie.Phase = ReconAirPhase.Turning;
                     }
                 }
 
                 bool forwardStepUseful = choice.HasValue
                     && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
+
+                // The Turning pivot is one real lateral step (boomerang bend), not an instant
+                // U-turn. It re-Picks with the pivot's stronger lateral weighting; if no safe
+                // informative pivot exists the sortie just goes Return this iteration.
+                if (!atAirfield && sortie.Phase == ReconAirPhase.Turning)
+                {
+                    choice = ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+                    forwardStepUseful = choice.HasValue
+                        && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
+                    if (!forwardStepUseful)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return reason=no_safe_pivot");
+                        sortie.Phase = ReconAirPhase.Return;
+                    }
+                }
+
                 if (!atAirfield && sortie.Phase == ReconAirPhase.Outbound && !forwardStepUseful)
                 {
-                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning reason=no_safe_forward_step");
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=no_safe_forward_step");
                     sortie.Phase = ReconAirPhase.Return;
                 }
 
@@ -339,6 +355,11 @@ namespace Game.Ai.V2
                 if (!stepMoved) break;
                 ArmyData afterStep = Resolve(player, armyId);
                 if (afterStep != null) sortie.RecordStep(afterStep.Hex);
+                if (sortie.Phase == ReconAirPhase.Turning)
+                {
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return pivot step taken");
+                    sortie.Phase = ReconAirPhase.Return;
+                }
                 yield return TryOpportunisticAirStrike(player, ctx, afterStep, sortie);
                 ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
             }
