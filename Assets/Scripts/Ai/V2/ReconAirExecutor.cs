@@ -594,12 +594,10 @@ namespace Game.Ai.V2
                     + $"marked ground Visited at ({hex.Q},{hex.R})");
         }
 
-        private static ReconMode RequestedMode(WorldSnapshot snapshot)
-        {
-            float explore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
-            float refresh = ReconIntelSnapshotRegistry.StalePressure(snapshot);
-            return refresh > explore ? ReconMode.Refresh : ReconMode.Explore;
-        }
+        // Spec §29 — aviation serves Intelligence Refresh only. It reveals hexes but never marks
+        // them ground-Visited, so it must never be tasked as an Exploration/Visit mover regardless
+        // of how dark the map still is. The Explore mode stays a ground-only concept.
+        private static ReconMode RequestedMode(WorldSnapshot snapshot) => ReconMode.Refresh;
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
