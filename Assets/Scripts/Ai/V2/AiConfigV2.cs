@@ -564,6 +564,21 @@ namespace Game.Ai.V2
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
 
         // =======================================================================================
+        //  AIR RECON PER-STEP FLIGHT SCORING  (ReconAirStepPlanner, spec §24 — no scattered magic
+        //  numbers). "Information" is the never-observed / stale-IntelAge value inside the wing's
+        //  own vision footprint at the candidate hex; penalties price the proven round-trip route
+        //  and the wing's first activation. First-pass.
+        // =======================================================================================
+        public const float airReconNeverObservedWeight = 1.00f;     // per never-observed hex the step would reveal
+        public const float airReconStaleWeight = 0.80f;             // per unit of averaged IntelAge staleness revealed
+        public const float airReconDirectionWeight = 0.65f;         // sanitized enemy-direction sector pressure toward the step
+        public const float airReconRouteCostPenalty = 0.10f;        // per MP of the proven round-trip route
+        public const float airReconExtraTurnPenalty = 0.25f;        // per extra real turn a multi-turn sortie needs
+        public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
+        public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
+        public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
+
+        // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,
         //  spec §33 / §34 / §48). Outbound presses toward information with a soft boomerang nudge;
         //  a single Turning pivot step is logged once one trigger fires; Return then prioritises a

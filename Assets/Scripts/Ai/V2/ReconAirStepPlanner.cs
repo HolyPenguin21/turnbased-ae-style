@@ -55,14 +55,9 @@ namespace Game.Ai.V2
             }
         }
 
-        private const float NeverObservedWeight = 1.00f;
-        private const float StaleWeight = 0.80f;
-        private const float DirectionWeight = 0.65f;
-        private const float RouteCostPenalty = 0.10f;
-        private const float ExtraTurnPenalty = 0.25f;
-        private const float ActivationApPenalty = 0.35f;
-        private const float ActivationEnergyPenalty = 0.20f;
-        internal const float MinimumUsefulScore = 0.15f;
+        // All step-scoring tunables now live in AiConfigV2 (spec §24). Kept as an alias so callers
+        // reading "the threshold that means turn for home / do not launch" have one obvious name.
+        internal const float MinimumUsefulScore = AiConfigV2.airReconMinimumUsefulScore;
 
         public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
             WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null)
@@ -173,17 +168,19 @@ namespace Game.Ai.V2
                 sectorPressure = Mathf.Max(sectorPressure, 0.75f);
 
             float information = mode == ReconMode.Explore
-                ? NeverObservedWeight * neverObserved + 0.20f * StaleWeight * staleInformation
-                : StaleWeight * staleInformation + 0.20f * NeverObservedWeight * neverObserved;
+                ? AiConfigV2.airReconNeverObservedWeight * neverObserved
+                    + 0.20f * AiConfigV2.airReconStaleWeight * staleInformation
+                : AiConfigV2.airReconStaleWeight * staleInformation
+                    + 0.20f * AiConfigV2.airReconNeverObservedWeight * neverObserved;
 
             // Current/recently observed cells have age~0 and no stale value; already-known cells
             // have no never-observed value. Thus repeated flights naturally lose marginal value.
             float score = information
-                + DirectionWeight * Mathf.Clamp01(sectorPressure)
-                - RouteCostPenalty * routeCost
-                - ExtraTurnPenalty * Mathf.Max(0, requiredTurns - 1)
-                - ActivationApPenalty * activationAp
-                - ActivationEnergyPenalty * activationEnergy;
+                + AiConfigV2.airReconDirectionWeight * Mathf.Clamp01(sectorPressure)
+                - AiConfigV2.airReconRouteCostPenalty * routeCost
+                - AiConfigV2.airReconExtraTurnPenalty * Mathf.Max(0, requiredTurns - 1)
+                - AiConfigV2.airReconActivationApPenalty * activationAp
+                - AiConfigV2.airReconActivationEnergyPenalty * activationEnergy;
 
             // Boomerang shaping (spec §33 / §48) — Outbound only, always subordinate to the shared
             // aviation safety filter that already vetted every candidate here. Discourage hugging
