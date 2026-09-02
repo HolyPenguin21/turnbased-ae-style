@@ -106,13 +106,16 @@ namespace Game.Ai.V2
                         .Select(o => o.BaseValue)
                         .DefaultIfEmpty(0f)
                         .Max();
-                    float bestRefresh = refresh
+                    ReconObjective topRefresh = refresh
                         .Where(o => o != null)
-                        .Select(o => o.BaseValue)
-                        .DefaultIfEmpty(0f)
-                        .Max();
+                        .OrderByDescending(o => o.BaseValue)
+                        .FirstOrDefault();
+                    float bestRefresh = topRefresh?.BaseValue ?? 0f;
                     ReconAcceptanceAudit.RecordMostlyExploredPressure(auditPlayer, snap.TurnNumber,
                         snap.MapKnowledge.ExplorableUnknownFrac, bestExplore, bestRefresh);
+                    if (topRefresh != null)
+                        ReconAcceptanceAudit.RecordDirectionInfluence(auditPlayer, snap.TurnNumber,
+                            topRefresh.FocusHex, topRefresh.DirectionPressure, topRefresh.BaseValue);
                 }
             }
             return list;
