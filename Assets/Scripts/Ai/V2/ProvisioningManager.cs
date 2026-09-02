@@ -254,28 +254,25 @@ namespace Game.Ai.V2
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
 
-            // AI-RECON-01 — the reservation planner already bound a concrete scout to this mission.
-            // Restrict the candidate set to it; only if it has since become ineligible (invalidation
-            // — spec §7) fall back to a rematch across the remaining free scouts, still EXCLUDING
-            // scouts reserved for other funded Recon jobs so the rematch can't poach a sibling.
+            // AI-RECON-01 — ReconActorReservationPlanner is the SINGLE owner of Recon actor
+            // assignment. If it bound a concrete scout to this mission, provisioning uses THAT actor
+            // and nothing else: a scout that is no longer eligible yields an EMPTY candidate list ->
+            // a clean provisioning failure -> the pipeline's Rematch rebinds. Provisioning never
+            // silently picks a different free scout (that made the reservation context lie — two
+            // owners of the assignment).
             List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
             if (reservedMoverArmyId.HasValue)
             {
-                var bound = movers.Where(a => a.ArmyId == reservedMoverArmyId.Value).ToList();
-                if (bound.Count > 0)
-                {
-                    movers = bound;
-                }
-                else
-                {
-                    if (reservedElsewhere != null && reservedElsewhere.Count > 0)
-                        movers = movers.Where(a => !reservedElsewhere.Contains(a.ArmyId)).ToList();
+                movers = movers.Where(a => a.ArmyId == reservedMoverArmyId.Value).ToList();
+                if (movers.Count == 0)
                     AiDebugLog.Write($"[AI][V2][ReconActor] reserved mover #{reservedMoverArmyId.Value} for "
-                        + $"({target.FocusHex.Q},{target.FocusHex.R}) no longer eligible at provision — rematch across free scouts");
-                }
+                        + $"({target.FocusHex.Q},{target.FocusHex.R}) no longer eligible at provision — "
+                        + "failing back to ReconActorReservationPlanner.Rematch");
             }
             else if (reservedElsewhere != null && reservedElsewhere.Count > 0)
             {
+                // Defensive: an unreserved Scout should not reach provisioning (the allocator gates
+                // ReservedMoverArmyId == null), but if it does, still never poach a bound sibling.
                 movers = movers.Where(a => !reservedElsewhere.Contains(a.ArmyId)).ToList();
             }
 

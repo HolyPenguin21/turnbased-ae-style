@@ -529,7 +529,7 @@ namespace Game.Ai.V2
             // actor-bound Recon mission and MoverContended reverts to a defensive-only outcome.
             var reconActorCtx = new ReconActorReservationContext();
             ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
-                activeIntents, reconObjectives);
+                activeIntents, reconObjectives, apLedger);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
             // Demand→Mission causal link (spec §1.6).
@@ -637,13 +637,13 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                        // AI-RECON-01 — a Scout miss that frees its reserved scout (the objective was
-                        // met / invalidated elsewhere, no executable step, or contention) returns the
-                        // actor + its concurrency slot to the context so the Rematch below can bind it
-                        // to another still-live job this same turn.
+                        // AI-RECON-01 — a Scout miss: STRUCTURAL kinds block the job this turn, the
+                        // rest just free the actor for the Rematch below. Either way the reserved
+                        // scout goes back to the pool so another still-live job can use it.
                         if (fe.Mission.Kind == MissionKind.Scout
                             && result.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
-                            ReconActorReservationPlanner.ReleaseForProvisionFailure(reconActorCtx, fe.Mission);
+                            ReconActorReservationPlanner.RecordProvisionFailure(reconActorCtx, fe.Mission,
+                                result.Failure.Kind);
                         AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                     }
@@ -654,13 +654,12 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
                     break;
                 }
-                // AI-RECON-01 — release the reserved scouts of budget-deferred Recon jobs and
-                // rematch every still-live one before the next Pack. This is the "budget failed ->
-                // release actor + resources -> rematch remaining jobs" leg of the reservation
-                // lifecycle: e.g. a pricey Surveil reserved the only free scout, could not be
-                // funded, and a cheap Explore that was left unreserved now takes that scout.
-                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, snapshot, ctx, player,
-                    missions, allocation.Deferred);
+                // AI-RECON-01 — rebuild the whole Recon reservation from the current portfolio: drop
+                // structurally-rejected jobs, release every other non-provisioned reservation,
+                // recompute the room, and re-assign with a budget-feasible greedy. No admission
+                // verdict from the previous Pack is inherited, so a job that becomes fundable when a
+                // sibling dies gets the freed scout + AP on the very next Pack.
+                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession);
                 if (!reconRematched && (!session.HasNewFailures || session.Converged))
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)

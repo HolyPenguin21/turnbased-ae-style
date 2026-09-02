@@ -156,6 +156,15 @@ namespace Game.Ai.V2
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives));
+            // AI-RECON-01 — the reaction round runs the SAME DemandLayer -> MissionLayer -> Allocator
+            // -> Provisioning path as the main pass, so it needs the same actor-before-budget
+            // reservation, or every reaction-round Scout would defer ReconActorUnreserved. The
+            // main pass's air reservation (still stamped for this turn) is reused; the reaction
+            // round has no rematch loop unwinding as elaborate as the main one, but PreparePass
+            // still receives the reserved-actor set and a single Rematch runs between re-packs.
+            var reconActorCtx = new ReconActorReservationContext();
+            ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
+                activeIntents, reconObjectives, apLedger);
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
@@ -181,7 +190,8 @@ namespace Game.Ai.V2
             {
                 bool anyFailure = false;
                 bool allFailuresArePoolWide = true;
-                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
+                    reconActorCtx.ReservedActorIds);
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null) continue;
@@ -219,6 +229,10 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
+                        if (fe.Mission.Kind == MissionKind.Scout
+                            && provision.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
+                            ReconActorReservationPlanner.RecordProvisionFailure(reconActorCtx, fe.Mission,
+                                provision.Failure.Kind);
                         AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — FAIL "
                             + $"{provision.Failure.Kind} [{provision.Failure.Disposition}] "
                             + provision.Failure.Detail);
@@ -230,8 +244,10 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] reaction — every funded mission's capability pool is exhausted this cycle; stop key-by-key reallocation");
                     break;
                 }
-                if (!session.HasNewFailures || session.Converged
-                    || ++reallocPass >= AiConfigV2.maxReallocIterations)
+                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession);
+                if (!reconRematched && (!session.HasNewFailures || session.Converged))
+                    break;
+                if (++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;
                 allocation = session.Pack();
             }

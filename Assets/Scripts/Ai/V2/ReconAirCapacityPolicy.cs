@@ -69,6 +69,7 @@ namespace Game.Ai.V2
     {
         public readonly List<int> AirborneWingIds = new List<int>();
         public int AirborneUnactivatedEnergy;                 // first-activation Energy airborne wings still owe this turn
+        public int AirborneUnactivatedAp;                     // first-activation AP airborne wings still owe this turn
         public readonly List<AirObservationSlot> AcceptedSpareSlots = new List<AirObservationSlot>();
         public int AirborneReconWings => AirborneWingIds.Count;
         public int SpareSorties => AcceptedSpareSlots.Count;
@@ -125,12 +126,17 @@ namespace Game.Ai.V2
                     detail.AirborneWingIds.Add(a.Id);
             int airborneReconWings = detail.AirborneWingIds.Count;
 
-            // First-activation Energy EVERY in-flight air wing still owes this turn — AirStrike
+            // First-activation AP+Energy EVERY in-flight air wing still owes this turn — AirStrike
             // included (parity with ReconAirEnergyPolicy's committed term; an already-activated wing
-            // owes nothing). ReconAirReservationPrepass protects this too.
+            // owes nothing). ReconAirReservationPrepass protects BOTH (the earlier pass protected
+            // only Energy, so an airborne wing's own mandatory activation AP could be spent by
+            // Phase A / ground work and the wing then could not move/recover).
             foreach (ArmyData a in ownAir)
                 if (!a.HasActivatedThisTurn && InFlightAir(a))
+                {
                     detail.AirborneUnactivatedEnergy += Mathf.Max(0, a.ActivationEnergyCost);
+                    detail.AirborneUnactivatedAp += Mathf.Max(0, a.ActivationApCost);
+                }
 
             // ReconAirExecutor's per-turn actor counter (actorsUsed) is only incremented for RECON
             // actors it drives: in-flight wings with a ReconAssignment, then ready standalone recon
@@ -142,11 +148,16 @@ namespace Game.Ai.V2
             if (spareSlots == 0)
                 return detail;
 
-            // Local shared budget: post-reservation AP/Energy minus the airborne first-activation
-            // Energy above.
-            int apBudget = Mathf.Max(0, root.ActionPoints);
-            int energyBudget = Mathf.Max(0,
-                AiResourceReservation.Available(root, player, ResourceType.Energy) - detail.AirborneUnactivatedEnergy);
+            // Local shared budget: real AP/Energy minus (a) the airborne wings' own owed
+            // first-activation AP+Energy and (b) the ReconAirEnergyPolicy hard reserve
+            // (committed air + playable-high-value hand card + near-term draw). Read the stockpile
+            // directly (like ReconAirEnergyPolicy) — NOT AiResourceReservation.Available, whose V2
+            // hook is the recon-air reservation itself and would feed back on a re-evaluation.
+            int apBudget = Mathf.Max(0, root.ActionPoints - detail.AirborneUnactivatedAp);
+            ReconAirEnergyDecision reserveProbe = ReconAirEnergyPolicy.Evaluate(player, root, null, 0, 999f, -1);
+            int energyReserve = Mathf.Max(detail.AirborneUnactivatedEnergy,
+                reserveProbe.Committed) + reserveProbe.ProtectedHand + reserveProbe.ProtectedDeck;
+            int energyBudget = Mathf.Max(0, Mathf.Max(0, root.GetResource(ResourceType.Energy)) - energyReserve);
 
             // Ordered EXACTLY as ReconAirExecutor launches (review round 4, P1): ready standalone
             // wings first, in the executor's own sort, THEN one storage launch subset per owned

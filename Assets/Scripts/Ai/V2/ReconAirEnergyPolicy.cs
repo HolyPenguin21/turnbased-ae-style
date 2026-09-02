@@ -83,15 +83,19 @@ namespace Game.Ai.V2
         // excludeArmyId — the actor being evaluated, so an airborne wing re-checking its own first
         // step does not count itself in `committed`; pass a negative value for a storage launch that
         // has no ArmyData yet.
+        // extraCommittedEnergy — Energy already committed by EARLIER sorties reserved in the same
+        // planning pass this turn (AI-RECON-01 ReconAirReservationPrepass evaluates several
+        // candidate launches against the ONE stockpile; without this each would see the full stock
+        // and the prepass would over-promise guaranteed lanes the executor cannot all fly).
         public static ReconAirEnergyDecision Evaluate(PlayerSetupData player, PlayerRoot root, HexMap map,
-            int launchEnergyCost, float informationValue, int excludeArmyId)
+            int launchEnergyCost, float informationValue, int excludeArmyId, int extraCommittedEnergy = 0)
         {
             if (player == null || root == null)
                 return new ReconAirEnergyDecision(false, 0, launchEnergyCost, 0, 0, 0, 0,
                     informationValue, 0f, 0f, "missing player/root");
 
             int stock = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            int committed = CommittedAirActivationEnergy(player, excludeArmyId);
+            int committed = CommittedAirActivationEnergy(player, excludeArmyId) + Mathf.Max(0, extraCommittedEnergy);
             int protectedHand = ProtectedHandEnergy(root, player);
             int protectedDeck = ProtectedNearTermDrawEnergy(player);
             int spendable = Mathf.Max(0, stock - committed - protectedHand - protectedDeck);
