@@ -48,14 +48,17 @@ namespace Game.Ai.V2
         public int ObservationDeficit;
         public int GroundTraversalDeficit;
 
-        // Distinct GENERIC usable capacity already in hand — deduped ground actor ids (a scout
-        // counted once even though it could serve either class) + air observation capacity.
-        // DemandLayer's overproduction clamp: additional new scouts <= Combined - this.
-        public int ExistingCombinedUsableCapacity;
+        // Distinct GENERIC GROUND actors already in hand — deduped ids (a scout counted once even
+        // though it could serve either class): active generic Explore/Refresh/Surveil lanes plus
+        // idle-usable solo Recce. This is what DemandLayer's global-concurrency clamp subtracts.
+        // Air capacity is DELIBERATELY NOT folded in: aviation can close an Observation lane but
+        // NEVER a GroundTraversal lane, so letting it shrink the combined ceiling would let a
+        // helicopter phantom-cover a required physical visit (review round 4, P0).
+        public int ExistingGroundUsableCapacity;
 
         public string Explain =>
             $"desiredObs={DesiredObservationConcurrency} desiredGround={DesiredGroundTraversalConcurrency} "
-            + $"combinedCeiling={CombinedDesiredConcurrency} existingUsable={ExistingCombinedUsableCapacity} "
+            + $"combinedCeiling={CombinedDesiredConcurrency} existingGroundUsable={ExistingGroundUsableCapacity} "
             + $"obs[genLanes={GenericObservationLaneActors.Count} airborne={AirborneReconLanes} "
             + $"spareAir={SpareAirObservationSorties}] "
             + $"ground[genLanes={GenericGroundLaneActors.Count} idleScouts={IdleGroundScouts.Count}] "
@@ -145,8 +148,7 @@ namespace Game.Ai.V2
             var distinctGround = new HashSet<int>(cap.GenericGroundLaneActors);
             distinctGround.UnionWith(cap.GenericObservationLaneActors);
             distinctGround.UnionWith(cap.IdleGroundScouts);
-            cap.ExistingCombinedUsableCapacity =
-                distinctGround.Count + cap.AirborneReconLanes + cap.SpareAirObservationSorties;
+            cap.ExistingGroundUsableCapacity = distinctGround.Count;
 
             return cap;
         }

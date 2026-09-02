@@ -150,17 +150,20 @@ namespace Game.Ai.V2
             int groundNew = groundPersist ? capacity.GroundTraversalDeficit : 0;
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
-            //     served first. Generic then gets whatever HardCap room is left AND may only chase
-            //     the gap between the globally useful GENERIC concurrency and the GENERIC usable
-            //     capacity already in hand (active generic lanes + idle scouts + air) — so a
-            //     portfolio can't grow past what is useful even across several turns (review P1).
+            //     served first.
             int roomForNew = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - activeReconExecutions);
             int stealthNew = Mathf.Min(missStealth, roomForNew);
-            int additionalGenericNeeded = Mathf.Max(0,
-                capacity.CombinedDesiredConcurrency - capacity.ExistingCombinedUsableCapacity);
-            int genericNew = Mathf.Min(
-                Mathf.Min(obsNew + groundNew, additionalGenericNeeded),
-                Mathf.Max(0, roomForNew - stealthNew));
+
+            // A persisted GroundTraversal deficit is a HARD FLOOR: aviation can never substitute for
+            // a physical visit, so it must produce scouts no matter how much air observation
+            // capacity exists. Only the OBSERVATION portion is trimmed by the global useful-generic-
+            // concurrency ceiling, and that ceiling is measured against GROUND capacity already in
+            // hand only — air is not interchangeable with a ground lane (review round 4, P0).
+            int usefulGenericRoom = Mathf.Max(0,
+                capacity.CombinedDesiredConcurrency - capacity.ExistingGroundUsableCapacity);
+            int groundPart = groundNew;
+            int obsPart = Mathf.Min(obsNew, Mathf.Max(0, usefulGenericRoom - groundPart));
+            int genericNew = Mathf.Min(groundPart + obsPart, Mathf.Max(0, roomForNew - stealthNew));
 
             const float reconFixedOverheadAp = 0f;
 
@@ -177,8 +180,8 @@ namespace Game.Ai.V2
                     + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
                     + $"missStealth={missStealth} stealthFree={stealthFree} active={activeReconExecutions} "
                     + $"hard={ReconConcurrencyPolicy.HardCap} combinedCeiling={capacity.CombinedDesiredConcurrency} "
-                    + $"existingUsable={capacity.ExistingCombinedUsableCapacity} addlGenericNeeded={additionalGenericNeeded} "
-                    + $"roomForNew={roomForNew} blocked={blocked}");
+                    + $"existingGroundUsable={capacity.ExistingGroundUsableCapacity} usefulGenericRoom={usefulGenericRoom} "
+                    + $"groundFloor={groundNew} roomForNew={roomForNew} blocked={blocked}");
                 yield break;
             }
 
@@ -206,7 +209,7 @@ namespace Game.Ai.V2
 
             if (genericNew > 0)
             {
-                var genericPool = groundNew >= obsNew ? groundVisitRunnable : observationRunnable;
+                var genericPool = groundPart > 0 ? groundVisitRunnable : observationRunnable;
                 ReconObjective best = genericPool.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? runnable.FirstOrDefault(o => !IsStealthObjective(o)) ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
@@ -214,8 +217,8 @@ namespace Game.Ai.V2
                     + $"obsDeficit={capacity.ObservationDeficit}(streak={obsStreak}) "
                     + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(streak={groundStreak}) "
                     + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
-                    + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingUsable={capacity.ExistingCombinedUsableCapacity} "
-                    + $"addlGenericNeeded={additionalGenericNeeded} runnable={runnable.Count} blocked={blocked} "
+                    + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
+                    + $"groundPart={groundPart} obsPart={obsPart} runnable={runnable.Count} blocked={blocked} "
                     + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {

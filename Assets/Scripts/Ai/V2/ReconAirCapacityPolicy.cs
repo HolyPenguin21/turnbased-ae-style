@@ -89,29 +89,31 @@ namespace Game.Ai.V2
                 !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
                 && ReconAssignmentRegistry.TryGet(player, a.Id, out _));
 
-            // Any other in-flight air task (AirStrike, or an AirRecon task without an assignment
-            // yet) is also a consumed per-turn slot and genuinely unavailable for observation.
-            int otherInFlightSlots = ownAir.Count(a =>
-                !ReconAssignmentRegistry.TryGet(player, a.Id, out _)
-                && AiTaskRegistry.TaskFor(player, a) is AiTask t
-                && (t.Kind == AiTaskKind.AirRecon || t.Kind == AiTaskKind.AirStrike));
-
-            int spareSlots = Mathf.Max(0,
-                MaxAirReconActorsPerTurn - airborneReconWings - otherInFlightSlots);
+            // ReconAirExecutor's per-turn actor counter (actorsUsed) is only incremented for RECON
+            // actors it drives: in-flight wings with a ReconAssignment, then ready standalone recon
+            // launches, then storage recon launches. An AirStrike sortie (or an orphan AirRecon
+            // task with no assignment) is NEVER counted against MaxAirReconActorsPerTurn — it just
+            // makes that aircraft unavailable and owes its own activation Energy. So only airborne
+            // recon wings consume a slot here (review round 4, P1).
+            int spareSlots = Mathf.Max(0, MaxAirReconActorsPerTurn - airborneReconWings);
             if (spareSlots == 0)
                 return new ReconAirObservationCapacity(airborneReconWings, 0);
 
             // Local shared budget: post-reservation AP/Energy minus the first-activation Energy
-            // in-flight air wings still owe this turn (parity with ReconAirEnergyPolicy's committed
-            // term — an already-activated wing owes nothing).
+            // EVERY in-flight air wing still owes this turn — AirStrike included (parity with
+            // ReconAirEnergyPolicy's committed term; an already-activated wing owes nothing).
             int apBudget = Mathf.Max(0, root.ActionPoints);
             int energyBudget = Mathf.Max(0, AiResourceReservation.Available(root, player, ResourceType.Energy));
             foreach (ArmyData a in ownAir)
                 if (!a.HasActivatedThisTurn && InFlightAir(a))
                     energyBudget = Mathf.Max(0, energyBudget - Mathf.Max(0, a.ActivationEnergyCost));
 
-            // Candidate sorties, each with its concrete AP + Energy cost.
-            var costs = new List<(int ap, int energy)>();
+            // Ordered EXACTLY as ReconAirExecutor launches (review round 4, P1): ready standalone
+            // wings first, in the executor's own sort, THEN one storage launch subset per owned
+            // airfield in OwnedAirfieldHexes order. NOT a global cheapest-first sort — that could
+            // "afford" a combination the executor would never reach (a pricey ready wing it meets
+            // first eats the budget before a cheap hangar sortie).
+            var orderedCosts = new List<(int ap, int energy)>();
 
             foreach (ArmyData a in ownAir
                 .Where(a => AviationRules.IsOwnedAirfieldAt(a.Hex, player)
@@ -121,7 +123,7 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
                 .ThenBy(a => a.Id))
             {
-                costs.Add((a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
+                orderedCosts.Add((a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
@@ -134,17 +136,17 @@ namespace Game.Ai.V2
                 List<UnitData> subset = SelectReconLaunchSubset(airfield.Members);
                 if (subset.Count == 0)
                     continue;
-                costs.Add((subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
+                orderedCosts.Add((subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
                     subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
             }
 
             int spare = 0;
-            foreach ((int ap, int energy) in costs.OrderBy(c => c.energy).ThenBy(c => c.ap))
+            foreach ((int ap, int energy) in orderedCosts)
             {
                 if (spare >= spareSlots)
                     break;
                 if (ap > apBudget || energy > energyBudget)
-                    continue;
+                    continue;   // executor moves on to the next candidate in order (does not reorder)
                 apBudget -= ap;
                 energyBudget -= energy;
                 spare++;
