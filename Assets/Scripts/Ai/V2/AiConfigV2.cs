@@ -563,6 +563,18 @@ namespace Game.Ai.V2
         public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction
 
+        // =======================================================================================
+        //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
+        //  Splits the Energy stock into committed (other in-flight AirRecon activations) +
+        //  protected (a playable high-value hand card's need) + spendable, so a routine refresh
+        //  sortie can no longer eat Energy a card / research needs just because it is individually
+        //  affordable. First-pass; tune against real AiDebug.log [Recon][Air][Energy] lines.
+        // =======================================================================================
+        public const float reconAirEnergyExtraHandFraction = 0.35f; // weight on playable hand cards beyond the single largest when computing ProtectedEnergy
+        public const float reconAirEnergyIncomeHorizon = 3f;        // turns of Energy income folded into the effective spendable pool for the soft opportunity term
+        public const float reconAirEnergyOppWeight = 0.5f;          // how hard the soft opportunity term pulls final utility down
+        public const float reconAirEnergyMinUtility = 0f;           // launch only when informationValue - oppWeight*oppCost clears this (hard reserve already handled separately)
+
         // --- Resource-starvation economic feedback (spec §17, P2). Bounded, decaying pressure
         //     raised when AGG/RCN strategic chains keep failing for lack of a specific empty
         //     resource stock; consumed as ONE bounded Economy value bump on a known extraction

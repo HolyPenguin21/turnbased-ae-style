@@ -97,6 +97,15 @@ namespace Game.Ai.V2
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                     continue;
 
+                // §40–44 — a routine refresh sortie must not dip into Energy a playable high-value
+                // hand card (or another in-flight AirRecon activation) still needs.
+                int storageLaunchEnergy = storedAircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
+                ReconAirEnergyDecision storageEnergy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
+                    storageLaunchEnergy, first.Value.Score, excludeArmyId: -1);
+                AiDebugLog.Write(storageEnergy.ToLog($"airfield=({airfieldHex.Q},{airfieldHex.R})"));
+                if (!storageEnergy.Allowed)
+                    continue;
+
                 bool firstVisitedBefore = VisionSystem.IsVisited(player, first.Value.Hex);
                 var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
                     .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
@@ -229,6 +238,23 @@ namespace Game.Ai.V2
 
                 if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                     break;
+
+                // §40–44 — Energy opportunity cost is charged once, at the launching activation.
+                // A wing already airborne this turn has paid it; a wing sitting on its own airfield
+                // about to take its first step this turn must clear the same reserve a storage
+                // launch does.
+                if (atAirfield && !air.HasActivatedThisTurn)
+                {
+                    ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
+                        air.ActivationEnergyCost, choice.Value.Score, air.Id);
+                    AiDebugLog.Write(energy.ToLog($"actor=#{armyId}"));
+                    if (!energy.Allowed)
+                    {
+                        ReconAssignmentRegistry.Retire(player, armyId, "air recon energy opportunity cost");
+                        RemoveAirReconReservation(player, air);
+                        break;
+                    }
+                }
 
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, armyId, air.Hex,
                     choice.Value.Hex, mode, ctx.TurnNumber);
