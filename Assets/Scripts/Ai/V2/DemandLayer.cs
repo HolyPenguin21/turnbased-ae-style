@@ -106,31 +106,72 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            int desiredConcurrency = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
-            int remainingConcurrency = Mathf.Max(0, desiredConcurrency - activeReconExecutions);
-            AiDebugLog.Write($"[AI][V2][Demand][Recon] concurrency {ReconConcurrencyPolicy.Explain(snap, runnable)} "
-                + $"active={activeReconExecutions} remaining={remainingConcurrency}");
-            if (remainingConcurrency == 0)
+            // AI-RECON-02 — unified recon capacity. Observation lanes (Refresh / Surveil) may be
+            // covered by ground scouts, ready aircraft, airborne recon wings OR funded-but-unlaunched
+            // air sorties; ground-traversal lanes (Explore — a physical visit) only by ground actors.
+            // A new Scout is materialised only when a USABLE deficit (already net of aviation and
+            // idle scouts) has persisted, not merely because Recon desire is high (spec §7).
+            var observationRunnable = runnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
+            var groundVisitRunnable = runnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
+
+            ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
+                snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
+            AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
+                + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
+                + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count}) blocked={blocked}");
+
+            bool obsPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
+                player, turn, ReconDeficitKind.Observation, capacity.ObservationDeficit, out int obsStreak);
+            bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
+                player, turn, ReconDeficitKind.GroundTraversal, capacity.GroundTraversalDeficit, out int groundStreak);
+
+            int obsNew = obsPersist ? capacity.ObservationDeficit : 0;
+            int groundNew = groundPersist ? capacity.GroundTraversalDeficit : 0;
+
+            // The absolute concurrency ceiling still governs how many concurrent GROUND scouts the
+            // AI may own (aviation observation capacity does not consume it).
+            int maxNew = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - activeReconExecutions);
+            int requiredNewExecutions = Mathf.Min(Mathf.Min(obsNew + groundNew, maxNew), runnable.Count);
+
+            if (requiredNewExecutions <= 0)
             {
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=desired_concurrency_satisfied "
-                    + $"active={activeReconExecutions} desired={desiredConcurrency} "
-                    + $"hard={ReconConcurrencyPolicy.HardCap} runnable={runnable.Count} blocked={blocked}");
+                string reason =
+                    capacity.ObservationDeficit == 0 && capacity.GroundTraversalDeficit == 0
+                        ? "usable_capacity_covers_all_lanes"
+                        : (obsNew + groundNew) == 0
+                            ? "capacity_deficit_not_yet_persistent"
+                            : "concurrency_hard_cap_reached";
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason={reason} "
+                    + $"obsDeficit={capacity.ObservationDeficit}(persist={(obsPersist ? 1 : 0)} streak={obsStreak}) "
+                    + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
+                    + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} maxNew={maxNew} blocked={blocked}");
                 yield break;
             }
 
-            int requiredNewExecutions = Mathf.Min(remainingConcurrency, runnable.Count);
-            List<ReconObjective> topN = runnable.Take(requiredNewExecutions).ToList();
+            // Target list for the stealth/generic split: ground-visit misses pull from Explore
+            // objectives, observation misses from Refresh/Surveil; trimmed by value to what the
+            // ceiling allows.
+            var topN = new List<ReconObjective>();
+            topN.AddRange(groundVisitRunnable.Take(Mathf.Min(groundNew, groundVisitRunnable.Count)));
+            topN.AddRange(observationRunnable.Take(Mathf.Min(obsNew, observationRunnable.Count)));
+            topN = topN.OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey)
+                .Take(requiredNewExecutions).ToList();
+            if (topN.Count == 0)
+                topN.Add(runnable[0]);
+
             int stealthNeeded = topN.Count(o => o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
             int genericNeeded = requiredNewExecutions - stealthNeeded;
+
+            // Stealth capacity is checked independently: aviation cannot substitute for a
+            // stealth-capable ground scout, and the capacity model folds stealth-capable idle
+            // scouts into its generic pool. Generic misses come straight from the persisted
+            // capacity deficit (already net of ready/airborne/funded aviation + idle generic scouts).
             var claimed = commitments?.ClaimedArmyIdSet;
             int stealthSupply = ScoutMoverSelector.Eligible(snap,
                 new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed).Count;
-            int anySupply = ScoutMoverSelector.Eligible(snap,
-                new ScoutMissionTarget { Stealth = StealthRequirement.None }, claimed).Count;
             int missStealth = Mathf.Max(0, stealthNeeded - stealthSupply);
             int stealthLeftover = Mathf.Max(0, stealthSupply - stealthNeeded);
-            int genericSupply = Mathf.Max(0, anySupply - stealthSupply) + stealthLeftover;
-            int missGeneric = Mathf.Max(0, genericNeeded - genericSupply);
+            int missGeneric = Mathf.Max(0, genericNeeded - stealthLeftover);
             const float reconFixedOverheadAp = 0f;
 
             if (missStealth > 0)
@@ -139,8 +180,9 @@ namespace Game.Ai.V2
                     o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f) ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=stealth desired={missStealth} reason=insufficient_free_stealth_scouts "
-                    + $"jobs={stealthNeeded} free={stealthSupply} runnable={runnable.Count} blocked={blocked} "
-                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
+                    + $"jobs={stealthNeeded} free={stealthSupply} obsDeficit={capacity.ObservationDeficit} "
+                    + $"groundTraversalDeficit={capacity.GroundTraversalDeficit} runnable={runnable.Count} "
+                    + $"blocked={blocked} target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
@@ -151,29 +193,21 @@ namespace Game.Ai.V2
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"{stealthNeeded} runnable stealth job(s), {stealthSupply} stealth scout(s) free, miss {missStealth}; blocked {blocked}",
+                    Explain = $"{stealthNeeded} stealth job(s) in deficit, {stealthSupply} stealth scout(s) free, miss {missStealth}; "
+                        + $"obsDeficit {capacity.ObservationDeficit}, groundTraversalDeficit {capacity.GroundTraversalDeficit}; blocked {blocked}",
                 };
             }
 
-            // §P1 — concurrency counts only ACTIVE durable intents; this counts the physical
-            // scout-capable inventory (armies already in the cheap dedicated IsSoloRecce shape).
-            // Generic Phase B must not found a fifth solo scout while three already sit idle
-            // between missions — wait for one to free up instead.
-            int scoutPortfolio = snap.Self.Armies?.Count(a => a != null && a.IsSoloRecce) ?? 0;
-            if (missGeneric > 0 && scoutPortfolio >= desiredConcurrency && scoutPortfolio > activeReconExecutions)
-            {
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=scout_portfolio_saturated "
-                    + $"portfolio={scoutPortfolio} desired={desiredConcurrency} active={activeReconExecutions} "
-                    + $"idle={scoutPortfolio - activeReconExecutions} missGeneric={missGeneric}");
-            }
-            else if (missGeneric > 0)
+            if (missGeneric > 0)
             {
                 ReconObjective best = topN.FirstOrDefault(o =>
                     o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f)) ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
-                    + $"profile=generic desired={missGeneric} reason=insufficient_free_scouts jobs={genericNeeded} "
-                    + $"free={genericSupply} anyFree={anySupply} stealthFree={stealthSupply} "
-                    + $"runnable={runnable.Count} blocked={blocked} target=({best.FocusHex.Q},{best.FocusHex.R})");
+                    + $"profile=generic desired={missGeneric} reason=persistent_usable_capacity_deficit jobs={genericNeeded} "
+                    + $"obsDeficit={capacity.ObservationDeficit} groundTraversalDeficit={capacity.GroundTraversalDeficit} "
+                    + $"readyAir={capacity.ReadyAirObservationActors.Count} airborneAir={capacity.AirborneObservationActors.Count} "
+                    + $"plannedAir={capacity.PlannedAirObservationActors.Count} runnable={runnable.Count} blocked={blocked} "
+                    + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Recon,
@@ -185,15 +219,18 @@ namespace Game.Ai.V2
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"{genericNeeded} runnable generic job(s), {genericSupply} scout(s) free "
-                        + $"(any {anySupply}, stealth {stealthSupply}), miss {missGeneric}; blocked {blocked}",
+                    Explain = $"{genericNeeded} generic job(s) in a persistent usable-capacity deficit "
+                        + $"(obs {capacity.ObservationDeficit}, groundTraversal {capacity.GroundTraversalDeficit}; "
+                        + $"readyAir {capacity.ReadyAirObservationActors.Count}, airborneAir {capacity.AirborneObservationActors.Count}, "
+                        + $"plannedAir {capacity.PlannedAirObservationActors.Count}); miss {missGeneric}; blocked {blocked}",
                 };
             }
 
             if (missStealth == 0 && missGeneric == 0)
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=SATISFIED reason=free_scout_supply_covers_open_slots "
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=SATISFIED reason=free_scout_supply_covers_capacity_deficit "
                     + $"jobs={requiredNewExecutions} runnable={runnable.Count} blocked={blocked} "
-                    + $"anyFree={anySupply} stealthFree={stealthSupply}");
+                    + $"stealthFree={stealthSupply} obsDeficit={capacity.ObservationDeficit} "
+                    + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}");
         }
 
         private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot snap, DesireBreakdown b,

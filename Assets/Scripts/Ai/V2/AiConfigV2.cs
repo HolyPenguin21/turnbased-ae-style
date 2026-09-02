@@ -664,6 +664,16 @@ namespace Game.Ai.V2
         public const int scoutSurplusWarmSpare = 1;
         public const int reconDemandRegionMergeDistance = 2;         // frontier hexes within this many hexes count as one reachable unexplored region (spec §28)
         public const float reconDemandRefreshLaneThreshold = 0.55f;  // Refresh pressure at/above this earns one dedicated Refresh scout on top of the Explore-driven count
+        // --- AI-RECON-02 Unified Recon Capacity model (ReconCapacitySnapshot / DemandLayer.ReconDemands).
+        //     Observation lanes (Refresh / Surveil — keep eyes on it) may be served by a ground
+        //     scout, a ready aircraft, an airborne recon wing, or a funded-but-unlaunched air
+        //     sortie; a ground-traversal lane (Explore — a hex that must be physically stood on)
+        //     can ONLY be served by a ground actor, never by aviation. DemandLayer materialises a
+        //     new Scout for Recon only when a USABLE capacity deficit (already net of ready/airborne/
+        //     funded aviation and idle ground scouts) has held for this many consecutive demand
+        //     evaluations: 0 = act the same turn the deficit appears; 1 = require it to persist one
+        //     extra turn, filtering single-turn flicker between mission stages (spec §7 "persistent").
+        public const int reconCapacityDeficitPersistTurns = 1;
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
         public const float scoutStepCoverageNearbyWeight = 0.55f;
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
