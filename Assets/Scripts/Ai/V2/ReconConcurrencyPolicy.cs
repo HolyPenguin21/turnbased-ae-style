@@ -31,11 +31,28 @@ namespace Game.Ai.V2
             ? ReconOnlyHardCap
             : Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
 
-        public static int DesiredTotal(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable)
+        // AI-RECON-02 — which requirement class a desired-concurrency estimate is being sized for.
+        // The value-driven 1..3 count is common to all; the coverage add-ons are NOT:
+        //   · frontier-region coverage (spec §28) is a GROUND-VISIT concern — aviation cannot close
+        //     an unexplored walking region — so it applies to GroundTraversal / Combined only.
+        //   · the dedicated Refresh lane is an OBSERVATION concern (stale known intel) — it applies
+        //     to Observation / Combined only.
+        // A class-scoped estimate is also clamped to the number of runnable lanes of that class, so
+        // e.g. a single Refresh objective can never be inflated to desired=3 by 3 frontier regions.
+        internal enum ReconCoverageClass { Combined, Observation, GroundTraversal }
+
+        public static int DesiredTotal(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable) =>
+            DesiredForClass(snap, runnable, ReconCoverageClass.Combined);
+
+        public static int DesiredForClass(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable,
+            ReconCoverageClass klass)
         {
             int hardCap = Mathf.Max(0, HardCap);
             if (hardCap == 0 || runnable == null || runnable.Count == 0)
                 return 0;
+
+            bool applyFrontierCoverage = klass != ReconCoverageClass.Observation;
+            bool applyRefreshLane = klass != ReconCoverageClass.GroundTraversal;
 
             int desired = 1;
             float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
@@ -72,14 +89,24 @@ namespace Game.Ai.V2
             // distinct reachable unexplored regions (capped), plus one dedicated lane when Refresh
             // pressure alone is high enough that an Explore-only portfolio would let the known
             // picture rot.
-            int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
-            desired = Mathf.Max(desired, Mathf.Min(hardCap, regions));
+            if (applyFrontierCoverage)
+            {
+                int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
+                desired = Mathf.Max(desired, Mathf.Min(hardCap, regions));
+            }
 
-            float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
-            if (refresh >= AiConfigV2.reconDemandRefreshLaneThreshold && desired < hardCap)
-                desired += 1;
+            if (applyRefreshLane)
+            {
+                float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
+                if (refresh >= AiConfigV2.reconDemandRefreshLaneThreshold && desired < hardCap)
+                    desired += 1;
+            }
 
-            return Mathf.Min(hardCap, desired);
+            desired = Mathf.Min(hardCap, desired);
+            // A class-scoped estimate never exceeds the runnable lanes it is actually sizing for.
+            if (klass != ReconCoverageClass.Combined)
+                desired = Mathf.Min(desired, runnable.Count);
+            return desired;
         }
 
         // Coarse count of connected reachable unexplored regions: frontier hexes within

@@ -34,36 +34,53 @@ namespace Game.Ai.V2
     {
         // ---- Observation-capable actors, partitioned into disjoint sets (no id in two sets) -----
         public readonly HashSet<int> GroundObservationActors = new HashSet<int>();   // ground scout on an obs lane OR idle-usable ground scout
-        public readonly HashSet<int> ReadyAirObservationActors = new HashSet<int>(); // aircraft ready on an airfield, activation Energy still spendable
+        public readonly HashSet<int> ReadyAirObservationActors = new HashSet<int>(); // launched wing not on recon, still able to fly a step this turn (MP + AP + Energy)
         public readonly HashSet<int> AirborneObservationActors = new HashSet<int>(); // recon wing already in flight (durable ReconAssignment)
-        public readonly HashSet<int> PlannedAirObservationActors = new HashSet<int>();// actor-reserved + funded AirRecon sortie, not yet launched
+        public readonly HashSet<int> PlannedAirObservationActors = new HashSet<int>();// funded-but-unlaunched sortie — NOT modelled yet (see note); always empty
 
         // ---- Ground-traversal-capable actors (aviation is structurally excluded) ----------------
         public readonly HashSet<int> GroundTraversalActors = new HashSet<int>();
 
+        // Aircraft parked in owned airfield storage that could launch a recon sortie this turn
+        // (WorldSnapshot.SelfSnapshot.LaunchableStoredAircraft — greedy AP+Energy vs cheapest
+        // launch cost). These have no army id, so they are a count, not an id set. THIS is the
+        // "a ready helicopter can already cover an observation lane" capacity the task is about.
+        public int ReadyStoredAirObservationCapacity;
+
         // ---- Lane accounting (counts derived from the actor sets above) -------------------------
         public int ActiveObservationLanes;
-        public int ReservedObservationLanes;         // funded-but-unlaunched air sorties
+        public int ReservedObservationLanes;         // funded-but-unlaunched air sorties (always 0 today)
         public int ActiveGroundTraversalLanes;
         public int ReservedGroundTraversalLanes;     // no reservation primitive today; kept for the model
 
+        // All three are sized for GENERIC (non-stealth) lanes only — stealth objectives are the
+        // dedicated stealth path's job in DemandLayer, never covered by aviation or a generic scout.
         public int DesiredObservationConcurrency;
         public int DesiredGroundTraversalConcurrency;
+        public int CombinedDesiredConcurrency;       // HardCap-bounded ceiling the two deficits together may chase
 
         public int ObservationDeficit;
         public int GroundTraversalDeficit;
 
         public string Explain =>
             $"desiredObs={DesiredObservationConcurrency} desiredGround={DesiredGroundTraversalConcurrency} "
+            + $"combinedCeiling={CombinedDesiredConcurrency} "
             + $"obs[active={ActiveObservationLanes} airborne={AirborneObservationActors.Count} "
-            + $"plannedAir={PlannedAirObservationActors.Count} readyAir={ReadyAirObservationActors.Count} "
+            + $"readyWing={ReadyAirObservationActors.Count} readyHangar={ReadyStoredAirObservationCapacity} "
             + $"groundObs={GroundObservationActors.Count}] "
             + $"ground[active={ActiveGroundTraversalLanes} actors={GroundTraversalActors.Count}] "
             + $"=> obsDeficit={ObservationDeficit} groundTraversalDeficit={GroundTraversalDeficit}";
 
+        private static bool IsStealth(ReconObjective o) =>
+            o != null && (o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+
         // observationRunnable — runnable Refresh/Surveil objectives; groundVisitRunnable — runnable
-        // Explore objectives. Both drive the desired-concurrency estimate through the SAME
-        // ReconConcurrencyPolicy the single-pool path used, just per requirement class.
+        // Explore objectives. NOTE on §5 (a funded-but-unlaunched air sortie counting as capacity):
+        // AiAviationSupport.LaunchRoutine creates the AiTask and the actor claim only AFTER a
+        // successful TryLaunch, so there is no state today that represents "sortie reserved +
+        // funded, not yet airborne". Modelling that needs a pre-launch air reservation and is
+        // deferred to the actor-reservation work (AI-RECON-01); PlannedAirObservationActors stays
+        // empty until then rather than being faked from the post-launch AirRecon task.
         public static ReconCapacitySnapshot Build(WorldSnapshot snap,
             IReadOnlyList<ReconObjective> observationRunnable,
             IReadOnlyList<ReconObjective> groundVisitRunnable,
@@ -71,16 +88,30 @@ namespace Game.Ai.V2
             ActorCommitments commitments,
             PlayerSetupData player)
         {
+            var obsGeneric = (observationRunnable ?? System.Array.Empty<ReconObjective>())
+                .Where(o => !IsStealth(o)).ToList();
+            var groundGeneric = (groundVisitRunnable ?? System.Array.Empty<ReconObjective>())
+                .Where(o => !IsStealth(o)).ToList();
+            var allGeneric = obsGeneric.Concat(groundGeneric)
+                .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey).ToList();
+
             var cap = new ReconCapacitySnapshot
             {
-                DesiredObservationConcurrency = ReconConcurrencyPolicy.DesiredTotal(snap, observationRunnable),
-                DesiredGroundTraversalConcurrency = ReconConcurrencyPolicy.DesiredTotal(snap, groundVisitRunnable),
+                DesiredObservationConcurrency = ReconConcurrencyPolicy.DesiredForClass(
+                    snap, obsGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Observation),
+                DesiredGroundTraversalConcurrency = ReconConcurrencyPolicy.DesiredForClass(
+                    snap, groundGeneric, ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal),
+                CombinedDesiredConcurrency = Mathf.Min(allGeneric.Count, ReconConcurrencyPolicy.DesiredForClass(
+                    snap, allGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Combined)),
             };
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
 
             // --- Active durable lanes, split by requirement. Only a claimed mover is a real lane;
             //     a corrupted/duplicated intent is surfaced elsewhere, not double-counted here.
+            //     (An active lane's stealth-ness is not tracked on the intent; a rare active stealth
+            //     lane counts here as a generic lane, which can only UNDER-state a generic deficit —
+            //     the missing scout is still recovered by the persistence gate + next-turn recompute.)
             var observationLaneActors = new HashSet<int>();
             var groundLaneActors = new HashSet<int>();
             if (activeIntents != null && commitments != null)
@@ -96,8 +127,6 @@ namespace Game.Ai.V2
                         observationLaneActors.Add(id);   // Refresh / Surveil == observation freshness
                 }
 
-            // --- Aviation. First classify airborne + funded (they also commit first-activation
-            //     Energy), then decide which parked aircraft are actually ready.
             IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>();
             var airRecoTasked = new HashSet<int>();
             if (player != null)
@@ -105,41 +134,37 @@ namespace Game.Ai.V2
                     if (t != null && t.Kind == AiTaskKind.AirRecon && t.Army != null)
                         airRecoTasked.Add(t.Army.Id);
 
+            // --- Aviation already represented as standalone armies == LAUNCHED wings. A wing with a
+            //     durable ReconAssignment is an active observation lane; one with no assignment is
+            //     only spare observation capacity if it can genuinely fly a step this turn: it must
+            //     still have MP, and (unless already activated) its first-activation AP and Energy
+            //     must be really spendable — the same gate the real launch/first-move path applies.
             var airArmies = armies.Where(a => a != null && a.IsAir && !a.IsPrison && a.MemberCount > 0).ToList();
             foreach (ArmySnapshot a in airArmies)
-            {
-                bool airborne = ReconAssignmentRegistry.TryGet(player, a.ArmyId, out _);
-                if (airborne)
-                {
+                if (ReconAssignmentRegistry.TryGet(player, a.ArmyId, out _))
                     cap.AirborneObservationActors.Add(a.ArmyId);
-                    continue;
-                }
-                if (airRecoTasked.Contains(a.ArmyId))
-                    cap.PlannedAirObservationActors.Add(a.ArmyId);
-            }
 
-            // Energy the airborne / funded sorties still owe on their own first activation this turn
-            // — a parked aircraft is only "ready" if its activation Energy is spendable on top.
             float committedAirEnergy = airArmies
-                .Where(a => !a.HasActivatedThisTurn
-                    && (cap.AirborneObservationActors.Contains(a.ArmyId)
-                        || cap.PlannedAirObservationActors.Contains(a.ArmyId)))
+                .Where(a => !a.HasActivatedThisTurn && cap.AirborneObservationActors.Contains(a.ArmyId))
                 .Sum(a => Mathf.Max(0, a.ActivationEnergyCost));
             float spendableAirEnergy = Mathf.Max(0f, (snap?.Self?.Stockpile.Energy ?? 0f) - committedAirEnergy);
+            int spendableAp = snap?.Self?.ActionPoints ?? 0;
 
             foreach (ArmySnapshot a in airArmies)
             {
-                if (cap.AirborneObservationActors.Contains(a.ArmyId)
-                    || cap.PlannedAirObservationActors.Contains(a.ArmyId))
+                if (cap.AirborneObservationActors.Contains(a.ArmyId))
                     continue;
-                if (claimed.Contains(a.ArmyId))
-                    continue;                                   // committed to other work
-                if (!a.HasActivatedThisTurn && a.CurrentMovement <= 0)
-                    continue;                                   // spent this turn — cannot fly
-                if (!a.HasActivatedThisTurn && a.ActivationEnergyCost > spendableAirEnergy)
-                    continue;                                   // spec §6 — activation Energy not really spendable
+                if (claimed.Contains(a.ArmyId) || airRecoTasked.Contains(a.ArmyId))
+                    continue;                                   // committed to other air work
+                if (a.CurrentMovement <= 0)
+                    continue;                                   // 0 MP — no sortie step possible this turn
+                if (!a.HasActivatedThisTurn
+                    && (a.ActivationEnergyCost > spendableAirEnergy || a.ActivationApCost > spendableAp))
+                    continue;                                   // spec §6 — activation cost not really spendable
                 cap.ReadyAirObservationActors.Add(a.ArmyId);
             }
+
+            cap.ReadyStoredAirObservationCapacity = Mathf.Max(0, snap?.Self?.LaunchableStoredAircraft ?? 0);
 
             // --- Idle-usable ground scouts (solo Recce, not spent, not on a lane, not committed).
             //     Matches ScoutMoverSelector.Eligible's turn-transient filter (CurrentMovement > 0).
@@ -179,6 +204,7 @@ namespace Game.Ai.V2
                 + cap.AirborneObservationActors.Count
                 + cap.ReservedObservationLanes
                 + cap.ReadyAirObservationActors.Count
+                + cap.ReadyStoredAirObservationCapacity
                 + idleGroundForObs;
             cap.ObservationDeficit = Mathf.Max(0, cap.DesiredObservationConcurrency - obsSupply);
 
