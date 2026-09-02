@@ -403,8 +403,12 @@ namespace Game.Ai.V2
             int exposureR = AiConfigV2.frontierEnemyExposureRadius;
 
             bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
+            // Spec §19 — neutral occupancy is NOT a universal hard block any more. It is
+            // actor-state-aware (a fully-hidden scout passes) and exported separately as
+            // NeutralOccupiedHexes. HardBlocked is now only what blocks EVERY scout.
             bool HardBlocked(HexCoord h) =>
-                !OnMap(h) || neutralHexes.Contains(h) || AiMapMemory.IsScoutDangerous(player, h);
+                !OnMap(h) || AiMapMemory.IsScoutDangerous(player, h);
+            bool NeutralAt(HexCoord h) => neutralHexes.Contains(h);
             bool EnemyExposed(HexCoord h)
             {
                 foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
@@ -441,7 +445,10 @@ namespace Game.Ai.V2
             var raw = new List<FrontierHexSnapshot>();
             foreach (HexCoord c in all)
             {
-                if (VisionSystem.IsVisited(player, c) || HardBlocked(c)) continue;
+                // A frontier hex is a place a scout stands on next; keep neutral-occupied hexes out
+                // of that set (conservative for waypoint choice) even though the explorable flood
+                // below now flows THROUGH them for a hidden scout.
+                if (VisionSystem.IsVisited(player, c) || HardBlocked(c) || NeutralAt(c)) continue;
                 bool touchesReachable = false;
                 int fresh = 0;
                 foreach (HexCoord n in HexGridMath.Neighbors(c))
@@ -504,6 +511,7 @@ namespace Game.Ai.V2
                 ExplorableUnknownFrac = total > 0 ? (float)explorable / total : 0f,
                 AllHexes = all,
                 ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
+                NeutralOccupiedHexes = new HashSet<HexCoord>(all.Where(NeutralAt)),
                 VisitedHexSet = visitedSet,
             };
         }

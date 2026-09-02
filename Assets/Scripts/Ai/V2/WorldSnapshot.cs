@@ -245,10 +245,25 @@ namespace Game.Ai.V2
         // candidates from this instead of re-reading the map.
         public IReadOnlyList<HexCoord> AllHexes;
 
-        // The subset of AllHexes a ground scout must never be routed ONTO — the SAME hard-block
-        // semantics the frontier scan uses: a known neutral physically on the hex, or an active
-        // scout-danger cooldown. Enemy PROXIMITY is deliberately NOT here (it only annotates).
+        // The subset of AllHexes a ground scout must never be routed ONTO regardless of stealth:
+        // an active scout-danger cooldown (off-map is implicit). Enemy PROXIMITY is deliberately
+        // NOT here (it only annotates). Spec §19 — a known neutral physically on a hex is NO LONGER
+        // folded in here: that block is actor-state-aware (a fully-hidden scout can pass) and lives
+        // in NeutralOccupiedHexes below. Use IsBlockedForScout to combine the two correctly.
         public ISet<HexCoord> ScoutHardBlockedHexes;
+
+        // Hexes with a known neutral force physically standing on them. A VISIBLE scout must not be
+        // routed through these (it would be forced into an engagement); a fully-hidden scout can
+        // pass per the authoritative Stealth/BattleInitiator rules. Kept separate from
+        // ScoutHardBlockedHexes so the block can be applied conditionally.
+        public ISet<HexCoord> NeutralOccupiedHexes;
+
+        // Spec §19 — the single actor-state-aware "may this scout be routed onto/through `h`" test.
+        // A stealth-capable mover ignores neutral occupancy; every mover still respects the true
+        // hard blocks.
+        public bool IsBlockedForScout(HexCoord h, bool stealthCapable) =>
+            (ScoutHardBlockedHexes != null && ScoutHardBlockedHexes.Contains(h))
+            || (!stealthCapable && NeutralOccupiedHexes != null && NeutralOccupiedHexes.Contains(h));
 
         // Every hex this player has ever stood on (VisionSystem.IsVisited). A byproduct of the
         // frontier scan, exposed so the step-7 continuity layer can tell whether a durable Explore

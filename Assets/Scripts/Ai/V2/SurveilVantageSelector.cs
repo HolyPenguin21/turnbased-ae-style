@@ -56,7 +56,8 @@ namespace Game.Ai.V2
 
             HexCoord focus = target.FocusHex;
             int visionR = mover.EffectiveVisionRadius;
-            ISet<HexCoord> hardBlocked = snap.MapKnowledge.ScoutHardBlockedHexes;
+            // Spec §19 — a stealth-capable mover ignores neutral occupancy when choosing a vantage.
+            bool stealthCapable = mover.IsHidden || mover.StealthLevel > 0 || mover.CanEnterStealth;
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : 1;
 
             var foreignBuildings = new HashSet<HexCoord>();
@@ -72,7 +73,7 @@ namespace Game.Ai.V2
                 int standOff = HexGridMath.Distance(h, focus);
                 if (standOff > visionR)
                     continue;
-                if (hardBlocked != null && hardBlocked.Contains(h))
+                if (snap.MapKnowledge.IsBlockedForScout(h, stealthCapable))
                     continue;
                 if (foreignBuildings.Contains(h))
                     continue;

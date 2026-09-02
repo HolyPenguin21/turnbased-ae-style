@@ -87,7 +87,7 @@ namespace Game.Ai.V2
                 return false;
             if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(focus))
                 return false;
-            if (mk.ScoutHardBlockedHexes != null && mk.ScoutHardBlockedHexes.Contains(focus))
+            if (mk.IsBlockedForScout(focus, stealthCapable: false))
                 return false;
             return true;
         }
@@ -102,7 +102,7 @@ namespace Game.Ai.V2
             var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
             if (!onMap.Contains(focus))
                 return false;
-            return mk.ScoutHardBlockedHexes == null || !mk.ScoutHardBlockedHexes.Contains(focus);
+            return !mk.IsBlockedForScout(focus, stealthCapable: false);
         }
 
         // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no
@@ -132,7 +132,7 @@ namespace Game.Ai.V2
                     continue;
                 if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(n))
                     continue;
-                if (mk.ScoutHardBlockedHexes != null && mk.ScoutHardBlockedHexes.Contains(n))
+                if (mk.IsBlockedForScout(n, stealthCapable: false))
                     continue;
                 fresh++;
             }

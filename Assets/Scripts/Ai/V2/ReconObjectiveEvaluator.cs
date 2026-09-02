@@ -128,8 +128,7 @@ namespace Game.Ai.V2
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
                 || age < AiConfigV2.scoutSurveilStaleTurnsLo)
                 return null;
-            if (snap?.MapKnowledge?.ScoutHardBlockedHexes != null
-                && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(hex))
+            if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
                 return null;
             return BuildRefresh(snap, hex, age);
         }
@@ -145,8 +144,7 @@ namespace Game.Ai.V2
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
                 if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
                     continue;
-                if (snap.MapKnowledge.ScoutHardBlockedHexes != null
-                    && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(kv.Key))
+                if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(kv.Key, stealthCapable: false))
                     continue;
                 ReconObjective o = BuildRefresh(snap, kv.Key, age);
                 if (o != null)

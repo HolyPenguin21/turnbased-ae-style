@@ -70,9 +70,11 @@ namespace Game.Ai.V2
         private static Assessment EvaluatePair(WorldSnapshot snap, HexMap map, ArmySnapshot mover,
             HexCoord focus, ScoutTargetKind kind)
         {
+            // Spec §19 — a stealth-capable mover's route may pass through neutral-occupied hexes.
+            bool stealthCapable = mover != null && (mover.IsHidden || mover.StealthLevel > 0 || mover.CanEnterStealth);
             Func<HexCoord, bool> block = h => !h.Equals(focus)
-                && snap.MapKnowledge?.ScoutHardBlockedHexes != null
-                && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(h);
+                && snap.MapKnowledge != null
+                && snap.MapKnowledge.IsBlockedForScout(h, stealthCapable);
             HexPath path = HexPathfinder.FindPath(map, mover.Hex, focus, blockHex: block);
             if (path == null || path.Hexes.Count < 2)
                 return Assessment.NoRoute;
@@ -154,7 +156,7 @@ namespace Game.Ai.V2
                     continue;
                 if (snap.MapKnowledge?.VisitedHexSet != null && snap.MapKnowledge.VisitedHexSet.Contains(h))
                     continue;
-                if (snap.MapKnowledge?.ScoutHardBlockedHexes != null && snap.MapKnowledge.ScoutHardBlockedHexes.Contains(h))
+                if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(h, stealthCapable: false))
                     continue;
                 if (GroundMoveCost(map, h) <= movement)
                     return true;
