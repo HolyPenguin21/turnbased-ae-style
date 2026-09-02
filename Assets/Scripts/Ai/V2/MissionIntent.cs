@@ -165,6 +165,13 @@ namespace Game.Ai.V2
         public bool WasCommitment;
         public ExecutionOutcome Outcome;
         public bool ObjectiveSatisfied;
+        // Review P1 #1/#2 — the objective was met by something OTHER than this actor's own
+        // execution reaching its goal: another action opened the hex mid-turn (live pass), or
+        // provisioning found it already satisfied (ProvisionFailureKind.TargetSatisfied). For a
+        // durable Explore/Refresh ground scout that is a satisfied WAYPOINT, not a finished role,
+        // so ReconcileAfterTurn keeps the intent and re-focuses it next turn — mirroring the
+        // own-execution ExecutionResult.DurableRoleContinues path.
+        public bool ObjectiveSatisfiedExternally;
         public bool StructuralFailure;
         public bool MadeProgress;
         public int StepsMoved;
@@ -367,6 +374,7 @@ namespace Game.Ai.V2
                 {
                     o.Outcome = ExecutionOutcome.Completed;
                     o.ObjectiveSatisfied = true;
+                    o.ObjectiveSatisfiedExternally = true;
                     o.StructuralFailure = false;
                 }
 
@@ -445,8 +453,14 @@ namespace Game.Ai.V2
                     o.StructuralFailure = true;
                     break;
                 case ProvisionFailureKind.TargetSatisfied:
+                    // Review P1 #2 — provisioning short-circuited because the focus hex was
+                    // already visited/refreshed by an earlier action this turn. No mover was
+                    // assigned; the durable actor lives on the existing MissionIntent, so mark
+                    // this as an external satisfaction and let ReconcileAfterTurn keep the
+                    // Explore/Refresh intent for re-focus instead of retiring it.
                     o.Outcome = ExecutionOutcome.Completed;
                     o.ObjectiveSatisfied = true;
+                    o.ObjectiveSatisfiedExternally = true;
                     break;
                 case ProvisionFailureKind.TargetInvalidated:
                     o.Outcome = ExecutionOutcome.Failed;
@@ -686,6 +700,23 @@ namespace Game.Ai.V2
 
                 if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
                 {
+                    // Review P1 #1/#2 — an Explore/Refresh waypoint satisfied EXTERNALLY (another
+                    // actor opened the hex mid-turn, or provisioning found it already live-
+                    // satisfied) is a waypoint completion, not a finished role. Keep the durable
+                    // ground-scout intent and let ResolveActive re-focus it next turn — its focus
+                    // hex now fails IsIntentStillValid — exactly as the own-execution
+                    // DurableRoleContinues path (Classify) does. Surveil stays a genuine done.
+                    if (intent != null && o.ObjectiveSatisfiedExternally
+                        && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil)
+                    {
+                        intent.TurnsActive++;
+                        intent.LastAttemptKey = o.AttemptKey;
+                        intent.LastProgressTurn = turn;
+                        intent.StallTurns = 0;
+                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
+                            + "externally; durable scout role kept for next-turn re-focus");
+                        continue;
+                    }
                     if (intent != null)
                     {
                         state.Remove(o.IntentKey);

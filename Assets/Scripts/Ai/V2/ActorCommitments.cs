@@ -83,18 +83,31 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    // A still-valid incumbent Explore whose hex has fallen out of the frozen
-                    // frontier (wave band moved) has NO entry here — MissionLayer re-materialises
-                    // it via ReconObjectiveEvaluator.ExploreAt, which recomputes exposure and can
-                    // return Stealth.Required. Materialise that ONE incumbent objective the same
-                    // way (not a re-scan for new opportunities) so the requirement matches what
-                    // the planner will actually demand.
+                    // A still-valid incumbent Explore/Refresh whose hex has fallen out of the
+                    // frozen enumeration (Explore: wave band moved; Refresh: hex dropped past the
+                    // capped stale-hex pool in BuildRefreshObjectives) has NO entry here.
+                    // MissionLayer re-materialises the ONE incumbent objective via
+                    // ReconObjectiveEvaluator.{ExploreAt,RefreshAt}, each of which recomputes
+                    // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
+                    // Refresh must NOT fall through to SurveilOf — it has no TrackedArmyId, so that
+                    // path returns null and silently drops a real stealth requirement).
                     ReconObjective o = null;
                     if (i.Scout != null)
-                        o = i.Scout.Kind == ScoutTargetKind.Explore
-                            ? ReconObjectiveEvaluator.ExploreAt(snap, i.Scout.FocusHex)
-                            : ReconObjectiveEvaluator.SurveilOf(snap,
-                                ScoutObjectiveEvaluator.SurveilContact(snap, i.Scout.TrackedArmyId));
+                    {
+                        switch (i.Scout.Kind)
+                        {
+                            case ScoutTargetKind.Explore:
+                                o = ReconObjectiveEvaluator.ExploreAt(snap, i.Scout.FocusHex);
+                                break;
+                            case ScoutTargetKind.Refresh:
+                                o = ReconObjectiveEvaluator.RefreshAt(snap, i.Scout.FocusHex);
+                                break;
+                            default:
+                                o = ReconObjectiveEvaluator.SurveilOf(snap,
+                                    ScoutObjectiveEvaluator.SurveilContact(snap, i.Scout.TrackedArmyId));
+                                break;
+                        }
+                    }
                     req = o?.Stealth ?? StealthRequirement.None;
                 }
 
