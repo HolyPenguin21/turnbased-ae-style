@@ -53,6 +53,7 @@ namespace Game.Ai.V2
         private sealed class TurnAudit
         {
             public int Turn;
+            public bool SummaryWritten;
             public readonly Dictionary<string, Status> StatusByScenario =
                 new Dictionary<string, Status>();
             public readonly Dictionary<int, ScoutTrace> TraceByArmy =
@@ -83,9 +84,19 @@ namespace Game.Ai.V2
 
             int actors = scouts.Select(m => m.MoverArmyId).Distinct().Count();
             int executionHexes = scouts.Select(m => m.ExecutionHex).Distinct().Count();
-            bool pass = actors == scouts.Count && executionHexes == scouts.Count;
+            int minDistance = int.MaxValue;
+            for (int i = 0; i < scouts.Count; i++)
+                for (int j = i + 1; j < scouts.Count; j++)
+                    minDistance = System.Math.Min(minDistance,
+                        HexGridMath.Distance(scouts[i].ExecutionHex, scouts[j].ExecutionHex));
+            if (minDistance == int.MaxValue)
+                minDistance = 0;
+
+            bool separated = minDistance >= AiConfigV2.scoutTargetMinSeparation;
+            bool pass = actors == scouts.Count && executionHexes == scouts.Count && separated;
             Record(player, turn, ThreeScoutDeconflict, pass,
-                $"missions={scouts.Count} actors={actors} executionHexes={executionHexes}");
+                $"missions={scouts.Count} actors={actors} executionHexes={executionHexes} "
+                + $"minDist={minDistance} required={AiConfigV2.scoutTargetMinSeparation}");
         }
 
         // Called immediately before every authoritative one-hex move. On the second and later step
@@ -235,8 +246,9 @@ namespace Game.Ai.V2
         public static void Summarize(PlayerSetupData player, int turn)
         {
             TurnAudit state = StateFor(player, turn);
-            if (state == null)
+            if (state == null || state.SummaryWritten)
                 return;
+            state.SummaryWritten = true;
             foreach (string scenario in Scenarios)
             {
                 Status status = state.StatusByScenario.TryGetValue(scenario, out Status s)
@@ -280,6 +292,7 @@ namespace Game.Ai.V2
 
             if (previous == final && previous != Status.NotObserved)
                 return;
+            state.SummaryWritten = false;
             AiDebugLog.Write($"[AI][V2][Recon][Acceptance] turn={turn} scenario={scenario} "
                 + $"status={Name(final)} {details}");
         }
