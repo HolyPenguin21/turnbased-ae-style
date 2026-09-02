@@ -580,6 +580,13 @@ namespace Game.Ai.V2
         public const int airReconLandingSwitchForwardMargin = 2;   // challenger must be at least this many hexes more forward (NearestKnownEnemyDistance) to take over
         public const int airReconLandingSwitchCostMargin = 3;      // ...or at least this many MP cheaper on the remaining route home
 
+        // Opportunistic air attack (spec §46). AirRecon never launches FOR an attack; after a step
+        // it may strike an honestly-visible target sharing its hex only when the SHARED estimator
+        // (AviationCombatEstimator) is favourable AND a safe landing still provably exists both
+        // before and after the strike. Same threshold shape as AirStrikeTask's own gate.
+        public const float airReconOpportunisticMinDamageFraction = 0.45f; // expected fraction of the target's total HP the strike removes
+        public const float airReconOpportunisticMinKillProbability = 0.30f; // expected chance of removing at least one enemy unit
+
         // =======================================================================================
         //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
         //  Splits the Energy stock into committed (other in-flight AirRecon activations) +

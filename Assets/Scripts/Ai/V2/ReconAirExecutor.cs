@@ -280,6 +280,7 @@ namespace Game.Ai.V2
                     if (!moved) break;
                     ArmyData afterReturn = Resolve(player, armyId);
                     if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
+                    yield return TryOpportunisticAirStrike(player, ctx, afterReturn, sortie);
                     ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
@@ -338,10 +339,101 @@ namespace Game.Ai.V2
                 if (!stepMoved) break;
                 ArmyData afterStep = Resolve(player, armyId);
                 if (afterStep != null) sortie.RecordStep(afterStep.Hex);
+                yield return TryOpportunisticAirStrike(player, ctx, afterStep, sortie);
                 ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
             }
 
             movedCallback?.Invoke(movedAny);
+        }
+
+        // §46 — opportunistic air attack. Called after a completed air step, on fully-settled live
+        // state. AirRecon never chose this sortie in order to attack; it only strikes a target that
+        // is honestly visible on its own hex, favourable under the shared estimator, not under known
+        // AA, and only while a safe landing still provably exists both before and after. No
+        // reinforcement, no pursuit — the sortie turns for home afterward.
+        private static IEnumerator TryOpportunisticAirStrike(PlayerSetupData player, AiTurnContext ctx,
+            ArmyData air, ReconAirSortieState sortie)
+        {
+            if (air == null || ctx == null || !AviationRules.IsValidAirArmy(air))
+                yield break;
+            if (!AviationActions.CanStrikeAtCurrentHex(air))
+                yield break;
+
+            if (AiAviationSupport.KnownAaExposureAt(player, air.Hex) > 0)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
+                    + "decision=SKIP reason=known_aa_on_hex");
+                yield break;
+            }
+
+            // A strike costs no movement, so return feasibility should be unchanged — but verify a
+            // safe landing exists at all before committing to reveal ourselves.
+            if (!AiAviationSupport.TryReplan(air, ctx.Map, player).HasValue
+                && !AiAviationSupport.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
+                    + "decision=SKIP reason=no_safe_return_before_strike");
+                yield break;
+            }
+
+            float bestDamageFraction = 0f;
+            float bestKillProb = 0f;
+            foreach (ArmyData target in AviationCombatPresenter.FindAirStrikeTargetsAt(air.Hex, player))
+            {
+                if (target?.Owner == null || target.Owner == player)
+                    continue;
+                var visible = StealthSystem.TargetableMembersFor(target, player).ToList();
+                if (visible.Count == 0)
+                    continue;
+                float totalHp = visible.Sum(m => Math.Max(1f, m.HitPointsCurrent));
+                var profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
+                AviationCombatEstimator.AirStrikeEstimate est = AviationCombatEstimator.EstimateAirStrike(
+                    air.Members, WorthIt.DefenseSum(visible), WorthIt.AttackSum(visible), profiles);
+                float damageFraction = totalHp > 0.01f
+                    ? (float)Math.Max(0.0, Math.Min(1.0, est.ExpectedDamage / totalHp))
+                    : 0f;
+                if (damageFraction > bestDamageFraction)
+                {
+                    bestDamageFraction = damageFraction;
+                    bestKillProb = est.KillAnyProbability;
+                }
+            }
+
+            bool favourable = bestDamageFraction >= AiConfigV2.airReconOpportunisticMinDamageFraction
+                && bestKillProb >= AiConfigV2.airReconOpportunisticMinKillProbability;
+            if (!favourable)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
+                    + $"decision=SKIP reason=estimate_unfavourable dmgFrac={bestDamageFraction:0.00} killP={bestKillProb:0.00}");
+                yield break;
+            }
+
+            AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+            if (presenter == null)
+                yield break;
+
+            AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
+                + $"decision=STRIKE dmgFrac={bestDamageFraction:0.00} killP={bestKillProb:0.00}");
+            var result = new AviationCombatPresenter.AirStrikeResult();
+            yield return AviationActions.ResolveStationaryStrike(presenter, air, result);
+
+            ArmyData afterStrike = Resolve(player, air.Id);
+            AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+            if (sortie != null)
+                sortie.Phase = ReconAirPhase.Return; // reveal happened — turn for home, live replan next iteration
+
+            if (afterStrike != null && AviationRules.IsValidAirArmy(afterStrike)
+                && !AiAviationSupport.TryReplan(afterStrike, ctx.Map, player).HasValue
+                && !AiAviationSupport.TryReplanMultiTurnReturn(afterStrike, ctx.Map, player).HasValue)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={result.Attacked}; "
+                    + "WARN no safe return after strike — next iteration will hold/seek any airfield");
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={result.Attacked}; "
+                    + "safe return preserved, sortie now Return");
+            }
         }
 
         private static IEnumerator MoveOne(PlayerSetupData player, AiTurnContext ctx, ArmyData air,
