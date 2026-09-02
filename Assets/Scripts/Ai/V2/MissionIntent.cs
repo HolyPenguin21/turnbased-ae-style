@@ -10,14 +10,7 @@ namespace Game.Ai.V2
     //  MISSION CONTINUITY  (Strategy V2 build-order step 7)
     // ===========================================================================================
     //  Intent identity is separate from a turn's proposal. Recon sub-kind is part of that identity:
-    //  Explore, Refresh and Surveil(army) must never collapse onto the same ledger row.
-    //
-    //  Spec §1/§7 (review P1 #1) — a ground Explore/Refresh intent's identity is NOT its exact
-    //  focus hex. It is (kind, REGION) where region is the focus hex quantised by
-    //  AiConfigV2.reconIntentRegionSize. The focus hex is a live waypoint that the continuity pass
-    //  re-points within the same region instead of retiring the whole intent, so a durable
-    //  actor/region assignment survives every waypoint change. Surveil still keys on the tracked
-    //  army id.
+    //  Explore(hex), Refresh(hex), and Surveil(army) must never collapse onto the same ledger row.
     // ===========================================================================================
 
     public enum CommitmentTier { None, Soft, Hard }
@@ -50,18 +43,7 @@ namespace Game.Ai.V2
             if (t.Kind == ScoutTargetKind.Surveil)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                     t.Contact?.Army?.ArmyId ?? 0, 0, 0);
-            (int rq, int rr) = Region(t.FocusHex);
-            return new MissionIntentKey(MissionKind.Scout, (int)t.Kind, 0, rq, rr);
-        }
-
-        // Focus hex quantised to a coarse region bucket — the durable identity granularity for a
-        // ground Explore/Refresh intent (spec §1). Floor division so negative axial coords bucket
-        // consistently.
-        public static (int, int) Region(HexCoord h)
-        {
-            int n = System.Math.Max(1, AiConfigV2.reconIntentRegionSize);
-            int F(int v) => (int)System.Math.Floor(v / (double)n);
-            return (F(h.Q), F(h.R));
+            return new MissionIntentKey(MissionKind.Scout, (int)t.Kind, 0, t.FocusHex.Q, t.FocusHex.R);
         }
 
         public static MissionIntentKey For(MissionIntent intent)
@@ -75,8 +57,7 @@ namespace Game.Ai.V2
             if (s.Kind == ScoutTargetKind.Surveil)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                     s.TrackedArmyId ?? 0, 0, 0);
-            (int rq, int rr) = Region(s.FocusHex);
-            return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, rq, rr);
+            return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, s.FocusHex.Q, s.FocusHex.R);
         }
 
         public bool Equals(MissionIntentKey o) =>
@@ -508,20 +489,8 @@ namespace Game.Ai.V2
 
                 if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
                 {
-                    // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
-                    // identity. Before retiring, try to re-point this intent at fresh work in the
-                    // SAME region bucket (the key is region-coarse, so this keeps the same ledger
-                    // row). Only a region that is genuinely exhausted retires the intent.
-                    if (TryRetargetScoutIntentInRegion(snap, player, s))
-                    {
-                        AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} waypoint reached/invalid; "
-                            + $"re-targeted in-region to ({s.FocusHex.Q},{s.FocusHex.R}) — durable identity kept");
-                        if (intent.Status == IntentStatus.Active)
-                            active.Add(intent);
-                        continue;
-                    }
                     dead.Add(intent.IntentKey);
-                    AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (region exhausted / objective no longer valid)");
+                    AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (objective no longer valid)");
                     continue;
                 }
 
@@ -565,61 +534,6 @@ namespace Game.Ai.V2
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
             return active;
-        }
-
-        // Spec §1 — re-point a ground scout intent's live waypoint at fresh work in the SAME
-        // region bucket. Same bucket => same MissionIntentKey, so the durable ledger row is kept.
-        // Returns false only when the region has no runnable Explore frontier / stale Refresh hex
-        // left, in which case the caller retires the intent.
-        private static bool TryRetargetScoutIntentInRegion(WorldSnapshot snap, PlayerSetupData player,
-            ScoutIntent s)
-        {
-            if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil)
-                return false;
-
-            (int, int) region = MissionIntentKey.Region(s.FocusHex);
-            HexCoord oldFocus = s.FocusHex;
-
-            if (ReconScoutKinds.IsRefresh(s.Kind))
-            {
-                HexCoord? best = null;
-                int bestDist = int.MaxValue;
-                foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
-                {
-                    if (!MissionIntentKey.Region(kv.Key).Equals(region))
-                        continue;
-                    int age = System.Math.Max(0, snap.TurnNumber - kv.Value);
-                    if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
-                        continue;
-                    if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
-                        continue;
-                    int d = HexGridMath.Distance(oldFocus, kv.Key);
-                    if (d < bestDist) { bestDist = d; best = kv.Key; }
-                }
-                if (best == null)
-                    return false;
-                s.FocusHex = best.Value;
-                return true;
-            }
-
-            // Explore
-            if (snap.MapKnowledge.Frontier == null)
-                return false;
-            HexCoord? pick = null;
-            int pickDist = int.MaxValue;
-            foreach (FrontierHexSnapshot f in snap.MapKnowledge.Frontier)
-            {
-                if (!MissionIntentKey.Region(f.Hex).Equals(region))
-                    continue;
-                if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
-                    continue;
-                int d = HexGridMath.Distance(oldFocus, f.Hex);
-                if (d < pickDist) { pickDist = d; pick = f.Hex; }
-            }
-            if (pick == null)
-                return false;
-            s.FocusHex = pick.Value;
-            return true;
         }
 
         public static List<Commitment> BindFunding(IReadOnlyList<MissionIntent> activeIntents,
