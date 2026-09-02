@@ -8,3 +8,4 @@
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-cooldown-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-throughput-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("capability-quality-sim")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-ownership-sim")]

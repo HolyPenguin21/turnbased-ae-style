@@ -166,7 +166,9 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        private static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
+        // internal (not private) so the recon-ownership acceptance sim can assert the §4
+        // local-vs-distant Explore BaseValue ordering against the real formula.
+        internal static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
             int distFromBase, bool enemyExposure, bool stealthDetectionRisk)
         {
             float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));

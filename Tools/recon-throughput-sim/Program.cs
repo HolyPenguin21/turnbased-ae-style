@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Ai.V2.Initiative;
 using Game.HexGrid;
@@ -293,7 +294,7 @@ namespace ReconThroughputSim
                 },
             };
             p.Axes.Value[DesireAxis.Recon] = 1f;
-            ScoutAdmissionRegistry.Record(p, snap);
+            ScoutAdmissionRegistry.Record(snap, target);
             return p;
         }
 
