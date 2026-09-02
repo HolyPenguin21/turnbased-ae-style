@@ -4,7 +4,7 @@ namespace Game.Ai.V2
 {
     // Ephemeral target-side physical feasibility metadata. The allocator still never BINDS an
     // actor — ProvisioningManager remains the single authority for concrete assignment — but the
-    // admission policy can reject a Recon portfolio that provably has no injective scout assignment.
+    // admission policy can reject a Recon pair that provably has no injective scout assignment.
     // ScoutCostModel refreshes an entry every time it sizes a proposal against the current snapshot.
     internal static class ScoutAdmissionRegistry
     {
@@ -31,9 +31,11 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // With the current hard K=2, pairwise injectivity is exact: two proposals are physically
-        // co-executable iff at least one distinct (a,b) assignment exists. If metadata is absent
-        // (bare legacy harness), admission stays permissive and provisioning remains the final guard.
+        // Pairwise injectivity is an early admission filter only. At K=3, every pair can be
+        // independently assignable while the full triple still has too few distinct actors (Hall's
+        // condition). ProvisioningManager.PrepareScoutAssignments therefore remains the final N-way
+        // authority; if metadata is absent (bare legacy harness), admission stays permissive and the
+        // same provisioning door remains the final guard.
         public static bool PairHasDistinctAssignment(MissionProposal a, MissionProposal b)
         {
             if (!TryGet(a, out HashSet<int> aa) || !TryGet(b, out HashSet<int> bb))

@@ -7,12 +7,17 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer. It now has THREE deliberately separated pieces:
+    //  Last ordinary mutating V2 layer. It has three deliberately separated pieces:
     //    · decisive strategic pressure (may move/spend activation AP) toward an honestly-known
     //      enemy Citadel after the army-targeted Raid lane runs out of contacts;
     //    · bounded strategic maintenance (may spend AP/resources): internal Facility placement,
     //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
     //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
+    //
+    //  ReconOnly Air Recon is NOT housekeeping. It runs once, terminally, inside TaskExecutor
+    //  after the provisioned Ground Recon batch. Keeping it there gives one owner for the whole
+    //  one-hex sortie lifecycle and prevents a second Housekeeping air pass from spending the same
+    //  leftover AP/Energy again.
     //
     //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
     //  pressure/maintenance actions run, and only after those settle do we enter the zero-AP
@@ -101,13 +106,7 @@ namespace Game.Ai.V2
             }
 
             Run(player, root, ctx, commitments, result);
-            // Strategic capability leases exist only to bridge Phase A/Reaction materialization to
-            // this final structural pass. Once housekeeping has respected them they must expire;
-            // otherwise a one-turn preparation decision would freeze that army in later turns.
             StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
-            // Run() can return early when there is nothing to reorganise; resource telemetry is a
-            // turn-level concern and must still be emitted exactly once after the last mutating V2
-            // layer has had its chance.
             TurnResourceTelemetry.LogEnd(player, root, ctx?.TurnNumber ?? 0);
             yield break;
         }
@@ -121,8 +120,6 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // Pressure/maintenance above may spend. From THIS line onward reorganisation owns no
-            // AP, preserving the original Step-8C invariant exactly where it matters.
             int apBefore = root != null ? root.ActionPoints : 0;
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
             if (analysis.Groups.Count == 0)

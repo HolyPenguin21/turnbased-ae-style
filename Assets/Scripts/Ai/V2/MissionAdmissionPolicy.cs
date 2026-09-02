@@ -35,7 +35,7 @@ namespace Game.Ai.V2
             switch (lane)
             {
                 case ExecutionLane.Recon:
-                    return AiConfigV2.maxConcurrentReconExecutions;
+                    return ReconConcurrencyPolicy.HardCap;
                 case ExecutionLane.Aggression:
                     // No arbitrary Raid K. Real ready actors, AP/physical resources, target
                     // conflicts and commitments bound Aggression throughput.
@@ -48,15 +48,16 @@ namespace Game.Ai.V2
         // Pairwise execution conflicts:
         // Recon:
         //   · same FocusHex
-        //   · Explore+Explore closer than scoutTargetMinSeparation
-        //   · no distinct physical scout assignment
+        //   · ground+ground (Explore/Refresh) closer than scoutTargetMinSeparation
+        //   · no distinct physical scout assignment for this pair
         // Raid:
         //   · same target army
         //   · no distinct ready combat-army assignment for the pair
         //
-        // These are admission facts, never cooldowns. The Raid pair check catches the common
-        // one-ready-army/two-target collision before funding; the provisioning door still owns
-        // live N-way contention and classifies it transiently.
+        // Pairwise actor feasibility is an early rejection only. With ReconOnly K=3 it is necessary
+        // but not sufficient for the entire portfolio; ProvisioningManager.PrepareScoutAssignments
+        // is the authoritative N-way injective assignment and the bounded re-pack loop handles any
+        // residual contention without partial state.
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
@@ -75,8 +76,8 @@ namespace Game.Ai.V2
             if (ta.FocusHex.Equals(tb.FocusHex))
                 return true;
 
-            bool bothExplore = ta.Kind == ScoutTargetKind.Explore && tb.Kind == ScoutTargetKind.Explore;
-            if (bothExplore
+            bool bothGround = ReconScoutKinds.IsGround(ta.Kind) && ReconScoutKinds.IsGround(tb.Kind);
+            if (bothGround
                 && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation)
                 return true;
 

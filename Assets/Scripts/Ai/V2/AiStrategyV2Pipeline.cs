@@ -124,6 +124,7 @@ namespace Game.Ai.V2
     //      >>> FIRST TEST STATE: AI actually scouts, end to end, in game. <<<
     //   7. Mission Continuity — multi-turn recon survives radar noise.
     //      DONE 2026-08-29 — MissionIntent.cs (MissionIntentKey / ScoutIntent / MissionIntent /
+    //      registry, CommitmentTier + IntentStatus, MissionOutcomeLedger, MissionTurnOutcome
     //      registry, CommitmentTier + IntentStatus, MissionOutcomeLedger, MissionContinuityLayer:
     //      ResolveActive / BindFunding / ReconcileAfterTurn) + ScoutObjectiveEvaluator.cs (the one
     //      completion/validity home). INTENT (durable objective, drives retarget hysteresis in
@@ -248,10 +249,10 @@ namespace Game.Ai.V2
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
     public enum MissionKind { Scout, Raid }
 
-    // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Surveil -> a stale honest
-    // contact's last-known hex (Contact non-null). No IMissionTarget hierarchy yet — MissionProposal
-    // still boxes this into Target as object; the cast lives in one place (TaskExecutor / ScoutCostModel).
-    public enum ScoutTargetKind { Explore, Surveil }
+    // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
+    // observed hex whose frozen IntelAge is stale; Surveil -> a stale honest contact's last-known
+    // hex (Contact non-null). The numeric identities remain Explore=0, Surveil=1, Refresh=2.
+    public enum ScoutTargetKind { Explore, Surveil, Refresh }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a
@@ -427,6 +428,7 @@ namespace Game.Ai.V2
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
             RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
+            assessment = AiStrategyV2Scope.ApplyRadarScope(assessment);
             DesireVector desires = assessment.Desires;
             Radar radar = assessment.Radar;
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
@@ -439,12 +441,11 @@ namespace Game.Ai.V2
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
             // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
-            //     and AggressionMissionLayer (build-order step 9). FROZEN here alongside the Recon
-            //     objectives, from the SAME shared CombatOpportunityReport the radar already
-            //     computed. Strategic Manager changes which FORCE can raid, never which strategic
-            //     targets exist — so this list is NOT recomputed after the operational refresh.
-            List<AggressionObjective> aggressionObjectives =
-                AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
+            //     and AggressionMissionLayer (build-order step 9). ReconOnly deliberately keeps the
+            //     layer present but does not enumerate or execute it.
+            List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.IsReconOnly
+                ? new List<AggressionObjective>()
+                : AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
@@ -453,19 +454,21 @@ namespace Game.Ai.V2
                     + $"def {ao.DefenderCount} gate {(ao.GatePassed ? 1 : 0)}"
                     + $"{(ao.NeedsCombatPower ? " needsPower" : "")}{(ao.NeedsHero ? " needsHero" : "")}");
 
-            // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, so the planner
-            //     can re-materialise them from this snapshot (one place still owns proposal
-            //     creation) and retarget hysteresis holds a multi-turn chain steady through Radar
-            //     noise. Purges dead intents, suspends Soft funding under siege.
+            // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, then apply the
+            //     centralized execution scope. In ReconOnly this cleanly retires stale Raid intents
+            //     before ActorCommitments or the allocator can protect them.
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
+            activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
 
-            // S1. Demand Layer — capability SHORTAGES (no card selection). Axes say what is missing.
+            // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
+            //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
+            demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
@@ -475,8 +478,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
-            //     Costs are charged to demand.RequestingAxis (no Management co-pay — Strategic
-            //     Manager is a service, not an axis).
+            //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments);
 
@@ -492,11 +494,10 @@ namespace Game.Ai.V2
             //    them. Also materialises every active intent and applies the retarget margin.
             List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
-            // Step 9 — the Aggression lane. Same FROZEN objective set the Demand layer read; a
-            // Raid candidate beam concatenated onto the Recon beam. The allocator's k-way merge
-            // interleaves the two lanes by BaseValue.
-            missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                activeIntents, aggressionObjectives));
+            if (!AiStrategyV2Scope.IsReconOnly)
+                missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
+                    activeIntents, aggressionObjectives));
+            missions = AiStrategyV2Scope.ApplyMissionScope(missions);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
             // Demand→Mission causal link (spec §1.6).
@@ -523,8 +524,7 @@ namespace Game.Ai.V2
             }
 
             // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
-            //     proposal. The allocator sees these as pre-funded, sticky, drawn before fresh
-            //     decisions — but never conjuring AP past the real pool.
+            //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
             List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
 
             var ledger = new MissionOutcomeLedger();
@@ -636,19 +636,25 @@ namespace Game.Ai.V2
             //     advances/retires the rest, keeps a preferred mover.
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
 
-            // S5. Strategic Manager Phase B — Surplus Preparation. The snapshot is still
-            //     beginning-of-turn own-state at this point (missions have executed since), so
-            //     refresh it FIRST; then rebuild actor ownership from the RECONCILED registry (not
-            //     beginning-of-turn claims). Phase B then spends GENUINELY remaining real
-            //     AP/resources on proactive card play + hand cycling. No radar slice; bounded by
-            //     maxSurplusActionsPerTurn; every configured reserve respected.
+            // S5. Strategic Manager Phase B — Surplus Preparation is deliberately disabled in
+            //     ReconOnly. It is the generic path that can otherwise create military capacity even
+            //     with AGG/DEF/ECO/DEV radar weights at zero.
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments =
                 ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-            StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation);
-            if (phaseB.StateChanged)
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            StrategicPhaseResult phaseB;
+            if (AiStrategyV2Scope.AllowSurplusPreparation)
+            {
+                phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                    postCommitments, phaseA.Reservation);
+                if (phaseB.StateChanged)
+                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            }
+            else
+            {
+                phaseB = new StrategicPhaseResult { Reservation = phaseA.Reservation };
+                AiDebugLog.Write("[AI][V2][Scope] PhaseB surplus preparation suppressed reason=ReconOnly");
+            }
 
             // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
             // invariant and the bounded reaction pass logs its own [STATE]; captured here so the
@@ -656,10 +662,8 @@ namespace Game.Ai.V2
             AiV2Trace.LogState(trace.Id, stateStart, AiV2Trace.Stamp(root));
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
-            //    The LAST mutating AI layer: deterministic, same-hex army/garrison REORGANISATION
-            //    (build-order step 8C). Reads the just-refreshed snapshot + the post-Phase-B actor
-            //    ownership; a successful mutation triggers one final operational refresh so the
-            //    saved end-turn state matches the real world.
+            //    ReconOnly keeps this safety/cleanup layer; it does not buy cards or create new
+            //    capability and remains the authoritative same-hex reorganisation path.
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.RunHousekeeping(snapshot, player, root, ctx, postCommitments, housekeeping);
             if (housekeeping.StateChanged)

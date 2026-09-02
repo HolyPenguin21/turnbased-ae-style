@@ -9,39 +9,12 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  MISSION CONTINUITY  (Strategy V2 build-order step 7)
     // ===========================================================================================
-    //  Closes the multi-turn loop. The pipeline recomputes everything from a fresh snapshot every
-    //  turn; without this layer a half-walked recon chain re-plans from scratch on a 0.05 Radar
-    //  wobble. Step 7 separates TWO things V1 kept fused (and kept corrupting):
-    //
-    //    INTENT      — "I still want to finish THIS objective / keep tracking THIS army." Durable.
-    //                  Outlives any single MissionProposal. Every recon mission that starts and
-    //                  does not finish leaves one; next turn MissionLayer re-materialises it from
-    //                  the CURRENT snapshot (one place still owns proposal creation) and retarget
-    //                  hysteresis keeps the scout pointed the same way through Radar noise.
-    //    COMMITMENT  — a FUNDING POLICY on an Intent: "do not drop this from the budget over a
-    //                  small Radar move." Soft for a far Surveil that has actually started moving;
-    //                  Hard (raid) lands in step 9. A Commitment reaches the allocator as
-    //                  already-funded, drawn first, allowed to drive an axis slice negative — but
-    //                  NEVER to conjure AP that does not exist (Σ commitments <= real pool).
-    //
-    //  FOUR INVARIANTS (hold these into step 9):
-    //    1. Intent != Proposal        — the proposal is this turn's attempt; the intent persists.
-    //    2. Intent != Commitment      — Explore keeps an intent with NO funding protection.
-    //    3. Progress != AP spent      — an intent earns continuation by MOVING (a step, or a
-    //                                   stealth entry), never by having cost something. Sunk AP is
-    //                                   telemetry, never continuation value.
-    //    4. Post-execution observation != strategic policy — ReconcileAfterTurn reads NO live world
-    //                                   state. It takes FACTS (MissionTurnOutcome, built by the
-    //                                   ledger from ScoutObjectiveEvaluator + ExecutionResult) and
-    //                                   only runs a state transition.
+    //  Intent identity is separate from a turn's proposal. Recon sub-kind is part of that identity:
+    //  Explore(hex), Refresh(hex), and Surveil(army) must never collapse onto the same ledger row.
     // ===========================================================================================
 
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }
-
-    // CapabilityUnavailable covers executor-side facts that are not properties of the target:
-    // the capable actor disappeared, OR it exists but is temporarily claimed/contended this cycle.
-    // Neither may age the objective into a structural target cooldown.
     public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable }
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
@@ -65,10 +38,13 @@ namespace Game.Ai.V2
             return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
-        public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t) =>
-            t.Kind == ScoutTargetKind.Surveil
-                ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, t.Contact?.Army?.ArmyId ?? 0, 0, 0)
-                : new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0, t.FocusHex.Q, t.FocusHex.R);
+        public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t)
+        {
+            if (t.Kind == ScoutTargetKind.Surveil)
+                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
+                    t.Contact?.Army?.ArmyId ?? 0, 0, 0);
+            return new MissionIntentKey(MissionKind.Scout, (int)t.Kind, 0, t.FocusHex.Q, t.FocusHex.R);
+        }
 
         public static MissionIntentKey For(MissionIntent intent)
         {
@@ -78,9 +54,10 @@ namespace Game.Ai.V2
             ScoutIntent s = intent?.Scout;
             if (s == null)
                 return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
-            return s.Kind == ScoutTargetKind.Surveil
-                ? new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, s.TrackedArmyId ?? 0, 0, 0)
-                : new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0, s.FocusHex.Q, s.FocusHex.R);
+            if (s.Kind == ScoutTargetKind.Surveil)
+                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
+                    s.TrackedArmyId ?? 0, 0, 0);
+            return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, s.FocusHex.Q, s.FocusHex.R);
         }
 
         public bool Equals(MissionIntentKey o) =>
@@ -97,14 +74,20 @@ namespace Game.Ai.V2
             return R.CompareTo(o.R);
         }
 
-        public override string ToString() =>
-            Kind == MissionKind.Scout
-                ? (SubKind == (int)ScoutTargetKind.Surveil
-                    ? $"Intent(Surveil #{ObjectiveId})"
-                    : $"Intent(Explore {Q},{R})")
-                : Kind == MissionKind.Raid
-                    ? $"Intent(Raid #{ObjectiveId})"
-                    : $"Intent({Kind})";
+        public override string ToString()
+        {
+            if (Kind == MissionKind.Scout)
+            {
+                if (SubKind == (int)ScoutTargetKind.Surveil)
+                    return $"Intent(Surveil #{ObjectiveId})";
+                if (SubKind == (int)ReconScoutKinds.Refresh)
+                    return $"Intent(Refresh {Q},{R})";
+                return $"Intent(Explore {Q},{R})";
+            }
+            if (Kind == MissionKind.Raid)
+                return $"Intent(Raid #{ObjectiveId})";
+            return $"Intent({Kind})";
+        }
     }
 
     public sealed class ScoutIntent
@@ -222,9 +205,6 @@ namespace Game.Ai.V2
             StableMissionKey k = StableMissionKey.For(m);
             if (!_rows.TryGetValue(k, out Row r))
                 _rows[k] = r = new Row();
-            // §2.5 — two DIFFERENT logical attempts must not silently share one StableMissionKey.
-            // Re-registering the SAME attempt (same object, or same AttemptId — proposals then
-            // commitments) is expected and stays silent.
             if (r.Proposal != null && !ReferenceEquals(r.Proposal, m)
                 && !string.Equals(r.Proposal.AttemptId, m?.AttemptId, StringComparison.Ordinal))
                 AiV2Trace.CheckError(m?.AttemptId, "DuplicateStableMissionKey",
@@ -266,8 +246,6 @@ namespace Game.Ai.V2
             if (result == null) return;
             if (!_rows.TryGetValue(result.Key, out Row r))
             {
-                // §2.6 — an execution with no RegisterProposals row is a broken registration
-                // contract, not a gameplay outcome. Keep the old "ignored" info in the detail.
                 AiV2Trace.CheckError(result.Source?.Mission?.AttemptId, "ExecutionWithoutRegisteredProposal",
                     $"stableKey={result.Key} (execution result ignored — no ledger row)");
                 return;
@@ -297,11 +275,23 @@ namespace Game.Ai.V2
                 ProvisionedMission pm = r.Provisioned;
                 bool satisfied;
                 if (pm.Kind == MissionKind.Raid)
+                {
                     satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
+                }
+                else if (pm.ScoutKind == ScoutTargetKind.Surveil)
+                {
+                    satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
+                        pm.TrackedArmyId, pm.BaselineObservedTurn);
+                }
+                else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
+                {
+                    satisfied = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
+                }
                 else
-                    satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
-                        ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
-                        : ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                {
+                    satisfied = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                }
+
                 if (satisfied)
                 {
                     r.LiveSatisfiedOverride = true;
@@ -592,8 +582,6 @@ namespace Game.Ai.V2
                 seen.Add(o.IntentKey);
                 state.TryGet(o.IntentKey, out MissionIntent intent);
 
-                // One anchor line per attempt so grep of a MissionAttemptId shows the outcome
-                // between the execution and the continuity transition (spec §1.4).
                 string aid = o.Proposal?.AttemptId;
                 AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
                     + (o.ObjectiveSatisfied ? " satisfied" : "")
@@ -680,6 +668,7 @@ namespace Game.Ai.V2
             if (o.HasScoutPayload && intent.Scout != null)
             {
                 intent.Scout.FocusHex = o.FocusHex;
+                intent.Scout.Kind = o.ScoutKind;
                 if (o.TrackedArmyId.HasValue)
                     intent.Scout.TrackedArmyId = o.TrackedArmyId;
             }
@@ -724,8 +713,6 @@ namespace Game.Ai.V2
                 intent.Suspended = SuspendReason.CapabilityUnavailable;
             }
 
-            // Missing or temporarily contended actors are external execution-capacity facts. They
-            // cannot reap/poison a still-valid target, including through the absolute-age branch.
             if (!capabilityUnavailable && ShouldReap(intent))
             {
                 state.Remove(intent.IntentKey);
@@ -824,6 +811,8 @@ namespace Game.Ai.V2
         }
 
         private static string Describe(MissionTurnOutcome o) =>
-            o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t ? $"{t.Kind}" : "?";
+            o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t
+                ? ReconScoutKinds.Name(t.Kind)
+                : "?";
     }
 }

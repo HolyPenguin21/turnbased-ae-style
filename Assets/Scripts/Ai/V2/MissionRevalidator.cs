@@ -10,36 +10,23 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  MISSION REVALIDATOR  (Strategy V2 — live mission revalidation between provisioned missions)
     // ===========================================================================================
-    //  Provisioning is a BATCH: every funded mission is sized against ONE beginning-of-execution
-    //  snapshot, then TaskExecutor runs them one after another. After mission N-1 runs, the world
-    //  has moved — a hex is captured, a target destroyed, an army relocated, AP drained, a focus
-    //  already visited by an earlier scout. Mission N still carries the stale snapshot's plan.
-    //
-    //  This is the SYSTEMIC gate: one pure, live-world check applied to EVERY provisioned mission
-    //  immediately before it is activated, of any kind. A stale mission spends no AP, plays no
-    //  card, is never counted a successful execution, and never emits success telemetry.
-    //
-    //  REPLACEMENT is deliberately narrow and bounded: a stale Explore whose mover is still a
-    //  ready solo scout is RE-POINTED, ONCE, at the nearest still-unvisited frontier hex that the
-    //  turn's own WorldSnapshot already enumerated. No re-run of WorldAnalysis / Strategy / Demand
-    //  / Allocation / Provisioning — only validity / target / eligibility are recomputed, against
-    //  data that already exists. No replacement loop: one attempt per mission, then it completes
-    //  stale.
+    //  Provisioning is a batch; this is the live gate before every mission. Generic Refresh is
+    //  explicitly distinct from Explore: a previously VISITED hex can still be a valid stale-info
+    //  objective, and only observing it again completes that Refresh.
     // ===========================================================================================
     internal enum MissionValidity
     {
         Valid,
-        StaleGoalMet,          // the objective is already satisfied (focus visited / target gone / surveil met)
-        StaleTargetInvalidated,// the world changed under the mission (enemy now on the focus, vantage blocked)
-        StaleMoverLost,        // the assigned mover is gone / no longer this player's / no longer the right shape
-        StaleUnaffordable,     // an earlier mission drained the shared AP pool below this mission's activation cost
+        StaleGoalMet,
+        StaleTargetInvalidated,
+        StaleMoverLost,
+        StaleUnaffordable,
     }
 
     internal static class MissionRevalidator
     {
         public static bool IsStale(MissionValidity v) => v != MissionValidity.Valid;
 
-        // Pure live-world read. Never mutates game state, the snapshot, or the mission.
         public static MissionValidity Validate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisionedMission pm)
         {
@@ -53,8 +40,6 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Scout && !AiArmyRoles.IsSoloRecce(mover))
                 return MissionValidity.StaleMoverLost;
 
-            // Shared AP pool: earlier missions in the batch spend real AP. A mover that still has to
-            // activate but can no longer pay for it is stale for this turn.
             if (root != null && !mover.HasActivatedThisTurn && mover.ActivationApCost > 0
                 && root.ActionPoints < mover.ActivationApCost)
                 return MissionValidity.StaleUnaffordable;
@@ -66,7 +51,7 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
-            if (pm.ScoutKind == ScoutTargetKind.Surveil)
+            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
                 if (ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId,
                         pm.BaselineObservedTurn))
@@ -76,7 +61,25 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
-            // Explore.
+            if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
+            {
+                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex))
+                    return MissionValidity.StaleGoalMet;
+                if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
+                    return MissionValidity.StaleTargetInvalidated;
+                return MissionValidity.Valid;
+            }
+
+            // Never silently reinterpret a future/invalid Scout kind as Explore. The enum has three
+            // explicit semantics and every lifecycle stage must reject values it does not understand.
+            if (!ReconScoutKinds.IsExplore(pm.ScoutKind))
+            {
+                AiDebugLog.Write($"[AI][V2][Recon] revalidate reject — unknown Scout kind {(int)pm.ScoutKind}");
+                return MissionValidity.StaleTargetInvalidated;
+            }
+
+            // Explore only. Physical visitation is completion here; generic Refresh intentionally
+            // does NOT share this shortcut.
             if (VisionSystem.IsVisited(player, pm.ExecutionHex))
                 return MissionValidity.StaleGoalMet;
             if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
@@ -84,12 +87,6 @@ namespace Game.Ai.V2
             return MissionValidity.Valid;
         }
 
-        // Every Explore PROPOSAL's focus hex from a planning pass — funded, deferred, or unrouted
-        // alike. MissionOutcomeLedger.RegisterProposals rows all of them before allocation, so the
-        // bounded stale-Explore replacement (below) must avoid the whole set, not just the foci
-        // that reach the execution queue, or a synthesised StableMissionKey can bind onto a
-        // deferred proposal's row. Shared verbatim by the main pipeline AND StrategicReactionPass
-        // so the two identical lifecycles can never drift on this.
         public static HashSet<HexCoord> CollectExploreProposalFoci(IEnumerable<MissionProposal> missions)
         {
             var foci = new HashSet<HexCoord>();
@@ -97,24 +94,17 @@ namespace Game.Ai.V2
                 return foci;
             foreach (MissionProposal m in missions)
                 if (m?.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget smt
-                    && smt.Kind == ScoutTargetKind.Explore)
+                    && ReconScoutKinds.IsExplore(smt.Kind))
                     foci.Add(smt.FocusHex);
             return foci;
         }
 
-        // Bounded, deterministic replacement for a stale Explore. Returns a still-unvisited frontier
-        // hex from the turn's own snapshot the mover could be re-pointed at, or null. Ranked from
-        // the mover's CURRENT position (`from`), not the old objective. `takenFoci` is every
-        // ExecutionHex already owned by another mission in the execution queue — the replacement
-        // must NOT pick one of them, or its synthesised StableMissionKey(Scout,Explore,hex) would
-        // collide with that mission's row in MissionOutcomeLedger. Never re-plans. A mission that
-        // is ITSELF a replacement never gets replaced again (one hop, bounded).
         public static bool TryPickReplacementExploreFocus(WorldSnapshot snapshot, PlayerSetupData player,
             ProvisionedMission pm, HexCoord from, ISet<HexCoord> takenFoci, out HexCoord focus)
         {
             focus = default;
             if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
-                || pm.Kind != MissionKind.Scout || pm.ScoutKind != ScoutTargetKind.Explore)
+                || pm.Kind != MissionKind.Scout || !ReconScoutKinds.IsExplore(pm.ScoutKind))
                 return false;
 
             FrontierHexSnapshot? best = null;
@@ -135,11 +125,6 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Synthesise a NEW mission for `newFocus` off the stale one's mover. The result has its OWN
-        // fresh StableMissionKey and its OWN ScoutMissionTarget — it never carries the superseded
-        // mission's identity (spec §5). It reuses only the physical mover + AP claim (already
-        // reserved for that mover this turn). Deterministic: `newFocus` came from a totally-ordered
-        // frontier pick.
         public static ProvisionedMission BuildExploreReplacement(ProvisionedMission stale, HexCoord newFocus,
             PlayerSetupData player = null)
         {
@@ -157,8 +142,6 @@ namespace Game.Ai.V2
                 BaseValue = stale?.Mission?.BaseValue ?? 0f,
                 Explain = "live replacement for a stale Explore focus",
                 PreferredMoverArmyId = stale?.MoverArmyId,
-                // §1.5 — its OWN fresh attempt id in the current pass, linked back to the
-                // superseded attempt. Never inherits the stale proposal's identity.
                 AttemptId = AiV2Trace.CurrentScope(player)?.NextMissionAttemptId(),
                 ReplacementOfAttemptId = stale?.Mission?.AttemptId,
             };
@@ -176,7 +159,7 @@ namespace Game.Ai.V2
                 BaselineObservedTurn = 0,
                 ClaimedPhysical = stale?.ClaimedPhysical ?? default,
                 ClaimedAp = stale?.ClaimedAp ?? 0f,
-                StealthApReserved = false,   // a different route — never inherit a stealth reserve
+                StealthApReserved = false,
                 IsReplacement = true,
             };
         }
@@ -191,15 +174,6 @@ namespace Game.Ai.V2
             return a.Hex.R < b.Hex.R;
         }
 
-        // --- ExecutionResult classification for turn-activity telemetry. The `executed` list is
-        //     the SINGLE source of truth; every counter is DERIVED from it once in the caller,
-        //     never incremented inside TaskExecutor (spec §11 — no double counting).
-        //  Attempt          : a mission the executor actually ran (not a superseded stale one).
-        //  Genuine success  : the goal was reached AND real work was done (moved, or spent AP).
-        //  Stale / skipped  : nothing happened at all — 0 steps and 0 AP — whether flagged a goal
-        //                     (already met before start), invalidated, or superseded by a
-        //                     replacement.
-        //  Replacement      : the synthesised replacement mission (its own fresh key).
         public static bool WasAttempt(ExecutionResult r) => r != null && !r.Replaced;
 
         public static bool WasGenuineExecution(ExecutionResult r) =>
