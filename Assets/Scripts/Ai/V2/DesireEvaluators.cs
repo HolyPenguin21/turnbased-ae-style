@@ -159,9 +159,7 @@ namespace Game.Ai.V2
             float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
             float explorePressure = exploration;
-            float refreshPressure = Mathf.Clamp01(Mathf.Max(
-                surveillance,
-                ReconIntelSnapshotRegistry.StalePressure(snapshot)));
+            float refreshPressure = ReconRefreshPressure(snapshot, surveillance);
             float rawRecon = Mathf.Clamp01(
                 AiConfigV2.reconWeightExploration * explorePressure
                 + AiConfigV2.reconWeightSurveillance * refreshPressure
@@ -266,6 +264,72 @@ namespace Game.Ai.V2
             }
             return Mathf.Clamp01(AiConfigV2.reconSurveillanceBaseline
                 + AiConfigV2.reconStaleShareWeight * staleShare);
+        }
+
+        // Spec §4 — RefreshPressure is a composite, not max(surveillance, avg IntelAge). It sums a
+        // baseline, whole-map strategic IntelAge, stale honest enemy contacts (via `surveillance`,
+        // which already folds in the baseline + stale-share), own-asset perimeter staleness, an
+        // enemy-facing corridor staleness sample, and coarse enemy-concentration direction pressure.
+        private static float ReconRefreshPressure(WorldSnapshot snap, float surveillance)
+        {
+            if (snap?.Self == null)
+                return Mathf.Clamp01(surveillance);
+
+            float intelAge = ReconIntelSnapshotRegistry.StalePressure(snap);
+            IReadOnlyDictionary<HexCoord, int> observed = ReconIntelSnapshotRegistry.LastObservedFor(snap);
+            int turn = snap.TurnNumber;
+
+            var assetHexes = new List<HexCoord>();
+            if (snap.Self.BaseHexes != null)
+                assetHexes.AddRange(snap.Self.BaseHexes);
+            if (assetHexes.Count == 0)
+                assetHexes.Add(snap.Self.Citadel);
+            float perimeter = RegionStaleness(observed, turn, assetHexes,
+                AiConfigV2.reconRefreshPerimeterRadius);
+
+            float corridor = CorridorStaleness(observed, turn, snap.Self.Citadel,
+                snap.Known?.EnemySightings);
+
+            ReconDirectionSnapshot dir = ReconDirectionModel.Build(snap);
+            float concentration = dir != null && dir.EnemyPresenceWeight > 0f
+                ? Mathf.Clamp01(dir.EnemyPresenceWeight / Mathf.Max(1f, AiConfigV2.reconRefreshConcentrationNorm))
+                : 0f;
+
+            float sum = AiConfigV2.reconSurveillanceBaseline
+                + AiConfigV2.reconRefreshWeightIntelAge * intelAge
+                + AiConfigV2.reconRefreshWeightStaleContacts * Mathf.Clamp01(surveillance)
+                + AiConfigV2.reconRefreshWeightPerimeter * perimeter
+                + AiConfigV2.reconRefreshWeightCorridor * corridor
+                + AiConfigV2.reconRefreshWeightConcentration * concentration;
+            return Mathf.Clamp01(sum);
+        }
+
+        private static float RegionStaleness(IReadOnlyDictionary<HexCoord, int> observed, int turn,
+            IReadOnlyList<HexCoord> centers, int radius)
+        {
+            if (observed == null || observed.Count == 0 || centers == null || centers.Count == 0)
+                return 0f;
+            float sum = 0f;
+            int n = 0;
+            foreach (HexCoord c in centers)
+                foreach (HexCoord h in HexGridMath.HexesInRange(c, Mathf.Max(1, radius)))
+                    if (observed.TryGetValue(h, out int obs))
+                    {
+                        sum += Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
+                            AiConfigV2.scoutSurveilStaleTurnsHi, turn - obs);
+                        n++;
+                    }
+            return n > 0 ? sum / n : 0f;
+        }
+
+        private static float CorridorStaleness(IReadOnlyDictionary<HexCoord, int> observed, int turn,
+            HexCoord citadel, IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            if (observed == null || sightings == null || sightings.Count == 0)
+                return 0f;
+            HexCoord target = sightings.OrderBy(s => HexGridMath.Distance(citadel, s.Hex)).First().Hex;
+            var mid = new HexCoord((citadel.Q + target.Q) / 2, (citadel.R + target.R) / 2);
+            return RegionStaleness(observed, turn, new[] { mid }, AiConfigV2.reconRefreshCorridorRadius);
         }
 
         private static float ReconEnemyBlindness(WorldSnapshot snap)

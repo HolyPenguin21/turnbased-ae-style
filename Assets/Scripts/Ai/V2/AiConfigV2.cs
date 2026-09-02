@@ -140,6 +140,18 @@ namespace Game.Ai.V2
         public const float reconExploreRampHi = 0.60f;
         public const float reconSurveillanceBaseline = 0.18f;
         public const float reconStaleShareWeight = 0.50f;
+
+        // Composite RefreshPressure (spec §4, DesireEvaluators.ReconRefreshPressure). baseline is
+        // reconSurveillanceBaseline above; these weight the other contributions, all [0..1] before
+        // the weight. First-pass.
+        public const float reconRefreshWeightIntelAge = 0.35f;      // whole-known-map strategic IntelAge
+        public const float reconRefreshWeightStaleContacts = 0.30f; // share of honest enemy contacts gone stale (the `surveillance` term)
+        public const float reconRefreshWeightPerimeter = 0.25f;     // staleness of hexes around own bases/citadel
+        public const float reconRefreshWeightCorridor = 0.20f;      // staleness sampled between own citadel and the nearest known enemy
+        public const float reconRefreshWeightConcentration = 0.15f; // coarse enemy-concentration direction pressure
+        public const int reconRefreshPerimeterRadius = 3;           // ring radius around each own asset for the perimeter term
+        public const int reconRefreshCorridorRadius = 2;            // sample radius around the citadel<->enemy midpoint
+        public const float reconRefreshConcentrationNorm = 3f;      // this many true-world enemy armies -> concentration term 1
         public const float reconBlindnessMagnitude = 1.0f;
         public const float reconWeightExploration = 0.55f;
         public const float reconWeightSurveillance = 0.55f;
