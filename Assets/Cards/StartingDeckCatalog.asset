@@ -55,33 +55,33 @@ MonoBehaviour:
     - cardKey: The Ashen/Scav Carrier
       count: 0
     - cardKey: The Ashen/Rad Brute
-      count: 1
+      count: 0
     - cardKey: The Ashen/HI Ash Walker
-      count: 1
+      count: 0
     - cardKey: The Ashen/BS Grave Engine
       count: 0
     - cardKey: The Ashen/MT Rust Tank
-      count: 2
+      count: 0
     - cardKey: The Ashen/Leviathan
       count: 0
     - cardKey: The Ashen/Scrap Mortar
-      count: 1
+      count: 0
     - cardKey: The Ashen/Colossus
       count: 0
     - cardKey: The Ashen/Ash Howitzer
       count: 0
     - cardKey: The Ashen/Striker
-      count: 0
+      count: 1
     - cardKey: The Ashen/Scrapwing
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Lab
-      count: 1
+      count: 0
     - cardKey: Neutral/b_Factory
-      count: 1
+      count: 0
     - cardKey: Neutral/b_Intel
-      count: 1
+      count: 0
     - cardKey: The Ashen/HT Boomstick
-      count: 1
+      count: 0
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -110,19 +110,19 @@ MonoBehaviour:
     - cardKey: Iron Concord/Scrapper
       count: 0
     - cardKey: Iron Concord/AA Crawler
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Light Infantry
       count: 2
     - cardKey: Iron Concord/Iron guards
       count: 0
     - cardKey: Iron Concord/Medium infantry
-      count: 0
+      count: 2
     - cardKey: Iron Concord/Flamer
-      count: 1
+      count: 0
     - cardKey: Iron Concord/AT Infantry
       count: 0
     - cardKey: Iron Concord/Heavy Infantry
-      count: 1
+      count: 0
     - cardKey: Iron Concord/BS Melee
       count: 0
     - cardKey: Iron Concord/BS Ranged
@@ -130,15 +130,15 @@ MonoBehaviour:
     - cardKey: Iron Concord/BS Plasma
       count: 0
     - cardKey: Iron Concord/Light Tank
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Medium Tank
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Heavy Tank
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Artillery Cannon
-      count: 1
+      count: 0
     - cardKey: Iron Concord/AT Cannon
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Artillery Tank
       count: 0
     - cardKey: Iron Concord/Pulse Cannon
@@ -146,12 +146,12 @@ MonoBehaviour:
     - cardKey: Iron Concord/Watcher Drone
       count: 2
     - cardKey: Iron Concord/Wasp
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Rusty Vulture
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Lab
-      count: 1
+      count: 0
     - cardKey: Neutral/b_Factory
-      count: 1
+      count: 0
     - cardKey: Neutral/b_Intel
-      count: 1
+      count: 0
