@@ -592,12 +592,32 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 return result;
 
-            if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+            // AI-MGR-02 §4 — only hold AP back for the bounded reaction pass when that pass will
+            // ACTUALLY run and has actionable content. Otherwise the old blanket early-return left
+            // (e.g.) 10 AP stranded because ReconOnly suppressed the pass. The hold is now an
+            // EXPLICIT owner+reason StrategicResourceReservation, not a hidden "just return".
+            if (ReactionPassWillReserve(player, ctx))
             {
-                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: pending strategic reaction interrupt; "
-                    + $"preserve {root.ActionPoints} AP for bounded reaction pass");
+                StrategicResourceReservationLedger.Reserve(player, ctx.TurnNumber,
+                    new StrategicResourceReservation
+                    {
+                        Owner = "StrategicReactionPass",
+                        Reason = StrategicReservationReason.StrategicReactionPass,
+                        Resource = StrategicReservedResource.ActionPoints,
+                        Amount = root.ActionPoints,
+                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                    });
+                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: actionable strategic reaction pending; "
+                    + $"explicit reservation {root.ActionPoints} AP (owner=StrategicReactionPass "
+                    + $"expire=EndOfReaction), spendable now "
+                    + $"{F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}");
                 return result;
             }
+            if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+                AiDebugLog.Write($"[AI][V2]   strat.B — pending strategic invalidation but the bounded "
+                    + $"reaction pass will not run ("
+                    + $"{(AiStrategyV2Scope.IsReconOnly ? "scope=ReconOnly" : "no actionable content")}); "
+                    + $"NOT preserving {root.ActionPoints} AP — continue to surplus + end-of-turn tempo (spec §4)");
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
             bool cleanStop = true;
@@ -761,12 +781,14 @@ namespace Game.Ai.V2
             // every Unit/Hero chain. Combat readiness / demand-relevant cards are also the more
             // time-sensitive: a facility or a stored aircraft is equally playable next turn.
             //
-            // GATED on cleanStop AND no pending interrupt: if the materialization loop raised a
-            // strategic interrupt ("re-admit missions before further surplus spending" —
-            // operationalResidual, or a failed chain), NO further Phase-B spending of ANY kind may
-            // happen this pass, or the bounded reaction pass would re-plan against AP/Energy the
-            // non-combat lane already spent. Shares the one surplusActionsUsed budget.
-            if (cleanStop && !StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+            // GATED on cleanStop AND the reaction pass not actually reserving: if the materialization
+            // loop raised a strategic interrupt that a runnable, actionable reaction pass will act on
+            // ("re-admit missions before further surplus spending" — operationalResidual, or a failed
+            // chain), NO further Phase-B spending of ANY kind may happen this pass, or that pass would
+            // re-plan against AP/Energy the non-combat lane already spent. AI-MGR-02 §4: a pending
+            // interrupt the reaction pass will NOT run on (ReconOnly / non-actionable) no longer gates
+            // this off. Shares the one surplusActionsUsed budget.
+            if (cleanStop && !ReactionPassWillReserve(player, ctx))
                 snap = RunNonCombatSurplus(snap, player, root, hand, ctx, result, ref surplusActionsUsed);
             else
                 AiDebugLog.Write("[AI][V2]   strat.B non-combat — skipped: Phase B did not end cleanly "
@@ -974,6 +996,15 @@ namespace Game.Ai.V2
                 return available >= Mathf.Max(0, spend);
             }
         }
+
+        // AI-MGR-02 §4 — true only when Phase B should hold AP back for the bounded reaction pass:
+        // an invalidation is pending AND the pass can run in this scope AND it has actionable
+        // content. When false, non-combat surplus + terminal draws must NOT be gated off either.
+        private static bool ReactionPassWillReserve(PlayerSetupData player, AiTurnContext ctx) =>
+            player != null && ctx != null
+            && StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber)
+            && StrategicReactionPass.CanStrategicReactionPassRun(player, ctx)
+            && StrategicReactionPass.HasActionableStrategicReaction(player, ctx);
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

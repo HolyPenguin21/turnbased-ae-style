@@ -570,6 +570,13 @@ namespace Game.Ai.V2
         // remaining pool. A future late stage that genuinely needs resources after Phase B must
         // add its own explicit V2 reservation contract rather than reviving a fixed floor here.
 
+        // AI-MGR-02 §4 — end-of-turn tempo spending. When the bounded reaction pass does NOT run,
+        // HousekeepingManager releases the AP StrategicResourceReservationLedger held for it and
+        // re-runs StrategicManager.UseSurplus so the freed AP is offered to Play / Draw again the
+        // same turn. UseSurplus keeps its own internal per-pass action/draw bounds; this only caps
+        // how many times that re-run itself may repeat (>= 1; 1 is the safe first pass).
+        public const int maxEndOfTurnTempoReruns = 1;
+
         // =======================================================================================
         //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
         //  The OFF-BUDGET late-turn local army/garrison reorganisation pass. It runs AFTER

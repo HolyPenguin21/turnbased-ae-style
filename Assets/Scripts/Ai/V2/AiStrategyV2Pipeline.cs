@@ -419,6 +419,8 @@ namespace Game.Ai.V2
             // Reaction bucket from last turn can never leak into this turn's Total.
             V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
             CapabilityPoolExhaustionRegistry.BeginTurn(player, ctx.TurnNumber);
+            // AI-MGR-02 §4 — fresh explicit strategic resource reservations for this turn.
+            StrategicResourceReservationLedger.BeginTurn(player, ctx.TurnNumber);
 
             // Initiative AP telemetry — captured now (turn start) and written back at turn end.
             // Belongs EXCLUSIVELY to Game.Ai.V2.Initiative analysis; nothing else in this pipeline

@@ -60,6 +60,40 @@ namespace Game.Ai.V2
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
             }
+            else if (hand != null && player != null && root != null && ctx != null
+                     && StrategicResourceReservationLedger.ReleaseByReason(
+                         player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass))
+            {
+                // AI-MGR-02 §4 — the bounded reaction pass did NOT run (scope-suppressed, or the
+                // pending invalidation went away before it), so the AP Phase B explicitly reserved
+                // for it is stranded. Release it and run end-of-turn tempo spending once more THIS
+                // turn so the freed AP is offered to Play / Draw again instead of being lost.
+                for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
+                {
+                    int apBeforeTempo = root.ActionPoints;
+                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                    ActorCommitments tempoCommitments = ActorCommitments.FromIntents(
+                        MissionIntentRegistry.GetOrCreate(player).All,
+                        snapshot,
+                        ReconObjectiveEvaluator.Enumerate(snapshot));
+                    StrategicPhaseResult tempo = StrategicManager.UseSurplus(
+                        snapshot, player, root, hand, ctx, tempoCommitments, new MaterializationReservation());
+                    if (tempo.StateChanged)
+                    {
+                        result.StateChanged = true;
+                        snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+                        commitments = ActorCommitments.FromIntents(
+                            MissionIntentRegistry.GetOrCreate(player).All,
+                            snapshot,
+                            ReconObjectiveEvaluator.Enumerate(snapshot));
+                    }
+                    AiDebugLog.Write($"[AI][V2] tempo — end-of-turn tempo re-run: reaction pass did not "
+                        + $"run; cardsPlayed {tempo.CardsPlayed}, drawn {tempo.CardsDrawn}, "
+                        + $"ap {apBeforeTempo}->{root.ActionPoints}");
+                    if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
+                        break;
+                }
+            }
 
             // Structure pressure is movement, so execute it before the synchronous maintenance
             // actions below. Terminal Draw has already declined to consume its activation budget.

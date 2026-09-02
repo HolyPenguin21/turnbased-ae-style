@@ -27,6 +27,30 @@ namespace Game.Ai.V2
 
     internal static class StrategicReactionPass
     {
+        // AI-MGR-02 §4 — the two questions StrategicManager Phase B must answer BEFORE it holds any
+        // AP back for this pass. If EITHER is false the pass will spend nothing, so Phase B must NOT
+        // reserve (this is the "10 AP stranded because ReconOnly suppressed the reaction pass" bug).
+        internal static bool CanStrategicReactionPassRun(PlayerSetupData player, AiTurnContext ctx)
+        {
+            if (player == null || ctx == null || ctx.Map == null)
+                return false;
+            // ExecuteIfPending consumes-and-suppresses the whole pass in ReconOnly scope.
+            return !AiStrategyV2Scope.IsReconOnly;
+        }
+
+        internal static bool HasActionableStrategicReaction(PlayerSetupData player, AiTurnContext ctx)
+        {
+            if (player == null || ctx == null)
+                return false;
+            if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
+                return false;
+            // ExecuteRound aborts with zero spend when it cannot resolve an AI hand.
+            AiHandData hand = AiHandRegistry.Peek(player);
+            if (hand == null)
+                StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
+            return hand != null;
+        }
+
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
         {
@@ -42,11 +66,20 @@ namespace Game.Ai.V2
                     StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
                     AiDebugLog.Write("[AI][V2][Scope] strategic reaction pass suppressed reason=ReconOnly");
                 }
+                // AI-MGR-02 §4 — a scope-suppressed pass deliberately leaves any AP reservation in
+                // place: HousekeepingManager releases it and re-runs end-of-turn tempo spending with
+                // the freed AP the same turn (so it is not stranded).
                 yield break;
             }
 
             yield return ExecuteRound(priorSnapshot, player, root, ctx,
                 result ?? new StrategicReactionResult(), 0);
+
+            // AI-MGR-02 §4 — the pass has had its bounded round(s); any AP Phase B reserved for it
+            // is now free (its own inner Phase B call already spent whatever it wanted).
+            if (player != null && ctx != null)
+                StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
+                    StrategicReservationExpiry.EndOfReaction);
         }
 
         private static IEnumerator ExecuteRound(WorldSnapshot priorSnapshot, PlayerSetupData player,
