@@ -206,6 +206,11 @@ namespace Game.Ai.V2
                     break;
 
                 ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, armyId, air.Hex);
+                if (!air.Hex.Equals(sortie.LaunchHex))
+                {
+                    sortie.ClaimedSector = ReconDirectionModel.Sector(sortie.LaunchHex, air.Hex);
+                    sortie.HasClaim = true;
+                }
 
                 ReconMode mode = RequestedMode(snapshot);
                 if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))

@@ -588,6 +588,7 @@ namespace Game.Ai.V2
         public const int airReconTurningMpReserveSlack = 1;          // pivot once MP left after the step would exceed the proven return cost by no more than this
         public const float airReconOutboundTrailOverlapPenalty = 0.30f; // per sortie-trail hex within one hex of a candidate Outbound step
         public const float airReconLateralNoveltyBonus = 0.20f;     // small bonus for an informative step that sweeps sideways rather than straight out
+        public const float airReconCoverageOverlapPenalty = 0.35f;  // score /= 1 + this*claims — per OTHER active sortie already claiming the step's sector (spec §49)
 
         // Landing-base hysteresis (spec §38). Once a sortie has a chosen landing base it is kept
         // across steps unless it stops being a viable return target, or a challenger is clearly

@@ -92,7 +92,8 @@ namespace Game.Ai.V2
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
                 choices.Add(BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
-                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction, sortieState));
+                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction,
+                    sortieState, airArmy.Id));
             }
 
             StepChoice? best = ChooseBest(choices);
@@ -140,7 +141,8 @@ namespace Game.Ai.V2
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
                 choices.Add(BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
-                    h, landing, vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
+                    h, landing, vision, routeCost, requiredTurns, activationAp, activationEnergy, direction,
+                    null, -1));
             }
 
             StepChoice? best = ChooseBest(choices);
@@ -155,7 +157,7 @@ namespace Game.Ai.V2
         private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, ReconMode mode,
             int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
             int routeCost, int requiredTurns, float activationAp, float activationEnergy,
-            ReconDirectionSnapshot direction, ReconAirSortieState sortieState = null)
+            ReconDirectionSnapshot direction, ReconAirSortieState sortieState = null, int moverArmyId = -1)
         {
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
@@ -201,10 +203,22 @@ namespace Game.Ai.V2
                     score += lateralWeight * AiConfigV2.airReconLateralNoveltyBonus;
             }
 
+            // Coverage deconfliction (spec §49) — soft penalty for stepping into a coarse sector
+            // another active air sortie is already refreshing, so several aircraft spread out
+            // instead of grinding the same stale corridor.
+            int sectorClaims = 0;
+            if (sortieState != null)
+            {
+                ReconSector stepSector = ReconDirectionModel.Sector(sortieState.LaunchHex, h);
+                sectorClaims = ReconAirSortieRegistry.OtherSectorClaims(player, moverArmyId, stepSector);
+                if (sectorClaims > 0)
+                    score /= 1f + AiConfigV2.airReconCoverageOverlapPenalty * sectorClaims;
+            }
+
             string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "
                 + $"dir={sectorPressure:0.00} route={routeCost}/t{requiredTurns} "
                 + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#} "
-                + $"trailOverlap={trailOverlap} lateral={(lateral ? 1 : 0)}";
+                + $"trailOverlap={trailOverlap} lateral={(lateral ? 1 : 0)} sectorClaims={sectorClaims}";
             return new StepChoice(h, landing, score, neverObserved, staleInformation,
                 sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, reason);
         }

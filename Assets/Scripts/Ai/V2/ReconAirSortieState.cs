@@ -27,6 +27,12 @@ namespace Game.Ai.V2
         public HexCoord ChosenLandingHex;
         public bool HasChosenLanding;
 
+        // Coarse sector this sortie is currently refreshing, measured from its launch hex. Other
+        // sorties penalise stepping into a sector already claimed here (spec §49 — no two aircraft
+        // grinding the same stale corridor / forming the same boomerang).
+        public ReconSector ClaimedSector;
+        public bool HasClaim;
+
         // Best single Outbound step score seen this sortie — the marginal-gain Turning trigger
         // compares each later step against a fraction of this (spec §34: "marginal information gain
         // снизился").
@@ -83,6 +89,19 @@ namespace Game.Ai.V2
             return player != null
                 && ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy)
                 && byArmy.TryGetValue(armyId, out state);
+        }
+
+        // How many OTHER active air sorties are currently claiming `sector` (spec §49 coverage
+        // deconfliction). Never a hard reservation — a step into a claimed sector is only penalised.
+        public static int OtherSectorClaims(PlayerSetupData player, int armyId, ReconSector sector)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))
+                return 0;
+            int n = 0;
+            foreach (KeyValuePair<int, ReconAirSortieState> kv in byArmy)
+                if (kv.Key != armyId && kv.Value.HasClaim && kv.Value.ClaimedSector == sector)
+                    n++;
+            return n;
         }
 
         public static void Retire(PlayerSetupData player, int armyId)
