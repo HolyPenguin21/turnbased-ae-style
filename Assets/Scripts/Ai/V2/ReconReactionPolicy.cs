@@ -128,9 +128,52 @@ namespace Game.Ai.V2
             if (!worst.HasValue || worstWin >= StrongEnemyFleeWinChance)
                 return null;
 
-            HexCoord home = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
-            return new ReconReactionDecision(ReconReactionAction.Flee, home, worst.Value.ArmyId,
+            HexCoord fleeTo = PickFleeTarget(player, map, army, worst.Value.Hex);
+            return new ReconReactionDecision(ReconReactionAction.Flee, fleeTo, worst.Value.ArmyId,
                 worstWin, $"exposed to stronger known enemy near ({worst.Value.Hex.Q},{worst.Value.Hex.R})");
+        }
+
+        // §14 — a real flee-destination evaluator. The nearest owned garrison is only the fallback
+        // and the friendly-approach term; the chosen hex also maximises distance from the threat,
+        // keeps recon useful, and avoids known detectors / hostile zones / backtracking. Running
+        // home to the citadel is no longer the automatic answer to any strong sighting.
+        private static HexCoord PickFleeTarget(PlayerSetupData player, HexMap map, ArmyData army,
+            HexCoord threatHex)
+        {
+            HexCoord fallback = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
+            int radius = Math.Max(2, AiConfig.scoutFleeRadius);
+            HexCoord best = fallback;
+            float bestScore = float.NegativeInfinity;
+
+            foreach (HexCoord h in HexGridMath.HexesInRange(army.Hex, radius))
+            {
+                if (h.Equals(army.Hex) || !map.TryGetTerrainAt(h, out _))
+                    continue;
+                if (AiMapMemory.IsScoutDangerous(player, h) || AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
+                    continue;
+
+                float fromThreat = HexGridMath.Distance(h, threatHex);
+                float toFriendly = HexGridMath.Distance(h, fallback);
+                float detector = CurrentDetectorRisk(player, h);
+                int freshNeighbors = 0;
+                foreach (HexCoord n in HexGridMath.Neighbors(h))
+                    if (map.TryGetTerrainAt(n, out _) && !VisionSystem.IsVisited(player, n))
+                        freshNeighbors++;
+                float futureRecon = freshNeighbors / 6f;
+                int backtrack = ScoutTrailRegistry.RecentTrailHits(player, army.Id, new[] { h });
+
+                float score = AiConfigV2.scoutFleeThreatDistWeight * fromThreat
+                    + AiConfigV2.scoutFleeFriendlyApproachWeight * (1f / (1f + toFriendly))
+                    + AiConfigV2.scoutFleeFutureReconWeight * futureRecon
+                    - AiConfigV2.scoutFleeDetectorWeight * detector
+                    - AiConfigV2.scoutFleeBacktrackWeight * backtrack;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = h;
+                }
+            }
+            return best;
         }
 
         private static ReconReactionDecision? FindWeakScoutOpportunity(PlayerSetupData player, HexMap map,

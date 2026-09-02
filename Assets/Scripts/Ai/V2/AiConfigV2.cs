@@ -569,6 +569,12 @@ namespace Game.Ai.V2
         public const float scoutReactionAttackWinChance = 0.80f;   // ReconReactionPolicy — min win chance for an opportunistic solo-Recce attack
         public const float scoutReactionAttackMaxCriticalAfter = 0.25f; // ...reject the attack if even a WIN leaves the scout critically wounded this often (WorthIt.BattleEstimate)
         public const float scoutReactionFleeWinChance = 0.50f;     // ReconReactionPolicy — flee when the worst exposed known threat drops our win chance below this
+        // Flee-destination scoring (spec §14) — nearest base is a fallback only, not the goal.
+        public const float scoutFleeThreatDistWeight = 1.0f;        // farther from the threat hex is better
+        public const float scoutFleeFriendlyApproachWeight = 3.0f;  // closeness to the nearest own garrison, as 1/(1+dist)
+        public const float scoutFleeFutureReconWeight = 1.5f;       // a flee hex from which recon can usefully resume (unvisited-neighbour fraction)
+        public const float scoutFleeDetectorWeight = 2.5f;          // penalty per unit of known detector risk at the flee hex
+        public const float scoutFleeBacktrackWeight = 0.5f;         // penalty per recent scout-trail hit at the flee hex
         public const int reconAssignmentModeHoldTurns = 1;         // ReconAssignmentRegistry — min turns between Explore<->Refresh mode switches for one actor
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
         public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early
