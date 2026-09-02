@@ -36,6 +36,10 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+            if (missionIndex == 0)
+                ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
+
             result.StartHex = army.Hex;
             result.FinalHex = army.Hex;
 
@@ -47,6 +51,7 @@ namespace Game.Ai.V2
                 result.ApSpent = 0f;
                 AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
                     + $"unknown Scout kind {(int)pm.ScoutKind}; fail closed before movement");
+                SummarizeIfLast(player, ctx, queue, missionIndex);
                 yield break;
             }
 
@@ -72,6 +77,7 @@ namespace Game.Ai.V2
                     result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                     AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
                         + "required stealth unavailable; stop before movement");
+                    SummarizeIfLast(player, ctx, queue, missionIndex);
                     yield break;
                 }
                 result.EnteredStealth |= entered;
@@ -137,8 +143,10 @@ namespace Game.Ai.V2
                     // Hidden entry has already happened. The reaction policy performed the first
                     // live safety/defender check; now decloak, refresh, and call the authoritative
                     // capture method which performs its own final defender check again.
+                    bool captureStartedHidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
                     ExitArmyStealth(army);
                     VisionSystem.RecomputeFor(player);
+                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                     ReconReactionDecision afterDecloak = ReconReactionPolicy.Evaluate(
                         player, ctx.Map, army, assignment, ctx.TurnNumber);
                     if (afterDecloak.Action == ReconReactionAction.Flee
@@ -146,6 +154,8 @@ namespace Game.Ai.V2
                         || afterDecloak.Action == ReconReactionAction.StopAndReplan)
                     {
                         AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} cancelled after decloak: {afterDecloak}");
+                        ReconAcceptanceAudit.RecordHiddenFacilityCancel(player, ctx.TurnNumber, army.Id,
+                            army.Hex, captureStartedHidden, afterDecloak.Action);
                         reaction = afterDecloak;
                     }
                     else
@@ -155,6 +165,8 @@ namespace Game.Ai.V2
                         BuildingRegistry.CaptureOrDestroyIfUndefended(army.Hex, player, ctx.HexSelection, army);
                         BuildingData after = BuildingRegistry.FindAt(army.Hex);
                         bool changed = before != after || (after != null && after.Owner != previousOwner);
+                        ReconAcceptanceAudit.RecordHiddenFacilityCapture(player, ctx.TurnNumber, army.Id,
+                            army.Hex, captureStartedHidden, changed);
                         if (changed)
                         {
                             ReconAssignmentRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
@@ -225,6 +237,7 @@ namespace Game.Ai.V2
                 {
                     ExitArmyStealth(army);
                     VisionSystem.RecomputeFor(player);
+                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                     ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, player);
                     if (targetNow == null || !reaction.TargetArmyId.HasValue
                         || targetNow.Id != reaction.TargetArmyId.Value)
@@ -244,6 +257,8 @@ namespace Game.Ai.V2
                 }
 
                 HexCoord beforeHex = army.Hex;
+                ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
+                    beforeHex, next.Value, actionWhy);
                 var move = AiDecision.Move(army, next.Value,
                     $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
                     + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})",
@@ -259,8 +274,18 @@ namespace Game.Ai.V2
                 {
                     result.StepsMoved++;
                     ReconAssignmentRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
+                    // Keep the tactical IntelAge sidecar explicitly current at the authoritative
+                    // transition boundary. This is idempotent with VisionSystem callbacks and does
+                    // NOT mutate the frozen strategic snapshot or ground Visited state.
+                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                    ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,
+                        beforeHex, endHex);
                 }
                 result.FinalHex = endHex;
+
+                if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)
+                    ReconAcceptanceAudit.RecordWeakRecceAttack(player, ctx.TurnNumber, pm.MoverArmyId,
+                        reaction.TargetArmyId.Value, trace.BattleOccurred, reaction.WinChance);
 
                 if (army == null)
                 {
@@ -315,6 +340,14 @@ namespace Game.Ai.V2
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps={result.StepsMoved} ap−{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"objective={(result.ReachedGoal ? "met" : "open")} stop={stop}");
+            SummarizeIfLast(player, ctx, queue, missionIndex);
+        }
+
+        private static void SummarizeIfLast(PlayerSetupData player, AiTurnContext ctx,
+            IReadOnlyList<ProvisionedMission> queue, int missionIndex)
+        {
+            if (ctx != null && queue != null && missionIndex >= queue.Count - 1)
+                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
         private static void RefreshObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm,
