@@ -7,17 +7,17 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer. It now has THREE deliberately separated pieces:
+    //  Last ordinary mutating V2 layer. It has three deliberately separated pieces:
     //    · decisive strategic pressure (may move/spend activation AP) toward an honestly-known
     //      enemy Citadel after the army-targeted Raid lane runs out of contacts;
     //    · bounded strategic maintenance (may spend AP/resources): internal Facility placement,
     //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
     //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
     //
-    //  ReconOnly inserts one deliberately bounded Air Recon fallback immediately after the main
-    //  ground mission batch and pending reaction handling, before generic pressure/maintenance.
-    //  The air phase can spend only real AP/Energy still left at this point and uses the shared
-    //  aviation movement/resolver; it is not structural housekeeping and is tracked separately.
+    //  ReconOnly Air Recon is NOT housekeeping. It runs once, terminally, inside TaskExecutor
+    //  after the provisioned Ground Recon batch. Keeping it there gives one owner for the whole
+    //  one-hex sortie lifecycle and prevents a second Housekeeping air pass from spending the same
+    //  leftover AP/Energy again.
     //
     //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
     //  pressure/maintenance actions run, and only after those settle do we enter the zero-AP
@@ -27,7 +27,6 @@ namespace Game.Ai.V2
     public sealed class HousekeepingResult
     {
         public bool StateChanged;
-        public bool AirReconExecuted;
         public int MaintenanceActions;
         public int GroupsPlanned;
         public int TransfersApplied;
@@ -60,24 +59,6 @@ namespace Game.Ai.V2
                     MissionIntentRegistry.GetOrCreate(player).All,
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
-            }
-
-            // Air Recon is intentionally AFTER the normal Ground Recon mission batch, so ground
-            // scouts get first use of the Recon axis allocation. It is also BEFORE maintenance so
-            // the sortie's AP/Energy opportunity cost is evaluated against the resources genuinely
-            // left by strategic execution, not against a fictional pre-turn pool.
-            if (AiStrategyV2Scope.IsReconOnly && player != null && root != null && ctx != null)
-            {
-                bool airChanged = false;
-                yield return AirReconV2.RunFallback(snapshot, player, root, ctx,
-                    changed => airChanged |= changed);
-                if (airChanged)
-                {
-                    result.AirReconExecuted = true;
-                    result.StateChanged = true;
-                    if (hand != null)
-                        snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
-                }
             }
 
             // Structure pressure is movement, so execute it before the synchronous maintenance
@@ -125,13 +106,7 @@ namespace Game.Ai.V2
             }
 
             Run(player, root, ctx, commitments, result);
-            // Strategic capability leases exist only to bridge Phase A/Reaction materialization to
-            // this final structural pass. Once housekeeping has respected them they must expire;
-            // otherwise a one-turn preparation decision would freeze that army in later turns.
             StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
-            // Run() can return early when there is nothing to reorganise; resource telemetry is a
-            // turn-level concern and must still be emitted exactly once after the last mutating V2
-            // layer has had its chance.
             TurnResourceTelemetry.LogEnd(player, root, ctx?.TurnNumber ?? 0);
             yield break;
         }
@@ -145,8 +120,6 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // Pressure/maintenance above may spend. From THIS line onward reorganisation owns no
-            // AP, preserving the original Step-8C invariant exactly where it matters.
             int apBefore = root != null ? root.ActionPoints : 0;
             ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
             if (analysis.Groups.Count == 0)
@@ -181,10 +154,9 @@ namespace Game.Ai.V2
                     + "Structural reorganisation owns no AP; strategic pressure/maintenance is measured before this boundary.");
             }
 
-            AiDebugLog.Write($"[AI][V2] housekeeping — airRecon {(result.AirReconExecuted ? 1 : 0)}, "
-                + $"strategicActions {result.MaintenanceActions}, groups {result.GroupsPlanned}, "
-                + $"operations applied {result.TransfersApplied}, failed {result.TransfersFailed}, "
-                + $"stateChanged {(result.StateChanged ? 1 : 0)}, "
+            AiDebugLog.Write($"[AI][V2] housekeeping — strategicActions {result.MaintenanceActions}, "
+                + $"groups {result.GroupsPlanned}, operations applied {result.TransfersApplied}, "
+                + $"failed {result.TransfersFailed}, stateChanged {(result.StateChanged ? 1 : 0)}, "
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }
 
