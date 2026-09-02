@@ -67,7 +67,10 @@ namespace Game.Ai.V2
                 return null;
 
             HexMap map = ctx.Map;
-            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snapshot);
+            // AI-AIR-01 — form the strategic direction FIRST from landmarks (enemy concentration,
+            // Citadel, own facility perimeters, corridors, frontier last). Supersedes the raw
+            // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only.
+            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn);
             // Live, not frozen. A wing launched from storage did not exist in the turn-start
             // SelfSnapshot, and a composition-changing aviation rule must be reflected immediately.
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
@@ -91,9 +94,16 @@ namespace Game.Ai.V2
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
-                choices.Add(BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
-                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction,
-                    sortieState, airArmy.Id));
+                int unlandedEnds = sortie.HasValue ? 0 : multi.Value.RequiredUnlandedEnds;
+                IReadOnlyList<HexCoord> outbound = sortie.HasValue
+                    ? sortie.Value.OutboundPath?.Hexes : multi.Value.PathToAction?.Hexes;
+                IReadOnlyList<HexCoord> ret = sortie.HasValue
+                    ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
+                StepChoice? c = BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
+                    vision, routeCost, requiredTurns, unlandedEnds, activationAp, activationEnergy,
+                    anchors, snapshot, outbound, ret, sortieState, airArmy.Id);
+                if (c.HasValue)
+                    choices.Add(c.Value);
             }
 
             StepChoice? best = ChooseBest(choices);
@@ -120,7 +130,7 @@ namespace Game.Ai.V2
                 + candidate.Aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
             float activationAp = candidate.Aircraft.Sum(u => u != null ? u.ActivationApCost : 0);
             float activationEnergy = candidate.Aircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
-            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snapshot);
+            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn);
             var choices = new List<StepChoice>();
 
             foreach (HexCoord h in HexGridMath.Neighbors(candidate.AirfieldHex))
@@ -140,9 +150,16 @@ namespace Game.Ai.V2
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
-                choices.Add(BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
-                    h, landing, vision, routeCost, requiredTurns, activationAp, activationEnergy, direction,
-                    null, -1));
+                int unlandedEnds = sortie.HasValue ? 0 : multi.Value.RequiredUnlandedEnds;
+                IReadOnlyList<HexCoord> outbound = sortie.HasValue
+                    ? sortie.Value.OutboundPath?.Hexes : multi.Value.PathToAction?.Hexes;
+                IReadOnlyList<HexCoord> ret = sortie.HasValue
+                    ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
+                StepChoice? c = BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
+                    h, landing, vision, routeCost, requiredTurns, unlandedEnds, activationAp,
+                    activationEnergy, anchors, snapshot, outbound, ret, null, -1);
+                if (c.HasValue)
+                    choices.Add(c.Value);
             }
 
             StepChoice? best = ChooseBest(choices);
@@ -154,73 +171,44 @@ namespace Game.Ai.V2
             return best;
         }
 
-        private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, ReconMode mode,
+        // AI-AIR-01 — one candidate first step, scored for its PROVEN WHOLE ROUTE via
+        // AirReconRouteScorer (destination footprint + route-observation sum + strategic-anchor
+        // alignment − travel/activation/recovery/redundancy). Returns null when the scorer rejects
+        // the candidate outright (spec §5 hard rules: no strategic value / repeats a recent air
+        // observation).
+        private static StepChoice? BuildChoice(PlayerSetupData player, HexMap map, ReconMode mode,
             int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
-            int routeCost, int requiredTurns, float activationAp, float activationEnergy,
-            ReconDirectionSnapshot direction, ReconAirSortieState sortieState = null, int moverArmyId = -1)
+            int routeCost, int requiredTurns, int requiredUnlandedEnds, float activationAp,
+            float activationEnergy, AirReconAnchorSet anchors, WorldSnapshot snapshot,
+            IReadOnlyList<HexCoord> outboundHexes, IReadOnlyList<HexCoord> returnHexes,
+            ReconAirSortieState sortieState = null, int moverArmyId = -1)
         {
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
 
-            ReconSector sector = ReconDirectionModel.Sector(from, h);
-            float sectorPressure = 0f;
-            if (direction?.EnemyDirectionSectors != null)
-                direction.EnemyDirectionSectors.TryGetValue(sector, out sectorPressure);
-            if (direction?.KnownEnemyCitadelDirection == sector)
-                sectorPressure = Mathf.Max(sectorPressure, 0.75f);
-
-            float information = mode == ReconMode.Explore
-                ? AiConfigV2.airReconNeverObservedWeight * neverObserved
-                    + 0.20f * AiConfigV2.airReconStaleWeight * staleInformation
-                : AiConfigV2.airReconStaleWeight * staleInformation
-                    + 0.20f * AiConfigV2.airReconNeverObservedWeight * neverObserved;
-
-            // Current/recently observed cells have age~0 and no stale value; already-known cells
-            // have no never-observed value. Thus repeated flights naturally lose marginal value.
-            float score = information
-                + AiConfigV2.airReconDirectionWeight * Mathf.Clamp01(sectorPressure)
-                - AiConfigV2.airReconRouteCostPenalty * routeCost
-                - AiConfigV2.airReconExtraTurnPenalty * Mathf.Max(0, requiredTurns - 1)
-                - AiConfigV2.airReconActivationApPenalty * activationAp
-                - AiConfigV2.airReconActivationEnergyPenalty * activationEnergy;
-
-            // Boomerang shaping (spec §33 / §48) — Outbound and the Turning pivot only, always
-            // subordinate to the shared aviation safety filter that already vetted every candidate
-            // here. Discourage hugging the way out; nudge toward an informative sideways sweep
-            // instead of a pure radial out-and-back. The pivot step leans on this hardest — that is
-            // what makes Turning a real lateral bend rather than an instant U-turn.
-            int trailOverlap = 0;
-            bool lateral = false;
-            if (sortieState != null
-                && (sortieState.Phase == ReconAirPhase.Outbound || sortieState.Phase == ReconAirPhase.Turning))
-            {
-                float lateralWeight = sortieState.Phase == ReconAirPhase.Turning ? 2f : 1f;
-                trailOverlap = sortieState.TrailAdjacency(h);
-                score -= AiConfigV2.airReconOutboundTrailOverlapPenalty * trailOverlap;
-                lateral = information > 0.01f
-                    && HexGridMath.Distance(sortieState.LaunchHex, h) <= HexGridMath.Distance(sortieState.LaunchHex, from);
-                if (lateral)
-                    score += lateralWeight * AiConfigV2.airReconLateralNoveltyBonus;
-            }
-
-            // Coverage deconfliction (spec §49) — soft penalty for stepping into a coarse sector
-            // another active air sortie is already refreshing, so several aircraft spread out
-            // instead of grinding the same stale corridor.
             int sectorClaims = 0;
             if (sortieState != null)
             {
                 ReconSector stepSector = ReconDirectionModel.Sector(sortieState.LaunchHex, h);
                 sectorClaims = ReconAirSortieRegistry.OtherSectorClaims(player, moverArmyId, stepSector);
-                if (sectorClaims > 0)
-                    score /= 1f + AiConfigV2.airReconCoverageOverlapPenalty * sectorClaims;
             }
 
-            string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "
-                + $"dir={sectorPressure:0.00} route={routeCost}/t{requiredTurns} "
-                + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#} "
-                + $"trailOverlap={trailOverlap} lateral={(lateral ? 1 : 0)} sectorClaims={sectorClaims}";
-            return new StepChoice(h, landing, score, neverObserved, staleInformation,
-                sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, reason);
+            var inputs = new AirReconRouteInputs(player, map, mode, turn, from, h, h, landing,
+                outboundHexes, returnHexes, vision, routeCost, requiredTurns, requiredUnlandedEnds,
+                activationAp, activationEnergy, neverObserved, staleInformation, anchors, snapshot,
+                sortieState, sectorClaims);
+            AirReconRouteCandidate c = AirReconRouteScorer.Score(inputs);
+            if (c.Rejected)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Route] actor=#{moverArmyId} "
+                    + $"to=({h.Q},{h.R}) DROP — {c.Breakdown}");
+                return null;
+            }
+
+            float sectorPressure = anchors != null
+                ? anchors.PressureFor(ReconDirectionModel.Sector(from, h)) : 0f;
+            return new StepChoice(h, landing, c.TotalScore, neverObserved, staleInformation,
+                sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, c.Breakdown);
         }
 
         private static StepChoice? ChooseBest(List<StepChoice> choices)

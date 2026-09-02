@@ -138,6 +138,42 @@ namespace Game.Ai
 
         public static int SafeUnlandedEndsRemaining(ArmyData airArmy) => SafeUnlandedEndsRemaining(airArmy?.Members);
 
+        // AI-AIR-02 — may this already-airborne group legally END the current turn still aloft AND
+        // still be guaranteed its mandatory recovery afterwards? This is the test that turns a
+        // helicopter's two-turn endurance into a real tactical window: when it is true, the recon
+        // executor must NOT reserve movement to boomerang home this turn.
+        //
+        //   CanSafelyRemainAirborne =
+        //       endurance allows this turn's EndTurn                (SafeUnlandedEndsRemaining >= 1)
+        //       AND a realistic recovery plan exists right now      (same-turn OR multi-turn return)
+        //       AND next turn still allows the mandatory return      (see below)
+        //
+        // A plane (SafeUnlandedEndsRemaining == 0) always fails the first clause, so its existing
+        // single-turn boomerang model is completely untouched. Pure query — never mutates unit
+        // state, re-derives everything from the live shared aviation rules.
+        public static bool CanSafelyEndTurnAirborne(ArmyData airArmy, HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
+                return false;
+            int safeEnds = SafeUnlandedEndsRemaining(airArmy);
+            if (safeEnds < 1)
+                return false; // ending this turn aloft is already illegal / would take fuel damage
+
+            HexCoord? sameTurn = TryReplan(airArmy, map, owner);
+            if (sameTurn.HasValue)
+                // A route that already fits this turn's partly-spent movement is trivially safe
+                // next turn: full movement refreshes, the wing lands in one turn, zero further
+                // unlanded ends. Ending this turn aloft only spends the safe end we just verified.
+                return true;
+
+            MultiTurnSortie? multi = TryReplanMultiTurnReturn(airArmy, map, owner);
+            if (!multi.HasValue)
+                return false; // no recovery plan of any kind — must deal with it now
+            // Multi-turn-only return: enough endurance margin must remain AFTER this turn's end is
+            // spent to cover every unlanded end that return still needs.
+            return safeEnds - 1 >= multi.Value.RequiredUnlandedEnds;
+        }
+
         // start airfield -> action hex -> any owned airfield with free capacity — the shared
         // safety invariant every AirStrike/AirRecon continuation re-derives fresh (never cached on
         // the task) before proposing a launch or a further step.

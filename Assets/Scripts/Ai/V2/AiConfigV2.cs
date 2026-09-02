@@ -730,6 +730,36 @@ namespace Game.Ai.V2
         public const float airReconOpportunisticMinKillProbability = 0.30f; // expected chance of removing at least one enemy unit
 
         // =======================================================================================
+        //  AIR RECON STRATEGIC ANCHOR + WHOLE-ROUTE SCORING  (AI-AIR-01, spec §1–§5)
+        //  A sortie's direction is formed FIRST from strategic landmarks (AirReconAnchorModel):
+        //  known/hidden enemy concentration, the enemy Citadel, own facility perimeters with stale
+        //  intel, and the corridors between the enemy and our valuable assets. The omniscient read
+        //  biases DIRECTION only — it never marks a hex observed. Every candidate first step is then
+        //  scored for the PROVEN whole route (outbound + return path), not just its destination
+        //  footprint, so a longer sweep past a stale facility / probable corridor can beat a shorter
+        //  radial out-and-back. Additive composite, components kept separate for the [Route] log.
+        //  First-pass — tune against real AiDebug.log [Recon][Air][Route] lines.
+        // =======================================================================================
+        public const float airReconRouteObservationWeight = 0.45f;  // per unit of summed per-hex info usefulness along the proven route (never-observed=1, stale age ramps 0..1)
+        public const float airReconRouteObservationDecay = 0.82f;   // geometric decay per route hex away from the aircraft — near-term coverage counts most
+        public const float airReconRouteObservationRingWeight = 0.35f; // weight on a route hex's 6 immediate neighbours (corridor width), on top of the hex itself
+        public const int airReconRouteObservationMaxHexes = 14;     // hard cap on scored route hexes per candidate (bounds the per-decision cost)
+        public const float airReconCitadelDirectionWeight = 0.70f;  // first step heads into the enemy-Citadel sector (× confidence: 1.0 known, 0.55 hidden-bias only)
+        public const float airReconCitadelHiddenConfidence = 0.55f;
+        public const float airReconFacilityCoverWeight = 0.40f;     // route passes within airReconFacilityCoverRadius of an OWN facility whose perimeter intel is stale
+        public const int airReconFacilityCoverRadius = 2;
+        public const int airReconFacilityStaleAgeMin = 4;           // facility-perimeter IntelAge (turns) at/above which it counts as "stale" and worth an anchor
+        public const float airReconCombatOpportunityWeight = 0.22f; // route hex within 1 of an HONESTLY-known enemy sighting — chance to spot / opportunistic strike (halved if that sighting has AA)
+        public const float airReconCombatOpportunityCap = 0.66f;
+        public const float airReconRecoveryRiskWeight = 0.30f;      // × (extra required turns + 0.5·required unlanded turn-ends + count of route hexes adjacent to KNOWN AA)
+        public const float airReconRedundancyRecentObsPenalty = 0.55f; // per informative route hex this player's air recon already flew within AiConfig.airReconTargetCooldownTurns
+        public const float airReconRedundancyRecentObsRejectFrac = 0.75f; // ≥ this fraction of the route's informative hexes recently air-observed -> reject the candidate outright (spec §5)
+        public const float airReconStrategicValueFloor = 0.02f;     // reject a candidate whose ENTIRE positive side (info + route obs + every anchor term) is below this — "its only value is GroundVisited==false" (spec §5)
+        public const float airReconAnchorFrontierWeight = 0.12f;    // unknown-frontier sectors feed anchor pressure only weakly — used after every more meaningful source (spec §1 last bullet)
+        public const float airReconAnchorCorridorWeight = 0.45f;    // sector of the midpoint between a known enemy (army/Citadel) and our nearest valuable asset
+        public const float airReconAnchorConcentrationWeight = 1.00f; // sanitized enemy-concentration sector pressure (one base unit per true-world army, normalised)
+
+        // =======================================================================================
         //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
         //  Splits the Energy stock into committed (other in-flight AirRecon activations) +
         //  protected (a playable high-value hand card's need) + spendable, so a routine refresh

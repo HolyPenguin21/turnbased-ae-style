@@ -281,10 +281,47 @@ namespace Game.Ai.V2
                     break;
 
                 ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, armyId, air.Hex);
+                if (sortie.LaunchTurn < 0) sortie.LaunchTurn = ctx.TurnNumber;
                 if (!air.Hex.Equals(sortie.LaunchHex))
                 {
                     sortie.ClaimedSector = ReconDirectionModel.Sector(sortie.LaunchHex, air.Hex);
                     sortie.HasClaim = true;
+                }
+
+                // AI-AIR-02 — persistent-plan bookkeeping + the real endurance deadline, re-derived
+                // live every decision from the shared aviation rules (never a cached copy).
+                bool newTurn = sortie.BeginTurn(ctx.TurnNumber);
+                bool canRemainAirborne = !atAirfield
+                    && AiAviationSupport.CanSafelyEndTurnAirborne(air, ctx.Map, player);
+                // MustRecoverThisTurn — the real multi-turn endurance deadline: the wing has ALREADY
+                // spent at least one turn-end aloft and can no longer prove another safe airborne
+                // EndTurn plus its mandatory return. Only then is Return a hard priority forced at
+                // turn start. On the launch turn (AirborneTurnIndex == 0) this never fires — the
+                // ordinary same-turn boomerang logic below still governs, so a plane
+                // (SafeUnlandedEndsRemaining == 0, always a same-turn round trip) is unchanged.
+                bool mustRecoverThisTurn = !atAirfield && sortie.AirborneTurnIndex >= 1
+                    && !canRemainAirborne;
+                sortie.MustRecoverThisTurn = mustRecoverThisTurn;
+
+                // A Hold set on a PREVIOUS turn (aloft on purpose, deferring return) re-opens now
+                // with fresh movement; a Hold set earlier THIS turn ends the sortie's turn here.
+                if (sortie.Phase == ReconAirPhase.Hold)
+                {
+                    if (!newTurn)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold — ending turn aloft; "
+                            + $"airborneTurnIdx={sortie.AirborneTurnIndex} reason={sortie.LastDecisionReason}");
+                        break;
+                    }
+                    sortie.Phase = mustRecoverThisTurn ? ReconAirPhase.Return : ReconAirPhase.Outbound;
+                }
+
+                if (mustRecoverThisTurn && sortie.Phase == ReconAirPhase.Outbound)
+                {
+                    sortie.Phase = ReconAirPhase.Return;
+                    sortie.LastDecisionReason = "must_recover: endurance deadline / no recovery plan remains";
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=must_recover "
+                        + $"safeEnds={AiAviationSupport.SafeUnlandedEndsRemaining(air)} airborneTurnIdx={sortie.AirborneTurnIndex}");
                 }
 
                 ReconMode mode = RequestedMode(player, snapshot);
@@ -308,6 +345,19 @@ namespace Game.Ai.V2
                     // must not be turned back after one step.
                     bool returnReserve = choice.Value.RequiredTurns <= 1
                         && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
+                    // AI-AIR-02 core invariant — the wing must NOT turn home this turn just because
+                    // it has the MP to. Suppress the return-reserve pivot while it can prove it will
+                    // legally end this turn aloft AND still make its mandatory return afterwards: its
+                    // two-turn endurance is a real tactical window. marginal_gain still pivots — that
+                    // trigger is about running out of useful things to see, not about fuel.
+                    if (returnReserve && canRemainAirborne && !mustRecoverThisTurn)
+                    {
+                        sortie.LastDecisionReason = "hold_airborne: two-turn endurance window, return deferred";
+                        AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound hold_airborne "
+                            + $"reason=two_turn_window mpSlackAfter={mpSlackAfterStep} "
+                            + $"safeEnds={AiAviationSupport.SafeUnlandedEndsRemaining(air)} airborneTurnIdx={sortie.AirborneTurnIndex}");
+                        returnReserve = false;
+                    }
                     if (marginalDrop || returnReserve)
                     {
                         string why = returnReserve ? "return_reserve" : "marginal_gain";
@@ -520,21 +570,37 @@ namespace Game.Ai.V2
 
             ArmyData afterStrike = Resolve(player, air.Id);
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-            if (sortie != null)
-                sortie.Phase = ReconAirPhase.Return; // reveal happened — turn for home, live replan next iteration
+            bool safeReturnGone = afterStrike == null || !AviationRules.IsValidAirArmy(afterStrike)
+                || (!AiAviationSupport.TryReplan(afterStrike, ctx.Map, player).HasValue
+                    && !AiAviationSupport.TryReplanMultiTurnReturn(afterStrike, ctx.Map, player).HasValue);
 
-            if (afterStrike != null && AviationRules.IsValidAirArmy(afterStrike)
-                && !AiAviationSupport.TryReplan(afterStrike, ctx.Map, player).HasValue
-                && !AiAviationSupport.TryReplanMultiTurnReturn(afterStrike, ctx.Map, player).HasValue)
+            // AI-AIR-02 — a second strike next turn is only an OPTION, never forced. If the wing can
+            // still prove it will legally end this turn aloft AND recover afterwards, hold airborne
+            // and let a fresh state evaluation next turn decide (strike again, or turn for home).
+            // Otherwise the reveal means turn for home now.
+            bool canRemainAfterStrike = !safeReturnGone
+                && AiAviationSupport.CanSafelyEndTurnAirborne(afterStrike, ctx.Map, player);
+            if (sortie != null)
             {
+                sortie.MissionMode = ReconAirMissionMode.ReconStrike;
+                if (canRemainAfterStrike)
+                {
+                    sortie.Phase = ReconAirPhase.Hold;
+                    sortie.LastDecisionReason = "hold_airborne_after_strike: second-strike window re-evaluated next turn";
+                }
+                else
+                {
+                    sortie.Phase = ReconAirPhase.Return; // reveal happened, no safe window — live replan next iteration
+                    sortie.LastDecisionReason = "return_after_strike: no safe airborne window remains";
+                }
+            }
+
+            if (safeReturnGone)
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={result.Attacked}; "
                     + "WARN no safe return after strike — next iteration will hold/seek any airfield");
-            }
             else
-            {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={result.Attacked}; "
-                    + "safe return preserved, sortie now Return");
-            }
+                    + $"safe return preserved, sortie now {(canRemainAfterStrike ? "Hold (2-turn strike window)" : "Return")}");
         }
 
         private static IEnumerator MoveOne(PlayerSetupData player, AiTurnContext ctx, ArmyData air,

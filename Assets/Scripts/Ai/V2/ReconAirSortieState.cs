@@ -12,13 +12,21 @@ namespace Game.Ai.V2
     //  moment the wing lands (or the sortie is lost). This state therefore lives beside
     //  ReconAssignmentRegistry, keyed by army id, and is retired on exactly the same events.
     //
-    //  Phases (spec §34):
+    //  Phases (spec §34 / AI-AIR-02):
     //    Outbound  press toward useful information; boomerang shaping applies here
     //    Turning   the one pivot step — logged, then immediately Return
+    //    Hold      aloft on purpose, ending THIS turn here — re-decide next turn (AI-AIR-02: a
+    //              helicopter with a real TurnsWithoutRefuel margin turns its two-turn endurance
+    //              into a tactical window instead of boomeranging home turn 1)
     //    Return    safe landing is the priority; only free en-route refresh, never an unsafe detour
     //    Landing   the wing is on an owned airfield; the sortie is over
     // ===========================================================================================
-    internal enum ReconAirPhase { Outbound, Turning, Return, Landing }
+    internal enum ReconAirPhase { Outbound, Turning, Hold, Return, Landing }
+
+    // AI-AIR-02 — what this sortie is actually for, so telemetry (and a later strike-first
+    // planner) can tell a pure recon flight from one that has already revealed itself with a
+    // strike. Never gates gameplay rules — those stay AviationRules'/AviationActions' job.
+    internal enum ReconAirMissionMode { Recon, Strike, ReconStrike }
 
     internal sealed class ReconAirSortieState
     {
@@ -37,6 +45,32 @@ namespace Game.Ai.V2
         // compares each later step against a fraction of this (spec §34: "marginal information gain
         // снизился").
         public float BestOutboundStepScore;
+
+        // ===================================================================================
+        //  AI-AIR-02 PERSISTENT SORTIE PLAN — the durable bits of the spec's AirSortiePlan that
+        //  are not already covered by an existing aviation rule. Endurance itself
+        //  (TurnsWithoutRefuel / ConsecutiveUnlandedEnds / HasAirAttackedThisTurn) and landing
+        //  feasibility are NEVER duplicated here — they are read live from AviationRules /
+        //  AiAviationSupport every decision.
+        // ===================================================================================
+        public int LaunchTurn = -1;                                 // turn the wing left the airfield
+        public int AirborneTurnIndex;                               // 0 on the launch turn, +1 each further AI turn aloft
+        public int LastProcessedTurn = -1;                          // guards AirborneTurnIndex against a double bump within one turn
+        public ReconAirMissionMode MissionMode = ReconAirMissionMode.Recon;
+        public bool MustRecoverThisTurn;                            // real endurance deadline reached — Return is a hard priority this turn
+        public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
+
+        // Advance the airborne-turn counter exactly once per AI turn this sortie is processed.
+        // Returns true on the first call of a NEW turn so the caller can re-open a Hold.
+        public bool BeginTurn(int turn)
+        {
+            if (turn == LastProcessedTurn)
+                return false;
+            if (LastProcessedTurn >= 0)
+                AirborneTurnIndex++;
+            LastProcessedTurn = turn;
+            return true;
+        }
 
         // Ordered hexes this sortie has occupied, launch hex first. Used only as a soft boomerang
         // nudge (spec §48) — safety always wins, a straight retrace is allowed when it is the only
