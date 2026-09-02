@@ -11,25 +11,9 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // ===========================================================================================
-    //  AIR RECON — RECON-ONLY FALLBACK
-    // ===========================================================================================
-    //  Ground Recon remains primary. This phase runs after the ordinary V2 mission batch and may
-    //  consume only resources that are physically still available.
-    //
-    //  First V2 boundary:
-    //    · same-turn sorties only: airfield -> information objective -> safe owned airfield;
-    //    · the complete boomerang must fit CURRENT movement, not theoretical max movement;
-    //    · every transition is one hex through AiTurnController.MoveArmyRoutine;
-    //    · after every hex the complete remainder is re-planned against newly-known AA/capacity;
-    //    · if forward safety is lost, the aircraft turns for the best currently reachable airfield;
-    //    · observation refreshes AiReconIntelMemory but must never mark ground VisionSystem.Visited;
-    //    · recently-flown targets are suppressed to create explicit diminishing returns.
-    //
-    //  Multi-turn helicopter sorties intentionally stay outside this first pass. They need a V2
-    //  durable aviation assignment + landing reservation. Reusing V1 AiTaskRegistry for persistence
-    //  would create a second state-ownership model inside Strategy V2.
-    // ===========================================================================================
+    // ReconOnly aviation fallback. Ground Recon gets first use of the turn; Air Recon may use only
+    // resources left afterwards. This first V2 implementation deliberately accepts only sorties
+    // whose full outbound + safe-return route fits the current turn.
     internal static class AirReconV2
     {
         private const float ApOpportunityWeight = 6f;
@@ -68,9 +52,13 @@ namespace Game.Ai.V2
                 {
                     if (executed == 0)
                         AiDebugLog.Write("[AI][V2][Recon][Air] no worthwhile safe same-turn sortie");
+                    AirReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
                     yield break;
                 }
 
+                AirReconAcceptanceAudit.RecordSelection(player, ctx.TurnNumber,
+                    plan.Objective.FocusHex, plan.InformationValue, plan.OpportunityCost,
+                    plan.NetValue, plan.Sortie.TotalCost);
                 AiDebugLog.Write($"[AI][V2][Recon][Air] select {plan.Objective.Kind} "
                     + $"focus=({plan.Objective.FocusHex.Q},{plan.Objective.FocusHex.R}) "
                     + $"launch=({plan.LaunchHex.Q},{plan.LaunchHex.R}) "
@@ -82,11 +70,16 @@ namespace Game.Ai.V2
                 bool sortieChanged = false;
                 yield return Execute(player, ctx, plan, v => sortieChanged |= v);
                 if (!sortieChanged)
+                {
+                    AirReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
                     yield break;
+                }
 
                 executed++;
                 changed?.Invoke(true);
             }
+
+            AirReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
         private static Candidate PickBest(WorldSnapshot snapshot, PlayerSetupData player,
@@ -104,8 +97,7 @@ namespace Game.Ai.V2
                     || ObservedThisTurn(player, objective.FocusHex, ctx.TurnNumber))
                     continue;
 
-                // Air is fallback, not a replacement for a cheap ground hop. Surveil is observation
-                // semantics and may compete even when a ground scout can physically approach it.
+                // Air is fallback, not a replacement for a one-turn ground Explore/Refresh route.
                 if (objective.Kind != ReconObjectiveKind.Surveil)
                 {
                     var ground = ScoutRouteCostEvaluator.Evaluate(snapshot, objective.ToTarget());
@@ -116,10 +108,14 @@ namespace Game.Ai.V2
                 bool recentlyFlown = AiMapMemory.WasAirReconnedWithin(player, objective.FocusHex,
                     ctx.TurnNumber, AiConfig.airReconTargetCooldownTurns);
                 if (recentlyFlown && objective.Kind != ReconObjectiveKind.Surveil)
+                {
+                    AirReconAcceptanceAudit.RecordCooldownSkip(player, ctx.TurnNumber,
+                        objective.FocusHex, AiConfig.airReconTargetCooldownTurns);
                     continue;
+                }
 
-                float direction = DirectionPressure(snapshot, directions, objective.FocusHex);
-                float infoValue = objective.BaseValue + direction * DirectionWeight;
+                float infoValue = objective.BaseValue
+                    + DirectionPressure(snapshot, directions, objective.FocusHex) * DirectionWeight;
                 Candidate candidate = BestVehicleFor(player, root, ctx, objective, infoValue);
                 if (candidate == null || candidate.NetValue < MinimumNetValue)
                     continue;
@@ -138,7 +134,8 @@ namespace Game.Ai.V2
             Candidate best = null;
             int freeEnergy = AiResourceReservation.Available(root, player, ResourceType.Energy);
 
-            // Shared TryPlanSortie already plans against the formed army's CurrentMovement.
+            // Existing air groups must be idle at an owned airfield. Legacy-task-owned groups are
+            // not stolen by V2. TryPlanSortie already uses CurrentMovement for formed armies.
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (!AviationRules.IsValidAirArmy(army) || army.CurrentMovement <= 0
@@ -162,9 +159,9 @@ namespace Game.Ai.V2
                     best = c;
             }
 
-            // Storage planning deliberately uses EffectiveMoveMax in the shared V1/V2 helper: a
-            // stored aircraft cannot have spent movement before launch. The actual formed army is
-            // re-proved against CurrentMovement synchronously before the first paid step below.
+            // Stored aircraft are planned with the shared storage helper (EffectiveMoveMax by
+            // design). The actual formed army is synchronously re-proved against CurrentMovement
+            // before the first paid move, so no provisional launch can strand the group.
             foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(hex, player);
@@ -243,10 +240,10 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 launchedFromStorage = true;
-                // Provisional structural launch only. If preflight fails, roll it back and report no
-                // lasting state-change/cooldown.
             }
 
+            // Provisional launch is not a state change yet. The complete sortie is re-proved against
+            // the freshly-created army's real CurrentMovement before any activation cost is spent.
             AiAviationSupport.Sortie? live =
                 AiAviationSupport.TryPlanSortie(airArmy, plan.Objective.FocusHex, ctx.Map, player);
             if (!live.HasValue || live.Value.TotalCost > airArmy.CurrentMovement)
@@ -260,6 +257,7 @@ namespace Game.Ai.V2
             HexCoord landing = live.Value.LandingHex;
             bool outbound = true;
             bool observed = false;
+            bool emergencyReturnPending = false;
             int guard = Mathf.Max(2, airArmy.CurrentMovement + 2);
             int steps = 0;
 
@@ -281,13 +279,14 @@ namespace Game.Ai.V2
                 HexCoord? next = null;
                 if (outbound)
                 {
-                    // Re-prove the complete remaining boomerang every hex. New known-AA intel,
-                    // landing-capacity changes, or spent movement can invalidate forward progress.
+                    // Re-prove the complete remaining boomerang every hex. Newly-known AA, changed
+                    // landing capacity, or spent movement cancels further forward progress.
                     live = AiAviationSupport.TryPlanSortie(airArmy,
                         plan.Objective.FocusHex, ctx.Map, player);
                     if (!live.HasValue || live.Value.TotalCost > airArmy.CurrentMovement)
                     {
                         outbound = false;
+                        emergencyReturnPending = true;
                         AiDebugLog.Write("[AI][V2][Recon][Air] forward plan invalidated (AA/landing/current movement); emergency return");
                         continue;
                     }
@@ -303,6 +302,12 @@ namespace Game.Ai.V2
                 else
                 {
                     HexCoord? replannedLanding = AiAviationSupport.TryReplan(airArmy, ctx.Map, player);
+                    if (emergencyReturnPending)
+                    {
+                        AirReconAcceptanceAudit.RecordEmergencyReplan(player, ctx.TurnNumber,
+                            airArmy.Hex, replannedLanding.HasValue, replannedLanding);
+                        emergencyReturnPending = false;
+                    }
                     if (!replannedLanding.HasValue)
                     {
                         AiDebugLog.Write("[AI][V2][Recon][Air] return blocked — no owned airfield reachable with current movement; hold");
@@ -337,8 +342,6 @@ namespace Game.Ai.V2
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-                // MoveArmyRoutine mutates the registered ArmyData in place. Treat disappearance from
-                // the owner's registry as authoritative loss instead of depending on an army-id API.
                 bool stillRegistered = ArmyRegistry.AllForOwner(player)
                     .Any(a => ReferenceEquals(a, airArmy));
                 if (!stillRegistered || !AviationRules.IsValidAirArmy(airArmy))
@@ -361,6 +364,8 @@ namespace Game.Ai.V2
                     AiMapMemory.RecordAirReconTarget(player, plan.Objective.FocusHex, ctx.TurnNumber);
 
                 bool stepVisitedAfter = VisionSystem.IsVisited(player, airArmy.Hex);
+                AirReconAcceptanceAudit.RecordVisitedStep(player, ctx.TurnNumber,
+                    airArmy.Hex, stepVisitedBefore, stepVisitedAfter);
                 if (!stepVisitedBefore && stepVisitedAfter)
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air][ERROR] aircraft changed ground Visited "
@@ -371,19 +376,27 @@ namespace Game.Ai.V2
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             observed |= ObservedThisTurn(player, plan.Objective.FocusHex, ctx.TurnNumber);
 
-            if (airArmy != null && AviationRules.IsOwnedAirfieldAt(airArmy.Hex, player))
+            bool landed = airArmy != null && AviationRules.IsOwnedAirfieldAt(airArmy.Hex, player);
+            if (landed)
                 AviationActions.LandInSlotOrder(airArmy, ctx.HexSelection);
 
             bool targetVisitedAfter = VisionSystem.IsVisited(player, plan.Objective.FocusHex);
+            AirReconAcceptanceAudit.RecordVisitedStep(player, ctx.TurnNumber,
+                plan.Objective.FocusHex, targetVisitedBefore, targetVisitedAfter);
             if (!targetVisitedBefore && targetVisitedAfter)
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][ERROR] aircraft changed target ground Visited "
                     + $"focus=({plan.Objective.FocusHex.Q},{plan.Objective.FocusHex.R}) 0->1");
             }
 
+            bool intelFresh = AiReconIntelMemory.TryGetLastObservedTurn(player,
+                plan.Objective.FocusHex, out int observedTurn) && observedTurn == ctx.TurnNumber;
+            AirReconAcceptanceAudit.RecordFinish(player, ctx.TurnNumber,
+                plan.Objective.FocusHex, steps, observed, landed, intelFresh);
+
             string at = airArmy != null ? $"({airArmy.Hex.Q},{airArmy.Hex.R})" : "(lost)";
             AiDebugLog.Write($"[AI][V2][Recon][Air] finish \"{airArmy?.Name ?? "lost"}\" "
-                + $"steps={steps} observed={(observed ? 1 : 0)} at={at} "
+                + $"steps={steps} observed={(observed ? 1 : 0)} landed={(landed ? 1 : 0)} at={at} "
                 + $"visitedGround={(targetVisitedBefore ? 1 : 0)}->{(targetVisitedAfter ? 1 : 0)}");
         }
 
