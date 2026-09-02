@@ -584,6 +584,7 @@ namespace Game.Ai.V2
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
         public const float scoutStepRefreshFreshNeighborWeight = 0.25f; // Refresh info term weight on fresh-neighbour count (Explore uses the full weight)
         public const float scoutLookaheadNearbyClaimWeight = 0.35f;     // bounded-lookahead per-hex nearby-claim discount
+        public const float scoutStepUndefendedBuildingBonus = 2.0f;     // added to an ADJACENT step's score when it lands on a foreign undefended Facility/Base (spec §13/§20) — never in lookahead, so it is a local bend only
 
         // =======================================================================================
         //  AIR RECON PER-STEP FLIGHT SCORING  (ReconAirStepPlanner, spec §24 — no scattered magic

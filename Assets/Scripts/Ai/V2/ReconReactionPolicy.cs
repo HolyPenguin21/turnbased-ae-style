@@ -198,21 +198,23 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool IsSafeCaptureOpportunity(PlayerSetupData player, ArmyData army)
+        private static bool IsSafeCaptureOpportunity(PlayerSetupData player, ArmyData army) =>
+            IsUndefendedForeignStructureAt(player, army.Hex);
+
+        // Shared "a foreign-owned structure sits here with no engageable defender" test (spec §13 /
+        // §20). Used both by the live capture reaction above and by ReconGroundStepPlanner to add a
+        // local utility bonus so a scout that is ALREADY adjacent bends onto it — never as a reason
+        // to path across the map.
+        internal static bool IsUndefendedForeignStructureAt(PlayerSetupData player, HexCoord hex)
         {
-            if (!VisionSystem.IsVisible(player, army.Hex))
+            if (!VisionSystem.IsVisible(player, hex))
                 return false;
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
+            BuildingData building = BuildingRegistry.FindAt(hex);
             if (building == null || building.Owner == null || building.Owner == player)
                 return false;
-
-            foreach (ArmyData resident in ArmyRegistry.AllAt(army.Hex))
-            {
-                if (resident == army || resident.Owner != building.Owner)
-                    continue;
-                if (BattleInitiator.IsEngageable(resident, player))
+            foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
+                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, player))
                     return false;
-            }
             return true;
         }
 

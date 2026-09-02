@@ -164,9 +164,18 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
-            float score = (information + heading + movementEfficiency)
+            // §13 / §20 — a foreign undefended Facility/Base directly on this adjacent step is a
+            // local opportunity: add a flat bonus so a scout ALREADY next to it bends on. This is
+            // deliberately only in the immediate step, never in Lookahead, so it can never pull a
+            // scout across the map toward a distant structure.
+            float buildingBonus = ReconReactionPolicy.IsUndefendedForeignStructureAt(player, h)
+                ? AiConfigV2.scoutStepUndefendedBuildingBonus
+                : 0f;
+
+            float score = (information + heading + movementEfficiency + buildingBonus)
                 * trailFactor * safetyFactor * coverageFactor * deadEndFactor;
             string reason = $"info={information:0.00} heading={heading:0.00} mpEff={movementEfficiency:0.00} "
+                + $"building={buildingBonus:0.00} "
                 + $"coverage={coverageFactor:0.00}(sectorClaims={sectorClaims},near={nearbyClaims}) "
                 + $"deadEnd={deadEndFactor:0.00}";
             choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk, reason);
