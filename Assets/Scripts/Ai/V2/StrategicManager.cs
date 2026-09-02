@@ -532,7 +532,11 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
             bool cleanStop = true;
-            for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
+            // One shared Phase-B action budget across BOTH lanes (materialization surplus +
+            // non-combat surplus) — maxSurplusActionsPerTurn is the whole-phase safety bound, not
+            // per-lane.
+            int surplusActionsUsed = 0;
+            for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
             {
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
                 (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
@@ -647,11 +651,27 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
 
             // Spec §5/§13 — the non-combat lane: Aviation / Base / Facility / standalone Equipment
-            // cards the materialization chain cannot body. Runs in every mode; each play goes
-            // through the same canonical gameplay API the human UI uses, and every card left in
-            // hand carries a real gameplay reason (no AP/resources/destination/capacity/host),
-            // never "wrong card type" / "ReconOnly".
-            snap = RunNonCombatSurplus(snap, player, root, hand, ctx, result);
+            // cards the materialization chain cannot body. Runs in every mode, through the same
+            // canonical gameplay API the human UI uses, and every card left in hand carries a real
+            // gameplay reason (never "wrong card type" / "ReconOnly").
+            //
+            // Ordering: materialization surplus first, then this lane, sharing one action budget.
+            // The two utility scales are not comparable (SurplusUtility is a sum of small
+            // config-weighted terms; NonCombatPlay.Score is a coarse 24-55 band), so they are NOT
+            // merged into a single ranking — that would let a mid-value non-combat card out-bid
+            // every Unit/Hero chain. Combat readiness / demand-relevant cards are also the more
+            // time-sensitive: a facility or a stored aircraft is equally playable next turn.
+            //
+            // GATED on cleanStop AND no pending interrupt: if the materialization loop raised a
+            // strategic interrupt ("re-admit missions before further surplus spending" —
+            // operationalResidual, or a failed chain), NO further Phase-B spending of ANY kind may
+            // happen this pass, or the bounded reaction pass would re-plan against AP/Energy the
+            // non-combat lane already spent. Shares the one surplusActionsUsed budget.
+            if (cleanStop && !StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+                snap = RunNonCombatSurplus(snap, player, root, hand, ctx, result, ref surplusActionsUsed);
+            else
+                AiDebugLog.Write("[AI][V2]   strat.B non-combat — skipped: Phase B did not end cleanly "
+                    + "(strategic interrupt / failed chain); non-combat cards wait for the next pass");
 
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result))
                 result.StateChanged = true;
@@ -659,11 +679,12 @@ namespace Game.Ai.V2
         }
 
         private static WorldSnapshot RunNonCombatSurplus(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result,
+            ref int surplusActionsUsed)
         {
             int played = 0;
             List<string> lastBlocked = null;
-            for (int i = 0; i < AiConfigV2.maxSurplusActionsPerTurn; i++)
+            for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
             {
                 NonCombatCardPlayer.NonCombatPlay play =
                     NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out List<string> blocked);
@@ -725,6 +746,8 @@ namespace Game.Ai.V2
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
                 (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
                     snap, player, root, hand, ctx, inv, commitments, result.Reservation);
+
+                string actionable = null;
                 if (pick != null)
                 {
                     AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
@@ -732,18 +755,27 @@ namespace Game.Ai.V2
                         && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual) ? matchedResidual : null;
                     SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
                     if (residual != null || pick.Value.utility >= adm.EffectiveThreshold)
+                        actionable = residual != null
+                            ? $"an operational residual demand ({pick.Value.plan.StableKey})"
+                            : $"a worthwhile surplus chain ({pick.Value.plan.StableKey})";
+                }
+                // §5/§13 — a drawn Aviation / Base / Facility / Equipment card is just as actionable
+                // as a Unit chain. Without this the terminal loop keeps burning AP into draws past a
+                // perfectly legal non-combat card and never fires MarkHandOpportunity for it.
+                if (actionable == null
+                    && NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out _) is { } ncPlay)
+                    actionable = $"a playable {ncPlay.Kind} card ({ncPlay.Explain})";
+
+                if (actionable != null)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: {actionable} is now actionable");
+                    if (drawn > 0)
                     {
-                        AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: "
-                            + $"{(residual != null ? "an operational residual demand" : "a worthwhile surplus chain")} "
-                            + $"is now actionable ({pick.Value.plan.StableKey})");
-                        if (drawn > 0)
-                        {
-                            StrategicInterruptRegistry.MarkHandOpportunity(player, ctx.TurnNumber, hand);
-                            AiDebugLog.Write($"[AI][V2] strategic interrupt — terminal draw changed the "
-                                + "actionable hand; replan before converting any more AP to draws");
-                        }
-                        break;
+                        StrategicInterruptRegistry.MarkHandOpportunity(player, ctx.TurnNumber, hand);
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — terminal draw changed the "
+                            + "actionable hand; replan before converting any more AP to draws");
                     }
+                    break;
                 }
 
                 int apBefore = root.ActionPoints;

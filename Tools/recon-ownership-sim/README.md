@@ -46,7 +46,12 @@ but `NonCombatCardPlayer.Execute` and the materialization chain call `HexSelecti
   Aviation card stored at an airfield, the Base/Facility built, the Equipment attached; any card
   left in hand has a `strat.B non-combat — still blocked [<card>:<gameplay reason>]` entry (no
   AP / no resources / no destination / no capacity / no host) — **never** `ReconOnly` or a
-  card-type reason.
+  card-type reason. Also check: total Phase-B plays (materialization + non-combat) never exceed
+  `maxSurplusActionsPerTurn`; and if the materialization loop raises a strategic interrupt
+  (`re-admit missions before further surplus spending`) the pass logs
+  `strat.B non-combat — skipped: Phase B did not end cleanly` and spends no further AP that pass;
+  and a terminal-draw that turns up a legal Aviation/Base/Equipment card stops drawing and fires
+  `strategic interrupt — terminal draw changed the actionable hand`.
 * **H** — airfield + ready aircraft + stale intel: observe one full `[Recon][Air]` sortie —
   launch → Outbound → Turning/Return → Landing → IntelAge refresh — with no lost aircraft and no
   retrace loop. When zero sorties fly, `[Recon][Air] fallback — <exit>: … skips=[…]` states why.
