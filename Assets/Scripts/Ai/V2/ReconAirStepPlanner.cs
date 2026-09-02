@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -17,7 +19,8 @@ namespace Game.Ai.V2
     // the shared aviation layer can prove a complete step -> owned-airfield sortie with capacity
     // and no KNOWN-AA exposure. Multi-turn sorties are admitted only through the existing fuel
     // simulation, so helicopters may use their real TurnsWithoutRefuel margin while planes keep
-    // the same-turn boomerang invariant.
+    // the same-turn boomerang invariant. The storage overload uses the exact matching
+    // TryPlan*FromStorage primitives before AviationActions has created an ArmyData.
     internal static class ReconAirStepPlanner
     {
         internal readonly struct StepChoice
@@ -52,11 +55,9 @@ namespace Game.Ai.V2
             }
         }
 
-        // These are tactical ranking weights, not strategic pressure weights. Keeping them local
-        // prevents Air Recon from changing Radar economics while this feature is still isolated in
-        // ReconOnly. AP/Energy are explicit opportunity costs: an already-activated aircraft pays
-        // zero marginal activation cost, while a fresh sortie must earn enough information to
-        // justify consuming both turn resources.
+        // Tactical ranking weights, not strategic pressure weights. AP/Energy are explicit
+        // opportunity costs: an already-activated aircraft pays zero marginal activation cost,
+        // while a fresh/storage sortie must earn enough information to justify both resources.
         private const float NeverObservedWeight = 1.00f;
         private const float StaleWeight = 0.80f;
         private const float DirectionWeight = 0.65f;
@@ -77,16 +78,12 @@ namespace Game.Ai.V2
             int vision = EffectiveVision(snapshot, airArmy.Id);
             float activationAp = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationApCost;
             float activationEnergy = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationEnergyCost;
-
             var choices = new List<StepChoice>();
+
             foreach (HexCoord h in HexGridMath.Neighbors(airArmy.Hex))
             {
                 if (!map.TryGetTerrainAt(h, out _))
                     continue;
-
-                // Shared aviation layer is the authority for capacity, known-AA safety and return
-                // feasibility. Prefer a same-turn boomerang; only then ask the existing multi-turn
-                // fuel simulator. No direct TrueWorld/hidden-AA read occurs here.
                 AiAviationSupport.Sortie? sortie =
                     AiAviationSupport.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
                 AiAviationSupport.MultiTurnSortie? multi = null;
@@ -98,45 +95,106 @@ namespace Game.Ai.V2
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
                 int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
-
-                ScoreInformation(player, map, h, vision, turn, out int neverObserved,
-                    out float staleInformation);
-
-                ReconSector sector = ReconDirectionModel.Sector(airArmy.Hex, h);
-                float sectorPressure = 0f;
-                if (direction?.EnemyDirectionSectors != null)
-                    direction.EnemyDirectionSectors.TryGetValue(sector, out sectorPressure);
-                if (direction?.KnownEnemyCitadelDirection == sector)
-                    sectorPressure = Mathf.Max(sectorPressure, 0.75f);
-
-                // Explore wants genuinely never-observed cells. Refresh primarily wants old honest
-                // observations. The secondary term is intentionally small so an air scout may pass
-                // through the other mode's useful cells without mode-flapping every hex.
-                float information = mode == ReconMode.Explore
-                    ? NeverObservedWeight * neverObserved + 0.20f * StaleWeight * staleInformation
-                    : StaleWeight * staleInformation + 0.20f * NeverObservedWeight * neverObserved;
-
-                // Diminishing return is intrinsic: current/recently observed cells have age~0 and
-                // therefore contribute no stale value; already-known cells also contribute no
-                // never-observed value. Repeated flights naturally decay below the useful floor.
-                float score = information
-                    + DirectionWeight * Mathf.Clamp01(sectorPressure)
-                    - RouteCostPenalty * routeCost
-                    - ExtraTurnPenalty * Mathf.Max(0, requiredTurns - 1)
-                    - ActivationApPenalty * activationAp
-                    - ActivationEnergyPenalty * activationEnergy;
-
-                string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "
-                    + $"dir={sectorPressure:0.00} route={routeCost}/t{requiredTurns} "
-                    + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#}";
-                choices.Add(new StepChoice(h, landing, score, neverObserved, staleInformation,
-                    sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, reason));
+                choices.Add(BuildChoice(player, map, snapshot, mode, turn, airArmy.Hex, h, landing,
+                    vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
             }
 
-            if (choices.Count == 0)
+            StepChoice? best = ChooseBest(choices);
+            if (best.HasValue)
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Step] actor=#{airArmy.Id} mode={mode} "
+                    + $"from=({airArmy.Hex.Q},{airArmy.Hex.R}) to=({best.Value.Hex.Q},{best.Value.Hex.R}) "
+                    + $"landing=({best.Value.LandingHex.Q},{best.Value.LandingHex.R}) "
+                    + $"score={best.Value.Score:0.00} {best.Value.Reason}");
+            return best;
+        }
+
+        // Storage candidate has no ArmyData yet. Score exactly the first adjacent airborne hex,
+        // but prove the whole sortie using the storage-aware aviation planners. This keeps launch
+        // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
+        public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
+            AirStrikeTask.LaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn)
+        {
+            if (player == null || ctx?.Map == null || snapshot?.Self == null
+                || candidate.ExistingArmy != null || candidate.Aircraft == null || candidate.Aircraft.Count == 0)
                 return null;
 
-            StepChoice best = choices
+            int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + candidate.Aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            float activationAp = candidate.Aircraft.Sum(u => u != null ? u.ActivationApCost : 0);
+            float activationEnergy = candidate.Aircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
+            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snapshot);
+            var choices = new List<StepChoice>();
+
+            foreach (HexCoord h in HexGridMath.Neighbors(candidate.AirfieldHex))
+            {
+                if (!ctx.Map.TryGetTerrainAt(h, out _))
+                    continue;
+
+                AiAviationSupport.Sortie? sortie = AiAviationSupport.TryPlanSortieFromStorage(
+                    candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
+                AiAviationSupport.MultiTurnSortie? multi = null;
+                if (!sortie.HasValue)
+                    multi = AiAviationSupport.TryPlanMultiTurnSortieFromStorage(
+                        candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
+                if (!sortie.HasValue && !multi.HasValue)
+                    continue;
+
+                HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
+                int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
+                int requiredTurns = sortie.HasValue ? 1 : multi.Value.RequiredTurns;
+                choices.Add(BuildChoice(player, ctx.Map, snapshot, mode, turn, candidate.AirfieldHex,
+                    h, landing, vision, routeCost, requiredTurns, activationAp, activationEnergy, direction));
+            }
+
+            StepChoice? best = ChooseBest(choices);
+            if (best.HasValue)
+                AiDebugLog.Write($"[AI][V2][Recon][Air][StorageStep] airfield=({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}) "
+                    + $"aircraft={candidate.Aircraft.Count} mode={mode} to=({best.Value.Hex.Q},{best.Value.Hex.R}) "
+                    + $"landing=({best.Value.LandingHex.Q},{best.Value.LandingHex.R}) "
+                    + $"score={best.Value.Score:0.00} {best.Value.Reason}");
+            return best;
+        }
+
+        private static StepChoice BuildChoice(PlayerSetupData player, HexMap map, WorldSnapshot snapshot,
+            ReconMode mode, int turn, HexCoord from, HexCoord h, HexCoord landing, int vision,
+            int routeCost, int requiredTurns, float activationAp, float activationEnergy,
+            ReconDirectionSnapshot direction)
+        {
+            ScoreInformation(player, map, h, vision, turn, out int neverObserved,
+                out float staleInformation);
+
+            ReconSector sector = ReconDirectionModel.Sector(from, h);
+            float sectorPressure = 0f;
+            if (direction?.EnemyDirectionSectors != null)
+                direction.EnemyDirectionSectors.TryGetValue(sector, out sectorPressure);
+            if (direction?.KnownEnemyCitadelDirection == sector)
+                sectorPressure = Mathf.Max(sectorPressure, 0.75f);
+
+            float information = mode == ReconMode.Explore
+                ? NeverObservedWeight * neverObserved + 0.20f * StaleWeight * staleInformation
+                : StaleWeight * staleInformation + 0.20f * NeverObservedWeight * neverObserved;
+
+            // Current/recently observed cells have age~0 and no stale value; already-known cells
+            // have no never-observed value. Thus repeated flights naturally lose marginal value.
+            float score = information
+                + DirectionWeight * Mathf.Clamp01(sectorPressure)
+                - RouteCostPenalty * routeCost
+                - ExtraTurnPenalty * Mathf.Max(0, requiredTurns - 1)
+                - ActivationApPenalty * activationAp
+                - ActivationEnergyPenalty * activationEnergy;
+
+            string reason = $"info={information:0.00}(never={neverObserved},stale={staleInformation:0.00}) "
+                + $"dir={sectorPressure:0.00} route={routeCost}/t{requiredTurns} "
+                + $"activation=AP{activationAp:0.#}/E{activationEnergy:0.#}";
+            return new StepChoice(h, landing, score, neverObserved, staleInformation,
+                sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, reason);
+        }
+
+        private static StepChoice? ChooseBest(List<StepChoice> choices)
+        {
+            if (choices == null || choices.Count == 0)
+                return null;
+            return choices
                 .OrderByDescending(c => c.Score)
                 .ThenByDescending(c => c.NeverObserved)
                 .ThenByDescending(c => c.StaleInformation)
@@ -145,11 +203,6 @@ namespace Game.Ai.V2
                 .ThenBy(c => c.Hex.Q)
                 .ThenBy(c => c.Hex.R)
                 .First();
-
-            AiDebugLog.Write($"[AI][V2][Recon][Air][Step] actor=#{airArmy.Id} mode={mode} "
-                + $"from=({airArmy.Hex.Q},{airArmy.Hex.R}) to=({best.Hex.Q},{best.Hex.R}) "
-                + $"landing=({best.LandingHex.Q},{best.LandingHex.R}) score={best.Score:0.00} {best.Reason}");
-            return best;
         }
 
         private static int EffectiveVision(WorldSnapshot snapshot, int armyId)
@@ -180,9 +233,6 @@ namespace Game.Ai.V2
                     AiConfigV2.scoutSurveilStaleTurnsHi, age);
             }
 
-            // Normalize stale contribution by observed footprint so a large vision radius does not
-            // win solely because it has more cells; never-observed count remains a real coverage
-            // reward because revealing several new cells in one flight is genuinely more valuable.
             if (observed > 0)
                 staleInformation /= observed;
         }
