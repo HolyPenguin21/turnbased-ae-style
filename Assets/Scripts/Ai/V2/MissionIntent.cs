@@ -700,22 +700,44 @@ namespace Game.Ai.V2
 
                 if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
                 {
-                    // Review P1 #1/#2 — an Explore/Refresh waypoint satisfied EXTERNALLY (another
-                    // actor opened the hex mid-turn, or provisioning found it already live-
-                    // satisfied) is a waypoint completion, not a finished role. Keep the durable
-                    // ground-scout intent and let ResolveActive re-focus it next turn — its focus
-                    // hex now fails IsIntentStillValid — exactly as the own-execution
-                    // DurableRoleContinues path (Classify) does. Surveil stays a genuine done.
-                    if (intent != null && o.ObjectiveSatisfiedExternally
-                        && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil)
+                    // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
+                    // OTHER than this actor's own execution reaching goal (another scout opened it
+                    // mid-turn, or provisioning found it already live-satisfied) is a satisfied
+                    // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
+                    // began executing this turn, CREATE — the durable ground-scout intent so
+                    // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
+                    // (its hex now fails IsIntentStillValid). Mirrors the own-execution
+                    // ExecutionResult.DurableRoleContinues ProductiveStop path. Surveil and genuine
+                    // own-execution completions still retire.
+                    if (o.ObjectiveSatisfiedExternally)
                     {
-                        intent.TurnsActive++;
-                        intent.LastAttemptKey = o.AttemptKey;
-                        intent.LastProgressTurn = turn;
-                        intent.StallTurns = 0;
-                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
-                            + "externally; durable scout role kept for next-turn re-focus");
-                        continue;
+                        bool existingScoutRole = intent != null
+                            && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
+                        // Fresh role: the mission was provisioned AND executed at least one step
+                        // this turn (so ReconAssignment already exists). A provisioning-only
+                        // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
+                        // false / MadeProgress == false and is correctly NOT made durable.
+                        bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress
+                            && o.ScoutKind != ScoutTargetKind.Surveil;
+
+                        if (existingScoutRole)
+                        {
+                            // Count the AP / steps the scout actually spent before the waypoint
+                            // was taken (accumulated-state preservation), same as any other
+                            // productive turn — AdvanceIntent owns that accounting.
+                            o.MadeProgress = true;
+                            AdvanceIntent(intent, o, turn, state, allocState);
+                            AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
+                                + "externally; durable scout role kept for next-turn re-focus");
+                            continue;
+                        }
+                        if (freshScoutRole)
+                        {
+                            CreateIntent(state, o, turn);
+                            AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
+                                + "this turn; waypoint satisfied externally, durable intent created for re-focus");
+                            continue;
+                        }
                     }
                     if (intent != null)
                     {
