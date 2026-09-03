@@ -586,36 +586,44 @@ namespace Game.Ai.V2
         // stranded AP is used for a marginally-useful action, but a genuinely worthless one still
         // loses to EndTurn (spec §4 — "high SpendPressure is not play garbage at any cost").
         public const float tempoMinSpendUtility = 0.05f;
-        // HoldResources utility from the loose persistent pool (spec §4). AP is never held (it does
-        // not carry over). Per-CARD hold value is already inside every PlayCard NetScore, so this is
-        // the ONLY place the loose H/E/M/T pool's hold value is priced (spec §5 single-count).
-        //   u = (fragility * fragilityWeight + scarcity * scarcityWeight) * scale, clamped to cap
-        // where fragility = 1 - EconomicSecurity and scarcity = 1 - min(stock / comfortableStock).
+        // AI-MGR-02 §P0.2/§P0.3 — HoldResources is a REAL terminal candidate, NOT a per-action
+        // correction. The arbiter compares bestActionableSpend.Utility vs max(HoldResources,
+        // EndTurn); it never subtracts a hold term from a PlayCard NetScore (that would double-count
+        // against StrategicCardEvaluator, which already owns HoldValue / ResourcePressureBenefit).
+        //   HoldResources.Utility = (fragility*fragilityWeight + scarcity*scarcityWeight)*scale
+        //                           - Σ near-cap overflow pressure (spec §P0.5), clamped to cap.
         public const int   tempoHoldResourceComfortableStock = 8;    // a resource at/above this is not "scarce"
         public const float tempoHoldFragilityWeight = 0.5f;
         public const float tempoHoldScarcityWeight = 1.0f;
         public const float tempoHoldPersistentResourceValueScale = 1.6f;
         public const float tempoHoldPersistentResourceValueCap = 2.5f; // a strong play (NetScore > this) still wins
-        // AI-MGR-02 §3/AC5 — per-resource near-cap OVERFLOW pressure. Hold value is computed one
-        // resource at a time (a scarce Tech no longer inflates the barrier against spending an
-        // over-full Materials stock). A resource whose stock is at/above comfortable*this factor
-        // AND still has positive per-turn income is treated as over-supplied: its hold contribution
-        // goes NEGATIVE (spending it is favoured) proportional to the projected overflow over the
-        // next tempoHoldOverflowHorizon turns.
-        public const float tempoHoldOverflowStockFactor = 2.0f;      // "over-supplied" starts at comfortable * this
-        public const float tempoHoldOverflowHorizon = 3f;            // turns of income folded into projected overflow
-        public const float tempoHoldOverflowPressureWeight = 0.35f;  // per projected-overflow unit, subtracted from hold value
-        public const float tempoHoldOverflowPressureCap = 2.0f;      // max negative hold contribution from overflow
+        // AI-MGR-02 §P0.5 — near-cap OVERFLOW pressure, per resource. The game has no hard resource
+        // storage cap, so the "cap" is a SOFT cap = this deck's sustainable per-turn IncomeTarget
+        // for that resource * horizon (a comfortable runway). For each resource:
+        //   ResourceCap      = max(comfortableStock, IncomeTarget[r] * tempoHoldOverflowCapHorizon)
+        //   ProjectedStock   = CurrentStock + ExpectedNextIncome (snap.Self.PerTurnIncome[r])
+        //   ExpectedOverflow = max(0, ProjectedStock - ResourceCap)
+        // ExpectedOverflow lowers HoldResources.Utility (spend the over-supplied resource); a scarce
+        // OTHER resource cannot re-raise it because the term is summed per resource, floored at 0
+        // for non-overflowing ones.
+        public const float tempoHoldOverflowCapHorizon = 6f;         // turns of IncomeTarget that define the soft cap
+        public const float tempoHoldOverflowPressureWeight = 0.20f;  // per projected-overflow unit, subtracted from HoldResources.Utility
+        public const float tempoHoldOverflowPressureCap = 3.0f;      // max total negative contribution from overflow
         // DrawCard candidate utility, same [~0..5] NetScore band as PlayCard (spec §1 — Draw is a
-        // full peer, not a terminal fallback). Expected value now blends a floor with the real
-        // remaining-deck card-value distribution, and is discounted by how good the hand already is.
-        public const float tempoDrawBaseValue = 0.35f;              // floor value of a fresh option even from a weak deck
-        public const float tempoDrawDeckValueWeight = 0.9f;         // * normalised mean remaining-deck card value
-        public const float tempoDrawDeckValueNorm = 24f;            // BasePower that maps to a full unit of deck value
-        public const float tempoDrawThinDeckTaperCards = 4f;        // deck at/under this many cards tapers expected value linearly
-        public const float tempoDrawApOpportunityWeight = 0.04f;    // per AP the draw costs
-        public const float tempoDrawFutureBlockPenalty = 0.25f;     // drawing into the last free slot
-        public const float tempoDrawHandActionableWeight = 0.18f;   // * best current playable NetScore, subtracted (hand already actionable)
+        // full peer, not a terminal fallback, and is NOT penalised for holding H/E/M/T it does not
+        // spend — Draw costs only AP).
+        public const float tempoDrawBaseValue = 0.45f;              // floor value of a fresh option even from a weak deck
+        public const float tempoDrawDeckValueWeight = 0.9f;         // * normalised mean remaining-deck strategic card value
+        public const float tempoDrawDeckValueNorm = 24f;            // strategic card value that maps to a full unit of deck value
+        public const float tempoDrawThinDeckTaperCards = 3f;        // deck at/under this many cards tapers expected value linearly
+        public const float tempoDrawEquipmentValue = 12f;          // generic strategic value of an unseen Equipment card
+        public const float tempoDrawInfraValue = 14f;              // generic strategic value of an unseen Base / Facility card
+        public const float tempoDrawEffectRoleValue = 3f;          // per generic strategic role a unit card would cover (AoE/Regen/Aura/Summon/…)
+        public const float tempoDrawFillFloor = 0.55f;             // fill factor with only one free slot (was ~0.33 -> near-auto-reject at 9/10)
+        public const float tempoDrawFillPerSlot = 0.15f;           // + this per free slot, clamped to 1
+        public const float tempoDrawApOpportunityWeight = 0.04f;   // per AP the draw costs
+        public const float tempoDrawFutureBlockPenalty = 0.10f;    // drawing into the last free slot (softened — 9/10 is a legal draw)
+        public const float tempoDrawHandActionableWeight = 0.12f;  // * best CURRENTLY-SELECTABLE play NetScore, subtracted (hand already actionable NOW)
         // Utility of a ready decisive structure-pressure advance (StrategicPressureAdvance), in the
         // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
         // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.

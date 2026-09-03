@@ -51,6 +51,10 @@ namespace Game.Ai.V2
         // CardKey below, matching V1's (hero, mode, card) retry semantics.
         public string UseKey;
         public string CardKey;             // UseKey + card, the exact "already attempted" identity
+
+        // AI-MGR-02 §P1.4 — the ResourceCost a won/lost Challenge actually charges pre-mint (the
+        // minted card's own EffectivePlayResourceCost is null once ResearchProductionCreated).
+        public ResourceCost GenerationResourceCost => CardDef != null ? CardDef.resourceCost : null;
     }
 
     public sealed class MaterializationPlan
