@@ -252,7 +252,7 @@ namespace Game.Ai.V2
         // Energy already reserved by earlier slots this pass folded in so several candidates cannot
         // each pass against the full stockpile.
         private static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot, int committedEnergyThisPass,
+            WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot, int committedEnergyThisPass,
             IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
         {
             chosenHex = default;
@@ -262,9 +262,14 @@ namespace Game.Ai.V2
             ReconAirStepPlanner.StepChoice? choice;
             int launchEnergy;
             int excludeArmyId;
-            // R3 review fix — probe with the SAME scoring semantics the executor gets: exclude this
-            // sortie's own footprint from "recent air coverage by another sortie", and see the air
-            // slots this pass already reserved (but has not launched) as sector coverage.
+            // R3/R4 review fix — probe with the SAME scoring inputs the executor will hand Pick:
+            // this sortie's own footprint excluded from "recent coverage by another sortie", the
+            // air slots reserved-but-not-launched this pass as sector coverage, the executor's own
+            // per-actor MODE (a durable ReconAssignment wins over the global RequestedMode), and a
+            // read-only PROJECTION of the sortie's turn-start phase / trail so trail-overlap and
+            // lateral shaping match. Without the last two a continuing Outbound wing scored ~0.30
+            // higher here than in the executor and could be reserved as capacity the executor then
+            // rejects below MinimumUsefulScore.
             var scoringCtx = new AirReconScoringContext { ProvisionalWedgeClaims = provisionalWedges };
 
             if (slot.ActorId.HasValue)
@@ -272,9 +277,17 @@ namespace Game.Ai.V2
                 ArmyData wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
                 if (wing == null)
                     return false;
-                scoringCtx.ExcludeSortieId =
-                    ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState st) ? st.SortieId : -1;
-                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, null, scoringCtx);
+
+                bool airborne = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real);
+                scoringCtx.ExcludeSortieId = airborne ? real.SortieId : -1;
+                ReconAirSortieState projected = ProjectScoringSortie(player, ctx, wing);
+                if (projected != null && projected.Phase == ReconAirPhase.Hold)
+                    return false; // executor would end the turn aloft here — no forward recon, not capacity
+
+                ReconMode mode = airborne
+                    && ReconAssignmentRegistry.TryGet(player, wing.Id, out ReconAssignment asg)
+                    ? asg.Mode : globalMode;
+                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
                 excludeArmyId = wing.Id;
             }
@@ -287,7 +300,7 @@ namespace Game.Ai.V2
                 if (subset.Count == 0 || !AiAviationSupport.CanAffordLaunch(root, player, subset))
                     return false;
                 var candidate = new AirStrikeTask.LaunchCandidate(slot.AirfieldHex, null, subset);
-                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, mode, ctx.TurnNumber, scoringCtx);
+                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx);
                 launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
                 excludeArmyId = -1;
             }
@@ -299,6 +312,50 @@ namespace Game.Ai.V2
                 return false;
             chosenHex = choice.Value.Hex;
             return true;
+        }
+
+        // Read-only projection of the ReconAirSortieState the executor will pass Pick for THIS wing
+        // this turn — turn-start phase resolution (Hold re-open / must-recover) mirrored WITHOUT
+        // calling BeginTurn(), so the reservation probe never mutates the real sortie lifecycle.
+        // A ready standalone wing (no live sortie) gets the same fresh Outbound state the executor
+        // seeds at the wing's hex before its first step.
+        private static ReconAirSortieState ProjectScoringSortie(PlayerSetupData player, AiTurnContext ctx, ArmyData wing)
+        {
+            if (wing == null)
+                return null;
+            var proj = new ReconAirSortieState { SortieId = -1 };
+
+            if (ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real))
+            {
+                proj.LaunchHex = real.LaunchHex;
+                proj.Trail.AddRange(real.Trail);
+                proj.ClaimedSector = real.ClaimedSector;
+                proj.HasClaim = real.HasClaim;
+                proj.BestOutboundStepScore = real.BestOutboundStepScore;
+
+                bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
+                bool canRemain = ctx.Map != null
+                    && AiAviationSupport.CanSafelyEndTurnAirborne(wing, ctx.Map, player);
+                int projIdx = real.AirborneTurnIndex
+                    + (wouldBeNewTurn && real.LastProcessedTurn >= 0 ? 1 : 0);
+                bool mustRecover = projIdx >= 1 && !canRemain;
+
+                ReconAirPhase phase = real.Phase;
+                if (phase == ReconAirPhase.Hold)
+                    phase = wouldBeNewTurn
+                        ? (mustRecover ? ReconAirPhase.Return : ReconAirPhase.Outbound)
+                        : ReconAirPhase.Hold;
+                if (mustRecover && phase == ReconAirPhase.Outbound)
+                    phase = ReconAirPhase.Return;
+                proj.Phase = phase;
+            }
+            else
+            {
+                proj.Phase = ReconAirPhase.Outbound;
+                proj.LaunchHex = wing.Hex;
+                proj.Trail.Add(wing.Hex);
+            }
+            return proj;
         }
 
         // Called after TaskExecutor's terminal air fallback — drop the resource protection so

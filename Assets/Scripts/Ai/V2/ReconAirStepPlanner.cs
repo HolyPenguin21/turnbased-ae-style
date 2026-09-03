@@ -200,11 +200,12 @@ namespace Game.Ai.V2
             ReconSector stepSector = ReconDirectionModel.Sector(citadel, h);
             int sectorClaims = CountAssignedReconActorsInWedge(player, citadel, stepSector, moverArmyId)
                 + (scoringCtx?.ProvisionalClaimsIn(stepSector) ?? 0);
-            // R3 review fix — identity exclusion is EXPLICIT: the prepass probe has no live
-            // sortieState, so without a passed context an airborne wing's continuation would score
-            // its own previous-turn footprint as another sortie's coverage. Context wins; the
-            // executor (which owns sortieState) falls back to it.
-            int excludeSortieId = scoringCtx != null && scoringCtx.ExcludeSortieId >= 0
+            // R3 review fix — identity exclusion is EXPLICIT. A caller that passes a scoring
+            // context (the reservation prepass) has ALREADY resolved which sortie's own footprint
+            // to ignore and sets ExcludeSortieId deliberately (real id for an airborne wing, -1 for
+            // a fresh ready/storage launch); trust it verbatim. Only the executor, which owns the
+            // live sortieState and passes no context, derives it from that state.
+            int excludeSortieId = scoringCtx != null
                 ? scoringCtx.ExcludeSortieId
                 : sortieState?.SortieId ?? -1;
 
