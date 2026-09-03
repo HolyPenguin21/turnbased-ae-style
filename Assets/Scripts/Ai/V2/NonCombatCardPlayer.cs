@@ -6,7 +6,6 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
-using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -61,11 +60,11 @@ namespace Game.Ai.V2
         };
 
         private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayKind k, CardData card,
-            AiHandData hand, float bestEquipmentUpgrade)
+            AiHandData hand, float bestEquipmentUpgrade, GenerationStep generation = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            return StrategicCardEvaluator.ScoreNonCombat(RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade)
-                .NetScore;
+            return StrategicCardEvaluator.ScoreNonCombat(
+                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation).NetScore;
         }
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
@@ -142,9 +141,9 @@ namespace Game.Ai.V2
                         ownBaseHexes, blocked);
                     if (p == null)
                         continue;
-                    float chance = Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                        Mathf.Clamp01(g.SuccessChance));
-                    p.Score = p.Score * chance - AiConfigV2.stratChainGenerationStepPenalty;
+                    // Score is already the authoritative NetScore: ScoreNonCombat folded the
+                    // generation ResourceCost + success-chance discount + step penalty in (see
+                    // BuildPlayFor passing `generation`). No post-multiply here.
                     p.Explain = $"generate:{gd.displayName} -> " + p.Explain;
                     Consider(p);
                 }
@@ -175,7 +174,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Aviation, TargetHex = hx.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f),
+                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f, generation),
                     Explain = $"{def.displayName} -> airfield ({hx.Value.Q},{hx.Value.R})",
                 };
             }
@@ -198,7 +197,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f),
+                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f, generation),
                     Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
                 };
             }
@@ -221,7 +220,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f),
+                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f, generation),
                     Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
                 };
             }
@@ -241,7 +240,7 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                     TargetHex = host.Value.hex, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade),
+                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade, generation),
                     Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
                 };
             }
@@ -250,52 +249,73 @@ namespace Game.Ai.V2
             return null;
         }
 
-        public static bool Execute(NonCombatPlay play, WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, out float apSpent, out string failReason)
+        // AI-MGR-01 review-r4 P1 — a structured result. A generated non-combat play is NOT atomic
+        // (mint then deploy), so a partial failure — Challenge lost after resources were spent /
+        // the Researcher was revealed, OR a mint that then can't be deployed — really changes state
+        // and consumes the turn's generation attempt. The caller must see that, not just `false`.
+        internal struct NonCombatExecuteResult
         {
-            apSpent = 0f;
-            failReason = null;
+            public bool Played;               // final deploy/attach/build succeeded
+            public bool StateChanged;         // ANY real world mutation happened (mint, reveal, resource spend, deploy)
+            public bool GenerationAttempted;  // a Challenge was rolled (attempt is spent either way)
+            public bool Generated;            // the Challenge won and a card is now in hand
+            public float ApSpent;
+            public string FailReason;
+        }
+
+        public static NonCombatExecuteResult Execute(NonCombatPlay play, WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            var res = new NonCombatExecuteResult();
             if (play?.Card?.Definition == null || player == null || root == null || hand?.Hand == null || ctx == null)
             {
-                failReason = "missing args";
-                return false;
+                res.FailReason = "missing args";
+                return res;
             }
 
             int apBefore = root.ActionPoints;
 
-            // AI-MGR-01 review-r4 finding 9b — a generated non-combat play mints its card first
-            // (ResourceCost only, no AP; probabilistic), then deploys the REAL minted instance. A
-            // lost Challenge is a normal partial failure: resources stay spent, nothing deploys.
+            // finding 9b — a generated non-combat play mints its card first (ResourceCost only, no
+            // AP; probabilistic), then deploys the REAL minted instance. finding P1 — every real
+            // mutation of this non-atomic chain is reported even when a later step fails.
             if (play.Generation != null)
             {
+                res.GenerationAttempted = true;
                 MaterializationExecutor.GenerationOutcome go =
                     MaterializationExecutor.TryGenerate(play.Generation, player, root, hand);
+                if (go.StateChanged) res.StateChanged = true;
                 if (!go.Success)
                 {
-                    apSpent = System.Math.Max(0, apBefore - root.ActionPoints);
-                    failReason = go.FailReason ?? "generation failed";
-                    return false;
+                    res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    res.FailReason = go.FailReason ?? "generation failed";
+                    return res;
                 }
+                res.Generated = true;
+                res.StateChanged = true;   // a card was minted into the hand
+
                 // Re-resolve the placement against the real card + live world (the pre-mint
-                // stand-in's target may be stale).
+                // stand-in's target may be stale). The minted card stays in hand if this fails —
+                // a real asset, exactly like CardPlayExecutor keeping a created empty army.
                 NonCombatPlay fresh = BuildPlayFor(go.Minted, generation: null, snap, player, root,
                     hand, ctx, OwnedBaseHexes(snap, player), new List<string>());
                 if (fresh == null || fresh.Kind != play.Kind)
                 {
-                    apSpent = System.Math.Max(0, apBefore - root.ActionPoints);
-                    failReason = "no legal placement for the generated non-combat card";
-                    return false;
+                    res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    res.FailReason = "no legal placement for the generated non-combat card";
+                    return res;
                 }
                 play = fresh;
             }
 
             if (!hand.Hand.Contains(play.Card))
             {
-                failReason = "card no longer in hand";
-                return false;
+                res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                res.FailReason = "card no longer in hand";
+                return res;
             }
 
             bool ok;
+            string failReason = null;
             switch (play.Kind)
             {
                 case PlayKind.Aviation:
@@ -339,8 +359,11 @@ namespace Game.Ai.V2
                     break;
             }
 
-            apSpent = System.Math.Max(0, apBefore - root.ActionPoints);
-            return ok;
+            res.Played = ok;
+            if (ok) res.StateChanged = true;
+            res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+            if (!ok) res.FailReason = failReason ?? "non-combat play failed";
+            return res;
         }
 
         // ------------------------------------------------------------------ helpers ----

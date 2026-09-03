@@ -523,6 +523,38 @@ also fail identically on clean HEAD, unrelated).
   materialization `GenerateAttachDeploy` chain; **Phase A** infra generation is still out of scope
   (the infra pre-pass is deliberately left as-is).
 
+### Review round 4 follow-up (fixes on top of `b6e4b80`)
+
+- **P1 — generated non-combat resource score.** The pre-mint stand-in's
+  `EffectivePlayResourceCost` is null (correct for an already-paid R/P card), so `ScoreNonCombat`
+  saw a `generate → Base(8 Tech)` as resource-free while `TryGenerate` really pays that cost, and
+  the caller then post-multiplied by the success chance / subtracted the step penalty (evaluator
+  not authoritative). `ScoreNonCombat` now takes an optional `GenerationStep`: it folds the
+  `generation.CardDef.resourceCost` into `resSum`, prices `Deployability = -(1 - genChance)` and
+  the `stratChainGenerationStepPenalty` into `ResourceEfficiency`, and returns the final comparable
+  `NetScore`. `NonCombatCardPlayer` drops the external `score * chance - penalty`.
+- **P1 — generated non-combat partial-failure lifecycle.** `NonCombatCardPlayer.Execute` returns a
+  `NonCombatExecuteResult { Played, StateChanged, GenerationAttempted, Generated, ApSpent,
+  FailReason }` instead of a bare `bool`. A lost Challenge (resources spent / Researcher revealed)
+  and a mint-then-deploy-fail (card kept in hand) now propagate `StateChanged` + the spent
+  generation attempt to `StrategicManager`, which sets `result.StateChanged`, calls
+  `RecordGenerationAttempt` (no retry), bumps `GeneratedCardAttempts` (and `…Succeeded` only if the
+  mint won), refreshes the snapshot, and then stops — parity with a failed materialization chain.
+
+### Still open — P1 ARCH (own task): capability/effect descriptor layer
+
+`DeriveRoles` / `SupportRoleFit` / `SurplusCapabilityGap` / `ThreatResponseValue` / the
+`BaselineForceReadiness` + `WorldAnalysis` coverage vector still hard-code `Contains(UnitAbilities.
+AntiAir | Hyperkinetic | ApBonus | Researcher | Assembler)`. A new mechanic (Splash/AoE,
+Regeneration, army aura, temporary Summon, …) currently reaches strategic scoring only by adding
+another `Contains(UnitAbilities.X)`. Target pipeline: `Skill → StrategicEffectDescriptor →
+Capability/Effect → Contextual Value → RoleFit/Score`, contextual value examples: AoE ↔ target
+count/density, regen ↔ expected sustain, aura ↔ eligible-unit count·value, summon ↔ combat
+value·duration but ONLY with real free battle slots (no phantom capacity).
+**Acceptance:** adding a new skill/effect descriptor must not require editing `StrategicManager` or
+the core `StrategicCardEvaluator` scoring switch — it flows in through a shared registry/descriptor
+layer.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

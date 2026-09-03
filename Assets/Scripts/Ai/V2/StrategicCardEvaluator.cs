@@ -448,14 +448,22 @@ namespace Game.Ai.V2
         // -----------------------------------------------------------------------------------------
         //  NON-COMBAT CARDS  (Aviation / Base / Facility / standalone Equipment) — AI-MGR-01 P0.1.
         // -----------------------------------------------------------------------------------------
+        // AI-MGR-01 review-r4 P1 — `generation` non-null: this play must first MINT its card through
+        // a Challenge. The evaluator, not the caller, is the single authoritative score: the
+        // generation ResourceCost (really paid by TryGenerate — the pre-mint stand-in's
+        // EffectivePlayResourceCost is null), the success-chance discount and the generation step
+        // penalty are all folded into the returned NetScore here. Callers do NOT post-multiply.
         public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
-            WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade)
+            WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade,
+            GenerationStep generation = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             CardDefinition def = card?.Definition;
             IntendedRole role;
             float apCost = card != null ? card.EffectivePlayApCost : 0f;
             float resSum = card != null ? ResourceCostSum(card.EffectivePlayResourceCost) : 0f;
+            if (generation?.CardDef?.resourceCost != null)
+                resSum += ResourceCostSum(generation.CardDef.resourceCost);
 
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
             int ownBases = snap?.Self?.BaseHexes != null ? snap.Self.BaseHexes.Count : 1;
@@ -489,8 +497,15 @@ namespace Game.Ai.V2
             }
 
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
+            float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.surplusApCostWeight * apCost
-                                      + AiConfigV2.surplusResourceCostWeight * resSum);
+                                      + AiConfigV2.surplusResourceCostWeight * resSum
+                                      + genStepPenalty);
+            // Probabilistic deploy — same single-count home (Deployability) as the Unit/Hero chain.
+            bd.Deployability = generation != null
+                ? -(1f - Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
+                        Mathf.Clamp01(generation.SuccessChance)))
+                : 0f;
             bd.Total = SumTotal(bd);
             bd.HoldValue = hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f;
 

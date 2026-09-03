@@ -811,25 +811,33 @@ namespace Game.Ai.V2
                 // ---- non-combat lane (spec §5/§13) — through the same canonical gameplay APIs
                 //      the human UI uses (BuildingPlayExecutor / AviationActions / EquipmentSystem).
                 result.MaterializationAttempts++;
-                bool ncOk = NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx,
-                    out float ncAp, out string ncFail);
-                if (!ncOk)
+                NonCombatCardPlayer.NonCombatExecuteResult ncRes =
+                    NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx);
+
+                // review-r4 P1 — a generated non-combat play is non-atomic: even a FAILED chain may
+                // have minted a card / revealed a Researcher / spent resources, and it always spent
+                // the turn's generation attempt. Account for that before branching on success.
+                if (ncRes.StateChanged) result.StateChanged = true;
+                if (ncRes.GenerationAttempted)
+                {
+                    result.Reservation.RecordGenerationAttempt(nc.Generation, null);
+                    result.GeneratedCardAttempts++;
+                    if (ncRes.Generated) result.GeneratedCardsSucceeded++;
+                }
+
+                if (!ncRes.Played)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {nc.Kind} {nc.Explain} "
-                        + $"did not play ({ncFail}); stop");
+                        + $"did not play ({ncRes.FailReason}"
+                        + (ncRes.Generated ? "; generated card kept in hand" : "")
+                        + "); stop");
+                    if (ncRes.StateChanged)
+                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
                     cleanStop = false;
                     break;
                 }
                 result.MaterializationsSucceeded++;
                 result.CardsPlayed++;
-                result.StateChanged = true;
-                if (nc.Generation != null)
-                {
-                    // finding 9b — a generated non-combat card consumed the turn's Challenge.
-                    result.Reservation.RecordGenerationAttempt(nc.Generation, null);
-                    result.GeneratedCardAttempts++;
-                    result.GeneratedCardsSucceeded++;
-                }
                 if (nc.Kind == NonCombatCardPlayer.PlayKind.Base
                     || nc.Kind == NonCombatCardPlayer.PlayKind.Facility)
                 {
@@ -844,7 +852,7 @@ namespace Game.Ai.V2
                 if (nc.Kind == NonCombatCardPlayer.PlayKind.Aviation)
                     aviationPlayedInLoop = true;
                 AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} "
-                    + $"(ap {F(ncAp)}; ranked pick: non-combat {F(nc.Score)} vs materialization "
+                    + $"(ap {F(ncRes.ApSpent)}; ranked pick: non-combat {F(nc.Score)} vs materialization "
                     + $"{F(mat.Admissible ? mat.Utility : 0f)})");
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
@@ -967,26 +975,30 @@ namespace Game.Ai.V2
                 return snap;
 
             result.MaterializationAttempts++;
-            if (NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx,
-                out float aviaAp, out string aviaFail))
+            NonCombatCardPlayer.NonCombatExecuteResult aviaRes =
+                NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx);
+            if (aviaRes.StateChanged) result.StateChanged = true;
+            if (aviaRes.GenerationAttempted)
+            {
+                result.Reservation.RecordGenerationAttempt(avia.Generation, null);
+                result.GeneratedCardAttempts++;
+                if (aviaRes.Generated) result.GeneratedCardsSucceeded++;
+            }
+            if (aviaRes.Played)
             {
                 result.MaterializationsSucceeded++;
                 result.CardsPlayed++;
-                result.StateChanged = true;
-                if (avia.Generation != null)
-                {
-                    result.Reservation.RecordGenerationAttempt(avia.Generation, null);
-                    result.GeneratedCardAttempts++;
-                    result.GeneratedCardsSucceeded++;
-                }
                 AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played Aviation {avia.Explain} "
-                    + $"(ap {F(aviaAp)}, dedicated aviation slot)");
+                    + $"(ap {F(aviaRes.ApSpent)}, dedicated aviation slot)");
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
             else
             {
                 AiDebugLog.Write($"[AI][V2]   strat.B non-combat — dedicated aviation slot: "
-                    + $"{avia.Explain} did not play ({aviaFail})");
+                    + $"{avia.Explain} did not play ({aviaRes.FailReason}"
+                    + (aviaRes.Generated ? "; generated card kept in hand" : "") + ")");
+                if (aviaRes.StateChanged)
+                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
             }
             return snap;
         }
