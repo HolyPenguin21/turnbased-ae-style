@@ -177,9 +177,11 @@ namespace Game.Ai.V2
             }
 
             // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route.
+            // EnergyBudgetBase already nets the airborne wings' owed Energy via the policy's
+            // `committed` term — do NOT subtract it again. AP is not pre-committed, so it is.
             int spareSlots = Mathf.Max(0, MaxAirReconActorsPerTurn - detail.AirborneWings.Count);
             int apLeft = detail.ApBudgetBase - detail.AirborneWings.Sum(w => w.Ap);
-            int energyLeft = detail.EnergyBudgetBase - detail.AirborneWings.Sum(w => w.Energy);
+            int energyLeft = detail.EnergyBudgetBase;
             foreach (AirObservationSlot slot in detail.SpareCandidatesInOrder)
             {
                 if (detail.SpareSorties >= spareSlots) break;

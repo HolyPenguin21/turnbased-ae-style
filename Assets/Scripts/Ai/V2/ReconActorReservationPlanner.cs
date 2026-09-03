@@ -39,8 +39,6 @@ namespace Game.Ai.V2
         // for the turn (the allocator will not fund the mission again); retried fresh next turn.
         public readonly Dictionary<MissionIntentKey, ReconJobBlock> JobBlock =
             new Dictionary<MissionIntentKey, ReconJobBlock>();
-        // Incumbent jobs whose provisioning STRUCTURALLY failed — their execution slot is freed.
-        public readonly HashSet<MissionIntentKey> RejectedIncumbents = new HashSet<MissionIntentKey>();
         // TRANSIENT: jobs the real Pack just deferred on budget / capacity. Skipped for the current
         // rematch wave only; cleared when the portfolio materially changes.
         public readonly HashSet<MissionIntentKey> CurrentWaveBudgetDeferred = new HashSet<MissionIntentKey>();
@@ -52,7 +50,14 @@ namespace Game.Ai.V2
         public IReadOnlyList<MissionIntent> ActiveIntents;
         public ActorCommitments ActorCommitments;
         public IReadOnlyList<ReconObjective> FrozenObjectives;
+        public int TurnNumber;
         public int ActiveReconExecutions;
+
+        // A job is out of the running for the WHOLE turn (matches the allocator): provisioning-
+        // rejected (JobBlock) OR on a cross-turn cooldown. Such a job never holds an actor and its
+        // incumbent no longer occupies a current-turn execution / class lane.
+        public bool UnfundableThisTurn(MissionIntentKey job) =>
+            BlockOf(job) != ReconJobBlock.None;
 
         public int RemainingGenericObservationRoom;
         public int RemainingGenericGroundRoom;
@@ -66,12 +71,7 @@ namespace Game.Ai.V2
         public ReconJobBlock BlockOf(MissionIntentKey job) =>
             JobBlock.TryGetValue(job, out ReconJobBlock b) ? b : ReconJobBlock.None;
 
-        public void MarkRejected(MissionIntentKey job, bool incumbent)
-        {
-            JobBlock[job] = ReconJobBlock.RejectedThisTurn;
-            if (incumbent)
-                RejectedIncumbents.Add(job);
-        }
+        public void MarkRejected(MissionIntentKey job) => JobBlock[job] = ReconJobBlock.RejectedThisTurn;
 
         public void Reserve(MissionIntentKey job, int actorId, bool stealth, bool ground, bool countsRoom)
         {
@@ -159,6 +159,24 @@ namespace Game.Ai.V2
             ctxRes.ActiveIntents = activeIntents;
             ctxRes.ActorCommitments = actorCommitments;
             ctxRes.FrozenObjectives = frozenObjectives;
+            ctxRes.TurnNumber = snap.TurnNumber;
+
+            // 1b. Objectives on a cross-turn cooldown are categorically unfundable this turn — the
+            //     allocator will always defer them OnCooldown. MissionLayer.Propose works off the
+            //     frozen objective list and does not check cooldown, so a cooldown'd proposal can
+            //     otherwise re-grab the only scout every rematch wave and starve a valid backup.
+            //     Block them up front so actor matching never considers them.
+            AiAllocatorState allocState = AiAllocatorStateRegistry.GetOrCreate(player);
+            foreach (MissionProposal m in scoutMissions)
+            {
+                if (!allocState.OnCooldown(StableMissionKey.For(m), snap.TurnNumber))
+                    continue;
+                MissionIntentKey job = MissionIntentKey.For(m);
+                ctxRes.MarkRejected(job);
+                m.ReservedMoverArmyId = null;
+                AiDebugLog.Write($"[AI][V2][ReconActor] {StableMissionKey.For(m)} — on cooldown, "
+                    + "excluded from actor matching this turn");
+            }
 
             // 2. Seed the context. A durable Recon intent's own claimed mover is bound to ITS OWN
             //    job (not blanket-excluded) so the incumbent can still be matched to it.
@@ -172,10 +190,13 @@ namespace Game.Ai.V2
             var scoutJobKeys = new HashSet<MissionIntentKey>(scoutMissions.Select(MissionIntentKey.For));
             foreach (KeyValuePair<MissionIntentKey, int> kv in reconIntentActorByJob)
             {
-                if (scoutJobKeys.Contains(kv.Key))
+                bool hasProposal = scoutJobKeys.Contains(kv.Key);
+                if (hasProposal && !ctxRes.UnfundableThisTurn(kv.Key))
                     ctxRes.Reserve(kv.Key, kv.Value, stealth: false, ground: false, countsRoom: false);
-                else
-                    ctxRes.HardExcluded.Add(kv.Value);
+                else if (!hasProposal)
+                    ctxRes.HardExcluded.Add(kv.Value);   // durable recon actor with no proposal this turn
+                // hasProposal && cooldown'd: neither seed nor hard-exclude — its scout is FREE for
+                // another job this turn, and the incumbent's lane is freed in RebuildRoom.
             }
             if (actorCommitments != null)
                 foreach (int claimed in actorCommitments.ClaimedArmyIds)
@@ -277,7 +298,7 @@ namespace Game.Ai.V2
             if (mission.ReservedMoverArmyId != null || ctxRes.JobToActor.ContainsKey(job))
                 ctxRes.Release(job, IsStealthJob(mission), IsGround(mission), refundRoom: false);
             mission.ReservedMoverArmyId = null;
-            ctxRes.MarkRejected(job, structural && mission.FromDurableIntent);
+            ctxRes.MarkRejected(job);
 
             AiDebugLog.Write($"[AI][V2][ReconActor] {StableMissionKey.For(mission)} — {kind} "
                 + $"{(structural ? "structural" : "transient")}; actor released, job blocked this turn "
@@ -311,11 +332,39 @@ namespace Game.Ai.V2
                 }
             int pFreshTotal = pGenObs + pGenGround + pStObs + pStGround;
 
+            // Incumbents taken OUT of the running this turn — provisioning-rejected, on cooldown, OR
+            // budget/capacity-deferred by the real Pack for the current wave — no longer occupy a
+            // current-turn execution / class lane (durable intent survives for next turn ≠ executes
+            // this turn — RECON-01 §7). ReconCapacitySnapshot and the stealth counts below are built
+            // from the FROZEN activeIntents and still include them, so subtract them back out per
+            // class so a valid backup can take the freed lane + scout.
+            int sideGenObs = 0, sideGenGround = 0, sideStObs = 0, sideStGround = 0;
+            var sidelinedMovers = new HashSet<int>();
+            if (ctxRes.ActiveIntents != null && ctxRes.ActorCommitments != null)
+                foreach (MissionIntent i in ctxRes.ActiveIntents)
+                {
+                    if (i?.Scout == null || !i.PreferredMoverArmyId.HasValue
+                        || !ctxRes.ActorCommitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
+                        continue;
+                    if (!ctxRes.UnfundableThisTurn(i.IntentKey)
+                        && !ctxRes.CurrentWaveBudgetDeferred.Contains(i.IntentKey))
+                        continue;
+                    sidelinedMovers.Add(i.PreferredMoverArmyId.Value);
+                    bool g = i.Scout.Kind == ScoutTargetKind.Explore;
+                    bool st = i.Scout.RequiresStealth;
+                    if (st && g) sideStGround++;
+                    else if (st) sideStObs++;
+                    else if (g) sideGenGround++;
+                    else sideGenObs++;
+                }
+
             int airObs = cap.AirborneReconLanes + cap.SpareAirObservationSorties;
             ctxRes.RemainingGenericObservationRoom = Mathf.Max(0,
-                cap.DesiredObservationConcurrency - cap.GenericObservationLaneActors.Count - airObs - pGenObs);
+                cap.DesiredObservationConcurrency
+                - Mathf.Max(0, cap.GenericObservationLaneActors.Count - sideGenObs) - airObs - pGenObs);
             ctxRes.RemainingGenericGroundRoom = Mathf.Max(0,
-                cap.DesiredGroundTraversalConcurrency - cap.GenericGroundLaneActors.Count - pGenGround);
+                cap.DesiredGroundTraversalConcurrency
+                - Mathf.Max(0, cap.GenericGroundLaneActors.Count - sideGenGround) - pGenGround);
 
             int activeStealthObs = 0, activeStealthGround = 0;
             if (ctxRes.ActiveIntents != null && ctxRes.ActorCommitments != null)
@@ -329,24 +378,24 @@ namespace Game.Ai.V2
             ctxRes.RemainingStealthObservationRoom = Mathf.Max(0,
                 ReconConcurrencyPolicy.DesiredForClass(snap,
                     FilterObjectives(ctxRes.FrozenObjectives, ground: false, stealth: true),
-                    ReconConcurrencyPolicy.ReconCoverageClass.Observation) - activeStealthObs - pStObs);
+                    ReconConcurrencyPolicy.ReconCoverageClass.Observation)
+                - Mathf.Max(0, activeStealthObs - sideStObs) - pStObs);
             ctxRes.RemainingStealthGroundRoom = Mathf.Max(0,
                 ReconConcurrencyPolicy.DesiredForClass(snap,
                     FilterObjectives(ctxRes.FrozenObjectives, ground: true, stealth: true),
-                    ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal) - activeStealthGround - pStGround);
+                    ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal)
+                - Mathf.Max(0, activeStealthGround - sideStGround) - pStGround);
 
             // Global ceiling = min(HardCap, desired concurrency over ALL runnable Recon objectives
             // — generic AND stealth). cap.CombinedDesiredConcurrency is generic-only and would
-            // under-cap a mixed / all-stealth portfolio. Structurally rejected incumbents free
-            // their slot (RECON-01 §7).
+            // under-cap a mixed / all-stealth portfolio.
             var allRunnable = (ctxRes.FrozenObjectives ?? System.Array.Empty<ReconObjective>())
                 .Where(o => o != null && o.BaseValue > 0f)
                 .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey).ToList();
             int combinedAllDesired = ReconConcurrencyPolicy.DesiredForClass(snap, allRunnable,
                 ReconConcurrencyPolicy.ReconCoverageClass.Combined);
             int ceiling = Mathf.Min(ReconConcurrencyPolicy.HardCap, Mathf.Max(1, combinedAllDesired));
-            int effectiveActive = Mathf.Max(0,
-                ctxRes.ActiveReconExecutions - ctxRes.RejectedIncumbents.Count);
+            int effectiveActive = Mathf.Max(0, ctxRes.ActiveReconExecutions - sidelinedMovers.Count);
             ctxRes.RemainingGlobalGroundActorRoom = Mathf.Max(0, ceiling - effectiveActive - pFreshTotal);
         }
 

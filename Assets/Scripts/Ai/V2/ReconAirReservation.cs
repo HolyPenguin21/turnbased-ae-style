@@ -159,8 +159,15 @@ namespace Game.Ai.V2
             int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
 
             // Airborne recon wings first. They consume an executor slot regardless, and their owed
-            // recovery AP/Energy is ALWAYS protected — but a wing that is out of budget or has no
-            // strategically useful step is NOT counted as guaranteed observation capacity.
+            // recovery AP/Energy is ALWAYS protected. NOTE: EnergyBudgetBase already netted out the
+            // ReconAirEnergyPolicy "committed" term, which INCLUDES every unactivated in-flight
+            // recon/strike wing's owed Energy — so do NOT subtract wing.Energy from energyLeft again
+            // (that was a double-count that could turn already-executable aviation into a false
+            // deficit and needlessly materialise a ground scout). Likewise reservedEnergyThisPass
+            // tracks only NEW spare-launch Energy — an airborne wing is already in `committed`.
+            // AP is not pre-committed anywhere, so apLeft IS decremented per wing. Whether the wing
+            // can really activate is decided by SlotWouldFly -> ReconAirEnergyPolicy (which excludes
+            // the wing itself and sees the true stock).
             foreach (AirObservationSlot wing in detail.AirborneWings)
             {
                 if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
@@ -170,15 +177,12 @@ namespace Game.Ai.V2
                 state.ProtectedAp += wing.Ap;
                 state.ProtectedEnergy += wing.Energy;
                 apLeft -= wing.Ap;
-                energyLeft -= wing.Energy;
 
-                bool affordable = apLeft >= 0 && energyLeft >= 0;
-                if (affordable && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass))
+                if (apLeft >= 0 && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass))
                 {
                     state.ReservedAirborneWings++;
                     if (wing.ActorId.HasValue)
                         state.ReservedAirActorIds.Add(wing.ActorId.Value);
-                    reservedEnergyThisPass += wing.Energy;
                 }
                 else
                 {
