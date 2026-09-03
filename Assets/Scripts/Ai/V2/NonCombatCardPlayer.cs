@@ -6,6 +6,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -37,6 +38,11 @@ namespace Game.Ai.V2
             public UnitData EquipHost;   // Equipment only
             public float Score;
             public string Explain;
+            // AI-MGR-01 review-r4 finding 9b — set when this play must first MINT its card through a
+            // Research/Production Challenge (Card is then a throwaway pre-mint stand-in; Execute
+            // re-resolves the placement against the real minted instance). null => Card is a real
+            // hand card.
+            public GenerationStep Generation;
         }
 
         // Base founding is scanned within this radius of each owned base/citadel — an AI surplus
@@ -85,7 +91,8 @@ namespace Game.Ai.V2
         }
 
         public static NonCombatPlay BestPlay(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, out List<string> blocked, PlayKind? onlyKind = null)
+            AiHandData hand, AiTurnContext ctx, out List<string> blocked, PlayKind? onlyKind = null,
+            MaterializationReservation reservation = null)
         {
             blocked = new List<string>();
             if (player == null || root == null || hand?.Hand == null || ctx == null)
@@ -106,105 +113,141 @@ namespace Game.Ai.V2
                 CardDefinition def = card?.Definition;
                 if (def == null)
                     continue;
-
                 // A non-aviation Unit / Hero / solo-Recce card is the materialization chain's job.
-                bool isRecce = AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities);
                 if (!def.isAviation
-                    && (def.cardType == CardType.Unit || def.cardType == CardType.Hero || isRecce))
+                    && (def.cardType == CardType.Unit || def.cardType == CardType.Hero
+                        || AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities)))
                     continue;
+                Consider(BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
+                    ownBaseHexes, blocked));
+            }
 
-                if (def.isAviation)
+            // AI-MGR-01 review-r4 finding 9b — generated non-combat cards. A Research/Production
+            // Challenge whose minted card is an Aviation / Base / Facility is scored on the SAME
+            // NetScore band (throwaway pre-mint stand-in), discounted by the Challenge success
+            // chance + the generation step penalty; Execute mints then deploys via the canonical
+            // API. Generated Equipment stays with the materialization GenerateAttachDeploy chain.
+            if (reservation != null && reservation.CanGenerateMore && hand.HasFreeSlot)
+            {
+                foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
+                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
                 {
-                    HexCoord? hx = AiManagementPlanner.FindAviationPlacement(player, root, card);
-                    if (hx == null)
-                    {
-                        blocked.Add($"{def.displayName}:aviation(noAirfieldSlotOrUnaffordable)");
+                    CardDefinition gd = g?.CardDef;
+                    if (gd == null || g.ProducesEquipment)
                         continue;
-                    }
-                    Consider(new NonCombatPlay
-                    {
-                        Card = card, Kind = PlayKind.Aviation, TargetHex = hx.Value,
-                        Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f),
-                        Explain = $"{def.displayName} -> airfield ({hx.Value.Q},{hx.Value.R})",
-                    });
-                    continue;
-                }
-
-                if (def.cardType == CardType.Facility)
-                {
-                    HexCoord? at = null;
-                    string why = "noOwnedBase";
-                    foreach (HexCoord h in ownBaseHexes)
-                    {
-                        if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r))
-                        { at = h; break; }
-                        if (r != null) why = r;
-                    }
-                    if (at == null)
-                    {
-                        blocked.Add($"{def.displayName}:facility({why})");
+                    if (!(gd.isAviation || gd.cardType == CardType.Base || gd.cardType == CardType.Facility))
                         continue;
-                    }
-                    Consider(new NonCombatPlay
-                    {
-                        Card = card, Kind = PlayKind.Facility, TargetHex = at.Value,
-                        Score = Score(snap, player, PlayKind.Facility, card, hand, 0f),
-                        Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
-                    });
-                    continue;
-                }
-
-                if (def.cardType == CardType.Base)
-                {
-                    HexCoord? at = null;
-                    string why = "noLegalFoundHex";
-                    foreach (HexCoord h in BaseFoundCandidates(snap, player, ownBaseHexes))
-                    {
-                        if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, h, out string r))
-                        { at = h; break; }
-                        if (r != null) why = r;
-                    }
-                    if (at == null)
-                    {
-                        blocked.Add($"{def.displayName}:base({why})");
+                    var stand = new CardData(gd) { ResearchProductionCreated = true };
+                    NonCombatPlay p = BuildPlayFor(stand, g, snap, player, root, hand, ctx,
+                        ownBaseHexes, blocked);
+                    if (p == null)
                         continue;
-                    }
-                    Consider(new NonCombatPlay
-                    {
-                        Card = card, Kind = PlayKind.Base, TargetHex = at.Value,
-                        Score = Score(snap, player, PlayKind.Base, card, hand, 0f),
-                        Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
-                    });
-                    continue;
+                    float chance = Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
+                        Mathf.Clamp01(g.SuccessChance));
+                    p.Score = p.Score * chance - AiConfigV2.stratChainGenerationStepPenalty;
+                    p.Explain = $"generate:{gd.displayName} -> " + p.Explain;
+                    Consider(p);
                 }
-
-                if (def.cardType == CardType.Equipment && def.equipment != null)
-                {
-                    (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card);
-                    if (host == null)
-                    {
-                        blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
-                        continue;
-                    }
-                    // review-r2 — host is chosen by the REAL predicted before/after stat delta on
-                    // that carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor), not by raw
-                    // host power, and that same delta is the RoleFit. Renaming a unit does not
-                    // change the pick; a small +Range item and a big +Attack/+Defense item on the
-                    // same carrier now score differently.
-                    Consider(new NonCombatPlay
-                    {
-                        Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
-                        TargetHex = host.Value.hex,
-                        Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade),
-                        Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
-                    });
-                    continue;
-                }
-
-                blocked.Add($"{def.displayName}:{def.cardType}(noNonCombatPlayPath)");
             }
 
             return best;
+        }
+
+        // AI-MGR-01 review-r4 finding 9b — one non-combat play for one card (real hand card, or a
+        // pre-mint stand-in when `generation` is set). Extracted from BestPlay's per-card loop so
+        // the generated path reuses the exact same placement resolution + scoring.
+        private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked)
+        {
+            CardDefinition def = card?.Definition;
+            if (def == null)
+                return null;
+
+            if (def.isAviation)
+            {
+                HexCoord? hx = AiManagementPlanner.FindAviationPlacement(player, root, card);
+                if (hx == null)
+                {
+                    blocked.Add($"{def.displayName}:aviation(noAirfieldSlotOrUnaffordable)");
+                    return null;
+                }
+                return new NonCombatPlay
+                {
+                    Card = card, Kind = PlayKind.Aviation, TargetHex = hx.Value, Generation = generation,
+                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f),
+                    Explain = $"{def.displayName} -> airfield ({hx.Value.Q},{hx.Value.R})",
+                };
+            }
+
+            if (def.cardType == CardType.Facility)
+            {
+                HexCoord? at = null;
+                string why = "noOwnedBase";
+                foreach (HexCoord h in ownBaseHexes)
+                {
+                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r))
+                    { at = h; break; }
+                    if (r != null) why = r;
+                }
+                if (at == null)
+                {
+                    blocked.Add($"{def.displayName}:facility({why})");
+                    return null;
+                }
+                return new NonCombatPlay
+                {
+                    Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
+                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f),
+                    Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
+                };
+            }
+
+            if (def.cardType == CardType.Base)
+            {
+                HexCoord? at = null;
+                string why = "noLegalFoundHex";
+                foreach (HexCoord h in BaseFoundCandidates(snap, player, ownBaseHexes))
+                {
+                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, h, out string r))
+                    { at = h; break; }
+                    if (r != null) why = r;
+                }
+                if (at == null)
+                {
+                    blocked.Add($"{def.displayName}:base({why})");
+                    return null;
+                }
+                return new NonCombatPlay
+                {
+                    Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
+                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f),
+                    Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
+                };
+            }
+
+            if (def.cardType == CardType.Equipment && def.equipment != null)
+            {
+                (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card);
+                if (host == null)
+                {
+                    blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
+                    return null;
+                }
+                // review-r2 — host is chosen by the REAL predicted before/after stat delta on that
+                // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor), not by raw host
+                // power, and that same delta is the RoleFit.
+                return new NonCombatPlay
+                {
+                    Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
+                    TargetHex = host.Value.hex, Generation = generation,
+                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade),
+                    Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
+                };
+            }
+
+            blocked.Add($"{def.displayName}:{def.cardType}(noNonCombatPlayPath)");
+            return null;
         }
 
         public static bool Execute(NonCombatPlay play, WorldSnapshot snap, PlayerSetupData player,
@@ -217,13 +260,41 @@ namespace Game.Ai.V2
                 failReason = "missing args";
                 return false;
             }
+
+            int apBefore = root.ActionPoints;
+
+            // AI-MGR-01 review-r4 finding 9b — a generated non-combat play mints its card first
+            // (ResourceCost only, no AP; probabilistic), then deploys the REAL minted instance. A
+            // lost Challenge is a normal partial failure: resources stay spent, nothing deploys.
+            if (play.Generation != null)
+            {
+                MaterializationExecutor.GenerationOutcome go =
+                    MaterializationExecutor.TryGenerate(play.Generation, player, root, hand);
+                if (!go.Success)
+                {
+                    apSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    failReason = go.FailReason ?? "generation failed";
+                    return false;
+                }
+                // Re-resolve the placement against the real card + live world (the pre-mint
+                // stand-in's target may be stale).
+                NonCombatPlay fresh = BuildPlayFor(go.Minted, generation: null, snap, player, root,
+                    hand, ctx, OwnedBaseHexes(snap, player), new List<string>());
+                if (fresh == null || fresh.Kind != play.Kind)
+                {
+                    apSpent = System.Math.Max(0, apBefore - root.ActionPoints);
+                    failReason = "no legal placement for the generated non-combat card";
+                    return false;
+                }
+                play = fresh;
+            }
+
             if (!hand.Hand.Contains(play.Card))
             {
                 failReason = "card no longer in hand";
                 return false;
             }
 
-            int apBefore = root.ActionPoints;
             bool ok;
             switch (play.Kind)
             {

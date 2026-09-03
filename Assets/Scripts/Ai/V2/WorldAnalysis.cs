@@ -268,7 +268,10 @@ namespace Game.Ai.V2
                 HasAntiArmorUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.Hyperkinetic)),
                 HasSupportUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.ApBonus)
                     || m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)),
-                HasMobileUnit = a.Members.Any(m => !m.IsHero && m.MoveMax >= AiConfigV2.mobileCombatMoveMax),
+                // review-r4 (AI-MGR-01 finding 8.3) — parity with StrategicCardEvaluator.DeriveRoles,
+                // which offers the MobileCombat role to ANY non-recce body with the moveMax, heroes
+                // included. A deployed mobile hero must therefore also close the mobile-coverage hole.
+                HasMobileUnit = a.Members.Any(m => m.MoveMax >= AiConfigV2.mobileCombatMoveMax),
                 IsHiddenFromUs = allHidden,
                 AttackSum = WorthIt.AttackSum(a),
                 DefenseSum = WorthIt.DefenseSum(a),

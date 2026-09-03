@@ -547,13 +547,11 @@ namespace Game.Ai.V2
         // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
         // next turn — convert it to card option value, bounded by this many draws per turn.
         public const int maxTerminalDrawsPerTurn = 4;
-        // Phase B non-combat lane (Aviation / Base / Facility). Guaranteed minimum actions the
-        // non-combat lane may still take AFTER the shared maxSurplusActionsPerTurn budget was
-        // fully spent by the materialization-surplus loop, so a playable stored-Aviation card can
-        // never be starved for turns while it simultaneously blocks terminal AP->draw conversion.
-        // >= 2 so a same-turn playable Base AND Aviation both clear (BestPlay ranks Base above
-        // Aviation, so a single reserved slot could take Base and leave Aviation stuck). Real AP
-        // still bounds it — NonCombatCardPlayer.Execute fails and stops the lane when unaffordable.
+        // DEPRECATED (AI-MGR-01 review-r4 finding 9a) — the separate post-materialization non-combat
+        // loop with reserved slots is gone; Phase B now ranks the non-combat lane against the
+        // materialization lane per iteration inside the one shared maxSurplusActionsPerTurn budget,
+        // with a single dedicated final Aviation slot as the only guaranteed extra. Kept only so no
+        // external reference breaks; no longer read by StrategicManager.
         public const int surplusNonCombatReservedActions = 2;
         // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
         // already a strong defensive stack and nothing threatens an asset: the surplus-admission
@@ -892,6 +890,9 @@ namespace Game.Ai.V2
         public const float holdHandPressurePenalty = 0.50f;// a full hand argues against holding
         public const float holdLostTempoPenalty = 0.35f;   // Phase B — not playing now forfeits this turn's tempo
         public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
+        // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
+        public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
+        public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card
 
         // --- Review follow-up P1.4/P1.5/P1.6/P0.2 tunables ------------------------------------
         public const float scoutBaseRoleFit = 1.0f;            // Phase-B Scout RoleFit base, before the CapabilityQualityEvaluator multiplier

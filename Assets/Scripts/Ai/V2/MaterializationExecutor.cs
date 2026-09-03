@@ -28,6 +28,69 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class MaterializationExecutor
     {
+        // AI-MGR-01 review-r4 finding 9b — the Research/Production mint step, factored out so the
+        // Phase-B non-combat lane can generate → deploy an Aviation / Base / Facility card too
+        // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
+        // chains). Same rules: eligibility re-check, hand slot, affordability, Research reveal,
+        // ResourceCost-only (no AP), probabilistic Challenge, mint into hand on a win.
+        public readonly struct GenerationOutcome
+        {
+            public readonly bool Success;
+            public readonly CardData Minted;
+            public readonly bool StateChanged;
+            public readonly string FailReason;
+
+            public GenerationOutcome(bool success, CardData minted, bool stateChanged, string failReason)
+            {
+                Success = success;
+                Minted = minted;
+                StateChanged = stateChanged;
+                FailReason = failReason;
+            }
+        }
+
+        internal static GenerationOutcome TryGenerate(GenerationStep g, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand)
+        {
+            if (g == null)
+                return new GenerationOutcome(false, null, false, "no generation step");
+
+            if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
+                || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
+                return new GenerationOutcome(false, null, false,
+                    $"generation no longer valid ({why ?? "hero moved"})");
+            if (!hand.HasFreeSlot)
+                return new GenerationOutcome(false, null, false, "no hand slot for the generated card");
+            if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
+                return new GenerationOutcome(false, null, false, "generation resources unaffordable");
+
+            bool wasHidden = g.Hero != null && g.Hero.IsHidden;
+            int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
+                m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
+
+            // Research reveals the Researcher whether or not the roll wins (parity with
+            // AiDevelopmentPlanner). Production never reveals.
+            ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
+            // ResourceCost only — the Challenge costs the player no AP. Never refunded.
+            ResearchProductionSystem.PayCardCost(root, g.CardDef);
+
+            bool resMoved = h0 != root.GetResource(ResourceType.Human)
+                || e0 != root.GetResource(ResourceType.Energy)
+                || m0 != root.GetResource(ResourceType.Materials)
+                || t0 != root.GetResource(ResourceType.Tech);
+
+            ResearchProductionSystem.ChallengeOutcome outcome =
+                ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
+            if (!outcome.Success)
+                return new GenerationOutcome(false, null,
+                    resMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
+                    $"Challenge lost ({outcome.Successes}/{outcome.Required})");
+
+            CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
+            hand.Hand.Add(minted);
+            return new GenerationOutcome(true, minted, true, null);
+        }
+
         public static MaterializationResult Execute(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, MaterializationPlan plan, ActorCommitments commitments)
         {
@@ -44,55 +107,17 @@ namespace Game.Ai.V2
             CardData generated = null;
             if (plan.Generation != null)
             {
-                GenerationStep g = plan.Generation;
-                res.AttemptedGenerationUseKey = g.UseKey;
-
-                if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
-                    || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
+                res.AttemptedGenerationUseKey = plan.Generation.UseKey;
+                GenerationOutcome go = TryGenerate(plan.Generation, player, root, hand);
+                if (go.StateChanged) res.StateChanged = true;
+                if (!go.Success)
                 {
-                    res.FailReason = $"generation no longer valid ({why ?? "hero moved"})";
-                    return res;
-                }
-                if (!hand.HasFreeSlot)
-                {
-                    res.FailReason = "no hand slot for the generated card";
-                    return res;
-                }
-                if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                {
-                    res.FailReason = "generation resources unaffordable";
-                    return res;
-                }
-
-                bool wasHidden = g.Hero != null && g.Hero.IsHidden;
-                int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
-                    m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
-
-                // Research reveals the Researcher — a consequence of choosing to Research, whether
-                // or not the roll wins (parity with AiDevelopmentPlanner). Production never reveals.
-                ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-                // ResourceCost only — the Challenge costs the player no AP. Never refunded.
-                ResearchProductionSystem.PayCardCost(root, g.CardDef);
-
-                bool resMoved = h0 != root.GetResource(ResourceType.Human)
-                    || e0 != root.GetResource(ResourceType.Energy)
-                    || m0 != root.GetResource(ResourceType.Materials)
-                    || t0 != root.GetResource(ResourceType.Tech);
-
-                ResearchProductionSystem.ChallengeOutcome outcome =
-                    ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
-                if (!outcome.Success)
-                {
-                    res.StateChanged = resMoved || (g.Mode == ResearchProductionMode.Research && wasHidden);
                     res.ApSpent = apStart - root.ActionPoints;
-                    res.FailReason = $"Challenge lost ({outcome.Successes}/{outcome.Required})";
+                    res.FailReason = go.FailReason;
                     return res;
                 }
-
-                generated = ResearchProductionSystem.MintCard(g.CardDef);
-                hand.Hand.Add(generated);
+                generated = go.Minted;
                 res.Generated = true;
-                res.StateChanged = true;
             }
 
             // ----------------------------------------------- 2. resolve base + equipment ----

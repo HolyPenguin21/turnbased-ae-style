@@ -32,8 +32,9 @@ namespace Game.Ai.V2
     //     its best other role / Hold. NearTermExpectedDemand is a real Hold term.
     //   * P1.7 — BaselineForceReadiness.Need feeds ForceGrowthValue ONCE; it is not also folded
     //     into the demand's Value or CapabilityGapValue.
-    //   * P2.8 — no synthetic armour: AntiArmor bias needs real enemy composition data (absent
-    //     from the snapshot today) so it stays 0; AntiAir works off the real IsAir classification.
+    //   * P2.8 / review-r4 finding 5 — no SYNTHETIC armour, but the cheat path is live: AntiAir and
+    //     AntiArmor both take a directional ThreatResponseValue off omniscient TrueWorld composition
+    //     (real IsAir / real Armored-tagged member). It never becomes normal AI intel.
     //
     //  BaselineForceReadiness is radar-DEMAND-INDEPENDENT: it gives ForceGrowthValue to an ordinary
     //  combat body even at AGG = 0 / DEF = 0. It only decides a card is worth MATERIALISING; which
@@ -188,14 +189,21 @@ namespace Game.Ai.V2
                             d.grantedAbilities != null ? new List<string>(d.grantedAbilities) : new List<string>(),
                             c.Equipment.equipment)
                         : (IReadOnlyList<string>)(d.grantedAbilities ?? (IReadOnlyList<string>)System.Array.Empty<string>());
-                    if (AbilityParams.AbilitiesHaveAnyRecce(eff))
-                        continue;
+                    bool cardRecce = AbilityParams.AbilitiesHaveAnyRecce(eff);
+                    // review-r4 finding 8.1 — coverage flags are read BEFORE the recce short-circuit:
+                    // DeriveRoles gives a Scout+AntiAir card BOTH the Scout AND the AntiAir role, so
+                    // it must count toward AA coverage too. review-r4 finding 8.2 — power / moveMax
+                    // come from the EFFECTIVE stat line (attached equipment folded in at the stats
+                    // level, not just abilities), not the bare CardDefinition.
+                    AiPower.EffectiveCardLine line = AiPower.EffectiveLine(d, c.Equipment?.equipment);
                     if (eff.Contains(UnitAbilities.AntiAir)) hasAntiAir = true;
                     if (eff.Contains(UnitAbilities.Hyperkinetic)) hasAntiArmor = true;
                     if (eff.Contains(UnitAbilities.ApBonus) || eff.Contains(UnitAbilities.Researcher)
                         || eff.Contains(UnitAbilities.Assembler)) hasSupport = true;
-                    if (d.moveMax >= AiConfigV2.mobileCombatMoveMax) hasMobile = true;
-                    if (AiPower.ToPowerUnit(d).BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
+                    if (!cardRecce && line.MoveMax >= AiConfigV2.mobileCombatMoveMax) hasMobile = true;
+                    if (cardRecce)
+                        continue;   // a recce card is a scout, not standing combat mass
+                    if (line.BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
                         handReadyBodies++;
                 }
 
@@ -578,7 +586,7 @@ namespace Game.Ai.V2
                     return !baseline.HasAntiAir && ThreatResponseValue(IntendedRole.AntiAir, snap) > 0f
                         ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.AntiArmor:
-                    return !baseline.HasAntiArmor && EnemyArmorPresent(snap)
+                    return !baseline.HasAntiArmor && ThreatResponseValue(IntendedRole.AntiArmor, snap) > 0f
                         ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.Support:
                     return baseline.HasSupport ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
@@ -593,39 +601,42 @@ namespace Game.Ai.V2
             }
         }
 
-        // Cheat-biased "does the enemy field a meaningful armoured group" — a real Armored-tagged
-        // enemy unit exists (directional strategic bias only; never becomes AI intel).
-        private static bool EnemyArmorPresent(WorldSnapshot snap)
-        {
-            IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
-            if (enemies == null) return false;
-            foreach (ArmySnapshot a in enemies)
-            {
-                if (a?.Members == null) continue;
-                foreach (WorthIt.DefenderProfile m in a.Members)
-                    if (m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored))
-                        return true;
-            }
-            return false;
-        }
-
-        // P2.8 — no synthetic armour. AntiAir uses the real IsAir classification; AntiArmor has no
-        // enemy-composition data in the snapshot, so it contributes nothing until that lands.
+        // review-r4 finding 5 — ONE strategic threat-response primitive for BOTH counter roles.
+        // Cheat-biased DIRECTIONAL signal off omniscient enemy composition (TrueWorld); it never
+        // becomes normal AI intel. AntiAir keys on the real IsAir classification; AntiArmor keys on
+        // a real Armored-tagged member — the snapshot DOES carry enemy composition through TrueWorld,
+        // so P2.8's "no data, contributes 0" caveat no longer applies to this cheat path.
         private static float ThreatResponseValue(IntendedRole role, WorldSnapshot snap)
         {
-            if (snap == null || role != IntendedRole.AntiAir)
+            if (snap == null || (role != IntendedRole.AntiAir && role != IntendedRole.AntiArmor))
                 return 0f;
             IReadOnlyList<ArmySnapshot> enemies = snap.TrueWorld?.EnemyArmies;
             if (enemies == null || enemies.Count == 0)
                 return 0f;
-            float air = 0f;
+            float driver = 0f;
             foreach (ArmySnapshot a in enemies)
-                if (a != null && a.IsAir)
-                    air += a.EffectiveArmyPower;
-            if (air <= 0f)
+            {
+                if (a == null) continue;
+                if (role == IntendedRole.AntiAir)
+                {
+                    if (a.IsAir) driver += a.EffectiveArmyPower;
+                }
+                else if (ArmyHasArmoredMember(a))
+                    driver += a.EffectiveArmyPower;
+            }
+            if (driver <= 0f)
                 return 0f;
-            return Mathf.Clamp(air / Mathf.Max(1f, AiConfigV2.threatResponseNorm), 0f, 1f)
+            return Mathf.Clamp(driver / Mathf.Max(1f, AiConfigV2.threatResponseNorm), 0f, 1f)
                    * AiConfigV2.threatResponseValueWeight;
+        }
+
+        private static bool ArmyHasArmoredMember(ArmySnapshot a)
+        {
+            if (a?.Members == null) return false;
+            foreach (WorthIt.DefenderProfile m in a.Members)
+                if (m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored))
+                    return true;
+            return false;
         }
 
         private static float NextTurnPotential(MaterializationPlan plan, IntendedRole role)
@@ -678,6 +689,13 @@ namespace Game.Ai.V2
         {
             if (plan == null)
                 return 0f;
+            // review-r4 finding 7 — a GENERATED deployable is not yet a card in hand. Declining the
+            // chain preserves the GENERATOR option + its resources + this turn's generation attempt,
+            // NOT a scarce physical card, and the play score already carries the generation step
+            // penalty + success-chance discount. It has no physical-card hold value. (A dedicated
+            // generator-option value is a later refinement; 0 is the conservative floor.)
+            if (plan.GeneratedBaseDef != null && plan.BaseCardInHand == null)
+                return 0f;
             CardDefinition def = PlanBaseDef(plan);
 
             float uniqueFutureRole = 0f;
@@ -703,12 +721,53 @@ namespace Game.Ai.V2
                    >= AiConfigV2.surplusScarcityMed
                 ? AiConfigV2.holdScarcityValue : 0f;
 
+            // review-r4 finding 6 — the two spec §3 Hold terms the impl still lacked.
+            //  ComboPreservation: a still-unattached Equipment card in hand that legally fits this
+            //  body — playing it bare NOW forecloses the stronger AttachDeploy combination (that
+            //  combined chain is scored on its own; this only lifts the BARE variant's hold value).
+            float comboPreservation =
+                surplus && plan.Kind == MaterializationChainKind.Direct && def != null
+                && (def.cardType == CardType.Unit || def.cardType == CardType.Hero)
+                && HandHasEquipmentPartnerFor(def, snap)
+                    ? AiConfigV2.holdComboPreservationValue : 0f;
+            //  ResourcePressure: a SECURE economy (ample stockpile / strong income → resources at
+            //  risk of capping or cheaply replenished) lowers the value of hoarding by holding the
+            //  card; a fragile economy raises it. No per-resource cap signal on the snapshot yet —
+            //  EconomicSecurity is the proxy.
+            float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
+            float resourcePressure = eco * AiConfigV2.holdResourcePressurePenalty;
+
             float handPressure = snap?.Self != null && !snap.Self.HasFreeHandSlot
                 ? AiConfigV2.holdHandPressurePenalty : 0f;
             float lostTempo = surplus ? AiConfigV2.holdLostTempoPenalty : 0f;
 
             return Mathf.Max(0f,
-                uniqueFutureRole + nearTermDemand + scarcityValue - handPressure - lostTempo);
+                uniqueFutureRole + nearTermDemand + scarcityValue + comboPreservation
+                - handPressure - resourcePressure - lostTempo);
+        }
+
+        // review-r4 finding 6 — any still-unattached Equipment card in hand whose grant would
+        // legally accept this body as a host.
+        private static bool HandHasEquipmentPartnerFor(CardDefinition hostDef, WorldSnapshot snap)
+        {
+            IReadOnlyList<CardData> hand = snap?.Self?.Hand;
+            if (hand == null || hostDef == null)
+                return false;
+            EquipmentHostKind kind = hostDef.cardType == CardType.Hero
+                ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
+            foreach (CardData c in hand)
+            {
+                EquipmentGrant grant = c?.Definition != null
+                    && c.Definition.cardType == CardType.Equipment ? c.Definition.equipment : null;
+                if (grant?.hostKinds == null || !grant.hostKinds.Contains(kind))
+                    continue;
+                if (grant.hostTypeTags != null && grant.hostTypeTags.Count > 0
+                    && (hostDef.unitTypeTags == null
+                        || !grant.hostTypeTags.Any(t => hostDef.unitTypeTags.Contains(t))))
+                    continue;
+                return true;
+            }
+            return false;
         }
 
         // =======================================================================================

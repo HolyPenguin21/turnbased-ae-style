@@ -176,7 +176,9 @@ namespace Game.Ai.V2
 
                 Dictionary<DemandState, DemandCandidate> assigned =
                     options.Count > 0
-                        ? BestInjectiveAssignment(options)
+                        ? BestInjectiveAssignment(options, root, player,
+                            Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
+                                        - result.Reservation.GenerationAttemptsUsed))
                         : new Dictionary<DemandState, DemandCandidate>();
 
                 var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
@@ -212,10 +214,14 @@ namespace Game.Ai.V2
                     break;
                 }
 
+                // AI-MGR-01 review-r4 finding 1 — the evaluator's opportunity-adjusted DecisionScore
+                // is the FINAL arbiter. The `feasible` set is already a JOINTLY feasible collision-
+                // free assignment (BestInjectiveAssignment now models the shared generation attempt +
+                // AP + H/E/M/T pools), so there is no longer a hidden hardcoded capability-priority
+                // layer deciding that a Hero chain "protects" resources from a higher-DecisionScore
+                // Field chain. Only deterministic tie-breakers follow the score.
                 PhaseACandidate selected = feasible
-                    .OrderBy(c => ConsumesResourceNeededByHigherPriorityDemand(c, feasible, root) ? 1 : 0)
-                    .ThenBy(c => ConsumesTraitRequiredByOtherFeasibleDemand(c, feasible) ? 1 : 0)
-                    .ThenByDescending(ArbitrationScore)
+                    .OrderByDescending(ArbitrationScore)
                     .ThenByDescending(c => c.State.Demand.Value)
                     .ThenBy(c => (int)c.State.Demand.RequestingAxis)
                     .ThenBy(c => c.State.Ordinal)
@@ -342,59 +348,6 @@ namespace Game.Ai.V2
             };
         }
 
-        private static bool ConsumesTraitRequiredByOtherFeasibleDemand(
-            PhaseACandidate candidate, IReadOnlyList<PhaseACandidate> feasible)
-        {
-            TraitPreference spareTraits = candidate.Plan.ExpectedTraits & ~candidate.State.Demand.RequiredTraits;
-            if (spareTraits == TraitPreference.None)
-                return false;
-            foreach (PhaseACandidate other in feasible)
-            {
-                if (ReferenceEquals(other.State, candidate.State))
-                    continue;
-                if ((other.State.Demand.RequiredTraits & spareTraits) != TraitPreference.None)
-                    return true;
-            }
-            return false;
-        }
-
-        private static bool ConsumesResourceNeededByHigherPriorityDemand(PhaseACandidate candidate,
-            IReadOnlyList<PhaseACandidate> feasible, PlayerRoot root)
-        {
-            if (root == null || candidate.State?.Demand == null)
-                return false;
-            int candidatePriority = CapabilityResourcePriority(candidate.State.Demand.Capability);
-            foreach (PhaseACandidate other in feasible)
-            {
-                if (ReferenceEquals(other.State, candidate.State) || other.State?.Demand == null)
-                    continue;
-                if (CapabilityResourcePriority(other.State.Demand.Capability) <= candidatePriority)
-                    continue;
-                foreach (ResourceType type in ResourceBundle.All)
-                {
-                    int spend = ResourceSpend(candidate.Plan, type);
-                    int otherNeed = ResourceSpend(other.Plan, type);
-                    if (spend <= 0 || otherNeed <= 0)
-                        continue;
-                    if (root.GetResource(type) - spend < otherNeed)
-                        return true;
-                }
-            }
-            return false;
-        }
-
-        private static int CapabilityResourcePriority(CapabilityKind capability)
-        {
-            switch (capability)
-            {
-                case CapabilityKind.Hero: return 3;
-                case CapabilityKind.ScoutCapability: return 2;
-                case CapabilityKind.FieldCombatPower: return 1;
-                case CapabilityKind.GarrisonCombatPower: return 0;
-                default: return 0;
-            }
-        }
-
         // AI-MGR-01 P1.3 — the physical hand-card instances a chain consumes (base + equipment).
         // The generation source is tracked separately by GenerationStep.CardKey.
         private static IReadOnlyList<CardData> PlanCards(MaterializationPlan p)
@@ -403,21 +356,6 @@ namespace Game.Ai.V2
             if (p?.BaseCardInHand != null) list.Add(p.BaseCardInHand);
             if (p?.EquipmentInHand != null) list.Add(p.EquipmentInHand);
             return list;
-        }
-
-        private static int ResourceSpend(MaterializationPlan plan, ResourceType type)
-        {
-            ResourceCost cost = plan?.ResCost;
-            if (cost == null)
-                return 0;
-            switch (type)
-            {
-                case ResourceType.Human: return Mathf.Max(0, cost.human);
-                case ResourceType.Energy: return Mathf.Max(0, cost.energy);
-                case ResourceType.Materials: return Mathf.Max(0, cost.materials);
-                case ResourceType.Tech: return Mathf.Max(0, cost.tech);
-                default: return 0;
-            }
         }
 
         private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
@@ -550,9 +488,18 @@ namespace Game.Ai.V2
         // ActionsPerTurn, each with <= phaseATopK options): choose one Worthwhile chain per demand
         // (or none) so no hand card / generation source is used twice, maximising the total
         // DecisionScore. Branching factor (K+1)^demandCount — trivial at K=3, count<=3.
+        //
+        // AI-MGR-01 review-r4 finding 3 — the chosen portfolio must be JOINTLY feasible, not just
+        // card-disjoint: the ONE per-turn generation attempt and the shared AP / H-E-M-T pools are
+        // consumed by the whole accepted set. Two chains that are each individually affordable can be
+        // un-runnable together (both want the last Tech; both want the single Challenge with
+        // different CardKeys). Without this the search returns a phantom portfolio and the downstream
+        // pick has to paper over it — which is exactly the hidden capability-priority layer finding 1
+        // removes.
         private static Dictionary<DemandState, DemandCandidate>
             BestInjectiveAssignment(
-                Dictionary<DemandState, List<DemandCandidate>> options)
+                Dictionary<DemandState, List<DemandCandidate>> options,
+                PlayerRoot root, PlayerSetupData player, int genAttemptsRemaining)
         {
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
@@ -560,6 +507,34 @@ namespace Game.Ai.V2
             var usedCards = new HashSet<CardData>();
             var usedGen = new HashSet<string>();
             var acc = new Dictionary<DemandState, DemandCandidate>();
+
+            float apPool = root != null
+                ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
+            var resPool = new Dictionary<ResourceType, int>();
+            foreach (ResourceType t in ResourceBundle.All)
+                resPool[t] = root != null
+                    ? Mathf.Max(0, Mathf.FloorToInt(Game.Ai.AiResourceReservation.Available(root, player, t)))
+                    : int.MaxValue;
+
+            float apUsed = 0f;
+            int genUsed = 0;
+            var resUsed = new Dictionary<ResourceType, int>();
+            foreach (ResourceType t in ResourceBundle.All) resUsed[t] = 0;
+
+            bool Fits(DemandCandidate c)
+            {
+                float ap = (c.Plan?.ApCost ?? 0f) + c.FollowupAp;
+                if (apUsed + ap > apPool + AiConfigV2.allocatorSliceEpsilon)
+                    return false;
+                if (c.Plan?.Generation != null && genUsed + 1 > genAttemptsRemaining)
+                    return false;
+                ResourceCost rc = c.Plan?.ResCost;
+                if (rc != null)
+                    foreach (ResourceType t in ResourceBundle.All)
+                        if (resUsed[t] + rc.Get(t) > resPool[t])
+                            return false;
+                return true;
+            }
 
             void Rec(int i, float sum)
             {
@@ -584,11 +559,26 @@ namespace Game.Ai.V2
                         continue;
                     if (!string.IsNullOrEmpty(gk) && usedGen.Contains(gk))
                         continue;
+                    if (!Fits(c))
+                        continue;
                     foreach (CardData cc in cards) usedCards.Add(cc);
                     bool addedGen = !string.IsNullOrEmpty(gk) && usedGen.Add(gk);
+                    bool countGen = c.Plan?.Generation != null;
+                    if (countGen) genUsed++;
+                    float apAdd = (c.Plan?.ApCost ?? 0f) + c.FollowupAp;
+                    apUsed += apAdd;
+                    ResourceCost rc = c.Plan?.ResCost;
+                    if (rc != null)
+                        foreach (ResourceType t in ResourceBundle.All) resUsed[t] += rc.Get(t);
+
                     acc[d] = c;
                     Rec(i + 1, sum + c.DecisionScore);
                     acc.Remove(d);
+
+                    if (rc != null)
+                        foreach (ResourceType t in ResourceBundle.All) resUsed[t] -= rc.Get(t);
+                    apUsed -= apAdd;
+                    if (countGen) genUsed--;
                     foreach (CardData cc in cards) usedCards.Remove(cc);
                     if (addedGen) usedGen.Remove(gk);
                 }
@@ -706,296 +696,298 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
             bool cleanStop = true;
-            // One shared Phase-B action budget across BOTH lanes (materialization surplus +
-            // non-combat surplus) — maxSurplusActionsPerTurn is the whole-phase safety bound, not
-            // per-lane.
+            bool aviationPlayedInLoop = false;
+            List<string> lastNcBlocked = null;
+
+            // AI-MGR-01 review-r4 finding 9a — ONE per-iteration ranked pick across BOTH surplus
+            // lanes. Each iteration builds the best materialization-surplus chain AND the best
+            // non-combat play (Aviation / Base / Facility / standalone Equipment), scores them on
+            // the SAME StrategicCardEvaluator NetScore band, and executes the higher one. An
+            // operational strategic residual is must-do and always outranks a generic non-combat
+            // play. The old "run the whole materialization loop, THEN the whole non-combat loop"
+            // ordering (which let a 0.8 Unit foreclose a 2.5 Base on the last AP) is gone. The two
+            // executors stay specialised; only the DECISION is unified. maxSurplusActionsPerTurn is
+            // the whole-phase safety bound; ReactionPassWillReserve was already handled by the
+            // early return above, so no per-iteration reaction gate is needed here.
             int surplusActionsUsed = 0;
             for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
             {
-                CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-                (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
-                    snap, player, root, hand, ctx, inv, commitments, result.Reservation);
-                if (pick == null)
-                    break;
+                MatSurplusDecision mat = ComputeMatDecision(snap, player, root, hand, ctx,
+                    commitments, result, reconObjectives);
 
-                MaterializationPlan plan = pick.Value.plan;
-                AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
-                AxisDemand residual = matchedResidual != null && CanDeliverResidualOperationally(plan, matchedResidual)
-                    ? matchedResidual : null;
-                SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
+                NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
+                    snap, player, root, hand, ctx, out lastNcBlocked, null, result.Reservation);
+                bool ncAdmissible = nc != null && nc.Score >= AiConfigV2.surplusUtilityThreshold;
 
-                if (matchedResidual != null && residual == null)
-                    AiDebugLog.Write($"[AI][V2]   strat.B — residual bypass denied for {plan.StableKey}: "
-                        + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
-                        + "evaluate as generic surplus");
+                bool doMat = mat.Admissible
+                    && (!ncAdmissible || mat.Residual != null || mat.Utility >= nc.Score);
 
-                // §2 — a Hero card that still matches an unresolved Hero demand must never be spent
-                // as generic surplus through a placement that delivers 0 Hero. Candidate
-                // construction (MaterializationCandidateBuilder.BestSurplus) already withholds such
-                // placements; this is the belt-and-braces stop so the hero is left in hand rather
-                // than burned into the garrison while the demand stays actionable.
-                if (matchedResidual != null && residual == null
-                    && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
+                if (!doMat && !ncAdmissible)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
-                        + $"unresolved {matchedResidual} but no placement delivers it; keep in hand, stop surplus");
+                    if (mat.DeferLog != null)
+                        AiDebugLog.Write(mat.DeferLog + "; stop Phase B surplus");
+                    else if (nc != null)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — defer non-combat {nc.Kind} {nc.Explain} "
+                            + $"score {F(nc.Score)} < threshold {F(AiConfigV2.surplusUtilityThreshold)}; stop");
                     break;
                 }
 
-                // §P1 — once the garrison is a strong defensive stack and nothing threatens an
-                // asset, a generic (no-residual) card whose only placement is "into the garrison"
-                // must clear a much higher bar, so the loop stops and stranded AP converts to
-                // draws instead of grinding the garrison from 6 to 40+ power with threats=0.
-                float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
-                float effThreshold = admission.EffectiveThreshold * satMult;
-
-                // §P1 — a generic surplus card must not FOUND a lone-member army at a hex that
-                // already holds our garrison: Housekeeping reclassifies it as a structural defect
-                // the same turn (create -> fold -> reseed). A genuine forward outpost away from
-                // any base of ours is still allowed.
-                if (residual == null && GenericSurplusWouldChurn(player, plan))
+                if (doMat)
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                        + "generic surplus would found a lone-member army housekeeping folds the "
-                        + "same turn; stop surplus");
-                    break;
+                    MaterializationPlan plan = mat.Plan;
+                    AxisDemand residual = mat.Residual;
+                    CapabilityInventory inv = mat.Inv;
+
+                    if (residual != null)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
+                            + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(mat.Utility)} "
+                            + "(operational strategic residual outranks generic surplus)");
+                    else
+                        AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
+                            + $"util {F(mat.Utility)} (ranked pick: materialization {F(mat.Utility)} "
+                            + $"vs non-combat {F(nc?.Score ?? 0f)})");
+
+                    var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
+                        .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
+                    MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
+                    result.MaterializationAttempts++;
+                    if (play.Deployed) result.MaterializationsSucceeded++;
+                    if (plan.Generation != null)
+                    {
+                        result.GeneratedCardAttempts++;
+                        if (play.Generated) result.GeneratedCardsSucceeded++;
+                    }
+                    if (plan.UsesEquipment)
+                    {
+                        result.EquipmentAssignmentAttempts++;
+                        if (play.Attached) result.EquipmentAssignmentsSucceeded++;
+                    }
+                    if (plan.Generation != null)
+                        result.Reservation.RecordGenerationAttempt(plan.Generation, play);
+                    if (play.StateChanged)
+                        result.StateChanged = true;
+                    if (!play.Deployed)
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                            + $"chain did not deploy ({play.FailReason}); stop");
+                        if (play.StateChanged)
+                            snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                        cleanStop = false;
+                        break;
+                    }
+                    result.CardsPlayed++;
+
+                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
+                    float delivered = 0f;
+                    // §3 — Phase B runs the SAME finalization path as Phase A: an army it created or
+                    // modified to satisfy a strategic residual gets the Housekeeping capability
+                    // lease, so the later zero-AP structural pass can no longer fold that force away
+                    // the same turn it was materialized.
+                    bool operationalResidual = residual != null && FinalizeOperationalDelivery(
+                        player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
+                    if (operationalResidual)
+                    {
+                        residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
+                        if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
+                            result.Reservation.UnresolvedDemands.Remove(residual);
+                        result.CapabilityDeliveries++;
+                    }
+                    AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                        + $"util {F(mat.Utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
+                        + $"delivered {F(delivered)}, {plan.StableKey})");
+
+                    if (operationalResidual)
+                    {
+                        StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
+                        AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
+                            + $"{residual.Capability}; re-admit missions before further surplus spending");
+                        cleanStop = false;
+                        break;
+                    }
+                    continue;
                 }
 
-                if (residual == null && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                        + "generic surplus would add a scout beyond the physical portfolio "
-                        + "(desired concurrency + warm spare, hard cap "
-                        + $"{ReconConcurrencyPolicy.HardCap}); stop surplus");
-                    break;
-                }
-
-                if (residual == null && pick.Value.utility < effThreshold)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
-                        + $"util {F(pick.Value.utility)} < threshold {F(effThreshold)} "
-                        + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                        + $"resSlack {F(admission.ResourceSlackFactor)}"
-                        + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")}), stop");
-                    break;
-                }
-
-                if (residual != null)
-                    AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
-                        + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(pick.Value.utility)} "
-                        + "(operational strategic residual outranks generic surplus)");
-                else
-                    AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
-                        + $"util {F(pick.Value.utility)} >= threshold {F(effThreshold)} "
-                        + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                        + $"resSlack {F(admission.ResourceSlackFactor)}"
-                        + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")})");
-
-                var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
-                    .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
-                MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
+                // ---- non-combat lane (spec §5/§13) — through the same canonical gameplay APIs
+                //      the human UI uses (BuildingPlayExecutor / AviationActions / EquipmentSystem).
                 result.MaterializationAttempts++;
-                if (play.Deployed) result.MaterializationsSucceeded++;
-                if (plan.Generation != null)
+                bool ncOk = NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx,
+                    out float ncAp, out string ncFail);
+                if (!ncOk)
                 {
-                    result.GeneratedCardAttempts++;
-                    if (play.Generated) result.GeneratedCardsSucceeded++;
+                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {nc.Kind} {nc.Explain} "
+                        + $"did not play ({ncFail}); stop");
+                    cleanStop = false;
+                    break;
                 }
-                if (plan.UsesEquipment)
+                result.MaterializationsSucceeded++;
+                result.CardsPlayed++;
+                result.StateChanged = true;
+                if (nc.Generation != null)
+                {
+                    // finding 9b — a generated non-combat card consumed the turn's Challenge.
+                    result.Reservation.RecordGenerationAttempt(nc.Generation, null);
+                    result.GeneratedCardAttempts++;
+                    result.GeneratedCardsSucceeded++;
+                }
+                if (nc.Kind == NonCombatCardPlayer.PlayKind.Base
+                    || nc.Kind == NonCombatCardPlayer.PlayKind.Facility)
+                {
+                    result.InfrastructureAttempts++;
+                    result.InfrastructureBuilt++;
+                }
+                else if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment)
                 {
                     result.EquipmentAssignmentAttempts++;
-                    if (play.Attached) result.EquipmentAssignmentsSucceeded++;
+                    result.EquipmentAssignmentsSucceeded++;
                 }
-                if (plan.Generation != null)
-                    result.Reservation.RecordGenerationAttempt(plan.Generation, play);
-                if (play.StateChanged)
-                    result.StateChanged = true;
-                if (!play.Deployed)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
-                        + $"chain did not deploy ({play.FailReason}); stop");
-                    if (play.StateChanged)
-                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    cleanStop = false;
-                    break;
-                }
-                result.CardsPlayed++;
-
+                if (nc.Kind == NonCombatCardPlayer.PlayKind.Aviation)
+                    aviationPlayedInLoop = true;
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} "
+                    + $"(ap {F(ncAp)}; ranked pick: non-combat {F(nc.Score)} vs materialization "
+                    + $"{F(mat.Admissible ? mat.Utility : 0f)})");
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
-                float delivered = 0f;
-                // §3 — Phase B now runs the SAME finalization path as Phase A: an army it created
-                // or modified to satisfy a strategic residual gets the Housekeeping capability
-                // lease, so the later zero-AP structural pass can no longer fold that force away
-                // in the same turn it was materialized.
-                bool operationalResidual = residual != null && FinalizeOperationalDelivery(
-                    player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
-                if (operationalResidual)
-                {
-                    residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
-                    if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
-                        result.Reservation.UnresolvedDemands.Remove(residual);
-                    result.CapabilityDeliveries++;
-                }
-                AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
-                    + $"util {F(pick.Value.utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
-                    + $"delivered {F(delivered)}, {plan.StableKey})");
-
-                if (operationalResidual)
-                {
-                    StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
-                    AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
-                        + $"{residual.Capability}; re-admit missions before further surplus spending");
-                    cleanStop = false;
-                    break;
-                }
             }
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
+            if (lastNcBlocked != null && lastNcBlocked.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — still blocked [{string.Join(", ", lastNcBlocked)}]");
 
-            // Spec §5/§13 — the non-combat lane: Aviation / Base / Facility / standalone Equipment
-            // cards the materialization chain cannot body. Runs in every mode, through the same
-            // canonical gameplay API the human UI uses, and every card left in hand carries a real
-            // gameplay reason (never "wrong card type" / "ReconOnly").
-            //
-            // Ordering: materialization surplus first, then this lane, sharing one action budget.
-            // AI-MGR-01 P0.1 — NonCombatPlay.Score now comes from the SAME StrategicCardEvaluator
-            // NetScore band as every Unit/Hero chain (no more the old 24-55 fixed scale), so the
-            // lane is gated on the same surplus-admission threshold; the two loops stay separate
-            // only because the executors are specialised, not because the scores are incomparable.
-            // Combat readiness / demand-relevant cards are still taken first (more time-sensitive:
-            // a facility or a stored aircraft is equally playable next turn).
-            //
-            // GATED on cleanStop AND the reaction pass not actually reserving: if the materialization
-            // loop raised a strategic interrupt that a runnable, actionable reaction pass will act on
-            // ("re-admit missions before further surplus spending" — operationalResidual, or a failed
-            // chain), NO further Phase-B spending of ANY kind may happen this pass, or that pass would
-            // re-plan against AP/Energy the non-combat lane already spent. AI-MGR-02 §4: a pending
-            // interrupt the reaction pass will NOT run on (ReconOnly / non-actionable) no longer gates
-            // this off. Shares the one surplusActionsUsed budget.
-            if (cleanStop && !ReactionPassWillReserve(player, ctx))
-                snap = RunNonCombatSurplus(snap, player, root, hand, ctx, result, ref surplusActionsUsed);
-            else
-                AiDebugLog.Write("[AI][V2]   strat.B non-combat — skipped: Phase B did not end cleanly "
-                    + "(strategic interrupt / failed chain); non-combat cards wait for the next pass");
+            // §P0 — a DEDICATED final slot for a playable Aviation card the shared budget may not
+            // have reached, so a stored aircraft (what makes AirRecon possible) is not starved by a
+            // run of higher-scored Base/Facility. Still GATED on the evaluator score, and skipped if
+            // an Aviation card already went out in the ranked loop this pass.
+            if (cleanStop && !aviationPlayedInLoop && !ReactionPassWillReserve(player, ctx))
+                snap = RunDedicatedAviationSlot(snap, player, root, hand, ctx, result);
 
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result, reconObjectives))
                 result.StateChanged = true;
             return result;
         }
 
-        private static WorldSnapshot RunNonCombatSurplus(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result,
-            ref int surplusActionsUsed)
+        // AI-MGR-01 review-r4 finding 9a — the materialization-surplus lane's per-iteration decision,
+        // factored out so the unified Phase-B loop can rank it against the non-combat lane. Returns
+        // either an admissible chain (with its utility + any operational strategic residual) or a
+        // not-admissible verdict carrying the one-line defer reason to log if the whole phase stops.
+        private struct MatSurplusDecision
         {
-            int played = 0;
-            int reservedUsed = 0;
-            bool aviationPlayed = false;
-            List<string> lastBlocked = null;
-            // §P0 — the non-combat lane shares maxSurplusActionsPerTurn with the materialization
-            // surplus loop, but is GUARANTEED surplusNonCombatReservedActions plays beyond an
-            // exhausted shared budget. Without this a run of generic garrison dumps drains the
-            // whole budget, a playable stored-Aviation card is never actually played, and it then
-            // blocks RunTerminalDraws from converting stranded AP (the card is "actionable" but
-            // nothing plays it) — leaving it in hand for turns.
-            while (true)
+            public bool Admissible;
+            public MaterializationPlan Plan;
+            public float Utility;
+            public AxisDemand Residual;      // non-null => operational strategic residual, must-do
+            public CapabilityInventory Inv;
+            public string DeferLog;         // set when !Admissible and there is a reason worth logging
+        }
+
+        private static MatSurplusDecision ComputeMatDecision(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
+            StrategicPhaseResult result, IReadOnlyList<ReconObjective> reconObjectives)
+        {
+            var dec = new MatSurplusDecision
             {
-                bool sharedBudgetLeft = surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn;
-                bool reservedLeft = reservedUsed < AiConfigV2.surplusNonCombatReservedActions;
-                if (!sharedBudgetLeft && !reservedLeft)
-                    break;
+                Inv = CapabilityInventory.Build(snap, player, commitments),
+            };
+            (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
+                snap, player, root, hand, ctx, dec.Inv, commitments, result.Reservation);
+            if (pick == null)
+                return dec;
 
-                NonCombatCardPlayer.NonCombatPlay play =
-                    NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out List<string> blocked);
-                lastBlocked = blocked;
-                if (play == null)
-                    break;
+            MaterializationPlan plan = pick.Value.plan;
+            AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
+            AxisDemand residual = matchedResidual != null && CanDeliverResidualOperationally(plan, matchedResidual)
+                ? matchedResidual : null;
+            SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
 
-                // AI-MGR-01 P0.1 (review-r2) — the SAME admission line the materialization-surplus
-                // loop uses, with NO card-type exception: a low-value non-combat card (a marginal
-                // standalone Equipment, or an Aviation card with no strategic value) is deferred,
-                // not auto-played. The dedicated aviation slot below is likewise gated on score now
-                // — the evaluator, not the card type, decides whether it is worth playing.
-                if (play.Score < AiConfigV2.surplusUtilityThreshold)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — defer {play.Kind} {play.Explain} "
-                        + $"score {F(play.Score)} < threshold {F(AiConfigV2.surplusUtilityThreshold)}; stop");
-                    break;
-                }
+            if (matchedResidual != null && residual == null)
+                AiDebugLog.Write($"[AI][V2]   strat.B — residual bypass denied for {plan.StableKey}: "
+                    + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
+                    + "evaluate as generic surplus");
 
-                result.MaterializationAttempts++;
-                bool ok = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx,
-                    out float apSpent, out string fail);
-                if (ok)
-                {
-                    result.MaterializationsSucceeded++;
-                    result.CardsPlayed++;
-                    result.StateChanged = true;
-                    if (play.Kind == NonCombatCardPlayer.PlayKind.Base
-                        || play.Kind == NonCombatCardPlayer.PlayKind.Facility)
-                    {
-                        result.InfrastructureAttempts++;
-                        result.InfrastructureBuilt++;
-                    }
-                    else if (play.Kind == NonCombatCardPlayer.PlayKind.Equipment)
-                    {
-                        result.EquipmentAssignmentAttempts++;
-                        result.EquipmentAssignmentsSucceeded++;
-                    }
-                    if (play.Kind == NonCombatCardPlayer.PlayKind.Aviation)
-                        aviationPlayed = true;
-                    played++;
-                    if (surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn)
-                        surplusActionsUsed++;
-                    else
-                        reservedUsed++;
-                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {play.Kind} {play.Explain} "
-                        + $"(ap {F(apSpent)}{(reservedUsed > 0 ? ", reserved slot" : "")})");
-                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                }
-                else
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {play.Kind} {play.Explain} "
-                        + $"did not play ({fail}); stop");
-                    break;
-                }
+            // §2 — a Hero card that still matches an unresolved Hero demand must never be spent as
+            // generic surplus through a placement that delivers 0 Hero. Belt-and-braces stop: leave
+            // it in hand.
+            if (matchedResidual != null && residual == null
+                && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
+            {
+                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
+                    + $"unresolved {matchedResidual} but no placement delivers it; keep in hand";
+                return dec;
             }
 
-            // §P0 — a DEDICATED final slot for a playable Aviation card that the shared action
-            // budget may not have reached, so a stored aircraft (what makes AirRecon possible) is
-            // not starved by a run of higher-scored Base/Facility. review-r2: it is still GATED on
-            // the evaluator score — the aircraft gets its slot only if it is actually worth playing.
-            if (!aviationPlayed)
+            // §P1 — a strong garrison stack with nothing threatening an asset makes a generic
+            // garrison-only card clear a much higher bar (stranded AP converts to draws instead).
+            float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
+            float effThreshold = admission.EffectiveThreshold * satMult;
+
+            // §P1 — a generic surplus card must not FOUND a lone-member army on a hex that already
+            // holds our garrison (Housekeeping folds it the same turn). A forward outpost away from
+            // any base of ours is still fine.
+            if (residual == null && GenericSurplusWouldChurn(player, plan))
             {
-                NonCombatCardPlayer.NonCombatPlay avia = NonCombatCardPlayer.BestPlay(
-                    snap, player, root, hand, ctx, out _, NonCombatCardPlayer.PlayKind.Aviation);
-                if (avia != null && avia.Score >= AiConfigV2.surplusUtilityThreshold)
-                {
-                    result.MaterializationAttempts++;
-                    if (NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx,
-                        out float aviaAp, out string aviaFail))
-                    {
-                        result.MaterializationsSucceeded++;
-                        result.CardsPlayed++;
-                        result.StateChanged = true;
-                        played++;
-                        AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played Aviation {avia.Explain} "
-                            + $"(ap {F(aviaAp)}, dedicated aviation slot)");
-                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    }
-                    else
-                    {
-                        AiDebugLog.Write($"[AI][V2]   strat.B non-combat — dedicated aviation slot: "
-                            + $"{avia.Explain} did not play ({aviaFail})");
-                    }
-                }
+                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                    + "generic surplus would found a lone-member army housekeeping folds the same turn";
+                return dec;
             }
 
-            AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {played}"
-                + (lastBlocked != null && lastBlocked.Count > 0
-                    ? $"; still blocked [{string.Join(", ", lastBlocked)}]"
-                    : "; nothing blocked"));
+            if (residual == null && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
+            {
+                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                    + "generic surplus would add a scout beyond the physical portfolio "
+                    + $"(desired concurrency + warm spare, hard cap {ReconConcurrencyPolicy.HardCap})";
+                return dec;
+            }
+
+            if (residual == null && pick.Value.utility < effThreshold)
+            {
+                dec.DeferLog = $"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
+                    + $"util {F(pick.Value.utility)} < threshold {F(effThreshold)} "
+                    + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
+                    + $"resSlack {F(admission.ResourceSlackFactor)}"
+                    + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")})";
+                return dec;
+            }
+
+            dec.Admissible = true;
+            dec.Plan = plan;
+            dec.Utility = pick.Value.utility;
+            dec.Residual = residual;
+            return dec;
+        }
+
+        // AI-MGR-01 review-r4 finding 9a — one gated attempt at a stored Aviation card the unified
+        // ranked loop did not reach (and did not already play). Same evaluator-score gate.
+        private static WorldSnapshot RunDedicatedAviationSlot(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result)
+        {
+            NonCombatCardPlayer.NonCombatPlay avia = NonCombatCardPlayer.BestPlay(
+                snap, player, root, hand, ctx, out _, NonCombatCardPlayer.PlayKind.Aviation,
+                result.Reservation);
+            if (avia == null || avia.Score < AiConfigV2.surplusUtilityThreshold)
+                return snap;
+
+            result.MaterializationAttempts++;
+            if (NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx,
+                out float aviaAp, out string aviaFail))
+            {
+                result.MaterializationsSucceeded++;
+                result.CardsPlayed++;
+                result.StateChanged = true;
+                if (avia.Generation != null)
+                {
+                    result.Reservation.RecordGenerationAttempt(avia.Generation, null);
+                    result.GeneratedCardAttempts++;
+                    result.GeneratedCardsSucceeded++;
+                }
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played Aviation {avia.Explain} "
+                    + $"(ap {F(aviaAp)}, dedicated aviation slot)");
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+            }
+            else
+            {
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — dedicated aviation slot: "
+                    + $"{avia.Explain} did not play ({aviaFail})");
+            }
             return snap;
         }
 
@@ -1036,11 +1028,12 @@ namespace Game.Ai.V2
                 // §5/§13 — a non-combat Aviation / Base / Facility / Equipment card a DRAW has just
                 // revealed is as actionable as a Unit chain (fires MarkHandOpportunity below).
                 // §P0 — but a non-combat card that was ALREADY in hand at the start of this loop
-                // was offered to RunNonCombatSurplus this turn and declined (shared budget +
-                // reserved slots exhausted); it must NOT now strand every AP by blocking the whole
-                // terminal draw. Only a fresh (drawn>0) reveal stops the loop.
+                // was offered to the unified Phase-B ranked loop (+ the dedicated aviation slot)
+                // this turn and lost / was declined; it must NOT now strand every AP by blocking
+                // the whole terminal draw. Only a fresh (drawn>0) reveal stops the loop.
                 if (actionable == null && drawn > 0
-                    && NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out _) is { } ncPlay)
+                    && NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out _, null,
+                        result.Reservation) is { } ncPlay)
                     actionable = $"a playable {ncPlay.Kind} card ({ncPlay.Explain})";
 
                 if (actionable != null)

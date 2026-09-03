@@ -447,11 +447,81 @@ Base impl `e2d76ee`. Review found the evaluator was not yet truly unified. Fix c
   bonus for closing an AA/AT/Mobile/Support hole (AA/AT only when the matching enemy threat is
   actually present).
 
-Still open (architectural, own tasks): **P0.1 full Phase-B single-candidate-set** — `UseSurplus`
-still runs the materialization surplus loop to completion, then the non-combat loop; unifying them
-into one per-iteration ranked pick is a real `UseSurplus` restructure. **P0.1 generated non-combat
-cards** — `BestSurplus`/`GenerationSource` still skip `gd.isAviation` and only allow Unit/Hero for
-non-equipment generated; needs a generate→aviation/base deploy path in `MaterializationExecutor`.
+~~Still open (architectural, own tasks): P0.1 full Phase-B single-candidate-set; P0.1 generated
+non-combat cards.~~ Both closed by review round 4 findings 9a / 9b (below). Remaining P0.1 residue:
+**Phase A infra generation** (generating a Base/Facility to satisfy a Phase-A EconomicInfrastructure
+demand — the infra pre-pass is deliberately left as-is) and generated standalone **Equipment** with
+no in-hand host (the `GenerateAttachDeploy` chain covers generated equipment WITH a host).
+
+### Review round 4 (fixes on top of `72d95a2`)
+
+Findings 1–9 done (build clean on both assemblies; capability-quality-sim 71/1, radar-sim 9/1,
+housekeeping-sim 55/0 — the fails are pre-existing on `72d95a2`. commitment-sim / mission-selection-sim
+also fail identically on clean HEAD, unrelated).
+
+- **1 — DecisionScore is the final arbiter.** `StrategicManager.BestInjectiveAssignment` now models
+  the shared per-turn generation attempt + the AP / H-E-M-T pools, so the portfolio it returns is
+  JOINTLY feasible, not just card-disjoint. The `selected` pick then ranks purely on
+  `ArbitrationScore` (= `DecisionScore`); the hidden `CapabilityResourcePriority` (Hero 3 / Scout 2
+  / Field 1 / Garrison 0) pre-sort and `ConsumesResourceNeededByHigherPriorityDemand` /
+  `ConsumesTraitRequiredByOtherFeasibleDemand` heuristics are deleted — a Hero chain can no longer
+  veto a higher-DecisionScore Field chain by "protecting" a resource.
+- **2 — top-K over consumption SIGNATURES.** `MaterializationCandidateBuilder.TopForDemand` dedups
+  `ranked` by `ConsumptionSignature` (StableKey minus its trailing `Deploy.Key` segment — the lead
+  segments already encode chain kind / capability / base-card hand index / equipment hand index /
+  generation CardKey) before the K-cut, so `A@army1, A@army2, A@garrison` no longer eat every slot
+  and a fallback card B survives into the injective assignment (`D1{A,B}+D2{A}` → `D1→B, D2→A`).
+- **3 — no phantom generation / resource capacity in the assignment.** (folded into finding 1)
+  `BestInjectiveAssignment` tracks `genUsed` vs `genAttemptsRemaining` (= `maxGenerationActions
+  PerTurn − Reservation.GenerationAttemptsUsed`) and running AP + per-resource totals vs
+  `AiResourceReservation.Available`, rejecting any branch that overspends the joint pool.
+- **5 — AntiArmor Hold works.** `ThreatResponseValue` handles BOTH counter roles off omniscient
+  `TrueWorld` composition (real `IsAir` for AntiAir, a real `Armored`-tagged member for AntiArmor);
+  `EnemyArmorPresent` deleted, `SurplusCapabilityGap` AntiArmor uses the same primitive. So a rare
+  AntiArmor card with a visible enemy armour group and no other AT now carries a real
+  `NearTermExpectedDemand` hold value.
+- **6 — Hold formula completed.** `HoldValue` adds spec §3's missing `ComboPreservation`
+  (`holdComboPreservationValue` — a still-unattached Equipment card in hand that legally fits this
+  body raises the BARE variant's hold value) and `ResourcePressure` (`holdResourcePressurePenalty`
+  × `EconomicSecurity` — a secure economy lowers the value of hoarding by holding; proxy until the
+  snapshot carries per-resource cap data).
+- **7 — generator ≠ phantom card.** `HoldValue` returns 0 for a GENERATED-deployable plan
+  (`GeneratedBaseDef != null && BaseCardInHand == null`): declining the chain preserves the
+  generator option + resources + the turn's Challenge, not a scarce physical card, and the play
+  score already carries the generation step penalty + success-chance discount.
+- **8.1 — coverage flags before the recce short-circuit.** `BaselineForceReadiness.Evaluate`'s hand
+  scan reads AA/AT/Support/Mobile flags for a card BEFORE `continue`-ing on recce, so a Scout+AntiAir
+  card counts as AA coverage (parity with `DeriveRoles`, which gives it both roles). recce still only
+  excludes the card from `handReadyBodies`.
+- **8.2 — effective stats for hand bodies.** New `AiPower.EffectiveLine(def, attachedGrant)` folds
+  an already-attached equipment's STATS (not just abilities) via `EquipmentSystem.Predict`; the hand
+  scan uses its `BasePower` for the readiness power floor and its `MoveMax` for mobile coverage.
+- **8.3 — Mobile Hero parity.** `WorldAnalysis.ToArmySnapshot` `HasMobileUnit` no longer excludes
+  heroes (`DeriveRoles` offers MobileCombat to any non-recce body with the moveMax, heroes
+  included), so a deployed mobile hero closes the mobile-coverage hole.
+- **9a — Phase B is ONE per-iteration ranked pick.** `UseSurplus` no longer runs the whole
+  materialization-surplus loop and THEN the whole non-combat loop. One loop: each iteration
+  `ComputeMatDecision` (the mat lane's per-iteration verdict, factored out — admissible chain +
+  utility + any operational residual, or a not-admissible verdict with its defer log) is ranked
+  against `NonCombatCardPlayer.BestPlay` on the SAME NetScore band; the higher one executes
+  (an operational strategic residual is must-do and always wins), then state refreshes. The
+  separate `RunNonCombatSurplus` + its `surplusNonCombatReservedActions` reserved slots are gone;
+  a single `RunDedicatedAviationSlot` is the only guaranteed extra (a stored aircraft the shared
+  budget did not reach, still evaluator-score-gated, skipped if an Aviation card already went out
+  in-loop). `surplusNonCombatReservedActions` marked DEPRECATED in `AiConfigV2`.
+- **9b — generated non-combat cards.** `MaterializationExecutor.TryGenerate` factored out (the R/P
+  mint step: eligibility, hand slot, afford, Research reveal, ResourceCost-only, probabilistic
+  Challenge, mint into hand). `NonCombatCardPlayer.BestPlay` takes an optional
+  `MaterializationReservation`; when present it enumerates `GenerationSource` steps whose minted
+  card is Aviation / Base / Facility, scores each on the same `ScoreNonCombat` NetScore band via a
+  pre-mint stand-in `CardData`, discounted by the Challenge success chance
+  (`stratChainGenerationChanceFloor` lerp) + `stratChainGenerationStepPenalty`. `NonCombatCardPlayer`
+  per-card logic extracted into `BuildPlayFor` (reused by real + generated paths); `Execute` mints
+  via `TryGenerate` then re-resolves the placement against the real instance. `StrategicManager`
+  records the generation attempt + telemetry on a successful generated non-combat play, so
+  `maxGenerationActionsPerTurn` still bounds it. Generated **Equipment** stays with the
+  materialization `GenerateAttachDeploy` chain; **Phase A** infra generation is still out of scope
+  (the infra pre-pass is deliberately left as-is).
 
 ---
 

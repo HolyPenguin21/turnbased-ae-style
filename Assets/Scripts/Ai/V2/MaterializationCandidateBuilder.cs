@@ -333,8 +333,22 @@ namespace Game.Ai.V2
                 .ThenByDescending(c => c.plan.Score)
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
-            LogQualityChoice(demand, ranked);
-            MaterializationPlan best = ranked[0].plan;
+
+            // AI-MGR-01 review-r4 finding 2 — the top-K cut is taken over unique CONSUMPTION
+            // SIGNATURES (base card instance + equipment card instance + generation source), NOT raw
+            // MaterializationPlans. One physical card yields many plans (A@army1, A@army2,
+            // A@garrison, …); without this dedup those clones eat every K slot and a fallback card B
+            // is lost before the injective assignment ever sees it (D1{A,B}+D2{A} would collapse to
+            // D1{A,A,A}). `ranked` is best-first, so the first plan seen per signature is its best
+            // placement.
+            var dedup = new List<(MaterializationPlan plan, float followupAp, TraitPreference proj)>();
+            var seenSig = new HashSet<string>();
+            foreach (var c in ranked)
+                if (seenSig.Add(ConsumptionSignature(c.plan)))
+                    dedup.Add(c);
+
+            LogQualityChoice(demand, dedup);
+            MaterializationPlan best = dedup[0].plan;
             if (best.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {best.StableKey} "
                     + $"role={best.UseRole} play {best.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
@@ -344,12 +358,24 @@ namespace Game.Ai.V2
                     + $"[{best.UseBreakdown.ToCompact()}]");
 
             var outList = new List<DemandCandidate>(Mathf.Max(1, k));
-            foreach (var c in ranked.Take(Mathf.Max(1, k)))
+            foreach (var c in dedup.Take(Mathf.Max(1, k)))
             {
                 float hold = c.plan.UseBreakdown?.HoldValue ?? 0f;
                 outList.Add(new DemandCandidate(c.plan, c.followupAp, c.plan.Score, hold, Decide(c.plan)));
             }
             return outList;
+        }
+
+        // AI-MGR-01 review-r4 finding 2 — the physical resources a chain consumes, WITHOUT the
+        // deployment target. It is StableKey minus its trailing `Deploy.Key` segment: the leading
+        // segments already encode chain kind, capability, base-card hand index, equipment hand index
+        // and generation CardKey. Two placements of the same card share it; a different card copy or
+        // a different generation source does not.
+        private static string ConsumptionSignature(MaterializationPlan p)
+        {
+            string k = p?.StableKey ?? "";
+            int lastBar = k.LastIndexOf('|');
+            return lastBar >= 0 ? k.Substring(0, lastBar) : k;
         }
 
         private static void LogQualityChoice(AxisDemand demand,

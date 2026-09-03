@@ -100,7 +100,7 @@ namespace Game.Ai.V2
         // -read army leaves these false. Consumed by BaselineForceReadiness's coverage vector.
         public bool HasAntiArmorUnit;   // a member with the anti-armour counter ability (Hyperkinetic)
         public bool HasSupportUnit;     // a member granting ApBonus / Researcher / Assembler
-        public bool HasMobileUnit;      // a non-hero member whose moveMax >= AiConfigV2.mobileCombatMoveMax
+        public bool HasMobileUnit;      // any member (hero included) whose moveMax >= AiConfigV2.mobileCombatMoveMax
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero
