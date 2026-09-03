@@ -696,7 +696,6 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
             bool cleanStop = true;
-            bool aviationPlayedInLoop = false;
             List<string> lastNcBlocked = null;
 
             // AI-MGR-01 review-r4 finding 9a — ONE per-iteration ranked pick across BOTH surplus
@@ -849,8 +848,6 @@ namespace Game.Ai.V2
                     result.EquipmentAssignmentAttempts++;
                     result.EquipmentAssignmentsSucceeded++;
                 }
-                if (nc.Kind == NonCombatCardPlayer.PlayKind.Aviation)
-                    aviationPlayedInLoop = true;
                 AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} "
                     + $"(ap {F(ncRes.ApSpent)}; ranked pick: non-combat {F(nc.Score)} vs materialization "
                     + $"{F(mat.Admissible ? mat.Utility : 0f)})");
@@ -862,13 +859,13 @@ namespace Game.Ai.V2
             if (lastNcBlocked != null && lastNcBlocked.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   strat.B non-combat — still blocked [{string.Join(", ", lastNcBlocked)}]");
 
-            // §P0 — a DEDICATED final slot for a playable Aviation card the shared budget may not
-            // have reached, so a stored aircraft (what makes AirRecon possible) is not starved by a
-            // run of higher-scored Base/Facility. Still GATED on the evaluator score, and skipped if
-            // an Aviation card already went out in the ranked loop this pass.
-            if (cleanStop && !aviationPlayedInLoop && !ReactionPassWillReserve(player, ctx))
-                snap = RunDedicatedAviationSlot(snap, player, root, hand, ctx, result);
-
+            // AI-MGR-01 final closure §2 — the dedicated post-loop Aviation slot is GONE. An aviation
+            // card is an ordinary NonCombatPlay and competes in the one ranked Phase-B loop above on
+            // the same NetScore band as every other card; if a stored aircraft genuinely matters,
+            // that shows up as CapabilityGapValue / NextTurnPotential / ThreatResponseValue raising
+            // its score, never as a hidden execution priority. Hard invariant: no card-play /
+            // materialization action beyond maxSurplusActionsPerTurn. Terminal draws stay a separate
+            // bounded mechanism with their own limit.
             if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result, reconObjectives))
                 result.StateChanged = true;
             return result;
@@ -961,46 +958,6 @@ namespace Game.Ai.V2
             dec.Utility = pick.Value.utility;
             dec.Residual = residual;
             return dec;
-        }
-
-        // AI-MGR-01 review-r4 finding 9a — one gated attempt at a stored Aviation card the unified
-        // ranked loop did not reach (and did not already play). Same evaluator-score gate.
-        private static WorldSnapshot RunDedicatedAviationSlot(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StrategicPhaseResult result)
-        {
-            NonCombatCardPlayer.NonCombatPlay avia = NonCombatCardPlayer.BestPlay(
-                snap, player, root, hand, ctx, out _, NonCombatCardPlayer.PlayKind.Aviation,
-                result.Reservation);
-            if (avia == null || avia.Score < AiConfigV2.surplusUtilityThreshold)
-                return snap;
-
-            result.MaterializationAttempts++;
-            NonCombatCardPlayer.NonCombatExecuteResult aviaRes =
-                NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx);
-            if (aviaRes.StateChanged) result.StateChanged = true;
-            if (aviaRes.GenerationAttempted)
-            {
-                result.Reservation.RecordGenerationAttempt(avia.Generation, null);
-                result.GeneratedCardAttempts++;
-                if (aviaRes.Generated) result.GeneratedCardsSucceeded++;
-            }
-            if (aviaRes.Played)
-            {
-                result.MaterializationsSucceeded++;
-                result.CardsPlayed++;
-                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played Aviation {avia.Explain} "
-                    + $"(ap {F(aviaRes.ApSpent)}, dedicated aviation slot)");
-                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-            }
-            else
-            {
-                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — dedicated aviation slot: "
-                    + $"{avia.Explain} did not play ({aviaRes.FailReason}"
-                    + (aviaRes.Generated ? "; generated card kept in hand" : "") + ")");
-                if (aviaRes.StateChanged)
-                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-            }
-            return snap;
         }
 
         private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,

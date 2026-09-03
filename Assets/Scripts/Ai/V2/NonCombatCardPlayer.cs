@@ -165,17 +165,18 @@ namespace Game.Ai.V2
 
             if (def.isAviation)
             {
-                HexCoord? hx = AiManagementPlanner.FindAviationPlacement(player, root, card);
-                if (hx == null)
+                // §1 final closure — V2-owned feasibility query, no V1 AiManagementPlanner.
+                if (!PlacementRules.TryFindAviationPlacement(snap, player, root, card,
+                        out HexCoord hx, out string why))
                 {
-                    blocked.Add($"{def.displayName}:aviation(noAirfieldSlotOrUnaffordable)");
+                    blocked.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
                     return null;
                 }
                 return new NonCombatPlay
                 {
-                    Card = card, Kind = PlayKind.Aviation, TargetHex = hx.Value, Generation = generation,
+                    Card = card, Kind = PlayKind.Aviation, TargetHex = hx, Generation = generation,
                     Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f, generation),
-                    Explain = $"{def.displayName} -> airfield ({hx.Value.Q},{hx.Value.R})",
+                    Explain = $"{def.displayName} -> airfield ({hx.Q},{hx.R})",
                 };
             }
 

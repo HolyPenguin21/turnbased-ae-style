@@ -1,3 +1,4 @@
+using Game.Aviation;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
@@ -29,5 +30,37 @@ namespace Game.Ai.V2
         public static bool CanDepositIntoGarrison(ArmyData garrison) =>
             garrison != null && garrison.IsGarrison
             && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
+
+        // AI-MGR-01 final closure §1 — pure FEASIBILITY query: "which owned airfield can this
+        // aviation card physically be deposited at right now?" Ported verbatim from V1
+        // AiManagementPlanner.FindAviationPlacement so the V2 non-combat lane no longer reaches into
+        // a V1 Level-1 planner for a placement decision. This is a query, not a decision — WHETHER
+        // an aviation card is worth playing stays entirely with StrategicCardEvaluator / Phase-B
+        // arbitration. Uses only canonical gameplay APIs: AiCardCost (thin wrapper over
+        // ArmyActions.EffectiveDeployApCost / card.EffectivePlayResourceCost), the shared
+        // AiAviationSupport.OwnedAirfieldHexes primitive (citadel + every airfield-capable Base, in
+        // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact
+        // STORED-container figure ArmyActions.DeployUnitFromCard itself gates on).
+        public static bool TryFindAviationPlacement(WorldSnapshot snapshot, PlayerSetupData player,
+            PlayerRoot root, CardData card, out HexCoord target, out string reason)
+        {
+            target = default;
+            reason = null;
+            if (player == null || root == null || card?.Definition == null)
+            { reason = "missing args"; return false; }
+
+            int deployApCost = AiCardCost.PlayAp(card);
+            if (!root.CanSpendActionPoints(deployApCost))
+            { reason = "unaffordable(ap)"; return false; }
+            if (!AiCardCost.CanAffordPlayResources(root, player, card))
+            { reason = "unaffordable(resources)"; return false; }
+
+            foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
+                if (AviationRules.FreeAirfieldCapacity(hex, player) > 0)
+                { target = hex; return true; }
+
+            reason = "noAirfieldSlot";
+            return false;
+        }
     }
 }

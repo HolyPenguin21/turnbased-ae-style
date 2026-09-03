@@ -104,6 +104,11 @@ namespace Game.Ai.V2
         // enemy/cheat-read army leaves it None. Consumed by BaselineForceReadiness's coverage
         // vector. A new coverage role flows in with zero edits here.
         public RoleCoverage StrategicCoverage;
+        // final closure §3.3 (army -> candidate aura direction) — the subset of this army's members'
+        // registry-resolved effects that are ALLY AURAS (StrategicEffectContext.EligibleAllies), so
+        // the effect-evaluation context can price the marginal buff a standing aura gives an INCOMING
+        // candidate. Own armies only; empty until an aura row is added to StrategicEffectRegistry.
+        internal IReadOnlyList<StrategicEffect> AllyAuraEffects = System.Array.Empty<StrategicEffect>();
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

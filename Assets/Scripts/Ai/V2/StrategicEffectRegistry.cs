@@ -35,10 +35,35 @@ namespace Game.Ai.V2
         Flat,               // BaseFit as-is
         RecurringResource,  // BaseFit scaled by economy insecurity (recurring AP income, …)
         EnemyThreatScaled,  // BaseFit scaled by the matching enemy-threat magnitude (AA<->air, AT<->armour)
-        TargetDensity,      // AoE   — BaseFit scaled by density of likely targets near the deploy
-        ExpectedSustain,    // regen — BaseFit scaled by the body's projected survivability
-        EligibleAllies,     // aura  — BaseFit scaled by count of eligible friendly units in the dest army
-        FreeBattleSlots,    // summon— BaseFit ONLY when real free battle slots exist (no phantom capacity)
+        TargetDensity,      // AoE   — BaseFit scaled by EXPECTED AFFECTED ENEMY BODIES near the deploy
+        ExpectedSustain,    // regen — BaseFit scaled by expected combat DURATION × projected survivability
+        EligibleAllies,     // aura (candidate -> army) — BaseFit scaled by eligible friendly units in the dest army
+        FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
+    }
+
+    // final closure §3 — generic effect semantics carried as DATA on the descriptor. The central
+    // StrategicCardEvaluator NEVER branches on any of these; only StrategicEffectRegistry's own
+    // contextual scalers read them. All default to a neutral value so every existing row is
+    // unchanged.
+    internal enum EffectScope
+    {
+        SelfBody,           // affects only the deployed body
+        DestArmy,           // affects the army the body joins (auras)
+        EnemiesNearDeploy,  // affects enemy bodies around the deploy hex (AoE / splash)
+    }
+
+    internal enum EffectTiming
+    {
+        Persistent,    // always on while the body is fielded
+        DuringCombat,  // only while a battle is resolving (regen, combat auras)
+        OneShot,       // fires once (on deploy / on trigger)
+    }
+
+    internal enum EffectStacking
+    {
+        Stack,        // each copy adds full value
+        Unique,       // only the first copy counts
+        Diminishing,  // extra copies worth progressively less (not modelled yet — treated as Stack)
     }
 
     // Which StrategicUseScoreBreakdown term an effect contributes to. Lets AoE / regen / summon /
@@ -61,15 +86,29 @@ namespace Game.Ai.V2
         public readonly StrategicEffectContext Context;
         public readonly EffectField Field;       // which breakdown term this value lands in
         public readonly bool CountsAsCoverage;   // contributes to "my force already covers role X"
-        // review-r4 P1 ARCH follow-up — for the EligibleAllies context: which allies THIS effect
-        // benefits (an Armored aura vs a Ranged aura vs a generic "+X to all"). null => any member.
-        // Kept on the descriptor so a new aura mechanic supplies its own predicate, not a
-        // registry-wide "generic allies" count. Operates on the SNAPSHOT member profile.
+        // review-r4 P1 ARCH follow-up — TARGET FILTER. For the EligibleAllies / aura contexts: which
+        // bodies THIS effect benefits (an Armored aura vs a Ranged aura vs a generic "+X to all").
+        // null => any body. Kept on the descriptor so a new aura mechanic supplies its own predicate,
+        // not a registry-wide "generic" count. Operates on the SNAPSHOT member profile — so it works
+        // for BOTH aura directions (candidate's aura over dest-army members, and a dest-army aura
+        // over the incoming candidate's projected profile).
         public readonly System.Func<WorthIt.DefenderProfile, bool> EligiblePredicate;
+
+        // --- final closure §3 generic semantics (neutral defaults) ---
+        public readonly EffectScope Scope;
+        public readonly float Magnitude;          // strength multiplier on BaseFit (1 = as-is)
+        public readonly float Probability;        // 0..1 chance/condition the effect actually lands (1 = certain)
+        public readonly EffectTiming Timing;
+        public readonly int DurationRounds;       // combat rounds the effect persists (0 = permanent / n/a)
+        public readonly int CapacityRequirement;  // battle cells the effect needs to fully realise (e.g. a Summon's body count); 1 default
+        public readonly EffectStacking Stacking;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
             EffectField field, bool coverage,
-            System.Func<WorthIt.DefenderProfile, bool> eligiblePredicate = null)
+            System.Func<WorthIt.DefenderProfile, bool> eligiblePredicate = null,
+            EffectScope scope = EffectScope.SelfBody, float magnitude = 1f, float probability = 1f,
+            EffectTiming timing = EffectTiming.Persistent, int durationRounds = 0,
+            int capacityRequirement = 1, EffectStacking stacking = EffectStacking.Stack)
         {
             Role = role;
             BaseFit = baseFit;
@@ -77,6 +116,13 @@ namespace Game.Ai.V2
             Field = field;
             CountsAsCoverage = coverage;
             EligiblePredicate = eligiblePredicate;
+            Scope = scope;
+            Magnitude = magnitude <= 0f ? 1f : magnitude;
+            Probability = Mathf.Clamp01(probability <= 0f ? 1f : probability);
+            Timing = timing;
+            DurationRounds = durationRounds;
+            CapacityRequirement = capacityRequirement < 1 ? 1 : capacityRequirement;
+            Stacking = stacking;
         }
     }
 
@@ -139,9 +185,20 @@ namespace Game.Ai.V2
         public readonly MaterializationPlan Plan;
         public readonly float RecurringIncomeWeight;
         public readonly int LocalEnemyArmies;
+        // final closure §3.1 — expected AFFECTED ENEMY BODIES (sum of enemy unit counts) within the
+        // AoE radius of the deploy hex. This, not the army count, is the AoE-value driver.
+        public readonly int LocalEnemyBodies;
+        // final closure §3.2 — proxy for how many combat rounds a fight at the deploy would last
+        // (>= 1). Drives how many regen ticks a Regenerate effect would actually get to use.
+        public readonly float ExpectedCombatRounds;
         public readonly AiPower.ProjectedStrategicLine ProjectedLine;
         public readonly IReadOnlyList<WorthIt.DefenderProfile> DestArmyMembers;
         public readonly int FreeBattleSlots;
+        // final closure §3.3 (army -> candidate direction) — the value the DEST ARMY's already-
+        // present auras add specifically to THIS incoming candidate's projected profile. The
+        // candidate does not carry the aura ability itself, so this cannot come from Resolve(card);
+        // it is folded into EffectContribution.Synergy once, for every role.
+        public readonly float IncomingAuraSynergy;
 
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
 
@@ -157,17 +214,53 @@ namespace Game.Ai.V2
             ProjectedLine = AiPower.ProjectMaterialization(plan);
 
             LocalEnemyArmies = 0;
+            LocalEnemyBodies = 0;
+            float enemyPowerNear = 0f;
             IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
             if (enemies != null && plan != null)
             {
                 HexCoord at = plan.Deploy.Hex;
                 foreach (ArmySnapshot e in enemies)
-                    if (e != null
-                        && HexGridMath.Distance(e.Hex, at) <= AiConfigV2.effectTargetDensityRadius)
-                        LocalEnemyArmies++;
+                {
+                    if (e == null
+                        || HexGridMath.Distance(e.Hex, at) > AiConfigV2.effectTargetDensityRadius)
+                        continue;
+                    LocalEnemyArmies++;
+                    LocalEnemyBodies += System.Math.Max(1, e.OccupiedBattleSlots);
+                    enemyPowerNear += e.EffectiveArmyPower;
+                }
             }
 
-            ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers);
+            float ownPower = Mathf.Max(1f, ProjectedLine.BasePower);
+            ExpectedCombatRounds = enemyPowerNear <= 0f
+                ? 1f
+                : Mathf.Clamp(
+                    1f + enemyPowerNear / (ownPower * Mathf.Max(0.01f, AiConfigV2.effectCombatRoundsPowerRatio)),
+                    1f, AiConfigV2.effectCombatRoundsMax);
+
+            ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers,
+                out ArmySnapshot destArmy);
+
+            IncomingAuraSynergy = ComputeIncomingAuraSynergy(plan, destArmy);
+        }
+
+        // §3.3 army -> candidate — each aura already standing in the dest army that the incoming
+        // candidate's projected profile satisfies contributes its MARGINAL value for one more
+        // eligible body (BaseFit / auraNorm, scaled by that aura's own Magnitude × Probability).
+        private static float ComputeIncomingAuraSynergy(MaterializationPlan plan, ArmySnapshot destArmy)
+        {
+            if (destArmy?.AllyAuraEffects == null || destArmy.AllyAuraEffects.Count == 0)
+                return 0f;
+            CardDefinition primary = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
+            if (primary == null)
+                return 0f;
+            WorthIt.DefenderProfile candidate = AiPower.ToDefenderProfile(primary);
+            float perBody = 1f / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm);
+            float total = 0f;
+            foreach (StrategicEffect aura in destArmy.AllyAuraEffects)
+                if (aura.EligiblePredicate == null || aura.EligiblePredicate(candidate))
+                    total += aura.BaseFit * aura.Magnitude * aura.Probability * perBody;
+            return total;
         }
 
         // Snapshot-only. For a real recipient army (ExistingArmy / Garrison) the occupancy comes
@@ -175,10 +268,12 @@ namespace Game.Ai.V2
         // is projected from the deployment rules (hero primary -> its CommandRating, else the field/
         // garrison base). Always minus 1 for the plan's own primary body.
         private static void ResolveDestination(WorldSnapshot snap, MaterializationPlan plan,
-            out int freeSlots, out IReadOnlyList<WorthIt.DefenderProfile> members)
+            out int freeSlots, out IReadOnlyList<WorthIt.DefenderProfile> members,
+            out ArmySnapshot destArmy)
         {
             members = System.Array.Empty<WorthIt.DefenderProfile>();
             freeSlots = -1;
+            destArmy = null;
             if (plan == null)
                 return;
 
@@ -199,6 +294,7 @@ namespace Game.Ai.V2
                             if (s != null && s.ArmyId == wantId) { a = s; break; }
                     if (a == null)
                         return;                       // stale plan — leave -1
+                    destArmy = a;
                     members = a.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)members;
                     // Mirror CardPlayExecutor / ArmyActions: a hero rewrites capacity to its
                     // CommandRating ONLY as the FIRST hero — a second hero is appended after the
@@ -261,8 +357,15 @@ namespace Game.Ai.V2
                 },
                 [UnitAbilities.ApBonus] = new[]
                 {
+                    // final closure §4 — a recurring-AP effect yields TWO explicit contributions so
+                    // nothing is double-counted (the old hidden flat `recurringAp` add in
+                    // ScoreSurplusRole is gone): a long-term Support role-fit value AND an
+                    // immediate-tempo value, both scaled by economy insecurity, both reaching Phase A
+                    // and Phase B identically through the registry.
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.surplusRecurringApIncomeBonus,
                         StrategicEffectContext.RecurringResource, EffectField.RoleFit, coverage: true),
+                    new StrategicEffect(IntendedRole.Support, AiConfigV2.surplusRecurringApTempoBonus,
+                        StrategicEffectContext.RecurringResource, EffectField.ImmediateTempo, coverage: false),
                 },
                 [UnitAbilities.Researcher] = new[]
                 {
@@ -274,13 +377,22 @@ namespace Game.Ai.V2
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
-                // Future mechanics are ONE row each — no evaluator edit. An aura supplies its own
-                // snapshot-profile eligibility predicate; a generic "+X to all" omits it:
-                //   [UnitAbilities.Splash]       = { (CombatBody,  w, TargetDensity,   RoleFit,     false) },
-                //   [UnitAbilities.Regenerate]   = { (CombatBody,  w, ExpectedSustain, RoleFit,     false) },
-                //   [UnitAbilities.ArmoredAura]  = { (Support, w, EligibleAllies, Synergy, true,
-                //                                     p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Armored)) },
-                //   [UnitAbilities.Summon]       = { (ForceGrowth, w, FreeBattleSlots, ForceGrowth, false) },
+                // Future mechanics are ONE row each — no evaluator / StrategicManager / Phase-A/B
+                // edit (final closure §3.5 acceptance). The generic semantics ride on the descriptor:
+                //   [UnitAbilities.Splash]     = { new StrategicEffect(IntendedRole.CombatBody, w,
+                //         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage:false,
+                //         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.9f) },
+                //   [UnitAbilities.Regenerate] = { new StrategicEffect(IntendedRole.CombatBody, w,
+                //         StrategicEffectContext.ExpectedSustain, EffectField.RoleFit, coverage:false,
+                //         timing: EffectTiming.DuringCombat, durationRounds: 99) },
+                //   [UnitAbilities.ArmoredAura]= { new StrategicEffect(IntendedRole.Support, w,
+                //         StrategicEffectContext.EligibleAllies, EffectField.Synergy, coverage:true,
+                //         p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Armored),
+                //         scope: EffectScope.DestArmy) },   // also drives IncomingAuraSynergy the other way
+                //   [UnitAbilities.Summon]     = { new StrategicEffect(IntendedRole.ForceGrowth, w,
+                //         StrategicEffectContext.FreeBattleSlots, EffectField.ForceGrowth, coverage:false,
+                //         timing: EffectTiming.OneShot, durationRounds: 2, capacityRequirement: 3,
+                //         stacking: EffectStacking.Unique) },   // coverage:false => never becomes standing readiness
             };
 
         // Every strategic effect a card's EFFECTIVE ability set + stat line yields.
@@ -327,6 +439,12 @@ namespace Game.Ai.V2
                     case EffectField.Synergy: syn += v; break;
                 }
             }
+
+            // §3.3 (army -> candidate) — value the DEST ARMY's standing auras add to this incoming
+            // body. Not one of the candidate's own effects, so it is added here (not role-filtered)
+            // — the same value on every competing role candidate; only one is ever executed.
+            syn += ctx.IncomingAuraSynergy;
+
             return new EffectContribution(roleFit, tempo, threat, gap, grow, syn);
         }
 
@@ -347,32 +465,56 @@ namespace Game.Ai.V2
 
         public static float ContextualValue(in StrategicEffect e, in EffectEvaluationContext ctx)
         {
+            // final closure §3 — every effect's realised value is scaled by its declared strength
+            // and by the chance/condition it actually lands. Neutral (1 × 1) for every existing row.
+            float magP = e.Magnitude * e.Probability;
+
             switch (e.Context)
             {
                 case StrategicEffectContext.Flat:
-                    return e.BaseFit;
+                    return e.BaseFit * magP;
                 case StrategicEffectContext.RecurringResource:
-                    return e.BaseFit * Mathf.Lerp(AiConfigV2.effectRecurringFloor, 1f, ctx.RecurringIncomeWeight);
+                    return e.BaseFit * magP
+                        * Mathf.Lerp(AiConfigV2.effectRecurringFloor, 1f, ctx.RecurringIncomeWeight);
                 case StrategicEffectContext.EnemyThreatScaled:
-                    return e.BaseFit * EnemyThreatModel.CounterDemandFactor(e.Role, ctx.Snap);
+                    return e.BaseFit * magP * EnemyThreatModel.CounterDemandFactor(e.Role, ctx.Snap);
                 case StrategicEffectContext.TargetDensity:
-                    // DESTINATION-LOCAL: enemy armies around the deploy hex, not a global count.
-                    return e.BaseFit * Mathf.Clamp01(
-                        ctx.LocalEnemyArmies / Mathf.Max(1f, AiConfigV2.effectTargetDensityNorm));
+                {
+                    // §3.1 — AoE value ≈ BaseFit × (expected affected ENEMY BODIES / norm) × magP.
+                    // Body count (unit density), NOT army count: 1 army of 6 units outscores 1 of 1.
+                    float coverage = Mathf.Clamp01(
+                        ctx.LocalEnemyBodies / Mathf.Max(1f, AiConfigV2.effectAoeBodiesNorm));
+                    return e.BaseFit * magP * coverage;
+                }
                 case StrategicEffectContext.ExpectedSustain:
-                    // PROJECTED HP (card + attached equipment), the same line readiness uses.
-                    return e.BaseFit * Mathf.Clamp01(
+                {
+                    // §3.2 — regen value ≈ BaseFit × (expected combat DURATION / norm) × HP factor ×
+                    // magP. Duration is the primary driver: the same HP body is worth more regen in a
+                    // drawn-out fight than a one-round exchange.
+                    float duration = Mathf.Clamp01(
+                        ctx.ExpectedCombatRounds / Mathf.Max(1f, AiConfigV2.effectSustainRoundsNorm));
+                    float hp = Mathf.Clamp01(
                         ctx.ProjectedHitPoints / Mathf.Max(1f, AiConfigV2.effectSustainHpNorm));
+                    return e.BaseFit * magP * duration * Mathf.Lerp(0.5f, 1f, hp);
+                }
                 case StrategicEffectContext.EligibleAllies:
-                    // Only the allies THIS effect benefits (its own EligiblePredicate).
-                    return e.BaseFit * Mathf.Clamp01(
+                    // §3.3 (candidate -> army) — only the allies THIS aura benefits (its predicate).
+                    return e.BaseFit * magP * Mathf.Clamp01(
                         ctx.CountEligibleAllies(e.EligiblePredicate)
                         / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm));
                 case StrategicEffectContext.FreeBattleSlots:
-                    // No phantom Summon capacity: BaseFit only when real free battle cells exist.
-                    return ctx.FreeBattleSlots >= 1 ? e.BaseFit : 0f;
+                {
+                    // §3.4 — a Summon needs CapacityRequirement free battle cells to fully realise.
+                    // Value scales with the fraction it can actually field: 0 slots -> 0, and a
+                    // 3-body summon with 1 free slot gets 1/3, never the full BaseFit.
+                    if (ctx.FreeBattleSlots <= 0)
+                        return 0f;
+                    float usable = Mathf.Min(ctx.FreeBattleSlots, e.CapacityRequirement)
+                        / (float)Mathf.Max(1, e.CapacityRequirement);
+                    return e.BaseFit * magP * usable;
+                }
                 default:
-                    return e.BaseFit;
+                    return e.BaseFit * magP;
             }
         }
     }

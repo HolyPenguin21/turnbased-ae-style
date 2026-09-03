@@ -268,6 +268,10 @@ namespace Game.Ai.V2
                 // review-r4 P1 ARCH — the coverage roles come from StrategicEffectRegistry, so a new
                 // counter/support/mobility mechanic flows in without editing this file.
                 StrategicCoverage = StrategicCoverageOf(a),
+                // final closure §3.3 — own-army ally auras, so the effect context can price the
+                // marginal buff a standing aura gives an incoming candidate. Empty until an aura row
+                // exists in the registry.
+                AllyAuraEffects = isOwn ? AllyAuraEffectsOf(a) : System.Array.Empty<StrategicEffect>(),
                 IsHiddenFromUs = allHidden,
                 AttackSum = WorthIt.AttackSum(a),
                 DefenseSum = WorthIt.DefenseSum(a),
@@ -301,6 +305,23 @@ namespace Game.Ai.V2
                     if (m != null)
                         c = c.Union(StrategicEffectRegistry.CoverageOf(m.Abilities, m.MoveMax));
             return c;
+        }
+
+        // final closure §3.3 — the ally-aura effects standing in `a` (members' registry-resolved
+        // effects whose context is EligibleAllies). One place, no per-ability branch. Empty until an
+        // aura row is added to StrategicEffectRegistry.ByAbility.
+        private static IReadOnlyList<StrategicEffect> AllyAuraEffectsOf(ArmyData a)
+        {
+            List<StrategicEffect> list = null;
+            if (a?.Members != null)
+                foreach (UnitData m in a.Members)
+                {
+                    if (m == null) continue;
+                    foreach (StrategicEffect e in StrategicEffectRegistry.Resolve(m.Abilities, m.MoveMax))
+                        if (e.Context == StrategicEffectContext.EligibleAllies)
+                            (list ??= new List<StrategicEffect>()).Add(e);
+                }
+            return list ?? (IReadOnlyList<StrategicEffect>)System.Array.Empty<StrategicEffect>();
         }
 
         private static int ArmyVisionRadius(AiTurnContext ctx) =>

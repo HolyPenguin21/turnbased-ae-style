@@ -547,11 +547,11 @@ namespace Game.Ai.V2
         // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
         // next turn — convert it to card option value, bounded by this many draws per turn.
         public const int maxTerminalDrawsPerTurn = 4;
-        // DEPRECATED (AI-MGR-01 review-r4 finding 9a) — the separate post-materialization non-combat
-        // loop with reserved slots is gone; Phase B now ranks the non-combat lane against the
-        // materialization lane per iteration inside the one shared maxSurplusActionsPerTurn budget,
-        // with a single dedicated final Aviation slot as the only guaranteed extra. Kept only so no
-        // external reference breaks; no longer read by StrategicManager.
+        // DEPRECATED (AI-MGR-01 review-r4 finding 9a; final closure §2) — the separate post-
+        // materialization non-combat loop with reserved slots is gone, and so is the dedicated
+        // final Aviation slot. Phase B now ranks the non-combat lane (aviation included) against the
+        // materialization lane per iteration inside the one shared maxSurplusActionsPerTurn budget —
+        // no guaranteed extra of any kind. Kept only so no external reference breaks; not read.
         public const int surplusNonCombatReservedActions = 2;
         // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
         // already a strong defensive stack and nothing threatens an asset: the surplus-admission
@@ -805,6 +805,10 @@ namespace Game.Ai.V2
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
         // a generic low-value garrison body in Phase B, without bypassing required Phase-A demands.
         public const float surplusRecurringApIncomeBonus = 0.75f;
+        // final closure §4 — the SECOND, explicit descriptor contribution for a recurring-AP effect:
+        // its immediate-tempo value, so the old hidden flat `recurringAp` add in ScoreSurplusRole is
+        // gone and the same value is counted once and reaches BOTH phases through the registry.
+        public const float surplusRecurringApTempoBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
         public const float surplusScarcityHigh = 1.0f;
         public const float surplusScarcityMed = 0.5f;
@@ -898,9 +902,15 @@ namespace Game.Ai.V2
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).
         public const int effectTargetDensityRadius = 3;    // hex radius around the deploy hex counted for AoE target density
-        public const float effectTargetDensityNorm = 4f;   // local enemy armies for an AoE effect to reach full value
+        public const float effectTargetDensityNorm = 4f;   // SUPERSEDED by effectAoeBodiesNorm — enemy ARMY count, kept for the LocalEnemyArmies field
         public const float effectSustainHpNorm = 8f;       // projected HP for a regen effect to reach full value
         public const float effectAuraAllyNorm = 3f;        // eligible allies in the dest army for an aura to reach full value
+        // final closure §3 — richer AoE / regen context signals (still all inert until a real
+        // Splash / Regenerate row is added to StrategicEffectRegistry.ByAbility).
+        public const float effectAoeBodiesNorm = 6f;       // expected AFFECTED ENEMY BODIES (unit count near the deploy) for an AoE effect to reach full value
+        public const float effectCombatRoundsPowerRatio = 1.5f;// enemy-to-own power ratio near the deploy that adds one expected extra combat round
+        public const float effectCombatRoundsMax = 5f;     // cap on the expected-combat-duration proxy
+        public const float effectSustainRoundsNorm = 3f;   // expected combat rounds for a regen effect's duration factor to reach full value
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card

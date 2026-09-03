@@ -695,6 +695,65 @@ concurrent unrelated in-progress edit to `HexSelectionController.cs` was breakin
   drift. Inert until `UnitAbilities.Summon` is wired into `ByAbility`, but `FreeBattleSlots` is the
   canonical projected-capacity context so it must match execution now.
 
+### Final Closure Fixes (§1–§5) — both builds 0/0, no sim (per project rule)
+
+- **§1 — no V1 planner in the MGR-01 call graph.** The only V1-planner decision reference under
+  `Assets/Scripts/Ai/V2` was `NonCombatCardPlayer` → `AiManagementPlanner.FindAviationPlacement`.
+  Ported verbatim as `PlacementRules.TryFindAviationPlacement(snapshot, player, root, card, out hex,
+  out reason)` — a pure FEASIBILITY query ("which owned airfield can this card physically deposit at
+  now?") over canonical gameplay APIs only (`AiCardCost` = thin wrapper over
+  `ArmyActions.EffectiveDeployApCost` / `card.EffectivePlayResourceCost`; the shared
+  `AiAviationSupport.OwnedAirfieldHexes` primitive; `AviationRules.FreeAirfieldCapacity`). WHETHER
+  an aviation card is worth playing stays entirely with `StrategicCardEvaluator` / Phase-B.
+  Call-graph audit: the remaining `AiTurnController.*` references in V2 (`MoveArmyRoutine`,
+  `OwnGarrisonHexes`, `CanIssueMoveNow`, `NearestOwnGarrisonHex`, `GarrisonHexFor`) are
+  movement-execution / registry-read primitives used by the recon & task executors, **not** the
+  MGR-01 path and not decision logic; `AiDefencePlanner.IsUnderSiege` (WorldAnalysis) is a shared
+  siege predicate. No `AiManagementPlanner` / `AiScoutPlanner` / `AiAggressionPlanner` /
+  `AiDevelopmentPlanner` / `AiEconomyPlanner` / `AiStrategyDirector` / `AiOperationPlanner` /
+  `AiTurnController.Decide` reference remains in the strategic-manager card lane.
+- **§2 — dedicated Aviation slot deleted.** `RunDedicatedAviationSlot`, `aviationPlayedInLoop`, and
+  the post-loop `if (cleanStop && !aviationPlayedInLoop …)` execution are gone. An aviation card is
+  an ordinary `NonCombatPlay` competing in the one ranked Phase-B loop on the same NetScore band as
+  every other card. Hard invariant restored: no card-play / materialization action beyond
+  `maxSurplusActionsPerTurn`; terminal draws stay a separate bounded mechanism.
+  `surplusNonCombatReservedActions` comment updated (already unused).
+- **§3 — `StrategicEffect` is a generic descriptor.** New neutral-default data on the struct:
+  `Scope` (`EffectScope`), `Magnitude`, `Probability`, `Timing` (`EffectTiming`), `DurationRounds`,
+  `CapacityRequirement`, `Stacking` (`EffectStacking`); `EligiblePredicate` doubles as the generic
+  TargetFilter (works for both aura directions). `ContextualValue` folds `Magnitude × Probability`
+  into every context (1×1 ⇒ every existing row unchanged) and upgrades the four contextual scalers:
+  - §3.1 AoE `TargetDensity` ← `LocalEnemyBodies` (sum of enemy **unit** counts within radius),
+    not army count. `effectAoeBodiesNorm`.
+  - §3.2 Regen `ExpectedSustain` ← `ExpectedCombatRounds` (enemy-vs-own power proxy near the deploy,
+    ≥1, capped) × HP factor. Duration is the primary driver. `effectCombatRoundsPowerRatio`,
+    `effectCombatRoundsMax`, `effectSustainRoundsNorm`.
+  - §3.3 Aura both directions: candidate→army stays `EligibleAllies` + predicate; army→candidate is
+    new `EffectEvaluationContext.IncomingAuraSynergy` — priced from `ArmySnapshot.AllyAuraEffects`
+    (own-army members' registry effects whose context is `EligibleAllies`, populated in
+    `WorldAnalysis.ToArmySnapshot`) against the incoming candidate's `AiPower.ToDefenderProfile`,
+    folded once into `EffectContribution.Synergy` (no evaluator switch edit).
+  - §3.4 Summon `FreeBattleSlots` ← `min(free, CapacityRequirement) / CapacityRequirement` (0 slots
+    ⇒ 0; a 3-body summon with 1 free slot ⇒ 1/3), never full BaseFit. `coverage:false` on the
+    example row ⇒ never becomes standing `BaselineForceReadiness`.
+  All target effects (Splash / Regenerate / ArmoredAura / Summon) remain **unwired comments** — §3
+  is inert until a row is added; the `ByAbility` example block shows the new descriptor fields.
+  §3.5 acceptance already held (`Contributions()` distributes by `EffectField`; `Roles()` feeds
+  `DeriveRoles`) and still does.
+- **§4 — no RecurringResource double-count.** `ScoreSurplusRole`'s `HasContext(RecurringResource) →
+  recurringAp` flat add is removed. The `ApBonus` registry row is now TWO explicit contributions —
+  `EffectField.RoleFit` (long-term support value) + `EffectField.ImmediateTempo` (tempo value,
+  `surplusRecurringApTempoBonus`) — both `RecurringResource`-scaled, both reaching Phase A and
+  Phase B identically. Net: the tempo term is counted once (was RoleFit-scaled + flat) and Phase A
+  gains the same (previously missing) tempo term. The evaluator no longer knows the context is
+  special.
+- **§5 — regression check (reasoned, sims deleted):** DecisionScore stays the final arbiter (no
+  card-type / trait / resource priority reintroduced — §2 *removed* one). Top-K dedup / joint
+  assignment / Hold terms / generated-card `HoldValue = 0` / generated-non-combat single economics /
+  partial-failure `NonCombatExecuteResult` / Hero projected capacity — all untouched. §3 is fully
+  inert (defaults 1×1, no aura rows, `IncomingAuraSynergy ≡ 0`); §4 is the intended de-dup, not a
+  regression.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

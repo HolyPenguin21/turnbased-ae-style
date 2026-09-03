@@ -369,11 +369,10 @@ namespace Game.Ai.V2
             float scarcity = SurplusScarcity(inv, recce, hero);
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
-            // P1 ARCH — "this card yields a recurring-resource effect" (ApBonus today) via the
-            // registry, so a future recurring-income mechanic gets the same immediate-tempo bonus.
-            float recurringAp = StrategicEffectRegistry.HasContext(
-                projected, 0, StrategicEffectContext.RecurringResource)
-                ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
+            // final closure §4 — the recurring-AP immediate-tempo value is NO LONGER a special-case
+            // here. It is a second explicit descriptor contribution (EffectField.ImmediateTempo on
+            // the ApBonus row) and arrives below via ec.ImmediateTempo, counted exactly once and
+            // identically in Phase A. The evaluator no longer knows RecurringResource is special.
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
@@ -387,7 +386,7 @@ namespace Game.Ai.V2
             bd.RoleFit = roleFitCore + ec.RoleFit;
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
             // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
-            bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role)
+            bd.ImmediateTempo = traits + SurplusPlacementBonus(plan.Deploy.Kind, role)
                 + ec.ImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
