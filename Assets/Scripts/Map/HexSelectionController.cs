@@ -1408,16 +1408,26 @@ namespace Game.Map
             if (gameConfig == null || map == null)
                 return Vector3.zero;
 
-            bool hasBuilding = FindOwnerAt(hex) != null;
             List<ArmyData> armiesHere = NonEmptyArmiesAt(hex);
+            if (!armiesHere.Contains(forArmy.Data))
+                armiesHere.Add(forArmy.Data);
+
+            // Only what the current map viewer can actually see contributes to the layout — a
+            // fully-hidden enemy army (stealth) or one on a hex the viewer can't see must never
+            // shift `forArmy` off-centre and disclose its presence (project owner's own report,
+            // кейс 4). forArmy itself always keeps a real slot even if the filter would drop it
+            // (e.g. resolving the offset for an AI's own hidden army mid-move) — its own marker
+            // is hidden anyway, so the returned offset is harmless, but it must not be indexed
+            // out of the list.
+            armiesHere = VisibleForLayout(armiesHere, hex);
             if (!armiesHere.Contains(forArmy.Data))
                 armiesHere.Add(forArmy.Data);
 
             List<PlayerSetupData> distinctOwners = DistinctOwners(armiesHere);
             int index = distinctOwners.IndexOf(forArmy.Data.Owner);
 
-            HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding, distinctOwners);
-            return ToWorldOffset(layout.ArmyOffsets[index]);
+            HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, BuildingKnownToViewer(hex), distinctOwners);
+            return index >= 0 ? ToWorldOffset(layout.ArmyOffsets[index]) : Vector3.zero;
         }
 
         // Armies with zero members don't exist for layout/visibility purposes — a freshly
@@ -1472,7 +1482,14 @@ namespace Game.Map
                     armiesHere.Add(garrison);
             }
 
-            List<PlayerSetupData> distinctOwners = DistinctOwners(armiesHere);
+            // Layout is resolved from ONLY what the current map viewer can see (see
+            // VisibleForLayout) — never the raw occupant list. A fully-hidden enemy army
+            // (stealth) or one on a hex the viewer has no vision of must not contribute an owner
+            // slot, or the viewer's own army here gets shoved into a two-owners side slot and
+            // silently reveals "someone is on this hex" (project owner's own report, кейс 4).
+            // The per-marker visibility test further down already hides that army's own marker;
+            // this keeps the REST of the hex laid out as if it weren't there at all.
+            List<PlayerSetupData> distinctOwners = DistinctOwners(VisibleForLayout(armiesHere, hex));
 
             // An army that just dropped to zero members (its last unit dragged out, see
             // CardHandUI/ArmyViewerModalUI's own RestackArmiesOn calls) drops out of armiesHere
@@ -1483,7 +1500,12 @@ namespace Game.Map
             // not be force-hidden right back down by this same-turn sweep.
             List<ArmyData> emptiedHere = ArmyRegistry.AllAt(hex).FindAll(a => a.Members.Count == 0 && !armiesHere.Contains(a));
 
-            HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, hasBuilding, distinctOwners);
+            // hasBuilding above still drives whether the building marker is touched at all;
+            // BuildingKnownToViewer gates whether it factors into the LAYOUT — a building the
+            // viewer hasn't personally confirmed must not pull a lone army onto its corner
+            // offset (that would announce the building for free), same concern
+            // ReapplyRememberedLayout already documents for the remembered path.
+            HexObjectLayout.Result layout = HexObjectLayout.Resolve(gameConfig, BuildingKnownToViewer(hex), distinctOwners);
 
             // One player can have several armies sharing a hex (garrison + one or more named
             // armies), but only one marker per owner is ever actually shown there — the rest
@@ -1553,8 +1575,14 @@ namespace Game.Map
 
                 if (controller == exclude || controller.IsMoving)
                     continue;
-                Vector2 ownerOffset = layout.ArmyOffsets[distinctOwners.IndexOf(army.Owner)];
-                controller.transform.position = map.HexToWorld(hex) + ToWorldOffset(ownerOffset);
+                // -1 when this army's owner was filtered out of the layout for the current
+                // viewer (VisibleForLayout) — its marker is already hidden by the `visible`
+                // test above, so its resting position no longer matters; leave it where it is
+                // rather than indexing the layout out of range.
+                int ownerIndex = distinctOwners.IndexOf(army.Owner);
+                if (ownerIndex < 0)
+                    continue;
+                controller.transform.position = map.HexToWorld(hex) + ToWorldOffset(layout.ArmyOffsets[ownerIndex]);
             }
 
             // Only ever hides — never deletes. This runs for EVERY membership change on this
@@ -1628,6 +1656,52 @@ namespace Game.Map
         private static PlayerSetupData FindOwnerAt(HexCoord coord)
         {
             return BuildingRegistry.FindAt(coord)?.Owner;
+        }
+
+        // Only the armies the CURRENT MAP VIEWER can actually see on `hex` — everything the icon
+        // layout (HexObjectLayout) is allowed to reason about. Mirrors the per-marker visibility
+        // test in RestackArmiesOn so the layout and the shown markers can never disagree:
+        //  - the viewer's own armies always count;
+        //  - an enemy army counts only if the viewer has vision of the hex AND not every member
+        //    is hidden from them (StealthSystem) — a fully-hidden enemy contributes nothing, so
+        //    the viewer's own army never shifts to make room for a phantom (project owner's own
+        //    report, кейс 4);
+        //  - a neutral army the viewer has EVER seen counts even without current vision — the
+        //    same "remembered once seen" exception RestackArmiesOn already grants its marker
+        //    (neutrals never relocate).
+        // With no hot-seat perspective set (CurrentViewer == null — AI-only / pre-game) nothing
+        // is filtered, exactly as before this method existed.
+        private static List<ArmyData> VisibleForLayout(List<ArmyData> armies, HexCoord hex)
+        {
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (viewer == null)
+                return armies;
+            bool hexVisible = VisionSystem.IsVisibleToCurrentViewer(hex);
+            var result = new List<ArmyData>(armies.Count);
+            foreach (ArmyData army in armies)
+            {
+                bool own = army.Owner == viewer;
+                bool visibleEnemy = hexVisible && !StealthSystem.ArmyFullyHiddenFrom(army, viewer);
+                bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral
+                    && VisionSystem.HasEverSeenByCurrentViewer(hex);
+                if (own || visibleEnemy || everSeenNeutral)
+                    result.Add(army);
+            }
+            return result;
+        }
+
+        // Whether the current map viewer has actually confirmed the building on `hex` — the
+        // layout must treat a building the viewer has never personally seen as absent, so a lone
+        // army arriving there still sits centred instead of taking the building/army corner
+        // offset and announcing the building for free (same concern ReapplyRememberedLayout
+        // documents for the remembered path). Its own-building fast path matches RestackArmiesOn's
+        // building-marker SetVisible check.
+        private static bool BuildingKnownToViewer(HexCoord hex)
+        {
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null)
+                return false;
+            return building.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex);
         }
     }
 }
