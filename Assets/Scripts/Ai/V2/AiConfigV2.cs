@@ -897,7 +897,8 @@ namespace Game.Ai.V2
         public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).
-        public const float effectTargetDensityNorm = 4f;   // enemy contacts for an AoE effect to reach full value
+        public const int effectTargetDensityRadius = 3;    // hex radius around the deploy hex counted for AoE target density
+        public const float effectTargetDensityNorm = 4f;   // local enemy armies for an AoE effect to reach full value
         public const float effectSustainHpNorm = 8f;       // projected HP for a regen effect to reach full value
         public const float effectAuraAllyNorm = 3f;        // eligible allies in the dest army for an aura to reach full value
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.

@@ -617,6 +617,28 @@ housekeeping-sim 55/0 (fails pre-existing).
   registry; Researcher/Assembler hero Support fit halved (double-count removed). Everything else
   value-parity. Both assemblies build clean (0/0); sims unchanged (71/1, 9/1, 55/0).
 
+### Review round 4 P1 ARCH — context-model follow-up (fixes on top of `58b27ae`)
+
+Pure architecture — no current ability uses these contexts, so zero behaviour delta today; sims
+unchanged. Makes the contexts a real *Card × IntendedUse* signal instead of a global proxy.
+
+- **TargetDensity is DESTINATION-LOCAL.** `EffectEvaluationContext.EnemyContactCount` (global
+  `TrueWorld.EnemyArmies.Count`) → `LocalEnemyArmies` = enemy armies within
+  `effectTargetDensityRadius` (=3) hexes of `plan.Deploy.Hex`. A Splash unit sent to a frontline
+  cluster and one sent to a quiet rear army now score differently; no plan/hex ⇒ 0, never a
+  fabricated global utility.
+- **ExpectedSustain reads the PROJECTED line.** `AiPower.EffectiveCardLine` → `ProjectedStrategicLine`
+  now carries the full projected stat block (Attack/Defense/Resistance/Range/HitPoints/MoveMax/
+  Initiative/CommandRating/Fate/ActivationApCost + EffectiveAbilities), computed once via
+  `EquipmentSystem.Predict`. `EffectEvaluationContext.ProjectedHitPoints` comes from it, so a
+  `+10 HP` trinket feeding a Regeneration effect is scored for HP 15, not the bare 5 — same
+  planning/execution entity readiness and role derivation already use.
+- **EligibleAllies is per-effect.** `StrategicEffect` gains an optional
+  `Func<UnitData,bool> EligiblePredicate` (null ⇒ any non-hero). `EffectEvaluationContext` exposes
+  `DestArmyMembers` + `CountEligibleAllies(predicate)`; the `EligibleAllies` branch counts only the
+  allies THAT aura benefits. An Armored aura vs a Ranged aura vs a generic "+X to all" each supply
+  their own predicate in the `ByAbility` row — no registry-wide "generic allies" count.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

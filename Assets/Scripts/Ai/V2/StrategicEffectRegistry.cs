@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.HexGrid;
 using Game.Map;
 using Game.Units;
 using UnityEngine;
@@ -60,15 +61,21 @@ namespace Game.Ai.V2
         public readonly StrategicEffectContext Context;
         public readonly EffectField Field;       // which breakdown term this value lands in
         public readonly bool CountsAsCoverage;   // contributes to "my force already covers role X"
+        // review-r4 P1 ARCH follow-up — for the EligibleAllies context: which allies THIS effect
+        // benefits (an Armored aura vs a Ranged aura vs a generic "+X to all"). null => any non-hero
+        // body. Kept on the descriptor so a new aura mechanic supplies its own predicate, not a
+        // registry-wide "generic allies" count.
+        public readonly System.Func<UnitData, bool> EligiblePredicate;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
-            EffectField field, bool coverage)
+            EffectField field, bool coverage, System.Func<UnitData, bool> eligiblePredicate = null)
         {
             Role = role;
             BaseFit = baseFit;
             Context = context;
             Field = field;
             CountsAsCoverage = coverage;
+            EligiblePredicate = eligiblePredicate;
         }
     }
 
@@ -108,24 +115,30 @@ namespace Game.Ai.V2
         public bool Any => _bits != 0;
     }
 
-    // The world context every contextual scaler reads. Built once per Card x Role evaluation from
-    // whatever the caller has; a field left at its "unknown" sentinel keeps that context
-    // conservative (FreeBattleSlots stays 0 -> no phantom Summon capacity).
+    // The world context every contextual scaler reads. Built once per Card x IntendedUse
+    // evaluation — DESTINATION-LOCAL where it matters, so "Splash unit -> frontline near a cluster"
+    // and "Splash unit -> quiet rear army" score differently. A field left at its "unknown" sentinel
+    // keeps that context conservative (FreeBattleSlots -1 -> no phantom Summon capacity).
     //
     //   RecurringIncomeWeight  0..1, high when the economy is INSECURE (recurring income worth more)
-    //   EnemyContactCount      known + cheat enemy armies — TargetDensity proxy
-    //   ProjectedHitPoints     the body's projected HP (card + attached equipment) — ExpectedSustain
-    //   EligibleAllyCount      non-hero members already in the destination army — EligibleAllies aura
+    //   LocalEnemyArmies       enemy armies within effectTargetDensityRadius of the deploy hex — the
+    //                          AoE / TargetDensity signal (0 with no plan/hex, never a global count)
+    //   ProjectedLine          the body's PROJECTED stat line (card + attached equipment) — the same
+    //                          line readiness / role derivation use; ExpectedSustain reads HitPoints
+    //   DestArmyMembers        members already in the destination ExistingArmy (for an aura's own
+    //                          EligiblePredicate to count the ones IT benefits)
     //   FreeBattleSlots        real/predicted free battle cells; -1 = unknown -> Summon scores 0
     internal readonly struct EffectEvaluationContext
     {
         public readonly WorldSnapshot Snap;
         public readonly MaterializationPlan Plan;
         public readonly float RecurringIncomeWeight;
-        public readonly int EnemyContactCount;
-        public readonly float ProjectedHitPoints;
-        public readonly int EligibleAllyCount;
+        public readonly int LocalEnemyArmies;
+        public readonly AiPower.ProjectedStrategicLine ProjectedLine;
+        public readonly IReadOnlyList<UnitData> DestArmyMembers;
         public readonly int FreeBattleSlots;
+
+        public float ProjectedHitPoints => ProjectedLine.HitPoints;
 
         public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan)
         {
@@ -134,18 +147,38 @@ namespace Game.Ai.V2
             RecurringIncomeWeight = snap?.Economy != null
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
-            EnemyContactCount = snap?.TrueWorld?.EnemyArmies?.Count ?? 0;
 
             CardDefinition baseDef = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
-            ProjectedHitPoints = baseDef?.hitPoints ?? 0f;
+            EquipmentGrant grant = plan?.GeneratedEquipmentDef?.equipment
+                                   ?? plan?.EquipmentInHand?.Definition?.equipment;
+            ProjectedLine = AiPower.EffectiveLine(baseDef, grant);
+
+            LocalEnemyArmies = 0;
+            IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
+            if (enemies != null && plan != null)
+            {
+                HexCoord at = plan.Deploy.Hex;
+                foreach (ArmySnapshot e in enemies)
+                    if (e != null
+                        && HexGridMath.Distance(e.Hex, at) <= AiConfigV2.effectTargetDensityRadius)
+                        LocalEnemyArmies++;
+            }
 
             ArmyData dest = plan != null && plan.Deploy.Kind == DeploymentKind.ExistingArmy
                 ? plan.Deploy.Army : null;
-            EligibleAllyCount = dest?.Members != null
-                ? dest.Members.Count(m => m != null && !m.IsHero)
-                : 0;
+            DestArmyMembers = dest?.Members ?? (IReadOnlyList<UnitData>)System.Array.Empty<UnitData>();
 
             FreeBattleSlots = -1;   // no real battle-cell data threaded yet
+        }
+
+        public int CountEligibleAllies(System.Func<UnitData, bool> predicate)
+        {
+            System.Func<UnitData, bool> p = predicate ?? (m => m != null && !m.IsHero);
+            int n = 0;
+            foreach (UnitData m in DestArmyMembers)
+                if (m != null && p(m))
+                    n++;
+            return n;
         }
     }
 
@@ -182,11 +215,13 @@ namespace Game.Ai.V2
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
-                // Future mechanics are ONE row each — no evaluator edit:
-                //   [UnitAbilities.Splash]      = { (CombatBody,  w, TargetDensity,   RoleFit,        false) },
-                //   [UnitAbilities.Regenerate]  = { (CombatBody,  w, ExpectedSustain, RoleFit,        false) },
-                //   [UnitAbilities.CommandAura] = { (Support,     w, EligibleAllies,  Synergy,        true ) },
-                //   [UnitAbilities.Summon]      = { (ForceGrowth, w, FreeBattleSlots, ForceGrowth,    false) },
+                // Future mechanics are ONE row each — no evaluator edit. An aura supplies its own
+                // eligibility predicate; a generic "+X to all" omits it (defaults to any non-hero):
+                //   [UnitAbilities.Splash]       = { (CombatBody,  w, TargetDensity,   RoleFit,     false) },
+                //   [UnitAbilities.Regenerate]   = { (CombatBody,  w, ExpectedSustain, RoleFit,     false) },
+                //   [UnitAbilities.ArmoredAura]  = { (Support, w, EligibleAllies, Synergy, true,
+                //                                     m => m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored)) },
+                //   [UnitAbilities.Summon]       = { (ForceGrowth, w, FreeBattleSlots, ForceGrowth, false) },
             };
 
         // Every strategic effect a card's EFFECTIVE ability set + stat line yields.
@@ -262,14 +297,18 @@ namespace Game.Ai.V2
                 case StrategicEffectContext.EnemyThreatScaled:
                     return e.BaseFit * EnemyThreatModel.CounterDemandFactor(e.Role, ctx.Snap);
                 case StrategicEffectContext.TargetDensity:
+                    // DESTINATION-LOCAL: enemy armies around the deploy hex, not a global count.
                     return e.BaseFit * Mathf.Clamp01(
-                        ctx.EnemyContactCount / Mathf.Max(1f, AiConfigV2.effectTargetDensityNorm));
+                        ctx.LocalEnemyArmies / Mathf.Max(1f, AiConfigV2.effectTargetDensityNorm));
                 case StrategicEffectContext.ExpectedSustain:
+                    // PROJECTED HP (card + attached equipment), the same line readiness uses.
                     return e.BaseFit * Mathf.Clamp01(
                         ctx.ProjectedHitPoints / Mathf.Max(1f, AiConfigV2.effectSustainHpNorm));
                 case StrategicEffectContext.EligibleAllies:
+                    // Only the allies THIS effect benefits (its own EligiblePredicate).
                     return e.BaseFit * Mathf.Clamp01(
-                        ctx.EligibleAllyCount / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm));
+                        ctx.CountEligibleAllies(e.EligiblePredicate)
+                        / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm));
                 case StrategicEffectContext.FreeBattleSlots:
                     // No phantom Summon capacity: BaseFit only when real free battle cells exist.
                     return ctx.FreeBattleSlots >= 1 ? e.BaseFit : 0f;

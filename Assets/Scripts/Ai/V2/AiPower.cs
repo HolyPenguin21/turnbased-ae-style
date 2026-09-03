@@ -69,24 +69,43 @@ namespace Game.Ai.V2
             return new PowerUnit(p, c.unitTypeTags, c.range, isHero);
         }
 
-        // review-r4 (AI-MGR-01 finding 8.2) — a not-yet-played CardDefinition's power line AND
-        // effective moveMax with an ALREADY-ATTACHED equipment grant folded in at the STATS level
-        // (EquipmentSystem.Predict), not just its abilities. BaselineForceReadiness uses this for a
-        // hand card that carries equipment so an Attack/Defense/HP trinket can push a body over the
-        // readiness power floor and a +MoveMax item can make it count toward mobile coverage.
-        public readonly struct EffectiveCardLine
+        // review-r4 (AI-MGR-01 finding 8.2 / P1 ARCH) — the ONE projected stat line for a not-yet-
+        // played CardDefinition with an ALREADY-ATTACHED equipment grant folded in at the STATS
+        // level (EquipmentSystem.Predict), not just its abilities. Used by readiness, role
+        // derivation, RoleFit and the effect-context model so planning and execution score the SAME
+        // entity — an Attack/Defense/HP trinket over the readiness floor, a +MoveMax item over the
+        // mobile threshold, a +HP item feeding a Regeneration effect's sustain value.
+        public readonly struct ProjectedStrategicLine
         {
             public readonly float BasePower;
-            public readonly int MoveMax;
-            public EffectiveCardLine(float basePower, int moveMax) { BasePower = basePower; MoveMax = moveMax; }
+            public readonly int Attack, Defense, Resistance, Range, HitPoints, MoveMax, Initiative,
+                CommandRating, Fate, ActivationApCost;
+            public readonly IReadOnlyList<string> EffectiveAbilities;
+
+            public ProjectedStrategicLine(float basePower, int attack, int defense, int resistance,
+                int range, int hitPoints, int moveMax, int initiative, int commandRating, int fate,
+                int activationApCost, IReadOnlyList<string> effectiveAbilities)
+            {
+                BasePower = basePower;
+                Attack = attack; Defense = defense; Resistance = resistance; Range = range;
+                HitPoints = hitPoints; MoveMax = moveMax; Initiative = initiative;
+                CommandRating = commandRating; Fate = fate; ActivationApCost = activationApCost;
+                EffectiveAbilities = effectiveAbilities ?? System.Array.Empty<string>();
+            }
         }
 
-        public static EffectiveCardLine EffectiveLine(CardDefinition c, EquipmentGrant attached)
+        public static ProjectedStrategicLine EffectiveLine(CardDefinition c, EquipmentGrant attached)
         {
             if (c == null)
-                return new EffectiveCardLine(0f, 0);
+                return new ProjectedStrategicLine(0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
+
+            var baseAbilities = c.grantedAbilities != null
+                ? new List<string>(c.grantedAbilities) : new List<string>();
+
             if (attached == null)
-                return new EffectiveCardLine(ToPowerUnit(c).BasePower, c.moveMax);
+                return new ProjectedStrategicLine(ToPowerUnit(c).BasePower, c.attack, c.defenseRating,
+                    c.resistanceRating, c.range, c.hitPoints, c.moveMax, c.initiative, c.commandRating,
+                    c.fate, c.activationApCost, baseAbilities);
 
             var before = new Dictionary<EquipmentStat, int>
             {
@@ -101,8 +120,6 @@ namespace Game.Ai.V2
                 [EquipmentStat.CommandRating] = c.commandRating,
                 [EquipmentStat.Fate] = c.fate,
             };
-            var baseAbilities = c.grantedAbilities != null
-                ? new List<string>(c.grantedAbilities) : new List<string>();
             PredictedEquipmentState pred = EquipmentSystem.Predict(attached, before, baseAbilities);
             int S(EquipmentStat st) =>
                 pred.Stats != null && pred.Stats.TryGetValue(st, out int v) ? v : before[st];
@@ -115,7 +132,11 @@ namespace Game.Ai.V2
             if (c.cardType == CardType.Hero)
                 line += S(EquipmentStat.Fate) * AiConfigV2.powerHeroFateWeight;
             IReadOnlyList<string> eff = EquipmentSystem.EffectiveAbilities(baseAbilities, attached);
-            return new EffectiveCardLine(Mathf.Max(0f, line) * AbilityMultiplier(eff), S(EquipmentStat.MoveMax));
+            return new ProjectedStrategicLine(Mathf.Max(0f, line) * AbilityMultiplier(eff),
+                S(EquipmentStat.Attack), S(EquipmentStat.Defense), S(EquipmentStat.Resistance),
+                S(EquipmentStat.Range), S(EquipmentStat.HitPoints), S(EquipmentStat.MoveMax),
+                S(EquipmentStat.Initiative), S(EquipmentStat.CommandRating), S(EquipmentStat.Fate),
+                S(EquipmentStat.ActivationApCost), eff);
         }
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;

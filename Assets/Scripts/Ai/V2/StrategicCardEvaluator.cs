@@ -191,7 +191,7 @@ namespace Game.Ai.V2
                     // the EFFECTIVE stat line (attached equipment folded in at the stats level).
                     // P1 ARCH — the coverage roles come from StrategicEffectRegistry, not a fixed
                     // ability list. (CoverageOf applies its own !recce gate to MobileCombat.)
-                    AiPower.EffectiveCardLine line = AiPower.EffectiveLine(d, c.Equipment?.equipment);
+                    AiPower.ProjectedStrategicLine line = AiPower.EffectiveLine(d, c.Equipment?.equipment);
                     coverage = coverage.Union(StrategicEffectRegistry.CoverageOf(eff, line.MoveMax));
                     if (cardRecce)
                         continue;   // a recce card is a scout, not standing combat mass
