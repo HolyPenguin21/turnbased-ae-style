@@ -146,42 +146,70 @@ namespace Game.Ai.V2
                 obsRunnable.Count, 0, UnityEngine.Mathf.Max(0, desiredObs - activeObsLaneActors.Count));
 
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
-
-            // Airborne wings are already committed capacity — the executor continues them regardless
-            // of a fresh useful step, so they are always kept, and they owe their own first-
-            // activation AP + Energy this turn (mandatory movement / recovery).
-            foreach (int id in detail.AirborneWingIds)
-                state.ReservedAirActorIds.Add(id);
-            state.ReservedAirborneWings = detail.AirborneWingIds.Count;
-            state.ProtectedEnergy += detail.AirborneUnactivatedEnergy;
-            state.ProtectedAp += detail.AirborneUnactivatedAp;
-
-            // Reserve launch slots only up to the still-unmet observation need, and only slots the
-            // AIR-01 route scorer would ACTUALLY fly — a physically launchable aircraft with no
-            // strategically useful route is NOT guaranteed capacity (that was the phantom-capacity
-            // path: DemandLayer suppresses a ground scout, the executor then declines the sortie).
-            // Slots are pre-ordered exactly as ReconAirExecutor launches them; the concrete aircraft
-            // the executor finally picks is re-derived by the SAME deterministic rule
-            // (ReconAirCapacityPolicy.SelectReconLaunchSubset), so this stays reservation ownership,
-            // not a second launch planner.
             ReconMode mode = ReconAirExecutor.RequestedMode(player, snap);
-            int launchNeed = UnityEngine.Mathf.Max(0, observationNeed - state.ReservedAirborneWings);
-            int probed = 0, rejected = 0;
-            int committedEnergyThisPass = 0;   // Energy earlier reserved slots this pass already took
-            foreach (AirObservationSlot slot in detail.AcceptedSpareSlots)
+
+            // ONE authoritative greedy, in the executor's own order, over a SINGLE cumulative AP /
+            // Energy budget (so several sorties never each pass against the full stockpile) with the
+            // AIR-01 route gate applied per candidate (so a route-invalid earlier aircraft cannot
+            // hide a valid later one).
+            int apLeft = detail.ApBudgetBase;
+            int energyLeft = detail.EnergyBudgetBase;
+            int slotsUsed = 0;
+            int reservedEnergyThisPass = 0;
+            int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
+
+            // Airborne recon wings first. They consume an executor slot regardless, and their owed
+            // recovery AP/Energy is ALWAYS protected — but a wing that is out of budget or has no
+            // strategically useful step is NOT counted as guaranteed observation capacity.
+            foreach (AirObservationSlot wing in detail.AirborneWings)
             {
-                if (state.ReservedLaunchSorties >= launchNeed)
+                if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
                     break;
-                probed++;
-                if (!SlotWouldFly(player, root, ctx, snap, mode, slot, committedEnergyThisPass))
+                airborneProbed++;
+                slotsUsed++;
+                state.ProtectedAp += wing.Ap;
+                state.ProtectedEnergy += wing.Energy;
+                apLeft -= wing.Ap;
+                energyLeft -= wing.Energy;
+
+                bool affordable = apLeft >= 0 && energyLeft >= 0;
+                if (affordable && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass))
                 {
-                    rejected++;
+                    state.ReservedAirborneWings++;
+                    if (wing.ActorId.HasValue)
+                        state.ReservedAirActorIds.Add(wing.ActorId.Value);
+                    reservedEnergyThisPass += wing.Energy;
+                }
+                else
+                {
+                    airborneStuck++;   // recovery protected, but not observation capacity
+                }
+            }
+
+            int launchNeed = UnityEngine.Mathf.Max(0, observationNeed - state.ReservedAirborneWings);
+            foreach (AirObservationSlot slot in detail.SpareCandidatesInOrder)
+            {
+                if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn
+                    || state.ReservedLaunchSorties >= launchNeed)
+                    break;
+                launchProbed++;
+                if (slot.Ap > apLeft || slot.Energy > energyLeft)
+                {
+                    launchRejected++;
+                    continue;   // executor moves on to the next candidate in order
+                }
+                if (!SlotWouldFly(player, root, ctx, snap, mode, slot, reservedEnergyThisPass))
+                {
+                    launchRejected++;
                     continue;
                 }
-                state.ReservedLaunchSorties++;
+                apLeft -= slot.Ap;
+                energyLeft -= slot.Energy;
+                reservedEnergyThisPass += slot.Energy;
                 state.ProtectedAp += slot.Ap;
                 state.ProtectedEnergy += slot.Energy;
-                committedEnergyThisPass += slot.Energy;
+                state.ReservedLaunchSorties++;
+                slotsUsed++;
                 if (slot.ActorId.HasValue)
                     state.ReservedAirActorIds.Add(slot.ActorId.Value);
                 else
@@ -190,10 +218,11 @@ namespace Game.Ai.V2
 
             state.GuaranteedObservationLanes = state.ReservedAirborneWings + state.ReservedLaunchSorties;
             state.Explain = $"guaranteedObsLanes={state.GuaranteedObservationLanes} "
-                + $"(airborne {state.ReservedAirborneWings} + launch {state.ReservedLaunchSorties}) "
+                + $"(airborne {state.ReservedAirborneWings}/{airborneProbed} stuck {airborneStuck} + "
+                + $"launch {state.ReservedLaunchSorties}/{launchProbed} rejected {launchRejected}) "
                 + $"protAp={state.ProtectedAp:0.#} protEnergy={state.ProtectedEnergy:0.#} "
                 + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
-                + $"spareAvail={detail.SpareSorties} probed={probed} routeRejected={rejected} mode={mode}";
+                + $"apLeft={apLeft} energyLeft={energyLeft} mode={mode}";
             AiDebugLog.Write($"[AI][V2][ReconAirRes] {state.Explain}");
         }
 

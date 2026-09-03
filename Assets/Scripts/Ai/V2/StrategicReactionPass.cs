@@ -140,11 +140,20 @@ namespace Game.Ai.V2
 
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
+            // AI-RECON-01 — the reaction round runs its OWN air reservation prepass. The main pass's
+            // reservation was already consumed by its terminal air fallback (aircraft moved / AP
+            // spent), so reusing its stale ReservedLaunchSorties would let DemandLayer suppress a
+            // ground scout for capacity that no longer exists. Reset + re-evaluate against the
+            // now-current AP / Energy / movement.
+            ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
             result.Demands += demands.Count;
 
-            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(snapshot.Self?.ActionPoints ?? 0, radar);
+            ReconAirReservationState airReservation =
+                ReconAirReservationRegistry.ForTurn(player, snapshot.TurnNumber);
+            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
+                UnityEngine.Mathf.Max(0f, (snapshot.Self?.ActionPoints ?? 0) - airReservation.ProtectedAp), radar);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments);
             result.CardsPlayed += phaseA.CardsPlayed;
@@ -158,13 +167,10 @@ namespace Game.Ai.V2
                 activeIntents, aggressionObjectives));
             // AI-RECON-01 — the reaction round runs the SAME DemandLayer -> MissionLayer -> Allocator
             // -> Provisioning path as the main pass, so it needs the same actor-before-budget
-            // reservation, or every reaction-round Scout would defer ReconActorUnreserved. The
-            // main pass's air reservation (still stamped for this turn) is reused; the reaction
-            // round has no rematch loop unwinding as elaborate as the main one, but PreparePass
-            // still receives the reserved-actor set and a single Rematch runs between re-packs.
+            // reservation, or every reaction-round Scout would defer ReconActorUnreserved.
             var reconActorCtx = new ReconActorReservationContext();
             ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
-                activeIntents, reconObjectives, apLedger);
+                activeIntents, reconObjectives);
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
@@ -180,7 +186,7 @@ namespace Game.Ai.V2
             outcomeLedger.RegisterCommitments(commitments);
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
-                commitments, player, apLedger);
+                commitments, player, apLedger, airReservation.ProtectedEnergy, airReservation.ProtectedAp);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();
@@ -189,6 +195,7 @@ namespace Game.Ai.V2
             while (true)
             {
                 bool anyFailure = false;
+                bool anySuccess = false;
                 bool allFailuresArePoolWide = true;
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
                     reconActorCtx.ReservedActorIds);
@@ -207,6 +214,7 @@ namespace Game.Ai.V2
                         player, root, hand, ctx, provSession, fe);
                     if (provision.Success)
                     {
+                        anySuccess = true;
                         provSession.RegisterSuccess(key, provision.Provisioned);
                         session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp);
                         outcomeLedger.RecordProvisionSuccess(fe.Mission, provision.Provisioned);
@@ -244,7 +252,8 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] reaction — every funded mission's capability pool is exhausted this cycle; stop key-by-key reallocation");
                     break;
                 }
-                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession);
+                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession,
+                    allocation, portfolioChanged: anyFailure || anySuccess);
                 if (!reconRematched && (!session.HasNewFailures || session.Converged))
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)
@@ -259,7 +268,9 @@ namespace Game.Ai.V2
             // be told the whole focus set, not just what reached the queue. Shared helper keeps the
             // two passes from drifting.
             HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci,
+                () => ReconAirReservationPrepass.ReleaseProtection(player));
+            ReconAirReservationPrepass.ReleaseProtection(player);
             result.Executed += executed.Count(MissionRevalidator.WasAttempt);
             foreach (ExecutionResult er in executed)
             {

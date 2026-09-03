@@ -529,7 +529,7 @@ namespace Game.Ai.V2
             // actor-bound Recon mission and MoverContended reverts to a defensive-only outcome.
             var reconActorCtx = new ReconActorReservationContext();
             ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
-                activeIntents, reconObjectives, apLedger);
+                activeIntents, reconObjectives);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
             // Demand→Mission causal link (spec §1.6).
@@ -597,6 +597,7 @@ namespace Game.Ai.V2
                 ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
                     reconActorCtx.ReservedActorIds);
                 bool anyFailure = false;
+                bool anySuccess = false;
                 bool allFailuresArePoolWide = true;
                 foreach (FundedEntry fe in allocation.Funded)
                 {
@@ -614,6 +615,7 @@ namespace Game.Ai.V2
                     ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
                     if (result.Success)
                     {
+                        anySuccess = true;
                         provSession.RegisterSuccess(key, result.Provisioned);
                         session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
                         ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
@@ -637,9 +639,9 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                        // AI-RECON-01 — a Scout miss: STRUCTURAL kinds block the job this turn, the
-                        // rest just free the actor for the Rematch below. Either way the reserved
-                        // scout goes back to the pool so another still-live job can use it.
+                        // AI-RECON-01 — the allocator has already put this Scout in _rejectedThisTurn
+                        // (every failure disposition but RepriceThisTurn does); mirror that so the
+                        // planner never re-pins an actor to a mission the allocator will not re-fund.
                         if (fe.Mission.Kind == MissionKind.Scout
                             && result.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
                             ReconActorReservationPlanner.RecordProvisionFailure(reconActorCtx, fe.Mission,
@@ -654,12 +656,13 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
                     break;
                 }
-                // AI-RECON-01 — rebuild the whole Recon reservation from the current portfolio: drop
-                // structurally-rejected jobs, release every other non-provisioned reservation,
-                // recompute the room, and re-assign with a budget-feasible greedy. No admission
-                // verdict from the previous Pack is inherited, so a job that becomes fundable when a
-                // sibling dies gets the freed scout + AP on the very next Pack.
-                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession);
+                // AI-RECON-01 — re-assign Recon scouts from the current portfolio. `portfolioChanged`
+                // = a provisioning success or failure freed AP / actors this iteration, so the last
+                // Pack's budget/capacity deferrals are stale and must be re-evaluated (not folded
+                // into the transient wave-skip set). The real Pack — never a private AP model — is
+                // the budget authority; the planner only reacts to its verdicts.
+                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession,
+                    allocation, portfolioChanged: anyFailure || anySuccess);
                 if (!reconRematched && (!session.HasNewFailures || session.Converged))
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)

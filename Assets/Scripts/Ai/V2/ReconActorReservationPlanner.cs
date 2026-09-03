@@ -10,29 +10,23 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  AI-RECON-01 — ACTOR-AWARE RECON PLANNING & RESERVATION  (ground scout lane)
     // ===========================================================================================
-    //  Actor availability is part of PLANNING, before funding. The reservation context lives for
-    //  the whole re-pack loop, but it NEVER inherits an admission verdict from a previous Pack():
+    //  Actor availability is part of PLANNING, before funding. The planner does NOT re-implement a
+    //  simplified AP allocator — the authoritative ResourceAllocator (commitments may overdraft an
+    //  axis slice against the global pool, fresh missions have a fungible spillover pass, locked
+    //  claims, protected air AP) is the ONLY budget authority. The planner just:
     //
-    //    · The ONLY permanent (this-turn) block is a real provisioning STRUCTURAL rejection
-    //      (TargetSatisfied / TargetInvalidated / NoObservationVantage / AssemblyInfeasible).
-    //    · InsufficientBudget / ExecutionCapacity / MissionConflict / CommitmentPoolExhausted are
-    //      transient portfolio outcomes. Rematch() does NOT block them — it releases EVERY
-    //      non-structurally-rejected, not-yet-provisioned reservation, rebuilds the room from the
-    //      current snapshot, and re-assigns from scratch with a BUDGET-FEASIBLE greedy: scarce-
-    //      first, but a job whose activation cost would exceed the remaining Recon AP budget is
-    //      skipped so a cheaper lower-priority job can take the freed scout. That, not a sticky
-    //      block, is what stops the "pricey Surveil re-grabs the only scout every pass" loop, and
-    //      it lets a job funded once the portfolio changes (a sibling died and freed AP) get its
-    //      turn on the very next Pack.
-    //
-    //  ROOM is per requirement class AND per stealth tier, with a shared global ceiling:
-    //     Generic{Observation,GroundTraversal}   — aviation covers Observation only
-    //     Stealth{Observation,GroundTraversal}   — aviation covers neither
-    //     GlobalGroundActor = min(HardCap, CombinedDesiredConcurrency) - active executions
-    //  Rejected incumbents are subtracted from the active count so their execution slot is freed.
+    //    1. Actor-matches scarce-first, bounded by per-class + global execution room.
+    //    2. Lets the real Pack() decide fundability.
+    //    3. On a real Pack deferral for budget/capacity reasons, moves that job into a TRANSIENT
+    //       per-wave skip set so a cheaper alternative takes the freed scout — and clears that set
+    //       the moment the portfolio materially changes (a provisioning success or failure freed
+    //       resources), so a job that becomes fundable when a sibling dies is re-evaluated.
+    //    4. On a real provisioning failure, blocks the job for the turn — matching the allocator's
+    //       own _rejectedThisTurn, so the planner never pins an actor to a mission the allocator
+    //       will not fund again this turn. Structural kinds also free the execution slot.
     // ===========================================================================================
 
-    internal enum ReconJobBlock { None, StructuralRejectedThisTurn }
+    internal enum ReconJobBlock { None, RejectedThisTurn }
 
     internal sealed class ReconActorReservationContext
     {
@@ -41,20 +35,23 @@ namespace Game.Ai.V2
         public readonly Dictionary<int, MissionIntentKey> ActorToJob = new Dictionary<int, MissionIntentKey>();
         // Non-Recon this-turn claims (raid hosts, defence bodies): never a Recon executor.
         public readonly HashSet<int> HardExcluded = new HashSet<int>();
+        // Provisioning-rejected this turn — matches AllocationSession._rejectedThisTurn. Permanent
+        // for the turn (the allocator will not fund the mission again); retried fresh next turn.
         public readonly Dictionary<MissionIntentKey, ReconJobBlock> JobBlock =
             new Dictionary<MissionIntentKey, ReconJobBlock>();
-        // Incumbent jobs whose provisioning structurally failed this turn — their execution slot is
-        // no longer occupied, so the global room recomputation must not keep counting them.
-        public readonly HashSet<MissionIntentKey> StructurallyRejectedIncumbents = new HashSet<MissionIntentKey>();
+        // Incumbent jobs whose provisioning STRUCTURALLY failed — their execution slot is freed.
+        public readonly HashSet<MissionIntentKey> RejectedIncumbents = new HashSet<MissionIntentKey>();
+        // TRANSIENT: jobs the real Pack just deferred on budget / capacity. Skipped for the current
+        // rematch wave only; cleared when the portfolio materially changes.
+        public readonly HashSet<MissionIntentKey> CurrentWaveBudgetDeferred = new HashSet<MissionIntentKey>();
 
-        // Static-for-the-turn inputs, stashed by Plan so Rematch can rebuild room without re-plumbing.
+        // Static-for-the-turn inputs stashed by Plan so Rematch can rebuild room without re-plumbing.
         public WorldSnapshot Snapshot;
         public AiTurnContext Ctx;
         public PlayerSetupData Player;
         public IReadOnlyList<MissionIntent> ActiveIntents;
         public ActorCommitments ActorCommitments;
         public IReadOnlyList<ReconObjective> FrozenObjectives;
-        public float ReconApBudget;              // AxisBudgetLedger.Balance(Recon) at plan time
         public int ActiveReconExecutions;
 
         public int RemainingGenericObservationRoom;
@@ -69,11 +66,11 @@ namespace Game.Ai.V2
         public ReconJobBlock BlockOf(MissionIntentKey job) =>
             JobBlock.TryGetValue(job, out ReconJobBlock b) ? b : ReconJobBlock.None;
 
-        public void MarkStructural(MissionIntentKey job, bool incumbent)
+        public void MarkRejected(MissionIntentKey job, bool incumbent)
         {
-            JobBlock[job] = ReconJobBlock.StructuralRejectedThisTurn;
+            JobBlock[job] = ReconJobBlock.RejectedThisTurn;
             if (incumbent)
-                StructurallyRejectedIncumbents.Add(job);
+                RejectedIncumbents.Add(job);
         }
 
         public void Reserve(MissionIntentKey job, int actorId, bool stealth, bool ground, bool countsRoom)
@@ -129,8 +126,7 @@ namespace Game.Ai.V2
         // ---- First pass ---------------------------------------------------------------------------
         public static void Plan(ReconActorReservationContext ctxRes, WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, List<MissionProposal> missions, ActorCommitments actorCommitments,
-            IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> frozenObjectives,
-            AxisBudgetLedger apLedger)
+            IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> frozenObjectives)
         {
             if (ctxRes == null || missions == null || missions.Count == 0 || snap?.Self?.Armies == null)
                 return;
@@ -163,7 +159,6 @@ namespace Game.Ai.V2
             ctxRes.ActiveIntents = activeIntents;
             ctxRes.ActorCommitments = actorCommitments;
             ctxRes.FrozenObjectives = frozenObjectives;
-            ctxRes.ReconApBudget = apLedger != null ? Mathf.Max(0f, apLedger.Balance(DesireAxis.Recon)) : float.MaxValue;
 
             // 2. Seed the context. A durable Recon intent's own claimed mover is bound to ITS OWN
             //    job (not blanket-excluded) so the incumbent can still be matched to it.
@@ -193,19 +188,21 @@ namespace Game.Ai.V2
             AssignPass(ctxRes, scoutMissions, null, "plan");
 
             AiDebugLog.Write($"[AI][V2][ReconActor] plan — scoutJobs={scoutMissions.Count} "
-                + $"activeExec={ctxRes.ActiveReconExecutions} reconApBudget={ctxRes.ReconApBudget:0.#} "
+                + $"activeExec={ctxRes.ActiveReconExecutions} "
                 + $"room[genObs={ctxRes.RemainingGenericObservationRoom} genGround={ctxRes.RemainingGenericGroundRoom} "
                 + $"stObs={ctxRes.RemainingStealthObservationRoom} stGround={ctxRes.RemainingStealthGroundRoom} "
                 + $"global={ctxRes.RemainingGlobalGroundActorRoom}] reserved={ctxRes.JobToActor.Count} "
                 + $"dedupDropped={dedupDrop.Count}");
         }
 
-        // ---- Re-pack pass ---------------------------------------------------------------------
-        // Release everything not structurally rejected and not already provisioned, rebuild the
-        // room from scratch, and re-assign with the budget-feasible greedy. Returns true when any
-        // ReservedMoverArmyId changed — the caller must Pack() again.
+        // ---- Re-pack pass -------------------------------------------------------------------------
+        // portfolioChanged — a provisioning success or failure this iteration freed AP / actors, so
+        // budget/capacity deferrals from the LAST (now stale) Pack must be re-evaluated: clear the
+        // transient wave-deferred set and do NOT re-read the stale deferrals. When the portfolio did
+        // NOT change, the last Pack's budget/capacity verdict still stands — fold those jobs into
+        // the wave-deferred set so a cheaper alternative can take their freed scout this wave.
         public static bool Rematch(ReconActorReservationContext ctxRes, List<MissionProposal> missions,
-            ProvisioningSession provSession)
+            ProvisioningSession provSession, TentativeAllocation allocation, bool portfolioChanged)
         {
             if (ctxRes == null || missions == null || ctxRes.Snapshot == null)
                 return false;
@@ -215,35 +212,56 @@ namespace Game.Ai.V2
             if (scoutMissions.Count == 0)
                 return false;
 
-            var before = scoutMissions.ToDictionary(MissionIntentKey.For, m => m.ReservedMoverArmyId);
+            var before = new Dictionary<MissionIntentKey, int?>();
+            foreach (MissionProposal m in scoutMissions)
+                before[MissionIntentKey.For(m)] = m.ReservedMoverArmyId;
+
+            if (portfolioChanged)
+            {
+                ctxRes.CurrentWaveBudgetDeferred.Clear();
+            }
+            else if (allocation?.Deferred != null)
+            {
+                foreach (DeferredEntry d in allocation.Deferred)
+                {
+                    if (d?.Mission == null || d.Mission.Kind != MissionKind.Scout)
+                        continue;
+                    if (d.Reason == DeferReason.InsufficientBudget
+                        || d.Reason == DeferReason.InsufficientPhysical
+                        || d.Reason == DeferReason.CommitmentPoolExhausted
+                        || d.Reason == DeferReason.ExecutionCapacity
+                        || d.Reason == DeferReason.MissionConflict)
+                        ctxRes.CurrentWaveBudgetDeferred.Add(MissionIntentKey.For(d.Mission));
+                }
+            }
 
             foreach (MissionProposal m in scoutMissions)
             {
                 MissionIntentKey job = MissionIntentKey.For(m);
-                if (ctxRes.BlockOf(job) == ReconJobBlock.StructuralRejectedThisTurn)
-                    continue;
+                if (ctxRes.BlockOf(job) != ReconJobBlock.None)
+                    continue;   // provisioning-rejected this turn — stays released
                 if (provSession != null && provSession.AlreadyProvisioned(StableMissionKey.For(m)))
                     continue;   // locked — its actor is claimed, keep the reservation
-                ctxRes.Release(job, IsStealthJob(m), IsGround(m), refundRoom: false); // room is fully rebuilt next
+                ctxRes.Release(job, IsStealthJob(m), IsGround(m), refundRoom: false); // room fully rebuilt next
                 m.ReservedMoverArmyId = null;
             }
 
             RebuildRoom(ctxRes, provSession);
             AssignPass(ctxRes, scoutMissions, provSession, "rematch");
 
-            bool changed = false;
             foreach (MissionProposal m in scoutMissions)
             {
                 before.TryGetValue(MissionIntentKey.For(m), out int? prev);
                 if (prev != m.ReservedMoverArmyId)
-                    changed = true;
+                    return true;
             }
-            return changed;
+            return false;
         }
 
-        // A Scout provisioning miss. STRUCTURAL kinds (the objective is gone / unservable) block the
-        // job permanently this turn; the rest (actor contention / no step / no mover) just release
-        // the actor so a later Rematch can rebind it — they are NOT permanent.
+        // A Scout provisioning miss. The allocator has already put the mission in _rejectedThisTurn
+        // (every provisioning failure disposition except RepriceThisTurn does), so the planner must
+        // NOT keep — or later re-acquire — an actor for it this turn. Structural kinds additionally
+        // free the execution slot; the rest retry fresh next turn.
         public static void RecordProvisionFailure(ReconActorReservationContext ctxRes, MissionProposal mission,
             ProvisionFailureKind kind)
         {
@@ -259,26 +277,16 @@ namespace Game.Ai.V2
             if (mission.ReservedMoverArmyId != null || ctxRes.JobToActor.ContainsKey(job))
                 ctxRes.Release(job, IsStealthJob(mission), IsGround(mission), refundRoom: false);
             mission.ReservedMoverArmyId = null;
+            ctxRes.MarkRejected(job, structural && mission.FromDurableIntent);
 
-            if (structural)
-            {
-                ctxRes.MarkStructural(job, mission.FromDurableIntent);
-                AiDebugLog.Write($"[AI][V2][ReconActor] {StableMissionKey.For(mission)} — {kind} structural; "
-                    + "job blocked this turn, actor + execution slot released");
-            }
-            else
-            {
-                AiDebugLog.Write($"[AI][V2][ReconActor] {StableMissionKey.For(mission)} — {kind}; "
-                    + "actor released for rematch (not a permanent block)");
-            }
+            AiDebugLog.Write($"[AI][V2][ReconActor] {StableMissionKey.For(mission)} — {kind} "
+                + $"{(structural ? "structural" : "transient")}; actor released, job blocked this turn "
+                + "(matches allocator _rejectedThisTurn)");
         }
 
-        // ---- Room ---------------------------------------------------------------------------------
+        // ---- Room ------------------------------------------------------------------------------
         // Room = how many MORE fresh lanes of each class to staff = desired − already-active durable
-        // lanes − fresh lanes already PROVISIONED this turn. AssignPass then decrements as it binds
-        // new fresh reservations. Called with provSession == null from Plan (nothing provisioned
-        // yet) and with the live session from every Rematch (rebuilt from scratch — no verdict is
-        // inherited from a prior Pack).
+        // lanes − fresh lanes already PROVISIONED this turn. Rebuilt from scratch every call.
         private static void RebuildRoom(ReconActorReservationContext ctxRes, ProvisioningSession provSession)
         {
             WorldSnapshot snap = ctxRes.Snapshot;
@@ -288,7 +296,6 @@ namespace Game.Ai.V2
                 ctxRes.ActiveIntents, ctxRes.ActorCommitments, ctxRes.Player,
                 ReconAirReservationRegistry.ForTurn(ctxRes.Player, snap.TurnNumber));
 
-            // Fresh (non-incumbent) Scout lanes already provisioned this turn, by class.
             int pGenObs = 0, pGenGround = 0, pStObs = 0, pStGround = 0;
             if (provSession != null)
                 foreach (ProvisionedMission pm in provSession.Successful.Values)
@@ -328,17 +335,22 @@ namespace Game.Ai.V2
                     FilterObjectives(ctxRes.FrozenObjectives, ground: true, stealth: true),
                     ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal) - activeStealthGround - pStGround);
 
-            // Global = min(HardCap, CombinedDesiredConcurrency) − active durable lanes − fresh lanes
-            // already provisioned. Structurally rejected incumbents no longer occupy a slot
-            // (invalidation frees execution capacity, RECON-01 §7). Never staff past the useful
-            // combined concurrency even though the hard cap alone would allow it (RECON-02).
-            int ceiling = Mathf.Min(ReconConcurrencyPolicy.HardCap, Mathf.Max(1, cap.CombinedDesiredConcurrency));
+            // Global ceiling = min(HardCap, desired concurrency over ALL runnable Recon objectives
+            // — generic AND stealth). cap.CombinedDesiredConcurrency is generic-only and would
+            // under-cap a mixed / all-stealth portfolio. Structurally rejected incumbents free
+            // their slot (RECON-01 §7).
+            var allRunnable = (ctxRes.FrozenObjectives ?? System.Array.Empty<ReconObjective>())
+                .Where(o => o != null && o.BaseValue > 0f)
+                .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey).ToList();
+            int combinedAllDesired = ReconConcurrencyPolicy.DesiredForClass(snap, allRunnable,
+                ReconConcurrencyPolicy.ReconCoverageClass.Combined);
+            int ceiling = Mathf.Min(ReconConcurrencyPolicy.HardCap, Mathf.Max(1, combinedAllDesired));
             int effectiveActive = Mathf.Max(0,
-                ctxRes.ActiveReconExecutions - ctxRes.StructurallyRejectedIncumbents.Count);
+                ctxRes.ActiveReconExecutions - ctxRes.RejectedIncumbents.Count);
             ctxRes.RemainingGlobalGroundActorRoom = Mathf.Max(0, ceiling - effectiveActive - pFreshTotal);
         }
 
-        // ---- Shared assignment (budget-feasible greedy) --------------------------------------
+        // ---- Shared assignment (scarce-first, room-limited — NO private AP model) -------------
         private static void AssignPass(ReconActorReservationContext ctxRes, List<MissionProposal> scoutMissions,
             ProvisioningSession provSession, string phase)
         {
@@ -365,9 +377,8 @@ namespace Game.Ai.V2
                     .ToList();
             }
 
-            // Durable incumbents first so they lock their carried scout before any fresh job can
-            // out-order them on the scarce-first tie-break; then strategic priority (AdmissionRank)
-            // DESC, then fewest eligible actors ASC, then stable key.
+            // Durable incumbents first (lock their carried scout before any fresh job's tie-break),
+            // then strategic priority (AdmissionRank) DESC, then fewest eligible actors ASC, then key.
             scoutMissions.Sort((a, b) =>
             {
                 int c = (a.FromDurableIntent ? 0 : 1).CompareTo(b.FromDurableIntent ? 0 : 1);
@@ -379,9 +390,6 @@ namespace Game.Ai.V2
                 return StableMissionKey.For(a).CompareTo(StableMissionKey.For(b));
             });
 
-            float cumulativeReconAp = 0f;
-            float eps = AiConfigV2.allocatorSliceEpsilon;
-
             foreach (MissionProposal m in scoutMissions)
             {
                 MissionIntentKey job = MissionIntentKey.For(m);
@@ -389,20 +397,15 @@ namespace Game.Ai.V2
                 bool ground = IsGround(m);
                 bool stealth = IsStealthJob(m);
 
-                if (ctxRes.BlockOf(job) == ReconJobBlock.StructuralRejectedThisTurn)
+                if (ctxRes.BlockOf(job) != ReconJobBlock.None
+                    || ctxRes.CurrentWaveBudgetDeferred.Contains(job))
                 {
                     m.ReservedMoverArmyId = null;
                     continue;
                 }
                 if (provSession != null && provSession.AlreadyProvisioned(StableMissionKey.For(m)))
-                {
-                    // Already executed this turn — count its spend, keep whatever the ledger holds.
-                    if (ctxRes.JobToActor.TryGetValue(job, out int done))
-                        cumulativeReconAp += ActorCost(snap, m, Snapshot(snap, done));
-                    continue;
-                }
+                    continue;   // executed this turn — keep whatever the ledger holds
 
-                // Confirm an already-held actor (seeded incumbent) or (re)bind one.
                 int? held = ctxRes.JobToActor.TryGetValue(job, out int h) ? h : (int?)null;
                 if (held.HasValue && !eligible[m].Any(c => c.Army.ArmyId == held.Value))
                 {
@@ -411,7 +414,7 @@ namespace Game.Ai.V2
                     held = null;
                 }
 
-                ScoutMoverCandidate? pick = null;
+                ScoutMoverCandidate? pick;
                 if (held.HasValue)
                 {
                     pick = eligible[m].First(c => c.Army.ArmyId == held.Value);
@@ -425,6 +428,7 @@ namespace Game.Ai.V2
                             + $"(no {(stealth ? "stealth-" : "")}{(ground ? "ground" : "obs")} room / global {ctxRes.RemainingGlobalGroundActorRoom})");
                         continue;
                     }
+                    pick = null;
                     foreach (ScoutMoverCandidate c in eligible[m])
                     {
                         if (ctxRes.ReservedActorIds.Contains(c.Army.ArmyId))
@@ -445,48 +449,18 @@ namespace Game.Ai.V2
                     }
                 }
 
-                float cost = ActorCost(snap, m, pick.Value.Army);
-
-                // Budget-feasible greedy: never hold a scout for a job the Recon axis budget cannot
-                // fund this turn — a cheaper job takes the actor instead. This applies to a durable
-                // incumbent too: an over-budget commitment (the allocator would defer it
-                // CommitmentPoolExhausted) must NOT keep its carried scout pinned; its INTENT
-                // survives via continuity, it just does not execute this turn. Incumbents are only
-                // released, never structurally blocked.
-                if (cumulativeReconAp + cost > ctxRes.ReconApBudget + eps)
-                {
-                    if (held.HasValue || ctxRes.JobToActor.ContainsKey(job))
-                    {
-                        ctxRes.Release(job, stealth, ground, refundRoom: !incumbent);
-                        m.ReservedMoverArmyId = null;
-                    }
-                    AiDebugLog.Write($"[AI][V2][ReconActor] {phase} — {StableMissionKey.For(m)} unreserved "
-                        + $"(cost {cost:0.#} + used {cumulativeReconAp:0.#} > recon budget {ctxRes.ReconApBudget:0.#}"
-                        + $"{(incumbent ? "; incumbent, intent kept" : "")})");
-                    continue;
-                }
-
                 if (!held.HasValue)
                     ctxRes.Reserve(job, pick.Value.Army.ArmyId, stealth, ground, countsRoom: !incumbent);
                 m.ReservedMoverArmyId = pick.Value.Army.ArmyId;
                 m.PreferredMoverArmyId = pick.Value.Army.ArmyId;
                 ApplyReprice(snap, m, pick.Value.Army);
-                cumulativeReconAp += cost;
 
                 AiDebugLog.Write($"[AI][V2][ReconActor] {phase} reserve {StableMissionKey.For(m)} -> #{pick.Value.Army.ArmyId} "
-                    + $"(eligible {eligible[m].Count}, incumbent {(incumbent ? 1 : 0)}, stealth {(stealth ? 1 : 0)}, "
-                    + $"cost {cost:0.#}, usedNow {cumulativeReconAp:0.#}/{ctxRes.ReconApBudget:0.#})");
+                    + $"(eligible {eligible[m].Count}, incumbent {(incumbent ? 1 : 0)}, stealth {(stealth ? 1 : 0)})");
             }
         }
 
-        private static float ActorCost(WorldSnapshot snap, MissionProposal m, ArmySnapshot mover)
-        {
-            if (mover == null || !(m.Target is ScoutMissionTarget target))
-                return m.Requirements?.ApDesired ?? 0f;
-            HexCoord costHex = ExecutionHexFor(snap, mover, target);
-            return ScoutCostModel.PairCost(snap, mover, costHex, target.Stealth == StealthRequirement.Required).RequiredAp;
-        }
-
+        // Once a concrete actor is bound, price the envelope at THAT actor's exact cost.
         private static void ApplyReprice(WorldSnapshot snap, MissionProposal m, ArmySnapshot mover)
         {
             if (mover == null || m?.Requirements == null || !(m.Target is ScoutMissionTarget target))
@@ -510,9 +484,6 @@ namespace Game.Ai.V2
             var vantages = SurveilVantageSelector.Rank(snap, mover, target).ToList();
             return vantages.Count > 0 ? vantages[0].ExecutionHex : target.FocusHex;
         }
-
-        private static ArmySnapshot Snapshot(WorldSnapshot snap, int armyId) =>
-            snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == armyId);
 
         private static List<ReconObjective> FilterObjectives(IReadOnlyList<ReconObjective> objectives,
             bool ground, bool? stealth)
