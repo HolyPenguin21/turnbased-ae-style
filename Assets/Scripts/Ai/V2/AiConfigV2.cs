@@ -897,8 +897,15 @@ namespace Game.Ai.V2
         public const float scoutBaseRoleFit = 1.0f;            // Phase-B Scout RoleFit base, before the CapabilityQualityEvaluator multiplier
         public const float roleVersatilityPerExtraRole = 0.12f;// value per real viable role beyond the first (NOT a Hero class bonus)
         public const float roleVersatilityCap = 0.40f;
-        public const float altUseForegoneFraction = 0.25f;     // AlternativeUseValue = this * max(next-best role score, HoldValue)
-        public const float stratHoldBeatsPlayMaxDemandValue = 40f; // Phase A: a demand with Value below this can be vetoed by HoldValue (P0.2); above it, urgency wins
+        public const float altUseForegoneFraction = 0.25f;     // AlternativeUseValue = this * next-best PLAY role score (Hold is priced only in NetScore)
+        public const float stratHoldBeatsPlayMaxDemandValue = 40f; // legacy — superseded by the urgency ramp below
+        // P0.2 review-r2 — Phase A ranks by NET decision value (play - hold + urgency) and plays
+        // only when it is positive. Urgency ramps with the demand's Value so a real threat / raid
+        // gap materialises even against a high-HoldValue card, while a soft baseline demand adds
+        // ~nothing and can genuinely lose to Hold.
+        public const float stratHoldUrgencyRampLo = 25f;   // demand Value at/under this -> urgency 0
+        public const float stratHoldUrgencyRampHi = 60f;   // demand Value at/over this -> full urgency
+        public const float stratHoldUrgencyMax = 2.0f;     // full urgency bonus added to net decision value
         public const float baselineReadinessHandBodyMinPower = 4f;  // a hand Unit/Hero at/above this AiPower counts as prepared standing force
         public const float baselineReadinessHandBodyActorWeight = 0.5f; // how much a hand-ready body counts toward the combat-actor gap vs a deployed one
 

@@ -295,29 +295,37 @@ namespace Game.Ai.V2
             foreach (var c in candidates)
                 c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
 
+            // AI-MGR-01 P0.2 review-r2 — rank by the opportunity-adjusted NET decision value
+            // (play - hold + urgency), NOT raw play score. So a plan with a slightly lower play
+            // score but a much lower hold value (a plain body vs. a multi-role hero one would
+            // rather keep) wins, and the Hold veto is applied to the plan that is actually best
+            // once holding is priced in. Urgency is folded into the equation (a real threat's
+            // Value lifts every net value) instead of a hard on/off Hold switch.
+            float urgency = UrgencyBonus(demand.Value);
+            float NetDecision(MaterializationPlan p) =>
+                p.Score - (p.UseBreakdown?.HoldValue ?? 0f) + urgency;
+
             var ranked = candidates
-                .OrderByDescending(c => c.plan.Score)
+                .OrderByDescending(c => NetDecision(c.plan))
+                .ThenByDescending(c => c.plan.Score)
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
             LogQualityChoice(demand, ranked);
             MaterializationPlan win = ranked[0].plan;
             if (win.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {win.StableKey} "
-                    + $"role={win.UseRole} [{win.UseBreakdown.ToCompact()}]");
+                    + $"role={win.UseRole} net {NetDecision(win).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"[{win.UseBreakdown.ToCompact()}]");
 
-            // AI-MGR-01 P0.2 — Hold is a real competitor in Phase A. For a SOFT demand (low Value —
-            // e.g. baseline force readiness), if the best chain's play value does not beat the
-            // card's HoldValue, keep the card in hand: StrategicManager logs "no feasible useful
-            // chain" and the demand stays residual. An urgent demand (Value at/above
-            // stratHoldBeatsPlayMaxDemandValue — a real threat / raid gap) is never vetoed by Hold.
-            float holdVal = win.UseBreakdown?.HoldValue ?? 0f;
-            if (demand.Value < AiConfigV2.stratHoldBeatsPlayMaxDemandValue
-                && win.Score <= holdVal + AiConfigV2.allocatorSliceEpsilon)
+            // Hold wins when the best plan's net decision value is not positive: keep the card in
+            // hand, the demand stays residual (StrategicManager logs it).
+            if (NetDecision(win) <= AiConfigV2.allocatorSliceEpsilon)
             {
                 AiDebugLog.Write($"[AI][V2]   strat.A hold — {demand}: best chain {win.StableKey} "
                     + $"play {win.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"<= hold {holdVal.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}; "
-                    + "keep card in hand");
+                    + $"hold {(win.UseBreakdown?.HoldValue ?? 0f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"urgency {urgency.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"net {NetDecision(win).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} <= 0; keep card in hand");
                 return null;
             }
             return (ranked[0].plan, ranked[0].followupAp);
@@ -706,6 +714,17 @@ namespace Game.Ai.V2
 
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
+
+        // AI-MGR-01 P0.2 review-r2 — urgency enters the Play-vs-Hold equation (not a hard switch):
+        // a demand's Value ramps a bonus added to every candidate's net decision value, so a real
+        // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
+        // soft baseline demand adds ~nothing and can genuinely lose to Hold.
+        private static float UrgencyBonus(float demandValue)
+        {
+            float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
+                / Mathf.Max(0.01f, AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
+            return t * AiConfigV2.stratHoldUrgencyMax;
+        }
 
         // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the

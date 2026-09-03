@@ -388,6 +388,41 @@ Base impl `e2d76ee`. Review found the evaluator was not yet truly unified. Fix c
    synthesis. AntiAir works off the real `IsAir` classification; AntiArmor contributes 0 until the
    snapshot carries enemy unit composition.
 
+### Review round 2 (fixes on top of `4385dc6`)
+
+- **P1.6 Hold double-count** — `AlternativeUseValue` on the Phase-B winner is now the next-best
+  *PLAY* role only; Hold is priced exclusively in `NetScore`. And `HoldValue` is a property of the
+  CARD: `win.HoldValue = max over all viable roles` (an AA-capable unit played as CombatBody still
+  carries its "keep as a rare AA counter" hold value).
+- **P0.2 net ordering + urgency in the equation** — Phase A now RANKS candidates by the
+  opportunity-adjusted net decision value `Score − HoldValue + UrgencyBonus(demand.Value)` and
+  plays only when it is `> 0`. So a plan with a lower play score but a much lower hold value wins,
+  and the reverse trap (top-by-raw-score gets Hold-vetoed while a great B is never considered) is
+  gone. The hard `Value ≥ 40` switch is replaced by `stratHoldUrgency*` — a real threat lifts
+  every net value; a soft baseline demand adds ~nothing.
+- **P1.5 Phase A parity for real** — one `RoleFit(role, …)` path used by BOTH phases. Phase A no
+  longer relies on `CapabilityQualityEvaluator.QualityMultiplier` returning 1f for every non-Scout
+  role: a commandRating-10 hero now out-fits a commandRating-2 hero in a Phase A Hero demand
+  (`HeroLeadershipFit` + AiPower marginal readiness).
+- **P1.3 scarcity-aware assignment** — the instance deconfliction now orders by *fewest
+  collision-free alternatives first* (mirrors the recon actor-reservation pattern): a demand whose
+  best chain has NO alternative claims its cards before a higher-priority demand that has a
+  fallback, so both get satisfied (`D1{A,B}` + `D2{A}` → `D2→A`, `D1→B`). Full max-weight
+  assignment is still a further refinement.
+- **Standalone Equipment real delta** — `EquipmentUpgradeUtilityFor(equipDef, UnitData host)` runs
+  `EquipmentSystem.Predict` against the live carrier's stats; `NonCombatCardPlayer.BestEquipmentHost`
+  picks the `(equipment, host)` pair that maximises that predicted before/after delta, and the
+  same delta is the RoleFit — not the carrier's raw power. A +Range trinket and a +Attack/+Defense
+  item on the same unit now score differently.
+- **P0.1 aviation bypass removed** — the Phase-B non-combat threshold gate no longer excepts
+  Aviation, and the dedicated aviation slot is gated on the evaluator score. The evaluator, not
+  the card type, decides whether a stored aircraft is worth playing.
+
+Still open (need infrastructure, not tuning): P1.7 full AA/AT/Mobile/Support coverage vector
+(snapshot has no deployed-force composition); P0.1 generated non-combat cards (needs a
+generate→aviation/base executor path); P0.1 full Phase-B single-candidate-set merge (the
+materialization loop still runs before the non-combat lane, though both now score on one scale).
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

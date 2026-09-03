@@ -180,23 +180,23 @@ namespace Game.Ai.V2
 
                 if (def.cardType == CardType.Equipment && def.equipment != null)
                 {
-                    (UnitData unit, HexCoord hex, float hostPower)? host = BestEquipmentHost(player, root, card);
+                    (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card);
                     if (host == null)
                     {
                         blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
                         continue;
                     }
-                    // Strategic proxy: a stronger carrier gets more out of the same equipment. Kills
-                    // the old "first legal host by name" pick, so renaming a unit no longer changes
-                    // the AI's attachment decision.
-                    float upgrade = UnityEngine.Mathf.Clamp(
-                        host.Value.hostPower / AiConfigV2.defencePerBodyPowerEstimate, 0.15f, 1.5f);
+                    // review-r2 — host is chosen by the REAL predicted before/after stat delta on
+                    // that carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor), not by raw
+                    // host power, and that same delta is the RoleFit. Renaming a unit does not
+                    // change the pick; a small +Range item and a big +Attack/+Defense item on the
+                    // same carrier now score differently.
                     Consider(new NonCombatPlay
                     {
                         Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                         TargetHex = host.Value.hex,
-                        Score = Score(snap, player, PlayKind.Equipment, card, hand, upgrade),
-                        Explain = $"{def.displayName} -> {host.Value.unit.Name}",
+                        Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade),
+                        Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
                     });
                     continue;
                 }
@@ -299,12 +299,13 @@ namespace Game.Ai.V2
                         yield return h;
         }
 
-        // Strategic host pick: the strongest legal carrier (an equipped unit contributes more the
-        // more combat weight it already carries), name only as the final deterministic tie-break.
-        private static (UnitData unit, HexCoord hex, float hostPower)? BestEquipmentHost(
+        // review-r2 — the legal (host) that maximises the REAL predicted equipment delta on that
+        // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor via EquipmentSystem.Predict),
+        // name only as the final deterministic tie-break.
+        private static (UnitData unit, HexCoord hex, float upgrade)? BestEquipmentHost(
             PlayerSetupData player, PlayerRoot root, CardData equipCard)
         {
-            (UnitData unit, HexCoord hex, float hostPower)? best = null;
+            (UnitData unit, HexCoord hex, float upgrade)? best = null;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army?.Members == null)
@@ -315,11 +316,11 @@ namespace Game.Ai.V2
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
-                    float power = AiPower.ToPowerUnit(u).BasePower;
-                    if (best == null || power > best.Value.hostPower + 0.0001f
-                        || (System.Math.Abs(power - best.Value.hostPower) <= 0.0001f
+                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(equipCard.Definition, u);
+                    if (best == null || delta > best.Value.upgrade + 0.0001f
+                        || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f
                             && string.CompareOrdinal(u.Name ?? "", best.Value.unit.Name ?? "") < 0))
-                        best = (u, army.Hex, power);
+                        best = (u, army.Hex, delta);
                 }
             }
             return best;

@@ -222,13 +222,19 @@ namespace Game.Ai.V2
                                && (projected & TraitPreference.Stealth) != 0
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
 
-            // P1.4/P1.5 — RoleFit is the pure capability-fit: the demand-quality multiplier applied
-            // to the target-hex fit. Cost, placement, chain-step and generation chance live in
-            // their own single terms below, never folded in here.
-            float roleMult = CapabilityQualityEvaluator.QualityMultiplier(
-                plan, demand, inv, referenceMoveMax, hasCompetingHeroDemand,
+            // P1.4/P1.5 review-r2 — RoleFit is the pure capability-fit from the ONE shared RoleFit
+            // path (Scout quality profile / hero combat-leadership / AiPower marginal readiness /
+            // equipment delta), multiplied by the target-hex fit. Cost, placement, chain-step and
+            // generation chance live in their own single terms below.
+            CardDefinition pdef = PlanBaseDef(plan);
+            bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
+            bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? pdef?.grantedAbilities);
+            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
+            float roleFitCore = RoleFit(role, plan, inv, recceCard, heroCard,
+                plan.ProjectedAbilities ?? pdef?.grantedAbilities, snap, 0f, equipUpgrade,
+                demand, referenceMoveMax, hasCompetingHeroDemand,
                 out MaterializationQualityBreakdown qbd);
-            bd.RoleFit = fit * roleMult;
+            bd.RoleFit = fit * roleFitCore;
 
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind);
             bd.NextTurnPotential = NextTurnPotential(plan, role);
@@ -292,15 +298,20 @@ namespace Game.Ai.V2
             });
 
             StrategicCardUseCandidate win = scored[0];
-            // P1.6 — AlternativeUseValue = the opportunity cost of committing the card to THIS role:
-            // a fraction of the best foregone alternative (next-best role score, or Hold if higher).
-            float secondBest = scored.Count > 1 ? scored[1].Breakdown.Total : 0f;
-            float foregone = Mathf.Max(secondBest, win.HoldValue);
-            float altCost = Mathf.Max(0f, foregone) * AiConfigV2.altUseForegoneFraction
-                            + Mathf.Max(0f, -win.Breakdown.AlternativeUseValue); // keep the scarce-body floor
+            // P1.6 review-r2 — ONE contract: AlternativeUseValue is the cost of the best foregone
+            // *other PLAY role* only; Hold is priced exclusively in NetScore, never here (double
+            // count). Keep the scarce-body floor from the per-role pass.
+            float secondBestPlay = scored.Count > 1 ? scored[1].Breakdown.Total : 0f;
+            float altCost = Mathf.Max(0f, secondBestPlay) * AiConfigV2.altUseForegoneFraction
+                            + Mathf.Max(0f, -win.Breakdown.AlternativeUseValue);
             win.Breakdown.AlternativeUseValue = -altCost;
             win.Breakdown.Total = SumTotal(win.Breakdown);
             win.TotalUseScore = win.Breakdown.Total;
+            // P1.6 review-r2 — HoldValue is a property of the CARD, not of the role we happen to be
+            // scoring. Take the strongest reason-to-hold across every viable role (so an AA-capable
+            // unit chosen as CombatBody still carries its "keep as a rare AA counter" hold value).
+            win.HoldValue = scored.Max(s => s.HoldValue);
+            win.Breakdown.HoldValue = win.HoldValue;
             return win;
         }
 
@@ -316,7 +327,8 @@ namespace Game.Ai.V2
                 ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
-            bd.RoleFit = RoleFit(role, plan, inv, recce, hero, projected, snap, versatility, equipmentUpgrade);
+            bd.RoleFit = RoleFit(role, plan, inv, recce, hero, projected, snap, versatility,
+                equipmentUpgrade, null, 0, false, out _);
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
             // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
             bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role);
@@ -347,20 +359,27 @@ namespace Game.Ai.V2
             };
         }
 
-        // One RoleFit path for both phases (P1.5). Characteristic-driven; the Hero card class is
-        // never a term. Phase B Scout uses the SAME CapabilityQualityEvaluator profile as Phase A
-        // through a neutral synthetic scout demand.
+        // The ONE RoleFit path, used by BOTH phases (P1.5 review-r2). Characteristic-driven; the
+        // Hero card class is never a term. For Scout it runs CapabilityQualityEvaluator against the
+        // REAL demand when one exists (Phase A) or a neutral synthetic one (Phase B); for
+        // Hero/CombatBody it returns the AiPower marginal readiness PLUS the canonical hero
+        // combat-leadership fit — so a commandRating-10 hero now out-fits a commandRating-2 hero in
+        // Phase A too (previously QualityMultiplier returned 1f for every non-Scout role).
         private static float RoleFit(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
-            float equipmentUpgrade)
+            float equipmentUpgrade, AxisDemand demand, int referenceMoveMax, bool hasCompetingHeroDemand,
+            out MaterializationQualityBreakdown qbd)
         {
+            qbd = MaterializationQualityBreakdown.Neutral();
             switch (role)
             {
                 case IntendedRole.Scout:
                 {
-                    var synthetic = new AxisDemand { Capability = CapabilityKind.ScoutCapability };
+                    AxisDemand d = demand != null && demand.Capability == CapabilityKind.ScoutCapability
+                        ? demand
+                        : new AxisDemand { Capability = CapabilityKind.ScoutCapability };
                     float mult = CapabilityQualityEvaluator.QualityMultiplier(
-                        plan, synthetic, inv, 0, false, out _);
+                        plan, d, inv, referenceMoveMax, hasCompetingHeroDemand, out qbd);
                     return AiConfigV2.scoutBaseRoleFit * mult;
                 }
                 case IntendedRole.EquipmentUpgrade:
@@ -751,7 +770,6 @@ namespace Game.Ai.V2
             EquipmentGrant grant = eq?.equipment;
             if (host == null || grant == null)
                 return 0f;
-
             var before = new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = host.attack,
@@ -765,8 +783,39 @@ namespace Game.Ai.V2
                 [EquipmentStat.CommandRating] = host.commandRating,
                 [EquipmentStat.Fate] = host.fate,
             };
-            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, host.grantedAbilities);
+            return ScoreEquipmentDelta(grant, before, host.grantedAbilities, host.cardType == CardType.Hero);
+        }
 
+        // P1(review-r2) — standalone Equipment scored by the REAL predicted before/after delta on a
+        // concrete live host, not by the host's raw power. NonCombatCardPlayer picks the (equipment,
+        // host) pair that maximises this.
+        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, UnitData host)
+        {
+            EquipmentGrant grant = equipDef?.equipment;
+            if (grant == null || host == null)
+                return 0f;
+            var before = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = host.Attack,
+                [EquipmentStat.Defense] = host.Defense,
+                [EquipmentStat.Resistance] = host.Resistance,
+                [EquipmentStat.Range] = host.Range,
+                [EquipmentStat.HitPoints] = host.HitPointsMax,
+                [EquipmentStat.MoveMax] = host.MoveMax,
+                [EquipmentStat.Initiative] = host.Initiative,
+                [EquipmentStat.ActivationApCost] = host.ActivationApCost,
+                [EquipmentStat.CommandRating] = host.CommandRating,
+                [EquipmentStat.Fate] = host.Fate,
+            };
+            IReadOnlyList<string> ab = host.Abilities != null
+                ? new List<string>(host.Abilities) : (IReadOnlyList<string>)System.Array.Empty<string>();
+            return ScoreEquipmentDelta(grant, before, ab, host.IsHero);
+        }
+
+        private static float ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
+            IReadOnlyList<string> hostAbilities, bool isHero)
+        {
+            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
                 predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value) ? value : before[stat];
 
@@ -776,7 +825,7 @@ namespace Game.Ai.V2
                 + Mathf.Max(0, After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
                 + Mathf.Max(0, After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
                 + Mathf.Max(0, After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
-            if (host.cardType == CardType.Hero)
+            if (isHero)
                 combatDelta += Mathf.Max(0, After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
                                * AiConfigV2.powerHeroFateWeight;
 
@@ -789,7 +838,7 @@ namespace Game.Ai.V2
             int addedAbilities = 0;
             if (predicted.Abilities != null)
                 foreach (string a in predicted.Abilities)
-                    if (host.grantedAbilities == null || !host.grantedAbilities.Contains(a))
+                    if (hostAbilities == null || !hostAbilities.Contains(a))
                         addedAbilities++;
             tactical += addedAbilities * 0.15f;
 

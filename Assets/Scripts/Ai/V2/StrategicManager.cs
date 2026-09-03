@@ -167,19 +167,39 @@ namespace Game.Ai.V2
                         feasible.Add(new PhaseACandidate(state, pick.Value.plan, pick.Value.followupAp));
                 }
 
-                // AI-MGR-01 P1.3 — resolve physical card-instance contention BEFORE arbitration, so
-                // two demands never both count one hand card / generation source as available
-                // capacity. Highest-priority demand claims its best chain's instances first; a lower
-                // demand whose best chain collides re-picks the best chain AVOIDING the claimed
-                // instances (one bounded re-pick each). A demand with no collision-free chain is
-                // left for the next iteration.
+                // AI-MGR-01 P1.3 (review-r2) — resolve physical card-instance contention BEFORE
+                // arbitration, SCARCITY-AWARE (mirrors the recon actor-reservation pattern:
+                // priority → fewest collision-free alternatives → assign). A demand whose best
+                // chain has NO alternative claims its cards first, so a higher-priority demand with
+                // a fallback re-picks around it and both demands get satisfied. One bounded re-pick
+                // each; a demand with no collision-free chain is left for the next iteration.
                 if (feasible.Count > 1)
                 {
                     var claimedCards = new HashSet<CardData>();
                     var claimedGen = new HashSet<string>();
                     var deconflicted = new List<PhaseACandidate>();
+                    // "Has an alternative" = a feasible chain exists that avoids this candidate's
+                    // own hand cards / generation source (probed with nothing else claimed yet).
+                    bool HasAlternative(PhaseACandidate c)
+                    {
+                        var exCards = new HashSet<CardData>(PlanCards(c.Plan));
+                        var exGen = new HashSet<string>();
+                        if (c.Plan.Generation != null && !string.IsNullOrEmpty(c.Plan.Generation.CardKey))
+                            exGen.Add(c.Plan.Generation.CardKey);
+                        if (exCards.Count == 0 && exGen.Count == 0)
+                            return true;
+                        float rv = ledger.ReservedFollowup(c.State.Demand.RequestingAxis);
+                        bool ch = c.State.Demand.Capability == CapabilityKind.ScoutCapability
+                            && active.Any(o => !ReferenceEquals(o, c.State)
+                                && o.Remaining > AiConfigV2.allocatorSliceEpsilon
+                                && o.Demand.Capability == CapabilityKind.Hero);
+                        return MaterializationCandidateBuilder.BestForDemand(snap, player, root, hand, ctx,
+                            c.State.Demand, ledger, commitments, rv, result.Reservation, inv, ch,
+                            exCards, exGen) != null;
+                    }
                     foreach (PhaseACandidate cand in feasible
-                        .OrderByDescending(ArbitrationScore)
+                        .OrderBy(c => HasAlternative(c) ? 1 : 0)
+                        .ThenByDescending(ArbitrationScore)
                         .ThenByDescending(c => c.State.Demand.Value)
                         .ThenBy(c => c.State.Ordinal)
                         .ToList())
@@ -888,13 +908,12 @@ namespace Game.Ai.V2
                 if (play == null)
                     break;
 
-                // AI-MGR-01 P0.1 — same admission line the materialization-surplus loop uses. A
-                // low-value non-combat card (e.g. a marginal standalone Equipment) is now deferred
-                // instead of auto-played just because it is the best of its lane. Aviation / Base /
-                // Facility score well clear of this; a stored aircraft still gets its dedicated
-                // slot below regardless.
-                if (play.Score < AiConfigV2.surplusUtilityThreshold
-                    && play.Kind != NonCombatCardPlayer.PlayKind.Aviation)
+                // AI-MGR-01 P0.1 (review-r2) — the SAME admission line the materialization-surplus
+                // loop uses, with NO card-type exception: a low-value non-combat card (a marginal
+                // standalone Equipment, or an Aviation card with no strategic value) is deferred,
+                // not auto-played. The dedicated aviation slot below is likewise gated on score now
+                // — the evaluator, not the card type, decides whether it is worth playing.
+                if (play.Score < AiConfigV2.surplusUtilityThreshold)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.B non-combat — defer {play.Kind} {play.Explain} "
                         + $"score {F(play.Score)} < threshold {F(AiConfigV2.surplusUtilityThreshold)}; stop");
@@ -939,15 +958,15 @@ namespace Game.Ai.V2
                 }
             }
 
-            // §P0 — a DEDICATED final slot for a playable Aviation card. The generic reserve above
-            // can be fully consumed by higher-scored Base/Facility (BestPlay ranks Base 55 >
-            // Facility 45 > Aviation 40); a stored aircraft is what makes AirRecon possible, so if
-            // AP/resources still allow it, guarantee Aviation its one play regardless.
+            // §P0 — a DEDICATED final slot for a playable Aviation card that the shared action
+            // budget may not have reached, so a stored aircraft (what makes AirRecon possible) is
+            // not starved by a run of higher-scored Base/Facility. review-r2: it is still GATED on
+            // the evaluator score — the aircraft gets its slot only if it is actually worth playing.
             if (!aviationPlayed)
             {
                 NonCombatCardPlayer.NonCombatPlay avia = NonCombatCardPlayer.BestPlay(
                     snap, player, root, hand, ctx, out _, NonCombatCardPlayer.PlayKind.Aviation);
-                if (avia != null)
+                if (avia != null && avia.Score >= AiConfigV2.surplusUtilityThreshold)
                 {
                     result.MaterializationAttempts++;
                     if (NonCombatCardPlayer.Execute(avia, snap, player, root, hand, ctx,
