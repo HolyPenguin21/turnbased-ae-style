@@ -327,6 +327,32 @@ namespace Game.Ai.V2
         }
     }
 
+    // R3 review fix — the reservation prepass probes a route WITHOUT owning the live sortie state /
+    // registries the executor updates between actors, so identity exclusion and provisional
+    // (reserved-but-not-launched) sector coverage must be passed to the planner EXPLICITLY. Both
+    // the executor and the prepass now feed the scorer one unambiguous context.
+    internal sealed class AirReconScoringContext
+    {
+        // The sortie whose own recent footprint stamps must NOT read as "a repeat by another
+        // sortie". -1 = exclude nothing (a not-yet-launched storage candidate).
+        public int ExcludeSortieId = -1;
+        // Wedges (from our Citadel) an air slot accepted EARLIER in the SAME reservation prepass
+        // has claimed but not yet launched — invisible to the live ReconAssignment scan, so they
+        // are added to the candidate's sector-coverage count here.
+        public IReadOnlyList<ReconSector> ProvisionalWedgeClaims;
+
+        public int ProvisionalClaimsIn(ReconSector wedge)
+        {
+            if (ProvisionalWedgeClaims == null)
+                return 0;
+            int n = 0;
+            for (int i = 0; i < ProvisionalWedgeClaims.Count; i++)
+                if (ProvisionalWedgeClaims[i] == wedge)
+                    n++;
+            return n;
+        }
+    }
+
     internal readonly struct AirReconRouteInputs
     {
         public readonly PlayerSetupData Player;

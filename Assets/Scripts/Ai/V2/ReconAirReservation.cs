@@ -158,6 +158,13 @@ namespace Game.Ai.V2
             int reservedEnergyThisPass = 0;
             int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
 
+            // R3 review fix — wedges (from our Citadel) reserved by an accepted STORAGE launch this
+            // pass. They have no live army yet, so the next SlotWouldFly probe would not see them;
+            // feeding them forward stops two reserved launch sorties both claiming one wedge and
+            // producing a GuaranteedObservationLanes count that collapses in execution.
+            HexCoord citadelHex = snap?.Self != null ? snap.Self.Citadel : default;
+            var provisionalWedges = new List<ReconSector>();
+
             // Airborne recon wings first. They consume an executor slot regardless, and their owed
             // recovery AP/Energy is ALWAYS protected. NOTE: EnergyBudgetBase already netted out the
             // ReconAirEnergyPolicy "committed" term, which INCLUDES every unactivated in-flight
@@ -178,7 +185,8 @@ namespace Game.Ai.V2
                 state.ProtectedEnergy += wing.Energy;
                 apLeft -= wing.Ap;
 
-                if (apLeft >= 0 && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass))
+                if (apLeft >= 0 && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass,
+                        provisionalWedges, out _))
                 {
                     state.ReservedAirborneWings++;
                     if (wing.ActorId.HasValue)
@@ -202,7 +210,8 @@ namespace Game.Ai.V2
                     launchRejected++;
                     continue;   // executor moves on to the next candidate in order
                 }
-                if (!SlotWouldFly(player, root, ctx, snap, mode, slot, reservedEnergyThisPass))
+                if (!SlotWouldFly(player, root, ctx, snap, mode, slot, reservedEnergyThisPass,
+                        provisionalWedges, out HexCoord slotChosenHex))
                 {
                     launchRejected++;
                     continue;
@@ -218,6 +227,13 @@ namespace Game.Ai.V2
                     state.ReservedAirActorIds.Add(slot.ActorId.Value);
                 else
                     state.ReservedAirfieldHexes.Add(slot.AirfieldHex);
+                // Every accepted LAUNCH slot (ready wing on its airfield OR hangar subset) has no
+                // live ReconAssignment during the prepass — it only gets one when it actually flies
+                // in the executor — so the live wedge scan cannot see it. Record its chosen wedge so
+                // the next SlotWouldFly probe does. The airborne-wings loop above is exempt: those
+                // wings already hold a ReconAssignment and are counted live.
+                if (ctx?.Map != null)
+                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, slotChosenHex));
             }
 
             state.GuaranteedObservationLanes = state.ReservedAirborneWings + state.ReservedLaunchSorties;
@@ -236,21 +252,29 @@ namespace Game.Ai.V2
         // Energy already reserved by earlier slots this pass folded in so several candidates cannot
         // each pass against the full stockpile.
         private static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot, int committedEnergyThisPass)
+            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot, int committedEnergyThisPass,
+            IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
         {
+            chosenHex = default;
             if (ctx?.Map == null)
                 return true; // bare harness — leave the final gate to the executor
 
             ReconAirStepPlanner.StepChoice? choice;
             int launchEnergy;
             int excludeArmyId;
+            // R3 review fix — probe with the SAME scoring semantics the executor gets: exclude this
+            // sortie's own footprint from "recent air coverage by another sortie", and see the air
+            // slots this pass already reserved (but has not launched) as sector coverage.
+            var scoringCtx = new AirReconScoringContext { ProvisionalWedgeClaims = provisionalWedges };
 
             if (slot.ActorId.HasValue)
             {
                 ArmyData wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
                 if (wing == null)
                     return false;
-                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber);
+                scoringCtx.ExcludeSortieId =
+                    ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState st) ? st.SortieId : -1;
+                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, null, scoringCtx);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
                 excludeArmyId = wing.Id;
             }
@@ -263,15 +287,18 @@ namespace Game.Ai.V2
                 if (subset.Count == 0 || !AiAviationSupport.CanAffordLaunch(root, player, subset))
                     return false;
                 var candidate = new AirStrikeTask.LaunchCandidate(slot.AirfieldHex, null, subset);
-                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, mode, ctx.TurnNumber);
+                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, mode, ctx.TurnNumber, scoringCtx);
                 launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
                 excludeArmyId = -1;
             }
 
             if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 return false;
-            return ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map, launchEnergy, choice.Value.Score,
-                excludeArmyId, committedEnergyThisPass).Allowed;
+            if (!ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map, launchEnergy, choice.Value.Score,
+                    excludeArmyId, committedEnergyThisPass).Allowed)
+                return false;
+            chosenHex = choice.Value.Hex;
+            return true;
         }
 
         // Called after TaskExecutor's terminal air fallback — drop the resource protection so

@@ -60,7 +60,8 @@ namespace Game.Ai.V2
         internal const float MinimumUsefulScore = AiConfigV2.airReconMinimumUsefulScore;
 
         public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
-            WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null)
+            WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null,
+            AirReconScoringContext scoringCtx = null)
         {
             if (player == null || ctx?.Map == null || airArmy == null || snapshot?.Self == null
                 || !AviationRules.IsValidAirArmy(airArmy) || airArmy.CurrentMovement <= 0)
@@ -101,7 +102,7 @@ namespace Game.Ai.V2
                     ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
                 StepChoice? c = BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
                     vision, routeCost, requiredTurns, unlandedEnds, activationAp, activationEnergy,
-                    anchors, snapshot, outbound, ret, sortieState, airArmy.Id);
+                    anchors, snapshot, outbound, ret, sortieState, airArmy.Id, scoringCtx);
                 if (c.HasValue)
                     choices.Add(c.Value);
             }
@@ -120,7 +121,8 @@ namespace Game.Ai.V2
         // but prove the whole sortie using the storage-aware aviation planners. This keeps launch
         // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
-            AirStrikeTask.LaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn)
+            AirStrikeTask.LaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
+            AirReconScoringContext scoringCtx = null)
         {
             if (player == null || ctx?.Map == null || snapshot?.Self == null
                 || candidate.ExistingArmy != null || candidate.Aircraft == null || candidate.Aircraft.Count == 0)
@@ -157,7 +159,7 @@ namespace Game.Ai.V2
                     ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
                 StepChoice? c = BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
                     h, landing, vision, routeCost, requiredTurns, unlandedEnds, activationAp,
-                    activationEnergy, anchors, snapshot, outbound, ret, null, -1);
+                    activationEnergy, anchors, snapshot, outbound, ret, null, -1, scoringCtx);
                 if (c.HasValue)
                     choices.Add(c.Value);
             }
@@ -181,7 +183,8 @@ namespace Game.Ai.V2
             int routeCost, int requiredTurns, int requiredUnlandedEnds, float activationAp,
             float activationEnergy, AirReconAnchorSet anchors, WorldSnapshot snapshot,
             IReadOnlyList<HexCoord> outboundHexes, IReadOnlyList<HexCoord> returnHexes,
-            ReconAirSortieState sortieState = null, int moverArmyId = -1)
+            ReconAirSortieState sortieState = null, int moverArmyId = -1,
+            AirReconScoringContext scoringCtx = null)
         {
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
@@ -190,11 +193,20 @@ namespace Game.Ai.V2
             // (air sortie OR ground scout with a live ReconAssignment) is placed in its wedge FROM
             // OUR CITADEL using its LIVE ArmyRegistry position; the candidate's wedge is measured
             // the same way. Idle Recce (no assignment) is not counted. Storage launches get a real
-            // count too (moverArmyId -1 simply excludes nobody).
+            // count too (moverArmyId -1 simply excludes nobody). R3 review fix — add air slots the
+            // reservation prepass reserved earlier this pass but has not launched yet (invisible to
+            // the live scan) so a second reserved sortie is not scored as if the first didn't exist.
             HexCoord citadel = snapshot?.Self != null ? snapshot.Self.Citadel : from;
             ReconSector stepSector = ReconDirectionModel.Sector(citadel, h);
-            int sectorClaims = CountAssignedReconActorsInWedge(player, citadel, stepSector, moverArmyId);
-            int excludeSortieId = sortieState?.SortieId ?? -1;
+            int sectorClaims = CountAssignedReconActorsInWedge(player, citadel, stepSector, moverArmyId)
+                + (scoringCtx?.ProvisionalClaimsIn(stepSector) ?? 0);
+            // R3 review fix — identity exclusion is EXPLICIT: the prepass probe has no live
+            // sortieState, so without a passed context an airborne wing's continuation would score
+            // its own previous-turn footprint as another sortie's coverage. Context wins; the
+            // executor (which owns sortieState) falls back to it.
+            int excludeSortieId = scoringCtx != null && scoringCtx.ExcludeSortieId >= 0
+                ? scoringCtx.ExcludeSortieId
+                : sortieState?.SortieId ?? -1;
 
             var inputs = new AirReconRouteInputs(player, map, mode, turn, from, h, h, landing,
                 outboundHexes, returnHexes, vision, routeCost, requiredTurns, requiredUnlandedEnds,

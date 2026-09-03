@@ -165,11 +165,18 @@ namespace Game.Ai.V2
     //  neighbours of its next candidate step), while two different aircraft — including a second
     //  wing the same turn — still can't grind the same ground. Turn-scoped by the same
     //  airReconTargetCooldownTurns window V1's AirReconTargets uses; never marks a hex observed.
+    //
+    //  R3 review fix — coverage is stored PER SORTIE per hex (sortieId -> lastTurn), not
+    //  last-writer-wins. A single (turn, sortieId) cell meant sortie B footprinting a hex sortie A
+    //  had just swept ERASED A's evidence; B then excluding its own id hid the fact the hex was
+    //  recently covered at all. Keeping every recent distinct sortie source makes "a DIFFERENT
+    //  sortie still counts" actually hold. Sources older than the cooldown are pruned lazily.
     // ===========================================================================================
     internal static class AirReconCoverageRegistry
     {
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, (int turn, int sortieId)>> ByPlayer =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, (int turn, int sortieId)>>();
+        // player -> hex -> (sortieId -> last turn that sortie air-observed the hex)
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, Dictionary<int, int>>> ByPlayer =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, Dictionary<int, int>>>();
 
         public static void ClearAll() => ByPlayer.Clear();
 
@@ -177,21 +184,36 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
-            if (!ByPlayer.TryGetValue(player, out Dictionary<HexCoord, (int turn, int sortieId)> byHex))
-                ByPlayer[player] = byHex = new Dictionary<HexCoord, (int turn, int sortieId)>();
-            byHex[hex] = (turn, sortieId);
+            if (!ByPlayer.TryGetValue(player, out Dictionary<HexCoord, Dictionary<int, int>> byHex))
+                ByPlayer[player] = byHex = new Dictionary<HexCoord, Dictionary<int, int>>();
+            if (!byHex.TryGetValue(hex, out Dictionary<int, int> bySortie))
+                byHex[hex] = bySortie = new Dictionary<int, int>();
+            bySortie[sortieId] = turn;
+            if (bySortie.Count > 1)
+            {
+                List<int> stale = null;
+                foreach (KeyValuePair<int, int> kv in bySortie)
+                    if (turn - kv.Value >= AiConfig.airReconTargetCooldownTurns)
+                        (stale ??= new List<int>()).Add(kv.Key);
+                if (stale != null)
+                    foreach (int s in stale)
+                        bySortie.Remove(s);
+            }
         }
 
-        // True when `hex` was air-observed within `cooldownTurns` by a sortie OTHER than
+        // True when `hex` was air-observed within `cooldownTurns` by ANY sortie OTHER than
         // `excludeSortieId` (pass -1 to exclude nothing — e.g. a not-yet-launched storage candidate).
         public static bool RecentlyCoveredByOther(PlayerSetupData player, HexCoord hex, int currentTurn,
             int cooldownTurns, int excludeSortieId)
         {
-            return player != null
-                && ByPlayer.TryGetValue(player, out Dictionary<HexCoord, (int turn, int sortieId)> byHex)
-                && byHex.TryGetValue(hex, out (int turn, int sortieId) e)
-                && e.sortieId != excludeSortieId
-                && currentTurn - e.turn < cooldownTurns;
+            if (player == null
+                || !ByPlayer.TryGetValue(player, out Dictionary<HexCoord, Dictionary<int, int>> byHex)
+                || !byHex.TryGetValue(hex, out Dictionary<int, int> bySortie))
+                return false;
+            foreach (KeyValuePair<int, int> kv in bySortie)
+                if (kv.Key != excludeSortieId && currentTurn - kv.Value < cooldownTurns)
+                    return true;
+            return false;
         }
     }
 }
