@@ -906,6 +906,11 @@ namespace Game.Ai.V2
         public const float stratHoldUrgencyRampLo = 25f;   // demand Value at/under this -> urgency 0
         public const float stratHoldUrgencyRampHi = 60f;   // demand Value at/over this -> full urgency
         public const float stratHoldUrgencyMax = 2.0f;     // full urgency bonus added to net decision value
+        // review-r3 — how many scored chains per demand TopForDemand hands the Phase A injective
+        // assignment. >= 2 so a demand with a cheap fallback can yield its scarce card to another
+        // demand; the assignment cost is (phaseATopK+1)^activeDemandCount, activeDemandCount <=
+        // maxDemandFulfillmentActionsPerTurn.
+        public const int phaseATopK = 3;
         public const float baselineReadinessHandBodyMinPower = 4f;  // a hand Unit/Hero at/above this AiPower counts as prepared standing force
         public const float baselineReadinessHandBodyActorWeight = 0.5f; // how much a hand-ready body counts toward the combat-actor gap vs a deployed one
 

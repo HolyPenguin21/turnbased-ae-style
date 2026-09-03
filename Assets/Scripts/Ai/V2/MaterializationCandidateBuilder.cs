@@ -123,16 +123,41 @@ namespace Game.Ai.V2
         }
     }
 
+    // AI-MGR-01 review-r3 — one demand's scored, opportunity-adjusted chain. DecisionScore
+    // (Play - Hold + urgency) is computed ONCE here and carried all the way to the cross-demand
+    // arbitration, so the manager never re-ranks on the raw play score again.
+    public readonly struct DemandCandidate
+    {
+        public readonly MaterializationPlan Plan;
+        public readonly float FollowupAp;
+        public readonly float PlayScore;
+        public readonly float HoldValue;
+        public readonly float DecisionScore;
+
+        public DemandCandidate(MaterializationPlan plan, float followupAp, float playScore,
+            float holdValue, float decisionScore)
+        {
+            Plan = plan;
+            FollowupAp = followupAp;
+            PlayScore = playScore;
+            HoldValue = holdValue;
+            DecisionScore = decisionScore;
+        }
+
+        // Worth playing at all: holding the card (+ any urgency) does not beat it.
+        public bool Worthwhile => DecisionScore > AiConfigV2.allocatorSliceEpsilon;
+    }
+
     internal static class MaterializationCandidateBuilder
     {
-        // AI-MGR-01 P1.3 — excludeCards / excludeGenKeys let the Phase A instance-deconfliction pass
-        // ask for the best chain that AVOIDS a hand card / generation source a higher-priority
-        // demand has already claimed this iteration, so two demands never both count one physical
-        // card as available capacity.
-        public static (MaterializationPlan plan, float followupAp)? BestForDemand(WorldSnapshot snap,
+        // AI-MGR-01 P1.3 — excludeCards / excludeGenKeys let the Phase A instance assignment ask
+        // for the chains that AVOID a hand card / generation source another demand has claimed, so
+        // two demands never both count one physical card as available capacity.
+        public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand,
+            int k = 3,
             System.Collections.Generic.ISet<CardData> excludeCards = null,
             System.Collections.Generic.ISet<string> excludeGenKeys = null)
         {
@@ -278,7 +303,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (candidates.Count == 0) return null;
+            if (candidates.Count == 0) return new List<DemandCandidate>();
 
             int referenceMoveMax = 0;
             if (demand.Capability == CapabilityKind.ScoutCapability)
@@ -295,40 +320,36 @@ namespace Game.Ai.V2
             foreach (var c in candidates)
                 c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
 
-            // AI-MGR-01 P0.2 review-r2 — rank by the opportunity-adjusted NET decision value
-            // (play - hold + urgency), NOT raw play score. So a plan with a slightly lower play
-            // score but a much lower hold value (a plain body vs. a multi-role hero one would
-            // rather keep) wins, and the Hold veto is applied to the plan that is actually best
-            // once holding is priced in. Urgency is folded into the equation (a real threat's
-            // Value lifts every net value) instead of a hard on/off Hold switch.
+            // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
+            // Urgency (a function of demand.Value) is folded in so a real threat lifts every net
+            // value; the cross-demand arbitration in StrategicManager ranks purely on DecisionScore
+            // and never re-applies demand.Value or re-reads the raw play score.
             float urgency = UrgencyBonus(demand.Value);
-            float NetDecision(MaterializationPlan p) =>
+            float Decide(MaterializationPlan p) =>
                 p.Score - (p.UseBreakdown?.HoldValue ?? 0f) + urgency;
 
             var ranked = candidates
-                .OrderByDescending(c => NetDecision(c.plan))
+                .OrderByDescending(c => Decide(c.plan))
                 .ThenByDescending(c => c.plan.Score)
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
             LogQualityChoice(demand, ranked);
-            MaterializationPlan win = ranked[0].plan;
-            if (win.UseBreakdown != null)
-                AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {win.StableKey} "
-                    + $"role={win.UseRole} net {NetDecision(win).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"[{win.UseBreakdown.ToCompact()}]");
-
-            // Hold wins when the best plan's net decision value is not positive: keep the card in
-            // hand, the demand stays residual (StrategicManager logs it).
-            if (NetDecision(win) <= AiConfigV2.allocatorSliceEpsilon)
-            {
-                AiDebugLog.Write($"[AI][V2]   strat.A hold — {demand}: best chain {win.StableKey} "
-                    + $"play {win.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"hold {(win.UseBreakdown?.HoldValue ?? 0f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+            MaterializationPlan best = ranked[0].plan;
+            if (best.UseBreakdown != null)
+                AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {best.StableKey} "
+                    + $"role={best.UseRole} play {best.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"hold {(best.UseBreakdown?.HoldValue ?? 0f).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"urgency {urgency.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"net {NetDecision(win).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} <= 0; keep card in hand");
-                return null;
+                    + $"decision {Decide(best).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"[{best.UseBreakdown.ToCompact()}]");
+
+            var outList = new List<DemandCandidate>(Mathf.Max(1, k));
+            foreach (var c in ranked.Take(Mathf.Max(1, k)))
+            {
+                float hold = c.plan.UseBreakdown?.HoldValue ?? 0f;
+                outList.Add(new DemandCandidate(c.plan, c.followupAp, c.plan.Score, hold, Decide(c.plan)));
             }
-            return (ranked[0].plan, ranked[0].followupAp);
+            return outList;
         }
 
         private static void LogQualityChoice(AxisDemand demand,

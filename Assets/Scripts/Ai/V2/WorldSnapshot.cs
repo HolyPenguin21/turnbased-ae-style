@@ -95,6 +95,12 @@ namespace Game.Ai.V2
         // practice (a fog/cheat-read enemy army never exposes its hero's rating).
         public int HeroCommandRating;
         public bool HasAntiAir;
+        // AI-MGR-01 P1.7 — capability coverage of THIS army, derived DYNAMICALLY from its members'
+        // abilities (not a card type / class flag). Own armies only in practice; an enemy/cheat
+        // -read army leaves these false. Consumed by BaselineForceReadiness's coverage vector.
+        public bool HasAntiArmorUnit;   // a member with the anti-armour counter ability (Hyperkinetic)
+        public bool HasSupportUnit;     // a member granting ApBonus / Researcher / Assembler
+        public bool HasMobileUnit;      // a non-hero member whose moveMax >= AiConfigV2.mobileCombatMoveMax
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

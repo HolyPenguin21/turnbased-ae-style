@@ -55,15 +55,17 @@ namespace Game.Ai.V2
         private readonly struct PhaseACandidate
         {
             public readonly DemandState State;
-            public readonly MaterializationPlan Plan;
-            public readonly float FollowupAp;
+            public readonly DemandCandidate Cand;
 
-            public PhaseACandidate(DemandState state, MaterializationPlan plan, float followupAp)
+            public PhaseACandidate(DemandState state, DemandCandidate cand)
             {
                 State = state;
-                Plan = plan;
-                FollowupAp = followupAp;
+                Cand = cand;
             }
+
+            public MaterializationPlan Plan => Cand.Plan;
+            public float FollowupAp => Cand.FollowupAp;
+            public float DecisionScore => Cand.DecisionScore;
         }
 
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
@@ -151,92 +153,33 @@ namespace Game.Ai.V2
                     break;
 
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-                var feasible = new List<PhaseACandidate>();
+
+                // AI-MGR-01 review-r3 — TOP-K worthwhile chains per active demand (each carries its
+                // own opportunity-adjusted DecisionScore), then a bounded max-total injective
+                // assignment: exactly one collision-free chain per demand (or none), so no hand
+                // card / generation source is ever double-counted as available capacity, and the
+                // globally best total is chosen (not a greedy per-demand pick).
+                var options = new Dictionary<DemandState, List<DemandCandidate>>();
                 foreach (DemandState state in active)
                 {
-                    AxisDemand demand = state.Demand;
-                    float reserved = ledger.ReservedFollowup(demand.RequestingAxis);
-                    bool competingHeroDemand = demand.Capability == CapabilityKind.ScoutCapability
+                    bool competingHeroDemand = state.Demand.Capability == CapabilityKind.ScoutCapability
                         && active.Any(other => !ReferenceEquals(other, state)
                             && other.Remaining > AiConfigV2.allocatorSliceEpsilon
                             && other.Demand.Capability == CapabilityKind.Hero);
-                    (MaterializationPlan plan, float followupAp)? pick = MaterializationCandidateBuilder.BestForDemand(
-                        snap, player, root, hand, ctx, demand, ledger, commitments, reserved,
-                        result.Reservation, inv, competingHeroDemand);
-                    if (pick != null)
-                        feasible.Add(new PhaseACandidate(state, pick.Value.plan, pick.Value.followupAp));
+                    List<DemandCandidate> top =
+                        MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
+                            ledger, commitments, ledger.ReservedFollowup(state.Demand.RequestingAxis),
+                            result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK);
+                    if (top.Count > 0)
+                        options[state] = top;
                 }
 
-                // AI-MGR-01 P1.3 (review-r2) — resolve physical card-instance contention BEFORE
-                // arbitration, SCARCITY-AWARE (mirrors the recon actor-reservation pattern:
-                // priority → fewest collision-free alternatives → assign). A demand whose best
-                // chain has NO alternative claims its cards first, so a higher-priority demand with
-                // a fallback re-picks around it and both demands get satisfied. One bounded re-pick
-                // each; a demand with no collision-free chain is left for the next iteration.
-                if (feasible.Count > 1)
-                {
-                    var claimedCards = new HashSet<CardData>();
-                    var claimedGen = new HashSet<string>();
-                    var deconflicted = new List<PhaseACandidate>();
-                    // "Has an alternative" = a feasible chain exists that avoids this candidate's
-                    // own hand cards / generation source (probed with nothing else claimed yet).
-                    bool HasAlternative(PhaseACandidate c)
-                    {
-                        var exCards = new HashSet<CardData>(PlanCards(c.Plan));
-                        var exGen = new HashSet<string>();
-                        if (c.Plan.Generation != null && !string.IsNullOrEmpty(c.Plan.Generation.CardKey))
-                            exGen.Add(c.Plan.Generation.CardKey);
-                        if (exCards.Count == 0 && exGen.Count == 0)
-                            return true;
-                        float rv = ledger.ReservedFollowup(c.State.Demand.RequestingAxis);
-                        bool ch = c.State.Demand.Capability == CapabilityKind.ScoutCapability
-                            && active.Any(o => !ReferenceEquals(o, c.State)
-                                && o.Remaining > AiConfigV2.allocatorSliceEpsilon
-                                && o.Demand.Capability == CapabilityKind.Hero);
-                        return MaterializationCandidateBuilder.BestForDemand(snap, player, root, hand, ctx,
-                            c.State.Demand, ledger, commitments, rv, result.Reservation, inv, ch,
-                            exCards, exGen) != null;
-                    }
-                    foreach (PhaseACandidate cand in feasible
-                        .OrderBy(c => HasAlternative(c) ? 1 : 0)
-                        .ThenByDescending(ArbitrationScore)
-                        .ThenByDescending(c => c.State.Demand.Value)
-                        .ThenBy(c => c.State.Ordinal)
-                        .ToList())
-                    {
-                        bool collides = PlanCards(cand.Plan).Any(claimedCards.Contains)
-                            || (cand.Plan.Generation != null
-                                && !string.IsNullOrEmpty(cand.Plan.Generation.CardKey)
-                                && claimedGen.Contains(cand.Plan.Generation.CardKey));
-                        PhaseACandidate use = cand;
-                        if (collides)
-                        {
-                            float rsv = ledger.ReservedFollowup(cand.State.Demand.RequestingAxis);
-                            bool competingHero = cand.State.Demand.Capability == CapabilityKind.ScoutCapability
-                                && active.Any(o => !ReferenceEquals(o, cand.State)
-                                    && o.Remaining > AiConfigV2.allocatorSliceEpsilon
-                                    && o.Demand.Capability == CapabilityKind.Hero);
-                            (MaterializationPlan plan, float followupAp)? repick =
-                                MaterializationCandidateBuilder.BestForDemand(snap, player, root, hand, ctx,
-                                    cand.State.Demand, ledger, commitments, rsv, result.Reservation, inv,
-                                    competingHero, claimedCards, claimedGen);
-                            if (repick == null)
-                            {
-                                AiDebugLog.Write($"[AI][V2]   strat.A deconflict — {cand.State.Demand}: best chain "
-                                    + $"{cand.Plan.StableKey} needs a card/gen already claimed by a higher-priority "
-                                    + "demand this pass; deferred to next iteration");
-                                continue;
-                            }
-                            use = new PhaseACandidate(cand.State, repick.Value.plan, repick.Value.followupAp);
-                        }
-                        foreach (CardData cc in PlanCards(use.Plan))
-                            claimedCards.Add(cc);
-                        if (use.Plan.Generation != null && !string.IsNullOrEmpty(use.Plan.Generation.CardKey))
-                            claimedGen.Add(use.Plan.Generation.CardKey);
-                        deconflicted.Add(use);
-                    }
-                    feasible = deconflicted;
-                }
+                Dictionary<DemandState, DemandCandidate> assigned =
+                    options.Count > 0
+                        ? BestInjectiveAssignment(options)
+                        : new Dictionary<DemandState, DemandCandidate>();
+
+                var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
 
                 if (feasible.Count == 0)
                 {
@@ -244,6 +187,14 @@ namespace Game.Ai.V2
                     {
                         AxisDemand d = state.Demand;
                         float reserved = ledger.ReservedFollowup(d.RequestingAxis);
+                        if (options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
+                        {
+                            DemandCandidate b = topOpts[0];
+                            AiDebugLog.Write($"[AI][V2]   strat.A hold — {d}: best chain {b.Plan.StableKey} "
+                                + $"play {F(b.PlayScore)} hold {F(b.HoldValue)} decision {F(b.DecisionScore)} "
+                                + "not worth playing over holding the card / lost to contention; keep in hand");
+                            continue;
+                        }
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, ledger, commitments, reserved);
                         AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
@@ -590,8 +541,61 @@ namespace Game.Ai.V2
             }
         }
 
-        private static float ArbitrationScore(PhaseACandidate c) =>
-            Mathf.Max(0f, c.State.Demand.Value) * Mathf.Max(0.0001f, c.Plan.Score);
+        // AI-MGR-01 review-r3 — cross-demand arbitration ranks purely on the opportunity-adjusted
+        // DecisionScore (Play - Hold + urgency), computed once in the builder. demand.Value is NOT
+        // re-multiplied here — its weight already entered DecisionScore through UrgencyBonus.
+        private static float ArbitrationScore(PhaseACandidate c) => c.DecisionScore;
+
+        // Bounded max-total injective assignment over the active demands (<= maxDemandFulfillment
+        // ActionsPerTurn, each with <= phaseATopK options): choose one Worthwhile chain per demand
+        // (or none) so no hand card / generation source is used twice, maximising the total
+        // DecisionScore. Branching factor (K+1)^demandCount — trivial at K=3, count<=3.
+        private static Dictionary<DemandState, DemandCandidate>
+            BestInjectiveAssignment(
+                Dictionary<DemandState, List<DemandCandidate>> options)
+        {
+            var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
+            var best = new Dictionary<DemandState, DemandCandidate>();
+            float bestSum = float.NegativeInfinity;
+            var usedCards = new HashSet<CardData>();
+            var usedGen = new HashSet<string>();
+            var acc = new Dictionary<DemandState, DemandCandidate>();
+
+            void Rec(int i, float sum)
+            {
+                if (i == demands.Count)
+                {
+                    if (sum > bestSum || (sum == bestSum && acc.Count > best.Count))
+                    {
+                        bestSum = sum;
+                        best = new Dictionary<DemandState, DemandCandidate>(acc);
+                    }
+                    return;
+                }
+                DemandState d = demands[i];
+                Rec(i + 1, sum); // skip this demand
+                foreach (DemandCandidate c in options[d])
+                {
+                    if (!c.Worthwhile)
+                        continue;
+                    IReadOnlyList<CardData> cards = PlanCards(c.Plan);
+                    string gk = c.Plan.Generation?.CardKey;
+                    if (cards.Any(usedCards.Contains))
+                        continue;
+                    if (!string.IsNullOrEmpty(gk) && usedGen.Contains(gk))
+                        continue;
+                    foreach (CardData cc in cards) usedCards.Add(cc);
+                    bool addedGen = !string.IsNullOrEmpty(gk) && usedGen.Add(gk);
+                    acc[d] = c;
+                    Rec(i + 1, sum + c.DecisionScore);
+                    acc.Remove(d);
+                    foreach (CardData cc in cards) usedCards.Remove(cc);
+                    if (addedGen) usedGen.Remove(gk);
+                }
+            }
+            Rec(0, 0f);
+            return best;
+        }
 
         // §P1 — multiplier on the surplus-admission threshold for a generic garrison deposit when
         // the garrison is already a strong defensive stack (>= a fraction of BestStackPotential)

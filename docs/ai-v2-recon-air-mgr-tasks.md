@@ -418,10 +418,40 @@ Base impl `e2d76ee`. Review found the evaluator was not yet truly unified. Fix c
   Aviation, and the dedicated aviation slot is gated on the evaluator score. The evaluator, not
   the card type, decides whether a stored aircraft is worth playing.
 
-Still open (need infrastructure, not tuning): P1.7 full AA/AT/Mobile/Support coverage vector
-(snapshot has no deployed-force composition); P0.1 generated non-combat cards (needs a
-generate→aviation/base executor path); P0.1 full Phase-B single-candidate-set merge (the
-materialization loop still runs before the non-combat lane, though both now score on one scale).
+### Review round 3 (fixes on top of `0b440a8`)
+
+- **P0 — DecisionScore reaches cross-demand arbitration.** `MaterializationCandidateBuilder`
+  returns `DemandCandidate {Plan, FollowupAp, PlayScore, HoldValue, DecisionScore}` — `DecisionScore
+  = Play − Hold + UrgencyBonus(demand.Value)` computed ONCE. `PhaseACandidate` carries it;
+  `ArbitrationScore` is now just `c.DecisionScore` (the old `demand.Value × raw Play` is gone —
+  urgency is the single place demand.Value enters the decision).
+- **P1.3 — top-K + bounded injective assignment.** `TopForDemand` hands the manager up to
+  `phaseATopK` scored chains per demand; `BestInjectiveAssignment` picks one collision-free chain
+  per demand maximising total `DecisionScore`, so `D1{A,B} + D2{A}` resolves to `D1→B, D2→A`, and
+  the multi-card case (`D1{A+E1, A+E2}`, `D2{B+E1}`) resolves to `D1→A+E2, D2→B+E1` because both
+  equipment variants are in D1's top-K. Branching `(K+1)^activeDemands`, trivial.
+- **P1.6a — Hold is not a pseudo play role.** `DeriveRoles` no longer emits `IntendedRole.Hold`;
+  `ScoreSurplus` iterates only real play roles, so Hold can never be `scored[0]` and get executed,
+  and `secondBestPlay` can never be Hold. Hold is priced only via `CardHoldValue` / `NetScore`.
+- **P1.6b — one card-level HoldValue for both phases.** `CardHoldValue(plan, viableRoles, …)` =
+  max reason-to-hold across every viable role. Phase A now uses it too (was `HoldValue(plan,
+  currentDemandRole)` — an AA-capable card serving a FieldCombatPower demand missed its "keep as a
+  rare AA counter" value).
+- **P1.7 — Phase A is hand-aware.** `ScoreForDemand` passes `snap.Self.Hand` to
+  `BaselineForceReadiness.Evaluate` (was the hand-blind overload). The hand analysis uses
+  EFFECTIVE abilities (`EquipmentSystem.EffectiveAbilities` — card + attached equipment).
+- **P1.7 — real coverage vector.** `ArmySnapshot` gains `HasAntiArmorUnit / HasSupportUnit /
+  HasMobileUnit`, derived DYNAMICALLY from member abilities (`Hyperkinetic` / `ApBonus`·`Researcher`·
+  `Assembler` / `moveMax`) in `WorldAnalysis.ToArmySnapshot`. `BaselineForceReadiness` exposes
+  `{HasAntiAir, HasAntiArmor, HasMobile, HasSupport}`; `SurplusCapabilityGap` gives a real gap
+  bonus for closing an AA/AT/Mobile/Support hole (AA/AT only when the matching enemy threat is
+  actually present).
+
+Still open (architectural, own tasks): **P0.1 full Phase-B single-candidate-set** — `UseSurplus`
+still runs the materialization surplus loop to completion, then the non-combat loop; unifying them
+into one per-iteration ranked pick is a real `UseSurplus` restructure. **P0.1 generated non-combat
+cards** — `BestSurplus`/`GenerationSource` still skip `gd.isAviation` and only allow Unit/Hero for
+non-equipment generated; needs a generate→aviation/base deploy path in `MaterializationExecutor`.
 
 ---
 

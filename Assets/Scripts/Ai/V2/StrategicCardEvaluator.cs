@@ -118,17 +118,30 @@ namespace Game.Ai.V2
         public readonly bool HasFieldBody;
         public readonly bool HasHero;
         public readonly bool HasAir;
+        // P1.7 review-r3 — capability coverage vector, derived DYNAMICALLY from what the AI's
+        // deployed armies + hand actually contain (abilities, not card class). Consumed by
+        // SurplusCapabilityGap so a card closing an AA / AT / Mobile / Support hole scores a real
+        // bonus.
+        public readonly bool HasAntiAir;
+        public readonly bool HasAntiArmor;
+        public readonly bool HasMobile;
+        public readonly bool HasSupport;
         public readonly int CombatActors;
         public readonly float FreeFieldPower;
 
         public BaselineForceReadiness(float need, bool hasScout, bool hasFieldBody, bool hasHero,
-            bool hasAir, int combatActors, float freeFieldPower)
+            bool hasAir, bool hasAntiAir, bool hasAntiArmor, bool hasMobile, bool hasSupport,
+            int combatActors, float freeFieldPower)
         {
             Need = need;
             HasScout = hasScout;
             HasFieldBody = hasFieldBody;
             HasHero = hasHero;
             HasAir = hasAir;
+            HasAntiAir = hasAntiAir;
+            HasAntiArmor = hasAntiArmor;
+            HasMobile = hasMobile;
+            HasSupport = hasSupport;
             CombatActors = combatActors;
             FreeFieldPower = freeFieldPower;
         }
@@ -140,31 +153,49 @@ namespace Game.Ai.V2
             IReadOnlyList<CardData> hand)
         {
             if (snap?.Self == null)
-                return new BaselineForceReadiness(0f, false, false, false, false, 0, 0f);
+                return new BaselineForceReadiness(0f, false, false, false, false, false, false, false, false, 0, 0f);
 
             int combatActors = 0;
-            bool hasAirArmy = false;
+            bool hasAirArmy = false, hasAntiAir = false, hasAntiArmor = false, hasMobile = false, hasSupport = false;
             if (snap.Self.Armies != null)
                 foreach (ArmySnapshot a in snap.Self.Armies)
                 {
                     if (a == null || a.MemberCount <= 0 || a.IsPrison)
                         continue;
+                    if (a.HasAntiAir) hasAntiAir = true;
+                    if (a.HasAntiArmorUnit) hasAntiArmor = true;
+                    if (a.HasMobileUnit) hasMobile = true;
+                    if (a.HasSupportUnit) hasSupport = true;
                     if (a.IsAir) { hasAirArmy = true; continue; }
                     if (!a.IsGarrison && !a.IsSoloRecce)
                         combatActors++;
                 }
 
             // P1.7 — a strong combat body already sitting in hand is prepared force: it shrinks the
-            // actor gap the same way a deployed one would (the manager just has not placed it yet).
+            // actor gap the same way a deployed one would. Uses EFFECTIVE abilities (card + any
+            // attached equipment), not the bare CardDefinition — attached equipment can grant a
+            // counter ability or push a body over the readiness power floor.
             int handReadyBodies = 0;
             if (hand != null)
                 foreach (CardData c in hand)
                 {
                     CardDefinition d = c?.Definition;
-                    if (d == null || d.isAviation) continue;
-                    if ((d.cardType == CardType.Unit || d.cardType == CardType.Hero)
-                        && !AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities)
-                        && AiPower.ToPowerUnit(d).BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
+                    if (d == null || d.isAviation
+                        || (d.cardType != CardType.Unit && d.cardType != CardType.Hero))
+                        continue;
+                    IReadOnlyList<string> eff = c.Equipment?.equipment != null
+                        ? EquipmentSystem.EffectiveAbilities(
+                            d.grantedAbilities != null ? new List<string>(d.grantedAbilities) : new List<string>(),
+                            c.Equipment.equipment)
+                        : (IReadOnlyList<string>)(d.grantedAbilities ?? (IReadOnlyList<string>)System.Array.Empty<string>());
+                    if (AbilityParams.AbilitiesHaveAnyRecce(eff))
+                        continue;
+                    if (eff.Contains(UnitAbilities.AntiAir)) hasAntiAir = true;
+                    if (eff.Contains(UnitAbilities.Hyperkinetic)) hasAntiArmor = true;
+                    if (eff.Contains(UnitAbilities.ApBonus) || eff.Contains(UnitAbilities.Researcher)
+                        || eff.Contains(UnitAbilities.Assembler)) hasSupport = true;
+                    if (d.moveMax >= AiConfigV2.mobileCombatMoveMax) hasMobile = true;
+                    if (AiPower.ToPowerUnit(d).BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
                         handReadyBodies++;
                 }
 
@@ -199,7 +230,7 @@ namespace Game.Ai.V2
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
             return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, hasAir,
-                combatActors, freeFieldPower);
+                hasAntiAir, hasAntiArmor, hasMobile, hasSupport, combatActors, freeFieldPower);
         }
     }
 
@@ -214,7 +245,9 @@ namespace Game.Ai.V2
         {
             var bd = new StrategicUseScoreBreakdown();
             IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));
-            BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv);
+            // P1.7 review-r3 — Phase A reads the SAME hand-aware readiness signal as Phase B and
+            // DemandLayer (was hand-blind, so a strong body already in hand did not damp Need here).
+            BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, snap?.Self?.Hand);
 
             float fit = TargetFit(plan.Deploy.Hex, demand.TargetHex);         // [0.5 .. 1]
             float traitMatch = demand.Capability != CapabilityKind.ScoutCapability
@@ -259,7 +292,12 @@ namespace Game.Ai.V2
 
             bd.Total = SumTotal(bd);
 
-            bd.HoldValue = HoldValue(plan, role, inv, snap, baseline, surplus: false);
+            // P1.6 review-r3 — card-level HoldValue: max reason-to-hold across ALL of the card's
+            // viable roles, not just the role this demand pins (an AA-capable card serving a
+            // FieldCombatPower demand still gets its "keep as a rare AA counter" hold value).
+            IReadOnlyList<IntendedRole> viableRoles = DeriveRoles(pdef,
+                plan.ProjectedAbilities ?? pdef?.grantedAbilities, plan, recceCard, heroCard);
+            bd.HoldValue = CardHoldValue(plan, viableRoles, inv, snap, baseline, surplus: false);
 
             return new StrategicCardUseCandidate
             {
@@ -298,19 +336,19 @@ namespace Game.Ai.V2
             });
 
             StrategicCardUseCandidate win = scored[0];
-            // P1.6 review-r2 — ONE contract: AlternativeUseValue is the cost of the best foregone
-            // *other PLAY role* only; Hold is priced exclusively in NetScore, never here (double
-            // count). Keep the scarce-body floor from the per-role pass.
+            // P1.6 — AlternativeUseValue is the cost of the best foregone *other PLAY role* only;
+            // Hold is priced exclusively in NetScore. Keep the scarce-body floor from the per-role
+            // pass.
             float secondBestPlay = scored.Count > 1 ? scored[1].Breakdown.Total : 0f;
             float altCost = Mathf.Max(0f, secondBestPlay) * AiConfigV2.altUseForegoneFraction
                             + Mathf.Max(0f, -win.Breakdown.AlternativeUseValue);
             win.Breakdown.AlternativeUseValue = -altCost;
             win.Breakdown.Total = SumTotal(win.Breakdown);
             win.TotalUseScore = win.Breakdown.Total;
-            // P1.6 review-r2 — HoldValue is a property of the CARD, not of the role we happen to be
-            // scoring. Take the strongest reason-to-hold across every viable role (so an AA-capable
-            // unit chosen as CombatBody still carries its "keep as a rare AA counter" hold value).
-            win.HoldValue = scored.Max(s => s.HoldValue);
+            // P1.6 review-r3 — HoldValue is a property of the CARD, evaluated across ALL its viable
+            // roles (an AA-capable unit chosen as CombatBody still carries its "keep as a rare AA
+            // counter" hold value).
+            win.HoldValue = CardHoldValue(plan, roles, inv, snap, baseline, surplus: true);
             win.Breakdown.HoldValue = win.HoldValue;
             return win;
         }
@@ -334,7 +372,7 @@ namespace Game.Ai.V2
             bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role);
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = role == IntendedRole.Hold ? 0f
-                : SurplusCapabilityGap(role, inv, baseline);
+                : SurplusCapabilityGap(role, inv, baseline, snap);
             bd.ForceGrowthValue = role == IntendedRole.Scout || role == IntendedRole.Hold
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline);
             bd.ThreatResponseValue = ThreatResponseValue(role, snap);
@@ -526,22 +564,49 @@ namespace Game.Ai.V2
             }
         }
 
+        // P1.7 review-r3 — uses the dynamically-derived coverage vector. A card closing a hole the
+        // AI's deployed force + hand genuinely lack scores the gap bonus; an AA/AT gap only counts
+        // when the matching enemy threat is actually present.
         private static float SurplusCapabilityGap(IntendedRole role, CapabilityInventory inv,
-            BaselineForceReadiness baseline)
+            BaselineForceReadiness baseline, WorldSnapshot snap)
         {
             switch (role)
             {
                 case IntendedRole.Scout:
                     return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.AntiAir:
-                    return baseline.HasAir ? 0f : 0f; // no deployed-force composition data yet
+                    return !baseline.HasAntiAir && ThreatResponseValue(IntendedRole.AntiAir, snap) > 0f
+                        ? AiConfigV2.capabilityGapValue : 0f;
+                case IntendedRole.AntiArmor:
+                    return !baseline.HasAntiArmor && EnemyArmorPresent(snap)
+                        ? AiConfigV2.capabilityGapValue : 0f;
+                case IntendedRole.Support:
+                    return baseline.HasSupport ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
+                case IntendedRole.MobileCombat:
+                    if (!baseline.HasFieldBody) return AiConfigV2.capabilityGapValue;
+                    return baseline.HasMobile ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
-                case IntendedRole.MobileCombat:
                     return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
                 default:
                     return 0f;
             }
+        }
+
+        // Cheat-biased "does the enemy field a meaningful armoured group" — a real Armored-tagged
+        // enemy unit exists (directional strategic bias only; never becomes AI intel).
+        private static bool EnemyArmorPresent(WorldSnapshot snap)
+        {
+            IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
+            if (enemies == null) return false;
+            foreach (ArmySnapshot a in enemies)
+            {
+                if (a?.Members == null) continue;
+                foreach (WorthIt.DefenderProfile m in a.Members)
+                    if (m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored))
+                        return true;
+            }
+            return false;
         }
 
         // P2.8 — no synthetic armour. AntiAir uses the real IsAir classification; AntiArmor has no
@@ -587,8 +652,27 @@ namespace Game.Ai.V2
             return v;
         }
 
+        // review-r3 — the ONE card-level HoldValue used by BOTH phases: the strongest reason to
+        // hold the card across ALL of its viable roles (NearTermExpectedDemand is role-specific, so
+        // a card whose best play is CombatBody but which is also a rare AntiAir counter still gets
+        // that hold value). Hold is priced only here / in NetScore, never as a play role.
+        internal static float CardHoldValue(MaterializationPlan plan, IReadOnlyList<IntendedRole> roles,
+            CapabilityInventory inv, WorldSnapshot snap, BaselineForceReadiness baseline, bool surplus)
+        {
+            if (plan == null)
+                return 0f;
+            float best = 0f;
+            if (roles != null)
+                foreach (IntendedRole r in roles)
+                    best = Mathf.Max(best, HoldValue(plan, r, inv, snap, baseline, surplus));
+            // Also evaluate the card's base combat role even if it was not derived (covers a
+            // plain body with no special abilities).
+            best = Mathf.Max(best, HoldValue(plan, IntendedRole.CombatBody, inv, snap, baseline, surplus));
+            return best;
+        }
+
         // Spec §3 — HoldValue = UniqueFutureRole + NearTermExpectedDemand + ScarcityValue
-        //                       - HandPressure - LostTempo
+        //                       - HandPressure - LostTempo   (per-role component)
         private static float HoldValue(MaterializationPlan plan, IntendedRole role, CapabilityInventory inv,
             WorldSnapshot snap, BaselineForceReadiness baseline, bool surplus)
         {
@@ -667,7 +751,11 @@ namespace Game.Ai.V2
                 roles.Add(IntendedRole.MobileCombat);
             if (plan != null && plan.UsesEquipment)
                 roles.Add(IntendedRole.EquipmentUpgrade);
-            roles.Add(IntendedRole.Hold);
+            // review-r3 — Hold is NOT a play role: it never goes through ScoreSurplusRole (which
+            // would give it ImmediateTempo / NewArmy NextTurnPotential / etc. for an army that is
+            // never created). It is a separate no-op scored by CardHoldValue.
+            if (roles.Count == 0)
+                roles.Add(IntendedRole.CombatBody); // a card with no derived role still has a generic use
             return roles.Distinct().ToList();
         }
 

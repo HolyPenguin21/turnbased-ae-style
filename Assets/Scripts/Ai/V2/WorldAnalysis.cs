@@ -265,6 +265,10 @@ namespace Game.Ai.V2
                 HasHero = a.Members.Any(m => m.IsHero),
                 HeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
+                HasAntiArmorUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.Hyperkinetic)),
+                HasSupportUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.ApBonus)
+                    || m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)),
+                HasMobileUnit = a.Members.Any(m => !m.IsHero && m.MoveMax >= AiConfigV2.mobileCombatMoveMax),
                 IsHiddenFromUs = allHidden,
                 AttackSum = WorthIt.AttackSum(a),
                 DefenseSum = WorthIt.DefenseSum(a),
