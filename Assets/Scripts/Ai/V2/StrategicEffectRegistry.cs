@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Map;
 using Game.Units;
 using UnityEngine;
 
@@ -31,12 +32,25 @@ namespace Game.Ai.V2
     internal enum StrategicEffectContext
     {
         Flat,               // BaseFit as-is
-        RecurringResource,  // BaseFit scaled by economy runway (recurring AP income, …)
+        RecurringResource,  // BaseFit scaled by economy insecurity (recurring AP income, …)
         EnemyThreatScaled,  // BaseFit scaled by the matching enemy-threat magnitude (AA<->air, AT<->armour)
-        TargetDensity,      // AoE   — TODO: scale by count / density of likely targets
-        ExpectedSustain,    // regen — TODO: scale by expected damage-over-time avoided
-        EligibleAllies,     // aura  — TODO: scale by count * value of eligible friendly units
-        FreeBattleSlots,    // summon— TODO: combat value * duration, ONLY with real free battle slots
+        TargetDensity,      // AoE   — BaseFit scaled by density of likely targets near the deploy
+        ExpectedSustain,    // regen — BaseFit scaled by the body's projected survivability
+        EligibleAllies,     // aura  — BaseFit scaled by count of eligible friendly units in the dest army
+        FreeBattleSlots,    // summon— BaseFit ONLY when real free battle slots exist (no phantom capacity)
+    }
+
+    // Which StrategicUseScoreBreakdown term an effect contributes to. Lets AoE / regen / summon /
+    // future mechanics plug into the RIGHT scoring axis instead of only RoleFit — the "registry is
+    // bypassed for combat roles" blocker.
+    internal enum EffectField
+    {
+        RoleFit,
+        ImmediateTempo,
+        ThreatResponse,
+        CapabilityGap,
+        ForceGrowth,
+        Synergy,
     }
 
     internal readonly struct StrategicEffect
@@ -44,14 +58,39 @@ namespace Game.Ai.V2
         public readonly IntendedRole Role;
         public readonly float BaseFit;
         public readonly StrategicEffectContext Context;
+        public readonly EffectField Field;       // which breakdown term this value lands in
         public readonly bool CountsAsCoverage;   // contributes to "my force already covers role X"
 
-        public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context, bool coverage)
+        public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
+            EffectField field, bool coverage)
         {
             Role = role;
             BaseFit = baseFit;
             Context = context;
+            Field = field;
             CountsAsCoverage = coverage;
+        }
+    }
+
+    // The distributed strategic value of a card's effects for one role — one term per
+    // StrategicUseScoreBreakdown axis, so nothing is double-counted and every axis is reachable.
+    internal readonly struct EffectContribution
+    {
+        public readonly float RoleFit;
+        public readonly float ImmediateTempo;
+        public readonly float ThreatResponse;
+        public readonly float CapabilityGap;
+        public readonly float ForceGrowth;
+        public readonly float Synergy;
+
+        public EffectContribution(float roleFit, float tempo, float threat, float gap, float grow, float syn)
+        {
+            RoleFit = roleFit;
+            ImmediateTempo = tempo;
+            ThreatResponse = threat;
+            CapabilityGap = gap;
+            ForceGrowth = grow;
+            Synergy = syn;
         }
     }
 
@@ -69,59 +108,85 @@ namespace Game.Ai.V2
         public bool Any => _bits != 0;
     }
 
-    // World inputs the contextual scalers read. Callers fill what they have; each stub reads its own
-    // future field. RecurringIncomeWeight: 0..1, high when the economy is INSECURE (a recurring
-    // income stream is worth more when the stockpile is thin).
-    internal readonly struct EffectContextData
+    // The world context every contextual scaler reads. Built once per Card x Role evaluation from
+    // whatever the caller has; a field left at its "unknown" sentinel keeps that context
+    // conservative (FreeBattleSlots stays 0 -> no phantom Summon capacity).
+    //
+    //   RecurringIncomeWeight  0..1, high when the economy is INSECURE (recurring income worth more)
+    //   EnemyContactCount      known + cheat enemy armies — TargetDensity proxy
+    //   ProjectedHitPoints     the body's projected HP (card + attached equipment) — ExpectedSustain
+    //   EligibleAllyCount      non-hero members already in the destination army — EligibleAllies aura
+    //   FreeBattleSlots        real/predicted free battle cells; -1 = unknown -> Summon scores 0
+    internal readonly struct EffectEvaluationContext
     {
         public readonly WorldSnapshot Snap;
+        public readonly MaterializationPlan Plan;
         public readonly float RecurringIncomeWeight;
+        public readonly int EnemyContactCount;
+        public readonly float ProjectedHitPoints;
+        public readonly int EligibleAllyCount;
+        public readonly int FreeBattleSlots;
 
-        public EffectContextData(WorldSnapshot snap)
+        public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan)
         {
             Snap = snap;
+            Plan = plan;
             RecurringIncomeWeight = snap?.Economy != null
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
+            EnemyContactCount = snap?.TrueWorld?.EnemyArmies?.Count ?? 0;
+
+            CardDefinition baseDef = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
+            ProjectedHitPoints = baseDef?.hitPoints ?? 0f;
+
+            ArmyData dest = plan != null && plan.Deploy.Kind == DeploymentKind.ExistingArmy
+                ? plan.Deploy.Army : null;
+            EligibleAllyCount = dest?.Members != null
+                ? dest.Members.Count(m => m != null && !m.IsHero)
+                : 0;
+
+            FreeBattleSlots = -1;   // no real battle-cell data threaded yet
         }
     }
 
     internal static class StrategicEffectRegistry
     {
-        // The ONLY ability-name table for strategic scoring. One row per mechanic.
+        // The ONLY ability-name table for strategic scoring. One row per mechanic. BaseFit for
+        // AntiAir/AntiArmor is threatResponseValueWeight so ThreatResponse-field parity with the old
+        // ThreatResponseValue holds.
         private static readonly Dictionary<string, StrategicEffect[]> ByAbility =
             new Dictionary<string, StrategicEffect[]>
             {
                 [UnitAbilities.AntiAir] = new[]
                 {
-                    new StrategicEffect(IntendedRole.AntiAir, AiConfigV2.capabilityGapValue,
-                        StrategicEffectContext.EnemyThreatScaled, coverage: true),
+                    new StrategicEffect(IntendedRole.AntiAir, AiConfigV2.threatResponseValueWeight,
+                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true),
                 },
                 [UnitAbilities.Hyperkinetic] = new[]
                 {
-                    new StrategicEffect(IntendedRole.AntiArmor, AiConfigV2.capabilityGapValue,
-                        StrategicEffectContext.EnemyThreatScaled, coverage: true),
+                    new StrategicEffect(IntendedRole.AntiArmor, AiConfigV2.threatResponseValueWeight,
+                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true),
                 },
                 [UnitAbilities.ApBonus] = new[]
                 {
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.surplusRecurringApIncomeBonus,
-                        StrategicEffectContext.RecurringResource, coverage: true),
+                        StrategicEffectContext.RecurringResource, EffectField.RoleFit, coverage: true),
                 },
                 [UnitAbilities.Researcher] = new[]
                 {
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
-                        StrategicEffectContext.Flat, coverage: true),
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
                 [UnitAbilities.Assembler] = new[]
                 {
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
-                        StrategicEffectContext.Flat, coverage: true),
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
-                // Future mechanics go here, e.g.:
-                //   [UnitAbilities.Splash]      = { (CombatBody,  w, TargetDensity,   coverage:false) },
-                //   [UnitAbilities.Regenerate]  = { (CombatBody,  w, ExpectedSustain, coverage:false) },
-                //   [UnitAbilities.CommandAura] = { (Support,     w, EligibleAllies,  coverage:true ) },
-                //   [UnitAbilities.Summon]      = { (ForceGrowth, w, FreeBattleSlots, coverage:false) },
+                // Future mechanics are ONE row each — no evaluator edit:
+                //   [UnitAbilities.Splash]      = { (CombatBody,  w, TargetDensity,   RoleFit,        false) },
+                //   [UnitAbilities.Regenerate]  = { (CombatBody,  w, ExpectedSustain, RoleFit,        false) },
+                //   [UnitAbilities.CommandAura] = { (Support,     w, EligibleAllies,  Synergy,        true ) },
+                //   [UnitAbilities.Summon]      = { (ForceGrowth, w, FreeBattleSlots, ForceGrowth,    false) },
             };
 
         // Every strategic effect a card's EFFECTIVE ability set + stat line yields.
@@ -138,7 +203,7 @@ namespace Game.Ai.V2
             if (!AbilityParams.AbilitiesHaveAnyRecce(effectiveAbilities)
                 && effectiveMoveMax >= AiConfigV2.mobileCombatMoveMax)
                 list.Add(new StrategicEffect(IntendedRole.MobileCombat, AiConfigV2.effectMobileBaseFit,
-                    StrategicEffectContext.Flat, coverage: true));
+                    StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true));
 
             return list;
         }
@@ -147,16 +212,28 @@ namespace Game.Ai.V2
         public static IEnumerable<IntendedRole> Roles(IEnumerable<string> effectiveAbilities, int effectiveMoveMax)
             => Resolve(effectiveAbilities, effectiveMoveMax).Select(e => e.Role).Distinct();
 
-        // RoleFit contribution from ABILITIES for `role`. Zero for combat/hero/scout — those are
-        // power/quality driven, not ability driven, and keep their dedicated evaluator paths.
-        public static float RoleFit(IntendedRole role, IEnumerable<string> effectiveAbilities,
-            int effectiveMoveMax, in EffectContextData ctx)
+        // ALL of a card's effect value for `role`, distributed by breakdown axis. This is how a new
+        // mechanic reaches CombatBody / ForceGrowth / … scoring, not just RoleFit — the evaluator
+        // adds each field to the matching bd.* term exactly once.
+        public static EffectContribution Contributions(IntendedRole role,
+            IEnumerable<string> effectiveAbilities, int effectiveMoveMax, in EffectEvaluationContext ctx)
         {
-            float sum = 0f;
+            float roleFit = 0f, tempo = 0f, threat = 0f, gap = 0f, grow = 0f, syn = 0f;
             foreach (StrategicEffect e in Resolve(effectiveAbilities, effectiveMoveMax))
-                if (e.Role == role)
-                    sum += ContextualValue(e, ctx);
-            return sum;
+            {
+                if (e.Role != role) continue;
+                float v = ContextualValue(e, ctx);
+                switch (e.Field)
+                {
+                    case EffectField.RoleFit: roleFit += v; break;
+                    case EffectField.ImmediateTempo: tempo += v; break;
+                    case EffectField.ThreatResponse: threat += v; break;
+                    case EffectField.CapabilityGap: gap += v; break;
+                    case EffectField.ForceGrowth: grow += v; break;
+                    case EffectField.Synergy: syn += v; break;
+                }
+            }
+            return new EffectContribution(roleFit, tempo, threat, gap, grow, syn);
         }
 
         // The roles this ability/stat set already COVERS for standing-force readiness.
@@ -174,7 +251,7 @@ namespace Game.Ai.V2
         public static bool HasContext(IEnumerable<string> abilities, int moveMax, StrategicEffectContext context)
             => Resolve(abilities, moveMax).Any(e => e.Context == context);
 
-        public static float ContextualValue(in StrategicEffect e, in EffectContextData ctx)
+        public static float ContextualValue(in StrategicEffect e, in EffectEvaluationContext ctx)
         {
             switch (e.Context)
             {
@@ -184,14 +261,18 @@ namespace Game.Ai.V2
                     return e.BaseFit * Mathf.Lerp(AiConfigV2.effectRecurringFloor, 1f, ctx.RecurringIncomeWeight);
                 case StrategicEffectContext.EnemyThreatScaled:
                     return e.BaseFit * EnemyThreatModel.CounterDemandFactor(e.Role, ctx.Snap);
-
-                // --- future contexts: full signatures now, stubbed until the real inputs are threaded
-                case StrategicEffectContext.TargetDensity:    // TODO: EffectContextData.TargetDensity
-                case StrategicEffectContext.ExpectedSustain:  // TODO: EffectContextData.ExpectedIncomingDot
-                case StrategicEffectContext.EligibleAllies:   // TODO: EffectContextData.EligibleAllyValue
-                    return e.BaseFit;
-                case StrategicEffectContext.FreeBattleSlots:  // TODO: gate on EffectContextData.FreeBattleSlots > 0
-                    return 0f;                                // no phantom capacity until real slot data lands
+                case StrategicEffectContext.TargetDensity:
+                    return e.BaseFit * Mathf.Clamp01(
+                        ctx.EnemyContactCount / Mathf.Max(1f, AiConfigV2.effectTargetDensityNorm));
+                case StrategicEffectContext.ExpectedSustain:
+                    return e.BaseFit * Mathf.Clamp01(
+                        ctx.ProjectedHitPoints / Mathf.Max(1f, AiConfigV2.effectSustainHpNorm));
+                case StrategicEffectContext.EligibleAllies:
+                    return e.BaseFit * Mathf.Clamp01(
+                        ctx.EligibleAllyCount / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm));
+                case StrategicEffectContext.FreeBattleSlots:
+                    // No phantom Summon capacity: BaseFit only when real free battle cells exist.
+                    return ctx.FreeBattleSlots >= 1 ? e.BaseFit : 0f;
                 default:
                     return e.BaseFit;
             }

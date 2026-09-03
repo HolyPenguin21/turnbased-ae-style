@@ -579,6 +579,44 @@ role switch.
 Both Unity assemblies build clean (0/0). capability-quality-sim 71/1, radar-sim 9/1,
 housekeeping-sim 55/0 (fails pre-existing).
 
+### Review round 4 P1 ARCH follow-up (fixes on top of `3b87ce7`)
+
+- **P1 — registry now reaches EVERY role, per breakdown axis.** The old `RoleFit` switch routed
+  only `Support` through the registry; `CombatBody / ForceGrowth / MobileCombat / AntiArmor /
+  AntiAir` bypassed it, so a future `Splash→CombatBody` / `Regen→CombatBody` / `Summon→ForceGrowth`
+  would add a role that already exists → zero score delta. New `EffectField` enum + `StrategicEffect.
+  Field` + `EffectContribution { RoleFit, ImmediateTempo, ThreatResponse, CapabilityGap,
+  ForceGrowth, Synergy }`; `StrategicEffectRegistry.Contributions(role, …)` returns the distributed
+  value. `RoleFit` → `RoleFitCore` (non-ability part only); `ScoreForDemand` / `ScoreSurplusRole`
+  add `ec.*` to each `bd.*` term ONCE. `ThreatResponseValue` (helper) deleted — `bd.ThreatResponseValue
+  = ec.ThreatResponse`; the Hold/gap "is a threat present" checks use `EnemyThreatModel.ThreatPresent`.
+  Parity: AntiAir/AntiArmor `BaseFit = threatResponseValueWeight` so the ThreatResponse term is
+  unchanged.
+- **P1 — `EffectContextData` → `EffectEvaluationContext`.** Now carries `Plan`, `EnemyContactCount`,
+  `ProjectedHitPoints`, `EligibleAllyCount`, `FreeBattleSlots` (-1 = unknown). The previously
+  BaseFit-only stub contexts are now live scalers: `TargetDensity` × enemy-contact density
+  (`effectTargetDensityNorm`), `ExpectedSustain` × projected HP (`effectSustainHpNorm`),
+  `EligibleAllies` × dest-army non-hero count (`effectAuraAllyNorm`). `FreeBattleSlots` still returns
+  0 until real battle-cell data is threaded (no phantom Summon capacity) — but reads a real context
+  field, so wiring the data source later is a one-liner.
+- **P1 — equipment MoveMax parity.** `DeriveRoles` (and the registry `RoleFit`) took the bare
+  `def.moveMax` while readiness used `AiPower.EffectiveLine(...).MoveMax` — a `+2 MoveMax` trinket
+  crossing the mobile threshold made readiness say `HasMobile` while the evaluator dropped the
+  MobileCombat role. New `EffectiveMoveMax(plan)` (card + attached equipment via
+  `EquipmentSystem.Predict`) is used by role derivation, coverage AND scoring.
+- **P2 — generated non-combat phantom Hold.** `ScoreNonCombat` returned `holdLostTempoPenalty * 0.5`
+  as `HoldValue` regardless of generation, so `generate → Base/Facility/Aviation` carried a
+  reason-to-hold a card that does not exist yet. Now `generation != null ⇒ HoldValue = 0` (same
+  class of fix already applied to generated Unit/Hero).
+- **P2 — Support Hero double-count.** The registry priced `Researcher / Assembler → heroSupportFitValue`,
+  then `RoleFit`'s Support case ALSO added `HeroSupportFit(...)` = `heroSupportFitValue` again for a
+  Researcher/Assembler hero (Unit ×1, Hero ×2). `HeroSupportFit` deleted; core Support fit is 0,
+  the registry prices the ability once for Unit and Hero alike.
+- Behaviour deltas (documented): ApBonus Support role-fit scaled by economy insecurity
+  (`effectRecurringFloor` 0.40–1.0); MobileCombat role gains `effectMobileBaseFit` (0.20) from the
+  registry; Researcher/Assembler hero Support fit halved (double-count removed). Everything else
+  value-parity. Both assemblies build clean (0/0); sims unchanged (71/1, 9/1, 55/0).
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

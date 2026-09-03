@@ -261,20 +261,28 @@ namespace Game.Ai.V2
             // generation chance live in their own single terms below.
             CardDefinition pdef = PlanBaseDef(plan);
             bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
-            bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? pdef?.grantedAbilities);
+            IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
+            bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
             float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
-            float roleFitCore = RoleFit(role, plan, inv, recceCard, heroCard,
-                plan.ProjectedAbilities ?? pdef?.grantedAbilities, snap, 0f, equipUpgrade,
+            float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
+                pabil, snap, 0f, equipUpgrade,
                 demand, referenceMoveMax, hasCompetingHeroDemand,
                 out MaterializationQualityBreakdown qbd);
-            bd.RoleFit = fit * roleFitCore;
 
-            bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind);
+            // P1 ARCH — ALL ability-derived value (AntiAir/AntiArmor/Support today; AoE/regen/aura/
+            // summon later) comes from the registry as a per-axis EffectContribution, added to the
+            // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core.
+            var ectx = new EffectEvaluationContext(snap, plan);
+            EffectContribution ec = StrategicEffectRegistry.Contributions(
+                role, pabil, EffectiveMoveMax(plan), ectx);
+
+            bd.RoleFit = fit * (roleFitCore + ec.RoleFit);
+            bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind) + ec.ImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan);
-            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline);
-            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline);
-            bd.ThreatResponseValue = ThreatResponseValue(role, snap);
+            bd.SynergyValue = SynergyValue(plan) + ec.Synergy;
+            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline) + ec.ForceGrowth;
+            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline) + ec.CapabilityGap;
+            bd.ThreatResponseValue = ec.ThreatResponse;
 
             float genChance = GenerationChance(plan);
             bd.Deployability = -(1f - genChance);
@@ -368,18 +376,26 @@ namespace Game.Ai.V2
                 ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
-            bd.RoleFit = RoleFit(role, plan, inv, recce, hero, projected, snap, versatility,
+            float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
                 equipmentUpgrade, null, 0, false, out _);
+            // P1 ARCH — every ability-derived value comes from the registry as a per-axis
+            // EffectContribution (see ScoreForDemand).
+            var ectx = new EffectEvaluationContext(snap, plan);
+            EffectContribution ec = StrategicEffectRegistry.Contributions(
+                role, projected, EffectiveMoveMax(plan), ectx);
+
+            bd.RoleFit = roleFitCore + ec.RoleFit;
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
             // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
-            bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role);
+            bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role)
+                + ec.ImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.CapabilityGapValue = role == IntendedRole.Hold ? 0f
-                : SurplusCapabilityGap(role, inv, baseline, snap);
-            bd.ForceGrowthValue = role == IntendedRole.Scout || role == IntendedRole.Hold
-                ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline);
-            bd.ThreatResponseValue = ThreatResponseValue(role, snap);
-            bd.SynergyValue = traits * 0.5f + equipmentUpgrade;
+            bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
+                : SurplusCapabilityGap(role, inv, baseline, snap)) + ec.CapabilityGap;
+            bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
+                ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline)) + ec.ForceGrowth;
+            bd.ThreatResponseValue = ec.ThreatResponse;
+            bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy;
             bd.Deployability = -(1f - GenerationChance(plan));
             bd.ResourceEfficiency = -ResourceCost(plan);
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
@@ -400,13 +416,12 @@ namespace Game.Ai.V2
             };
         }
 
-        // The ONE RoleFit path, used by BOTH phases (P1.5 review-r2). Characteristic-driven; the
-        // Hero card class is never a term. For Scout it runs CapabilityQualityEvaluator against the
-        // REAL demand when one exists (Phase A) or a neutral synthetic one (Phase B); for
-        // Hero/CombatBody it returns the AiPower marginal readiness PLUS the canonical hero
-        // combat-leadership fit — so a commandRating-10 hero now out-fits a commandRating-2 hero in
-        // Phase A too (previously QualityMultiplier returned 1f for every non-Scout role).
-        private static float RoleFit(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
+        // The CORE RoleFit — the non-ability, characteristic-driven part (Scout quality profile /
+        // hero combat-leadership / AiPower marginal readiness / equipment delta). Ability-derived
+        // value is added ONCE by the caller from StrategicEffectRegistry.Contributions(...).RoleFit
+        // (P1 ARCH — so a new mechanic reaches every role, not just Support). The Hero card class is
+        // never a flat term.
+        private static float RoleFitCore(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
             float equipmentUpgrade, AxisDemand demand, int referenceMoveMax, bool hasCompetingHeroDemand,
             out MaterializationQualityBreakdown qbd)
@@ -426,11 +441,9 @@ namespace Game.Ai.V2
                 case IntendedRole.EquipmentUpgrade:
                     return equipmentUpgrade;
                 case IntendedRole.Support:
-                    // P1 ARCH — Support role-fit from the registry (ApBonus / Researcher / Assembler
-                    // today; a future support mechanic flows in with no edit here).
-                    return StrategicEffectRegistry.RoleFit(IntendedRole.Support, projected,
-                        PlanBaseDef(plan)?.moveMax ?? 0, new EffectContextData(snap))
-                        + HeroSupportFit(plan, hero);
+                    // P2b — no separate hero-support term: the registry already prices Researcher /
+                    // Assembler (for a Unit OR a Hero) exactly once. Core Support fit is 0.
+                    return 0f;
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
                 case IntendedRole.MobileCombat:
@@ -440,10 +453,20 @@ namespace Game.Ai.V2
                 case IntendedRole.Hold:
                     return 0f;
                 default:
-                    // P1 ARCH — a brand-new registry-backed role is scored here with no switch edit.
-                    return versatility + StrategicEffectRegistry.RoleFit(role, projected,
-                        PlanBaseDef(plan)?.moveMax ?? 0, new EffectContextData(snap));
+                    return versatility;
             }
+        }
+
+        // Effective moveMax of the plan's body WITH attached equipment folded in (P1 ARCH — so role
+        // derivation, coverage and scoring all read the SAME projected line; a +MoveMax trinket that
+        // pushes a body over the mobile threshold is seen everywhere, not just in readiness).
+        private static int EffectiveMoveMax(MaterializationPlan plan)
+        {
+            CardDefinition def = PlanBaseDef(plan);
+            if (def == null) return 0;
+            EquipmentGrant grant = plan?.GeneratedEquipmentDef?.equipment
+                                   ?? plan?.EquipmentInHand?.Definition?.equipment;
+            return AiPower.EffectiveLine(def, grant).MoveMax;
         }
 
         // -----------------------------------------------------------------------------------------
@@ -508,7 +531,11 @@ namespace Game.Ai.V2
                         Mathf.Clamp01(generation.SuccessChance)))
                 : 0f;
             bd.Total = SumTotal(bd);
-            bd.HoldValue = hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f;
+            // review-r4 P2 — a GENERATED non-combat card is not yet in hand: declining the chain
+            // preserves the generator option, not a physical card, so it carries NO physical-card
+            // hold value (same fix already made for generated Unit/Hero in HoldValue).
+            bd.HoldValue = generation != null ? 0f
+                : (hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f);
 
             return new StrategicCardUseCandidate
             {
@@ -599,10 +626,10 @@ namespace Game.Ai.V2
                 case IntendedRole.Scout:
                     return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.AntiAir:
-                    return !baseline.HasAntiAir && ThreatResponseValue(IntendedRole.AntiAir, snap) > 0f
+                    return !baseline.HasAntiAir && EnemyThreatModel.ThreatPresent(IntendedRole.AntiAir, snap)
                         ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.AntiArmor:
-                    return !baseline.HasAntiArmor && ThreatResponseValue(IntendedRole.AntiArmor, snap) > 0f
+                    return !baseline.HasAntiArmor && EnemyThreatModel.ThreatPresent(IntendedRole.AntiArmor, snap)
                         ? AiConfigV2.capabilityGapValue : 0f;
                 case IntendedRole.Support:
                     return baseline.HasSupport ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
@@ -615,16 +642,6 @@ namespace Game.Ai.V2
                 default:
                     return 0f;
             }
-        }
-
-        // review-r4 finding 5 / P1 ARCH — the counter-role threat signal now delegates to the shared
-        // EnemyThreatModel (a new enemy threat type is one branch there, no edit here). Still a
-        // cheat-biased DIRECTIONAL signal off omniscient TrueWorld composition; never AI intel.
-        private static float ThreatResponseValue(IntendedRole role, WorldSnapshot snap)
-        {
-            if (role != IntendedRole.AntiAir && role != IntendedRole.AntiArmor)
-                return 0f;
-            return EnemyThreatModel.CounterDemandFactor(role, snap) * AiConfigV2.threatResponseValueWeight;
         }
 
         private static float NextTurnPotential(MaterializationPlan plan, IntendedRole role)
@@ -700,7 +717,7 @@ namespace Game.Ai.V2
             float nearTermDemand = 0f;
             if ((role == IntendedRole.AntiAir || role == IntendedRole.AntiArmor
                  || role == IntendedRole.CapabilitySpecialist)
-                && ThreatResponseValue(role, snap) > 0f)
+                && EnemyThreatModel.ThreatPresent(role, snap))
                 nearTermDemand += AiConfigV2.holdNearTermDemandValue;
 
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? def?.grantedAbilities);
@@ -784,8 +801,9 @@ namespace Game.Ai.V2
                 roles.Add(IntendedRole.ForceGrowth);
             }
             // P1 ARCH — every ability/stat-derived role (AntiAir / AntiArmor / Support / MobileCombat
-            // today) comes from the registry. A new mechanic adds its role here with no edit.
-            roles.AddRange(StrategicEffectRegistry.Roles(abilities, def?.moveMax ?? 0));
+            // today) comes from the registry, off the SAME effective moveMax role-fit / readiness use
+            // (a +MoveMax trinket that crosses the mobile threshold is now seen here too).
+            roles.AddRange(StrategicEffectRegistry.Roles(abilities, EffectiveMoveMax(plan)));
             if (plan != null && plan.UsesEquipment)
                 roles.Add(IntendedRole.EquipmentUpgrade);
             // review-r3 — Hold is NOT a play role: it never goes through ScoreSurplusRole (which
@@ -839,9 +857,6 @@ namespace Game.Ai.V2
                 HeroLeadershipScore(PlanBaseDef(plan)) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
                 0f, AiConfigV2.heroLeadershipFitCap);
         }
-
-        private static float HeroSupportFit(MaterializationPlan plan, bool hero) =>
-            hero && HeroHasSupportVocation(PlanBaseDef(plan)) ? AiConfigV2.heroSupportFitValue : 0f;
 
         private static bool PlanHeroIsSupport(MaterializationPlan plan)
         {

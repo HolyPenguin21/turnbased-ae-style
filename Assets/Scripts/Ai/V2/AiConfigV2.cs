@@ -894,7 +894,12 @@ namespace Game.Ai.V2
         // / AntiArmor reuse capabilityGapValue, Support reuses surplusRecurringApIncomeBonus /
         // heroSupportFitValue (parity with the old inline SupportRoleFit); only these two are new.
         public const float effectMobileBaseFit = 0.20f;    // a fast non-recce body's MobileCombat role-fit floor
-        public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a 0 economy runway
+        public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
+        // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
+        // aura mechanics — a value at/above the norm gives the effect its full BaseFit).
+        public const float effectTargetDensityNorm = 4f;   // enemy contacts for an AoE effect to reach full value
+        public const float effectSustainHpNorm = 8f;       // projected HP for a regen effect to reach full value
+        public const float effectAuraAllyNorm = 3f;        // eligible allies in the dest army for an aura to reach full value
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card
