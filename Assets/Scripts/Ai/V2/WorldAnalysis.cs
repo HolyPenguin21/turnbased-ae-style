@@ -274,6 +274,8 @@ namespace Game.Ai.V2
                 EffectiveArmyPower = AiPower.EffectiveArmyPower(a.Members),
                 CompositionQuality = AiPower.CompositionQualityOf(a.Members),
                 MaxMovement = a.MaxMovement,
+                Capacity = a.Capacity,
+                OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,

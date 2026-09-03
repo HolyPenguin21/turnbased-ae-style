@@ -62,13 +62,14 @@ namespace Game.Ai.V2
         public readonly EffectField Field;       // which breakdown term this value lands in
         public readonly bool CountsAsCoverage;   // contributes to "my force already covers role X"
         // review-r4 P1 ARCH follow-up — for the EligibleAllies context: which allies THIS effect
-        // benefits (an Armored aura vs a Ranged aura vs a generic "+X to all"). null => any non-hero
-        // body. Kept on the descriptor so a new aura mechanic supplies its own predicate, not a
-        // registry-wide "generic allies" count.
-        public readonly System.Func<UnitData, bool> EligiblePredicate;
+        // benefits (an Armored aura vs a Ranged aura vs a generic "+X to all"). null => any member.
+        // Kept on the descriptor so a new aura mechanic supplies its own predicate, not a
+        // registry-wide "generic allies" count. Operates on the SNAPSHOT member profile.
+        public readonly System.Func<WorthIt.DefenderProfile, bool> EligiblePredicate;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
-            EffectField field, bool coverage, System.Func<UnitData, bool> eligiblePredicate = null)
+            EffectField field, bool coverage,
+            System.Func<WorthIt.DefenderProfile, bool> eligiblePredicate = null)
         {
             Role = role;
             BaseFit = baseFit;
@@ -116,21 +117,22 @@ namespace Game.Ai.V2
     }
 
     // The world context every contextual scaler reads. Built once per Card x IntendedUse
-    // evaluation — DESTINATION-LOCAL where it matters, so "Splash unit -> frontline near a cluster"
-    // and "Splash unit -> quiet rear army" score differently. A field left at its "unknown" sentinel
-    // keeps that context conservative (FreeBattleSlots -1 -> no phantom Summon capacity).
+    // evaluation, ENTIRELY from the captured WorldSnapshot (or a deterministic projection for a
+    // synthetic NewArmy / ReusableShell destination) — never live ArmyData, so one Materialization
+    // Plan.Score can't mix two world states. DESTINATION-LOCAL where it matters.
     //
     //   RecurringIncomeWeight  0..1, high when the economy is INSECURE (recurring income worth more)
     //   LocalEnemyArmies       enemy armies within effectTargetDensityRadius of the deploy hex — the
     //                          AoE / TargetDensity signal (0 with no plan/hex, never a global count)
     //   ProjectedLine          the body's PROJECTED stat line (card + attached equipment) — the same
     //                          line readiness / role derivation use; ExpectedSustain reads HitPoints
-    //   DestArmyMembers        members already in the destination army (ExistingArmy or Garrison) —
-    //                          for an aura's own EligiblePredicate to count the ones IT benefits
-    //   FreeBattleSlots        battle cells free in the dest army AFTER the plan's own primary body
-    //                          takes its slot (the capacity a Summon would actually have, not the
-    //                          pre-materialization count); -1 = unknown (NewArmy / ReusableShell —
-    //                          no post-spawn army to inspect) -> Summon scores 0
+    //   DestArmyMembers        snapshot member profiles already in the destination army (empty for a
+    //                          fresh NewArmy / empty ReusableShell) — an aura's EligiblePredicate
+    //                          counts the ones IT benefits
+    //   FreeBattleSlots        battle cells free in the destination AFTER the plan's own primary body
+    //                          takes its slot — the capacity a Summon would ACTUALLY have. Projected
+    //                          for NewArmy / ReusableShell (nominal capacity − primary body), never
+    //                          the pre-materialization count. -1 only when the dest army is unknown.
     internal readonly struct EffectEvaluationContext
     {
         public readonly WorldSnapshot Snap;
@@ -138,7 +140,7 @@ namespace Game.Ai.V2
         public readonly float RecurringIncomeWeight;
         public readonly int LocalEnemyArmies;
         public readonly AiPower.ProjectedStrategicLine ProjectedLine;
-        public readonly IReadOnlyList<UnitData> DestArmyMembers;
+        public readonly IReadOnlyList<WorthIt.DefenderProfile> DestArmyMembers;
         public readonly int FreeBattleSlots;
 
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
@@ -165,21 +167,70 @@ namespace Game.Ai.V2
                         LocalEnemyArmies++;
             }
 
-            // Both ExistingArmy and Garrison placements carry Deploy.Army; NewArmy / ReusableShell
-            // leave it null (there is no post-spawn army to inspect yet).
-            ArmyData dest = plan?.Deploy.Army;
-            DestArmyMembers = dest?.Members ?? (IReadOnlyList<UnitData>)System.Array.Empty<UnitData>();
-            FreeBattleSlots = dest != null
-                ? Mathf.Max(0, dest.Capacity - dest.Members.Count - 1)   // -1: the plan's own body
-                : -1;
+            ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers);
         }
 
-        public int CountEligibleAllies(System.Func<UnitData, bool> predicate)
+        // Snapshot-only. For a real recipient army (ExistingArmy / Garrison) the occupancy comes
+        // from the captured ArmySnapshot by id; for a synthetic NewArmy / ReusableShell the capacity
+        // is projected from the deployment rules (hero primary -> its CommandRating, else the field/
+        // garrison base). Always minus 1 for the plan's own primary body.
+        private static void ResolveDestination(WorldSnapshot snap, MaterializationPlan plan,
+            out int freeSlots, out IReadOnlyList<WorthIt.DefenderProfile> members)
         {
-            System.Func<UnitData, bool> p = predicate ?? (m => m != null && !m.IsHero);
+            members = System.Array.Empty<WorthIt.DefenderProfile>();
+            freeSlots = -1;
+            if (plan == null)
+                return;
+
+            CardDefinition primary = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
+            bool primaryIsHero = primary != null && primary.cardType == CardType.Hero;
+            int primaryHeroCr = primaryIsHero ? primary.commandRating : 0;
+            const int primaryBodySlots = 1;
+
+            switch (plan.Deploy.Kind)
+            {
+                case DeploymentKind.ExistingArmy:
+                case DeploymentKind.Garrison:
+                {
+                    int wantId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
+                    ArmySnapshot a = null;
+                    if (snap?.Self?.Armies != null)
+                        foreach (ArmySnapshot s in snap.Self.Armies)
+                            if (s != null && s.ArmyId == wantId) { a = s; break; }
+                    if (a == null)
+                        return;                       // stale plan — leave -1
+                    members = a.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)members;
+                    int cap = System.Math.Max(a.Capacity, primaryHeroCr); // a hero primary can raise it
+                    freeSlots = System.Math.Max(0, cap - a.OccupiedBattleSlots - primaryBodySlots);
+                    return;
+                }
+                case DeploymentKind.NewArmy:
+                case DeploymentKind.ReusableShell:
+                {
+                    // A ReusableShell is an existing empty army; if its snapshot is present use its
+                    // (0-member) capacity, else fall back to the field-army nominal.
+                    int shellCap = -1;
+                    if (plan.Deploy.Kind == DeploymentKind.ReusableShell && plan.Deploy.Army != null
+                        && snap?.Self?.Armies != null)
+                        foreach (ArmySnapshot s in snap.Self.Armies)
+                            if (s != null && s.ArmyId == plan.Deploy.Army.Id) { shellCap = s.Capacity; break; }
+
+                    int nominalField = ArmyData.ComputeCapacity(
+                        System.Array.Empty<UnitData>(), isGarrison: false); // heroless field base
+                    int cap = System.Math.Max(
+                        primaryIsHero ? primaryHeroCr : nominalField,
+                        shellCap);
+                    freeSlots = System.Math.Max(0, cap - primaryBodySlots);
+                    return;
+                }
+            }
+        }
+
+        public int CountEligibleAllies(System.Func<WorthIt.DefenderProfile, bool> predicate)
+        {
             int n = 0;
-            foreach (UnitData m in DestArmyMembers)
-                if (m != null && p(m))
+            foreach (WorthIt.DefenderProfile m in DestArmyMembers)
+                if (predicate == null || predicate(m))
                     n++;
             return n;
         }
@@ -219,11 +270,11 @@ namespace Game.Ai.V2
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
                 // Future mechanics are ONE row each — no evaluator edit. An aura supplies its own
-                // eligibility predicate; a generic "+X to all" omits it (defaults to any non-hero):
+                // snapshot-profile eligibility predicate; a generic "+X to all" omits it:
                 //   [UnitAbilities.Splash]       = { (CombatBody,  w, TargetDensity,   RoleFit,     false) },
                 //   [UnitAbilities.Regenerate]   = { (CombatBody,  w, ExpectedSustain, RoleFit,     false) },
                 //   [UnitAbilities.ArmoredAura]  = { (Support, w, EligibleAllies, Synergy, true,
-                //                                     m => m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored)) },
+                //                                     p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Armored)) },
                 //   [UnitAbilities.Summon]       = { (ForceGrowth, w, FreeBattleSlots, ForceGrowth, false) },
             };
 

@@ -660,6 +660,22 @@ Both Unity assemblies build clean (0/0) on `0cd7177` — sim harnesses could not
 concurrent unrelated in-progress edit to `HexSelectionController.cs` was breaking the shared
 `Assembly-CSharp.csproj` at the time; the AI/V2 changes were verified to compile in isolation.
 
+### Review round 4 P1 ARCH — snapshot-only destination + projected synthetic capacity (on `22aab7e`)
+
+- **`FreeBattleSlots` for NewArmy / ReusableShell is now PROJECTED, not 0.** Returning 0 for a
+  synthetic destination removed the phantom capacity but created phantom *incapacity* — the same
+  Summon unit scored `> 0` into an ExistingArmy with spare slots and `0` into a fresh NewArmy with
+  spare slots. `ResolveDestination` now projects: hero primary ⇒ its `commandRating`, else the
+  heroless field base (`ArmyData.ComputeCapacity(∅, false)`), minus 1 for the primary body; a
+  ReusableShell whose snapshot is present uses its (0-member) `Capacity`.
+- **The effect context reads the SNAPSHOT, never live `ArmyData`.** New `ArmySnapshot.Capacity` /
+  `OccupiedBattleSlots` / `FreeBattleSlots` frozen in `WorldAnalysis.ToArmySnapshot`.
+  `EffectEvaluationContext.ResolveDestination` looks the recipient army up by id in
+  `snap.Self.Armies` (stale ⇒ -1), so one `MaterializationPlan.Score` can't mix two world states.
+  `DestArmyMembers` / the aura `EligiblePredicate` moved from live `UnitData` to the snapshot's
+  `WorthIt.DefenderProfile` (the ArmoredAura example predicate becomes
+  `p => p.TypeTags.Contains(UnitTypeTag.Armored)`).
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

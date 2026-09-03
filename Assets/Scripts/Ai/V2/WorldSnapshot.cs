@@ -112,6 +112,12 @@ namespace Game.Ai.V2
         public float CompositionQuality;    // [0..1] the multiplier's driver, kept for the "why" log
         public int MaxMovement;             // per-turn move budget, for rough ETA
 
+        // ---- BATTLE-SLOT capacity (review-r4 P1 ARCH) — frozen from ArmyData so strategic effect
+        //      scoring reads occupancy from the SAME snapshot as everything else, never live state.
+        public int Capacity;                // ArmyData.Capacity — nominal battle-member cap
+        public int OccupiedBattleSlots;     // members currently occupying slots (heroes included)
+        public int FreeBattleSlots => System.Math.Max(0, Capacity - OccupiedBattleSlots);
+
         // ---- OPERATIONAL state (2026-08-29, build-order step 4) ----------------------------
         // Frozen here so the Recon mission planner / ScoutCostModel can size a mover's cost for
         // THIS allocation cycle without a fresh live read downstream. Only meaningful for
