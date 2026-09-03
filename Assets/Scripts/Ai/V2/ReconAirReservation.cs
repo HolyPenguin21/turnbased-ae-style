@@ -344,8 +344,10 @@ namespace Game.Ai.V2
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
                 bool canRemain = ctx.Map != null
                     && AiAviationSupport.CanSafelyEndTurnAirborne(wing, ctx.Map, player);
-                int projIdx = real.AirborneTurnIndex
-                    + (wouldBeNewTurn && real.LastProcessedTurn >= 0 ? 1 : 0);
+                // Turn arithmetic, not a BeginTurn() increment — matches the executor's own
+                // AirborneTurnsElapsed model exactly (AI-AIR-02 review P1: no drift when a turn's
+                // RunActor pass is skipped).
+                int projIdx = real.AirborneTurnsElapsed(ctx.TurnNumber);
                 bool mustRecover = projIdx >= 1 && !canRemain;
 
                 ReconAirPhase phase = real.Phase;

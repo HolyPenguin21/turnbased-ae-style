@@ -58,21 +58,31 @@ namespace Game.Ai.V2
         //  feasibility are NEVER duplicated here — they are read live from AviationRules /
         //  AiAviationSupport every decision.
         // ===================================================================================
-        public int LaunchTurn = -1;                                 // turn the wing left the airfield
-        public int AirborneTurnIndex;                               // 0 on the launch turn, +1 each further AI turn aloft
-        public int LastProcessedTurn = -1;                          // guards AirborneTurnIndex against a double bump within one turn
+        public int LaunchTurn = -1;                                 // AI turn the wing actually left the airfield (authoritative)
+        public int LastProcessedTurn = -1;                          // last AI turn RunActor processed this sortie
         public ReconAirMissionMode MissionMode = ReconAirMissionMode.Recon;
         public bool MustRecoverThisTurn;                            // real endurance deadline reached — Return is a hard priority this turn
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
 
-        // Advance the airborne-turn counter exactly once per AI turn this sortie is processed.
-        // Returns true on the first call of a NEW turn so the caller can re-open a Hold.
+        // Turns elapsed since the wing actually left its airfield: 0 on the launch turn itself,
+        // 1 on its first full airborne turn, and so on. Derived from turn arithmetic — NOT an
+        // incrementing counter — so it can never drift from the real airborne lifetime when a
+        // turn's RunActor pass is skipped (e.g. the launch step consumed all MP so RunActor was
+        // never entered that turn) or entered more than once.
+        public int AirborneTurnsElapsed(int currentTurn)
+        {
+            if (LaunchTurn < 0)
+                return 0;
+            int elapsed = currentTurn - LaunchTurn;
+            return elapsed > 0 ? elapsed : 0;
+        }
+
+        // True on the first call of an AI turn this sortie has not been processed in yet — lets the
+        // caller re-open a Hold exactly once per turn.
         public bool BeginTurn(int turn)
         {
             if (turn == LastProcessedTurn)
                 return false;
-            if (LastProcessedTurn >= 0)
-                AirborneTurnIndex++;
             LastProcessedTurn = turn;
             return true;
         }
