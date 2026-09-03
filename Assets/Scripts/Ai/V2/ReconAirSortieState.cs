@@ -30,6 +30,11 @@ namespace Game.Ai.V2
 
     internal sealed class ReconAirSortieState
     {
+        // Stable per-sortie identity (one launch -> landing arc). Used so AirReconCoverageRegistry
+        // can tell "a hex MY current sortie just swept" from "a hex another aircraft swept" — an
+        // army id would be reused across a wing's successive sorties.
+        public int SortieId;
+
         public ReconAirPhase Phase = ReconAirPhase.Outbound;
         public HexCoord LaunchHex;
         public HexCoord ChosenLandingHex;
@@ -99,18 +104,23 @@ namespace Game.Ai.V2
     {
         private static readonly Dictionary<PlayerSetupData, Dictionary<int, ReconAirSortieState>> ByPlayer =
             new Dictionary<PlayerSetupData, Dictionary<int, ReconAirSortieState>>();
+        private static int _nextSortieId = 1;
 
-        public static void ClearAll() => ByPlayer.Clear();
+        public static void ClearAll()
+        {
+            ByPlayer.Clear();
+            _nextSortieId = 1;
+        }
 
         public static ReconAirSortieState GetOrCreate(PlayerSetupData player, int armyId, HexCoord launchHex)
         {
             if (player == null)
-                return new ReconAirSortieState { LaunchHex = launchHex };
+                return new ReconAirSortieState { LaunchHex = launchHex, SortieId = _nextSortieId++ };
             if (!ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))
                 ByPlayer[player] = byArmy = new Dictionary<int, ReconAirSortieState>();
             if (!byArmy.TryGetValue(armyId, out ReconAirSortieState state))
             {
-                state = new ReconAirSortieState { LaunchHex = launchHex };
+                state = new ReconAirSortieState { LaunchHex = launchHex, SortieId = _nextSortieId++ };
                 state.RecordStep(launchHex);
                 byArmy[armyId] = state;
             }
@@ -142,6 +152,46 @@ namespace Game.Ai.V2
         {
             if (player != null && ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))
                 byArmy.Remove(armyId);
+        }
+    }
+
+    // ===========================================================================================
+    //  RECENT AIR-RECON COVERAGE  (AI-AIR-01 §5 — "repeats a recently completed air observation")
+    // ===========================================================================================
+    //  Every completed air step stamps its whole observed vision footprint here, tagged with the
+    //  SORTIE that saw it. AirReconRouteScorer's redundancy term / hard reject then asks
+    //  "was this corridor hex recently covered by a DIFFERENT sortie" — so a wing does not block
+    //  its own advance on the footprint it just laid down (an r1-Recce aircraft footprints all six
+    //  neighbours of its next candidate step), while two different aircraft — including a second
+    //  wing the same turn — still can't grind the same ground. Turn-scoped by the same
+    //  airReconTargetCooldownTurns window V1's AirReconTargets uses; never marks a hex observed.
+    // ===========================================================================================
+    internal static class AirReconCoverageRegistry
+    {
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, (int turn, int sortieId)>> ByPlayer =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, (int turn, int sortieId)>>();
+
+        public static void ClearAll() => ByPlayer.Clear();
+
+        public static void Record(PlayerSetupData player, HexCoord hex, int turn, int sortieId)
+        {
+            if (player == null)
+                return;
+            if (!ByPlayer.TryGetValue(player, out Dictionary<HexCoord, (int turn, int sortieId)> byHex))
+                ByPlayer[player] = byHex = new Dictionary<HexCoord, (int turn, int sortieId)>();
+            byHex[hex] = (turn, sortieId);
+        }
+
+        // True when `hex` was air-observed within `cooldownTurns` by a sortie OTHER than
+        // `excludeSortieId` (pass -1 to exclude nothing — e.g. a not-yet-launched storage candidate).
+        public static bool RecentlyCoveredByOther(PlayerSetupData player, HexCoord hex, int currentTurn,
+            int cooldownTurns, int excludeSortieId)
+        {
+            return player != null
+                && ByPlayer.TryGetValue(player, out Dictionary<HexCoord, (int turn, int sortieId)> byHex)
+                && byHex.TryGetValue(hex, out (int turn, int sortieId) e)
+                && e.sortieId != excludeSortieId
+                && currentTurn - e.turn < cooldownTurns;
         }
     }
 }

@@ -186,18 +186,20 @@ namespace Game.Ai.V2
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
 
-            // P1 review fix — sector coverage now counts EVERY assigned Recon actor working the
-            // step's coarse sector (other air sorties + ground scouts), and is computed for a
-            // storage launch too (previously `sortieState == null` => always 0). Frame: sector of
-            // the step measured from the launch/airfield origin `from`, same as the anchor read.
-            ReconSector stepSector = ReconDirectionModel.Sector(from, h);
-            int sectorClaims = ReconAirSortieRegistry.OtherSectorClaims(player, moverArmyId, stepSector)
-                + CountGroundReconActorsInSector(snapshot, stepSector);
+            // R2 review fix — one coverage read, one reference frame. Every assigned Recon actor
+            // (air sortie OR ground scout with a live ReconAssignment) is placed in its wedge FROM
+            // OUR CITADEL using its LIVE ArmyRegistry position; the candidate's wedge is measured
+            // the same way. Idle Recce (no assignment) is not counted. Storage launches get a real
+            // count too (moverArmyId -1 simply excludes nobody).
+            HexCoord citadel = snapshot?.Self != null ? snapshot.Self.Citadel : from;
+            ReconSector stepSector = ReconDirectionModel.Sector(citadel, h);
+            int sectorClaims = CountAssignedReconActorsInWedge(player, citadel, stepSector, moverArmyId);
+            int excludeSortieId = sortieState?.SortieId ?? -1;
 
             var inputs = new AirReconRouteInputs(player, map, mode, turn, from, h, h, landing,
                 outboundHexes, returnHexes, vision, routeCost, requiredTurns, requiredUnlandedEnds,
                 activationAp, activationEnergy, neverObserved, staleInformation, anchors, snapshot,
-                sortieState, sectorClaims);
+                sortieState, sectorClaims, excludeSortieId);
             AirReconRouteCandidate c = AirReconRouteScorer.Score(inputs);
             if (c.Rejected)
             {
@@ -206,8 +208,7 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            float sectorPressure = anchors != null
-                ? anchors.PressureFor(ReconDirectionModel.Sector(from, h)) : 0f;
+            float sectorPressure = anchors != null ? anchors.PressureFor(stepSector) : 0f;
             return new StepChoice(h, landing, c.TotalScore, neverObserved, staleInformation,
                 sectorPressure, routeCost, requiredTurns, activationAp, activationEnergy, c.Breakdown);
         }
@@ -253,22 +254,22 @@ namespace Game.Ai.V2
                 staleInformation /= observed;
         }
 
-        // Ground Recon actors (dedicated scouts) currently standing in `sector`, measured from our
-        // Citadel — the "another assigned Recon actor" half of spec §5's sector-coverage rule that
-        // ReconAirSortieRegistry (air sorties only) does not see. Position-based, not objective-
-        // based: coarse but enough to tell a sector is already being worked.
-        private static int CountGroundReconActorsInSector(WorldSnapshot snapshot, ReconSector sector)
+        // spec §5 "already adequately covered by another assigned Recon actor" — count every
+        // OTHER army that holds a live ReconAssignment (air sortie or ground scout; idle Recce has
+        // none) and whose LIVE position falls in `wedge` measured from `citadel`. One registry
+        // (ReconAssignmentRegistry, shared by ReconAirExecutor + ReconGroundExecutor), one origin,
+        // live ArmyRegistry positions — no snapshot staleness, no mixed reference frames.
+        private static int CountAssignedReconActorsInWedge(PlayerSetupData player, HexCoord citadel,
+            ReconSector wedge, int excludeArmyId)
         {
-            IReadOnlyList<ArmySnapshot> armies = snapshot?.Self?.Armies;
-            if (armies == null)
-                return 0;
-            HexCoord origin = snapshot.Self.Citadel;
             int n = 0;
-            foreach (ArmySnapshot a in armies)
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
             {
-                if (a == null || a.IsAir || a.IsGarrison || !a.IsSoloRecce)
+                if (a == null || a.Id == excludeArmyId)
                     continue;
-                if (ReconDirectionModel.Sector(origin, a.Hex) == sector)
+                if (!ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+                    continue;
+                if (ReconDirectionModel.Sector(citadel, a.Hex) == wedge)
                     n++;
             }
             return n;

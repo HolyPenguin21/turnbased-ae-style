@@ -351,6 +351,7 @@ namespace Game.Ai.V2
         public readonly WorldSnapshot Snapshot;
         public readonly ReconAirSortieState SortieState;
         public readonly int OtherSectorClaims;
+        public readonly int ExcludeSortieId;   // recent-air-coverage from THIS sortie is not "a repeat" (-1 = exclude nothing)
 
         public AirReconRouteInputs(PlayerSetupData player, HexMap map, ReconMode mode, int turn,
             HexCoord from, HexCoord firstStep, HexCoord objectiveHex, HexCoord landingHex,
@@ -358,7 +359,7 @@ namespace Game.Ai.V2
             int routeCost, int requiredTurns, int requiredUnlandedEnds, float activationAp,
             float activationEnergy, int neverObservedFootprint, float staleFootprint,
             AirReconAnchorSet anchors, WorldSnapshot snapshot, ReconAirSortieState sortieState,
-            int otherSectorClaims)
+            int otherSectorClaims, int excludeSortieId)
         {
             Player = player;
             Map = map;
@@ -382,6 +383,7 @@ namespace Game.Ai.V2
             Snapshot = snapshot;
             SortieState = sortieState;
             OtherSectorClaims = otherSectorClaims;
+            ExcludeSortieId = excludeSortieId;
         }
     }
 
@@ -398,7 +400,12 @@ namespace Game.Ai.V2
                 : AiConfigV2.airReconStaleWeight * x.StaleFootprint;
 
             // --- EnemyInterest — blended sanitized sector pressure toward the first step. --------
-            ReconSector stepSector = ReconDirectionModel.Sector(x.From, x.FirstStep);
+            // R2 review fix — measure the step's wedge from our CITADEL, the same frame the anchor
+            // SectorPressure dict is built in (AirReconAnchorModel) and the same one sector
+            // deconfliction now uses. A `Sector(from, h)` read (aircraft-relative) meant the anchor
+            // lookup compared two different frames for a wing far from home.
+            HexCoord sectorOrigin = x.Snapshot?.Self != null ? x.Snapshot.Self.Citadel : x.From;
+            ReconSector stepSector = ReconDirectionModel.Sector(sectorOrigin, x.FirstStep);
             float sectorPressure = x.Anchors != null ? x.Anchors.PressureFor(stepSector) : 0f;
             float enemyInterest = AiConfigV2.airReconDirectionWeight * Mathf.Clamp01(sectorPressure);
 
@@ -436,8 +443,14 @@ namespace Game.Ai.V2
             // P1 review fix — recent-air-coverage overlap is measured on EVERY corridor hex,
             // INDEPENDENTLY of current usefulness. A hex a previous sortie just made fresh has
             // usefulness ~0, so gating the recent check on "still informative" made a successful
-            // reflight invisible to the repeat rule. Two separate metrics now: ObservationNovelty
+            // reflight invisible to the repeat rule. Two separate metrics: ObservationNovelty
             // (drives value) and RecentAirCoverageOverlap (drives the penalty + hard reject).
+            // R2 review fix — the overlap query excludes THIS sortie's own footprint stamps
+            // (AirReconCoverageRegistry is sortie-tagged): an r1-Recce aircraft footprints all six
+            // neighbours of its next candidate step, and without the exclusion every follow-on step
+            // scored 100% "recent overlap" against itself and was hard-rejected, stalling the sortie
+            // after one step (and breaking AI-AIR-02 multi-turn continuation). A DIFFERENT sortie —
+            // including a second wing the same turn — still counts.
             int recentAirCoverageOverlap = 0;
             foreach (HexCoord h in routeHexes)
             {
@@ -452,8 +465,8 @@ namespace Game.Ai.V2
                     local += AiConfigV2.airReconRouteObservationRingWeight * ring;
                     informativeHexes++;
                 }
-                if (AiMapMemory.WasAirReconnedWithin(x.Player, h, x.Turn,
-                        AiConfig.airReconTargetCooldownTurns))
+                if (AirReconCoverageRegistry.RecentlyCoveredByOther(x.Player, h, x.Turn,
+                        AiConfig.airReconTargetCooldownTurns, x.ExcludeSortieId))
                     recentAirCoverageOverlap++;
                 routeObs += decay * local;
                 decay *= AiConfigV2.airReconRouteObservationDecay;

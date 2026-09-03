@@ -769,16 +769,19 @@ namespace Game.Ai.V2
         }
 
         // AI-AIR-01 §5 — record the whole on-map vision footprint of a completed air step as
-        // recently-air-observed, so AirReconRouteScorer's recent-coverage overlap sees the ground
-        // a sortie actually swept, not just its centre hex.
+        // recently-air-observed, TAGGED WITH THIS SORTIE, so AirReconRouteScorer's recent-coverage
+        // overlap sees the ground a sortie actually swept (not just its centre hex) without a wing
+        // blocking its own advance on the footprint it just laid down.
         private static void StampObservedFootprint(PlayerSetupData player, AiTurnContext ctx,
             ArmyData air, HexCoord center)
         {
+            int sortieId = ReconAirSortieRegistry.TryGet(player, air.Id, out ReconAirSortieState st)
+                ? st.SortieId : -1;
             int vision = (ctx?.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                 + AbilityParams.GetBestRecceRadius(air);
             foreach (HexCoord h in HexGridMath.HexesInRange(center, Math.Max(0, vision)))
                 if (ctx?.Map != null && ctx.Map.TryGetTerrainAt(h, out _))
-                    AiMapMemory.RecordAirReconTarget(player, h, ctx.TurnNumber);
+                    AirReconCoverageRegistry.Record(player, h, ctx.TurnNumber, sortieId);
         }
 
         // Spec §29 / §P1 — aviation still only REVEALS a hex and never marks it ground-Visited
