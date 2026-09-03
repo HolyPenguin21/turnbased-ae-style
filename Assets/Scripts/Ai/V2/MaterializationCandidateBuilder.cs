@@ -125,16 +125,25 @@ namespace Game.Ai.V2
 
     internal static class MaterializationCandidateBuilder
     {
+        // AI-MGR-01 P1.3 — excludeCards / excludeGenKeys let the Phase A instance-deconfliction pass
+        // ask for the best chain that AVOIDS a hand card / generation source a higher-priority
+        // demand has already claimed this iteration, so two demands never both count one physical
+        // card as available capacity.
         public static (MaterializationPlan plan, float followupAp)? BestForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
-            MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand)
+            MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand,
+            System.Collections.Generic.ISet<CardData> excludeCards = null,
+            System.Collections.Generic.ISet<string> excludeGenKeys = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             float axisBudget = ledger.DiscreteAdmissionBudget(demand.RequestingAxis);
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
             int stealthSurcharge = (demand.RequiredTraits & TraitPreference.Stealth) != 0
                 ? AiConfigV2.scoutOptionalStealthAp : 0;
+            bool Excluded(CardData c) => c != null && excludeCards != null && excludeCards.Contains(c);
+            bool ExcludedGen(GenerationStep g) => g != null && excludeGenKeys != null
+                && !string.IsNullOrEmpty(g.CardKey) && excludeGenKeys.Contains(g.CardKey);
 
             List<CardData> handList = hand.Hand.ToList();
             List<GenerationStep> genSteps = reservation != null && reservation.CanGenerateMore
@@ -148,7 +157,7 @@ namespace Game.Ai.V2
             {
                 CardData card = handList[i];
                 CardDefinition def = card?.Definition;
-                if (def == null || def.isAviation || !MatchesCapabilityDef(def, demand.Capability))
+                if (def == null || def.isAviation || Excluded(card) || !MatchesCapabilityDef(def, demand.Capability))
                     continue;
 
                 IReadOnlyList<string> baseAbilities = EffectiveAbilities(def, card.Equipment);
@@ -173,7 +182,7 @@ namespace Game.Ai.V2
                         if (j == i) continue;
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
-                        if (eqDef == null || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
+                        if (eqDef == null || Excluded(eq) || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
                             || !EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
@@ -196,6 +205,7 @@ namespace Game.Ai.V2
 
             foreach (GenerationStep g in genSteps)
             {
+                if (ExcludedGen(g)) continue;
                 CardDefinition gd = g.CardDef;
                 if (g.ProducesEquipment)
                 {
@@ -204,7 +214,7 @@ namespace Game.Ai.V2
                     {
                         CardData host = handList[i];
                         CardDefinition hd = host?.Definition;
-                        if (hd == null || hd.isAviation || host.Equipment != null
+                        if (hd == null || Excluded(host) || hd.isAviation || host.Equipment != null
                             || !MatchesCapabilityDef(hd, demand.Capability) || !EquipmentDefFitsHostDef(gd, hd))
                             continue;
                         IReadOnlyList<string> hostAbilities = EffectiveAbilities(hd, null);
@@ -249,7 +259,7 @@ namespace Game.Ai.V2
                     {
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
-                        if (eqDef == null || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
+                        if (eqDef == null || Excluded(eq) || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
                             || !EquipmentDefFitsHostDef(eqDef, gd))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(genAbilities, eqDef.equipment);
@@ -294,6 +304,22 @@ namespace Game.Ai.V2
             if (win.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval A — {demand.Capability} via {win.StableKey} "
                     + $"role={win.UseRole} [{win.UseBreakdown.ToCompact()}]");
+
+            // AI-MGR-01 P0.2 — Hold is a real competitor in Phase A. For a SOFT demand (low Value —
+            // e.g. baseline force readiness), if the best chain's play value does not beat the
+            // card's HoldValue, keep the card in hand: StrategicManager logs "no feasible useful
+            // chain" and the demand stays residual. An urgent demand (Value at/above
+            // stratHoldBeatsPlayMaxDemandValue — a real threat / raid gap) is never vetoed by Hold.
+            float holdVal = win.UseBreakdown?.HoldValue ?? 0f;
+            if (demand.Value < AiConfigV2.stratHoldBeatsPlayMaxDemandValue
+                && win.Score <= holdVal + AiConfigV2.allocatorSliceEpsilon)
+            {
+                AiDebugLog.Write($"[AI][V2]   strat.A hold — {demand}: best chain {win.StableKey} "
+                    + $"play {win.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"<= hold {holdVal.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}; "
+                    + "keep card in hand");
+                return null;
+            }
             return (ranked[0].plan, ranked[0].followupAp);
         }
 
@@ -385,8 +411,9 @@ namespace Game.Ai.V2
                         if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
                             continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, att, player)) continue;
-                        att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected)
-                            - AiConfigV2.stratChainAttachStepPenalty;
+                        // P1.4 — the evaluator owns the attach-step penalty (ChainStepPenalty in
+                        // ResourceEfficiency); no extra subtraction here.
+                        att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected);
                         candidates.Add(att);
                     }
                 }
@@ -436,12 +463,10 @@ namespace Game.Ai.V2
                                 if (!StrategicManager.ReservesOkAfterChain(root, genEq, player))
                                     continue;
 
-                                float util = (SurplusUtility(snap, genEq, inv, recce, hero, hand, projected)
-                                              - AiConfigV2.stratChainGenerationStepPenalty
-                                              - AiConfigV2.stratChainAttachStepPenalty)
-                                             * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                                                 Mathf.Clamp01(g.SuccessChance));
-                                genEq.Score = util;
+                                // P1.4 — the evaluator owns the generation + attach step penalties
+                                // (ChainStepPenalty) AND the generation success-chance discount
+                                // (Deployability). No re-application here.
+                                genEq.Score = SurplusUtility(snap, genEq, inv, recce, hero, hand, projected);
                                 candidates.Add(genEq);
                             }
                         }
@@ -468,11 +493,8 @@ namespace Game.Ai.V2
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
                         if (!StrategicManager.ReservesOkAfterChain(root, gen, player)) continue;
-                        float util = (SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities)
-                                      - AiConfigV2.stratChainGenerationStepPenalty)
-                                     * Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                                         Mathf.Clamp01(g.SuccessChance));
-                        gen.Score = util;
+                        // P1.4 — evaluator owns the generation step penalty + success-chance discount.
+                        gen.Score = SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities);
                         candidates.Add(gen);
                     }
                 }

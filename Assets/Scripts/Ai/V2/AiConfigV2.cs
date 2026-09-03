@@ -891,6 +891,16 @@ namespace Game.Ai.V2
         public const float holdScarcityValue = 0.25f;      // the card carries a scarce capability (SurplusScarcity >= med)
         public const float holdHandPressurePenalty = 0.50f;// a full hand argues against holding
         public const float holdLostTempoPenalty = 0.35f;   // Phase B — not playing now forfeits this turn's tempo
+        public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
+
+        // --- Review follow-up P1.4/P1.5/P1.6/P0.2 tunables ------------------------------------
+        public const float scoutBaseRoleFit = 1.0f;            // Phase-B Scout RoleFit base, before the CapabilityQualityEvaluator multiplier
+        public const float roleVersatilityPerExtraRole = 0.12f;// value per real viable role beyond the first (NOT a Hero class bonus)
+        public const float roleVersatilityCap = 0.40f;
+        public const float altUseForegoneFraction = 0.25f;     // AlternativeUseValue = this * max(next-best role score, HoldValue)
+        public const float stratHoldBeatsPlayMaxDemandValue = 40f; // Phase A: a demand with Value below this can be vetoed by HoldValue (P0.2); above it, urgency wins
+        public const float baselineReadinessHandBodyMinPower = 4f;  // a hand Unit/Hero at/above this AiPower counts as prepared standing force
+        public const float baselineReadinessHandBodyActorWeight = 0.5f; // how much a hand-ready body counts toward the combat-actor gap vs a deployed one
 
         // --- BaselineForceReadiness (spec §4) — radar-DEMAND-INDEPENDENT standing-force signal.
         //     Need in [0..1]: high when the fielded force / combat-actor count / capability coverage

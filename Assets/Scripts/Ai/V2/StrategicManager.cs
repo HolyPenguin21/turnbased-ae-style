@@ -167,6 +167,57 @@ namespace Game.Ai.V2
                         feasible.Add(new PhaseACandidate(state, pick.Value.plan, pick.Value.followupAp));
                 }
 
+                // AI-MGR-01 P1.3 — resolve physical card-instance contention BEFORE arbitration, so
+                // two demands never both count one hand card / generation source as available
+                // capacity. Highest-priority demand claims its best chain's instances first; a lower
+                // demand whose best chain collides re-picks the best chain AVOIDING the claimed
+                // instances (one bounded re-pick each). A demand with no collision-free chain is
+                // left for the next iteration.
+                if (feasible.Count > 1)
+                {
+                    var claimedCards = new HashSet<CardData>();
+                    var claimedGen = new HashSet<string>();
+                    var deconflicted = new List<PhaseACandidate>();
+                    foreach (PhaseACandidate cand in feasible
+                        .OrderByDescending(ArbitrationScore)
+                        .ThenByDescending(c => c.State.Demand.Value)
+                        .ThenBy(c => c.State.Ordinal)
+                        .ToList())
+                    {
+                        bool collides = PlanCards(cand.Plan).Any(claimedCards.Contains)
+                            || (cand.Plan.Generation != null
+                                && !string.IsNullOrEmpty(cand.Plan.Generation.CardKey)
+                                && claimedGen.Contains(cand.Plan.Generation.CardKey));
+                        PhaseACandidate use = cand;
+                        if (collides)
+                        {
+                            float rsv = ledger.ReservedFollowup(cand.State.Demand.RequestingAxis);
+                            bool competingHero = cand.State.Demand.Capability == CapabilityKind.ScoutCapability
+                                && active.Any(o => !ReferenceEquals(o, cand.State)
+                                    && o.Remaining > AiConfigV2.allocatorSliceEpsilon
+                                    && o.Demand.Capability == CapabilityKind.Hero);
+                            (MaterializationPlan plan, float followupAp)? repick =
+                                MaterializationCandidateBuilder.BestForDemand(snap, player, root, hand, ctx,
+                                    cand.State.Demand, ledger, commitments, rsv, result.Reservation, inv,
+                                    competingHero, claimedCards, claimedGen);
+                            if (repick == null)
+                            {
+                                AiDebugLog.Write($"[AI][V2]   strat.A deconflict — {cand.State.Demand}: best chain "
+                                    + $"{cand.Plan.StableKey} needs a card/gen already claimed by a higher-priority "
+                                    + "demand this pass; deferred to next iteration");
+                                continue;
+                            }
+                            use = new PhaseACandidate(cand.State, repick.Value.plan, repick.Value.followupAp);
+                        }
+                        foreach (CardData cc in PlanCards(use.Plan))
+                            claimedCards.Add(cc);
+                        if (use.Plan.Generation != null && !string.IsNullOrEmpty(use.Plan.Generation.CardKey))
+                            claimedGen.Add(use.Plan.Generation.CardKey);
+                        deconflicted.Add(use);
+                    }
+                    feasible = deconflicted;
+                }
+
                 if (feasible.Count == 0)
                 {
                     foreach (DemandState state in active)
@@ -371,6 +422,16 @@ namespace Game.Ai.V2
                 case CapabilityKind.GarrisonCombatPower: return 0;
                 default: return 0;
             }
+        }
+
+        // AI-MGR-01 P1.3 — the physical hand-card instances a chain consumes (base + equipment).
+        // The generation source is tracked separately by GenerationStep.CardKey.
+        private static IReadOnlyList<CardData> PlanCards(MaterializationPlan p)
+        {
+            var list = new List<CardData>(2);
+            if (p?.BaseCardInHand != null) list.Add(p.BaseCardInHand);
+            if (p?.EquipmentInHand != null) list.Add(p.EquipmentInHand);
+            return list;
         }
 
         private static int ResourceSpend(MaterializationPlan plan, ResourceType type)

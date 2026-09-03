@@ -335,36 +335,58 @@ Card / Economy-Development. Let the categories supply available intended uses / 
 / costs / prerequisites / synergies, and compute strategic value with a shared model.
 Important for later Equipment and Generated-Card integration.
 
-### Review follow-up (2026-09-04) — 8 findings, worked in order
+### Review follow-up (2026-09-04) — 8 findings
 
-Base impl committed `e2d76ee`. Review found the evaluator was not yet truly unified; findings
-being addressed in the review's numbered order:
+Base impl `e2d76ee`. Review found the evaluator was not yet truly unified. Fix commits:
+`32ddfa6` (P0.1 pt1), plus the batch below.
 
-1. **P0.1 — non-unified card types.** *Part 1 done (not committed):* `StrategicCardEvaluator.ScoreNonCombat`
-   scores Aviation / Base / Facility / standalone Equipment on the SAME `StrategicUseScoreBreakdown`
-   / `NetScore` band as every Unit/Hero chain; `NonCombatCardPlayer` drops the fixed 55/45/40/24
-   scale and picks the equipment host by carrier power (name only as tie-break), killing the
-   "rename unit → different carrier" invariant break; `StrategicManager` non-combat lane gated on
-   the shared `surplusUtilityThreshold`. New `AiConfigV2` `nonCombat*` consts. *Remaining:* explicit
-   `*CandidateProvider` classes, Phase A infra arbitration (still a privileged pre-pass), generated
-   non-combat cards (`BestSurplus` still drops `gd.isAviation`), retiring the reserved-slot hack.
-2. **P0.2 — Hold not a real Phase A competitor** (`HoldValue // informational`). TODO.
-3. **P1.3 — phantom card capacity** (`BestForDemand` returns one plan per demand before global
-   arbitration; no card/equipment-instance matching). TODO — card-instance reservation as a
-   first-class object, like the recon-actor reservation.
-4. **P1.4 — evaluator score modified after it returns** (attach penalty counted in `ResourceEfficiency`
-   AND `SynergyValue` AND again in `BestSurplus`; generation multiplier re-applied; `MaterializationPlan.Score`
-   getter correction; `SurplusAdmissionPolicy` threshold outside the model). TODO — one place, once.
-5. **P1.5 — Phase A/B parity** (Phase B Scout RoleFit ignores `CapabilityQualityEvaluator`;
-   `surplusHeroVersatility` 0.35 vs `surplusUnitVersatility` 0.25 is a hidden hero-class bonus). TODO.
-6. **P1.6 — HoldValue / AlternativeUseValue still stubs** (`NearTermExpectedDemand -= 0f`;
-   AlternativeUseValue = hero+stealth special-cases = the old `heroOpp` hack relocated). TODO.
-7. **P1.7 — BaselineForceReadiness too narrow + double-counted** (no `hand`; coverage only
-   `HasFieldBody`/`HasHero`; `HasScout` computed but unused; no AA/AT/Air/Mobile/Support; `Need`
-   feeds both `Demand.Value` and `ForceGrowthValue`/`CapabilityGapValue` ahead of `Value × Score`).
-   TODO — capability vector, one pressure→utility layer.
-8. **P2.8 — synthetic armor** (`ThreatResponseValue` turns any enemy ground power into armor-driver
-   pressure via `*0.35`). TODO — no bias without real composition data.
+1. **P0.1 — non-unified card types.** `StrategicCardEvaluator.ScoreNonCombat` (+`NonCombatRole`)
+   scores Aviation / Base / Facility / standalone Equipment on the SAME
+   `StrategicUseScoreBreakdown` / `NetScore` band as every Unit/Hero chain; `NonCombatCardPlayer`
+   drops the fixed 55/45/40/24 scale and picks the equipment host by carrier power (name only as
+   tie-break) — "rename unit → different carrier" is gone; `StrategicManager` non-combat lane
+   gated on the shared `surplusUtilityThreshold`. **Deferred (needs executor work, not scoring):**
+   generated *non-combat* cards — `BestSurplus` still skips `gd.isAviation` because
+   `MaterializationExecutor` only bodies unit/hero chains; a generate→aviation/base deploy path is
+   its own task. Phase A infra stays a pre-pass **by design** (charged to its own axis entitlement,
+   so it never contends for a Unit demand's AP); the `*CandidateProvider` rename is pure churn now
+   that scoring is unified and was skipped.
+2. **P0.2 — Hold as a real Phase A competitor.** `BestForDemand` now returns `null` (keep card in
+   hand, demand stays residual) when the best chain's play score does not beat `HoldValue` AND the
+   demand is soft (`Value < stratHoldBeatsPlayMaxDemandValue`). An urgent demand (real threat /
+   raid gap) is never vetoed by Hold. Logged `strat.A hold — …`.
+3. **P1.3 — phantom card capacity.** `BestForDemand` takes `excludeCards` / `excludeGenKeys`;
+   `StrategicManager.FulfillDemands` runs a card-instance deconfliction BEFORE arbitration —
+   highest-priority demand claims its best chain's hand cards / generation source first, a lower
+   demand whose best chain collides re-picks the best chain that avoids the claimed instances (one
+   bounded re-pick each). Full max-weight bipartite assignment (prefer the globally-higher total
+   when the top demand should take its cheap fallback) is a further refinement; this closes the
+   common failure trace.
+4. **P1.4 — evaluator score is final.** One `SumTotal(breakdown)`; every factor priced once:
+   AP + resource + chain-step in `ResourceEfficiency` only, generation chance in `Deployability`
+   only, placement (incl. the Phase-B garrison-surplus correction, folded in via
+   `SurplusPlacementBonus`) in `ImmediateTempo` only. `MaterializationPlan.Score` is now a plain
+   field; `BestSurplus` no longer re-subtracts attach/generation penalties or re-applies the
+   success-chance multiplier. `SurplusAdmissionPolicy` stays the single stranded-AP *admission
+   threshold* layer (not a score edit) — documented boundary.
+5. **P1.5 — Phase A/B parity.** One `RoleFit(role, …)` path used by both phases; Phase B Scout
+   runs the same `CapabilityQualityEvaluator` profile via a neutral synthetic scout demand.
+   `surplusHeroVersatility`/`surplusUnitVersatility` dropped — versatility is now
+   `RoleVersatility(roles)` = value per *real viable role* beyond the first, identical for a Hero
+   and a Unit with the same role count.
+6. **P1.6 — real Hold / AlternativeUse terms.** `AlternativeUseValue` on the Phase-B winner =
+   `altUseForegoneFraction × max(next-best role score, HoldValue)` plus the scarce-body floor.
+   `NearTermExpectedDemand` in `HoldValue` fires for a specialist counter (AntiAir/…) whose
+   triggering threat is already visible.
+7. **P1.7 — readiness signal.** `BaselineForceReadiness` now takes the hand (a strong hand
+   Unit/Hero counts as prepared standing force, `baselineReadinessHandBody*`), `HasScout` counts
+   toward coverage, and `Need` is priced ONCE — the baseline `AxisDemand.Value` is a flat low
+   constant (was `× Need`, which triple-counted through `Value × Plan.Score`); `CapabilityGapValue`
+   is binary, not `× Need`. Per-capability AA/AT/Air/Mobile vector still needs deployed-force
+   composition data the snapshot lacks — `HasAir` added, the rest noted.
+8. **P2.8 — no synthetic armor.** `ThreatResponseValue` drops the `× 0.35` ground-power→armor
+   synthesis. AntiAir works off the real `IsAir` classification; AntiArmor contributes 0 until the
+   snapshot carries enemy unit composition.
 
 ---
 

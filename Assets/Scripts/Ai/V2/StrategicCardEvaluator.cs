@@ -17,27 +17,29 @@ namespace Game.Ai.V2
     //    Phase A (FulfillDemands)  — ScoreForDemand: a card chain closing an explicit AxisDemand.
     //    Phase B (UseSurplus)      — ScoreSurplus:  a card chain played proactively with genuinely
     //                                remaining resources.
+    //    Non-combat lane           — ScoreNonCombat: Aviation / Base / Facility / standalone
+    //                                Equipment, same NetScore band, specialised executors.
     //
-    //  It replaces the two parallel term sets that used to live in
-    //  MaterializationCandidateBuilder (ScorePlanA's cost/fit/quality product and SurplusUtility's
-    //  additive sum). One card yields SEVERAL StrategicCardUseCandidate rows — one per reasonable
-    //  IntendedRole (Nora x Scout, Nora x CombatBody, Nora x Hold) — never "Nora = hero -> keep".
-    //  The Hero card CLASS by itself contributes neither a bonus nor a penalty: a hero's fitness
-    //  for a role is read from its real characteristics (HeroRoleEvaluator + capabilities), and
-    //  the only hero-specific cost is AlternativeUseValue when a genuinely scarce hero would be
-    //  spent on a role that is not its best use.
+    //  Review follow-up invariants (AI-MGR-01, 2026-09-04):
+    //   * P1.4 — the score is FINAL. Every factor (placement, AP/resource cost, extra-chain-step
+    //     penalty, generation probability, garrison-surplus correction) is applied EXACTLY ONCE,
+    //     inside this file. Breakdown.Total == the ranked value; callers do not re-adjust it.
+    //   * P1.5 — one RoleFit path per role, called by both phases. The Hero card CLASS adds no flat
+    //     bonus/penalty; "versatility" is derived from how many real viable roles the card has,
+    //     not from being a Hero. Phase B Scout gets the SAME CapabilityQualityEvaluator profile as
+    //     Phase A (via a neutral synthetic scout demand).
+    //   * P1.6 — AlternativeUseValue is the real opportunity cost of using the card HERE instead of
+    //     its best other role / Hold. NearTermExpectedDemand is a real Hold term.
+    //   * P1.7 — BaselineForceReadiness.Need feeds ForceGrowthValue ONCE; it is not also folded
+    //     into the demand's Value or CapabilityGapValue.
+    //   * P2.8 — no synthetic armour: AntiArmor bias needs real enemy composition data (absent
+    //     from the snapshot today) so it stays 0; AntiAir works off the real IsAir classification.
     //
-    //  A radar-DEMAND-INDEPENDENT signal, BaselineForceReadiness, gives ForceGrowthValue to an
-    //  ordinary combat body even at AGG = 0 / DEF = 0 — the AI must continuously keep a reasonable
-    //  potential for future tasks. It only decides a card is worth MATERIALISING; which army /
-    //  garrison it then joins, and stack composition, stay a separate layer (Housekeeping / the
-    //  reorg planner), untouched here.
+    //  BaselineForceReadiness is radar-DEMAND-INDEPENDENT: it gives ForceGrowthValue to an ordinary
+    //  combat body even at AGG = 0 / DEF = 0. It only decides a card is worth MATERIALISING; which
+    //  army/garrison it joins and stack composition stay a separate layer (Housekeeping).
     // ===========================================================================================
 
-    // Derived from capabilities, NOT hard-bound to card class. The full set the spec names; the
-    // ones the current capability model can actually distinguish carry a real RoleFit, the rest
-    // are declared extension points that resolve to a neutral RoleFit until their mechanics exist
-    // (same pattern as CapabilityQualityEvaluator's per-capability switch).
     public enum IntendedRole
     {
         Scout,
@@ -56,23 +58,22 @@ namespace Game.Ai.V2
     }
 
     // Diagnostic decomposition of one Card x IntendedUse score. Total is the single authoritative
-    // number (the score the manager ranks on); the fields exist so the per-card "why" log line is
-    // legible. Never persisted or fed back into a decision.
+    // number the manager ranks on; every field is summed into Total exactly once.
     public sealed class StrategicUseScoreBreakdown
     {
         public float RoleFit;                 // how well the card's real characteristics fit this role
-        public float ImmediateTempo;          // what the AI gains before end of turn
+        public float ImmediateTempo;          // placement fit + trait match + recurring-AP income realised this turn
         public float NextTurnPotential;       // what the card practically opens next turn
         public float CapabilityGapValue;      // closes a Recon / AA / AT / air / combat-body deficit
-        public float ForceGrowthValue;        // contribution to standing force / future mission capacity (radar-independent)
-        public float ThreatResponseValue;     // strategic (optionally omniscient) enemy-composition bias
-        public float ResourceEfficiency;      // negative — AP / resource / extra-chain-step drag
-        public float SynergyValue;            // equipment on a carrier, trait match, played-unit combination
-        public float Deployability;           // negative — cannot really act now / probabilistic deploy
+        public float ForceGrowthValue;        // contribution to standing force (radar-independent, scaled by BaselineForceReadiness.Need)
+        public float ThreatResponseValue;     // strategic enemy-composition bias (AntiAir today; AntiArmor pending composition data)
+        public float ResourceEfficiency;      // negative — AP + resource cost + extra-chain-step penalty (the ONLY place these are charged)
+        public float SynergyValue;            // equipment upgrade on a carrier, kept-combo value
+        public float Deployability;           // negative — probabilistic deploy (generation success chance)
         public float ScarcityValue;           // this card carries a rare capability worth something
         public float RedundancyPenalty;       // negative — the capability is already saturated
-        public float AlternativeUseValue;     // negative — opportunity cost of using a versatile card HERE
-        public float HoldValue;               // value of deliberately NOT playing it now (informational)
+        public float AlternativeUseValue;     // negative — opportunity cost of using this card HERE vs its best other role / Hold
+        public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
         public float ResourcePressureBenefit; // stranded AP / near-cap resource makes spending now better
         public float HandPressureBenefit;     // a full hand makes materialising now better
 
@@ -90,8 +91,6 @@ namespace Game.Ai.V2
         }
     }
 
-    // Which specialised non-combat executor a card routes to (AI-MGR-01 P0.1). Scoring is shared;
-    // dispatch stays specialised.
     public enum NonCombatRole { Aviation, Base, Facility, Equipment }
 
     public sealed class StrategicCardUseCandidate
@@ -100,82 +99,107 @@ namespace Game.Ai.V2
         public IntendedRole IntendedRole;
         public HexCoord? TargetContext;
         public StrategicUseScoreBreakdown Breakdown;
-        public float TotalUseScore;   // Breakdown.Total
+        public float TotalUseScore;   // == Breakdown.Total
         public float HoldValue;       // scored separately (spec §3)
-        public MaterializationQualityBreakdown QualityBreakdown; // scout capability-quality diag, carried through
+        public MaterializationQualityBreakdown QualityBreakdown;
 
-        // Phase B net: playing now vs leaving it in hand. The manager admits on this.
+        // Playing now vs leaving it in hand. The manager admits on this.
         public float NetScore => TotalUseScore - Mathf.Max(0f, HoldValue);
     }
 
-    // Radar-demand-INDEPENDENT standing-force signal (spec §4). "The AI state must continuously
-    // maintain a reasonable potential for future tasks" — NOT "prepare to attack". High when the
-    // fielded force / combat-actor count / capability coverage is thin for the game stage, the
-    // economy and the known enemy. Consumed by ForceGrowthValue and by DemandLayer to raise one
-    // low-priority FieldCombatPower demand so an ordinary unit gets Phase-A pull, not only surplus.
+    // Radar-demand-INDEPENDENT standing-force signal (spec §4). Need in [0..1]: high when the
+    // fielded force / combat-actor count / capability coverage is thin for the game stage, economy
+    // and known enemy. P1.7: HasScout now counts toward coverage, hand-ready bodies reduce the
+    // gap, and Need feeds ForceGrowthValue only — never the demand Value or CapabilityGapValue.
     internal readonly struct BaselineForceReadiness
     {
-        public readonly float Need;          // [0..1]
+        public readonly float Need;
         public readonly bool HasScout;
         public readonly bool HasFieldBody;
         public readonly bool HasHero;
+        public readonly bool HasAir;
         public readonly int CombatActors;
         public readonly float FreeFieldPower;
 
         public BaselineForceReadiness(float need, bool hasScout, bool hasFieldBody, bool hasHero,
-            int combatActors, float freeFieldPower)
+            bool hasAir, int combatActors, float freeFieldPower)
         {
             Need = need;
             HasScout = hasScout;
             HasFieldBody = hasFieldBody;
             HasHero = hasHero;
+            HasAir = hasAir;
             CombatActors = combatActors;
             FreeFieldPower = freeFieldPower;
         }
 
         public static BaselineForceReadiness Evaluate(WorldSnapshot snap, CapabilityInventory inv)
+            => Evaluate(snap, inv, (IReadOnlyList<CardData>)null);
+
+        public static BaselineForceReadiness Evaluate(WorldSnapshot snap, CapabilityInventory inv,
+            IReadOnlyList<CardData> hand)
         {
             if (snap?.Self == null)
-                return new BaselineForceReadiness(0f, false, false, false, 0, 0f);
+                return new BaselineForceReadiness(0f, false, false, false, false, 0, 0f);
 
             int combatActors = 0;
+            bool hasAirArmy = false;
             if (snap.Self.Armies != null)
                 foreach (ArmySnapshot a in snap.Self.Armies)
-                    if (a != null && a.MemberCount > 0 && !a.IsGarrison && !a.IsAir && !a.IsPrison
-                        && !a.IsSoloRecce)
+                {
+                    if (a == null || a.MemberCount <= 0 || a.IsPrison)
+                        continue;
+                    if (a.IsAir) { hasAirArmy = true; continue; }
+                    if (!a.IsGarrison && !a.IsSoloRecce)
                         combatActors++;
+                }
+
+            // P1.7 — a strong combat body already sitting in hand is prepared force: it shrinks the
+            // actor gap the same way a deployed one would (the manager just has not placed it yet).
+            int handReadyBodies = 0;
+            if (hand != null)
+                foreach (CardData c in hand)
+                {
+                    CardDefinition d = c?.Definition;
+                    if (d == null || d.isAviation) continue;
+                    if ((d.cardType == CardType.Unit || d.cardType == CardType.Hero)
+                        && !AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities)
+                        && AiPower.ToPowerUnit(d).BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
+                        handReadyBodies++;
+                }
 
             bool hasScout = inv != null && inv.TotalScouts > 0;
             bool hasHero = inv != null && (inv.AvailableHeroes + inv.CommittedHeroes) > 0;
             bool hasFieldBody = combatActors > 0
                 || (inv != null && inv.FieldCombatPower > AiConfigV2.allocatorSliceEpsilon);
+            bool hasAir = hasAirArmy
+                || (snap.Self.AirborneReconWings + snap.Self.SpareAirObservationSorties) > 0;
 
             float fieldPower = Mathf.Max(0f, snap.Self.FieldPower);
             float freeFieldPower = inv != null ? Mathf.Max(0f, inv.RaidAvailableFieldPower) : fieldPower;
             float enemy = snap.Known != null ? Mathf.Max(0f, snap.Known.EnemyKnownStrength) : 0f;
             float eco = snap.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
 
-            // "Game stage" — a coarse ramp; more standing force is expected as the game develops.
             float stage = Curves.Ramp(snap.TurnNumber,
                 AiConfigV2.baselineReadinessStageRampLo, AiConfigV2.baselineReadinessStageRampHi);
-
             float targetPower = Mathf.Max(AiConfigV2.baselineReadinessBaseTargetPower,
                                           enemy * AiConfigV2.baselineReadinessEnemyMatchFrac)
                                 * Mathf.Lerp(AiConfigV2.baselineReadinessEarlyTargetFrac, 1f, stage);
 
             float powerGap = Mathf.Clamp01(1f - fieldPower / Mathf.Max(1f, targetPower));
+            float effectiveActors = combatActors + AiConfigV2.baselineReadinessHandBodyActorWeight * handReadyBodies;
             float actorGap = Mathf.Clamp01(
-                1f - combatActors / Mathf.Max(1f, (float)AiConfigV2.baselineReadinessTargetActors));
-            int coverMisses = (hasFieldBody ? 0 : 1) + (hasHero ? 0 : 1);
-            float coverGap = Mathf.Clamp01(coverMisses / 2f);
+                1f - effectiveActors / Mathf.Max(1f, (float)AiConfigV2.baselineReadinessTargetActors));
+            // P1.7 — HasScout now contributes to coverage (was computed but ignored).
+            int coverMisses = (hasFieldBody ? 0 : 1) + (hasHero ? 0 : 1) + (hasScout ? 0 : 1);
+            float coverGap = Mathf.Clamp01(coverMisses / 3f);
 
             float raw = AiConfigV2.baselineReadinessPowerGapWeight * powerGap
                         + AiConfigV2.baselineReadinessActorGapWeight * actorGap
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
-
-            // A healthy economy that is not being pressed can afford to run a leaner standing force.
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
-            return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, combatActors, freeFieldPower);
+            return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, hasAir,
+                combatActors, freeFieldPower);
         }
     }
 
@@ -192,58 +216,44 @@ namespace Game.Ai.V2
             IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv);
 
-            // --- backbone: the proven cost / fit / capability-quality product (was ScorePlanA) ---
-            float fit = TargetFit(plan.Deploy.Hex, demand.TargetHex);
-            float resSum = ResourceCostSum(plan.ResCost);
-            float costFactor = 1f + AiConfigV2.stratCardApCostWeight * plan.ApCost
-                                  + AiConfigV2.stratChainResCostWeight * resSum;
+            float fit = TargetFit(plan.Deploy.Hex, demand.TargetHex);         // [0.5 .. 1]
             float traitMatch = demand.Capability != CapabilityKind.ScoutCapability
                                && (demand.PreferredTraits & TraitPreference.Stealth) != 0
                                && (projected & TraitPreference.Stealth) != 0
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
 
-            float core = (1f + traitMatch) * (0.5f + 0.5f * fit) / Mathf.Max(0.0001f, costFactor);
-            core += PlacementBonus(plan.Deploy.Kind);
-
-            float genChance = plan.Generation != null
-                ? Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                    Mathf.Clamp01(plan.Generation.SuccessChance))
-                : 1f;
-            core *= genChance;
-
+            // P1.4/P1.5 — RoleFit is the pure capability-fit: the demand-quality multiplier applied
+            // to the target-hex fit. Cost, placement, chain-step and generation chance live in
+            // their own single terms below, never folded in here.
             float roleMult = CapabilityQualityEvaluator.QualityMultiplier(
                 plan, demand, inv, referenceMoveMax, hasCompetingHeroDemand,
                 out MaterializationQualityBreakdown qbd);
-            core *= roleMult;
+            bd.RoleFit = fit * roleMult;
 
-            bd.RoleFit = core;
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind);
-            bd.Deployability = -(1f - genChance);
-            bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * plan.ApCost
-                                      + AiConfigV2.stratChainResCostWeight * resSum) - ChainStepPenalty(plan.Kind);
-
-            // --- spec additive terms on top of the backbone ---
-            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline);
-            bd.CapabilityGapValue = CapabilityGapValue(role, demand.Capability, inv, baseline);
-            bd.ThreatResponseValue = ThreatResponseValue(role, snap);
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.SynergyValue = SynergyValue(plan);
+            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline);
+            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline);
+            bd.ThreatResponseValue = ThreatResponseValue(role, snap);
+
+            float genChance = GenerationChance(plan);
+            bd.Deployability = -(1f - genChance);
+            bd.ResourceEfficiency = -ResourceCost(plan);
+
             bd.RedundancyPenalty = -(GarrisonSaturationPenalty(plan, demand, snap)
                                      + ScoutOversupplyPenalty(role, inv));
+            // Phase A form of AlternativeUseValue: the scarcity opportunity cost of spending this
+            // exact card body (a scarce hero on a non-hero demand, a unique stealth item on a
+            // non-stealth demand) — the general "best other role" cost applies in Phase B.
             bd.AlternativeUseValue = -ScarcityOpportunityCost(plan, demand, inv);
-            bd.ScarcityValue = 0f;                 // Phase A is closing an explicit demand
-            bd.ResourcePressureBenefit = 0f;       // Phase A spends a ledger entitlement, not stranded AP
+            bd.ScarcityValue = 0f;               // closing an explicit demand — scarcity is a Hold concern
+            bd.ResourcePressureBenefit = 0f;     // spends a ledger entitlement, not stranded AP
             bd.HandPressureBenefit = 0f;
 
-            float total = bd.RoleFit
-                          + bd.ForceGrowthValue + bd.CapabilityGapValue + bd.ThreatResponseValue
-                          + bd.NextTurnPotential + bd.SynergyValue
-                          - ChainStepPenalty(plan.Kind)
-                          + bd.RedundancyPenalty + bd.AlternativeUseValue;
-            bd.Total = total;
+            bd.Total = SumTotal(bd);
 
-            float hold = HoldValue(plan, role, inv, snap, baseline, surplus: false);
-            bd.HoldValue = hold;
+            bd.HoldValue = HoldValue(plan, role, inv, snap, baseline, surplus: false);
 
             return new StrategicCardUseCandidate
             {
@@ -251,137 +261,127 @@ namespace Game.Ai.V2
                 IntendedRole = role,
                 TargetContext = demand.TargetHex,
                 Breakdown = bd,
-                TotalUseScore = total,
-                HoldValue = hold,           // informational in Phase A (a live demand outranks holding)
+                TotalUseScore = bd.Total,
+                HoldValue = bd.HoldValue,
                 QualityBreakdown = qbd,
             };
         }
 
         // -----------------------------------------------------------------------------------------
         //  PHASE B — proactive surplus. One card -> several IntendedRole candidates; the best
-        //  NetScore (play value minus hold value) is returned, with the winning role.
+        //  NetScore is returned. AlternativeUseValue on the winner is the real cost of NOT keeping
+        //  it for its next-best role / Hold (P1.6).
         // -----------------------------------------------------------------------------------------
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap)
         {
             CardDefinition def = PlanBaseDef(plan);
-            BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv);
+            BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
             IReadOnlyList<IntendedRole> roles = DeriveRoles(def, projected, plan, recce, hero);
+            float versatility = RoleVersatility(roles);
 
-            StrategicCardUseCandidate best = null;
+            var scored = new List<StrategicCardUseCandidate>(roles.Count);
             foreach (IntendedRole role in roles)
+                scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
+                    baseline, versatility));
+
+            scored.Sort((a, b) =>
             {
-                StrategicCardUseCandidate c = ScoreSurplusRole(plan, role, inv, recce, hero, hand,
-                    projected, snap, baseline);
-                if (best == null || c.NetScore > best.NetScore
-                    || (Mathf.Approximately(c.NetScore, best.NetScore) && (int)c.IntendedRole < (int)best.IntendedRole))
-                    best = c;
-            }
-            return best ?? ScoreSurplusRole(plan, IntendedRole.CombatBody, inv, recce, hero, hand,
-                projected, snap, baseline);
+                int c = b.Breakdown.Total.CompareTo(a.Breakdown.Total);
+                return c != 0 ? c : ((int)a.IntendedRole).CompareTo((int)b.IntendedRole);
+            });
+
+            StrategicCardUseCandidate win = scored[0];
+            // P1.6 — AlternativeUseValue = the opportunity cost of committing the card to THIS role:
+            // a fraction of the best foregone alternative (next-best role score, or Hold if higher).
+            float secondBest = scored.Count > 1 ? scored[1].Breakdown.Total : 0f;
+            float foregone = Mathf.Max(secondBest, win.HoldValue);
+            float altCost = Mathf.Max(0f, foregone) * AiConfigV2.altUseForegoneFraction
+                            + Mathf.Max(0f, -win.Breakdown.AlternativeUseValue); // keep the scarce-body floor
+            win.Breakdown.AlternativeUseValue = -altCost;
+            win.Breakdown.Total = SumTotal(win.Breakdown);
+            win.TotalUseScore = win.Breakdown.Total;
+            return win;
         }
 
         private static StrategicCardUseCandidate ScoreSurplusRole(MaterializationPlan plan, IntendedRole role,
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
-            WorldSnapshot snap, BaselineForceReadiness baseline)
+            WorldSnapshot snap, BaselineForceReadiness baseline, float versatility)
         {
             var bd = new StrategicUseScoreBreakdown();
-            float resSum = ResourceCostSum(plan.ResCost);
-
             float scarcity = SurplusScarcity(inv, recce, hero);
-            float versatility = hero ? AiConfigV2.surplusHeroVersatility : AiConfigV2.surplusUnitVersatility;
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
             float recurringAp = projected != null && projected.Contains(UnitAbilities.ApBonus)
                 ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
-            float handPressure = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
-            float readiness = recce ? 0f : SurplusCombatReadinessUtility(plan);
 
-            // RoleFit: a real, characteristic-driven number per role. Scout uses the wired capability
-            // -quality profile; EquipmentUpgrade uses the projected stat delta; Hero uses the
-            // canonical combat-leadership score (NOT a flat hero bonus); others fall back to the
-            // generic versatility of the card class.
-            float roleFit;
-            switch (role)
-            {
-                case IntendedRole.Scout:
-                    roleFit = versatility + scarcity;
-                    break;
-                case IntendedRole.EquipmentUpgrade:
-                    roleFit = equipmentUpgrade;
-                    break;
-                case IntendedRole.CombatBody:
-                case IntendedRole.ForceGrowth:
-                case IntendedRole.MobileCombat:
-                case IntendedRole.AntiArmor:
-                case IntendedRole.AntiAir:
-                    roleFit = readiness + HeroLeadershipFit(plan, hero);
-                    break;
-                case IntendedRole.Support:
-                    roleFit = recurringAp + HeroSupportFit(plan, hero);
-                    break;
-                case IntendedRole.Hold:
-                    roleFit = 0f;
-                    break;
-                default:
-                    roleFit = versatility;
-                    break;
-            }
-            bd.RoleFit = roleFit;
-
-            bd.ImmediateTempo = traits + recurringAp + PlacementBonus(plan.Deploy.Kind);
+            bd.RoleFit = RoleFit(role, plan, inv, recce, hero, projected, snap, versatility, equipmentUpgrade);
+            // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
+            // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
+            bd.ImmediateTempo = traits + recurringAp + SurplusPlacementBonus(plan.Deploy.Kind, role);
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.CapabilityGapValue = scarcity;
+            bd.CapabilityGapValue = role == IntendedRole.Hold ? 0f
+                : SurplusCapabilityGap(role, inv, baseline);
             bd.ForceGrowthValue = role == IntendedRole.Scout || role == IntendedRole.Hold
-                ? 0f
-                : ForceGrowthValue(plan, plan.FinalCapability, baseline);
+                ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline);
             bd.ThreatResponseValue = ThreatResponseValue(role, snap);
-            bd.SynergyValue = traits + equipmentUpgrade
-                              - (plan.Kind == MaterializationChainKind.AttachDeploy
-                                 ? AiConfigV2.stratChainAttachStepPenalty : 0f);
-            bd.Deployability = plan.Generation != null
-                ? -(1f - Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                    Mathf.Clamp01(plan.Generation.SuccessChance)))
-                : 0f;
-            bd.ScarcityValue = scarcity;
+            bd.SynergyValue = traits * 0.5f + equipmentUpgrade;
+            bd.Deployability = -(1f - GenerationChance(plan));
+            bd.ResourceEfficiency = -ResourceCost(plan);
+            bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
-            bd.AlternativeUseValue = -SurplusAlternativeUseCost(plan, role, inv, hero);
-            bd.ResourceEfficiency = -(AiConfigV2.surplusApCostWeight * plan.ApCost
-                                      + AiConfigV2.surplusResourceCostWeight * resSum)
-                                    - ChainStepPenalty(plan.Kind);
-            bd.ResourcePressureBenefit = 0f;   // SurplusAdmissionPolicy owns the real stranded-AP relaxation
-            bd.HandPressureBenefit = handPressure;
-
-            float total = bd.RoleFit
-                          + bd.ImmediateTempo + bd.NextTurnPotential + bd.CapabilityGapValue
-                          + bd.ForceGrowthValue + bd.ThreatResponseValue + bd.SynergyValue
-                          + bd.HandPressureBenefit
-                          + bd.Deployability + bd.RedundancyPenalty + bd.AlternativeUseValue
-                          + bd.ResourceEfficiency
-                          + PlacementBonus(plan.Deploy.Kind);
-            bd.Total = total;
-
-            float hold = HoldValue(plan, role, inv, snap, baseline, surplus: true);
-            bd.HoldValue = hold;
+            bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
+            bd.ResourcePressureBenefit = 0f;   // SurplusAdmissionPolicy owns the stranded-AP relaxation (single layer)
+            bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
+            bd.Total = SumTotal(bd);
+            bd.HoldValue = HoldValue(plan, role, inv, snap, baseline, surplus: true);
 
             return new StrategicCardUseCandidate
             {
                 Plan = plan,
                 IntendedRole = role,
                 Breakdown = bd,
-                TotalUseScore = total,
-                HoldValue = hold,
+                TotalUseScore = bd.Total,
+                HoldValue = bd.HoldValue,
             };
+        }
+
+        // One RoleFit path for both phases (P1.5). Characteristic-driven; the Hero card class is
+        // never a term. Phase B Scout uses the SAME CapabilityQualityEvaluator profile as Phase A
+        // through a neutral synthetic scout demand.
+        private static float RoleFit(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
+            bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
+            float equipmentUpgrade)
+        {
+            switch (role)
+            {
+                case IntendedRole.Scout:
+                {
+                    var synthetic = new AxisDemand { Capability = CapabilityKind.ScoutCapability };
+                    float mult = CapabilityQualityEvaluator.QualityMultiplier(
+                        plan, synthetic, inv, 0, false, out _);
+                    return AiConfigV2.scoutBaseRoleFit * mult;
+                }
+                case IntendedRole.EquipmentUpgrade:
+                    return equipmentUpgrade;
+                case IntendedRole.Support:
+                    return SupportRoleFit(projected) + HeroSupportFit(plan, hero);
+                case IntendedRole.CombatBody:
+                case IntendedRole.ForceGrowth:
+                case IntendedRole.MobileCombat:
+                case IntendedRole.AntiArmor:
+                case IntendedRole.AntiAir:
+                    return SurplusCombatReadinessUtility(plan) + HeroLeadershipFit(plan, hero);
+                case IntendedRole.Hold:
+                    return 0f;
+                default:
+                    return versatility;
+            }
         }
 
         // -----------------------------------------------------------------------------------------
         //  NON-COMBAT CARDS  (Aviation / Base / Facility / standalone Equipment) — AI-MGR-01 P0.1.
-        //  These used to rank on NonCombatCardPlayer's own fixed 55/45/40/24 scale, incomparable
-        //  with every Unit/Hero chain. They now produce a StrategicCardUseCandidate on the SAME
-        //  breakdown / NetScore as everything else; the specialised executors (BuildingPlayExecutor
-        //  / AviationActions / EquipmentSystem) are unchanged. Demand-independent by nature — value
-        //  comes from capability coverage, economy standing and hand/AP pressure, not a live demand.
         // -----------------------------------------------------------------------------------------
         public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade)
@@ -403,7 +403,7 @@ namespace Game.Ai.V2
                     role = IntendedRole.Aviation;
                     bd.RoleFit = AiConfigV2.nonCombatAviationBaseValue;
                     bd.CapabilityGapValue = hasAirCapacity ? 0f : AiConfigV2.nonCombatAviationNoAirGap;
-                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential; // a stored aircraft is launchable next turn
+                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential;
                     break;
                 case NonCombatRole.Base:
                     role = IntendedRole.Economy;
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
                     bd.RoleFit = AiConfigV2.nonCombatFacilityValue
                                  + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
                     break;
-                default: // Equipment (standalone)
+                default:
                     role = IntendedRole.EquipmentUpgrade;
                     bd.RoleFit = Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade);
                     break;
@@ -426,23 +426,16 @@ namespace Game.Ai.V2
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.surplusApCostWeight * apCost
                                       + AiConfigV2.surplusResourceCostWeight * resSum);
-
-            float total = bd.RoleFit + bd.CapabilityGapValue + bd.NextTurnPotential
-                          + bd.HandPressureBenefit + bd.ResourceEfficiency;
-            bd.Total = total;
-
-            // Non-combat cards carry little unique-future-role value (a facility / aircraft is as
-            // playable next turn); a full hand still argues against holding.
-            float hold = hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f;
-            bd.HoldValue = hold;
+            bd.Total = SumTotal(bd);
+            bd.HoldValue = hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f;
 
             return new StrategicCardUseCandidate
             {
                 Plan = null,
                 IntendedRole = role,
                 Breakdown = bd,
-                TotalUseScore = total,
-                HoldValue = hold,
+                TotalUseScore = bd.Total,
+                HoldValue = bd.HoldValue,
             };
         }
 
@@ -455,12 +448,32 @@ namespace Game.Ai.V2
         }
 
         // =======================================================================================
+        //  SINGLE-COUNT PRIMITIVES  (P1.4 — each factor priced exactly once)
+        // =======================================================================================
+        private static float SumTotal(StrategicUseScoreBreakdown b) =>
+            b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.CapabilityGapValue
+            + b.ForceGrowthValue + b.ThreatResponseValue + b.ResourceEfficiency + b.SynergyValue
+            + b.Deployability + b.ScarcityValue + b.RedundancyPenalty + b.AlternativeUseValue
+            + b.ResourcePressureBenefit + b.HandPressureBenefit;
+
+        // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
+        private static float ResourceCost(MaterializationPlan plan)
+        {
+            if (plan == null) return 0f;
+            return AiConfigV2.stratCardApCostWeight * plan.ApCost
+                   + AiConfigV2.stratChainResCostWeight * ResourceCostSum(plan.ResCost)
+                   + ChainStepPenalty(plan.Kind);
+        }
+
+        private static float GenerationChance(MaterializationPlan plan) =>
+            plan?.Generation != null
+                ? Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
+                    Mathf.Clamp01(plan.Generation.SuccessChance))
+                : 1f;
+
+        // =======================================================================================
         //  SPEC TERMS
         // =======================================================================================
-
-        // Even at AGG = 0 / DEF = 0 an ordinary combat body is worth materialising as standing
-        // force. Marginal AiPower contribution, scaled by BaselineForceReadiness.Need so it fades
-        // once the force is deep enough for the stage. Never applies to Scout / infra capabilities.
         private static float ForceGrowthValue(MaterializationPlan plan, CapabilityKind cap,
             BaselineForceReadiness baseline)
         {
@@ -470,63 +483,67 @@ namespace Game.Ai.V2
             float marginal = SurplusCombatReadinessUtility(plan);
             if (marginal <= 0f)
                 return 0f;
-            float scale = Mathf.Lerp(AiConfigV2.baselineReadinessGrowthFloor, 1f,
-                Mathf.Clamp01(baseline.Need));
+            float scale = Mathf.Lerp(AiConfigV2.baselineReadinessGrowthFloor, 1f, Mathf.Clamp01(baseline.Need));
             return marginal * scale * AiConfigV2.forceGrowthValueWeight;
         }
 
-        // A card closing a capability the AI currently lacks entirely is worth a substantial bonus.
-        private static float CapabilityGapValue(IntendedRole role, CapabilityKind cap,
-            CapabilityInventory inv, BaselineForceReadiness baseline)
+        // P1.7 — binary "the AI lacks this capability class", NOT scaled by Need (Need is already
+        // priced once, in ForceGrowthValue).
+        private static float CapabilityGapValue(CapabilityKind cap, CapabilityInventory inv,
+            BaselineForceReadiness baseline)
         {
-            if (inv == null)
-                return 0f;
+            if (inv == null) return 0f;
             switch (cap)
             {
                 case CapabilityKind.ScoutCapability:
                     return inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
                 case CapabilityKind.Hero:
-                    return (inv.AvailableHeroes + inv.CommittedHeroes) <= 0
-                        ? AiConfigV2.capabilityGapValue : 0f;
+                    return (inv.AvailableHeroes + inv.CommittedHeroes) <= 0 ? AiConfigV2.capabilityGapValue : 0f;
                 case CapabilityKind.FieldCombatPower:
                 case CapabilityKind.GarrisonCombatPower:
-                    if (!baseline.HasFieldBody)
-                        return AiConfigV2.capabilityGapValue;
-                    return baseline.Need >= AiConfigV2.baselineReadinessDemandMinNeed
-                        ? AiConfigV2.capabilityGapValue * 0.5f * baseline.Need : 0f;
+                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
                 default:
                     return 0f;
             }
         }
 
-        // Strategic bias from (optionally omniscient) enemy composition — a large enemy armour
-        // group raises the value of an AntiArmor body; a strong enemy air arm raises AntiAir. A
-        // hidden army is a DIRECTIONAL bias only; it never becomes normal AI intel here.
+        private static float SurplusCapabilityGap(IntendedRole role, CapabilityInventory inv,
+            BaselineForceReadiness baseline)
+        {
+            switch (role)
+            {
+                case IntendedRole.Scout:
+                    return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
+                case IntendedRole.AntiAir:
+                    return baseline.HasAir ? 0f : 0f; // no deployed-force composition data yet
+                case IntendedRole.CombatBody:
+                case IntendedRole.ForceGrowth:
+                case IntendedRole.MobileCombat:
+                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
+                default:
+                    return 0f;
+            }
+        }
+
+        // P2.8 — no synthetic armour. AntiAir uses the real IsAir classification; AntiArmor has no
+        // enemy-composition data in the snapshot, so it contributes nothing until that lands.
         private static float ThreatResponseValue(IntendedRole role, WorldSnapshot snap)
         {
-            if (snap == null || (role != IntendedRole.AntiArmor && role != IntendedRole.AntiAir))
+            if (snap == null || role != IntendedRole.AntiAir)
                 return 0f;
             IReadOnlyList<ArmySnapshot> enemies = snap.TrueWorld?.EnemyArmies;
             if (enemies == null || enemies.Count == 0)
                 return 0f;
-
-            float armour = 0f, air = 0f;
+            float air = 0f;
             foreach (ArmySnapshot a in enemies)
-            {
-                if (a == null)
-                    continue;
-                if (a.IsAir)
+                if (a != null && a.IsAir)
                     air += a.EffectiveArmyPower;
-                else
-                    armour += a.EffectiveArmyPower * 0.35f; // coarse — no per-unit type in the snapshot
-            }
-            float driver = role == IntendedRole.AntiAir ? air : armour;
-            return Mathf.Clamp(driver / Mathf.Max(1f, AiConfigV2.threatResponseNorm), 0f, 1f)
+            if (air <= 0f)
+                return 0f;
+            return Mathf.Clamp(air / Mathf.Max(1f, AiConfigV2.threatResponseNorm), 0f, 1f)
                    * AiConfigV2.threatResponseValueWeight;
         }
 
-        // What the card practically opens NEXT turn — a fresh independent actor (new army / shell),
-        // a prepared body that still needs an escort, aviation readiness.
         private static float NextTurnPotential(MaterializationPlan plan, IntendedRole role)
         {
             if (plan == null)
@@ -548,15 +565,11 @@ namespace Game.Ai.V2
                 v += EquipmentUpgradeUtility(plan);
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0)
                 v += AiConfigV2.stratTraitMatchBonus * 0.5f;
-            if (plan.Deploy.Kind == DeploymentKind.ExistingArmy)
-                v += AiConfigV2.stratPlacementExistingArmyBonus * 0.5f;
             return v;
         }
 
-        // Spec §3 — scored SEPARATELY. The AI may deliberately keep a card, but as the RESULT of
-        // an evaluation, not the absence of a current demand.
-        //   HoldValue = UniqueFutureRole + NearTermExpectedDemand + ScarcityValue
-        //             - HandPressure - ResourcePressure - LostTempo
+        // Spec §3 — HoldValue = UniqueFutureRole + NearTermExpectedDemand + ScarcityValue
+        //                       - HandPressure - LostTempo
         private static float HoldValue(MaterializationPlan plan, IntendedRole role, CapabilityInventory inv,
             WorldSnapshot snap, BaselineForceReadiness baseline, bool surplus)
         {
@@ -565,56 +578,50 @@ namespace Game.Ai.V2
             CardDefinition def = PlanBaseDef(plan);
 
             float uniqueFutureRole = 0f;
-            // A stealth-capable body is a rare option worth keeping when we hold at most one.
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0
                 && inv != null && inv.StealthScouts <= AiConfigV2.stratChainStealthScarceAt)
                 uniqueFutureRole += AiConfigV2.holdUniqueRoleValue;
-            // A hero whose real vocation is support, while we already field a combat leader.
             if (def != null && def.cardType == CardType.Hero && PlanHeroIsSupport(plan)
                 && inv != null && inv.AvailableHeroes + inv.CommittedHeroes > 0)
                 uniqueFutureRole += AiConfigV2.holdUniqueRoleValue;
 
+            // P1.6 — real NearTermExpectedDemand: a specialist counter whose triggering threat is
+            // already visible (enemy air for an AntiAir body) is worth keeping ready; a plain body
+            // when standing-force need is low is NOT (you would rather deploy it, so 0).
             float nearTermDemand = 0f;
-            if ((role == IntendedRole.CombatBody || role == IntendedRole.ForceGrowth
-                 || role == IntendedRole.MobileCombat || role == IntendedRole.Support)
-                && baseline.Need < AiConfigV2.baselineReadinessDemandMinNeed)
-                nearTermDemand -= 0f; // no pending readiness need -> nothing extra to hold FOR
+            if ((role == IntendedRole.AntiAir || role == IntendedRole.AntiArmor
+                 || role == IntendedRole.CapabilitySpecialist)
+                && ThreatResponseValue(role, snap) > 0f)
+                nearTermDemand += AiConfigV2.holdNearTermDemandValue;
 
-            float scarcityValue = inv != null && SurplusScarcity(inv,
-                    AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? def?.grantedAbilities),
-                    def != null && def.cardType == CardType.Hero) >= AiConfigV2.surplusScarcityMed
+            bool recce = AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? def?.grantedAbilities);
+            float scarcityValue = inv != null
+                && SurplusScarcity(inv, recce, def != null && def.cardType == CardType.Hero)
+                   >= AiConfigV2.surplusScarcityMed
                 ? AiConfigV2.holdScarcityValue : 0f;
 
-            float handPressure = 0f;
-            if (snap?.Self != null && !snap.Self.HasFreeHandSlot)
-                handPressure = AiConfigV2.holdHandPressurePenalty;
-
-            float resourcePressure = 0f; // Phase B already runs after mission spend; stranded AP is a play signal, not a hold one
+            float handPressure = snap?.Self != null && !snap.Self.HasFreeHandSlot
+                ? AiConfigV2.holdHandPressurePenalty : 0f;
             float lostTempo = surplus ? AiConfigV2.holdLostTempoPenalty : 0f;
 
             return Mathf.Max(0f,
-                uniqueFutureRole + nearTermDemand + scarcityValue
-                - handPressure - resourcePressure - lostTempo);
+                uniqueFutureRole + nearTermDemand + scarcityValue - handPressure - lostTempo);
         }
 
         // =======================================================================================
-        //  ROLE DERIVATION
+        //  ROLE DERIVATION + VERSATILITY  (P1.5 — versatility from real roles, not card class)
         // =======================================================================================
         private static IntendedRole RoleForCapability(CapabilityKind cap, CardDefinition def)
         {
             switch (cap)
             {
                 case CapabilityKind.ScoutCapability: return IntendedRole.Scout;
-                case CapabilityKind.Hero: return IntendedRole.CombatBody;
-                case CapabilityKind.GarrisonCombatPower: return IntendedRole.CombatBody;
-                case CapabilityKind.FieldCombatPower: return IntendedRole.CombatBody;
                 case CapabilityKind.EconomicInfrastructure: return IntendedRole.Economy;
                 case CapabilityKind.DevelopmentInfrastructure: return IntendedRole.Development;
                 default: return IntendedRole.CombatBody;
             }
         }
 
-        // Not a switch over card names — roles come from capabilities / abilities / chain shape.
         private static IReadOnlyList<IntendedRole> DeriveRoles(CardDefinition def,
             IReadOnlyList<string> abilities, MaterializationPlan plan, bool recce, bool hero)
         {
@@ -645,13 +652,39 @@ namespace Game.Ai.V2
             return roles.Distinct().ToList();
         }
 
+        // Versatility = value of a card that fits several real roles (excludes Hold). NOT a Hero
+        // class bonus — a Hero with one viable role scores the same as a Unit with one viable role.
+        private static float RoleVersatility(IReadOnlyList<IntendedRole> roles)
+        {
+            int real = roles.Count(r => r != IntendedRole.Hold);
+            return Mathf.Clamp((real - 1) * AiConfigV2.roleVersatilityPerExtraRole,
+                0f, AiConfigV2.roleVersatilityCap);
+        }
+
+        private static float SupportRoleFit(IReadOnlyList<string> projected)
+        {
+            if (projected == null) return 0f;
+            float v = 0f;
+            if (projected.Contains(UnitAbilities.ApBonus)) v += AiConfigV2.surplusRecurringApIncomeBonus;
+            if (projected.Contains(UnitAbilities.Researcher) || projected.Contains(UnitAbilities.Assembler))
+                v += AiConfigV2.heroSupportFitValue;
+            return v;
+        }
+
+        // Phase-B placement, garrison-surplus correction folded in (P1.4 — was in Plan.Score getter).
+        private static float SurplusPlacementBonus(DeploymentKind k, IntendedRole role)
+        {
+            bool combat = role == IntendedRole.CombatBody || role == IntendedRole.ForceGrowth
+                || role == IntendedRole.MobileCombat || role == IntendedRole.AntiArmor
+                || role == IntendedRole.AntiAir;
+            if (combat && k == DeploymentKind.Garrison)
+                return -AiConfigV2.stratPlacementReusableShellBonus; // proactive field readiness prefers the field
+            return PlacementBonus(k);
+        }
+
         // =======================================================================================
-        //  HERO FITNESS  — real characteristics only, no flat class bonus/penalty (spec §2 RoleFit)
+        //  HERO FITNESS  — real characteristics only, no flat class bonus/penalty (P1.5)
         // =======================================================================================
-        // A hand card is a CardDefinition, not a spawned UnitData, so the combat-leadership merit is
-        // read straight off the definition with the SAME formula HeroRoleEvaluator.CombatLeadershipScore
-        // uses on a live hero: CommandRating (leadership capacity) + the hero's own AiPower
-        // contribution. No flat hero class bonus — a weak hero scores low here.
         private static float HeroLeadershipScore(CardDefinition def)
         {
             if (def == null || def.cardType != CardType.Hero)
@@ -667,23 +700,15 @@ namespace Game.Ai.V2
 
         private static float HeroLeadershipFit(MaterializationPlan plan, bool hero)
         {
-            if (!hero)
-                return 0f;
-            CardDefinition def = PlanBaseDef(plan);
+            if (!hero) return 0f;
             return Mathf.Clamp(
-                HeroLeadershipScore(def) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
+                HeroLeadershipScore(PlanBaseDef(plan)) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
                 0f, AiConfigV2.heroLeadershipFitCap);
         }
 
-        private static float HeroSupportFit(MaterializationPlan plan, bool hero)
-        {
-            if (!hero)
-                return 0f;
-            return HeroHasSupportVocation(PlanBaseDef(plan)) ? AiConfigV2.heroSupportFitValue : 0f;
-        }
+        private static float HeroSupportFit(MaterializationPlan plan, bool hero) =>
+            hero && HeroHasSupportVocation(PlanBaseDef(plan)) ? AiConfigV2.heroSupportFitValue : 0f;
 
-        // SupportOperator == a support vocation AND combat-leadership below the flexible floor
-        // (parity with HeroRoleEvaluator.Classify, evaluated off the definition).
         private static bool PlanHeroIsSupport(MaterializationPlan plan)
         {
             CardDefinition def = PlanBaseDef(plan);
@@ -692,8 +717,7 @@ namespace Game.Ai.V2
         }
 
         // =======================================================================================
-        //  PORTED PRIMITIVES  (moved here from MaterializationCandidateBuilder so the scoring math
-        //  lives with the evaluator; feasibility / chain-construction stays in the builder).
+        //  PORTED PRIMITIVES  (scoring math lives with the evaluator; feasibility stays in builder)
         // =======================================================================================
         internal static float SurplusCombatReadinessUtility(MaterializationPlan p)
         {
@@ -786,8 +810,6 @@ namespace Game.Ai.V2
             return AiConfigV2.surplusScarcityLow;
         }
 
-        // Deterministic garrison saturation / composition-diversity penalty for a GarrisonCombatPower
-        // demand landing in an EXISTING garrison / defensive army (spec §9, §10).
         internal static float GarrisonSaturationPenalty(MaterializationPlan p, AxisDemand demand, WorldSnapshot snap)
         {
             if (demand == null || demand.Capability != CapabilityKind.GarrisonCombatPower)
@@ -828,9 +850,7 @@ namespace Game.Ai.V2
             return nonHero > 0 && sharing * 2 >= nonHero;
         }
 
-        // Opportunity cost of spending a card whose real value is in a DIFFERENT direction — a
-        // scarce stealth item on a non-stealth demand, or a genuinely scarce hero body on a
-        // non-hero, non-scout demand. NOT a flat hero penalty (spec §2).
+        // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
         {
             float cost = 0f;
@@ -855,15 +875,15 @@ namespace Game.Ai.V2
             return cost;
         }
 
-        private static float SurplusAlternativeUseCost(MaterializationPlan p, IntendedRole role,
+        // Phase-B floor under AlternativeUseValue: a scarce hero committed to a plain body, or a
+        // unique stealth item burned into a non-scout role, always costs at least this.
+        private static float SurplusScarceBodyFloor(MaterializationPlan p, IntendedRole role,
             CapabilityInventory inv, bool hero)
         {
             float cost = 0f;
-            // A scarce hero spent on a plain combat body while none is free elsewhere.
             if (hero && role != IntendedRole.Support && role != IntendedRole.Scout
                 && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
                 cost += AiConfigV2.stratChainHeroScarcityPenalty;
-            // A stealth-capable body burned into a non-scout combat role while stealth is scarce.
             if (role != IntendedRole.Scout
                 && (p.ExpectedTraits & TraitPreference.Stealth) != 0
                 && inv != null && inv.StealthScouts <= AiConfigV2.stratChainStealthScarceAt)
@@ -893,7 +913,6 @@ namespace Game.Ai.V2
             return EquipmentSystem.EffectiveAbilities(baseList, attachedEquipment.equipment);
         }
 
-        // --- tiny shared helpers (copied verbatim from the builder's private set) ---
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
 
@@ -922,9 +941,9 @@ namespace Game.Ai.V2
 
         private static float TargetFit(HexCoord deployHex, HexCoord? target)
         {
-            if (!target.HasValue) return 0.5f;
+            if (!target.HasValue) return 0.75f;
             int d = HexGridMath.Distance(deployHex, target.Value);
-            return Mathf.Clamp01(1f - d / Mathf.Max(1f, (float)AiConfigV2.stratTargetFitRange));
+            return 0.5f + 0.5f * Mathf.Clamp01(1f - d / Mathf.Max(1f, (float)AiConfigV2.stratTargetFitRange));
         }
 
         private static CardDefinition PlanBaseDef(MaterializationPlan p) =>

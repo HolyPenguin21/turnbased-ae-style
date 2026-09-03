@@ -67,7 +67,7 @@ namespace Game.Ai.V2
             }
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-            BaselineForceReadiness r = BaselineForceReadiness.Evaluate(snap, inv);
+            BaselineForceReadiness r = BaselineForceReadiness.Evaluate(snap, inv, snap.Self?.Hand);
 
             if (r.Need < AiConfigV2.baselineReadinessDemandMinNeed)
             {
@@ -87,7 +87,10 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            float value = AiConfigV2.baselineReadinessDemandValue * Mathf.Clamp01(r.Need);
+            // P1.7 — FLAT low Value. The Need >= min gate already decides the demand exists; Need
+            // is priced once, downstream, in the evaluator's ForceGrowthValue. Scaling Value by
+            // Need too (then Value x Plan.Score in arbitration) triple-counted the same signal.
+            float value = AiConfigV2.baselineReadinessDemandValue;
             AiDebugLog.Write($"[AI][V2][Demand][Baseline] decision=CREATE capability=FieldCombatPower desired=1 "
                 + $"need={r.Need:0.00} value={value:0.#} actors={r.CombatActors} freeFieldPower={r.FreeFieldPower:0.#} "
                 + $"hasBody={(r.HasFieldBody ? 1 : 0)} hasHero={(r.HasHero ? 1 : 0)}");

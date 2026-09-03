@@ -103,35 +103,10 @@ namespace Game.Ai.V2
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // free hand slots the chain needs at its most crowded moment (0 or 1)
 
-        private float score;
-        public float Score
-        {
-            // Keep the stored value raw and derive the Phase-B-only placement correction on read.
-            // That makes the correction idempotent if a caller later re-scores a plan and also
-            // avoids object-initializer ordering coupling between Score, OwnerAxis and Deploy.
-            get
-            {
-                float adjusted = score;
-
-                // Phase A owns explicit placement semantics through the requested capability, so
-                // keep its historical Garrison > Existing > Shell ordering intact. Phase B is
-                // different: generic combat surplus is proactive FIELD readiness. Without this
-                // correction the shared +0.30 garrison preference beats NewArmy/ReusableShell and
-                // silently parks strong tanks/heroes at home even when no defence demand exists.
-                // Remove the generic garrison bonus and add one shell-sized opportunity penalty so
-                // ExistingArmy > ReusableShell/NewArmy > Garrison for unclaimed combat surplus.
-                if (!OwnerAxis.HasValue
-                    && Deploy.Kind == DeploymentKind.Garrison
-                    && (FinalCapability == CapabilityKind.FieldCombatPower
-                        || FinalCapability == CapabilityKind.Hero))
-                {
-                    adjusted -= AiConfigV2.stratPlacementGarrisonBonus
-                                + AiConfigV2.stratPlacementReusableShellBonus;
-                }
-                return adjusted;
-            }
-            set => score = value;
-        }
+        // AI-MGR-01 P1.4 — a plain field: the authoritative strategic score, set once by
+        // StrategicCardEvaluator (which owns the Phase-B garrison-surplus correction via
+        // SurplusPlacementBonus). No caller re-adjusts it on read.
+        public float Score;
         public string StableKey;
         public string Explain;
 
