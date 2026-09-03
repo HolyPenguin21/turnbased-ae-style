@@ -775,11 +775,12 @@ namespace Game.Ai.V2
             // gameplay reason (never "wrong card type" / "ReconOnly").
             //
             // Ordering: materialization surplus first, then this lane, sharing one action budget.
-            // The two utility scales are not comparable (SurplusUtility is a sum of small
-            // config-weighted terms; NonCombatPlay.Score is a coarse 24-55 band), so they are NOT
-            // merged into a single ranking — that would let a mid-value non-combat card out-bid
-            // every Unit/Hero chain. Combat readiness / demand-relevant cards are also the more
-            // time-sensitive: a facility or a stored aircraft is equally playable next turn.
+            // AI-MGR-01 P0.1 — NonCombatPlay.Score now comes from the SAME StrategicCardEvaluator
+            // NetScore band as every Unit/Hero chain (no more the old 24-55 fixed scale), so the
+            // lane is gated on the same surplus-admission threshold; the two loops stay separate
+            // only because the executors are specialised, not because the scores are incomparable.
+            // Combat readiness / demand-relevant cards are still taken first (more time-sensitive:
+            // a facility or a stored aircraft is equally playable next turn).
             //
             // GATED on cleanStop AND the reaction pass not actually reserving: if the materialization
             // loop raised a strategic interrupt that a runnable, actionable reaction pass will act on
@@ -825,6 +826,19 @@ namespace Game.Ai.V2
                 lastBlocked = blocked;
                 if (play == null)
                     break;
+
+                // AI-MGR-01 P0.1 — same admission line the materialization-surplus loop uses. A
+                // low-value non-combat card (e.g. a marginal standalone Equipment) is now deferred
+                // instead of auto-played just because it is the best of its lane. Aviation / Base /
+                // Facility score well clear of this; a stored aircraft still gets its dedicated
+                // slot below regardless.
+                if (play.Score < AiConfigV2.surplusUtilityThreshold
+                    && play.Kind != NonCombatCardPlayer.PlayKind.Aviation)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — defer {play.Kind} {play.Explain} "
+                        + $"score {F(play.Score)} < threshold {F(AiConfigV2.surplusUtilityThreshold)}; stop");
+                    break;
+                }
 
                 result.MaterializationAttempts++;
                 bool ok = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx,

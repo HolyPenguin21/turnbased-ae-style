@@ -90,6 +90,10 @@ namespace Game.Ai.V2
         }
     }
 
+    // Which specialised non-combat executor a card routes to (AI-MGR-01 P0.1). Scoring is shared;
+    // dispatch stays specialised.
+    public enum NonCombatRole { Aviation, Base, Facility, Equipment }
+
     public sealed class StrategicCardUseCandidate
     {
         public MaterializationPlan Plan;
@@ -369,6 +373,85 @@ namespace Game.Ai.V2
                 TotalUseScore = total,
                 HoldValue = hold,
             };
+        }
+
+        // -----------------------------------------------------------------------------------------
+        //  NON-COMBAT CARDS  (Aviation / Base / Facility / standalone Equipment) — AI-MGR-01 P0.1.
+        //  These used to rank on NonCombatCardPlayer's own fixed 55/45/40/24 scale, incomparable
+        //  with every Unit/Hero chain. They now produce a StrategicCardUseCandidate on the SAME
+        //  breakdown / NetScore as everything else; the specialised executors (BuildingPlayExecutor
+        //  / AviationActions / EquipmentSystem) are unchanged. Demand-independent by nature — value
+        //  comes from capability coverage, economy standing and hand/AP pressure, not a live demand.
+        // -----------------------------------------------------------------------------------------
+        public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
+            WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade)
+        {
+            var bd = new StrategicUseScoreBreakdown();
+            CardDefinition def = card?.Definition;
+            IntendedRole role;
+            float apCost = card != null ? card.EffectivePlayApCost : 0f;
+            float resSum = card != null ? ResourceCostSum(card.EffectivePlayResourceCost) : 0f;
+
+            float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
+            int ownBases = snap?.Self?.BaseHexes != null ? snap.Self.BaseHexes.Count : 1;
+            bool hasAirCapacity = snap?.Self != null
+                && (snap.Self.AirborneReconWings + snap.Self.SpareAirObservationSorties) > 0;
+
+            switch (kind)
+            {
+                case NonCombatRole.Aviation:
+                    role = IntendedRole.Aviation;
+                    bd.RoleFit = AiConfigV2.nonCombatAviationBaseValue;
+                    bd.CapabilityGapValue = hasAirCapacity ? 0f : AiConfigV2.nonCombatAviationNoAirGap;
+                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential; // a stored aircraft is launchable next turn
+                    break;
+                case NonCombatRole.Base:
+                    role = IntendedRole.Economy;
+                    bd.RoleFit = AiConfigV2.nonCombatBaseValue
+                                 + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
+                    bd.CapabilityGapValue = ownBases <= 1 ? AiConfigV2.nonCombatFewBasesGap : 0f;
+                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential;
+                    break;
+                case NonCombatRole.Facility:
+                    role = FacilityRole(def);
+                    bd.RoleFit = AiConfigV2.nonCombatFacilityValue
+                                 + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
+                    break;
+                default: // Equipment (standalone)
+                    role = IntendedRole.EquipmentUpgrade;
+                    bd.RoleFit = Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade);
+                    break;
+            }
+
+            bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
+            bd.ResourceEfficiency = -(AiConfigV2.surplusApCostWeight * apCost
+                                      + AiConfigV2.surplusResourceCostWeight * resSum);
+
+            float total = bd.RoleFit + bd.CapabilityGapValue + bd.NextTurnPotential
+                          + bd.HandPressureBenefit + bd.ResourceEfficiency;
+            bd.Total = total;
+
+            // Non-combat cards carry little unique-future-role value (a facility / aircraft is as
+            // playable next turn); a full hand still argues against holding.
+            float hold = hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f;
+            bd.HoldValue = hold;
+
+            return new StrategicCardUseCandidate
+            {
+                Plan = null,
+                IntendedRole = role,
+                Breakdown = bd,
+                TotalUseScore = total,
+                HoldValue = hold,
+            };
+        }
+
+        private static IntendedRole FacilityRole(CardDefinition def)
+        {
+            IReadOnlyList<string> ab = def?.grantedAbilities;
+            if (ab != null && (ab.Contains(UnitAbilities.Research) || ab.Contains(UnitAbilities.Production)))
+                return IntendedRole.Development;
+            return IntendedRole.Economy;
         }
 
         // =======================================================================================

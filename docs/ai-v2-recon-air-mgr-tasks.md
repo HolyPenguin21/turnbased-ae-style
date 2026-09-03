@@ -335,6 +335,37 @@ Card / Economy-Development. Let the categories supply available intended uses / 
 / costs / prerequisites / synergies, and compute strategic value with a shared model.
 Important for later Equipment and Generated-Card integration.
 
+### Review follow-up (2026-09-04) — 8 findings, worked in order
+
+Base impl committed `e2d76ee`. Review found the evaluator was not yet truly unified; findings
+being addressed in the review's numbered order:
+
+1. **P0.1 — non-unified card types.** *Part 1 done (not committed):* `StrategicCardEvaluator.ScoreNonCombat`
+   scores Aviation / Base / Facility / standalone Equipment on the SAME `StrategicUseScoreBreakdown`
+   / `NetScore` band as every Unit/Hero chain; `NonCombatCardPlayer` drops the fixed 55/45/40/24
+   scale and picks the equipment host by carrier power (name only as tie-break), killing the
+   "rename unit → different carrier" invariant break; `StrategicManager` non-combat lane gated on
+   the shared `surplusUtilityThreshold`. New `AiConfigV2` `nonCombat*` consts. *Remaining:* explicit
+   `*CandidateProvider` classes, Phase A infra arbitration (still a privileged pre-pass), generated
+   non-combat cards (`BestSurplus` still drops `gd.isAviation`), retiring the reserved-slot hack.
+2. **P0.2 — Hold not a real Phase A competitor** (`HoldValue // informational`). TODO.
+3. **P1.3 — phantom card capacity** (`BestForDemand` returns one plan per demand before global
+   arbitration; no card/equipment-instance matching). TODO — card-instance reservation as a
+   first-class object, like the recon-actor reservation.
+4. **P1.4 — evaluator score modified after it returns** (attach penalty counted in `ResourceEfficiency`
+   AND `SynergyValue` AND again in `BestSurplus`; generation multiplier re-applied; `MaterializationPlan.Score`
+   getter correction; `SurplusAdmissionPolicy` threshold outside the model). TODO — one place, once.
+5. **P1.5 — Phase A/B parity** (Phase B Scout RoleFit ignores `CapabilityQualityEvaluator`;
+   `surplusHeroVersatility` 0.35 vs `surplusUnitVersatility` 0.25 is a hidden hero-class bonus). TODO.
+6. **P1.6 — HoldValue / AlternativeUseValue still stubs** (`NearTermExpectedDemand -= 0f`;
+   AlternativeUseValue = hero+stealth special-cases = the old `heroOpp` hack relocated). TODO.
+7. **P1.7 — BaselineForceReadiness too narrow + double-counted** (no `hand`; coverage only
+   `HasFieldBody`/`HasHero`; `HasScout` computed but unused; no AA/AT/Air/Mobile/Support; `Need`
+   feeds both `Demand.Value` and `ForceGrowthValue`/`CapabilityGapValue` ahead of `Value × Score`).
+   TODO — capability vector, one pressure→utility layer.
+8. **P2.8 — synthetic armor** (`ThreatResponseValue` turns any enemy ground power into armor-driver
+   pressure via `*0.35`). TODO — no bias without real composition data.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

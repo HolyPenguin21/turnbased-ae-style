@@ -911,5 +911,17 @@ namespace Game.Ai.V2
         public const float baselineReadinessDemandMinNeed = 0.45f;   // below this Need, DemandLayer raises no baseline demand
         public const float baselineReadinessDemandValue = 22f;       // AxisDemand.Value ceiling for the baseline demand (scaled by Need) — deliberately low so real threats/raids outrank it
         public const float baselineReadinessSatisfiedPower = 14f;    // free raid-eligible field power at/above this + enough actors -> no baseline demand
+
+        // --- P0.1 non-combat cards (Aviation / Base / Facility / standalone Equipment) scored on
+        //     the SAME breakdown / NetScore as Unit/Hero — no more NonCombatCardPlayer's fixed
+        //     55/45/40/24 scale. Values sit in the same band as a decent combat body's ForceGrowth
+        //     + gap so the two lanes are directly comparable. First-pass.
+        public const float nonCombatAviationBaseValue = 1.4f;
+        public const float nonCombatAviationNoAirGap = 1.2f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
+        public const float nonCombatBaseValue = 1.6f;
+        public const float nonCombatFewBasesGap = 1.0f;        // added when the AI holds <= 1 base
+        public const float nonCombatFacilityValue = 1.1f;
+        public const float nonCombatEconomyRunwayBonus = 1.0f; // scales Base/Facility RoleFit by (1 - EconomicSecurity)
+        public const float nonCombatEquipmentValueFloor = 0.15f;
     }
 }

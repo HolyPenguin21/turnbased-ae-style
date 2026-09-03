@@ -43,17 +43,24 @@ namespace Game.Ai.V2
         // Base card expands adjacent to held territory, never across the map.
         private const int BaseFoundScanRadius = 3;
 
-        // Rough surplus values — these only order the non-combat lane against itself and against a
-        // combat surplus body; the canonical preflight is the real authority on whether a play
-        // happens at all.
-        private static float BaseScore(PlayKind k) => k switch
+        // AI-MGR-01 P0.1 — every non-combat card is scored through the shared StrategicCardEvaluator
+        // (same breakdown / NetScore band as a Unit/Hero chain), so Phase B can compare the two
+        // lanes directly instead of the old incomparable 55/45/40/24 fixed scale.
+        private static NonCombatRole RoleOf(PlayKind k) => k switch
         {
-            PlayKind.Base => 55f,
-            PlayKind.Facility => 45f,
-            PlayKind.Aviation => 40f,   // an aircraft in an airfield is what makes AirRecon possible
-            PlayKind.Equipment => 24f,
-            _ => 0f,
+            PlayKind.Base => NonCombatRole.Base,
+            PlayKind.Facility => NonCombatRole.Facility,
+            PlayKind.Aviation => NonCombatRole.Aviation,
+            _ => NonCombatRole.Equipment,
         };
+
+        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayKind k, CardData card,
+            AiHandData hand, float bestEquipmentUpgrade)
+        {
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            return StrategicCardEvaluator.ScoreNonCombat(RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade)
+                .NetScore;
+        }
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
         // materialization chain (MaterializationCandidateBuilder) owns it. Exhaustive over
@@ -117,7 +124,7 @@ namespace Game.Ai.V2
                     Consider(new NonCombatPlay
                     {
                         Card = card, Kind = PlayKind.Aviation, TargetHex = hx.Value,
-                        Score = BaseScore(PlayKind.Aviation),
+                        Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f),
                         Explain = $"{def.displayName} -> airfield ({hx.Value.Q},{hx.Value.R})",
                     });
                     continue;
@@ -141,7 +148,7 @@ namespace Game.Ai.V2
                     Consider(new NonCombatPlay
                     {
                         Card = card, Kind = PlayKind.Facility, TargetHex = at.Value,
-                        Score = BaseScore(PlayKind.Facility),
+                        Score = Score(snap, player, PlayKind.Facility, card, hand, 0f),
                         Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
                     });
                     continue;
@@ -165,7 +172,7 @@ namespace Game.Ai.V2
                     Consider(new NonCombatPlay
                     {
                         Card = card, Kind = PlayKind.Base, TargetHex = at.Value,
-                        Score = BaseScore(PlayKind.Base),
+                        Score = Score(snap, player, PlayKind.Base, card, hand, 0f),
                         Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
                     });
                     continue;
@@ -173,17 +180,22 @@ namespace Game.Ai.V2
 
                 if (def.cardType == CardType.Equipment && def.equipment != null)
                 {
-                    (UnitData unit, HexCoord hex)? host = BestEquipmentHost(player, root, card);
+                    (UnitData unit, HexCoord hex, float hostPower)? host = BestEquipmentHost(player, root, card);
                     if (host == null)
                     {
                         blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
                         continue;
                     }
+                    // Strategic proxy: a stronger carrier gets more out of the same equipment. Kills
+                    // the old "first legal host by name" pick, so renaming a unit no longer changes
+                    // the AI's attachment decision.
+                    float upgrade = UnityEngine.Mathf.Clamp(
+                        host.Value.hostPower / AiConfigV2.defencePerBodyPowerEstimate, 0.15f, 1.5f);
                     Consider(new NonCombatPlay
                     {
                         Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                         TargetHex = host.Value.hex,
-                        Score = BaseScore(PlayKind.Equipment),
+                        Score = Score(snap, player, PlayKind.Equipment, card, hand, upgrade),
                         Explain = $"{def.displayName} -> {host.Value.unit.Name}",
                     });
                     continue;
@@ -287,10 +299,12 @@ namespace Game.Ai.V2
                         yield return h;
         }
 
-        private static (UnitData unit, HexCoord hex)? BestEquipmentHost(PlayerSetupData player,
-            PlayerRoot root, CardData equipCard)
+        // Strategic host pick: the strongest legal carrier (an equipped unit contributes more the
+        // more combat weight it already carries), name only as the final deterministic tie-break.
+        private static (UnitData unit, HexCoord hex, float hostPower)? BestEquipmentHost(
+            PlayerSetupData player, PlayerRoot root, CardData equipCard)
         {
-            (UnitData unit, HexCoord hex)? best = null;
+            (UnitData unit, HexCoord hex, float hostPower)? best = null;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army?.Members == null)
@@ -301,10 +315,11 @@ namespace Game.Ai.V2
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
-                    // Deterministic: first legal host by unit name.
-                    if (best == null
-                        || string.CompareOrdinal(u.Name ?? "", best.Value.unit.Name ?? "") < 0)
-                        best = (u, army.Hex);
+                    float power = AiPower.ToPowerUnit(u).BasePower;
+                    if (best == null || power > best.Value.hostPower + 0.0001f
+                        || (System.Math.Abs(power - best.Value.hostPower) <= 0.0001f
+                            && string.CompareOrdinal(u.Name ?? "", best.Value.unit.Name ?? "") < 0))
+                        best = (u, army.Hex, power);
                 }
             }
             return best;
