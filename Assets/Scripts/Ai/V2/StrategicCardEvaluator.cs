@@ -119,30 +119,27 @@ namespace Game.Ai.V2
         public readonly bool HasFieldBody;
         public readonly bool HasHero;
         public readonly bool HasAir;
-        // P1.7 review-r3 — capability coverage vector, derived DYNAMICALLY from what the AI's
-        // deployed armies + hand actually contain (abilities, not card class). Consumed by
-        // SurplusCapabilityGap so a card closing an AA / AT / Mobile / Support hole scores a real
-        // bonus.
-        public readonly bool HasAntiAir;
-        public readonly bool HasAntiArmor;
-        public readonly bool HasMobile;
-        public readonly bool HasSupport;
+        // P1.7 / review-r4 P1 ARCH — capability coverage, derived DYNAMICALLY from what the AI's
+        // deployed armies + hand actually contain, now as a generic RoleCoverage from
+        // StrategicEffectRegistry. A new counter/support/mobility role flows in with zero edits.
+        public readonly RoleCoverage Coverage;
         public readonly int CombatActors;
         public readonly float FreeFieldPower;
 
+        public bool HasAntiAir  => Coverage.Has(IntendedRole.AntiAir);
+        public bool HasAntiArmor => Coverage.Has(IntendedRole.AntiArmor);
+        public bool HasMobile    => Coverage.Has(IntendedRole.MobileCombat);
+        public bool HasSupport   => Coverage.Has(IntendedRole.Support);
+
         public BaselineForceReadiness(float need, bool hasScout, bool hasFieldBody, bool hasHero,
-            bool hasAir, bool hasAntiAir, bool hasAntiArmor, bool hasMobile, bool hasSupport,
-            int combatActors, float freeFieldPower)
+            bool hasAir, RoleCoverage coverage, int combatActors, float freeFieldPower)
         {
             Need = need;
             HasScout = hasScout;
             HasFieldBody = hasFieldBody;
             HasHero = hasHero;
             HasAir = hasAir;
-            HasAntiAir = hasAntiAir;
-            HasAntiArmor = hasAntiArmor;
-            HasMobile = hasMobile;
-            HasSupport = hasSupport;
+            Coverage = coverage;
             CombatActors = combatActors;
             FreeFieldPower = freeFieldPower;
         }
@@ -154,19 +151,17 @@ namespace Game.Ai.V2
             IReadOnlyList<CardData> hand)
         {
             if (snap?.Self == null)
-                return new BaselineForceReadiness(0f, false, false, false, false, false, false, false, false, 0, 0f);
+                return new BaselineForceReadiness(0f, false, false, false, false, RoleCoverage.None, 0, 0f);
 
             int combatActors = 0;
-            bool hasAirArmy = false, hasAntiAir = false, hasAntiArmor = false, hasMobile = false, hasSupport = false;
+            bool hasAirArmy = false;
+            RoleCoverage coverage = RoleCoverage.None;
             if (snap.Self.Armies != null)
                 foreach (ArmySnapshot a in snap.Self.Armies)
                 {
                     if (a == null || a.MemberCount <= 0 || a.IsPrison)
                         continue;
-                    if (a.HasAntiAir) hasAntiAir = true;
-                    if (a.HasAntiArmorUnit) hasAntiArmor = true;
-                    if (a.HasMobileUnit) hasMobile = true;
-                    if (a.HasSupportUnit) hasSupport = true;
+                    coverage = coverage.Union(a.StrategicCoverage);
                     if (a.IsAir) { hasAirArmy = true; continue; }
                     if (!a.IsGarrison && !a.IsSoloRecce)
                         combatActors++;
@@ -190,17 +185,14 @@ namespace Game.Ai.V2
                             c.Equipment.equipment)
                         : (IReadOnlyList<string>)(d.grantedAbilities ?? (IReadOnlyList<string>)System.Array.Empty<string>());
                     bool cardRecce = AbilityParams.AbilitiesHaveAnyRecce(eff);
-                    // review-r4 finding 8.1 — coverage flags are read BEFORE the recce short-circuit:
+                    // review-r4 finding 8.1 — coverage is read BEFORE the recce short-circuit:
                     // DeriveRoles gives a Scout+AntiAir card BOTH the Scout AND the AntiAir role, so
-                    // it must count toward AA coverage too. review-r4 finding 8.2 — power / moveMax
-                    // come from the EFFECTIVE stat line (attached equipment folded in at the stats
-                    // level, not just abilities), not the bare CardDefinition.
+                    // it must count toward AA coverage too. finding 8.2 — power / moveMax come from
+                    // the EFFECTIVE stat line (attached equipment folded in at the stats level).
+                    // P1 ARCH — the coverage roles come from StrategicEffectRegistry, not a fixed
+                    // ability list. (CoverageOf applies its own !recce gate to MobileCombat.)
                     AiPower.EffectiveCardLine line = AiPower.EffectiveLine(d, c.Equipment?.equipment);
-                    if (eff.Contains(UnitAbilities.AntiAir)) hasAntiAir = true;
-                    if (eff.Contains(UnitAbilities.Hyperkinetic)) hasAntiArmor = true;
-                    if (eff.Contains(UnitAbilities.ApBonus) || eff.Contains(UnitAbilities.Researcher)
-                        || eff.Contains(UnitAbilities.Assembler)) hasSupport = true;
-                    if (!cardRecce && line.MoveMax >= AiConfigV2.mobileCombatMoveMax) hasMobile = true;
+                    coverage = coverage.Union(StrategicEffectRegistry.CoverageOf(eff, line.MoveMax));
                     if (cardRecce)
                         continue;   // a recce card is a scout, not standing combat mass
                     if (line.BasePower >= AiConfigV2.baselineReadinessHandBodyMinPower)
@@ -238,7 +230,7 @@ namespace Game.Ai.V2
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
             return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, hasAir,
-                hasAntiAir, hasAntiArmor, hasMobile, hasSupport, combatActors, freeFieldPower);
+                coverage, combatActors, freeFieldPower);
         }
     }
 
@@ -369,7 +361,10 @@ namespace Game.Ai.V2
             float scarcity = SurplusScarcity(inv, recce, hero);
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
-            float recurringAp = projected != null && projected.Contains(UnitAbilities.ApBonus)
+            // P1 ARCH — "this card yields a recurring-resource effect" (ApBonus today) via the
+            // registry, so a future recurring-income mechanic gets the same immediate-tempo bonus.
+            float recurringAp = StrategicEffectRegistry.HasContext(
+                projected, 0, StrategicEffectContext.RecurringResource)
                 ? AiConfigV2.surplusRecurringApIncomeBonus : 0f;
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
@@ -431,7 +426,11 @@ namespace Game.Ai.V2
                 case IntendedRole.EquipmentUpgrade:
                     return equipmentUpgrade;
                 case IntendedRole.Support:
-                    return SupportRoleFit(projected) + HeroSupportFit(plan, hero);
+                    // P1 ARCH — Support role-fit from the registry (ApBonus / Researcher / Assembler
+                    // today; a future support mechanic flows in with no edit here).
+                    return StrategicEffectRegistry.RoleFit(IntendedRole.Support, projected,
+                        PlanBaseDef(plan)?.moveMax ?? 0, new EffectContextData(snap))
+                        + HeroSupportFit(plan, hero);
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
                 case IntendedRole.MobileCombat:
@@ -441,7 +440,9 @@ namespace Game.Ai.V2
                 case IntendedRole.Hold:
                     return 0f;
                 default:
-                    return versatility;
+                    // P1 ARCH — a brand-new registry-backed role is scored here with no switch edit.
+                    return versatility + StrategicEffectRegistry.RoleFit(role, projected,
+                        PlanBaseDef(plan)?.moveMax ?? 0, new EffectContextData(snap));
             }
         }
 
@@ -616,42 +617,14 @@ namespace Game.Ai.V2
             }
         }
 
-        // review-r4 finding 5 — ONE strategic threat-response primitive for BOTH counter roles.
-        // Cheat-biased DIRECTIONAL signal off omniscient enemy composition (TrueWorld); it never
-        // becomes normal AI intel. AntiAir keys on the real IsAir classification; AntiArmor keys on
-        // a real Armored-tagged member — the snapshot DOES carry enemy composition through TrueWorld,
-        // so P2.8's "no data, contributes 0" caveat no longer applies to this cheat path.
+        // review-r4 finding 5 / P1 ARCH — the counter-role threat signal now delegates to the shared
+        // EnemyThreatModel (a new enemy threat type is one branch there, no edit here). Still a
+        // cheat-biased DIRECTIONAL signal off omniscient TrueWorld composition; never AI intel.
         private static float ThreatResponseValue(IntendedRole role, WorldSnapshot snap)
         {
-            if (snap == null || (role != IntendedRole.AntiAir && role != IntendedRole.AntiArmor))
+            if (role != IntendedRole.AntiAir && role != IntendedRole.AntiArmor)
                 return 0f;
-            IReadOnlyList<ArmySnapshot> enemies = snap.TrueWorld?.EnemyArmies;
-            if (enemies == null || enemies.Count == 0)
-                return 0f;
-            float driver = 0f;
-            foreach (ArmySnapshot a in enemies)
-            {
-                if (a == null) continue;
-                if (role == IntendedRole.AntiAir)
-                {
-                    if (a.IsAir) driver += a.EffectiveArmyPower;
-                }
-                else if (ArmyHasArmoredMember(a))
-                    driver += a.EffectiveArmyPower;
-            }
-            if (driver <= 0f)
-                return 0f;
-            return Mathf.Clamp(driver / Mathf.Max(1f, AiConfigV2.threatResponseNorm), 0f, 1f)
-                   * AiConfigV2.threatResponseValueWeight;
-        }
-
-        private static bool ArmyHasArmoredMember(ArmySnapshot a)
-        {
-            if (a?.Members == null) return false;
-            foreach (WorthIt.DefenderProfile m in a.Members)
-                if (m.TypeTags != null && m.TypeTags.Contains(UnitTypeTag.Armored))
-                    return true;
-            return false;
+            return EnemyThreatModel.CounterDemandFactor(role, snap) * AiConfigV2.threatResponseValueWeight;
         }
 
         private static float NextTurnPotential(MaterializationPlan plan, IntendedRole role)
@@ -810,19 +783,9 @@ namespace Game.Ai.V2
                 roles.Add(IntendedRole.CombatBody);
                 roles.Add(IntendedRole.ForceGrowth);
             }
-            if (abilities != null)
-            {
-                if (abilities.Contains(UnitAbilities.AntiAir))
-                    roles.Add(IntendedRole.AntiAir);
-                if (abilities.Contains(UnitAbilities.Hyperkinetic))
-                    roles.Add(IntendedRole.AntiArmor);
-                if (abilities.Contains(UnitAbilities.ApBonus)
-                    || abilities.Contains(UnitAbilities.Researcher)
-                    || abilities.Contains(UnitAbilities.Assembler))
-                    roles.Add(IntendedRole.Support);
-            }
-            if (def != null && def.moveMax >= AiConfigV2.mobileCombatMoveMax && !recce)
-                roles.Add(IntendedRole.MobileCombat);
+            // P1 ARCH — every ability/stat-derived role (AntiAir / AntiArmor / Support / MobileCombat
+            // today) comes from the registry. A new mechanic adds its role here with no edit.
+            roles.AddRange(StrategicEffectRegistry.Roles(abilities, def?.moveMax ?? 0));
             if (plan != null && plan.UsesEquipment)
                 roles.Add(IntendedRole.EquipmentUpgrade);
             // review-r3 — Hold is NOT a play role: it never goes through ScoreSurplusRole (which
@@ -840,16 +803,6 @@ namespace Game.Ai.V2
             int real = roles.Count(r => r != IntendedRole.Hold);
             return Mathf.Clamp((real - 1) * AiConfigV2.roleVersatilityPerExtraRole,
                 0f, AiConfigV2.roleVersatilityCap);
-        }
-
-        private static float SupportRoleFit(IReadOnlyList<string> projected)
-        {
-            if (projected == null) return 0f;
-            float v = 0f;
-            if (projected.Contains(UnitAbilities.ApBonus)) v += AiConfigV2.surplusRecurringApIncomeBonus;
-            if (projected.Contains(UnitAbilities.Researcher) || projected.Contains(UnitAbilities.Assembler))
-                v += AiConfigV2.heroSupportFitValue;
-            return v;
         }
 
         // Phase-B placement, garrison-surplus correction folded in (P1.4 — was in Plan.Score getter).

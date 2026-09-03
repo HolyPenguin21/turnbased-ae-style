@@ -94,13 +94,16 @@ namespace Game.Ai.V2
         // size an assemblable raid roster the way EvaluateAssemblablePlan does. Own armies only in
         // practice (a fog/cheat-read enemy army never exposes its hero's rating).
         public int HeroCommandRating;
+        // HasAntiAir is DUAL-USE: for an own army it means "fields an AntiAir counter unit"; for an
+        // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
+        // because the aviation path (AirReconRouteCandidate) reads it independently.
         public bool HasAntiAir;
-        // AI-MGR-01 P1.7 — capability coverage of THIS army, derived DYNAMICALLY from its members'
-        // abilities (not a card type / class flag). Own armies only in practice; an enemy/cheat
-        // -read army leaves these false. Consumed by BaselineForceReadiness's coverage vector.
-        public bool HasAntiArmorUnit;   // a member with the anti-armour counter ability (Hyperkinetic)
-        public bool HasSupportUnit;     // a member granting ApBonus / Researcher / Assembler
-        public bool HasMobileUnit;      // any member (hero included) whose moveMax >= AiConfigV2.mobileCombatMoveMax
+        // AI-MGR-01 P1.7 / review-r4 P1 ARCH — the strategic ROLES this army covers for standing-
+        // force readiness, derived DYNAMICALLY from its members' abilities + stats via
+        // StrategicEffectRegistry (not a card type / class flag). Own armies only in practice; an
+        // enemy/cheat-read army leaves it None. Consumed by BaselineForceReadiness's coverage
+        // vector. A new coverage role flows in with zero edits here.
+        public RoleCoverage StrategicCoverage;
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

@@ -541,19 +541,43 @@ also fail identically on clean HEAD, unrelated).
   `RecordGenerationAttempt` (no retry), bumps `GeneratedCardAttempts` (and `…Succeeded` only if the
   mint won), refreshes the snapshot, and then stops — parity with a failed materialization chain.
 
-### Still open — P1 ARCH (own task): capability/effect descriptor layer
+### Review round 4 P1 ARCH — capability/effect descriptor layer (DONE)
 
-`DeriveRoles` / `SupportRoleFit` / `SurplusCapabilityGap` / `ThreatResponseValue` / the
-`BaselineForceReadiness` + `WorldAnalysis` coverage vector still hard-code `Contains(UnitAbilities.
-AntiAir | Hyperkinetic | ApBonus | Researcher | Assembler)`. A new mechanic (Splash/AoE,
-Regeneration, army aura, temporary Summon, …) currently reaches strategic scoring only by adding
-another `Contains(UnitAbilities.X)`. Target pipeline: `Skill → StrategicEffectDescriptor →
-Capability/Effect → Contextual Value → RoleFit/Score`, contextual value examples: AoE ↔ target
-count/density, regen ↔ expected sustain, aura ↔ eligible-unit count·value, summon ↔ combat
-value·duration but ONLY with real free battle slots (no phantom capacity).
-**Acceptance:** adding a new skill/effect descriptor must not require editing `StrategicManager` or
-the core `StrategicCardEvaluator` scoring switch — it flows in through a shared registry/descriptor
-layer.
+New `StrategicEffectRegistry.cs` (Assets/Scripts/Ai/V2/) — the ONE place ability/stat → strategic
+value knowledge lives. `StrategicEffect { Role, BaseFit, Context, CountsAsCoverage }` +
+`StrategicEffectContext` (Flat / RecurringResource / EnemyThreatScaled live; TargetDensity /
+ExpectedSustain / EligibleAllies / FreeBattleSlots stubbed with full signatures — a stub returns
+`BaseFit` except FreeBattleSlots returns 0 so a future Summon never fabricates phantom capacity).
+`RoleCoverage` — an `IntendedRole` bitmask replacing the 4 `Has*` bools on `ArmySnapshot` /
+`BaselineForceReadiness`.
+
+- `ByAbility` table: `AntiAir→AntiArmor role EnemyThreatScaled`, `Hyperkinetic→AntiArmor
+  EnemyThreatScaled`, `ApBonus→Support RecurringResource`, `Researcher/Assembler→Support Flat`, all
+  `coverage:true`; + stat-derived `MobileCombat` (non-recce, `moveMax≥mobileCombatMoveMax`).
+- `Resolve` / `Roles` / `RoleFit` / `CoverageOf` / `HasContext` / `ContextualValue`.
+- New `EnemyThreatModel` (same file): `CounterDemandFactor` / `ThreatPresent` — the enemy-side
+  counterpart, scans `TrueWorld.EnemyArmies` for `IsAir` / `Armored`-tagged members. A new enemy
+  threat type is one branch here.
+- Wired: `StrategicCardEvaluator.DeriveRoles` (ability block → `StrategicEffectRegistry.Roles`),
+  `RoleFit` Support case + `default` (→ registry; `SupportRoleFit` deleted), `ScoreSurplusRole`
+  recurringAp (→ `HasContext(RecurringResource)`), `ThreatResponseValue` (→ `EnemyThreatModel`,
+  `ArmyHasArmoredMember` deleted), `BaselineForceReadiness.Evaluate` (deployed + hand coverage →
+  `RoleCoverage` via registry; `Has*` are now properties off `Coverage`),
+  `WorldAnalysis.ToArmySnapshot` (→ `StrategicCoverageOf` per member).
+- Deliberate boundaries kept as direct ability checks: recce/stealth (`AbilityParams`), the
+  Research/Production operator vocation (`HeroHasSupportVocation`). `ArmySnapshot.HasAntiAir` kept
+  as its own field (dual-use: own AA-counter unit / enemy AA-gun danger read by
+  `AirReconRouteCandidate`).
+- Behaviour delta: the ApBonus Support role-fit is now scaled by economy insecurity
+  (`effectRecurringFloor=0.40 .. 1.0 × surplusRecurringApIncomeBonus`) instead of a flat constant;
+  everything else is value-parity.
+
+**Acceptance met:** a new skill/effect descriptor is one `ByAbility` row (+ a `ContextualValue`
+branch if it needs a new context) — no edit to `StrategicManager` or the `StrategicCardEvaluator`
+role switch.
+
+Both Unity assemblies build clean (0/0). capability-quality-sim 71/1, radar-sim 9/1,
+housekeeping-sim 55/0 (fails pre-existing).
 
 ---
 

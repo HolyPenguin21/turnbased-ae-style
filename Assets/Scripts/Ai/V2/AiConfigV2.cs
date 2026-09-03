@@ -890,6 +890,11 @@ namespace Game.Ai.V2
         public const float holdHandPressurePenalty = 0.50f;// a full hand argues against holding
         public const float holdLostTempoPenalty = 0.35f;   // Phase B — not playing now forfeits this turn's tempo
         public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
+        // review-r4 P1 ARCH — StrategicEffectRegistry tunables (ability -> strategic value). AntiAir
+        // / AntiArmor reuse capabilityGapValue, Support reuses surplusRecurringApIncomeBonus /
+        // heroSupportFitValue (parity with the old inline SupportRoleFit); only these two are new.
+        public const float effectMobileBaseFit = 0.20f;    // a fast non-recce body's MobileCombat role-fit floor
+        public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a 0 economy runway
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card

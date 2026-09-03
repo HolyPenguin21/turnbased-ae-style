@@ -265,13 +265,9 @@ namespace Game.Ai.V2
                 HasHero = a.Members.Any(m => m.IsHero),
                 HeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
-                HasAntiArmorUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.Hyperkinetic)),
-                HasSupportUnit = a.Members.Any(m => m.HasAbility(UnitAbilities.ApBonus)
-                    || m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)),
-                // review-r4 (AI-MGR-01 finding 8.3) — parity with StrategicCardEvaluator.DeriveRoles,
-                // which offers the MobileCombat role to ANY non-recce body with the moveMax, heroes
-                // included. A deployed mobile hero must therefore also close the mobile-coverage hole.
-                HasMobileUnit = a.Members.Any(m => m.MoveMax >= AiConfigV2.mobileCombatMoveMax),
+                // review-r4 P1 ARCH — the coverage roles come from StrategicEffectRegistry, so a new
+                // counter/support/mobility mechanic flows in without editing this file.
+                StrategicCoverage = StrategicCoverageOf(a),
                 IsHiddenFromUs = allHidden,
                 AttackSum = WorthIt.AttackSum(a),
                 DefenseSum = WorthIt.DefenseSum(a),
@@ -291,6 +287,18 @@ namespace Game.Ai.V2
                     : 0,
                 EffectiveVisionRadius = armyVisionRadius + AbilityParams.GetBestRecceRadius(a),
             };
+        }
+
+        // review-r4 P1 ARCH — union of every member's registry-resolved coverage roles (abilities +
+        // effective moveMax). One place, no per-role branch.
+        private static RoleCoverage StrategicCoverageOf(ArmyData a)
+        {
+            RoleCoverage c = RoleCoverage.None;
+            if (a?.Members != null)
+                foreach (UnitData m in a.Members)
+                    if (m != null)
+                        c = c.Union(StrategicEffectRegistry.CoverageOf(m.Abilities, m.MoveMax));
+            return c;
         }
 
         private static int ArmyVisionRadius(AiTurnContext ctx) =>
