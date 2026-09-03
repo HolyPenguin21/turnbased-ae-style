@@ -539,20 +539,16 @@ namespace Game.Ai.V2
         public const bool surplusAllowAttach = true;
         public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
-        // Phase B — surplus preparation. Bounded greedy; no look-ahead simulation.
-        public const int maxSurplusActionsPerTurn = 2;      // bounds play/draw/play/draw draining the deck/economy
+        // DEPRECATED (AI-MGR-02) — the separate "surplus action" budget is gone; the one bounded
+        // end-of-turn tempo arbiter is bounded by maxEndOfTurnTempoActionsPerTurn across ALL spend
+        // kinds. Kept only so no external reference breaks; not read.
+        public const int maxSurplusActionsPerTurn = 2;
         public const bool surplusAllowDraw = true;
         public const float surplusUtilityThreshold = 0.60f; // a candidate below this FutureUtility is not worth playing
         // Standalone TERMINAL draw (spec §11–§15): once Phase B has no residual demand it can
         // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
         // next turn — convert it to card option value, bounded by this many draws per turn.
         public const int maxTerminalDrawsPerTurn = 4;
-        // DEPRECATED (AI-MGR-01 review-r4 finding 9a; final closure §2) — the separate post-
-        // materialization non-combat loop with reserved slots is gone, and so is the dedicated
-        // final Aviation slot. Phase B now ranks the non-combat lane (aviation included) against the
-        // materialization lane per iteration inside the one shared maxSurplusActionsPerTurn budget —
-        // no guaranteed extra of any kind. Kept only so no external reference breaks; not read.
-        public const int surplusNonCombatReservedActions = 2;
         // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
         // already a strong defensive stack and nothing threatens an asset: the surplus-admission
         // threshold is multiplied by this so the loop stops (and converts stranded AP to draws)
@@ -568,11 +564,55 @@ namespace Game.Ai.V2
         // remaining pool. A future late stage that genuinely needs resources after Phase B must
         // add its own explicit V2 reservation contract rather than reviving a fixed floor here.
 
-        // AI-MGR-02 §4 — end-of-turn tempo spending. When the bounded reaction pass does NOT run,
-        // HousekeepingManager releases the AP StrategicResourceReservationLedger held for it and
-        // re-runs StrategicManager.UseSurplus so the freed AP is offered to Play / Draw again the
-        // same turn. UseSurplus keeps its own internal per-pass action/draw bounds; this only caps
-        // how many times that re-run itself may repeat (>= 1; 1 is the safe first pass).
+        // =======================================================================================
+        //  AI-MGR-02 — END-OF-TURN TEMPO ARBITER
+        //  StrategicManager.UseSurplus is one bounded live-arbitration loop. Every end-of-turn
+        //  decision (PlayCard / DrawCard / strategic spend / HoldResources / EndTurn) is a candidate
+        //  in ONE comparable utility space; PlayCard utility is the StrategicCardEvaluator NetScore
+        //  verbatim (no caller-side correction — spec §5). The loop stops when max(Hold, EndTurn) >=
+        //  the best actionable spend, or the hard action bound is hit.
+        // =======================================================================================
+        // Hard bound on the unified arbitration loop (spec §3). Also bounds materialization +
+        // non-combat plays + draws + strategic spends TAKEN TOGETHER — no lane gets a reserved slot.
+        public const int maxEndOfTurnTempoActionsPerTurn = 10;
+        // A spend candidate must beat BOTH this floor AND max(Hold, EndTurn). Small and positive:
+        // stranded AP is used for a marginally-useful action, but a genuinely worthless one still
+        // loses to EndTurn (spec §4 — "high SpendPressure is not play garbage at any cost").
+        public const float tempoMinSpendUtility = 0.05f;
+        // HoldResources utility from the loose persistent pool (spec §4). AP is never held (it does
+        // not carry over). Per-CARD hold value is already inside every PlayCard NetScore, so this is
+        // the ONLY place the loose H/E/M/T pool's hold value is priced (spec §5 single-count).
+        //   u = (fragility * fragilityWeight + scarcity * scarcityWeight) * scale, clamped to cap
+        // where fragility = 1 - EconomicSecurity and scarcity = 1 - min(stock / comfortableStock).
+        public const int   tempoHoldResourceComfortableStock = 8;    // a resource at/above this is not "scarce"
+        public const float tempoHoldFragilityWeight = 0.5f;
+        public const float tempoHoldScarcityWeight = 1.0f;
+        public const float tempoHoldPersistentResourceValueScale = 1.6f;
+        public const float tempoHoldPersistentResourceValueCap = 2.5f; // a strong play (NetScore > this) still wins
+        // DrawCard candidate utility, same [~0..5] NetScore band as PlayCard (spec §1 — Draw is a
+        // full peer, not a terminal fallback).
+        public const float tempoDrawBaseValue = 0.60f;              // expected value of a fresh card option (full hand-space)
+        public const float tempoDrawApOpportunityWeight = 0.04f;    // per AP the draw costs
+        public const float tempoDrawFutureBlockPenalty = 0.25f;     // drawing into the last free slot
+        public const float tempoDrawHandActionablePenalty = 0.20f;  // the hand already holds a play we are only deferring
+        // Utility of a ready decisive structure-pressure advance (StrategicPressureAdvance), in the
+        // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
+        // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.
+        public const float tempoPressureAdvanceValue = 1.20f;
+        // Baseline utility bands for a ready StrategicMaintenancePolicy action (internal facility /
+        // capacity upgrade / equipment / standalone generation). Bounded [0..~2] to sit in the
+        // shared band; the policy's own Find* logic decides WHICH action, this only decides whether
+        // it beats the other candidates.
+        public const float tempoMaintenanceFacilityValue = 1.10f;
+        public const float tempoMaintenanceCapacityUpgradeValue = 0.70f;
+        public const float tempoMaintenanceEquipmentValueScale = 0.08f;  // * StrategicMaintenancePolicy benefit score, clamped
+        public const float tempoMaintenanceGenerationValueScale = 0.08f; // * expected generated power, clamped
+        public const float tempoMaintenanceValueCap = 2.0f;
+        // spec §7 — the bounded reaction pass may reserve AT MOST this many AP (was: the entire
+        // pool). One bounded replan round does not need "everything".
+        public const int reactionReserveApCap = 6;
+        // AI-MGR-02 §7 — kept for HousekeepingManager's same-turn tempo re-run after a released
+        // reservation. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
         public const int maxEndOfTurnTempoReruns = 1;
 
         // =======================================================================================

@@ -16,9 +16,11 @@ namespace Game.Ai.V2
 
     public static class AiStrategyV2Scope
     {
-        // Temporary development default for the Recon deep-rework. Change this one value to restore
-        // the complete V2 strategy; do not add local "disable aggression" booleans elsewhere.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconOnly;
+        // AI-MGR-02 — switched to Full: the end-of-turn tempo arbiter must be exercised against the
+        // real competing set (AGG / DEF / ECO / DEV spend + reaction reservation), not the narrow
+        // ReconOnly slice. Change this one value to isolate a slice again; do not add local
+        // "disable aggression" booleans elsewhere.
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.Full;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 

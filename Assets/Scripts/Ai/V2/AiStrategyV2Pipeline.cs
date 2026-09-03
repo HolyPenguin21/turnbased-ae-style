@@ -717,8 +717,10 @@ namespace Game.Ai.V2
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments =
                 ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-            StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation, reconObjectives);
+            // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
+            var phaseB = new StrategicPhaseResult();
+            yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                postCommitments, phaseA.Reservation, phaseB, reconObjectives);
             if (phaseB.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
@@ -786,6 +788,10 @@ namespace Game.Ai.V2
                 + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
                 + $"provisioned {provisioned.Count}, executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
+
+            // AI-MGR-02 §8 — no strategic resource reservation may survive turn end. Anything still
+            // standing is an owner that failed to release; log it and force-clear.
+            StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;

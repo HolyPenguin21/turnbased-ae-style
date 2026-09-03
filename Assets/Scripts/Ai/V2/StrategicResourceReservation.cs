@@ -1,26 +1,32 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Economy;
 using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  STRATEGIC RESOURCE RESERVATION  (Strategy V2 — AI-MGR-02, spec §4)
+    //  STRATEGIC RESOURCE RESERVATION  (Strategy V2 — AI-MGR-02, spec §6/§7/§8)
     // ===========================================================================================
-    //  An EXPLICIT, owner + reason tagged hold on the shared resource pool. It replaces the hidden
-    //  "Phase B just returns early and 10 AP are silently preserved" behaviour: after this change a
-    //  resource is in exactly one of three states —
+    //  An EXPLICIT, owner + reason tagged hold on the shared resource pool. It replaces every
+    //  hidden "Phase B just returns early and N AP are silently preserved" path. After this change
+    //  a resource is in exactly one of three states:
     //    · really spent,
-    //    · covered by an ACTIVE reservation here (owner + reason + expiration known), or
-    //    · free for Phase B / end-of-turn tempo spending.
+    //    · covered by an ACTIVE reservation here (owner + reason + amount + expiration known), or
+    //    · free for end-of-turn tempo arbitration.
     //
-    //      SpendableResource = TotalResource - Σ ActiveReservations(resource)
+    //      SpendableResource(r) = TotalResource(r) - Σ ActiveReservations(r)
     //
-    //  Lifecycle rule (spec §4): if the pass that owns a reservation is Suppressed / NoAction /
+    //  Works for every strategic resource, not only AP (spec §6). Reservations are IDEMPOTENT by
+    //  (Owner, Reason, Resource): a repeated Phase-B / reaction pass upserts the same row instead
+    //  of stacking duplicates (spec §8).
+    //
+    //  Lifecycle rule (spec §7): if the pass that owns a reservation is Suppressed / NoAction /
     //  Invalidated / Skipped, the reservation is released IMMEDIATELY (regardless of its nominal
-    //  ExpirationStage) and end-of-turn tempo spending runs again the same turn.
+    //  ExpirationStage) and end-of-turn tempo spending runs again the same turn. Nothing may
+    //  survive turn end (spec §8 — there is no legitimate cross-turn reservation in this task).
     // ===========================================================================================
 
     public enum StrategicReservedResource { ActionPoints, Human, Energy, Materials, Tech }
@@ -65,10 +71,33 @@ namespace Game.Ai.V2
             ByPlayer[player] = new Entry { Turn = turn };
         }
 
-        public static void Reserve(PlayerSetupData player, int turn, StrategicResourceReservation r)
+        // Idempotent by (Owner, Reason, Resource): a repeat upserts the amount/expiry, never a
+        // second row (spec §8 — "duplicate reservation for same owner/reason" is forbidden).
+        // Amount <= 0 removes the row entirely.
+        public static void Upsert(PlayerSetupData player, int turn, StrategicResourceReservation r)
         {
-            if (player == null || r == null || r.Amount <= 0f) return;
+            if (player == null || r == null) return;
             Entry e = GetOrReset(player, turn);
+            StrategicResourceReservation existing = e.Reservations.FirstOrDefault(
+                x => x.Owner == r.Owner && x.Reason == r.Reason && x.Resource == r.Resource);
+            if (r.Amount <= 0f)
+            {
+                if (existing != null)
+                {
+                    e.Reservations.Remove(existing);
+                    AiDebugLog.Write($"[AI][V2] reservation 0 -> drop {existing}; active [{DebugLine(player, turn)}]");
+                }
+                return;
+            }
+            if (existing != null)
+            {
+                if (Mathf.Approximately(existing.Amount, r.Amount) && existing.ExpirationStage == r.ExpirationStage)
+                    return;
+                existing.Amount = r.Amount;
+                existing.ExpirationStage = r.ExpirationStage;
+                AiDebugLog.Write($"[AI][V2] reservation ~ {existing}; active [{DebugLine(player, turn)}]");
+                return;
+            }
             e.Reservations.Add(r);
             AiDebugLog.Write($"[AI][V2] reservation + {r}; active [{DebugLine(player, turn)}]");
         }
@@ -83,12 +112,21 @@ namespace Game.Ai.V2
             return sum;
         }
 
-        // SpendableResource = TotalResource - Σ ActiveReservations(resource). Currently the only
-        // reservation ever placed is AP for the bounded reaction pass, and Phase B returns the
-        // moment it places one, so during the surplus loops this is a no-op — it exists so a
-        // future second owner is honoured without another rewrite.
+        // SpendableResource = TotalResource - Σ ActiveReservations(resource). Generic over every
+        // strategic resource (spec §6).
+        public static float Spendable(PlayerSetupData player, int turn, StrategicReservedResource res, float total)
+            => Mathf.Max(0f, total - Active(player, turn, res));
+
         public static float SpendableAp(PlayerSetupData player, int turn, float totalAp) =>
-            Mathf.Max(0f, totalAp - Active(player, turn, StrategicReservedResource.ActionPoints));
+            Spendable(player, turn, StrategicReservedResource.ActionPoints, totalAp);
+
+        public static StrategicReservedResource Map(ResourceType t) => t switch
+        {
+            ResourceType.Human => StrategicReservedResource.Human,
+            ResourceType.Energy => StrategicReservedResource.Energy,
+            ResourceType.Materials => StrategicReservedResource.Materials,
+            _ => StrategicReservedResource.Tech,
+        };
 
         // Immediate release for a Suppressed / NoAction / Invalidated / Skipped owning pass.
         public static bool ReleaseByReason(PlayerSetupData player, int turn, StrategicReservationReason reason)
@@ -117,6 +155,20 @@ namespace Game.Ai.V2
         public static bool HasAny(PlayerSetupData player, int turn) =>
             player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Count > 0;
+
+        // spec §8 — nothing may survive turn end. Called at the very end of the AI turn: logs and
+        // force-clears anything still standing (a leak — an owner that never released).
+        public static void AssertClearAtTurnEnd(PlayerSetupData player, int turn)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return;
+            if (e.Reservations.Count > 0)
+            {
+                AiDebugLog.Write($"[AI][V2][ERROR] reservation leak at turn end — [{DebugLine(player, turn)}] "
+                    + "not released by its owner; force-clearing");
+                e.Reservations.Clear();
+            }
+        }
 
         public static string DebugLine(PlayerSetupData player, int turn)
         {

@@ -5,6 +5,7 @@ using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -25,11 +26,29 @@ namespace Game.Ai.V2
         public int Rounds;
     }
 
+    // AI-MGR-02 §7 — a concrete preflight of what the bounded reaction pass would actually do, so
+    // Phase B reserves a REAL bounded AP requirement for a REAL actionable owner instead of blindly
+    // holding back the whole AP pool for "there is some pending interrupt".
+    internal readonly struct StrategicReactionOpportunity
+    {
+        public readonly bool IsActionable;
+        public readonly float ApRequired;
+        public readonly string Reason;
+
+        public StrategicReactionOpportunity(bool actionable, float apRequired, string reason)
+        {
+            IsActionable = actionable;
+            ApRequired = apRequired;
+            Reason = reason;
+        }
+
+        public static StrategicReactionOpportunity None(string reason) =>
+            new StrategicReactionOpportunity(false, 0f, reason);
+    }
+
     internal static class StrategicReactionPass
     {
-        // AI-MGR-02 §4 — the two questions StrategicManager Phase B must answer BEFORE it holds any
-        // AP back for this pass. If EITHER is false the pass will spend nothing, so Phase B must NOT
-        // reserve (this is the "10 AP stranded because ReconOnly suppressed the reaction pass" bug).
+        // AI-MGR-02 §7 — CAN the pass run at all in this scope / with a resolvable hand.
         internal static bool CanStrategicReactionPassRun(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx == null || ctx.Map == null)
@@ -38,17 +57,35 @@ namespace Game.Ai.V2
             return !AiStrategyV2Scope.IsReconOnly;
         }
 
-        internal static bool HasActionableStrategicReaction(PlayerSetupData player, AiTurnContext ctx)
+        // AI-MGR-02 §7 — build the concrete opportunity. Actionable requires a pending invalidation,
+        // a resolvable hand AND real new content to react to (a discovered target, or a Phase-B
+        // hand/capability follow-up). ApRequired is BOUNDED (reactionReserveApCap), never the whole
+        // pool — the reaction round is a single bounded replan, not "spend everything".
+        internal static StrategicReactionOpportunity BuildReactionOpportunity(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx)
         {
-            if (player == null || ctx == null)
-                return false;
+            if (!CanStrategicReactionPassRun(player, ctx))
+                return StrategicReactionOpportunity.None("cannotRun(scope)");
             if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
-                return false;
-            // ExecuteRound aborts with zero spend when it cannot resolve an AI hand.
+                return StrategicReactionOpportunity.None("noPendingInvalidation");
+
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null)
                 StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
-            return hand != null;
+            if (hand == null)
+                return StrategicReactionOpportunity.None("noResolvableHand");
+
+            bool hasNewContent =
+                StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber).Count > 0
+                || StrategicInterruptRegistry.HasPendingFollowup(player, ctx.TurnNumber);
+            if (!hasNewContent)
+                return StrategicReactionOpportunity.None("noActionableContent");
+
+            float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
+            float apRequired = Mathf.Min(apAvailable, AiConfigV2.reactionReserveApCap);
+            if (apRequired <= 0f)
+                return StrategicReactionOpportunity.None("noApToReserve");
+            return new StrategicReactionOpportunity(true, apRequired, "actionable");
         }
 
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
@@ -296,8 +333,9 @@ namespace Game.Ai.V2
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
-            StrategicPhaseResult phaseB = StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation);
+            var phaseB = new StrategicPhaseResult();
+            yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                postCommitments, phaseA.Reservation, phaseB);
             result.CardsPlayed += phaseB.CardsPlayed;
             result.CardsDrawn += phaseB.CardsDrawn;
             result.StateChanged |= phaseB.StateChanged || executed.Count > 0;

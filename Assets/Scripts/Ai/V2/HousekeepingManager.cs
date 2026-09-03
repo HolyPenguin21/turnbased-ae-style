@@ -64,10 +64,10 @@ namespace Game.Ai.V2
                      && StrategicResourceReservationLedger.ReleaseByReason(
                          player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass))
             {
-                // AI-MGR-02 §4 — the bounded reaction pass did NOT run (scope-suppressed, or the
-                // pending invalidation went away before it), so the AP Phase B explicitly reserved
-                // for it is stranded. Release it and run end-of-turn tempo spending once more THIS
-                // turn so the freed AP is offered to Play / Draw again instead of being lost.
+                // AI-MGR-02 §7 — the bounded reaction pass did NOT run (scope-suppressed, or its
+                // opportunity went away), so the AP Phase B reserved for it is stranded. Release it
+                // and re-run the end-of-turn tempo arbiter THIS turn so the freed AP re-enters
+                // arbitration instead of being lost.
                 for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
                 {
                     int apBeforeTempo = root.ActionPoints;
@@ -76,8 +76,9 @@ namespace Game.Ai.V2
                         MissionIntentRegistry.GetOrCreate(player).All,
                         snapshot,
                         ReconObjectiveEvaluator.Enumerate(snapshot));
-                    StrategicPhaseResult tempo = StrategicManager.UseSurplus(
-                        snapshot, player, root, hand, ctx, tempoCommitments, new MaterializationReservation());
+                    var tempo = new StrategicPhaseResult();
+                    yield return StrategicManager.UseSurplus(
+                        snapshot, player, root, hand, ctx, tempoCommitments, new MaterializationReservation(), tempo);
                     if (tempo.StateChanged)
                     {
                         result.StateChanged = true;
@@ -95,49 +96,11 @@ namespace Game.Ai.V2
                 }
             }
 
-            // Structure pressure is movement, so execute it before the synchronous maintenance
-            // actions below. Terminal Draw has already declined to consume its activation budget.
-            if (hand != null && player != null && root != null && ctx != null)
-            {
-                StrategicPressurePlan pressure = StrategicPressureAdvance.BuildPlan(
-                    player, root, hand, ctx, commitments);
-                if (pressure != null)
-                {
-                    bool pressureChanged = false;
-                    yield return StrategicPressureAdvance.Execute(
-                        player, root, ctx, pressure, changed => pressureChanged = changed);
-                    if (pressureChanged)
-                    {
-                        result.MaintenanceActions++;
-                        result.StateChanged = true;
-                        snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
-                        commitments = ActorCommitments.FromIntents(
-                            MissionIntentRegistry.GetOrCreate(player).All,
-                            snapshot,
-                            ReconObjectiveEvaluator.Enumerate(snapshot));
-                    }
-                }
-            }
-
-            // Terminal Draw has already declined to consume AP whenever this policy has a useful
-            // action. Execute a small bounded number here. Each success refreshes the operational
-            // snapshot so a capacity upgrade can expose a Facility placement next, and generation
-            // of Equipment can expose an attach on the following iteration.
-            if (hand != null && player != null && root != null && ctx != null)
-            {
-                int remaining = System.Math.Max(0,
-                    StrategicMaintenancePolicy.MaxActionsPerTurn - result.MaintenanceActions);
-                for (int i = 0; i < remaining; i++)
-                {
-                    if (!StrategicMaintenancePolicy.TryExecuteBest(snapshot, player, root, hand, ctx))
-                        break;
-                    result.MaintenanceActions++;
-                    result.StateChanged = true;
-                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
-                }
-                if (result.MaintenanceActions > 0)
-                    AiDebugLog.Write($"[AI][V2] housekeeping maintenance — {result.MaintenanceActions} strategic action(s) executed before structural cleanup");
-            }
+            // AI-MGR-02 §P0 — decisive structure pressure and strategic maintenance are NO LONGER
+            // run here as post-tempo lanes. They are `StrategicSpend` candidates inside the one
+            // end-of-turn tempo arbiter (StrategicManager.UseSurplus), so they compete for AP in the
+            // same comparable utility space as Play / Draw / Hold / EndTurn. Housekeeping past this
+            // point is ONLY the zero-AP / zero-resource structural reorganisation pass.
 
             Run(player, root, ctx, commitments, result);
             StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);

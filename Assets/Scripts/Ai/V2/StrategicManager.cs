@@ -655,234 +655,450 @@ namespace Game.Ai.V2
             return solo >= desired + AiConfigV2.scoutSurplusWarmSpare;
         }
 
-        public static StrategicPhaseResult UseSurplus(WorldSnapshot snap, PlayerSetupData player,
+        // ===================================================================================
+        //  END-OF-TURN TEMPO ARBITER  (AI-MGR-02)
+        // ===================================================================================
+        //  The SINGLE late-turn spend entry. Every end-of-turn decision — PlayCard (materialization
+        //  OR non-combat, scored ONLY by StrategicCardEvaluator), DrawCard, an existing strategic
+        //  spend (maintenance / decisive structure pressure), HoldResources, EndTurn — is a
+        //  candidate in ONE comparable utility space. Each iteration rebuilds live world / hand /
+        //  resources / reservations, rebuilds every candidate, executes exactly ONE, inspects the
+        //  REAL result, and rebuilds again. It stops when max(Hold, EndTurn) >= the best actionable
+        //  spend, or the hard action bound is hit. There is no fixed lane order and no bypass:
+        //  a failed / no-op candidate is parked for the current state version and cannot be
+        //  re-chosen until a real state mutation invalidates the whole candidate set (spec §2/§3).
+        //
+        //  §5 single-count: a PlayCard candidate's utility is the StrategicCardEvaluator NetScore
+        //  VERBATIM — the arbiter never re-adds hand pressure / resource pressure / hold. Those
+        //  factors are recomputed here ONLY for the arbiter-owned candidates (Draw / Hold / spend).
+        public static System.Collections.IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
-            MaterializationReservation carriedReservation,
+            MaterializationReservation carriedReservation, StrategicPhaseResult result,
             IReadOnlyList<ReconObjective> reconObjectives = null)
         {
-            var result = new StrategicPhaseResult
-            {
-                Reservation = carriedReservation ?? new MaterializationReservation(),
-            };
+            result.Reservation = carriedReservation ?? new MaterializationReservation();
             if (player == null || root == null || hand == null || ctx == null)
-                return result;
+                yield break;
 
-            // AI-MGR-02 §4 — only hold AP back for the bounded reaction pass when that pass will
-            // ACTUALLY run and has actionable content. Otherwise the old blanket early-return left
-            // (e.g.) 10 AP stranded because ReconOnly suppressed the pass. The hold is now an
-            // EXPLICIT owner+reason StrategicResourceReservation, not a hidden "just return".
-            if (ReactionPassWillReserve(player, ctx))
+            // --- §7 reaction reservation: reserve a REAL BOUNDED AP requirement for a REAL
+            //     actionable owner, or reserve nothing. Never hold back the whole pool for
+            //     "there is some pending interrupt".
+            StrategicReactionOpportunity reactionOpp =
+                StrategicReactionPass.BuildReactionOpportunity(player, root, ctx);
+            if (reactionOpp.IsActionable)
             {
-                StrategicResourceReservationLedger.Reserve(player, ctx.TurnNumber,
+                StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
                     new StrategicResourceReservation
                     {
                         Owner = "StrategicReactionPass",
                         Reason = StrategicReservationReason.StrategicReactionPass,
                         Resource = StrategicReservedResource.ActionPoints,
-                        Amount = root.ActionPoints,
+                        Amount = reactionOpp.ApRequired,
                         ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                     });
-                AiDebugLog.Write($"[AI][V2]   strat.B — deferred: actionable strategic reaction pending; "
-                    + $"explicit reservation {root.ActionPoints} AP (owner=StrategicReactionPass "
-                    + $"expire=EndOfReaction), spendable now "
-                    + $"{F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}");
-                return result;
+                AiDebugLog.Write($"[AI][V2]   strat.B — reaction pending & actionable; reserve "
+                    + $"{F(reactionOpp.ApRequired)} AP (owner=StrategicReactionPass exp=EndOfReaction), "
+                    + $"spendable AP now {F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}. "
+                    + "Tempo arbitration proceeds with the remainder.");
             }
-            if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
-                AiDebugLog.Write($"[AI][V2]   strat.B — pending strategic invalidation but the bounded "
-                    + $"reaction pass will not run ("
-                    + $"{(AiStrategyV2Scope.IsReconOnly ? "scope=ReconOnly" : "no actionable content")}); "
-                    + $"NOT preserving {root.ActionPoints} AP — continue to surplus + end-of-turn tempo (spec §4)");
+            else
+            {
+                // spec §7 — an existing reaction reservation whose owner is no longer actionable is
+                // released immediately (the same-turn re-arbitration path is HousekeepingManager).
+                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                    StrategicReservationReason.StrategicReactionPass);
+                if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
+                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but reaction pass not "
+                        + $"actionable ({reactionOpp.Reason}); NOT reserving AP — tempo arbitration uses "
+                        + "the full pool (spec §7)");
+            }
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
-            bool cleanStop = true;
-            List<string> lastNcBlocked = null;
 
-            // AI-MGR-01 review-r4 finding 9a + final closure follow-up §P1 — ONE per-iteration
-            // ranked pick across BOTH surplus lanes, pure HIGHEST-SCORE-WINS. Each iteration builds
-            // the best materialization chain AND the best non-combat play (Aviation / Base / Facility
-            // / standalone Equipment), scores them on the SAME StrategicCardEvaluator NetScore band,
-            // and executes the higher one. An operational strategic residual is NOT a boolean
-            // priority any more — its demand urgency is folded into mat.Utility (ComputeMatDecision),
-            // so it competes on score like everything else. The old "run the whole materialization
-            // loop, THEN the whole non-combat loop" ordering is gone; the two executors stay
-            // specialised, only the DECISION is unified. maxSurplusActionsPerTurn is the whole-phase
-            // safety bound; ReactionPassWillReserve was handled by the early return above.
-            int surplusActionsUsed = 0;
-            for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
+            var rejectedForState = new HashSet<string>(System.StringComparer.Ordinal);
+            int actions = 0;
+            string stopReason = null;
+            while (actions < AiConfigV2.maxEndOfTurnTempoActionsPerTurn)
             {
-                MatSurplusDecision mat = ComputeMatDecision(snap, player, root, hand, ctx,
-                    commitments, result, reconObjectives);
-
-                NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
-                    snap, player, root, hand, ctx, out lastNcBlocked, null, result.Reservation);
-                bool ncAdmissible = nc != null && nc.Score >= AiConfigV2.surplusUtilityThreshold;
-
-                bool doMat = mat.Admissible
-                    && (!ncAdmissible || mat.Utility >= nc.Score);
-
-                if (!doMat && !ncAdmissible)
-                {
-                    if (mat.DeferLog != null)
-                        AiDebugLog.Write(mat.DeferLog + "; stop Phase B surplus");
-                    else if (nc != null)
-                        AiDebugLog.Write($"[AI][V2]   strat.B — defer non-combat {nc.Kind} {nc.Explain} "
-                            + $"score {F(nc.Score)} < threshold {F(AiConfigV2.surplusUtilityThreshold)}; stop");
-                    break;
-                }
-
-                if (doMat)
-                {
-                    MaterializationPlan plan = mat.Plan;
-                    AxisDemand residual = mat.Residual;
-                    CapabilityInventory inv = mat.Inv;
-
-                    if (residual != null)
-                        AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
-                            + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(mat.Utility)} "
-                            + $"(includes residual urgency; ranked vs non-combat {F(nc?.Score ?? 0f)})");
-                    else
-                        AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
-                            + $"util {F(mat.Utility)} (ranked pick: materialization {F(mat.Utility)} "
-                            + $"vs non-combat {F(nc?.Score ?? 0f)})");
-
-                    var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
-                        .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
-                    MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
-                    result.MaterializationAttempts++;
-                    if (play.Deployed) result.MaterializationsSucceeded++;
-                    if (plan.Generation != null)
-                    {
-                        result.GeneratedCardAttempts++;
-                        if (play.Generated) result.GeneratedCardsSucceeded++;
-                    }
-                    if (plan.UsesEquipment)
-                    {
-                        result.EquipmentAssignmentAttempts++;
-                        if (play.Attached) result.EquipmentAssignmentsSucceeded++;
-                    }
-                    if (plan.Generation != null)
-                        result.Reservation.RecordGenerationAttempt(plan.Generation, play);
-                    if (play.StateChanged)
-                        result.StateChanged = true;
-                    if (!play.Deployed)
-                    {
-                        AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
-                            + $"chain did not deploy ({play.FailReason}); stop");
-                        if (play.StateChanged)
-                            snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                        cleanStop = false;
-                        break;
-                    }
-                    result.CardsPlayed++;
-
-                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
-                    float delivered = 0f;
-                    // §3 — Phase B runs the SAME finalization path as Phase A: an army it created or
-                    // modified to satisfy a strategic residual gets the Housekeeping capability
-                    // lease, so the later zero-AP structural pass can no longer fold that force away
-                    // the same turn it was materialized.
-                    bool operationalResidual = residual != null && FinalizeOperationalDelivery(
-                        player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
-                    if (operationalResidual)
-                    {
-                        residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
-                        if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
-                            result.Reservation.UnresolvedDemands.Remove(residual);
-                        result.CapabilityDeliveries++;
-                    }
-                    AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
-                        + $"util {F(mat.Utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, "
-                        + $"delivered {F(delivered)}, {plan.StableKey})");
-
-                    if (operationalResidual)
-                    {
-                        StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
-                            + $"{residual.Capability}; re-admit missions before further surplus spending");
-                        cleanStop = false;
-                        break;
-                    }
-                    continue;
-                }
-
-                // ---- non-combat lane (spec §5/§13) — through the same canonical gameplay APIs
-                //      the human UI uses (BuildingPlayExecutor / AviationActions / EquipmentSystem).
-                result.MaterializationAttempts++;
-                NonCombatCardPlayer.NonCombatExecuteResult ncRes =
-                    NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx);
-
-                // review-r4 P1 — a generated non-combat play is non-atomic: even a FAILED chain may
-                // have minted a card / revealed a Researcher / spent resources, and it always spent
-                // the turn's generation attempt. Account for that before branching on success.
-                if (ncRes.StateChanged) result.StateChanged = true;
-                if (ncRes.GenerationAttempted)
-                {
-                    result.Reservation.RecordGenerationAttempt(nc.Generation, null);
-                    result.GeneratedCardAttempts++;
-                    if (ncRes.Generated) result.GeneratedCardsSucceeded++;
-                }
-
-                if (!ncRes.Played)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {nc.Kind} {nc.Explain} "
-                        + $"did not play ({ncRes.FailReason}"
-                        + (ncRes.Generated ? "; generated card kept in hand" : "")
-                        + "); stop");
-                    if (ncRes.StateChanged)
-                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    cleanStop = false;
-                    break;
-                }
-                result.MaterializationsSucceeded++;
-                result.CardsPlayed++;
-                if (nc.Kind == NonCombatCardPlayer.PlayKind.Base
-                    || nc.Kind == NonCombatCardPlayer.PlayKind.Facility)
-                {
-                    result.InfrastructureAttempts++;
-                    result.InfrastructureBuilt++;
-                }
-                else if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment)
-                {
-                    result.EquipmentAssignmentAttempts++;
-                    result.EquipmentAssignmentsSucceeded++;
-                }
-                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} "
-                    + $"(ap {F(ncRes.ApSpent)}; ranked pick: non-combat {F(nc.Score)} vs materialization "
-                    + $"{F(mat.Admissible ? mat.Utility : 0f)})");
                 snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                float spendableAp = StrategicResourceReservationLedger.SpendableAp(
+                    player, ctx.TurnNumber, root.ActionPoints);
+
+                var cands = BuildTempoCandidates(snap, player, root, hand, ctx, commitments, result,
+                    reconObjectives, spendableAp, verbose: actions == 0);
+
+                float holdU = cands.First(c => c.Kind == TempoKind.Hold).Utility;
+                float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;
+                float bar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, Mathf.Max(holdU, endU));
+
+                AiDebugLog.Write($"[AI][V2]   tempo[{actions}] — ap {root.ActionPoints} spendable {F(spendableAp)}"
+                    + $" reservations [{StrategicResourceReservationLedger.DebugLine(player, ctx.TurnNumber)}]"
+                    + $" hand {hand.Hand.Count}/{ctx.HandCapacity} | bar {F(bar)} (hold {F(holdU)} endTurn {F(endU)})");
+                foreach (TempoCandidate c in cands.OrderByDescending(c => c.Utility).ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
+                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} util {F(c.Utility)} key={c.ActionKey}"
+                        + (rejectedForState.Contains(c.ActionKey) ? " [parked]" : "") + $" — {c.Label}");
+
+                // spec §6 — a spend candidate must fit SPENDABLE AP (raw AP minus active
+                // reservations), so a play never dips into AP the reaction pass is holding.
+                TempoCandidate best = cands
+                    .Where(c => IsSpend(c.Kind) && !rejectedForState.Contains(c.ActionKey)
+                                && c.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon)
+                    .OrderByDescending(c => c.Utility)
+                    .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal)
+                    .FirstOrDefault();
+
+                if (best == null || best.Utility < bar)
+                {
+                    stopReason = best == null
+                        ? "no actionable spend candidate within spendable AP"
+                        : $"max(Hold {F(holdU)}, EndTurn {F(endU)}) bar {F(bar)} >= best spend {best.Kind} {F(best.Utility)}";
+                    break;
+                }
+
+                AiDebugLog.Write($"[AI][V2]   tempo[{actions}] — WIN {best.Kind} util {F(best.Utility)} — {best.Label}");
+
+                bool changed = false, progressed = false, interrupt = false;
+                switch (best.Kind)
+                {
+                    case TempoKind.PlayMat:
+                        snap = ExecuteMatSurplus(best.Mat, snap, player, root, hand, ctx, commitments,
+                            result, out changed, out progressed, out interrupt);
+                        break;
+                    case TempoKind.PlayNonCombat:
+                        snap = ExecuteNonCombatSurplus(best.Nc, snap, player, root, hand, ctx,
+                            result, out changed, out progressed);
+                        break;
+                    case TempoKind.Draw:
+                    {
+                        int apB = root.ActionPoints, hB = hand.Hand.Count;
+                        if (CardDrawExecutor.TryCycle(root, hand, ctx))
+                        {
+                            changed = true; progressed = true; result.CardsDrawn++;
+                            AiDebugLog.Write($"[AI][V2]   tempo — Draw: ap {apB}->{root.ActionPoints} hand {hB}->{hand.Hand.Count}");
+                        }
+                        break;
+                    }
+                    case TempoKind.MaintenanceSpend:
+                        if (StrategicMaintenancePolicy.TryExecuteBest(snap, player, root, hand, ctx))
+                        { changed = true; progressed = true; }
+                        break;
+                    case TempoKind.PressureSpend:
+                    {
+                        bool pc = false;
+                        yield return StrategicPressureAdvance.Execute(player, root, ctx, best.Pressure, v => pc = v);
+                        changed = pc; progressed = pc;
+                        break;
+                    }
+                }
+
+                actions++;
+                if (changed) result.StateChanged = true;
+
+                if (interrupt)
+                {
+                    stopReason = "Phase B delivered an operational residual — re-admit missions before more spending";
+                    break;
+                }
+                // spec §2/§3 — a real state mutation destroys the whole candidate set (rebuilt next
+                // iteration). A candidate that neither completed nor mutated state is parked so it
+                // cannot be re-chosen until a later mutation invalidates the set. A candidate that
+                // mutated something incidental but did NOT accomplish its goal is BOTH: the set is
+                // rebuilt, and this one key is parked so we do not immediately retry the same failure.
+                if (changed)
+                    rejectedForState.Clear();
+                if (!progressed)
+                {
+                    rejectedForState.Add(best.ActionKey);
+                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}");
+                }
             }
+            if (stopReason == null)
+                stopReason = $"hard action bound {AiConfigV2.maxEndOfTurnTempoActionsPerTurn} reached";
 
-            if (result.CardsPlayed > 0)
-                AiDebugLog.Write($"[AI][V2] strat.B — {result.CardsPlayed} surplus chain(s) played");
-            if (lastNcBlocked != null && lastNcBlocked.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — still blocked [{string.Join(", ", lastNcBlocked)}]");
-
-            // AI-MGR-01 final closure §2 — the dedicated post-loop Aviation slot is GONE. An aviation
-            // card is an ordinary NonCombatPlay and competes in the one ranked Phase-B loop above on
-            // the same NetScore band as every other card; if a stored aircraft genuinely matters,
-            // that shows up as CapabilityGapValue / NextTurnPotential / ThreatResponseValue raising
-            // its score, never as a hidden execution priority. Hard invariant: no card-play /
-            // materialization action beyond maxSurplusActionsPerTurn. Terminal draws stay a separate
-            // bounded mechanism with their own limit.
-            if (cleanStop && RunTerminalDraws(snap, player, root, hand, ctx, commitments, result, reconObjectives))
-                result.StateChanged = true;
-            return result;
+            // §13 — the mandatory final line: it must be impossible to read "AP left, reservation
+            // none, reason unknown" off the log.
+            AiDebugLog.Write($"[AI][V2] strat.B/tempo — END: actions {actions}, cardsPlayed {result.CardsPlayed}, "
+                + $"drawn {result.CardsDrawn}; ap {root.ActionPoints} "
+                + $"(spendable {F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}), "
+                + $"H/E/M/T {root.GetResource(Game.Economy.ResourceType.Human)}/{root.GetResource(Game.Economy.ResourceType.Energy)}/"
+                + $"{root.GetResource(Game.Economy.ResourceType.Materials)}/{root.GetResource(Game.Economy.ResourceType.Tech)}; "
+                + $"reservations [{StrategicResourceReservationLedger.DebugLine(player, ctx.TurnNumber)}]; stop={stopReason}");
         }
 
-        // AI-MGR-01 review-r4 finding 9a — the materialization-surplus lane's per-iteration decision,
-        // factored out so the unified Phase-B loop can rank it against the non-combat lane. Returns
-        // either an admissible chain (with its utility + any operational strategic residual) or a
-        // not-admissible verdict carrying the one-line defer reason to log if the whole phase stops.
+        // ---- tempo candidate model ------------------------------------------------------------
+        private enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, PressureSpend, Hold, EndTurn }
+
+        private static bool IsSpend(TempoKind k) =>
+            k == TempoKind.PlayMat || k == TempoKind.PlayNonCombat || k == TempoKind.Draw
+            || k == TempoKind.MaintenanceSpend || k == TempoKind.PressureSpend;
+
+        private sealed class TempoCandidate
+        {
+            public TempoKind Kind;
+            public string ActionKey;
+            public float Utility;
+            public float ApCost;      // spec §6 — a spend candidate must fit SPENDABLE (not raw) AP
+            public string Label;
+            public MatSurplusDecision Mat;
+            public NonCombatCardPlayer.NonCombatPlay Nc;
+            public StrategicPressurePlan Pressure;
+        }
+
+        private static List<TempoCandidate> BuildTempoCandidates(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
+            StrategicPhaseResult result, IReadOnlyList<ReconObjective> reconObjectives, float spendableAp,
+            bool verbose)
+        {
+            var list = new List<TempoCandidate>();
+
+            // PlayCard — materialization lane. Utility = StrategicCardEvaluator decision score, verbatim.
+            MatSurplusDecision mat = ComputeMatDecision(snap, player, root, hand, ctx, commitments,
+                result, reconObjectives);
+            if (mat.Admissible && mat.Plan != null)
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
+                    ApCost = mat.Plan.ApCost,
+                    ActionKey = "mat:" + mat.Plan.StableKey,
+                    Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
+                        + (mat.Residual != null ? $" (residual {mat.Residual.Capability})" : ""),
+                });
+            else if (mat.DeferLog != null && verbose)
+                AiDebugLog.Write(mat.DeferLog + " [tempo: not a candidate]");
+
+            // PlayCard — non-combat lane (Aviation / Base / Facility / standalone Equipment).
+            // Utility = StrategicCardEvaluator.ScoreNonCombat NetScore, verbatim (via BestPlay.Score).
+            NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
+                snap, player, root, hand, ctx, out _, null, result.Reservation);
+            if (nc != null)
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
+                    ApCost = nc.Card != null ? nc.Card.EffectivePlayApCost : 0f,
+                    ActionKey = $"nc:{nc.Kind}:{nc.Explain}",
+                    Label = $"{nc.Kind} {nc.Explain}",
+                });
+
+            // DrawCard — a real scored alternative, not a terminal fallback (spec §1).
+            if (AiConfigV2.surplusAllowDraw && CardDrawExecutor.CanCycle(root, hand, ctx)
+                && spendableAp + AiConfigV2.allocatorSliceEpsilon >= ctx.DrawApCost)
+            {
+                float drawU = DrawCandidateUtility(snap, player, root, hand, ctx, commitments, result, mat, nc);
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.Draw, Utility = drawU, ApCost = ctx.DrawApCost, ActionKey = "draw",
+                    Label = $"cycle 1 card ({ctx.DrawApCost} AP), hand {hand.Hand.Count}/{ctx.HandCapacity}",
+                });
+            }
+
+            // ExistingStrategicSpendAction — internal facility / capacity upgrade / equipment /
+            // standalone generation, and decisive structure pressure. Both fold into the SAME
+            // arbitration instead of running after the loop.
+            if (StrategicMaintenancePolicy.DescribeBest(player, root, hand, ctx,
+                    out string mLabel, out string mKey, out float mUtil, out float mApCost))
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.MaintenanceSpend, Utility = mUtil, ApCost = mApCost,
+                    ActionKey = "maint:" + mKey, Label = mLabel,
+                });
+
+            StrategicPressurePlan pressure = StrategicPressureAdvance.BuildPlan(player, root, hand, ctx, commitments);
+            if (pressure != null && pressure.Army != null)
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.PressureSpend, Pressure = pressure,
+                    Utility = AiConfigV2.tempoPressureAdvanceValue,
+                    ApCost = pressure.Army.HasActivatedThisTurn ? 0f : pressure.Army.ActivationApCost,
+                    ActionKey = "pressure:" + pressure.Army.Id,
+                    Label = $"advance army #{pressure.Army.Id} toward known enemy Citadel "
+                        + $"({pressure.TargetHex.Q},{pressure.TargetHex.R})",
+                });
+
+            // HoldResources — the value of NOT spending. AP is lost at EndTurn so holding it is ~0;
+            // the loose persistent-resource pool is worth holding only when the economy is fragile.
+            // (Per-card hold value is already inside every PlayCard NetScore — spec §5.)
+            list.Add(new TempoCandidate
+            {
+                Kind = TempoKind.Hold, ActionKey = "hold",
+                Utility = HoldResourcesUtility(root, snap),
+                Label = "keep unspent resources for future turns",
+            });
+            list.Add(new TempoCandidate
+            {
+                Kind = TempoKind.EndTurn, ActionKey = "endturn", Utility = 0f, Label = "end the turn",
+            });
+            return list;
+        }
+
+        // Expected value of converting stranded AP into a fresh card option, in the same [~0..5]
+        // NetScore band the PlayCard candidates use (spec §1 — Draw is a full peer). Terms:
+        // base option value, hand-fill discount, near-full-hand block risk, AP opportunity cost,
+        // and a discount when the hand already holds a play we are only deferring on a structural
+        // guard (so we do not draw into an already-actionable hand).
+        private static float DrawCandidateUtility(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result,
+            MatSurplusDecision mat, NonCombatCardPlayer.NonCombatPlay nc)
+        {
+            int freeSlots = Mathf.Max(0, ctx.HandCapacity - hand.Hand.Count);
+            float fill = Mathf.Clamp01(freeSlots / 3f);
+            float u = AiConfigV2.tempoDrawBaseValue * fill;
+            if (freeSlots <= 1)
+                u -= AiConfigV2.tempoDrawFutureBlockPenalty;          // drawing into the last slot
+            u -= AiConfigV2.tempoDrawApOpportunityWeight * ctx.DrawApCost;
+            // Hand already actionable (a play exists, held only by a structural guard / low score)
+            // -> a further draw is worth less.
+            bool alreadyActionable = (mat.Plan != null) || (nc != null && nc.Score > 0f);
+            if (alreadyActionable)
+                u -= AiConfigV2.tempoDrawHandActionablePenalty;
+            return u;
+        }
+
+        // spec §4 — the value of NOT spending the loose persistent stockpile (AP is never held; it
+        // does not carry over). Rises with (a) a fragile economy and (b) how SCARCE the thinnest
+        // persistent resource is. Capped so a genuinely strong play (NetScore well above the cap)
+        // still wins, while a marginal one loses to keeping a scarce resource (Case B). Per-CARD
+        // hold value is priced only inside the PlayCard NetScore — this is the loose pool (§5).
+        private static float HoldResourcesUtility(PlayerRoot root, WorldSnapshot snap)
+        {
+            if (root == null)
+                return 0f;
+            int persistent = root.GetResource(Game.Economy.ResourceType.Human)
+                + root.GetResource(Game.Economy.ResourceType.Energy)
+                + root.GetResource(Game.Economy.ResourceType.Materials)
+                + root.GetResource(Game.Economy.ResourceType.Tech);
+            if (persistent <= 0)
+                return 0f;
+
+            float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
+            float fragility = 1f - eco;
+
+            float minStockNorm = 1f;
+            foreach (ResourceType rt in ResourceBundle.All)
+                minStockNorm = Mathf.Min(minStockNorm,
+                    Mathf.Clamp01(root.GetResource(rt) / Mathf.Max(1f, (float)AiConfigV2.tempoHoldResourceComfortableStock)));
+            float scarcity = 1f - minStockNorm;   // 0 when every resource is comfortable
+
+            float u = (fragility * AiConfigV2.tempoHoldFragilityWeight
+                       + scarcity * AiConfigV2.tempoHoldScarcityWeight)
+                      * AiConfigV2.tempoHoldPersistentResourceValueScale;
+            return Mathf.Clamp(u, 0f, AiConfigV2.tempoHoldPersistentResourceValueCap);
+        }
+
+        // Execute one materialization-surplus chain, mirroring the old inline Phase-B path
+        // (finalization / residual bookkeeping / capability-changed interrupt). Returns the
+        // refreshed snapshot; out flags drive the arbiter's park / clear / stop logic.
+        private static WorldSnapshot ExecuteMatSurplus(MatSurplusDecision mat, WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            ActorCommitments commitments, StrategicPhaseResult result,
+            out bool changed, out bool progressed, out bool interrupt)
+        {
+            changed = false; progressed = false; interrupt = false;
+            MaterializationPlan plan = mat.Plan;
+            AxisDemand residual = mat.Residual;
+            CapabilityInventory inv = mat.Inv;
+
+            var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
+                .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
+            MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
+            result.MaterializationAttempts++;
+            if (play.Deployed) result.MaterializationsSucceeded++;
+            if (plan.Generation != null)
+            {
+                result.GeneratedCardAttempts++;
+                if (play.Generated) result.GeneratedCardsSucceeded++;
+            }
+            if (plan.UsesEquipment)
+            {
+                result.EquipmentAssignmentAttempts++;
+                if (play.Attached) result.EquipmentAssignmentsSucceeded++;
+            }
+            if (plan.Generation != null)
+                result.Reservation.RecordGenerationAttempt(plan.Generation, play);
+            if (play.StateChanged) { changed = true; result.StateChanged = true; }
+
+            if (!play.Deployed)
+            {
+                AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                    + $"chain did not deploy ({play.FailReason})");
+                return play.StateChanged
+                    ? WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx) : snap;
+            }
+            result.CardsPlayed++;
+            progressed = true;
+
+            snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+            CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
+            float delivered = 0f;
+            bool operationalResidual = residual != null && FinalizeOperationalDelivery(
+                player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
+            if (operationalResidual)
+            {
+                residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
+                if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
+                    result.Reservation.UnresolvedDemands.Remove(residual);
+                result.CapabilityDeliveries++;
+            }
+            AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
+                + $"util {F(mat.Utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, delivered {F(delivered)}, {plan.StableKey})");
+
+            if (operationalResidual)
+            {
+                StrategicInterruptRegistry.MarkCapabilityChanged(player, ctx.TurnNumber, hand);
+                AiDebugLog.Write($"[AI][V2] strategic interrupt — Phase B delivered operational "
+                    + $"{residual.Capability}; re-admit missions before further surplus spending");
+                interrupt = true;
+            }
+            return snap;
+        }
+
+        private static WorldSnapshot ExecuteNonCombatSurplus(NonCombatCardPlayer.NonCombatPlay nc,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            StrategicPhaseResult result, out bool changed, out bool progressed)
+        {
+            changed = false; progressed = false;
+            result.MaterializationAttempts++;
+            NonCombatCardPlayer.NonCombatExecuteResult ncRes =
+                NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx);
+            if (ncRes.StateChanged) { changed = true; result.StateChanged = true; }
+            if (ncRes.GenerationAttempted)
+            {
+                result.Reservation.RecordGenerationAttempt(nc.Generation, null);
+                result.GeneratedCardAttempts++;
+                if (ncRes.Generated) result.GeneratedCardsSucceeded++;
+            }
+            if (!ncRes.Played)
+            {
+                AiDebugLog.Write($"[AI][V2]   strat.B non-combat — {nc.Kind} {nc.Explain} "
+                    + $"did not play ({ncRes.FailReason}{(ncRes.Generated ? "; generated card kept in hand" : "")})");
+                return ncRes.StateChanged
+                    ? WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx) : snap;
+            }
+            result.MaterializationsSucceeded++;
+            result.CardsPlayed++;
+            progressed = true;
+            if (nc.Kind == NonCombatCardPlayer.PlayKind.Base || nc.Kind == NonCombatCardPlayer.PlayKind.Facility)
+            {
+                result.InfrastructureAttempts++;
+                result.InfrastructureBuilt++;
+            }
+            else if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+            {
+                result.EquipmentAssignmentAttempts++;
+                result.EquipmentAssignmentsSucceeded++;
+            }
+            AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} (ap {F(ncRes.ApSpent)})");
+            return WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+        }
+
+        // AI-MGR-01 review-r4 finding 9a — the materialization-surplus lane's per-iteration decision.
         private struct MatSurplusDecision
         {
             public bool Admissible;
             public MaterializationPlan Plan;
             public float Utility;
-            public AxisDemand Residual;      // non-null => operational strategic residual, must-do
+            public AxisDemand Residual;      // non-null => operational strategic residual
             public CapabilityInventory Inv;
-            public string DeferLog;         // set when !Admissible and there is a reason worth logging
+            public string DeferLog;
         }
 
         private static MatSurplusDecision ComputeMatDecision(WorldSnapshot snap, PlayerSetupData player,
@@ -909,9 +1125,6 @@ namespace Game.Ai.V2
                     + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
                     + "evaluate as generic surplus");
 
-            // §2 — a Hero card that still matches an unresolved Hero demand must never be spent as
-            // generic surplus through a placement that delivers 0 Hero. Belt-and-braces stop: leave
-            // it in hand.
             if (matchedResidual != null && residual == null
                 && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
             {
@@ -920,21 +1133,19 @@ namespace Game.Ai.V2
                 return dec;
             }
 
-            // §P1 — a strong garrison stack with nothing threatening an asset makes a generic
-            // garrison-only card clear a much higher bar (stranded AP converts to draws instead).
+            // §P1 anti-grind — a strong-garrison generic deposit with nothing threatened must clear
+            // a much higher bar (satMult). This is STRUCTURAL, not the ordinary utility floor: it
+            // still gates the candidate even under stranded-AP tempo pressure so the garrison is not
+            // ground from 6 to 40+ power with threats=0.
             float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
             float effThreshold = admission.EffectiveThreshold * satMult;
 
-            // §P1 — a generic surplus card must not FOUND a lone-member army on a hex that already
-            // holds our garrison (Housekeeping folds it the same turn). A forward outpost away from
-            // any base of ours is still fine.
             if (residual == null && GenericSurplusWouldChurn(player, plan))
             {
                 dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
                     + "generic surplus would found a lone-member army housekeeping folds the same turn";
                 return dec;
             }
-
             if (residual == null && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
             {
                 dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
@@ -942,102 +1153,21 @@ namespace Game.Ai.V2
                     + $"(desired concurrency + warm spare, hard cap {ReconConcurrencyPolicy.HardCap})";
                 return dec;
             }
-
-            // Generic-surplus admission gate uses the RAW NetScore (plan.Score), never the
-            // urgency-inclusive decision score — this branch only runs when residual == null anyway.
-            if (residual == null && plan.Score < effThreshold)
+            if (residual == null && satMult > 1f && plan.Score < effThreshold)
             {
                 dec.DeferLog = $"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
-                    + $"util {F(plan.Score)} < threshold {F(effThreshold)} "
-                    + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
-                    + $"resSlack {F(admission.ResourceSlackFactor)}"
-                    + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")})";
+                    + $"score {F(plan.Score)} < garrison-saturated bar {F(effThreshold)} (x{F(satMult)})";
                 return dec;
             }
 
             dec.Admissible = true;
             dec.Plan = plan;
-            // final closure follow-up §P1 — pick.Value.utility is ALREADY the global decision score
-            // (NetScore + operational-residual urgency), computed once in
-            // MaterializationCandidateBuilder.BestSurplus. The caller never re-adds urgency here (the
-            // StrategicCardEvaluator "score is final, caller does not correct it" invariant holds).
+            // pick.Value.utility is ALREADY the global decision score (NetScore + operational-residual
+            // urgency), computed once in MaterializationCandidateBuilder.BestSurplus. Not re-adjusted
+            // here — the arbiter compares it against Hold/EndTurn as-is (spec §5).
             dec.Utility = pick.Value.utility;
             dec.Residual = residual;
             return dec;
-        }
-
-        private static bool RunTerminalDraws(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result,
-            IReadOnlyList<ReconObjective> reconObjectives = null)
-        {
-            if (!AiConfigV2.surplusAllowDraw || root == null || hand == null || ctx == null)
-                return false;
-
-            int drawn = 0;
-            while (drawn < AiConfigV2.maxTerminalDrawsPerTurn)
-            {
-                if (!hand.HasFreeSlot || !hand.HasCardsLeftToDraw || !root.CanSpendActionPoints(ctx.DrawApCost))
-                    break;
-
-                CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-                (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
-                    snap, player, root, hand, ctx, inv, commitments, result.Reservation);
-
-                string actionable = null;
-                if (pick != null)
-                {
-                    AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(pick.Value.plan);
-                    AxisDemand residual = matchedResidual != null
-                        && CanDeliverResidualOperationally(pick.Value.plan, matchedResidual) ? matchedResidual : null;
-                    SurplusAdmission adm = SurplusAdmissionPolicy.Evaluate(root, player, pick.Value.plan);
-                    float termThreshold = adm.EffectiveThreshold
-                        * GarrisonSaturationThresholdMult(snap, pick.Value.plan, residual);
-                    if (residual == null && (GenericSurplusWouldChurn(player, pick.Value.plan)
-                        || ScoutSurplusPortfolioSaturated(player, pick.Value.plan, snap, reconObjectives)))
-                        termThreshold = float.MaxValue;
-                    if (residual != null || pick.Value.utility >= termThreshold)
-                        actionable = residual != null
-                            ? $"an operational residual demand ({pick.Value.plan.StableKey})"
-                            : $"a worthwhile surplus chain ({pick.Value.plan.StableKey})";
-                }
-                // §5/§13 — a non-combat Aviation / Base / Facility / Equipment card a DRAW has just
-                // revealed is as actionable as a Unit chain (fires MarkHandOpportunity below).
-                // §P0 — but a non-combat card that was ALREADY in hand at the start of this loop
-                // was offered to the unified Phase-B ranked loop (+ the dedicated aviation slot)
-                // this turn and lost / was declined; it must NOT now strand every AP by blocking
-                // the whole terminal draw. Only a fresh (drawn>0) reveal stops the loop.
-                if (actionable == null && drawn > 0
-                    && NonCombatCardPlayer.BestPlay(snap, player, root, hand, ctx, out _, null,
-                        result.Reservation) is { } ncPlay)
-                    actionable = $"a playable {ncPlay.Kind} card ({ncPlay.Explain})";
-
-                if (actionable != null)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.B terminal — stop: {actionable} is now actionable");
-                    if (drawn > 0)
-                    {
-                        StrategicInterruptRegistry.MarkHandOpportunity(player, ctx.TurnNumber, hand);
-                        AiDebugLog.Write($"[AI][V2] strategic interrupt — terminal draw changed the "
-                            + "actionable hand; replan before converting any more AP to draws");
-                    }
-                    break;
-                }
-
-                int apBefore = root.ActionPoints;
-                int handBefore = hand.Hand.Count;
-                if (!CardDrawExecutor.TryCycle(root, hand, ctx))
-                    break;
-                drawn++;
-                AiDebugLog.Write($"[AI][V2]   strat.B terminal — no actionable residual/surplus, "
-                    + $"convert stranded AP to draw; ap {apBefore}->{root.ActionPoints} "
-                    + $"hand {handBefore}->{hand.Hand.Count}");
-                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-            }
-
-            if (drawn > 0)
-                AiDebugLog.Write($"[AI][V2] strat.B — {drawn} terminal draw(s)");
-            result.CardsDrawn += drawn;
-            return drawn > 0;
         }
 
         internal static bool ReservesOkAfterChain(PlayerRoot root, MaterializationPlan plan,
@@ -1066,15 +1196,6 @@ namespace Game.Ai.V2
                 return available >= Mathf.Max(0, spend);
             }
         }
-
-        // AI-MGR-02 §4 — true only when Phase B should hold AP back for the bounded reaction pass:
-        // an invalidation is pending AND the pass can run in this scope AND it has actionable
-        // content. When false, non-combat surplus + terminal draws must NOT be gated off either.
-        private static bool ReactionPassWillReserve(PlayerSetupData player, AiTurnContext ctx) =>
-            player != null && ctx != null
-            && StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber)
-            && StrategicReactionPass.CanStrategicReactionPassRun(player, ctx)
-            && StrategicReactionPass.HasActionableStrategicReaction(player, ctx);
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

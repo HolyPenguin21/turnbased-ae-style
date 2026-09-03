@@ -44,12 +44,9 @@ namespace Game.Ai.V2
 
     internal static class StrategicPressureAdvance
     {
-        public static bool HasAction(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
-        {
-            return BuildPlan(player, root, hand, ctx, null) != null;
-        }
-
+        // AI-MGR-02 — BuildPlan != null IS the candidate check; the end-of-turn tempo arbiter calls
+        // it directly and ranks the advance against every other spend. No separate "preserve AP"
+        // predicate any more.
         public static StrategicPressurePlan BuildPlan(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, ActorCommitments commitments)
         {

@@ -20,11 +20,11 @@ namespace Game.Ai.V2
     //    3. attach useful Equipment from hand to an existing live unit;
     //    4. use an immediately-ready Research/Production source to create a useful card.
     //
-    //  These actions run after the bounded reaction pass but BEFORE zero-AP army reorganisation.
-    //  CardDrawExecutor asks HasPriorityAction before converting AP into terminal Draws, so Draw
-    //  is again the true fallback instead of consuming the budget that makes one of these actions
-    //  possible. No movement/hero-positioning is invented here; GenerationSource remains the
-    //  authority for whether a generator is usable RIGHT NOW.
+    //  AI-MGR-02 — NO LONGER a post-reaction lane. `DescribeBest` exposes the next action + a
+    //  bounded utility; the end-of-turn tempo arbiter (StrategicManager.UseSurplus) ranks it against
+    //  Play / Draw / Hold / EndTurn in one comparable space and only then calls `TryExecuteBest`.
+    //  No movement/hero-positioning is invented here; GenerationSource remains the authority for
+    //  whether a generator is usable RIGHT NOW.
     // ===========================================================================================
     internal static class StrategicMaintenancePolicy
     {
@@ -38,26 +38,59 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, GenerationTurnState> GenerationByPlayer =
             new Dictionary<PlayerSetupData, GenerationTurnState>();
 
-        // Keep maintenance bounded. Facility upgrade + placement counts as two actions, generated
-        // Equipment + attach as two more, which is enough to exercise the full intended chain in
-        // one turn without turning housekeeping into a second unbounded StrategicManager.
-        public const int MaxActionsPerTurn = 4;
         private const int MaxStandaloneGenerationAttemptsPerTurn = 1;
 
-        public static bool HasPriorityAction(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, WorldSnapshot snapshot = null)
+        // AI-MGR-02 §1/§5 — describe the action TryExecuteBest would take next, with a bounded
+        // utility in the shared StrategicCardEvaluator NetScore band, WITHOUT executing it. Same
+        // priority order as TryExecuteBest so the arbiter's pick and the executed action agree.
+        public static bool DescribeBest(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, out string label, out string key, out float utility, out float apCost)
         {
+            label = null; key = null; utility = 0f; apCost = 0f;
             if (player == null || root == null || hand == null || ctx == null)
                 return false;
 
-            if (FindPlaceableInternalFacility(player, root, hand, ctx) != null)
+            FacilityPlacement facility = FindPlaceableInternalFacility(player, root, hand, ctx);
+            if (facility != null)
+            {
+                label = $"internal facility {facility.Card.Definition.displayName} -> {facility.Building.Name}";
+                key = "facility:" + facility.Card.Definition.displayName + ":" + facility.Building.Hex;
+                utility = AiConfigV2.tempoMaintenanceFacilityValue;
+                apCost = facility.Card.EffectivePlayApCost;
                 return true;
-            if (FindCapacityUpgrade(player, root, hand, ctx) != null)
+            }
+
+            CapacityUpgrade upgrade = FindCapacityUpgrade(player, root, hand, ctx);
+            if (upgrade != null)
+            {
+                label = $"capacity upgrade {upgrade.Building.Name} -> level {upgrade.Building.Level + 1}";
+                key = "capacity:" + upgrade.Building.Hex;
+                utility = AiConfigV2.tempoMaintenanceCapacityUpgradeValue;
+                apCost = upgrade.Tier != null ? upgrade.Tier.apCost : 0f;
                 return true;
-            if (FindEquipmentAssignment(player, root, hand) != null)
+            }
+
+            EquipmentAssignment equipment = FindEquipmentAssignment(player, root, hand);
+            if (equipment != null)
+            {
+                label = $"attach {equipment.EquipmentCard.Definition.displayName} -> {equipment.Target.Name}";
+                key = "equip:" + equipment.EquipmentCard.Definition.displayName + ":" + equipment.ArmyId;
+                utility = Mathf.Clamp(equipment.Benefit * AiConfigV2.tempoMaintenanceEquipmentValueScale,
+                    0.15f, AiConfigV2.tempoMaintenanceValueCap);
+                apCost = equipment.EquipmentCard.EffectivePlayApCost;
                 return true;
-            if (FindGeneration(player, root, hand, ctx) != null)
+            }
+
+            GenerationStep generation = FindGeneration(player, root, hand, ctx);
+            if (generation != null)
+            {
+                label = $"generate {generation.Mode} {generation.CardDef.displayName}";
+                key = "generate:" + generation.CardKey;
+                utility = Mathf.Clamp(GenerationUtility(player, root, generation)
+                    * AiConfigV2.tempoMaintenanceGenerationValueScale, 0.1f, AiConfigV2.tempoMaintenanceValueCap);
+                apCost = 0f;   // a Challenge has no AP cost (resources only)
                 return true;
+            }
             return false;
         }
 
