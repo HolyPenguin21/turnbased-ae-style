@@ -75,6 +75,24 @@ namespace Game.Ai.V2
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
+        // CANONICAL projected battle-cell capacity of a destination roster AFTER `incoming` joins.
+        // The ONE place the "a hero rewrites capacity" rule lives for the V2 path — mirrors
+        // ArmyActions.DeployUnitFromCard exactly: a hero sets capacity to its CommandRating ONLY
+        // when it is the FIRST hero in the roster (a REPLACEMENT of the nominal value, never a
+        // Math.Max — a low-CommandRating first hero can make a roomy no-hero base too small); a
+        // SUBSEQUENT hero, or any non-hero, leaves the nominal capacity untouched (a second hero is
+        // appended after the existing commander and never becomes commander without an explicit
+        // TryReorderCommander, which the executor does not do). Both the strategic planner
+        // (StrategicEffectRegistry.ResolveDestination) and this preflight go through here so the
+        // projected-capacity rule cannot drift between planning and execution.
+        internal static int ProjectedCapacityAfterDeploy(
+            int nominalCapacity, bool targetHasHero, CardDefinition incoming)
+        {
+            if (incoming != null && incoming.cardType == CardType.Hero && !targetHasHero)
+                return incoming.commandRating;
+            return nominalCapacity;
+        }
+
         // Shared V2 projected-capacity predicate. Mirrors ArmyActions.DeployUnitFromCard: capacity
         // is evaluated after the incoming card joins, so a first hero may raise a full 2/2 army to
         // (for example) 3/5 instead of being rejected by the old pre-join HasRoom value.
@@ -84,9 +102,8 @@ namespace Game.Ai.V2
                 return false;
             if (target.IsAirfield)
                 return true; // V2 rejects aviation cards earlier; airfield capacity is handled elsewhere.
-            int projectedCapacity = target.Capacity;
-            if (def.cardType == CardType.Hero && !target.Members.Any(m => m.IsHero))
-                projectedCapacity = def.commandRating;
+            int projectedCapacity = ProjectedCapacityAfterDeploy(
+                target.Capacity, target.Members.Any(m => m.IsHero), def);
             return projectedCapacity >= target.Members.Count + 1;
         }
 

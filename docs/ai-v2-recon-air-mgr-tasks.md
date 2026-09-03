@@ -676,6 +676,25 @@ concurrent unrelated in-progress edit to `HexSelectionController.cs` was breakin
   `WorthIt.DefenderProfile` (the ArmoredAura example predicate becomes
   `p => p.TypeTags.Contains(UnitTypeTag.Armored)`).
 
+### Review round 4 P1 ARCH follow-up — Hero no longer fabricates phantom capacity (both builds 0/0)
+
+- **`ResolveDestination` used `Math.Max(nominalCapacity, heroCommandRating)`; the executor
+  REPLACES.** `ArmyActions.DeployUnitFromCard` / `CardPlayExecutor.CanFitAfterDeploy` set
+  `projectedCapacity = def.commandRating` **only for the FIRST hero** in the roster (not a max), and
+  a subsequent hero is appended after the existing commander with no auto `TryReorderCommander`, so
+  capacity does not move at all. The planner's `Math.Max` therefore invented free slots: Hero A
+  (CR 2, 1 member, cap 2) + incoming Hero B (CR 5) → planner saw `max(2,5) − 2 − 1 = 2` free, real
+  execution keeps cap 2 → `0` free. Symmetric first-hero case: garrison cap 4, 2 members, incoming
+  hero CR 3 → planner `max(4,3) − 2 − 1 = 1`, execution `3 − 3 = 0`.
+- **New canonical `CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCapacity, targetHasHero,
+  incoming)`** — the ONE place the "a hero rewrites capacity iff it's the first hero" rule lives for
+  the V2 path. `CanFitAfterDeploy` now delegates to it; `ResolveDestination` uses it for
+  ExistingArmy / Garrison (`a.HasHero`) and for the synthetic NewArmy / ReusableShell path
+  (`targetHasHero: false`, `nominalCap` = shell snapshot `Capacity` when present else the heroless
+  field-army value — no more `Math.Max(heroCr, nominalCap)`). Planning and preflight can no longer
+  drift. Inert until `UnitAbilities.Summon` is wired into `ByAbility`, but `FreeBattleSlots` is the
+  canonical projected-capacity context so it must match execution now.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

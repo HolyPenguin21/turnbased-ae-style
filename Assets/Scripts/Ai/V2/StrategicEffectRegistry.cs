@@ -182,9 +182,9 @@ namespace Game.Ai.V2
             if (plan == null)
                 return;
 
+            // The plan's own primary body (real card in hand or a generated base def). Its hero /
+            // CommandRating handling is entirely inside CardPlayExecutor.ProjectedCapacityAfterDeploy.
             CardDefinition primary = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
-            bool primaryIsHero = primary != null && primary.cardType == CardType.Hero;
-            int primaryHeroCr = primaryIsHero ? primary.commandRating : 0;
             const int primaryBodySlots = 1;
 
             switch (plan.Deploy.Kind)
@@ -200,26 +200,31 @@ namespace Game.Ai.V2
                     if (a == null)
                         return;                       // stale plan — leave -1
                     members = a.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)members;
-                    int cap = System.Math.Max(a.Capacity, primaryHeroCr); // a hero primary can raise it
+                    // Mirror CardPlayExecutor / ArmyActions: a hero rewrites capacity to its
+                    // CommandRating ONLY as the FIRST hero — a second hero is appended after the
+                    // existing commander and does NOT raise capacity (no auto TryReorderCommander).
+                    int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
+                        a.Capacity, a.HasHero, primary);
                     freeSlots = System.Math.Max(0, cap - a.OccupiedBattleSlots - primaryBodySlots);
                     return;
                 }
                 case DeploymentKind.NewArmy:
                 case DeploymentKind.ReusableShell:
                 {
-                    // A ReusableShell is an existing empty army; if its snapshot is present use its
-                    // (0-member) capacity, else fall back to the field-army nominal.
-                    int shellCap = -1;
+                    // Nominal capacity of the (heroless, empty) destination base: a ReusableShell's
+                    // own snapshot capacity when present, else the freshly-created field-army value.
+                    int nominalCap = ArmyData.ComputeCapacity(
+                        System.Array.Empty<UnitData>(), isGarrison: false); // heroless field base
                     if (plan.Deploy.Kind == DeploymentKind.ReusableShell && plan.Deploy.Army != null
                         && snap?.Self?.Armies != null)
                         foreach (ArmySnapshot s in snap.Self.Armies)
-                            if (s != null && s.ArmyId == plan.Deploy.Army.Id) { shellCap = s.Capacity; break; }
+                            if (s != null && s.ArmyId == plan.Deploy.Army.Id) { nominalCap = s.Capacity; break; }
 
-                    int nominalField = ArmyData.ComputeCapacity(
-                        System.Array.Empty<UnitData>(), isGarrison: false); // heroless field base
-                    int cap = System.Math.Max(
-                        primaryIsHero ? primaryHeroCr : nominalField,
-                        shellCap);
+                    // Same canonical rule as a real recipient: a hero primary sets capacity to its
+                    // CommandRating (first hero into an empty base), a non-hero keeps nominalCap —
+                    // NOT Math.Max(heroCr, nominalCap), which is where phantom slots came from.
+                    int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
+                        nominalCap, targetHasHero: false, primary);
                     freeSlots = System.Math.Max(0, cap - primaryBodySlots);
                     return;
                 }
