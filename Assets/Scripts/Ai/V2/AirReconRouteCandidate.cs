@@ -564,7 +564,7 @@ namespace Game.Ai.V2
             bool lateral = false;
             if (shaping)
             {
-                trailOverlap = x.SortieState.TrailAdjacency(x.FirstStep);
+                trailOverlap = x.SortieState.TrailAdjacency(x.FirstStep, x.From);
                 redundancy += AiConfigV2.airReconOutboundTrailOverlapPenalty * trailOverlap;
                 float lateralWeight = x.SortieState.Phase == ReconAirPhase.Turning ? 2f : 1f;
                 lateral = (infoGain + staleRefresh + routeObs) > 0.01f

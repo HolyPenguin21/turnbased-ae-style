@@ -88,13 +88,18 @@ namespace Game.Ai.V2
                 Trail.Add(hex);
         }
 
-        // How many trail hexes sit within one hex of `hex` — a candidate step that hugs the way
-        // out is penalised by this count (spec §48 outbound-trail overlap).
-        public int TrailAdjacency(HexCoord hex)
+        // How many OLD trail hexes sit within one hex of `hex` — a candidate step that hugs the
+        // way out is penalised by this count (spec §48 outbound-trail overlap). `currentPos` (the
+        // wing's hex right now) is excluded: every legal next step is adjacent to it by
+        // definition, so counting it taxed a ready wing's very first step off its airfield
+        // (Trail == [airfield], currentPos == airfield) while a storage launch — scored with no
+        // sortie state — paid nothing. Real anti-retrace shaping (proximity to EARLIER trail
+        // hexes) is unaffected.
+        public int TrailAdjacency(HexCoord hex, HexCoord currentPos)
         {
             int n = 0;
             foreach (HexCoord t in Trail)
-                if (HexGridMath.Distance(t, hex) <= 1)
+                if (!t.Equals(currentPos) && HexGridMath.Distance(t, hex) <= 1)
                     n++;
             return n;
         }

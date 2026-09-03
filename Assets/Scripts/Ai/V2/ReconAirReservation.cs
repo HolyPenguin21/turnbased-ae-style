@@ -281,8 +281,16 @@ namespace Game.Ai.V2
                 bool airborne = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real);
                 scoringCtx.ExcludeSortieId = airborne ? real.SortieId : -1;
                 ReconAirSortieState projected = ProjectScoringSortie(player, ctx, wing);
-                if (projected != null && projected.Phase == ReconAirPhase.Hold)
-                    return false; // executor would end the turn aloft here — no forward recon, not capacity
+                // R5 review fix — a Hold- or Return-phase wing is NOT Observation capacity. The
+                // executor ignores the AIR-01 forward `Pick` result once the sortie is Return-bound
+                // (it flies PickReturnStep toward the airfield instead) or ends the turn aloft on a
+                // Hold — so a strategic forward hex clearing MinimumUsefulScore here would reserve
+                // ObservationDeficit relief the executor never delivers. The wing still consumes an
+                // air-actor slot and keeps its recovery AP/Energy reservation (done by the caller
+                // before this probe); it just does not count toward ReservedAirborneWings.
+                if (projected != null
+                    && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
+                    return false;
 
                 ReconMode mode = airborne
                     && ReconAssignmentRegistry.TryGet(player, wing.Id, out ReconAssignment asg)
