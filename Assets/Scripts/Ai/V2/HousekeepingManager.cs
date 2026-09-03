@@ -46,6 +46,10 @@ namespace Game.Ai.V2
             // Phase B deliberately preserves AP while a discovery/hand interrupt is pending.
             // Consume it here before maintenance, then rebuild the FULL world snapshot because the
             // reaction may have changed both own forces and honest map knowledge.
+            float apReservedForReactionBefore = (player != null && ctx != null)
+                ? StrategicResourceReservationLedger.Active(
+                    player, ctx.TurnNumber, StrategicReservedResource.ActionPoints)
+                : 0f;
             var reaction = new StrategicReactionResult();
             yield return StrategicReactionPass.ExecuteIfPending(snapshot, player, root, ctx, reaction);
             result.Reaction = reaction;
@@ -60,14 +64,16 @@ namespace Game.Ai.V2
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
             }
-            else if (hand != null && player != null && root != null && ctx != null
-                     && StrategicResourceReservationLedger.ReleaseByReason(
-                         player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass))
+
+            // AI-MGR-02 §4/§P0 — if the reaction held back AP and that reservation is now gone
+            // (the pass ran and released it, its EndOfReaction expiry fired, or the pass never ran
+            // and was scope-suppressed), the freed AP MUST re-enter arbitration THIS turn — never
+            // stranded to EndTurn. This is independent of whether the reaction ran.
+            if (hand != null && player != null && root != null && ctx != null
+                && apReservedForReactionBefore > 0f)
             {
-                // AI-MGR-02 §7 — the bounded reaction pass did NOT run (scope-suppressed, or its
-                // opportunity went away), so the AP Phase B reserved for it is stranded. Release it
-                // and re-run the end-of-turn tempo arbiter THIS turn so the freed AP re-enters
-                // arbitration instead of being lost.
+                StrategicResourceReservationLedger.ReleaseByReason(
+                    player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
                 for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
                 {
                     int apBeforeTempo = root.ActionPoints;
@@ -88,9 +94,9 @@ namespace Game.Ai.V2
                             snapshot,
                             ReconObjectiveEvaluator.Enumerate(snapshot));
                     }
-                    AiDebugLog.Write($"[AI][V2] tempo — end-of-turn tempo re-run: reaction pass did not "
-                        + $"run; cardsPlayed {tempo.CardsPlayed}, drawn {tempo.CardsDrawn}, "
-                        + $"ap {apBeforeTempo}->{root.ActionPoints}");
+                    AiDebugLog.Write($"[AI][V2] tempo — end-of-turn tempo re-run after reaction reservation "
+                        + $"released (reaction ran={(reaction.Ran ? 1 : 0)}); cardsPlayed {tempo.CardsPlayed}, "
+                        + $"drawn {tempo.CardsDrawn}, ap {apBeforeTempo}->{root.ActionPoints}");
                     if (!tempo.StateChanged || tempo.CardsPlayed + tempo.CardsDrawn == 0)
                         break;
                 }

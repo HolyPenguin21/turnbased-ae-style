@@ -528,9 +528,13 @@ namespace Game.Ai.V2
         public const float scoutOptionalStealthEnterMargin = 0.10f;      // enter only when (threatProtection + routeBenefit) - opportunity clears this
         public const float scoutStealthRouteAccessWeight = 0.9f;         // spec §12 — RouteAccessBenefit contribution to total stealth benefit (hiding unlocks an otherwise-blocked step)
         public const float scoutStealthRouteShorteningWeight = 0.5f;     // spec §12 — RouteShorteningBenefit contribution (a hidden corridor threads a cluster of occupied hexes)
-        // Hard bound on Research/Production Challenges the Strategic Manager may ATTEMPT per AI turn
-        // (Phase A + Phase B share it). Generation is resource-expensive and probabilistic — one is
-        // a safe first pass; raise only against real AiDebug.log runs.
+        // Hard bound on Research/Production Challenges the Strategic Manager may ATTEMPT per AI turn.
+        // ONE shared counter across Phase A demand fulfilment AND the end-of-turn tempo arbiter
+        // (materialization surplus + non-combat surplus) — enforced through
+        // MaterializationReservation.GenerationAttemptsUsed, which every generation path increments
+        // via RecordGenerationAttempt. There is NO second per-turn generation budget anywhere.
+        // Generation is resource-expensive and probabilistic — one is a safe first pass; raise only
+        // against real AiDebug.log runs.
         public const int maxGenerationActionsPerTurn = 1;
 
         // Phase B may proactively generate / attach with GENUINELY remaining resources, behind
@@ -539,15 +543,18 @@ namespace Game.Ai.V2
         public const bool surplusAllowAttach = true;
         public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
-        // DEPRECATED (AI-MGR-02) — the separate "surplus action" budget is gone; the one bounded
-        // end-of-turn tempo arbiter is bounded by maxEndOfTurnTempoActionsPerTurn across ALL spend
-        // kinds. Kept only so no external reference breaks; not read.
+        // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *card plays* (surplus
+        // materialization + non-combat) the arbiter may make per turn. This is the MGR-01 surplus
+        // bound; the unified tempo loop must not be able to make more card plays than this by
+        // routing them through a different candidate kind. maxEndOfTurnTempoActionsPerTurn stays a
+        // wider global safety bound over ALL candidate kinds (card plays + draws + non-card
+        // strategic spends), it does NOT replace this sub-cap.
         public const int maxSurplusActionsPerTurn = 2;
         public const bool surplusAllowDraw = true;
         public const float surplusUtilityThreshold = 0.60f; // a candidate below this FutureUtility is not worth playing
-        // Standalone TERMINAL draw (spec §11–§15): once Phase B has no residual demand it can
-        // action and no worthwhile surplus chain, the AP that is left cannot be carried to the
-        // next turn — convert it to card option value, bounded by this many draws per turn.
+        // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. The
+        // unified loop honours this exactly like the old terminal-draw stage did; a draw beyond it
+        // is not offered as a candidate.
         public const int maxTerminalDrawsPerTurn = 4;
         // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
         // already a strong defensive stack and nothing threatens an asset: the surplus-admission
@@ -589,28 +596,46 @@ namespace Game.Ai.V2
         public const float tempoHoldScarcityWeight = 1.0f;
         public const float tempoHoldPersistentResourceValueScale = 1.6f;
         public const float tempoHoldPersistentResourceValueCap = 2.5f; // a strong play (NetScore > this) still wins
+        // AI-MGR-02 §3/AC5 — per-resource near-cap OVERFLOW pressure. Hold value is computed one
+        // resource at a time (a scarce Tech no longer inflates the barrier against spending an
+        // over-full Materials stock). A resource whose stock is at/above comfortable*this factor
+        // AND still has positive per-turn income is treated as over-supplied: its hold contribution
+        // goes NEGATIVE (spending it is favoured) proportional to the projected overflow over the
+        // next tempoHoldOverflowHorizon turns.
+        public const float tempoHoldOverflowStockFactor = 2.0f;      // "over-supplied" starts at comfortable * this
+        public const float tempoHoldOverflowHorizon = 3f;            // turns of income folded into projected overflow
+        public const float tempoHoldOverflowPressureWeight = 0.35f;  // per projected-overflow unit, subtracted from hold value
+        public const float tempoHoldOverflowPressureCap = 2.0f;      // max negative hold contribution from overflow
         // DrawCard candidate utility, same [~0..5] NetScore band as PlayCard (spec §1 — Draw is a
-        // full peer, not a terminal fallback).
-        public const float tempoDrawBaseValue = 0.60f;              // expected value of a fresh card option (full hand-space)
+        // full peer, not a terminal fallback). Expected value now blends a floor with the real
+        // remaining-deck card-value distribution, and is discounted by how good the hand already is.
+        public const float tempoDrawBaseValue = 0.35f;              // floor value of a fresh option even from a weak deck
+        public const float tempoDrawDeckValueWeight = 0.9f;         // * normalised mean remaining-deck card value
+        public const float tempoDrawDeckValueNorm = 24f;            // BasePower that maps to a full unit of deck value
+        public const float tempoDrawThinDeckTaperCards = 4f;        // deck at/under this many cards tapers expected value linearly
         public const float tempoDrawApOpportunityWeight = 0.04f;    // per AP the draw costs
         public const float tempoDrawFutureBlockPenalty = 0.25f;     // drawing into the last free slot
-        public const float tempoDrawHandActionablePenalty = 0.20f;  // the hand already holds a play we are only deferring
+        public const float tempoDrawHandActionableWeight = 0.18f;   // * best current playable NetScore, subtracted (hand already actionable)
         // Utility of a ready decisive structure-pressure advance (StrategicPressureAdvance), in the
         // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
         // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.
         public const float tempoPressureAdvanceValue = 1.20f;
-        // Baseline utility bands for a ready StrategicMaintenancePolicy action (internal facility /
-        // capacity upgrade / equipment / standalone generation). Bounded [0..~2] to sit in the
-        // shared band; the policy's own Find* logic decides WHICH action, this only decides whether
-        // it beats the other candidates.
-        public const float tempoMaintenanceFacilityValue = 1.10f;
+        // AI-MGR-02 — StrategicMaintenancePolicy now enumerates ONLY genuinely non-card strategic
+        // actions (Base/Citadel slot-capacity upgrade). Facility placement, Equipment attach and
+        // Research/Production generation are NOT scored here any more — they are ordinary PlayCard
+        // candidates through NonCombatCardPlayer -> StrategicCardEvaluator (spec §5, one card
+        // scorer). This is the only remaining maintenance utility band.
         public const float tempoMaintenanceCapacityUpgradeValue = 0.70f;
-        public const float tempoMaintenanceEquipmentValueScale = 0.08f;  // * StrategicMaintenancePolicy benefit score, clamped
-        public const float tempoMaintenanceGenerationValueScale = 0.08f; // * expected generated power, clamped
-        public const float tempoMaintenanceValueCap = 2.0f;
-        // spec §7 — the bounded reaction pass may reserve AT MOST this many AP (was: the entire
-        // pool). One bounded replan round does not need "everything".
+        // spec §7 — the bounded reaction pass reserves a CONCRETE estimate of what it would spend
+        // (cheapest eligible responder's activation + a move step, or one card play for a
+        // hand-only follow-up), never the whole pool. This is the hard ceiling on that estimate.
         public const int reactionReserveApCap = 6;
+        // spec §7 — AP estimate for a hand-only (no discovered target) reaction follow-up when the
+        // hand carries no priced card to sample; a single modest replay.
+        public const int reactionFollowupApEstimate = 2;
+        // spec §7 — extra AP beyond a responder's activation cost folded into the reaction estimate
+        // for the one repositioning step a bounded replan typically makes.
+        public const int reactionResponderMoveApEstimate = 1;
         // AI-MGR-02 §7 — kept for HousekeepingManager's same-turn tempo re-run after a released
         // reservation. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
         public const int maxEndOfTurnTempoReruns = 1;

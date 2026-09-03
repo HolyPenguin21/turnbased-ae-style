@@ -10,122 +10,79 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
+    // A genuinely NON-CARD strategic spend the end-of-turn tempo arbiter can rank against
+    // PlayCard / DrawCard / HoldResources / EndTurn in one comparable utility space. It carries
+    // the EXACT action + target + full cost and its own executor payload, so the arbiter runs the
+    // chosen candidate verbatim — it never asks the policy for "the best action" a second time
+    // (which is how the old DescribeBest → TryExecuteBest split re-decided after arbitration).
+    internal sealed class StrategicSpendCandidate
+    {
+        public string Label;
+        public string StableKey;
+        public float Utility;
+        public float ApCost;
+        public ResourceCost ResCost;         // persistent-resource cost vector (may be null)
+
+        private readonly BuildingData _upgradeBuilding;
+        private readonly BaseUpgradeTier _upgradeTier;
+
+        internal StrategicSpendCandidate(BuildingData upgradeBuilding, BaseUpgradeTier upgradeTier)
+        {
+            _upgradeBuilding = upgradeBuilding;
+            _upgradeTier = upgradeTier;
+        }
+
+        // Execute EXACTLY this candidate. No re-selection.
+        public bool Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            out bool stateChanged, out bool progressed)
+        {
+            bool ok = StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                player, root, ctx, _upgradeBuilding, _upgradeTier);
+            stateChanged = ok;
+            progressed = ok;
+            return ok;
+        }
+    }
+
     // ===========================================================================================
-    //  STRATEGIC MAINTENANCE POLICY
+    //  STRATEGIC MAINTENANCE POLICY  (AI-MGR-02)
     // ===========================================================================================
-    //  Actions that are strategically useful but are NOT "deploy a new capability" missions:
-    //    1. place an internal Research/Production Facility already in hand;
-    //    2. when that Facility is blocked specifically by Base slot capacity, upgrade a Base/
-    //       Citadel to unlock the next slot;
-    //    3. attach useful Equipment from hand to an existing live unit;
-    //    4. use an immediately-ready Research/Production source to create a useful card.
+    //  ONLY non-card strategic actions live here now: upgrading a Base/Citadel to unlock the next
+    //  internal-Facility slot when a Facility already in hand is blocked SPECIFICALLY by slot
+    //  capacity (not by affordability or by an already-open slot).
     //
-    //  AI-MGR-02 — NO LONGER a post-reaction lane. `DescribeBest` exposes the next action + a
-    //  bounded utility; the end-of-turn tempo arbiter (StrategicManager.UseSurplus) ranks it against
-    //  Play / Draw / Hold / EndTurn in one comparable space and only then calls `TryExecuteBest`.
-    //  No movement/hero-positioning is invented here; GenerationSource remains the authority for
-    //  whether a generator is usable RIGHT NOW.
+    //  Everything that is a card play — placing that internal Facility, attaching Equipment to a
+    //  live unit, running a Research/Production Challenge — is an ordinary PlayCard candidate in
+    //  the end-of-turn tempo arbiter, scored by the single StrategicCardEvaluator through
+    //  NonCombatCardPlayer (spec §5, one card scorer). There is deliberately NO second card
+    //  scorer here and NO hidden "facility, then capacity, then equipment, then generation"
+    //  priority chain: EnumerateCandidates returns every eligible non-card action and the arbiter
+    //  ranks purely by utility.
     // ===========================================================================================
     internal static class StrategicMaintenancePolicy
     {
-        private sealed class GenerationTurnState
+        // AI-MGR-02 §1/§3 — every eligible non-card strategic spend as an independent candidate.
+        public static List<StrategicSpendCandidate> EnumerateCandidates(PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            public int Turn = -1;
-            public int Attempts;
-            public readonly HashSet<string> TriedCardKeys = new HashSet<string>();
-        }
-
-        private static readonly Dictionary<PlayerSetupData, GenerationTurnState> GenerationByPlayer =
-            new Dictionary<PlayerSetupData, GenerationTurnState>();
-
-        private const int MaxStandaloneGenerationAttemptsPerTurn = 1;
-
-        // AI-MGR-02 §1/§5 — describe the action TryExecuteBest would take next, with a bounded
-        // utility in the shared StrategicCardEvaluator NetScore band, WITHOUT executing it. Same
-        // priority order as TryExecuteBest so the arbiter's pick and the executed action agree.
-        public static bool DescribeBest(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, out string label, out string key, out float utility, out float apCost)
-        {
-            label = null; key = null; utility = 0f; apCost = 0f;
+            var list = new List<StrategicSpendCandidate>();
             if (player == null || root == null || hand == null || ctx == null)
-                return false;
+                return list;
 
-            FacilityPlacement facility = FindPlaceableInternalFacility(player, root, hand, ctx);
-            if (facility != null)
-            {
-                label = $"internal facility {facility.Card.Definition.displayName} -> {facility.Building.Name}";
-                key = "facility:" + facility.Card.Definition.displayName + ":" + facility.Building.Hex;
-                utility = AiConfigV2.tempoMaintenanceFacilityValue;
-                apCost = facility.Card.EffectivePlayApCost;
-                return true;
-            }
-
-            CapacityUpgrade upgrade = FindCapacityUpgrade(player, root, hand, ctx);
-            if (upgrade != null)
-            {
-                label = $"capacity upgrade {upgrade.Building.Name} -> level {upgrade.Building.Level + 1}";
-                key = "capacity:" + upgrade.Building.Hex;
-                utility = AiConfigV2.tempoMaintenanceCapacityUpgradeValue;
-                apCost = upgrade.Tier != null ? upgrade.Tier.apCost : 0f;
-                return true;
-            }
-
-            EquipmentAssignment equipment = FindEquipmentAssignment(player, root, hand);
-            if (equipment != null)
-            {
-                label = $"attach {equipment.EquipmentCard.Definition.displayName} -> {equipment.Target.Name}";
-                key = "equip:" + equipment.EquipmentCard.Definition.displayName + ":" + equipment.ArmyId;
-                utility = Mathf.Clamp(equipment.Benefit * AiConfigV2.tempoMaintenanceEquipmentValueScale,
-                    0.15f, AiConfigV2.tempoMaintenanceValueCap);
-                apCost = equipment.EquipmentCard.EffectivePlayApCost;
-                return true;
-            }
-
-            GenerationStep generation = FindGeneration(player, root, hand, ctx);
-            if (generation != null)
-            {
-                label = $"generate {generation.Mode} {generation.CardDef.displayName}";
-                key = "generate:" + generation.CardKey;
-                utility = Mathf.Clamp(GenerationUtility(player, root, generation)
-                    * AiConfigV2.tempoMaintenanceGenerationValueScale, 0.1f, AiConfigV2.tempoMaintenanceValueCap);
-                apCost = 0f;   // a Challenge has no AP cost (resources only)
-                return true;
-            }
-            return false;
-        }
-
-        public static bool TryExecuteBest(WorldSnapshot snapshot, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
-        {
-            if (player == null || root == null || hand == null || ctx == null)
-                return false;
-
-            FacilityPlacement facility = FindPlaceableInternalFacility(player, root, hand, ctx);
-            if (facility != null)
-                return ExecuteFacilityPlacement(player, root, hand, ctx, facility);
-
-            CapacityUpgrade upgrade = FindCapacityUpgrade(player, root, hand, ctx);
-            if (upgrade != null)
-                return ExecuteCapacityUpgrade(player, root, ctx, upgrade);
-
-            EquipmentAssignment equipment = FindEquipmentAssignment(player, root, hand);
-            if (equipment != null)
-                return ExecuteEquipment(player, root, hand, ctx, equipment);
-
-            GenerationStep generation = FindGeneration(player, root, hand, ctx);
-            if (generation != null)
-                return ExecuteGeneration(player, root, hand, ctx, generation);
-
-            return false;
+            foreach (CapacityUpgrade up in FindCapacityUpgrades(player, hand, ctx))
+                list.Add(new StrategicSpendCandidate(up.Building, up.Tier)
+                {
+                    Label = $"capacity upgrade {up.Building.Name} -> level {up.Building.Level + 1} "
+                        + "(unlock internal-facility slot blocked by capacity)",
+                    StableKey = "capacity:" + up.Building.Hex,
+                    Utility = AiConfigV2.tempoMaintenanceCapacityUpgradeValue,
+                    ApCost = up.Tier != null ? up.Tier.apCost : 0f,
+                    ResCost = up.Tier != null ? up.Tier.cost : null,
+                });
+            return list;
         }
 
         // ---------------------------------------------------------------- internal Facilities ----
-
-        private sealed class FacilityPlacement
-        {
-            public CardData Card;
-            public BuildingData Building;
-        }
 
         private static IEnumerable<CardData> InternalFacilityCards(AiHandData hand) =>
             hand?.Hand == null
@@ -134,50 +91,35 @@ namespace Game.Ai.V2
                     && c.Definition.cardType == CardType.Facility
                     && c.Definition.grantedAbilities != null
                     && (c.Definition.grantedAbilities.Contains(UnitAbilities.Research)
-                        || c.Definition.grantedAbilities.Contains(UnitAbilities.Production)))
-                    .OrderByDescending(c => c.Definition.grantedAbilities.Contains(UnitAbilities.Production))
-                    .ThenBy(c => c.Definition.displayName, System.StringComparer.Ordinal);
+                        || c.Definition.grantedAbilities.Contains(UnitAbilities.Production)));
 
-        private static FacilityPlacement FindPlaceableInternalFacility(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
-        {
-            foreach (CardData card in InternalFacilityCards(hand))
-            {
-                foreach (BuildingData building in BuildingRegistry.AllBuildings()
-                    .Where(b => b != null && b.Owner == player && b.IsBase)
-                    .OrderByDescending(b => b.IsStartingCitadel)
-                    .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R))
-                {
-                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, building.Hex, out _))
-                        return new FacilityPlacement { Card = card, Building = building };
-                }
-            }
-            return null;
-        }
+        // ---------------------------------------------------------------- capacity upgrade ----
 
-        private sealed class CapacityUpgrade
+        internal sealed class CapacityUpgrade
         {
             public BuildingData Building;
             public BaseUpgradeTier Tier;
         }
 
-        private static CapacityUpgrade FindCapacityUpgrade(PlayerSetupData player, PlayerRoot root,
+        // Enumerate every Base/Citadel where buying the next tier would unlock a Facility slot AND
+        // an internal Facility in hand is currently blocked by nothing but that missing slot.
+        private static IEnumerable<CapacityUpgrade> FindCapacityUpgrades(PlayerSetupData player,
             AiHandData hand, AiTurnContext ctx)
         {
             if (!InternalFacilityCards(hand).Any() || ctx.GameConfig?.baseUpgradeTiers == null)
-                return null;
+                yield break;
 
             List<BuildingData> bases = BuildingRegistry.AllBuildings()
                 .Where(b => b != null && b.Owner == player && b.IsBase && b.HasTieredUnlock)
                 .ToList();
             if (bases.Count == 0)
-                return null;
+                yield break;
 
             // If ANY owned Base already has an unlocked empty slot, the Facility is blocked by
             // something else (usually card affordability), not by capacity. Do not buy a fake
             // dependency upgrade in that case.
             if (bases.Any(b => b.FindFirstAvailableFacilitySlot() >= 0))
-                return null;
+                yield break;
 
             foreach (BuildingData b in bases
                 .Where(x => x.UnlockedFacilitySlots < x.TotalFacilitySlots)
@@ -189,42 +131,17 @@ namespace Game.Ai.V2
                 if (tierIndex < 0 || tierIndex >= ctx.GameConfig.baseUpgradeTiers.Length)
                     continue;
                 BaseUpgradeTier tier = ctx.GameConfig.baseUpgradeTiers[tierIndex];
-                if (tier == null || !root.CanSpendActionPoints(tier.apCost)
-                    || (tier.cost != null && !tier.cost.CanAfford(root)))
+                if (tier == null)
                     continue;
-                return new CapacityUpgrade { Building = b, Tier = tier };
+                yield return new CapacityUpgrade { Building = b, Tier = tier };
             }
-            return null;
         }
 
-        private static bool ExecuteFacilityPlacement(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, FacilityPlacement pick)
+        internal static bool ExecuteCapacityUpgrade(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            BuildingData b, BaseUpgradeTier tier)
         {
             V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
             activity.InfrastructureAttempts++;
-            BuildingPlayResult r = BuildingPlayExecutor.PlayFacilityCard(
-                player, root, hand, ctx, pick.Card, pick.Building.Hex);
-            if (!r.Built)
-            {
-                AiDebugLog.Write($"[AI][V2] maintenance facility — FAIL {pick.Card.Definition.displayName} "
-                    + $"@({pick.Building.Hex.Q},{pick.Building.Hex.R}): {r.FailReason}");
-                return r.StateChanged;
-            }
-
-            activity.InfrastructureBuilt++;
-            activity.CardsPlayed++;
-            AiDebugLog.Write($"[AI][V2] maintenance facility — placed {pick.Card.Definition.displayName} "
-                + $"into {pick.Building.Name} @({pick.Building.Hex.Q},{pick.Building.Hex.R}), ap -{r.ApSpent:0.##}");
-            return true;
-        }
-
-        private static bool ExecuteCapacityUpgrade(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            CapacityUpgrade pick)
-        {
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            activity.InfrastructureAttempts++;
-            BuildingData b = pick.Building;
-            BaseUpgradeTier tier = pick.Tier;
             int apBefore = root.ActionPoints;
             if (b == null || tier == null || !root.CanSpendActionPoints(tier.apCost)
                 || (tier.cost != null && !tier.cost.CanAfford(root)))
@@ -242,272 +159,5 @@ namespace Game.Ai.V2
                 + $"ap {apBefore}->{root.ActionPoints}");
             return true;
         }
-
-        // ---------------------------------------------------------------- Equipment ----
-
-        private sealed class EquipmentAssignment
-        {
-            public CardData EquipmentCard;
-            public UnitData Target;
-            public float Benefit;
-            public int ArmyId;
-        }
-
-        private static EquipmentAssignment FindEquipmentAssignment(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand)
-        {
-            if (hand?.Hand == null)
-                return null;
-
-            EquipmentAssignment best = null;
-            foreach (CardData card in hand.Hand
-                .Where(c => c?.Definition != null && c.Definition.cardType == CardType.Equipment)
-                .OrderBy(c => c.Definition.displayName, System.StringComparer.Ordinal))
-            {
-                if (!FitsReservedResources(root, player, card.EffectivePlayResourceCost))
-                    continue;
-
-                foreach (ArmyData army in ArmyRegistry.AllForOwner(player)
-                    .Where(a => a != null && !a.IsPrison && !a.IsAirfield)
-                    .OrderBy(a => a.IsGarrison ? 1 : 0)
-                    .ThenBy(a => a.Id))
-                {
-                    foreach (UnitData unit in army.Members.Where(u => u != null && !u.IsAviation))
-                    {
-                        if (!EquipmentSystem.CanAttach(card, unit, root, out _))
-                            continue;
-                        float benefit = EquipmentBenefit(card.Definition, unit);
-                        if (benefit <= 0.01f)
-                            continue;
-
-                        // Valuable field units get first claim; benefit itself still dominates so
-                        // a highly synergistic scout/hero item is not blindly forced onto a tank.
-                        float hostValue = AiPower.UnitPower(unit) * (army.IsGarrison ? 0.35f : 0.75f);
-                        float score = benefit + hostValue;
-                        if (best == null || score > best.Benefit + AiConfigV2.allocatorSliceEpsilon
-                            || (Mathf.Abs(score - best.Benefit) <= AiConfigV2.allocatorSliceEpsilon
-                                && army.Id < best.ArmyId))
-                        {
-                            best = new EquipmentAssignment
-                            {
-                                EquipmentCard = card,
-                                Target = unit,
-                                Benefit = score,
-                                ArmyId = army.Id,
-                            };
-                        }
-                    }
-                }
-            }
-            return best;
-        }
-
-        private static float EquipmentBenefit(CardDefinition equipment, UnitData unit)
-        {
-            EquipmentGrant g = equipment?.equipment;
-            if (g == null || unit == null)
-                return 0f;
-
-            float score = 0f;
-            if (g.addAbilities != null)
-                score += 2.5f * g.addAbilities.Count(a => !string.IsNullOrEmpty(a) && !unit.Abilities.Contains(a));
-            if (g.removeAbilities != null)
-                score -= 3f * g.removeAbilities.Count(a => !string.IsNullOrEmpty(a) && unit.Abilities.Contains(a));
-            if (g.clearAbilityFamilies != null)
-                score -= 2f * g.clearAbilityFamilies.Count(f => f != AbilityFamily.None);
-
-            if (g.statChanges != null)
-                foreach (EquipmentStatChange c in g.statChanges)
-                {
-                    if (c == null) continue;
-                    int before = StatValue(unit, c.stat);
-                    int after = c.isOverride ? Mathf.Max(EquipmentSystem.FloorFor(c.stat), c.amount)
-                        : Mathf.Max(EquipmentSystem.FloorFor(c.stat), before + c.amount);
-                    int delta = after - before;
-                    float weight = StatWeight(c.stat);
-                    score += delta * weight;
-                }
-            return score;
-        }
-
-        private static int StatValue(UnitData u, EquipmentStat s)
-        {
-            switch (s)
-            {
-                case EquipmentStat.Attack: return u.Attack;
-                case EquipmentStat.Defense: return u.Defense;
-                case EquipmentStat.Resistance: return u.Resistance;
-                case EquipmentStat.Range: return u.Range;
-                case EquipmentStat.Initiative: return u.Initiative;
-                case EquipmentStat.ActivationApCost: return u.ActivationApCost;
-                case EquipmentStat.CommandRating: return u.CommandRating;
-                case EquipmentStat.HitPoints: return u.HitPointsMax;
-                case EquipmentStat.MoveMax: return u.MoveMax;
-                case EquipmentStat.Fate: return u.FateMax;
-                default: return 0;
-            }
-        }
-
-        private static float StatWeight(EquipmentStat s)
-        {
-            switch (s)
-            {
-                case EquipmentStat.Attack: return 4f;
-                case EquipmentStat.Defense: return 3f;
-                case EquipmentStat.HitPoints: return 2f;
-                case EquipmentStat.CommandRating: return 2f;
-                case EquipmentStat.MoveMax: return 1.5f;
-                case EquipmentStat.Range: return 1.5f;
-                case EquipmentStat.ActivationApCost: return -2f; // lower activation cost is better
-                default: return 1f;
-            }
-        }
-
-        private static bool ExecuteEquipment(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, EquipmentAssignment pick)
-        {
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            activity.EquipmentAssignmentAttempts++;
-            string equipmentName = pick.EquipmentCard?.Definition?.displayName ?? "?";
-            string targetName = pick.Target?.Name ?? "?";
-            if (!EquipmentSystem.TryAttach(pick.EquipmentCard, pick.Target, root, out string why))
-            {
-                AiDebugLog.Write($"[AI][V2] maintenance equipment — FAIL {equipmentName} -> {targetName}: {why}");
-                return false;
-            }
-
-            hand.Hand.Remove(pick.EquipmentCard);
-            activity.EquipmentAssignmentsSucceeded++;
-            activity.CardsPlayed++;
-            AiDebugLog.Write($"[AI][V2] maintenance equipment — attached {equipmentName} -> {targetName} "
-                + $"in army #{pick.ArmyId} (utility {pick.Benefit:0.00})");
-            return true;
-        }
-
-        // ---------------------------------------------------------------- Generation ----
-
-        private static GenerationTurnState GenerationState(PlayerSetupData player, int turn)
-        {
-            if (!GenerationByPlayer.TryGetValue(player, out GenerationTurnState s))
-                GenerationByPlayer[player] = s = new GenerationTurnState();
-            if (s.Turn != turn)
-            {
-                s.Turn = turn;
-                s.Attempts = 0;
-                s.TriedCardKeys.Clear();
-            }
-            return s;
-        }
-
-        private static GenerationStep FindGeneration(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
-        {
-            if (!hand.HasFreeSlot)
-                return null;
-            GenerationTurnState s = GenerationState(player, ctx.TurnNumber);
-            if (s.Attempts >= MaxStandaloneGenerationAttemptsPerTurn)
-                return null;
-
-            List<GenerationStep> options = GenerationSource.Enumerate(
-                player, root, ctx, hand, claimedUseKeys: null, triedCardKeys: s.TriedCardKeys);
-            return options
-                .Where(g => g?.CardDef != null
-                    && (g.CardDef.cardType == CardType.Unit || g.CardDef.cardType == CardType.Hero
-                        || g.CardDef.cardType == CardType.Equipment))
-                .Select(g => new { Step = g, Score = GenerationUtility(player, root, g) })
-                .Where(x => x.Score > 0.01f)
-                .OrderByDescending(x => x.Score)
-                .ThenBy(x => x.Step.CardDef.displayName, System.StringComparer.Ordinal)
-                .Select(x => x.Step)
-                .FirstOrDefault();
-        }
-
-        private static float GenerationUtility(PlayerSetupData player, PlayerRoot root, GenerationStep g)
-        {
-            CardDefinition d = g.CardDef;
-            float value;
-            if (d.cardType == CardType.Equipment)
-            {
-                bool usefulTarget = ArmyRegistry.AllForOwner(player)
-                    .Where(a => a != null && !a.IsPrison && !a.IsAirfield)
-                    .SelectMany(a => a.Members)
-                    .Any(u => u != null && !u.IsAviation
-                        && EquipmentSystem.CanAttach(d, u, root, out _)
-                        && EquipmentBenefit(d, u) > 0.01f);
-                if (!usefulTarget)
-                    return 0f;
-                value = 18f;
-            }
-            else
-            {
-                value = AiPower.ToPowerUnit(d).BasePower;
-                if (d.cardType == CardType.Hero)
-                    value += 8f;
-            }
-
-            // A Challenge has no AP cost, but resources are real and are never refunded on a
-            // failed roll. Success chance therefore scales the benefit instead of being ignored.
-            return value * Mathf.Clamp01(g.SuccessChance);
-        }
-
-        private static bool ExecuteGeneration(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, GenerationStep g)
-        {
-            GenerationTurnState s = GenerationState(player, ctx.TurnNumber);
-            s.Attempts++;
-            s.TriedCardKeys.Add(g.CardKey);
-
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            activity.GeneratedCardAttempts++;
-
-            if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
-                || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode)
-                || !hand.HasFreeSlot || !ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-            {
-                AiDebugLog.Write($"[AI][V2] maintenance generation — FAIL {g.Mode} {g.CardDef.displayName}: "
-                    + (why ?? "source/card no longer eligible"));
-                return false;
-            }
-
-            bool wasHidden = g.Hero != null && g.Hero.IsHidden;
-            int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
-                m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
-
-            ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-            ResearchProductionSystem.PayCardCost(root, g.CardDef);
-            ResearchProductionSystem.ChallengeOutcome outcome = ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
-            if (!outcome.Success)
-            {
-                bool resourcesSpent = h0 != root.GetResource(ResourceType.Human)
-                    || e0 != root.GetResource(ResourceType.Energy)
-                    || m0 != root.GetResource(ResourceType.Materials)
-                    || t0 != root.GetResource(ResourceType.Tech);
-                AiDebugLog.Write($"[AI][V2] maintenance generation — {g.Mode} {g.CardDef.displayName} "
-                    + $"FAILED challenge {outcome.Successes}/{outcome.Required}; resources remain spent");
-                return resourcesSpent || (g.Mode == ResearchProductionMode.Research && wasHidden);
-            }
-
-            CardData generated = ResearchProductionSystem.MintCard(g.CardDef);
-            hand.Hand.Add(generated);
-            activity.GeneratedCardsSucceeded++;
-            AiDebugLog.Write($"[AI][V2] maintenance generation — {g.Mode} produced \"{g.CardDef.displayName}\" "
-                + $"@({g.FacilityHex.Q},{g.FacilityHex.R}) chance {g.SuccessChance:0.00}");
-            return true;
-        }
-
-        private static bool FitsReservedResources(PlayerRoot root, PlayerSetupData player, ResourceCost cost)
-        {
-            if (cost == null)
-                return true;
-            foreach (ResourceType t in ResourceBundle.All)
-            {
-                int need = cost.Get(t);
-                if (need > 0 && AiResourceReservation.Available(root, player, t) < need)
-                    return false;
-            }
-            return true;
-        }
-
-        public static void Clear() => GenerationByPlayer.Clear();
     }
 }

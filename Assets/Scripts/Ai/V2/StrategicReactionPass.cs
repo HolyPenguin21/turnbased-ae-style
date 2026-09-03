@@ -75,17 +75,64 @@ namespace Game.Ai.V2
             if (hand == null)
                 return StrategicReactionOpportunity.None("noResolvableHand");
 
-            bool hasNewContent =
-                StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber).Count > 0
-                || StrategicInterruptRegistry.HasPendingFollowup(player, ctx.TurnNumber);
-            if (!hasNewContent)
+            bool targetDriven = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber).Count > 0;
+            bool followupDriven = StrategicInterruptRegistry.HasPendingFollowup(player, ctx.TurnNumber);
+            if (!targetDriven && !followupDriven)
                 return StrategicReactionOpportunity.None("noActionableContent");
 
             float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
-            float apRequired = Mathf.Min(apAvailable, AiConfigV2.reactionReserveApCap);
+
+            // spec §7 — the reservation is a CONCRETE estimate of what the bounded replan would
+            // actually spend, not a flat cap. reactionReserveApCap is only the hard ceiling.
+            float estimate;
+            string reason;
+            if (targetDriven)
+            {
+                // A discovered target => the replan funds a response mission. Cost ≈ the cheapest
+                // eligible own field responder's activation + one repositioning step. No eligible
+                // responder => nothing to react WITH; do not reserve.
+                int? cheapestActivation = null;
+                bool anyAlreadyActive = false;
+                foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+                {
+                    if (a == null || a.Members.Count == 0 || a.CurrentMovement <= 0
+                        || a.IsGarrison || a.IsPrison || a.IsAirfield || a.IsAirArmy
+                        || AiArmyRoles.IsSoloRecce(a))
+                        continue;
+                    if (a.HasActivatedThisTurn)
+                    {
+                        anyAlreadyActive = true;
+                        cheapestActivation = 0;
+                        break;
+                    }
+                    if (!root.CanSpendActionPoints(a.ActivationApCost))
+                        continue;
+                    if (cheapestActivation == null || a.ActivationApCost < cheapestActivation.Value)
+                        cheapestActivation = a.ActivationApCost;
+                }
+                if (cheapestActivation == null && !anyAlreadyActive)
+                    return StrategicReactionOpportunity.None("noEligibleResponder");
+                estimate = cheapestActivation.GetValueOrDefault()
+                    + AiConfigV2.reactionResponderMoveApEstimate;
+                reason = "actionable(responder)";
+            }
+            else
+            {
+                // Hand-only follow-up: one modest card replay. Sample the priced hand, else fall
+                // back to the configured estimate.
+                float sampled = 0f;
+                foreach (var c in hand.Hand)
+                    if (c != null && c.EffectivePlayApCost > sampled)
+                        sampled = c.EffectivePlayApCost;
+                estimate = sampled > 0f ? sampled : AiConfigV2.reactionFollowupApEstimate;
+                reason = "actionable(followup)";
+            }
+
+            float apRequired = Mathf.Clamp(estimate, 0f,
+                Mathf.Min(apAvailable, AiConfigV2.reactionReserveApCap));
             if (apRequired <= 0f)
                 return StrategicReactionOpportunity.None("noApToReserve");
-            return new StrategicReactionOpportunity(true, apRequired, "actionable");
+            return new StrategicReactionOpportunity(true, apRequired, reason);
         }
 
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
@@ -333,6 +380,12 @@ namespace Game.Ai.V2
             snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+            // AI-MGR-02 §7/§P0 — the reaction round is NOW executing its own spend. The AP that
+            // Phase B reserved as a placeholder for "the reaction will need AP" must be released
+            // BEFORE this inner tempo arbitration, or the reaction cannot use the very AP it held
+            // back (and it would look stranded until end of turn).
+            StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                StrategicReservationReason.StrategicReactionPass);
             var phaseB = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                 postCommitments, phaseA.Reservation, phaseB);

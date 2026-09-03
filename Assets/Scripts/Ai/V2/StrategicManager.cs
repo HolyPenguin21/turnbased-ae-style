@@ -79,6 +79,11 @@ namespace Game.Ai.V2
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 
+            // AI-MGR-02 §P0 — one shared per-turn generation budget: a reaction-round Phase A must
+            // not reset the Challenge count a main-pass generation already spent.
+            if (ctx != null)
+                result.Reservation.GenerationAttemptsUsed = StrategicGenerationBudget.Used(player, ctx.TurnNumber);
+
             AiDebugLog.Write($"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             var states = demands.Select((d, i) => new DemandState
@@ -254,7 +259,10 @@ namespace Game.Ai.V2
                 }
 
                 if (plan.Generation != null)
+                {
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
+                    StrategicGenerationBudget.Record(player, ctx.TurnNumber);
+                }
                 if (play.StateChanged)
                     result.StateChanged = true;
 
@@ -680,6 +688,13 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 yield break;
 
+            // AI-MGR-02 §P0 — the generation cap is ONE shared per-turn counter (Phase A + every
+            // tempo re-entry). Seed the carried reservation from the turn-scoped budget so a fresh
+            // MaterializationReservation on a Housekeeping / reaction re-run cannot silently reset
+            // it to 0 and buy a second Challenge past maxGenerationActionsPerTurn.
+            result.Reservation.GenerationAttemptsUsed = Mathf.Max(result.Reservation.GenerationAttemptsUsed,
+                StrategicGenerationBudget.Used(player, ctx.TurnNumber));
+
             // --- §7 reaction reservation: reserve a REAL BOUNDED AP requirement for a REAL
             //     actionable owner, or reserve nothing. Never hold back the whole pool for
             //     "there is some pending interrupt".
@@ -717,6 +732,8 @@ namespace Game.Ai.V2
 
             var rejectedForState = new HashSet<string>(System.StringComparer.Ordinal);
             int actions = 0;
+            int surplusCardPlays = 0;   // AI-MGR-02 §P0 — MGR-01 semantic sub-cap (maxSurplusActionsPerTurn)
+            int terminalDraws = 0;      // AI-MGR-02 §P0 — semantic sub-cap (maxTerminalDrawsPerTurn)
             string stopReason = null;
             while (actions < AiConfigV2.maxEndOfTurnTempoActionsPerTurn)
             {
@@ -727,35 +744,63 @@ namespace Game.Ai.V2
                 var cands = BuildTempoCandidates(snap, player, root, hand, ctx, commitments, result,
                     reconObjectives, spendableAp, verbose: actions == 0);
 
-                float holdU = cands.First(c => c.Kind == TempoKind.Hold).Utility;
-                float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;
-                float bar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, Mathf.Max(holdU, endU));
+                float holdU = cands.First(c => c.Kind == TempoKind.Hold).Utility;   // whole loose pool — for the log
+                float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility; // 0
+                int genUsed = result.Reservation.GenerationAttemptsUsed;
+                bool cardCapHit = surplusCardPlays >= AiConfigV2.maxSurplusActionsPerTurn;
+                bool drawCapHit = terminalDraws >= AiConfigV2.maxTerminalDrawsPerTurn;
+                bool genCapHit = genUsed >= AiConfigV2.maxGenerationActionsPerTurn;
 
                 AiDebugLog.Write($"[AI][V2]   tempo[{actions}] — ap {root.ActionPoints} spendable {F(spendableAp)}"
                     + $" reservations [{StrategicResourceReservationLedger.DebugLine(player, ctx.TurnNumber)}]"
-                    + $" hand {hand.Hand.Count}/{ctx.HandCapacity} | bar {F(bar)} (hold {F(holdU)} endTurn {F(endU)})");
-                foreach (TempoCandidate c in cands.OrderByDescending(c => c.Utility).ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
-                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} util {F(c.Utility)} key={c.ActionKey}"
-                        + (rejectedForState.Contains(c.ActionKey) ? " [parked]" : "") + $" — {c.Label}");
+                    + $" hand {hand.Hand.Count}/{ctx.HandCapacity} | subcaps cardPlays {surplusCardPlays}/{AiConfigV2.maxSurplusActionsPerTurn}"
+                    + $" draws {terminalDraws}/{AiConfigV2.maxTerminalDrawsPerTurn} gen {genUsed}/{AiConfigV2.maxGenerationActionsPerTurn}"
+                    + $" | hold {F(holdU)} endTurn {F(endU)} minSpend {F(AiConfigV2.tempoMinSpendUtility)}");
 
-                // spec §6 — a spend candidate must fit SPENDABLE AP (raw AP minus active
-                // reservations), so a play never dips into AP the reaction pass is holding.
-                TempoCandidate best = cands
-                    .Where(c => IsSpend(c.Kind) && !rejectedForState.Contains(c.ActionKey)
-                                && c.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon)
+                // spec §1/§3/§4/§6 — ONE comparable space. A spend candidate's effective score is
+                // its utility MINUS the loose-pool hold value of the persistent resources IT would
+                // burn (AP is never held; a scarce Tech no longer taxes a Materials-only play). It
+                // must fit SPENDABLE AP + SPENDABLE persistent resources, and respect the MGR-01
+                // semantic sub-caps (card plays / draws / generation attempts) — a new lane cannot
+                // route around them.
+                TempoCandidate best = null;
+                float bestEff = float.NegativeInfinity;
+                foreach (TempoCandidate c in cands
+                    .Where(c => IsSpend(c.Kind))
                     .OrderByDescending(c => c.Utility)
-                    .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal)
-                    .FirstOrDefault();
+                    .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
+                {
+                    string skip = null;
+                    if (rejectedForState.Contains(c.ActionKey)) skip = "parked";
+                    else if (c.CountsAsSurplusCardPlay && cardCapHit) skip = "cardPlay sub-cap";
+                    else if (c.CountsAsTerminalDraw && drawCapHit) skip = "draw sub-cap";
+                    else if (c.ConsumesGeneration && genCapHit) skip = "generation sub-cap";
+                    else if (c.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon) skip = "spendable AP";
+                    else if (!FitsSpendableResources(player, root, ctx, c.ResCost)) skip = "spendable resources";
 
-                if (best == null || best.Utility < bar)
+                    float eff = c.Utility - Mathf.Max(0f, HoldResourcesUtility(root, snap, c.ResCost));
+                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} util {F(c.Utility)} eff {F(eff)} key={c.ActionKey}"
+                        + (skip != null ? $" [skip: {skip}]" : "") + $" — {c.Label}");
+                    if (skip != null)
+                        continue;
+                    if (eff > bestEff)
+                    {
+                        bestEff = eff;
+                        best = c;
+                    }
+                }
+
+                float spendBar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, endU);
+                if (best == null || bestEff <= spendBar)
                 {
                     stopReason = best == null
-                        ? "no actionable spend candidate within spendable AP"
-                        : $"max(Hold {F(holdU)}, EndTurn {F(endU)}) bar {F(bar)} >= best spend {best.Kind} {F(best.Utility)}";
+                        ? $"no actionable spend candidate (subcaps cardPlays {surplusCardPlays}/{AiConfigV2.maxSurplusActionsPerTurn}, "
+                          + $"draws {terminalDraws}/{AiConfigV2.maxTerminalDrawsPerTurn}, gen {genUsed}/{AiConfigV2.maxGenerationActionsPerTurn})"
+                        : $"best spend {best.Kind} eff {F(bestEff)} <= max(minSpend {F(AiConfigV2.tempoMinSpendUtility)}, endTurn {F(endU)}) = {F(spendBar)}";
                     break;
                 }
 
-                AiDebugLog.Write($"[AI][V2]   tempo[{actions}] — WIN {best.Kind} util {F(best.Utility)} — {best.Label}");
+                AiDebugLog.Write($"[AI][V2]   tempo[{actions}] — WIN {best.Kind} util {F(best.Utility)} eff {F(bestEff)} — {best.Label}");
 
                 bool changed = false, progressed = false, interrupt = false;
                 switch (best.Kind)
@@ -779,8 +824,8 @@ namespace Game.Ai.V2
                         break;
                     }
                     case TempoKind.MaintenanceSpend:
-                        if (StrategicMaintenancePolicy.TryExecuteBest(snap, player, root, hand, ctx))
-                        { changed = true; progressed = true; }
+                        // Execute EXACTLY the chosen candidate (no re-selection by the policy).
+                        best.Spend.Execute(player, root, ctx, out changed, out progressed);
                         break;
                     case TempoKind.PressureSpend:
                     {
@@ -793,6 +838,8 @@ namespace Game.Ai.V2
 
                 actions++;
                 if (changed) result.StateChanged = true;
+                if (progressed && best.CountsAsSurplusCardPlay) surplusCardPlays++;
+                if (progressed && best.CountsAsTerminalDraw) terminalDraws++;
 
                 if (interrupt)
                 {
@@ -837,11 +884,16 @@ namespace Game.Ai.V2
             public TempoKind Kind;
             public string ActionKey;
             public float Utility;
-            public float ApCost;      // spec §6 — a spend candidate must fit SPENDABLE (not raw) AP
+            public float ApCost;              // spec §6 — must fit SPENDABLE (not raw) AP
+            public ResourceCost ResCost;      // spec §6 — full persistent-resource cost vector (null = none)
+            public bool ConsumesGeneration;   // spec §P0 — shared maxGenerationActionsPerTurn budget
+            public bool CountsAsSurplusCardPlay; // spec §P0 — MGR-01 maxSurplusActionsPerTurn sub-cap
+            public bool CountsAsTerminalDraw;    // spec §P0 — maxTerminalDrawsPerTurn sub-cap
             public string Label;
             public MatSurplusDecision Mat;
             public NonCombatCardPlayer.NonCombatPlay Nc;
             public StrategicPressurePlan Pressure;
+            public StrategicSpendCandidate Spend;   // non-card strategic spend — executed verbatim
         }
 
         private static List<TempoCandidate> BuildTempoCandidates(WorldSnapshot snap, PlayerSetupData player,
@@ -858,7 +910,9 @@ namespace Game.Ai.V2
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
-                    ApCost = mat.Plan.ApCost,
+                    ApCost = mat.Plan.ApCost, ResCost = mat.Plan.ResCost,
+                    ConsumesGeneration = mat.Plan.Generation != null,
+                    CountsAsSurplusCardPlay = true,
                     ActionKey = "mat:" + mat.Plan.StableKey,
                     Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
                         + (mat.Residual != null ? $" (residual {mat.Residual.Capability})" : ""),
@@ -875,6 +929,9 @@ namespace Game.Ai.V2
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
                     ApCost = nc.Card != null ? nc.Card.EffectivePlayApCost : 0f,
+                    ResCost = nc.Card != null ? nc.Card.EffectivePlayResourceCost : null,
+                    ConsumesGeneration = nc.Generation != null,
+                    CountsAsSurplusCardPlay = true,
                     ActionKey = $"nc:{nc.Kind}:{nc.Explain}",
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
@@ -887,19 +944,21 @@ namespace Game.Ai.V2
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.Draw, Utility = drawU, ApCost = ctx.DrawApCost, ActionKey = "draw",
+                    CountsAsTerminalDraw = true,
                     Label = $"cycle 1 card ({ctx.DrawApCost} AP), hand {hand.Hand.Count}/{ctx.HandCapacity}",
                 });
             }
 
-            // ExistingStrategicSpendAction — internal facility / capacity upgrade / equipment /
-            // standalone generation, and decisive structure pressure. Both fold into the SAME
-            // arbitration instead of running after the loop.
-            if (StrategicMaintenancePolicy.DescribeBest(player, root, hand, ctx,
-                    out string mLabel, out string mKey, out float mUtil, out float mApCost))
+            // ExistingStrategicSpendAction — genuinely NON-CARD strategic actions only (Base/Citadel
+            // slot-capacity upgrade). Facility / Equipment / generation are ordinary PlayCard
+            // candidates above (one StrategicCardEvaluator, spec §5). Every eligible non-card spend
+            // is its own candidate — no hidden category priority chain (spec §3).
+            foreach (StrategicSpendCandidate sp in StrategicMaintenancePolicy.EnumerateCandidates(player, root, hand, ctx))
                 list.Add(new TempoCandidate
                 {
-                    Kind = TempoKind.MaintenanceSpend, Utility = mUtil, ApCost = mApCost,
-                    ActionKey = "maint:" + mKey, Label = mLabel,
+                    Kind = TempoKind.MaintenanceSpend, Utility = sp.Utility, ApCost = sp.ApCost,
+                    ResCost = sp.ResCost, Spend = sp,
+                    ActionKey = "maint:" + sp.StableKey, Label = sp.Label,
                 });
 
             StrategicPressurePlan pressure = StrategicPressureAdvance.BuildPlan(player, root, hand, ctx, commitments);
@@ -930,58 +989,118 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // Expected value of converting stranded AP into a fresh card option, in the same [~0..5]
-        // NetScore band the PlayCard candidates use (spec §1 — Draw is a full peer). Terms:
-        // base option value, hand-fill discount, near-full-hand block risk, AP opportunity cost,
-        // and a discount when the hand already holds a play we are only deferring on a structural
-        // guard (so we do not draw into an already-actionable hand).
+        // spec §1/AC — expected value of converting stranded AP into a fresh card option, in the
+        // same [~0..5] NetScore band the PlayCard candidates use (Draw is a full peer). Terms:
+        //   · expected next-card value  = floor + normalised MEAN remaining-deck card value,
+        //                                 tapered when the deck is nearly exhausted;
+        //   · hand-fill discount        (fewer free slots -> a drawn card sits idle longer);
+        //   · last-slot block risk;
+        //   · AP opportunity cost;
+        //   · graded discount by how good a play the hand ALREADY holds (best current NetScore),
+        //     so we do not draw into an already-actionable hand.
         private static float DrawCandidateUtility(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, StrategicPhaseResult result,
             MatSurplusDecision mat, NonCombatCardPlayer.NonCombatPlay nc)
         {
             int freeSlots = Mathf.Max(0, ctx.HandCapacity - hand.Hand.Count);
             float fill = Mathf.Clamp01(freeSlots / 3f);
-            float u = AiConfigV2.tempoDrawBaseValue * fill;
+
+            var deck = hand.RemainingDeck?.Where(d => d != null).ToList();
+            float deckMeanPower = 0f;
+            if (deck != null && deck.Count > 0)
+            {
+                float sum = 0f;
+                foreach (CardDefinition d in deck)
+                    sum += Mathf.Max(0f, AiPower.ToPowerUnit(d).BasePower);
+                deckMeanPower = sum / deck.Count;
+            }
+            float deckValue = Mathf.Clamp01(deckMeanPower / Mathf.Max(1f, AiConfigV2.tempoDrawDeckValueNorm));
+            float thinTaper = deck == null ? 0f
+                : Mathf.Clamp01(deck.Count / Mathf.Max(1f, AiConfigV2.tempoDrawThinDeckTaperCards));
+            float expectedCardValue =
+                (AiConfigV2.tempoDrawBaseValue + AiConfigV2.tempoDrawDeckValueWeight * deckValue) * thinTaper;
+
+            float u = expectedCardValue * fill;
             if (freeSlots <= 1)
                 u -= AiConfigV2.tempoDrawFutureBlockPenalty;          // drawing into the last slot
             u -= AiConfigV2.tempoDrawApOpportunityWeight * ctx.DrawApCost;
-            // Hand already actionable (a play exists, held only by a structural guard / low score)
-            // -> a further draw is worth less.
-            bool alreadyActionable = (mat.Plan != null) || (nc != null && nc.Score > 0f);
-            if (alreadyActionable)
-                u -= AiConfigV2.tempoDrawHandActionablePenalty;
+
+            float bestPlayable = Mathf.Max(mat.Plan != null ? mat.Utility : 0f, nc != null ? nc.Score : 0f);
+            u -= AiConfigV2.tempoDrawHandActionableWeight * Mathf.Max(0f, bestPlayable);
             return u;
         }
 
-        // spec §4 — the value of NOT spending the loose persistent stockpile (AP is never held; it
-        // does not carry over). Rises with (a) a fragile economy and (b) how SCARCE the thinnest
-        // persistent resource is. Capped so a genuinely strong play (NetScore well above the cap)
-        // still wins, while a marginal one loses to keeping a scarce resource (Case B). Per-CARD
-        // hold value is priced only inside the PlayCard NetScore — this is the loose pool (§5).
-        private static float HoldResourcesUtility(PlayerRoot root, WorldSnapshot snap)
+        // spec §4/AC5 — the value of NOT spending the loose persistent stockpile (AP is never held;
+        // it does not carry over). Computed ONE resource at a time and, when `onlyConsumed` is
+        // given, restricted to the resources a specific candidate would burn — a scarce Tech no
+        // longer inflates the barrier against a play that only costs Materials. Per resource:
+        //   · scarcity term   — rises as stock falls below comfortable (hold it);
+        //   · fragility term   — rises with a weak economy;
+        //   · overflow term   — NEGATIVE when stock is well above comfortable AND income is still
+        //                       positive (near-cap: holding just wastes future income — spend it).
+        // Per-CARD hold value is priced only inside the PlayCard NetScore — this is the loose pool.
+        private static float HoldResourcesUtility(PlayerRoot root, WorldSnapshot snap, ResourceCost onlyConsumed = null)
         {
             if (root == null)
-                return 0f;
-            int persistent = root.GetResource(Game.Economy.ResourceType.Human)
-                + root.GetResource(Game.Economy.ResourceType.Energy)
-                + root.GetResource(Game.Economy.ResourceType.Materials)
-                + root.GetResource(Game.Economy.ResourceType.Tech);
-            if (persistent <= 0)
                 return 0f;
 
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
             float fragility = 1f - eco;
+            float comfortable = Mathf.Max(1f, AiConfigV2.tempoHoldResourceComfortableStock);
+            float overflowStart = comfortable * AiConfigV2.tempoHoldOverflowStockFactor;
 
-            float minStockNorm = 1f;
+            float total = 0f;
+            bool anyResource = false;
             foreach (ResourceType rt in ResourceBundle.All)
-                minStockNorm = Mathf.Min(minStockNorm,
-                    Mathf.Clamp01(root.GetResource(rt) / Mathf.Max(1f, (float)AiConfigV2.tempoHoldResourceComfortableStock)));
-            float scarcity = 1f - minStockNorm;   // 0 when every resource is comfortable
+            {
+                if (onlyConsumed != null && onlyConsumed.Get(rt) <= 0)
+                    continue;
+                int stock = root.GetResource(rt);
+                if (stock <= 0)
+                    continue;
+                anyResource = true;
 
-            float u = (fragility * AiConfigV2.tempoHoldFragilityWeight
-                       + scarcity * AiConfigV2.tempoHoldScarcityWeight)
-                      * AiConfigV2.tempoHoldPersistentResourceValueScale;
-            return Mathf.Clamp(u, 0f, AiConfigV2.tempoHoldPersistentResourceValueCap);
+                float scarcity = 1f - Mathf.Clamp01(stock / comfortable);
+                float hold = (fragility * AiConfigV2.tempoHoldFragilityWeight
+                              + scarcity * AiConfigV2.tempoHoldScarcityWeight)
+                             * AiConfigV2.tempoHoldPersistentResourceValueScale;
+
+                float income = snap?.Self != null ? snap.Self.PerTurnIncome.Get(rt) : 0f;
+                if (stock >= overflowStart && income > 0f)
+                {
+                    float projectedOverflow = (stock - overflowStart)
+                        + income * AiConfigV2.tempoHoldOverflowHorizon;
+                    hold -= Mathf.Min(AiConfigV2.tempoHoldOverflowPressureCap,
+                        projectedOverflow * AiConfigV2.tempoHoldOverflowPressureWeight);
+                }
+                total += hold;
+            }
+            if (!anyResource)
+                return 0f;
+            return Mathf.Clamp(total,
+                -AiConfigV2.tempoHoldOverflowPressureCap, AiConfigV2.tempoHoldPersistentResourceValueCap);
+        }
+
+        // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock:
+        // the strategic reservation ledger AND the legacy recon-air reservation are both netted out
+        // so the same resource is never promised to two owners.
+        private static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ResourceCost cost)
+        {
+            if (cost == null)
+                return true;
+            foreach (ResourceType t in ResourceBundle.All)
+            {
+                int need = cost.Get(t);
+                if (need <= 0)
+                    continue;
+                float strategic = StrategicResourceReservationLedger.Spendable(
+                    player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t), root.GetResource(t));
+                float legacy = Mathf.Max(0f, Game.Ai.AiResourceReservation.Available(root, player, t));
+                if (Mathf.Min(strategic, legacy) + AiConfigV2.allocatorSliceEpsilon < need)
+                    return false;
+            }
+            return true;
         }
 
         // Execute one materialization-surplus chain, mirroring the old inline Phase-B path
@@ -1013,7 +1132,10 @@ namespace Game.Ai.V2
                 if (play.Attached) result.EquipmentAssignmentsSucceeded++;
             }
             if (plan.Generation != null)
+            {
                 result.Reservation.RecordGenerationAttempt(plan.Generation, play);
+                StrategicGenerationBudget.Record(player, ctx.TurnNumber);
+            }
             if (play.StateChanged) { changed = true; result.StateChanged = true; }
 
             if (!play.Deployed)
@@ -1063,6 +1185,7 @@ namespace Game.Ai.V2
             if (ncRes.GenerationAttempted)
             {
                 result.Reservation.RecordGenerationAttempt(nc.Generation, null);
+                StrategicGenerationBudget.Record(player, ctx.TurnNumber);
                 result.GeneratedCardAttempts++;
                 if (ncRes.Generated) result.GeneratedCardsSucceeded++;
             }
