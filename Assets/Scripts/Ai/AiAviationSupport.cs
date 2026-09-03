@@ -138,52 +138,59 @@ namespace Game.Ai
 
         public static int SafeUnlandedEndsRemaining(ArmyData airArmy) => SafeUnlandedEndsRemaining(airArmy?.Members);
 
-        // AI-AIR-02 — may this already-airborne group legally END the current turn still aloft AND
-        // still be guaranteed its mandatory recovery afterwards? This is the test that turns a
-        // helicopter's two-turn endurance into a real tactical window: when it is true, the recon
-        // executor must NOT reserve movement to boomerang home this turn.
+        // AI-AIR-02 — can this airborne group END the current turn on the hex it is standing on
+        // RIGHT NOW, taking NO further movement this turn, and still be guaranteed a legal recovery
+        // to an owned airfield afterwards? This is the exact proof the recon executor's Hold /
+        // don't-reserve-return decision needs.
         //
-        //   CanSafelyEndTurnAirborne =
-        //       endurance allows this turn's EndTurn        (SafeUnlandedEndsRemaining >= 1)
-        //       AND a proven recovery plan exists, one of:
-        //         - lands THIS turn                          (TryReplan)                      -> trivially safe
-        //         - a multi-turn route home already fitting the live margin
-        //                                                    (TryReplanMultiTurnReturn)       -> complete proof
-        //         - MP already spent this turn, land next turn on fresh movement
-        //                                                    (CanStrikeNextTurnAndLand)       -> the CurrentMovement==0 case
+        // It deliberately does NOT use TryReplan / TryReplanMultiTurnReturn: both of those spend
+        // THIS turn's remaining CurrentMovement toward home on their first simulated turn. A Hold
+        // freezes the wing where it is, so that movement never happens — trusting their proof let
+        // the wing choose Hold from a position it could only recover from by ALSO flying the MP it
+        // then never flew (planning ↔ execution mismatch on the safe-return invariant).
+        //
+        //   CanEndTurnHereAndRecover =
+        //       SafeUnlandedEndsRemaining >= 1          (this turn's airborne EndTurn is legal)
+        //       AND from the CURRENT hex, a route to a capacity-OK, no-new-known-AA owned airfield
+        //           lands within (SafeUnlandedEndsRemaining - 1) more unlanded turn-ends, each
+        //           future turn simulated with the group's refreshed EffectiveMoveMax.
         //
         // A plane (SafeUnlandedEndsRemaining == 0) always fails the first clause, so its existing
         // single-turn boomerang model is completely untouched. Pure query — never mutates unit
         // state, re-derives everything from the live shared aviation rules.
-        public static bool CanSafelyEndTurnAirborne(ArmyData airArmy, HexMap map, PlayerSetupData owner)
+        public static bool CanEndTurnHereAndRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
                 return false;
-            if (SafeUnlandedEndsRemaining(airArmy) < 1)
+            int safeEnds = SafeUnlandedEndsRemaining(airArmy);
+            if (safeEnds < 1)
                 return false; // ending this turn aloft is already illegal / would take fuel damage
 
-            // Can still fly all the way home this very turn -> no airborne EndTurn after this at all.
-            if (TryReplan(airArmy, map, owner).HasValue)
-                return true;
+            // This turn's hold consumes one unlanded end; the return itself gets what is left.
+            int marginForReturn = safeEnds - 1;
+            int freshMovement = airArmy.Members.Min(AviationRules.EffectiveMoveMax);
+            if (freshMovement <= 0)
+                return false;
+            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
 
-            // A multi-turn route home, simulated turn-by-turn from RIGHT NOW with this turn's
-            // partly-spent movement. TryReplanMultiTurnReturn only returns non-null when every
-            // unlanded EndTurn that route needs — THIS turn's included — already fits inside the
-            // live SafeUnlandedEndsRemaining margin (TrySimulateHexSequence rejects the route the
-            // instant that running count would exceed it). So it is a complete proof on its own:
-            // no extra "- 1" here. The earlier code subtracted this turn's EndTurn a SECOND time
-            // and so wrongly rejected perfectly valid two-turn windows.
-            if (TryReplanMultiTurnReturn(airArmy, map, owner).HasValue)
-                return true;
+            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
+            {
+                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
+                    continue;
+                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
+                if (path == null)
+                    continue;
+                if (KnownAaExposure(owner, path) - baselineExposure > 0)
+                    continue; // recovery route would cross NEW known AA — not a safe deliberate hold
 
-            // MP already fully spent this turn (CurrentMovement == 0 — e.g. right after an
-            // opportunistic strike, which costs no movement but the wing may have used all of it
-            // reaching the hex). TrySimulateHexSequence bails on firstTurnMovement <= 0 and cannot
-            // express "just end the turn here, then return next turn on refreshed movement".
-            // Verify that path explicitly: one airborne EndTurn now (already within margin), then a
-            // one-turn hop to a safe owned airfield once each aircraft's EffectiveMoveMax refreshes.
-            return airArmy.CurrentMovement <= 0
-                && CanStrikeNextTurnAndLand(airArmy, airArmy.Hex, map, owner, out _);
+                // Simulate the return starting NEXT turn from the current hex: firstTurnMovement is
+                // the refreshed EffectiveMoveMax (not this turn's spent CurrentMovement), and only
+                // marginForReturn further unlanded ends are allowed.
+                if (TrySimulateHexSequence(path.Hexes, 0, freshMovement, airArmy.Members, marginForReturn,
+                    owner, out _, out _, out _, out _, out _))
+                    return true;
+            }
+            return false;
         }
 
         // start airfield -> action hex -> any owned airfield with free capacity — the shared

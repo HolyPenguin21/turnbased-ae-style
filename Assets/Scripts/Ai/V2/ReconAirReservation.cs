@@ -343,7 +343,7 @@ namespace Game.Ai.V2
 
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
                 bool canRemain = ctx.Map != null
-                    && AiAviationSupport.CanSafelyEndTurnAirborne(wing, ctx.Map, player);
+                    && AiAviationSupport.CanEndTurnHereAndRecover(wing, ctx.Map, player);
                 // Turn arithmetic, not a BeginTurn() increment — matches the executor's own
                 // AirborneTurnsElapsed model exactly (AI-AIR-02 review P1: no drift when a turn's
                 // RunActor pass is skipped).

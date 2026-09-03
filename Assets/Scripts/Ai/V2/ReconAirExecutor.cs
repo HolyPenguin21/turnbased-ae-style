@@ -301,7 +301,7 @@ namespace Game.Ai.V2
                 // live every decision from the shared aviation rules (never a cached copy).
                 bool newTurn = sortie.BeginTurn(ctx.TurnNumber);
                 bool canRemainAirborne = !atAirfield
-                    && AiAviationSupport.CanSafelyEndTurnAirborne(air, ctx.Map, player);
+                    && AiAviationSupport.CanEndTurnHereAndRecover(air, ctx.Map, player);
                 // MustRecoverThisTurn — the real multi-turn endurance deadline: the wing has ALREADY
                 // spent at least one turn-end aloft and can no longer prove another safe airborne
                 // EndTurn plus its mandatory return. Only then is Return a hard priority forced at
@@ -621,7 +621,7 @@ namespace Game.Ai.V2
             // and let a fresh state evaluation next turn decide (strike again, or turn for home).
             // Otherwise the reveal means turn for home now.
             bool canRemainAfterStrike = !safeReturnGone
-                && AiAviationSupport.CanSafelyEndTurnAirborne(afterStrike, ctx.Map, player);
+                && AiAviationSupport.CanEndTurnHereAndRecover(afterStrike, ctx.Map, player);
             if (sortie != null)
             {
                 sortie.MissionMode = ReconAirMissionMode.ReconStrike;
