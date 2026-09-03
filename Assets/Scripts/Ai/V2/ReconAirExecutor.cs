@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -228,7 +229,7 @@ namespace Game.Ai.V2
                 launchSortie.RecordStep(launched.Hex);
                 launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, first.Value.Score);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                AiMapMemory.RecordAirReconTarget(player, launched.Hex, ctx.TurnNumber);
+                StampObservedFootprint(player, ctx, launched, launched.Hex);
                 LogVisitedInvariant(player, first.Value.Hex, firstVisitedBefore, "storage-launch-first-step");
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
                     + $"launch=({airfieldHex.Q},{airfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
@@ -619,11 +620,12 @@ namespace Game.Ai.V2
 
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
-            // AI-AIR-01 §5 — stamp every hex this sortie actually observed so a later route's
-            // RedundancyPenalty / hard "repeats a recent air observation" reject has real data
-            // (V2 never calls AiAviationSupport.ContinueSortie, which was the only V1 stamper).
+            // AI-AIR-01 §5 — stamp the whole observed FOOTPRINT, not just the hex the wing landed
+            // on, so a later route's RedundancyPenalty / hard "repeats a recent air observation"
+            // reject reflects what was actually seen (a parallel route one hex over covers nearly
+            // the same ground). V2 never calls AiAviationSupport.ContinueSortie, the only V1 stamper.
             if (!after.Equals(before))
-                AiMapMemory.RecordAirReconTarget(player, after, ctx.TurnNumber);
+                StampObservedFootprint(player, ctx, air, after);
             AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
                 + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
         }
@@ -764,6 +766,19 @@ namespace Game.Ai.V2
             if (!visitedBefore && visitedAfter)
                 AiDebugLog.Write($"[AI][V2][Recon][Air][INVARIANT-FAIL] phase={phase} aircraft unexpectedly "
                     + $"marked ground Visited at ({hex.Q},{hex.R})");
+        }
+
+        // AI-AIR-01 §5 — record the whole on-map vision footprint of a completed air step as
+        // recently-air-observed, so AirReconRouteScorer's recent-coverage overlap sees the ground
+        // a sortie actually swept, not just its centre hex.
+        private static void StampObservedFootprint(PlayerSetupData player, AiTurnContext ctx,
+            ArmyData air, HexCoord center)
+        {
+            int vision = (ctx?.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + AbilityParams.GetBestRecceRadius(air);
+            foreach (HexCoord h in HexGridMath.HexesInRange(center, Math.Max(0, vision)))
+                if (ctx?.Map != null && ctx.Map.TryGetTerrainAt(h, out _))
+                    AiMapMemory.RecordAirReconTarget(player, h, ctx.TurnNumber);
         }
 
         // Spec §29 / §P1 — aviation still only REVEALS a hex and never marks it ground-Visited

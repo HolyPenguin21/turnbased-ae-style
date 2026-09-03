@@ -335,7 +335,7 @@ namespace Game.Ai.V2
         public readonly int Turn;
         public readonly HexCoord From;
         public readonly HexCoord FirstStep;
-        public readonly HexCoord ObjectiveHex;   // == FirstStep for a one-adjacent-step planner
+        public readonly HexCoord ObjectiveHex;   // the committed next step (receding horizon); strategic direction lives in Anchors, not here
         public readonly HexCoord LandingHex;
         public readonly IReadOnlyList<HexCoord> OutboundHexes;
         public readonly IReadOnlyList<HexCoord> ReturnHexes;
@@ -407,53 +407,72 @@ namespace Game.Ai.V2
             if (x.Anchors?.CitadelSector != null && x.Anchors.CitadelSector.Value == stepSector)
                 citadelDir = AiConfigV2.airReconCitadelDirectionWeight * x.Anchors.CitadelConfidence;
 
-            // --- Whole-route observation value + redundancy scan (spec §3 / §5). ----------------
+            // --- Forward-corridor observation value + redundancy scan (spec §3 / §5). -----------
+            // P0 review fix — score ONLY the corridor the sortie actually commits to flying toward
+            // its objective (OutboundHexes: this step for a 1-turn boomerang, the real multi-turn
+            // approach path otherwise). The RETURN path is a receding-horizon forecast the one-step
+            // executor discards and re-plans (landing can even switch via hysteresis), so it must
+            // never contribute informational value — only recovery feasibility / cost / risk. This
+            // removes the phantom double-count where one future return zone credited several
+            // consecutive outbound steps that never flew it.
             var routeHexes = new List<HexCoord>();
             var seen = new HashSet<HexCoord>();
-            void Collect(IReadOnlyList<HexCoord> path)
+            if (x.OutboundHexes != null)
             {
-                if (path == null) return;
-                for (int i = 0; i < path.Count; i++)
+                foreach (HexCoord h in x.OutboundHexes)
                 {
-                    HexCoord h = path[i];
                     if (h.Equals(x.From) || !seen.Add(h))
                         continue;
                     routeHexes.Add(h);
                     if (routeHexes.Count >= AiConfigV2.airReconRouteObservationMaxHexes)
-                        return;
+                        break;
                 }
             }
-            Collect(x.OutboundHexes);
-            Collect(x.ReturnHexes);
 
             float routeObs = 0f;
             float decay = 1f;
             int informativeHexes = 0;
-            int recentlyObservedHexes = 0;
-            int aaAdjacentHexes = 0;
+            float observationNovelty = 0f;   // raw Σ per-hex usefulness — "how much genuinely new/stale territory"
+            // P1 review fix — recent-air-coverage overlap is measured on EVERY corridor hex,
+            // INDEPENDENTLY of current usefulness. A hex a previous sortie just made fresh has
+            // usefulness ~0, so gating the recent check on "still informative" made a successful
+            // reflight invisible to the repeat rule. Two separate metrics now: ObservationNovelty
+            // (drives value) and RecentAirCoverageOverlap (drives the penalty + hard reject).
+            int recentAirCoverageOverlap = 0;
             foreach (HexCoord h in routeHexes)
             {
-                float local = HexInfoUsefulness(x.Player, x.Map, h, x.Turn);
-                if (local > 0.01f)
+                float baseLocal = HexInfoUsefulness(x.Player, x.Map, h, x.Turn);
+                observationNovelty += baseLocal;
+                float local = baseLocal;
+                if (baseLocal > 0.01f)
                 {
                     float ring = 0f;
                     foreach (HexCoord n in HexGridMath.Neighbors(h))
                         ring += HexInfoUsefulness(x.Player, x.Map, n, x.Turn);
                     local += AiConfigV2.airReconRouteObservationRingWeight * ring;
                     informativeHexes++;
-                    if (AiMapMemory.WasAirReconnedWithin(x.Player, h, x.Turn,
-                            AiConfig.airReconTargetCooldownTurns))
-                        recentlyObservedHexes++;
                 }
+                if (AiMapMemory.WasAirReconnedWithin(x.Player, h, x.Turn,
+                        AiConfig.airReconTargetCooldownTurns))
+                    recentAirCoverageOverlap++;
                 routeObs += decay * local;
                 decay *= AiConfigV2.airReconRouteObservationDecay;
-
-                if (AiAviationSupport.KnownAaExposureAt(x.Player, h) > 0)
-                    aaAdjacentHexes++;
             }
             routeObs *= AiConfigV2.airReconRouteObservationWeight;
 
-            // --- FriendlyFacilityCoverValue — route sweeps a stale own-facility perimeter. -------
+            // Return path contributes ONLY known-AA proximity to RecoveryRisk (spec §4) — no
+            // observation / facility / combat credit.
+            int aaAdjacentHexes = 0;
+            foreach (HexCoord h in routeHexes)
+                if (AiAviationSupport.KnownAaExposureAt(x.Player, h) > 0)
+                    aaAdjacentHexes++;
+            if (x.ReturnHexes != null)
+                foreach (HexCoord h in x.ReturnHexes)
+                    if (!h.Equals(x.From) && AiAviationSupport.KnownAaExposureAt(x.Player, h) > 0)
+                        aaAdjacentHexes++;
+
+            // --- FriendlyFacilityCoverValue — forward corridor sweeps a stale own-facility
+            //     perimeter (outbound hexes only after the P0 fix). --------------------------------
             float facilityCover = 0f;
             if (x.Anchors?.StaleFacilityHexes != null && x.Anchors.StaleFacilityHexes.Count > 0
                 && routeHexes.Count > 0)
@@ -470,7 +489,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            // --- CombatOpportunityValue — route passes an HONESTLY-known enemy sighting. ---------
+            // --- CombatOpportunityValue — forward corridor passes an HONESTLY-known enemy
+            //     sighting (outbound hexes only after the P0 fix). ---------------------------------
             float combatOpp = 0f;
             IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = x.Snapshot?.Known?.EnemySightings;
             if (sightings != null && routeHexes.Count > 0)
@@ -495,9 +515,9 @@ namespace Game.Ai.V2
                 * (Math.Max(0, x.RequiredTurns - 1) + 0.5f * Math.Max(0, x.RequiredUnlandedEnds)
                    + aaAdjacentHexes);
 
-            // --- RedundancyPenalty (spec §5): recent air observation + outbound-trail hug +
-            //     coarse-sector coverage already claimed by another active air sortie. -----------
-            float redundancy = AiConfigV2.airReconRedundancyRecentObsPenalty * recentlyObservedHexes;
+            // --- RedundancyPenalty (spec §5): recent air-coverage overlap + outbound-trail hug +
+            //     coarse-sector coverage already held by another Recon actor. --------------------
+            float redundancy = AiConfigV2.airReconRedundancyRecentObsPenalty * recentAirCoverageOverlap;
             bool shaping = x.SortieState != null
                 && (x.SortieState.Phase == ReconAirPhase.Outbound
                     || x.SortieState.Phase == ReconAirPhase.Turning);
@@ -519,8 +539,10 @@ namespace Game.Ai.V2
                 + facilityCover + routeObs + combatOpp;
             float total = positive - travelCost - activationCost - recoveryRisk - redundancy;
 
-            // Coverage deconfliction — same soft divisor shape as before (spec §49): several
-            // aircraft spread out instead of grinding one stale corridor.
+            // Coverage deconfliction — soft divisor for a sector another Recon actor (air OR
+            // ground) is already working, so several actors spread out instead of grinding one
+            // corridor. x.OtherSectorClaims now counts air sorties + ground scouts in the sector
+            // (see BuildChoice), and is populated for a storage launch too (P1 review fix).
             if (x.OtherSectorClaims > 0)
                 total /= 1f + AiConfigV2.airReconCoverageOverlapPenalty * x.OtherSectorClaims;
 
@@ -532,12 +554,21 @@ namespace Game.Ai.V2
                 rejected = true;
                 reject = "no strategic value (only GroundVisited==false)";
             }
-            else if (informativeHexes > 0
-                && recentlyObservedHexes / (float)informativeHexes
+            else if (routeHexes.Count > 0
+                && recentAirCoverageOverlap / (float)routeHexes.Count
                     >= AiConfigV2.airReconRedundancyRecentObsRejectFrac)
             {
                 rejected = true;
-                reject = $"repeats recent air observation ({recentlyObservedHexes}/{informativeHexes})";
+                reject = $"repeats recent air observation ({recentAirCoverageOverlap}/{routeHexes.Count} corridor hexes)";
+            }
+            else if (x.OtherSectorClaims >= AiConfigV2.airReconSectorAdequateCoverage
+                && observationNovelty <= AiConfigV2.airReconSectorCoveredNoveltyFloor)
+            {
+                // spec §5 — "the same sector is already adequately covered by another assigned
+                // Recon actor". Hard reject only when the sector is staffed AND this corridor
+                // brings no substantial new observation; a genuinely novel sweep still passes.
+                rejected = true;
+                reject = $"sector already covered ({x.OtherSectorClaims} actor(s), novelty={observationNovelty:0.00})";
             }
 
             AirReconAnchorKind? anchorKind = x.Anchors?.Anchors?
@@ -548,10 +579,11 @@ namespace Game.Ai.V2
             string breakdown =
                 $"info={infoGain:0.00} stale={staleRefresh:0.00} enemyInt={enemyInterest:0.00} "
                 + $"citDir={citadelDir:0.00} facCover={facilityCover:0.00} routeObs={routeObs:0.00}"
-                + $"(hexes={routeHexes.Count},informative={informativeHexes},recent={recentlyObservedHexes}) "
+                + $"(corridor={routeHexes.Count},informative={informativeHexes},novelty={observationNovelty:0.00},"
+                + $"recentOverlap={recentAirCoverageOverlap}) "
                 + $"combat={combatOpp:0.00} -travel={travelCost:0.00} -activation={activationCost:0.00} "
                 + $"-recovery={recoveryRisk:0.00}(aaAdj={aaAdjacentHexes}) -redundancy={redundancy:0.00}"
-                + $"(trail={trailOverlap},lateral={(lateral ? 1 : 0)}) sectorClaims={x.OtherSectorClaims} "
+                + $"(trail={trailOverlap},lateral={(lateral ? 1 : 0)}) sectorReconActors={x.OtherSectorClaims} "
                 + $"anchor={(anchorKind?.ToString() ?? "none")} => {total:0.00}"
                 + (rejected ? $" [REJECT {reject}]" : string.Empty);
 

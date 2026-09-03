@@ -765,6 +765,17 @@ namespace Game.Ai.V2
         public const float airReconAnchorFrontierWeight = 0.12f;    // unknown-frontier sectors feed anchor pressure only weakly — used after every more meaningful source (spec §1 last bullet)
         public const float airReconAnchorCorridorWeight = 0.45f;    // sector of the midpoint between a known enemy (army/Citadel) and our nearest valuable asset
         public const float airReconAnchorConcentrationWeight = 1.00f; // sanitized enemy-concentration sector pressure (one base unit per true-world army, normalised)
+        // Sector coverage HARD rule (spec §5 "already adequately covered by another assigned Recon
+        // actor"). OtherSectorClaims counts air sorties + ground scouts working the step's coarse
+        // 60°-wedge sector (populated for storage launches too). A candidate is rejected outright
+        // when the wedge already holds at least this many recon actors AND the candidate's forward
+        // corridor carries no substantial new observation (raw Σ per-hex usefulness ≤ the floor).
+        // Kept at 2 so a single scout loosely inside a wide wedge is NOT treated as full coverage —
+        // it is the genuinely-saturated case (two sorties both picking the same wedge, or a wing +
+        // a scout with a redundant air step) that this hard-rejects; the soft divisor still applies
+        // from the first claim.
+        public const int airReconSectorAdequateCoverage = 2;
+        public const float airReconSectorCoveredNoveltyFloor = 1.0f;
 
         // =======================================================================================
         //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)

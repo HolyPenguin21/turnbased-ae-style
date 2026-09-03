@@ -186,12 +186,13 @@ namespace Game.Ai.V2
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
 
-            int sectorClaims = 0;
-            if (sortieState != null)
-            {
-                ReconSector stepSector = ReconDirectionModel.Sector(sortieState.LaunchHex, h);
-                sectorClaims = ReconAirSortieRegistry.OtherSectorClaims(player, moverArmyId, stepSector);
-            }
+            // P1 review fix — sector coverage now counts EVERY assigned Recon actor working the
+            // step's coarse sector (other air sorties + ground scouts), and is computed for a
+            // storage launch too (previously `sortieState == null` => always 0). Frame: sector of
+            // the step measured from the launch/airfield origin `from`, same as the anchor read.
+            ReconSector stepSector = ReconDirectionModel.Sector(from, h);
+            int sectorClaims = ReconAirSortieRegistry.OtherSectorClaims(player, moverArmyId, stepSector)
+                + CountGroundReconActorsInSector(snapshot, stepSector);
 
             var inputs = new AirReconRouteInputs(player, map, mode, turn, from, h, h, landing,
                 outboundHexes, returnHexes, vision, routeCost, requiredTurns, requiredUnlandedEnds,
@@ -250,6 +251,27 @@ namespace Game.Ai.V2
 
             if (observed > 0)
                 staleInformation /= observed;
+        }
+
+        // Ground Recon actors (dedicated scouts) currently standing in `sector`, measured from our
+        // Citadel — the "another assigned Recon actor" half of spec §5's sector-coverage rule that
+        // ReconAirSortieRegistry (air sorties only) does not see. Position-based, not objective-
+        // based: coarse but enough to tell a sector is already being worked.
+        private static int CountGroundReconActorsInSector(WorldSnapshot snapshot, ReconSector sector)
+        {
+            IReadOnlyList<ArmySnapshot> armies = snapshot?.Self?.Armies;
+            if (armies == null)
+                return 0;
+            HexCoord origin = snapshot.Self.Citadel;
+            int n = 0;
+            foreach (ArmySnapshot a in armies)
+            {
+                if (a == null || a.IsAir || a.IsGarrison || !a.IsSoloRecce)
+                    continue;
+                if (ReconDirectionModel.Sector(origin, a.Hex) == sector)
+                    n++;
+            }
+            return n;
         }
     }
 }
