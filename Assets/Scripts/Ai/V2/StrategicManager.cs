@@ -943,10 +943,12 @@ namespace Game.Ai.V2
                 return dec;
             }
 
-            if (residual == null && pick.Value.utility < effThreshold)
+            // Generic-surplus admission gate uses the RAW NetScore (plan.Score), never the
+            // urgency-inclusive decision score — this branch only runs when residual == null anyway.
+            if (residual == null && plan.Score < effThreshold)
             {
                 dec.DeferLog = $"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
-                    + $"util {F(pick.Value.utility)} < threshold {F(effThreshold)} "
+                    + $"util {F(plan.Score)} < threshold {F(effThreshold)} "
                     + $"(base {F(admission.BaseThreshold)}, apSlack {F(admission.ApSlack)}, "
                     + $"resSlack {F(admission.ResourceSlackFactor)}"
                     + $"{(satMult > 1f ? $", garrisonSaturatedx{F(satMult)}" : "")})";
@@ -955,14 +957,11 @@ namespace Game.Ai.V2
 
             dec.Admissible = true;
             dec.Plan = plan;
-            // final closure follow-up §P1 — an operational residual no longer BYPASSES the ranked
-            // pick; its demand urgency enters the COMPARED score instead (same UrgencyBonus ramp
-            // Phase A folds into DecisionScore). Highest score still wins: a 2.0 residual Unit only
-            // beats a 4.0 Aviation if its demand.Value earns > 2.0 of urgency.
-            dec.Utility = pick.Value.utility
-                + (residual != null
-                    ? MaterializationCandidateBuilder.ResidualUrgencyBonus(residual.Value)
-                    : 0f);
+            // final closure follow-up §P1 — pick.Value.utility is ALREADY the global decision score
+            // (NetScore + operational-residual urgency), computed once in
+            // MaterializationCandidateBuilder.BestSurplus. The caller never re-adds urgency here (the
+            // StrategicCardEvaluator "score is final, caller does not correct it" invariant holds).
+            dec.Utility = pick.Value.utility;
             dec.Residual = residual;
             return dec;
         }

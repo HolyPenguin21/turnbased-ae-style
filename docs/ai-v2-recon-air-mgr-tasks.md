@@ -798,6 +798,39 @@ concurrent unrelated in-progress edit to `HexSelectionController.cs` was breakin
   `RecurringResource`-scaled), not a distinct present-turn tempo term. Phase B no longer has the old
   flat `recurringAp` either.
 
+### Final Closure follow-up ROUND 2 (review on the round-1 fixes) — both builds 0/0, tests skipped
+
+- **§P1 — the residual priority moved one level down; now removed there too.** The real bucket
+  ordering lived in `MaterializationCandidateBuilder.BestSurplus`:
+  `OrderByDescending(residual != null) .ThenByDescending(demand.Value) .ThenByDescending(Score)` —
+  so a residual candidate was picked *before* NetScore even entered. Replaced with a single
+  `DecisionScore(p) = p.Score + (CanDeliverDemandOperationally ? UrgencyBonus(demand.Value) : 0)`
+  and `OrderByDescending(DecisionScore)`. `BestSurplus` now RETURNS that decision score as the
+  utility; `ComputeMatDecision` no longer re-adds urgency (the `ResidualUrgencyBonus` wrapper is
+  gone, `UrgencyBonus` is private again) — the "score is final, caller doesn't correct it"
+  invariant holds. The generic-surplus admission gate uses the raw `plan.Score` (unchanged for the
+  `residual == null` path). No-residual ordering is byte-identical to before.
+- **§P1 — Stacking gets a real semantic identity (`StackingKey`).** New descriptor field: copies of
+  the SAME mechanic share a non-null key and are reduced together by `Stacking`; a **null** key
+  (every existing row) means "stands alone — never merged". `Contributions` and
+  `ComputeIncomingAuraSynergy` now: (a) evaluate every unkeyed effect individually with its OWN
+  predicate / scope / duration, (b) group only keyed copies by key. The order-dependent
+  Armored-vs-Bio-aura merge (they had matching numbers, different predicates) is gone — different
+  auras have different keys (or none) and never collapse; the grouping key stopped being a lossy
+  numeric tuple.
+- **§P1/P2 — enemy AoE honours the TargetFilter.** `EffectEvaluationContext` now also carries
+  `LocalEnemyProfiles` (the KNOWN sightings' `Defenders` within radius) and `CountEligibleEnemies
+  (predicate)`. `TargetDensity` + `EnemiesNearDeploy` counts `CountEligibleEnemies(EligiblePredicate)`
+  — an Armored-splash effect over `3 Bio + 2 Armored` sees `affected = 2`, not 5. `null` predicate
+  still falls back to `LocalEnemyBodies` (covers sightings with no per-unit profiles).
+- **§P1 — extensibility acceptance is now PROVEN with a real wired effect.**
+  `[UnitAbilities.CriticalDamage]` (x2-damage-on-hit) had no strategic-scoring representation
+  before. Wiring it end-to-end — `Resolve()` → `Roles()` (CombatBody) → `DeriveRoles` →
+  `Contributions()` → `bd.RoleFit` — took exactly ONE `ByAbility` row + one config constant
+  (`effectCriticalDamageFit`). `grep CriticalDamage` over `StrategicCardEvaluator` /
+  `StrategicManager` / `MaterializationCandidateBuilder` = nothing. Real neutral cards carry the
+  ability (`CardCatalog_Neutral.asset`), so it flows for real, not just in theory.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

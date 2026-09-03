@@ -894,6 +894,7 @@ namespace Game.Ai.V2
         // / AntiArmor reuse capabilityGapValue, Support reuses surplusRecurringApIncomeBonus /
         // heroSupportFitValue (parity with the old inline SupportRoleFit); only these two are new.
         public const float effectMobileBaseFit = 0.20f;    // a fast non-recce body's MobileCombat role-fit floor
+        public const float effectCriticalDamageFit = 0.35f;// §3.5 acceptance row — a CriticalDamage (x2-on-hit) body's CombatBody role-fit bonus
         public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).

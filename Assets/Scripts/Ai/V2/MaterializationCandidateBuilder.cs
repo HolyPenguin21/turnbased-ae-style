@@ -556,17 +556,34 @@ namespace Game.Ai.V2
             }
 
             if (candidates.Count == 0) return null;
+
+            // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
+            // ordering. Each candidate's Phase-B decision score is its NetScore plus the urgency of
+            // the unresolved demand it would OPERATIONALLY deliver (the same UrgencyBonus ramp Phase
+            // A folds into its DecisionScore). A residual candidate no longer skips ahead of a
+            // higher-scored normal one — it just carries the weight its demand.Value earns. The
+            // returned utility IS this decision score, so StrategicManager compares it directly with
+            // the non-combat lane and never re-adds urgency.
+            float DecisionScore(MaterializationPlan p)
+            {
+                AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
+                float urgency = d != null && CanDeliverDemandOperationally(p, d)
+                    ? UrgencyBonus(d.Value) : 0f;
+                return p.Score + urgency;
+            }
+
             MaterializationPlan bestPlan = candidates
-                .OrderByDescending(p => reservation?.BestUnresolvedDemandFor(p) != null ? 1 : 0)
-                .ThenByDescending(p => reservation?.BestUnresolvedDemandFor(p)?.Value ?? 0f)
+                .OrderByDescending(DecisionScore)
                 .ThenByDescending(p => p.Score)
                 .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
                 .First();
+            float bestDecision = DecisionScore(bestPlan);
             if (bestPlan.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval B — {bestPlan.StableKey} role={bestPlan.UseRole} "
                     + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"decision {bestDecision.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{bestPlan.UseBreakdown.ToCompact()}]");
-            return (bestPlan, bestPlan.Score);
+            return (bestPlan, bestDecision);
         }
 
         private static MaterializationPlan MakeExistingPlan(MaterializationChainKind kind, AxisDemand demand,
@@ -766,18 +783,15 @@ namespace Game.Ai.V2
         // a demand's Value ramps a bonus added to every candidate's net decision value, so a real
         // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
         // soft baseline demand adds ~nothing and can genuinely lose to Hold.
+        // Shared Play-vs-Hold / Phase-B urgency ramp off a demand's Value. Used by Phase A's
+        // DecisionScore and (final closure follow-up §P1) by BestSurplus's global decision score so
+        // an operational residual competes on score instead of a hard boolean priority.
         private static float UrgencyBonus(float demandValue)
         {
             float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
                 / Mathf.Max(0.01f, AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
             return t * AiConfigV2.stratHoldUrgencyMax;
         }
-
-        // final closure follow-up §P1 — Phase B's operational-residual candidate no longer gets a
-        // hard boolean priority over the non-combat lane; instead its demand urgency enters the
-        // COMPARED score, exactly like Phase A folds UrgencyBonus into DecisionScore. Highest score
-        // still wins; a residual just carries the weight its demand.Value earns.
-        public static float ResidualUrgencyBonus(float demandValue) => UrgencyBonus(demandValue);
 
         // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the

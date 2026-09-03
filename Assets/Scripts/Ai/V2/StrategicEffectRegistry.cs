@@ -107,6 +107,11 @@ namespace Game.Ai.V2
         //       CapacityRequirement battle cells the effect needs to fully realise (Summon body count)
         //       Stacking          Stack: each copy adds full value; Unique: only one copy counts;
         //                         Diminishing: geometric decay per extra copy
+        //       StackingKey       SEMANTIC identity for stacking. Copies of the SAME mechanic share
+        //                         a non-null key and are reduced together by `Stacking`; a null key
+        //                         (every existing row) means "stands alone" — never merged with any
+        //                         other effect, so two different auras that happen to share numbers
+        //                         are still two effects.
         public readonly EffectScope Scope;
         public readonly float Magnitude;
         public readonly float Probability;
@@ -114,13 +119,15 @@ namespace Game.Ai.V2
         public readonly int DurationRounds;
         public readonly int CapacityRequirement;
         public readonly EffectStacking Stacking;
+        public readonly string StackingKey;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
             EffectField field, bool coverage,
             System.Func<WorthIt.DefenderProfile, bool> eligiblePredicate = null,
             EffectScope scope = EffectScope.SelfBody, float magnitude = 1f, float probability = 1f,
             EffectTiming timing = EffectTiming.Persistent, int durationRounds = 0,
-            int capacityRequirement = 1, EffectStacking stacking = EffectStacking.Stack)
+            int capacityRequirement = 1, EffectStacking stacking = EffectStacking.Stack,
+            string stackingKey = null)
         {
             Role = role;
             BaseFit = baseFit;
@@ -137,6 +144,7 @@ namespace Game.Ai.V2
             DurationRounds = System.Math.Max(0, durationRounds);
             CapacityRequirement = capacityRequirement < 1 ? 1 : capacityRequirement;
             Stacking = stacking;
+            StackingKey = string.IsNullOrEmpty(stackingKey) ? null : stackingKey;
         }
     }
 
@@ -207,9 +215,13 @@ namespace Game.Ai.V2
         public readonly MaterializationPlan Plan;
         public readonly float RecurringIncomeWeight;
         public readonly int LocalEnemyArmies;
-        // final closure §3.1 — expected AFFECTED ENEMY BODIES (sum of enemy unit counts) within the
-        // AoE radius of the deploy hex. This, not the army count, is the AoE-value driver.
+        // final closure §3.1 — expected AFFECTED ENEMY BODIES (sum of KNOWN enemy unit counts) within
+        // the AoE radius of the deploy hex. This, not the army count, is the AoE-value driver.
         public readonly int LocalEnemyBodies;
+        // §3.1 follow-up — the KNOWN enemy DEFENDER PROFILES in that radius, so an AoE effect with a
+        // TargetFilter (EligiblePredicate) counts only the bodies it can actually hit (Armored splash
+        // vs a Bio stack), not the raw member total.
+        public readonly IReadOnlyList<WorthIt.DefenderProfile> LocalEnemyProfiles;
         // final closure §3.2 — proxy for how many combat rounds a fight at the deploy would last
         // (>= 1). Drives how many regen ticks a Regenerate effect would actually get to use.
         public readonly float ExpectedCombatRounds;
@@ -239,6 +251,7 @@ namespace Game.Ai.V2
             LocalEnemyArmies = 0;
             LocalEnemyBodies = 0;
             float enemyPowerNear = 0f;
+            List<WorthIt.DefenderProfile> enemyProfiles = null;
             IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings = snap?.Known?.EnemySightings;
             if (sightings != null && plan != null)
             {
@@ -250,8 +263,12 @@ namespace Game.Ai.V2
                     LocalEnemyArmies++;
                     LocalEnemyBodies += System.Math.Max(1, s.MemberCount);
                     enemyPowerNear += s.DefenseSum + s.AttackSum;
+                    if (s.Defenders != null && s.Defenders.Count > 0)
+                        (enemyProfiles ??= new List<WorthIt.DefenderProfile>()).AddRange(s.Defenders);
                 }
             }
+            LocalEnemyProfiles = enemyProfiles
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
 
             float ownPower = Mathf.Max(1f, ProjectedLine.BasePower);
             ExpectedCombatRounds = enemyPowerNear <= 0f
@@ -270,7 +287,8 @@ namespace Game.Ai.V2
         // §3.3 army -> candidate — each aura standing in the dest army that the incoming candidate's
         // PROJECTED profile (card + equipment, not the bare CardDefinition) satisfies adds its
         // marginal value for one more eligible body (BaseFit / auraNorm × Magnitude × Probability ×
-        // Timing). Stacking is enforced: three identical Unique auras add ONE aura's worth, not three.
+        // Timing). Each aura is checked against the candidate WITH ITS OWN predicate (an Armored aura
+        // and a Bio aura never merge); copies that share a StackingKey are reduced by Stacking.
         private static float ComputeIncomingAuraSynergy(ArmySnapshot destArmy,
             AiPower.ProjectedStrategicLine projected, MaterializationPlan plan, float expectedCombatRounds)
         {
@@ -289,18 +307,28 @@ namespace Game.Ai.V2
                 projected.Attack, projected.HitPoints, projected.Initiative);
 
             float perBody = 1f / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm);
-            float total = 0f;
-            // Group same-descriptor auras so Stacking applies per aura kind (Unique => one copy).
-            foreach (IGrouping<(int, EffectField, float, float, float, EffectStacking), StrategicEffect> g
-                     in destArmy.AllyAuraEffects
-                        .Where(a => a.EligiblePredicate == null || a.EligiblePredicate(candidate))
-                        .GroupBy(a => ((int)a.Role, a.Field, a.BaseFit, a.Magnitude, a.Probability, a.Stacking)))
+
+            float PerAura(StrategicEffect a)
             {
-                StrategicEffect a = g.First();
                 float timing = a.Timing == EffectTiming.DuringCombat && expectedCombatRounds <= 1f
                     ? AiConfigV2.effectNoCombatTimingFloor : 1f;
-                float per = a.BaseFit * a.Magnitude * a.Probability * perBody * timing;
-                total += StackedTotal(a.Stacking, per, g.Count());
+                return a.BaseFit * a.Magnitude * a.Probability * perBody * timing;
+            }
+
+            List<StrategicEffect> eligible = destArmy.AllyAuraEffects
+                .Where(a => a.EligiblePredicate == null || a.EligiblePredicate(candidate))
+                .ToList();
+
+            float total = 0f;
+            foreach (StrategicEffect a in eligible)          // unkeyed auras stand alone
+                if (a.StackingKey == null)
+                    total += PerAura(a);
+            foreach (IGrouping<string, StrategicEffect> g in eligible  // keyed copies -> Stacking
+                         .Where(a => a.StackingKey != null)
+                         .GroupBy(a => a.StackingKey))
+            {
+                StrategicEffect rep = g.First();
+                total += StackedTotal(rep.Stacking, PerAura(rep), g.Count());
             }
             return total;
         }
@@ -403,6 +431,20 @@ namespace Game.Ai.V2
                     n++;
             return n;
         }
+
+        // §3.1 follow-up — KNOWN enemy bodies near the deploy that `predicate` (an AoE effect's
+        // TargetFilter) would actually hit. null predicate => every body (the LocalEnemyBodies
+        // count, which also covers sightings that carry no per-unit profiles).
+        public int CountEligibleEnemies(System.Func<WorthIt.DefenderProfile, bool> predicate)
+        {
+            if (predicate == null)
+                return LocalEnemyBodies;
+            int n = 0;
+            foreach (WorthIt.DefenderProfile m in LocalEnemyProfiles)
+                if (predicate(m))
+                    n++;
+            return n;
+        }
     }
 
     internal static class StrategicEffectRegistry
@@ -443,7 +485,20 @@ namespace Game.Ai.V2
                     new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
                 },
-                // Future mechanics are ONE row each — no evaluator / StrategicManager / Phase-A/B
+                // §3.5 EXTENSIBILITY ACCEPTANCE — CriticalDamage ("successful attack deals x2") was
+                // NOT represented in strategic scoring before. Wiring it end-to-end took exactly
+                // this ONE row: Resolve() -> Roles() (CombatBody) -> DeriveRoles -> Contributions()
+                // -> bd.RoleFit, all through the registry. ZERO edits to StrategicManager, the
+                // StrategicCardEvaluator role switch, Phase A, Phase B, or MaterializationCandidate
+                // Builder arbitration. It is a permanent unit property (Persistent), and a duplicate
+                // copy stacks additively (StackingKey + Stacking.Stack — explicit, not accidental).
+                [UnitAbilities.CriticalDamage] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectCriticalDamageFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Stack, stackingKey: "CriticalDamage"),
+                },
+                // Further mechanics are ONE row each — no evaluator / StrategicManager / Phase-A/B
                 // edit (final closure §3.5 acceptance). The generic semantics ride on the descriptor:
                 //   [UnitAbilities.Splash]     = { new StrategicEffect(IntendedRole.CombatBody, w,
                 //         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage:false,
@@ -454,11 +509,11 @@ namespace Game.Ai.V2
                 //   [UnitAbilities.ArmoredAura]= { new StrategicEffect(IntendedRole.Support, w,
                 //         StrategicEffectContext.EligibleAllies, EffectField.Synergy, coverage:true,
                 //         p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Armored),
-                //         scope: EffectScope.DestArmy) },   // also drives IncomingAuraSynergy the other way
+                //         scope: EffectScope.DestArmy, stackingKey: "ArmoredAura") },  // both aura directions; StackingKey keeps it distinct from a Bio aura
                 //   [UnitAbilities.Summon]     = { new StrategicEffect(IntendedRole.ForceGrowth, w,
                 //         StrategicEffectContext.FreeBattleSlots, EffectField.ForceGrowth, coverage:false,
                 //         timing: EffectTiming.OneShot, durationRounds: 2, capacityRequirement: 3,
-                //         stacking: EffectStacking.Unique) },   // coverage:false => never becomes standing readiness
+                //         stacking: EffectStacking.Unique, stackingKey: "Summon") },   // coverage:false => never standing readiness
             };
 
         // Every strategic effect a card's EFFECTIVE ability set + stat line yields.
@@ -491,18 +546,10 @@ namespace Game.Ai.V2
             IEnumerable<string> effectiveAbilities, int effectiveMoveMax, in EffectEvaluationContext ctx)
         {
             float roleFit = 0f, tempo = 0f, threat = 0f, gap = 0f, grow = 0f, syn = 0f;
-            // Group the card's OWN effects for `role` by descriptor identity so Stacking applies:
-            // a duplicate Unique effect (e.g. two equipment grants of the same aura) adds one copy,
-            // not two. A single-instance effect (every existing row on a normal card) is unchanged.
-            foreach (IGrouping<(StrategicEffectContext, EffectField, float, float, float, int, int, EffectStacking, EffectScope, EffectTiming), StrategicEffect> g
-                     in Resolve(effectiveAbilities, effectiveMoveMax)
-                        .Where(e => e.Role == role)
-                        .GroupBy(e => (e.Context, e.Field, e.BaseFit, e.Magnitude, e.Probability,
-                                       e.DurationRounds, e.CapacityRequirement, e.Stacking, e.Scope, e.Timing)))
+
+            void Add(EffectField field, float v)
             {
-                StrategicEffect e = g.First();
-                float v = EffectEvaluationContext.StackedTotal(e.Stacking, ContextualValue(e, ctx), g.Count());
-                switch (e.Field)
+                switch (field)
                 {
                     case EffectField.RoleFit: roleFit += v; break;
                     case EffectField.ImmediateTempo: tempo += v; break;
@@ -511,6 +558,27 @@ namespace Game.Ai.V2
                     case EffectField.ForceGrowth: grow += v; break;
                     case EffectField.Synergy: syn += v; break;
                 }
+            }
+
+            List<StrategicEffect> forRole = Resolve(effectiveAbilities, effectiveMoveMax)
+                .Where(e => e.Role == role).ToList();
+
+            // An effect with NO StackingKey stands alone — evaluated individually with its OWN
+            // context (predicate / scope / duration), never merged with anything (every existing
+            // row on a normal card takes this path, byte-identical to before).
+            foreach (StrategicEffect e in forRole)
+                if (e.StackingKey == null)
+                    Add(e.Field, ContextualValue(e, ctx));
+
+            // Copies of the SAME mechanic (matching non-null StackingKey) are reduced together by
+            // that mechanic's Stacking policy — a duplicated Unique effect adds one copy, not N.
+            foreach (IGrouping<string, StrategicEffect> g in forRole
+                         .Where(e => e.StackingKey != null)
+                         .GroupBy(e => e.StackingKey))
+            {
+                StrategicEffect e = g.First();
+                Add(e.Field, EffectEvaluationContext.StackedTotal(
+                    e.Stacking, ContextualValue(e, ctx), g.Count()));
             }
 
             // §3.3 (army -> candidate) — value the DEST ARMY's standing auras add to this incoming
@@ -575,7 +643,9 @@ namespace Game.Ai.V2
                             affected = 1;
                             break;
                         default:
-                            affected = ctx.LocalEnemyBodies;
+                            // EnemiesNearDeploy — honour the TargetFilter (Armored splash counts
+                            // Armored known bodies only), not the raw member total.
+                            affected = ctx.CountEligibleEnemies(e.EligiblePredicate);
                             break;
                     }
                     float coverage = Mathf.Clamp01(
