@@ -754,6 +754,50 @@ concurrent unrelated in-progress edit to `HexSelectionController.cs` was breakin
   inert (defaults 1×1, no aura rows, `IncomingAuraSynergy ≡ 0`); §4 is the intended de-dup, not a
   regression.
 
+### Final Closure follow-up (review on top of the §1–§5 batch) — both builds 0/0, tests skipped per project rule
+
+- **§P1 — Phase-B is now literally highest-score-wins (residual boolean bypass removed).** The
+  `doMat` condition dropped `|| mat.Residual != null`. Instead `ComputeMatDecision` folds the
+  residual demand's urgency into the compared score: `dec.Utility = pick.utility +
+  ResidualUrgencyBonus(residual.Value)` (the same `UrgencyBonus` ramp Phase A folds into
+  DecisionScore, exposed public). A 2.0 residual Unit only beats a 4.0 Aviation if its
+  `demand.Value` earns > 2.0 of urgency. Residual admission (skipping `effThreshold`) is unchanged —
+  only the *arbitration* stopped being a hard priority.
+- **§P1 — descriptor semantics genuinely participate (were decoration).**
+  - `Magnitude`/`Probability` ctor bug fixed: `magnitude <= 0 ? 1 : …` / `probability <= 0 ? 1 : …`
+    turned an explicit **0** into 100 %. Now `Magnitude = Max(0, magnitude)`, `Probability =
+    Clamp01(probability)` — the *default arg* is still `1f`, an explicit 0 means 0.
+  - `Timing`: new `TimingFactor` — a `DuringCombat` effect is worth `effectNoCombatTimingFloor`
+    (0.25) where no fight is expected at the deploy (`ExpectedCombatRounds <= 1`); `Persistent` /
+    `OneShot` unaffected. Folded into `magP` for every context. Neutral (1) for every existing row.
+  - `DurationRounds`: Regen `ExpectedSustain` now caps usable rounds at `min(ExpectedCombatRounds,
+    DurationRounds)` (0 = permanent) — a 1-round regen ≠ a 99-round regen. Summon `FreeBattleSlots`
+    multiplies by a duration factor (`DurationRounds / effectSummonDurationNorm`; 0 = permanent).
+  - `Scope`: `TargetDensity` now selects its affected-body population by scope —
+    `EnemiesNearDeploy` → `LocalEnemyBodies` (splash), `DestArmy` → eligible friendly bodies (buff
+    nova), `SelfBody` → 1.
+  - `Stacking`: new `StackedTotal(policy, per, count)` — `Unique` counts one copy, `Diminishing`
+    decays by `effectStackingDiminishFactor` per extra, `Stack` sums. Applied in `Contributions`
+    (card's own duplicated effects, grouped by descriptor identity) and in `IncomingAuraSynergy`
+    (three identical Unique auras = one aura's worth). Single-instance effects (every normal card)
+    are byte-identical.
+- **§P1 — AoE/Regen context reads fog-honest KNOWN sightings, not CHEAT TrueWorld.**
+  `EffectEvaluationContext` builds `LocalEnemyArmies` / `LocalEnemyBodies` / `enemyPowerNear` from
+  `snap.Known.EnemySightings` (`Hex` / `MemberCount` / `DefenseSum + AttackSum`). A never-scouted
+  enemy army can no longer move a Splash / Regeneration score. TrueWorld cheat stays confined to
+  the sanctioned places (`EnemyThreatModel`, WorldAnalysis threat loop).
+- **§P2 — aura marginal-composition holes closed.**
+  - candidate→army now sees HERO allies: new `ArmySnapshot.MembersWithHeroes` (all members incl.
+    heroes as `DefenderProfile`); `ResolveDestination` points `DestArmyMembers` at it. `Members`
+    stays non-hero for WorthIt combat estimates.
+  - army→candidate uses the **projected** profile (equipment-adjusted stats + effective abilities +
+    base-def type tags), not the bare `CardDefinition`; and applies `Stacking` (see above).
+- **§P2 — RecurringResource collapsed to ONE contribution.** The second `EffectField.ImmediateTempo`
+  `ApBonus` row (and `surplusRecurringApTempoBonus`) is removed. Recurring AP "pays back every
+  following turn" — a sustained Support-capability value (`EffectField.RoleFit`,
+  `RecurringResource`-scaled), not a distinct present-turn tempo term. Phase B no longer has the old
+  flat `recurringAp` either.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

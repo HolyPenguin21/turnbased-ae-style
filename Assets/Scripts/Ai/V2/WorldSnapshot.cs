@@ -109,6 +109,10 @@ namespace Game.Ai.V2
         // the effect-evaluation context can price the marginal buff a standing aura gives an INCOMING
         // candidate. Own armies only; empty until an aura row is added to StrategicEffectRegistry.
         internal IReadOnlyList<StrategicEffect> AllyAuraEffects = System.Array.Empty<StrategicEffect>();
+        // final closure §3.3 P2 — ALL member profiles INCLUDING heroes, for the aura
+        // candidate -> army direction (an aura buffing "Armored" must see an Armored HERO ally too;
+        // `Members` above is deliberately non-hero for WorthIt combat estimates).
+        public IReadOnlyList<WorthIt.DefenderProfile> MembersWithHeroes = System.Array.Empty<WorthIt.DefenderProfile>();
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

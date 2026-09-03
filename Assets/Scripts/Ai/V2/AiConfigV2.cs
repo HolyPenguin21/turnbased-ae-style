@@ -805,10 +805,6 @@ namespace Game.Ai.V2
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
         // a generic low-value garrison body in Phase B, without bypassing required Phase-A demands.
         public const float surplusRecurringApIncomeBonus = 0.75f;
-        // final closure §4 — the SECOND, explicit descriptor contribution for a recurring-AP effect:
-        // its immediate-tempo value, so the old hidden flat `recurringAp` add in ScoreSurplusRole is
-        // gone and the same value is counted once and reaches BOTH phases through the registry.
-        public const float surplusRecurringApTempoBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
         public const float surplusScarcityHigh = 1.0f;
         public const float surplusScarcityMed = 0.5f;
@@ -907,10 +903,13 @@ namespace Game.Ai.V2
         public const float effectAuraAllyNorm = 3f;        // eligible allies in the dest army for an aura to reach full value
         // final closure §3 — richer AoE / regen context signals (still all inert until a real
         // Splash / Regenerate row is added to StrategicEffectRegistry.ByAbility).
-        public const float effectAoeBodiesNorm = 6f;       // expected AFFECTED ENEMY BODIES (unit count near the deploy) for an AoE effect to reach full value
-        public const float effectCombatRoundsPowerRatio = 1.5f;// enemy-to-own power ratio near the deploy that adds one expected extra combat round
+        public const float effectAoeBodiesNorm = 6f;       // expected AFFECTED BODIES (KNOWN enemy unit count near the deploy, or friendly bodies for a DestArmy-scoped nova) for an AoE effect to reach full value
+        public const float effectCombatRoundsPowerRatio = 1.5f;// KNOWN-enemy-to-own power ratio near the deploy that adds one expected extra combat round
         public const float effectCombatRoundsMax = 5f;     // cap on the expected-combat-duration proxy
-        public const float effectSustainRoundsNorm = 3f;   // expected combat rounds for a regen effect's duration factor to reach full value
+        public const float effectSustainRoundsNorm = 3f;   // usable regen rounds (min of expected duration and the effect's DurationRounds) for the regen duration factor to reach full value
+        public const float effectNoCombatTimingFloor = 0.25f;// value multiplier for a DuringCombat effect when no fight is expected at the deploy
+        public const float effectSummonDurationNorm = 3f;  // DurationRounds for a temporary Summon's duration factor to reach full value (0 DurationRounds = permanent = full)
+        public const float effectStackingDiminishFactor = 0.5f;// EffectStacking.Diminishing: each extra identical copy is worth this fraction of the previous
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card

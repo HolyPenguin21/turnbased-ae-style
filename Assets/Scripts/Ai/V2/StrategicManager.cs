@@ -698,16 +698,16 @@ namespace Game.Ai.V2
             bool cleanStop = true;
             List<string> lastNcBlocked = null;
 
-            // AI-MGR-01 review-r4 finding 9a — ONE per-iteration ranked pick across BOTH surplus
-            // lanes. Each iteration builds the best materialization-surplus chain AND the best
-            // non-combat play (Aviation / Base / Facility / standalone Equipment), scores them on
-            // the SAME StrategicCardEvaluator NetScore band, and executes the higher one. An
-            // operational strategic residual is must-do and always outranks a generic non-combat
-            // play. The old "run the whole materialization loop, THEN the whole non-combat loop"
-            // ordering (which let a 0.8 Unit foreclose a 2.5 Base on the last AP) is gone. The two
-            // executors stay specialised; only the DECISION is unified. maxSurplusActionsPerTurn is
-            // the whole-phase safety bound; ReactionPassWillReserve was already handled by the
-            // early return above, so no per-iteration reaction gate is needed here.
+            // AI-MGR-01 review-r4 finding 9a + final closure follow-up §P1 — ONE per-iteration
+            // ranked pick across BOTH surplus lanes, pure HIGHEST-SCORE-WINS. Each iteration builds
+            // the best materialization chain AND the best non-combat play (Aviation / Base / Facility
+            // / standalone Equipment), scores them on the SAME StrategicCardEvaluator NetScore band,
+            // and executes the higher one. An operational strategic residual is NOT a boolean
+            // priority any more — its demand urgency is folded into mat.Utility (ComputeMatDecision),
+            // so it competes on score like everything else. The old "run the whole materialization
+            // loop, THEN the whole non-combat loop" ordering is gone; the two executors stay
+            // specialised, only the DECISION is unified. maxSurplusActionsPerTurn is the whole-phase
+            // safety bound; ReactionPassWillReserve was handled by the early return above.
             int surplusActionsUsed = 0;
             for (; surplusActionsUsed < AiConfigV2.maxSurplusActionsPerTurn; surplusActionsUsed++)
             {
@@ -719,7 +719,7 @@ namespace Game.Ai.V2
                 bool ncAdmissible = nc != null && nc.Score >= AiConfigV2.surplusUtilityThreshold;
 
                 bool doMat = mat.Admissible
-                    && (!ncAdmissible || mat.Residual != null || mat.Utility >= nc.Score);
+                    && (!ncAdmissible || mat.Utility >= nc.Score);
 
                 if (!doMat && !ncAdmissible)
                 {
@@ -740,7 +740,7 @@ namespace Game.Ai.V2
                     if (residual != null)
                         AiDebugLog.Write($"[AI][V2]   strat.B — admit residual {residual} via "
                             + $"{plan.StableKey} {AiCardLog.Plan(plan)} util {F(mat.Utility)} "
-                            + "(operational strategic residual outranks generic surplus)");
+                            + $"(includes residual urgency; ranked vs non-combat {F(nc?.Score ?? 0f)})");
                     else
                         AiDebugLog.Write($"[AI][V2]   strat.B — admit {plan.StableKey} {AiCardLog.Plan(plan)} "
                             + $"util {F(mat.Utility)} (ranked pick: materialization {F(mat.Utility)} "
@@ -955,7 +955,14 @@ namespace Game.Ai.V2
 
             dec.Admissible = true;
             dec.Plan = plan;
-            dec.Utility = pick.Value.utility;
+            // final closure follow-up §P1 — an operational residual no longer BYPASSES the ranked
+            // pick; its demand urgency enters the COMPARED score instead (same UrgencyBonus ramp
+            // Phase A folds into DecisionScore). Highest score still wins: a 2.0 residual Unit only
+            // beats a 4.0 Aviation if its demand.Value earns > 2.0 of urgency.
+            dec.Utility = pick.Value.utility
+                + (residual != null
+                    ? MaterializationCandidateBuilder.ResidualUrgencyBonus(residual.Value)
+                    : 0f);
             dec.Residual = residual;
             return dec;
         }

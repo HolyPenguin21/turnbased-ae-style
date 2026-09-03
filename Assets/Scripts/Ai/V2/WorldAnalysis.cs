@@ -281,6 +281,7 @@ namespace Game.Ai.V2
                 Capacity = a.Capacity,
                 OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
+                MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,

@@ -773,6 +773,12 @@ namespace Game.Ai.V2
             return t * AiConfigV2.stratHoldUrgencyMax;
         }
 
+        // final closure follow-up §P1 — Phase B's operational-residual candidate no longer gets a
+        // hard boolean priority over the non-combat lane; instead its demand urgency enters the
+        // COMPARED score, exactly like Phase A folds UrgencyBonus into DecisionScore. Highest score
+        // still wins; a residual just carries the weight its demand.Value earns.
+        public static float ResidualUrgencyBonus(float demandValue) => UrgencyBonus(demandValue);
+
         // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the
         // separately scored HoldValue).
