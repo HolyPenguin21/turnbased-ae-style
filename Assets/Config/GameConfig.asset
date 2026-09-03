@@ -18,7 +18,9 @@ MonoBehaviour:
   eventIconOffset: {x: 0.4, y: -0.5}
   buildingIconOffset: {x: -0.25, y: -0.15}
   armyIconOffset: {x: 0.4, y: -0.3}
-  twoArmySideOffset: {x: 0.375, y: 0}
+  armySlotRight: {x: 0.375, y: 0}
+  armySlotLeft: {x: -0.375, y: 0}
+  armySlotTop: {x: 0, y: 0.42}
   armyButtonPrefab: {fileID: 1990000000000010006, guid: 653d9030c73145938c14734d2e6d04ec, type: 3}
   armyUnitCardPrefab: {fileID: 1980000000000010005, guid: 78f3cecc3db145188cabd4b3abea979a, type: 3}
   citadelResourceBonus:
