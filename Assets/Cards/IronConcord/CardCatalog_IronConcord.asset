@@ -1395,7 +1395,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
+  citadelIcon: {fileID: 21300000, guid: 31e659a01bd0eb242a48aa009846a87c, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 468b60833e660f549a5502f2f04a1b65, type: 3}
   airArmyIcon: {fileID: 21300000, guid: da70df36c6db9144288276c23ded0b5c, type: 3}

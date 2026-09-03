@@ -205,6 +205,12 @@ namespace Game.UI
             // standing on it. One shared check covers both outcomes identically.
             if (retreatingFromOwnBase)
                 TryHandoverVacatedBase(battleHex, defendedBuilding, previousOwner, survivingArmy);
+
+            // Leaving a Hex Event's own guard fight via Retreat counts as declining the event:
+            // guard torn down, entry.Triggered cleared, standalone marker shown — see
+            // HexSelectionController.HandleRetreatFromHexEvent (no-op for any retreat unrelated
+            // to an in-progress event guard fight).
+            hexSelectionController?.HandleRetreatFromHexEvent(battleHex, army?.Owner);
         }
 
         // Per the user's own spec: a base loses its LAST defender of the old owner (garrison or

@@ -118,7 +118,7 @@ namespace Game.Map
                     // move-continuation vs. TriggerHexEventIfClear's no-op) — see
                     // HexEventRegistry.MarkSkipped for why this is the one place both the human
                     // and AI decline branches below funnel through.
-                    onSkip: () => { HexEventRegistry.MarkSkipped(hex); onSkip(); });
+                    onSkip: () => { HexEventRegistry.MarkSkipped(hex, mover.Owner); onSkip(); });
                 return false;
             }
             else
@@ -130,7 +130,7 @@ namespace Game.Map
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} — {(shouldExplore ? "accepted" : "declined")}.");
                 if (shouldExplore)
                     return ResolveEventExplore(mover, hex, entry);
-                HexEventRegistry.MarkSkipped(hex);
+                HexEventRegistry.MarkSkipped(hex, mover.Owner);
                 onSkip();
                 return false;
             }
@@ -216,6 +216,46 @@ namespace Game.Map
                 return null;
             }
             return guard;
+        }
+
+        // Called from BattleScreenUI.PerformRetreat once an army has left a battle hex via Retreat
+        // (ordinary Retreat Army/Retreat All Armies, or a hero fleeing its Capture Kill Challenge —
+        // the shared path). If that hex carries a Hex Event this same army had just Explored — its
+        // guard fight was entered, then abandoned — the event is put back into the exact state a
+        // "Пропустить" would have produced: guard torn down, entry.Triggered cleared, and the
+        // standalone map marker now shown (see HexEventRegistry.MarkSkipped / MapEventDisplay).
+        // Without this the event stayed active but had NO map presence at all (Triggered was set,
+        // Skipped never was) and its guard lingered as a markerless ArmyRegistry entry the player
+        // would blunder into on any later pass — the project owner's own report. A future visit
+        // re-offers the Explore/Skip choice and spawns a fresh, full-strength guard, matching the
+        // manual's "retriggers identically on any future visit" rule for a skipped event.
+        public void HandleRetreatFromHexEvent(HexCoord hex, PlayerSetupData retreater)
+        {
+            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+            // entry.Skipped is deliberately NOT a bail-out here — an event Skipped on an earlier
+            // pass can be Explored again later, and abandoning THAT guard fight has to tear it
+            // down just the same. entry.Triggered (a guard fight is in progress) is the real gate.
+            if (entry == null || entry.Consumed || !entry.Triggered)
+                return;
+            // The GUARD itself pulling back means the explorer WON the hex — ResolveHexAfterVictory
+            // is about to run GrantEventReward off entry.Triggered, so leave the entry untouched.
+            if (retreater == null || retreater == entry.GuardOwner)
+                return;
+
+            // Tear the just-abandoned guard back out of ArmyRegistry (it never had a marker — see
+            // SpawnEventGuard) and empty it so BattleScreenUI.OnBattleOutcomeAcknowledged's own
+            // DeleteArmyIfEmptied(_defender)/survivor pick both resolve to a clean no-op.
+            if (!string.IsNullOrEmpty(entry.GuardArmyName))
+                foreach (ArmyData resident in new List<ArmyData>(ArmyRegistry.AllAt(hex)))
+                    if (resident.Owner == entry.GuardOwner && resident.Name == entry.GuardArmyName)
+                    {
+                        resident.Members.Clear();
+                        ArmyRegistry.Unregister(resident);
+                    }
+            RestackArmiesOn(hex, null);
+
+            entry.Triggered = false;
+            HexEventRegistry.MarkSkipped(hex, retreater);
         }
 
         // "Пропустить" — the event stays un-consumed and untouched, exactly as it was, so it

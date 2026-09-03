@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Game.Core;
 using Game.HexGrid;
 using Game.Players;
+using Game.Turns;
 using UnityEngine;
 
 namespace Game.Map
@@ -14,6 +15,12 @@ namespace Game.Map
     public class MapEventDisplay : MonoBehaviour
     {
         [SerializeField] private GameConfig gameConfig;
+        // Only wired for the TurnStateChanged subscription below — mirrors MapResourceDisplay's
+        // own turnController slot, needed because a hot-seat turn switch reassigns
+        // VisionSystem.CurrentViewer WITHOUT firing VisibilityChanged, so per-viewer marker
+        // visibility (see IsActiveFor) would otherwise not re-evaluate until that viewer's first
+        // army move. Null-guarded — an unwired reference just means that one refresh is skipped.
+        [SerializeField] private GameTurnController turnController;
 
         private readonly Dictionary<HexCoord, EventMarkerVisual> _markersByHex = new Dictionary<HexCoord, EventMarkerVisual>();
 
@@ -24,6 +31,8 @@ namespace Game.Map
             HexEventRegistry.EventSkipped += OnEventSkipped;
             HexEventRegistry.EventConsumed += OnEventConsumed;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            if (turnController != null)
+                turnController.TurnStateChanged += RefreshVisibility;
         }
 
         private void OnDisable()
@@ -31,6 +40,8 @@ namespace Game.Map
             HexEventRegistry.EventSkipped -= OnEventSkipped;
             HexEventRegistry.EventConsumed -= OnEventConsumed;
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
+            if (turnController != null)
+                turnController.TurnStateChanged -= RefreshVisibility;
         }
 
         private void OnVisibilityChanged(PlayerSetupData player)
@@ -50,9 +61,15 @@ namespace Game.Map
                     entry.Value.gameObject.SetActive(IsActiveFor(entry.Key));
         }
 
+        // A hex-event marker is a per-player fact: only a viewer who has PERSONALLY discovered
+        // this event (see HexEventRegistry.Entry.DiscoveredBy) ever sees it — an event another
+        // player scouted or skipped stays invisible to everyone else even when they share vision
+        // of the hex (the project owner's own report). On top of that, the same "remembered once
+        // seen" fog rule the resource row uses.
         private static bool IsActiveFor(HexCoord hex)
         {
-            return VisionSystem.IsVisibleToCurrentViewer(hex) || VisionSystem.HasEverSeenByCurrentViewer(hex);
+            return HexEventRegistry.IsDiscoveredBy(hex, VisionSystem.CurrentViewer)
+                && (VisionSystem.IsVisibleToCurrentViewer(hex) || VisionSystem.HasEverSeenByCurrentViewer(hex));
         }
 
         private void OnEventSkipped(HexCoord hex)

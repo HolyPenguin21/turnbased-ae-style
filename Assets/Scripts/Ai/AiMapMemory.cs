@@ -507,7 +507,16 @@ namespace Game.Ai
                 // IsEngageable(a, player) — a hidden-from-`player` enemy (an army every member
                 // of which is in stealth and undetected) is not a current sighting at all
                 // (spec §8), and a mixed army is remembered by its VISIBLE members only.
-                ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player && BattleInitiator.IsEngageable(a, player));
+                // HexEventRegistry.IsEventGuardArmy — the ArmyData a ground army's Explore spawns
+                // for a Hex Event guard is deliberately NOT a physical sighting: it's transient
+                // (torn down the moment its fight ends), and the event's guard is already tracked
+                // as a card-stat entry below (KnownEventGuards). Recording it here would leak it
+                // into AllKnownNeutralSightings — where AirStrikeTask would pick it up as an
+                // air-strike target and keep flying sorties at it even after it despawned (memory
+                // only self-corrects on re-observation), even though aviation never interacts with
+                // a Hex Event at all (project owner's own rule).
+                ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player
+                    && BattleInitiator.IsEngageable(a, player) && !HexEventRegistry.IsEventGuardArmy(hex, a));
                 if (enemy != null)
                 {
                     List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero && !StealthSystem.IsHiddenFrom(m, player)).ToList();

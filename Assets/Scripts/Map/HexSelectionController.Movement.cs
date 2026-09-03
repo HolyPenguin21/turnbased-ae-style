@@ -89,7 +89,15 @@ namespace Game.Map
 
             _lastPreviewedHover = hoverCoord;
 
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, hoverCoord.Value, AvoidEnemyHex(army));
+            // flatCost for an air army — an aircraft pays a flat 1 MP per hex regardless of
+            // terrain (see AviationRules.MovementCost, what ArmyController.MoveRoutine actually
+            // charges), so the route search must rank routes by hex count too. Without it the
+            // ground-weighted search hands back a longer detour AROUND expensive terrain
+            // (mountains) that the aircraft would never actually fly, and ShowPathArrow then draws
+            // that bent route (2026-09-03 fix, project owner's own report — the displayed cost
+            // number was already corrected via PathMoveCost, but not the route geometry).
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, hoverCoord.Value, AvoidEnemyHex(army),
+                flatCost: AviationRules.IsAirArmy(army));
             if (path == null)
             {
                 HidePathPreview();
@@ -455,7 +463,13 @@ namespace Game.Map
             if (destination.Equals(army.Hex))
                 return MoveOrderResult.AlreadyAtDestination;
 
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army));
+            // flatCost for an air army — see UpdateMovePreview's own comment: an aircraft's real
+            // charge is a flat 1 MP/hex, so the route it's actually ordered along must be the
+            // shortest hex-count route, not a ground-weighted detour around mountains. The move
+            // itself (ArmyController.MoveRoutine) already charges flat per hex; only the route
+            // SELECTION here was still terrain-weighted.
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, AvoidEnemyHex(army),
+                flatCost: AviationRules.IsAirArmy(army));
             if (path == null)
                 return MoveOrderResult.NoPath;
 

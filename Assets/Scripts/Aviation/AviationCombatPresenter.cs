@@ -254,6 +254,15 @@ namespace Game.Aviation
                     continue;
                 if (AviationRules.IsAirfield(army))
                     continue;
+                // A Hex Event's spawned guard is never an air-strike target — aviation does not
+                // interact with a Hex Event at all (project owner's own rule); only the ground
+                // army that chose Explore fights this guard. Keeps the move-arrow preview green
+                // over such a hex too, since this same query drives its red/green (see
+                // HexSelectionController.Movement.cs's ShowPathArrow). A pre-existing neutral army
+                // that merely happens to share the event's hex (the "collision hex" case) has its
+                // own name/owner and is still a valid target.
+                if (HexEventRegistry.IsEventGuardArmy(hex, army))
+                    continue;
                 // Individual stealth (see Game.Map.StealthSystem): an army with no member
                 // visible to the striking player is not an air-strike target at all — this
                 // also keeps the move-arrow preview from turning red over a hidden-only hex.

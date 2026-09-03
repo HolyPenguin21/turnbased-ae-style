@@ -45,6 +45,16 @@ namespace Game.Map
             // just ended WAS this event's own guard, so the reward just pays out — nothing left
             // to ask.
             public bool Triggered;
+            // Every player who has personally DISCOVERED this event — got its own Explore/Skip
+            // choice and left it unresolved (human Skip button, AI decline, or abandoning its
+            // guard fight via Retreat, see HexSelectionController.HandleRetreatFromHexEvent).
+            // MapEventDisplay's on-map marker is gated on the CURRENT VIEWER being in here, on top
+            // of the ordinary fog check — a hex-event marker is a per-player fact, NOT something
+            // every player who merely has vision of the hex gets to see (the project owner's own
+            // report: an event another player scouted/skipped must stay invisible to everyone
+            // else). Never populated for an event that's only ever been Explored straight through
+            // (it's Consumed before a marker would matter) or never reached at all.
+            public HashSet<PlayerSetupData> DiscoveredBy = new HashSet<PlayerSetupData>();
             public List<(RewardEntry reward, CardDefinition card)> ResolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
             // Set once the player (or AI) leaves this event unresolved via Skip (see
             // HexSelectionController.Events.cs's own ShowEventChoice) — drives MapEventDisplay's
@@ -99,6 +109,36 @@ namespace Game.Map
             return entry != null && !entry.Consumed;
         }
 
+        // True when `army` is the live, spawned guard for the Hex Event on `hex` — the ArmyData
+        // SpawnEventGuard (see HexSelectionController.Events.cs) registers once Explore is chosen.
+        // It's an ordinary neutral ArmyData with no distinguishing flag of its own, so it's
+        // matched by GuardOwner + GuardArmyName. The event's card-stat guard is tracked entirely
+        // separately (see AiMapMemory.KnownEventGuards) and is what the ground raid planner reads;
+        // callers use THIS to keep the transient spawned guard out of physical-army handling that
+        // must not apply to a Hex Event — aviation never targets an event guard (per the project
+        // owner's own rule: "авиация вообще не взаимодействует с эвентом"), and the spawned guard
+        // must never leak into a player's fog-of-war neutral-army sightings, where it would
+        // otherwise surface as an air-strike target.
+        public static bool IsEventGuardArmy(HexCoord hex, ArmyData army)
+        {
+            if (army == null)
+                return false;
+            Entry entry = FindAt(hex);
+            return entry != null && !entry.Consumed
+                && !string.IsNullOrEmpty(entry.GuardArmyName)
+                && army.Owner == entry.GuardOwner
+                && army.Name == entry.GuardArmyName;
+        }
+
+        // Has `player` personally discovered the event on `hex` — see Entry.DiscoveredBy. Drives
+        // MapEventDisplay's per-viewer marker visibility; false for a null player (e.g. during
+        // citadel setup, before there's a viewer) so nothing leaks in that window.
+        public static bool IsDiscoveredBy(HexCoord hex, PlayerSetupData player)
+        {
+            Entry entry = FindAt(hex);
+            return entry != null && player != null && entry.DiscoveredBy.Contains(player);
+        }
+
         public static void MarkConsumed(HexCoord hex)
         {
             if (ByHex.TryGetValue(hex, out Entry entry))
@@ -109,10 +149,18 @@ namespace Game.Map
         }
 
         // "Пропустить" — see ShowEventChoice's own comment for why this fires from both the
-        // human Skip button and the AI's own decline branch alike.
-        public static void MarkSkipped(HexCoord hex)
+        // human Skip button and the AI's own decline branch alike. `discoverer` is the player
+        // who just left it unresolved; recorded even when the event was ALREADY skipped by
+        // someone else (a second player independently declining the same event still has to get
+        // its marker — see Entry.DiscoveredBy), so the DiscoveredBy add sits outside the
+        // fire-once guard.
+        public static void MarkSkipped(HexCoord hex, PlayerSetupData discoverer)
         {
-            if (ByHex.TryGetValue(hex, out Entry entry) && !entry.Skipped)
+            if (!ByHex.TryGetValue(hex, out Entry entry))
+                return;
+            if (discoverer != null)
+                entry.DiscoveredBy.Add(discoverer);
+            if (!entry.Skipped)
             {
                 entry.Skipped = true;
                 EventSkipped?.Invoke(hex);
