@@ -188,6 +188,11 @@ namespace Game.Ai.V2
                         reconIntentActorByJob[i.IntentKey] = i.PreferredMoverArmyId.Value;
 
             var scoutJobKeys = new HashSet<MissionIntentKey>(scoutMissions.Select(MissionIntentKey.For));
+            // Recon incumbents whose scout is DELIBERATELY freed this turn (the job is sidelined —
+            // cooldown / already provisioning-rejected). ActorCommitments still lists that mover as
+            // claimed for its durable intent, so the generic sweep below must skip it or it would
+            // re-block the very scout we are trying to hand to a valid backup.
+            var freedReconIncumbentActors = new HashSet<int>();
             foreach (KeyValuePair<MissionIntentKey, int> kv in reconIntentActorByJob)
             {
                 bool hasProposal = scoutJobKeys.Contains(kv.Key);
@@ -195,12 +200,13 @@ namespace Game.Ai.V2
                     ctxRes.Reserve(kv.Key, kv.Value, stealth: false, ground: false, countsRoom: false);
                 else if (!hasProposal)
                     ctxRes.HardExcluded.Add(kv.Value);   // durable recon actor with no proposal this turn
-                // hasProposal && cooldown'd: neither seed nor hard-exclude — its scout is FREE for
-                // another job this turn, and the incumbent's lane is freed in RebuildRoom.
+                else
+                    freedReconIncumbentActors.Add(kv.Value);   // hasProposal && sidelined -> scout is FREE
             }
             if (actorCommitments != null)
                 foreach (int claimed in actorCommitments.ClaimedArmyIds)
-                    if (!ctxRes.ActorToJob.ContainsKey(claimed))
+                    if (!ctxRes.ActorToJob.ContainsKey(claimed)
+                        && !freedReconIncumbentActors.Contains(claimed))
                         ctxRes.HardExcluded.Add(claimed);
 
             ctxRes.ActiveReconExecutions = reconIntentActorByJob.Values.Distinct().Count();
