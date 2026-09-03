@@ -639,6 +639,27 @@ unchanged. Makes the contexts a real *Card × IntendedUse* signal instead of a g
   allies THAT aura benefits. An Armored aura vs a Ranged aura vs a generic "+X to all" each supply
   their own predicate in the `ByAbility` row — no registry-wide "generic allies" count.
 
+### Review round 4 P1 ARCH — projection composition follow-up (fixes on top of `3285cf5`)
+
+- **`AiPower.ProjectMaterialization(plan)` — the ONE authoritative projection.** The effect context
+  built `EffectiveLine(baseDef, plannedGrant)` and missed equipment ALREADY attached to
+  `BaseCardInHand` (a Direct deploy of a pre-equipped card → planning saw HP 5, execution
+  materializes HP 15). `EffectiveLine` now takes `params EquipmentGrant[]` and composes grants in
+  order (`EquipmentSystem.Predict` chained); new `ProjectMaterialization` = base def + already-
+  attached (`BaseCardInHand.Equipment`) + plan-attached (`EquipmentInHand` / `GeneratedEquipmentDef`).
+  `EffectEvaluationContext.ProjectedLine`, `EffectiveMoveMax`, and (already) readiness all read it —
+  one entity for planning and execution.
+- **`FreeBattleSlots` = POST-materialization capacity.** `EffectEvaluationContext` now computes
+  `dest.Capacity - dest.Members.Count - 1` for an ExistingArmy / Garrison dest (the `-1` is the
+  plan's own primary body — the capacity a Summon would ACTUALLY have, not the pre-materialization
+  count); `NewArmy` / `ReusableShell` stays `-1` (unknown, no post-spawn army) ⇒ Summon scores 0.
+  Contract documented on the field. Still inert until a Summon mechanic exists and its
+  capacity rule (normal battle slot vs its own pool) is known.
+
+Both Unity assemblies build clean (0/0) on `0cd7177` — sim harnesses could not be run because a
+concurrent unrelated in-progress edit to `HexSelectionController.cs` was breaking the shared
+`Assembly-CSharp.csproj` at the time; the AI/V2 changes were verified to compile in isolation.
+
 ---
 
 ## AI-MGR-02 — End-of-Turn Tempo Spending

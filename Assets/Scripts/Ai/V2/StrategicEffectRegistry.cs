@@ -125,9 +125,12 @@ namespace Game.Ai.V2
     //                          AoE / TargetDensity signal (0 with no plan/hex, never a global count)
     //   ProjectedLine          the body's PROJECTED stat line (card + attached equipment) — the same
     //                          line readiness / role derivation use; ExpectedSustain reads HitPoints
-    //   DestArmyMembers        members already in the destination ExistingArmy (for an aura's own
-    //                          EligiblePredicate to count the ones IT benefits)
-    //   FreeBattleSlots        real/predicted free battle cells; -1 = unknown -> Summon scores 0
+    //   DestArmyMembers        members already in the destination army (ExistingArmy or Garrison) —
+    //                          for an aura's own EligiblePredicate to count the ones IT benefits
+    //   FreeBattleSlots        battle cells free in the dest army AFTER the plan's own primary body
+    //                          takes its slot (the capacity a Summon would actually have, not the
+    //                          pre-materialization count); -1 = unknown (NewArmy / ReusableShell —
+    //                          no post-spawn army to inspect) -> Summon scores 0
     internal readonly struct EffectEvaluationContext
     {
         public readonly WorldSnapshot Snap;
@@ -148,10 +151,8 @@ namespace Game.Ai.V2
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
 
-            CardDefinition baseDef = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
-            EquipmentGrant grant = plan?.GeneratedEquipmentDef?.equipment
-                                   ?? plan?.EquipmentInHand?.Definition?.equipment;
-            ProjectedLine = AiPower.EffectiveLine(baseDef, grant);
+            // The projected END RESULT — base def + already-attached equipment + plan equipment.
+            ProjectedLine = AiPower.ProjectMaterialization(plan);
 
             LocalEnemyArmies = 0;
             IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
@@ -164,11 +165,13 @@ namespace Game.Ai.V2
                         LocalEnemyArmies++;
             }
 
-            ArmyData dest = plan != null && plan.Deploy.Kind == DeploymentKind.ExistingArmy
-                ? plan.Deploy.Army : null;
+            // Both ExistingArmy and Garrison placements carry Deploy.Army; NewArmy / ReusableShell
+            // leave it null (there is no post-spawn army to inspect yet).
+            ArmyData dest = plan?.Deploy.Army;
             DestArmyMembers = dest?.Members ?? (IReadOnlyList<UnitData>)System.Array.Empty<UnitData>();
-
-            FreeBattleSlots = -1;   // no real battle-cell data threaded yet
+            FreeBattleSlots = dest != null
+                ? Mathf.Max(0, dest.Capacity - dest.Members.Count - 1)   // -1: the plan's own body
+                : -1;
         }
 
         public int CountEligibleAllies(System.Func<UnitData, bool> predicate)

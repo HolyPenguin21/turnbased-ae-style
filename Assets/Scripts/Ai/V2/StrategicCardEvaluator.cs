@@ -457,17 +457,11 @@ namespace Game.Ai.V2
             }
         }
 
-        // Effective moveMax of the plan's body WITH attached equipment folded in (P1 ARCH — so role
-        // derivation, coverage and scoring all read the SAME projected line; a +MoveMax trinket that
-        // pushes a body over the mobile threshold is seen everywhere, not just in readiness).
+        // Effective moveMax of the plan's END RESULT (base + already-attached + planned equipment)
+        // — role derivation, coverage and scoring all read the SAME AiPower.ProjectMaterialization
+        // line, so a +MoveMax trinket over the mobile threshold is seen everywhere.
         private static int EffectiveMoveMax(MaterializationPlan plan)
-        {
-            CardDefinition def = PlanBaseDef(plan);
-            if (def == null) return 0;
-            EquipmentGrant grant = plan?.GeneratedEquipmentDef?.equipment
-                                   ?? plan?.EquipmentInHand?.Definition?.equipment;
-            return AiPower.EffectiveLine(def, grant).MoveMax;
-        }
+            => AiPower.ProjectMaterialization(plan).MoveMax;
 
         // -----------------------------------------------------------------------------------------
         //  NON-COMBAT CARDS  (Aviation / Base / Facility / standalone Equipment) — AI-MGR-01 P0.1.

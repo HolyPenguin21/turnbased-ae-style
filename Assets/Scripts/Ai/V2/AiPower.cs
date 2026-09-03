@@ -94,20 +94,16 @@ namespace Game.Ai.V2
             }
         }
 
-        public static ProjectedStrategicLine EffectiveLine(CardDefinition c, EquipmentGrant attached)
+        // Projected stat line of `c` with zero or more equipment grants applied IN ORDER (nulls
+        // skipped). Multiple grants compose — e.g. equipment ALREADY attached to a hand card plus
+        // equipment a plan attaches now — so planning never scores a different entity than
+        // execution will materialize.
+        public static ProjectedStrategicLine EffectiveLine(CardDefinition c, params EquipmentGrant[] grants)
         {
             if (c == null)
                 return new ProjectedStrategicLine(0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
 
-            var baseAbilities = c.grantedAbilities != null
-                ? new List<string>(c.grantedAbilities) : new List<string>();
-
-            if (attached == null)
-                return new ProjectedStrategicLine(ToPowerUnit(c).BasePower, c.attack, c.defenseRating,
-                    c.resistanceRating, c.range, c.hitPoints, c.moveMax, c.initiative, c.commandRating,
-                    c.fate, c.activationApCost, baseAbilities);
-
-            var before = new Dictionary<EquipmentStat, int>
+            var stats = new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = c.attack,
                 [EquipmentStat.Defense] = c.defenseRating,
@@ -120,10 +116,25 @@ namespace Game.Ai.V2
                 [EquipmentStat.CommandRating] = c.commandRating,
                 [EquipmentStat.Fate] = c.fate,
             };
-            PredictedEquipmentState pred = EquipmentSystem.Predict(attached, before, baseAbilities);
-            int S(EquipmentStat st) =>
-                pred.Stats != null && pred.Stats.TryGetValue(st, out int v) ? v : before[st];
+            IReadOnlyList<string> abilities = c.grantedAbilities != null
+                ? new List<string>(c.grantedAbilities) : new List<string>();
 
+            bool anyGrant = false;
+            if (grants != null)
+                foreach (EquipmentGrant g in grants)
+                {
+                    if (g == null) continue;
+                    anyGrant = true;
+                    PredictedEquipmentState pred = EquipmentSystem.Predict(g, stats, abilities);
+                    if (pred.Stats != null)
+                        foreach (KeyValuePair<EquipmentStat, int> kv in pred.Stats)
+                            stats[kv.Key] = kv.Value;
+                    abilities = pred.Abilities != null
+                        ? new List<string>(pred.Abilities)
+                        : EquipmentSystem.EffectiveAbilities(new List<string>(abilities), g);
+                }
+
+            int S(EquipmentStat st) => stats.TryGetValue(st, out int v) ? v : 0;
             float line = S(EquipmentStat.Attack) * AiConfigV2.powerAttackWeight
                        + S(EquipmentStat.Defense) * AiConfigV2.powerDefenseWeight
                        + S(EquipmentStat.HitPoints) * AiConfigV2.powerHitPointsWeight
@@ -131,12 +142,32 @@ namespace Game.Ai.V2
                        + S(EquipmentStat.Resistance) * AiConfigV2.powerResistanceWeight;
             if (c.cardType == CardType.Hero)
                 line += S(EquipmentStat.Fate) * AiConfigV2.powerHeroFateWeight;
-            IReadOnlyList<string> eff = EquipmentSystem.EffectiveAbilities(baseAbilities, attached);
-            return new ProjectedStrategicLine(Mathf.Max(0f, line) * AbilityMultiplier(eff),
+
+            // No grants: keep ToPowerUnit as the canonical basePower (avoids any drift from the
+            // stat-block recompute above).
+            float basePower = anyGrant
+                ? Mathf.Max(0f, line) * AbilityMultiplier(abilities)
+                : ToPowerUnit(c).BasePower;
+
+            return new ProjectedStrategicLine(basePower,
                 S(EquipmentStat.Attack), S(EquipmentStat.Defense), S(EquipmentStat.Resistance),
                 S(EquipmentStat.Range), S(EquipmentStat.HitPoints), S(EquipmentStat.MoveMax),
                 S(EquipmentStat.Initiative), S(EquipmentStat.CommandRating), S(EquipmentStat.Fate),
-                S(EquipmentStat.ActivationApCost), eff);
+                S(EquipmentStat.ActivationApCost), abilities);
+        }
+
+        // review-r4 P1 ARCH — the ONE authoritative projection of a MaterializationPlan's END RESULT:
+        // base def + equipment ALREADY attached to the hand card + equipment the plan attaches now.
+        // RoleFit / DeriveRoles / EffectContext / readiness all read this so they score the exact
+        // physical entity execution will produce (previously the effect context saw only the plan's
+        // NEW equipment and missed BaseCardInHand.Equipment entirely).
+        public static ProjectedStrategicLine ProjectMaterialization(MaterializationPlan plan)
+        {
+            CardDefinition baseDef = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
+            EquipmentGrant already = plan?.BaseCardInHand?.Equipment?.equipment;
+            EquipmentGrant planned = plan?.GeneratedEquipmentDef?.equipment
+                                     ?? plan?.EquipmentInHand?.Definition?.equipment;
+            return EffectiveLine(baseDef, already, planned);
         }
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;
