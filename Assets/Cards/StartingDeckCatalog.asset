@@ -23,7 +23,7 @@ MonoBehaviour:
     - cardKey: The Ashen/Ashen Citadel
       count: 0
     - cardKey: The Ashen/Ashen Base
-      count: 1
+      count: 0
     - cardKey: The Ashen/Miller Hayes
       count: 1
     - cardKey: The Ashen/Hank Mercer
@@ -88,7 +88,7 @@ MonoBehaviour:
     - cardKey: Iron Concord/Concord Citadel
       count: 0
     - cardKey: Iron Concord/Concord Base
-      count: 1
+      count: 0
     - cardKey: Iron Concord/Dorian Kesh
       count: 1
     - cardKey: Iron Concord/Aldric Voss

@@ -1160,7 +1160,7 @@ MonoBehaviour:
     initiative: 2
     isAviation: 1
     launchEnergyCost: 1
-    turnsWithoutRefuel: 0
+    turnsWithoutRefuel: 1
     antiAirRadius: 2
     airfieldCapacity: 0
     unitTypeTags: 01000000
