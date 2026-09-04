@@ -5,6 +5,8 @@ using Game.Economy;
 using Game.Map;
 using Game.Players;
 
+using Game.Ai;
+
 namespace Game.Ai.V2
 {
     // Diagnostics-only probe. It never chooses or executes a plan and therefore cannot diverge
@@ -79,7 +81,7 @@ namespace Game.Ai.V2
                         }
                         opDeliver++;
                         ResourceCost chainCost = CardCostRules.PlayResources(card);
-                        if (chainCost != null && !CardCostRules.CanAffordPlayResources(root, player, card))
+                        if (chainCost != null && !AiResourceReservation.CanAffordCardPlay(root, player, card))
                         {
                             resReject++;
                             foreach (ResourceType type in ResourceBundle.All)
@@ -109,7 +111,7 @@ namespace Game.Ai.V2
                     // for a capability/trait-matching card examined by this demand diagnostic.
                     ResourceCost preflightCost = CardCostRules.PlayResources(card);
                     if (root != null && player != null && preflightCost != null
-                        && !CardCostRules.CanAffordPlayResources(root, player, card))
+                        && !AiResourceReservation.CanAffordCardPlay(root, player, card))
                     {
                         foreach (ResourceType type in ResourceBundle.All)
                         {
@@ -179,7 +181,7 @@ namespace Game.Ai.V2
                 return $"{cardName}: {reason ?? "preflight rejected"}";
 
             ResourceCost cost = CardCostRules.PlayResources(card);
-            if (cost != null && !CardCostRules.CanAffordPlayResources(root, player, card))
+            if (cost != null && !AiResourceReservation.CanAffordCardPlay(root, player, card))
             {
                 return $"{cardName}: resources need H/E/M/T={cost.human}/{cost.energy}/{cost.materials}/{cost.tech} "
                     + $"have={Available(ResourceType.Human)}/{Available(ResourceType.Energy)}/"

@@ -5,6 +5,8 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
+using Game.Ai;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -126,7 +128,7 @@ namespace Game.Ai.V2
             int totalAp = plan.TotalApCost;
             if (!root.CanSpendActionPoints(totalAp))
             { reason = $"need {totalAp} AP for the full sequence"; return false; }
-            if (!CardCostRules.CanAffordPlayResources(root, player, plan.Card))
+            if (!AiResourceReservation.CanAffordCardPlay(root, player, plan.Card))
             { reason = "resource cost unaffordable"; return false; }
 
             switch (plan.Kind)

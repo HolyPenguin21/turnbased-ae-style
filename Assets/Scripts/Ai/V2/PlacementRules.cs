@@ -4,6 +4,8 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
+using Game.Ai;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -52,7 +54,7 @@ namespace Game.Ai.V2
             int deployApCost = CardCostRules.PlayAp(card);
             if (!root.CanSpendActionPoints(deployApCost))
             { reason = "unaffordable(ap)"; return false; }
-            if (!CardCostRules.CanAffordPlayResources(root, player, card))
+            if (!AiResourceReservation.CanAffordCardPlay(root, player, card))
             { reason = "unaffordable(resources)"; return false; }
 
             foreach (HexCoord hex in AviationSupport.OwnedAirfieldHexes(player))

@@ -42,5 +42,14 @@ namespace Game.Ai
                     return false;
             return true;
         }
+
+        // Reservation-aware affordability of a specific hand-card instance's play-time resource
+        // cost. A null cost (a Research/Production card — already paid at Create) is always
+        // affordable, unlike CanAfford's own null -> false which guards an unwired cost.
+        public static bool CanAffordCardPlay(PlayerRoot root, PlayerSetupData player, CardData card)
+        {
+            ResourceCost cost = CardCostRules.PlayResources(card);
+            return cost == null || CanAfford(root, player, cost);
+        }
     }
 }
