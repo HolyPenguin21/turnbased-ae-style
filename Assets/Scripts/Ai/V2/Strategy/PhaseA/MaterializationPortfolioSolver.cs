@@ -4,6 +4,7 @@ using Game.Cards;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -53,7 +54,8 @@ namespace Game.Ai.V2
         internal static Dictionary<DemandState, DemandCandidate>
             BestInjectiveAssignment(
                 Dictionary<DemandState, List<DemandCandidate>> options,
-                PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, int genAttemptsRemaining)
+                PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
+                int genAttemptsRemaining)
         {
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
@@ -61,10 +63,23 @@ namespace Game.Ai.V2
             var acc = new Dictionary<DemandState, DemandCandidate>();
 
             // round 9 (P0.2) — the physical hand-card / generation-source / AP / H-E-M-T bookkeeping
-            // is now the shared MaterializationConsumptionState (same model the reaction closure DFS
-            // uses). Behaviour is unchanged: the ceilings (apPool / resPool / genAttemptsRemaining)
-            // and the check order are identical to the previous local implementation.
+            // is the shared MaterializationConsumptionState (same model the reaction closure DFS
+            // uses). ARCH-02 §15/§57 — the recipient/hero/hand-slot side is the shared
+            // ProjectedPhysicalState, so two individually-legal chains into ONE recipient with one
+            // free slot can no longer both land in a "jointly feasible" assignment.
             var consumed = new MaterializationConsumptionState();
+            var physical = new ProjectedPhysicalState();
+            physical.SeedHandSlots(hand != null ? Mathf.Max(0, hand.Capacity - hand.Hand.Count) : int.MaxValue);
+            foreach (DemandCandidate c in options.Values.SelectMany(v => v))
+            {
+                ArmyData tgt = c.Plan?.Deploy.Army;
+                if (tgt == null) continue;
+                physical.SeedRecipient(ProjectedPhysicalState.RecipientKey(c.Plan),
+                    tgt.IsGarrison,
+                    tgt.Members.Count(u => u != null && !u.IsHero),
+                    tgt.Members.Any(u => u != null && u.IsHero),
+                    tgt.Capacity);
+            }
 
             float apPool = root != null
                 ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
@@ -88,6 +103,8 @@ namespace Game.Ai.V2
                     foreach (ResourceType t in ResourceBundle.All)
                         if (consumed.ResourceUsed(t) + rc.Get(t) > resPool[t])
                             return false;
+                if (!physical.CanAdd(c.Plan))
+                    return false;
                 return true;
             }
 
@@ -113,11 +130,13 @@ namespace Game.Ai.V2
                     if (!Fits(c))
                         continue;
                     MaterializationConsumptionState.Token token = consumed.Push(c.Plan, c.FollowupAp);
+                    ProjectedPhysicalState.Token phys = physical.Add(c.Plan);
 
                     acc[d] = c;
                     Rec(i + 1, sum + c.DecisionScore);
                     acc.Remove(d);
 
+                    physical.Remove(phys);
                     consumed.Pop(token);
                 }
             }

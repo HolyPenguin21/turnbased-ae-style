@@ -168,7 +168,7 @@ namespace Game.Ai.V2
 
                 Dictionary<DemandState, DemandCandidate> assigned =
                     options.Count > 0
-                        ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx,
+                        ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx, hand,
                             Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
                                         - result.Reservation.GenerationAttemptsUsed))
                         : new Dictionary<DemandState, DemandCandidate>();

@@ -93,48 +93,42 @@ namespace Game.Ai.V2
             // the second. Conservative: one hero per army; a hero raises capacity by +1 (an under-
             // estimate — a real hero's CommandRating is ≥3). ProjectedRoster power is still counted
             // only for a raid-ELIGIBLE army (structural raid actor, unclaimed — mirrors CapabilityInventory).
-            var armyState = new Dictionary<string,
-                (List<AiPower.PowerUnit> seed, bool eligible, int freeNonHero, bool hasHero)>();
+            // ARCH-02 §15/§57 — recipient/hero/hand-slot projection is the shared
+            // ProjectedPhysicalState (same primitive Phase-A's portfolio solver uses); armyState
+            // keeps only the power-seed + raid-eligibility this DFS needs on top of it.
+            var physical = new ProjectedPhysicalState();
+            physical.SeedHandSlots(handSlotBudget);
+            var armyState = new Dictionary<string, (List<AiPower.PowerUnit> seed, bool eligible)>();
             (string key, bool eligible) ResolveArmy(MaterializationPlan p)
             {
+                string k = ProjectedPhysicalState.RecipientKey(p);
+                if (armyState.ContainsKey(k))
+                    return (k, armyState[k].eligible);
                 switch (p.Deploy.Kind)
                 {
                     case DeploymentKind.ExistingArmy:
                     {
                         int id = p.Deploy.Army?.Id ?? -1;
-                        string k = "existing:" + id;
-                        if (!armyState.ContainsKey(k))
-                        {
-                            ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
-                            ArmyData live = ArmyRegistry.AllForOwner(player)
-                                .FirstOrDefault(x => x != null && x.Id == id);
-                            bool elig = a != null && a.IsStructuralRaidActor
-                                && !claimed.Contains(id);
-                            armyState[k] = (
-                                live?.Members != null
-                                    ? live.Members.Select(m => AiPower.ToPowerUnit(m)).ToList()
-                                    : new List<AiPower.PowerUnit>(),
-                                elig,
-                                live != null ? Mathf.Max(0, live.Capacity - live.Members.Count) : 0,
-                                live != null && live.Members.Any(m => m != null && m.IsHero));
-                        }
-                        return (k, armyState[k].eligible);
+                        ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
+                        ArmyData live = ArmyRegistry.AllForOwner(player)
+                            .FirstOrDefault(x => x != null && x.Id == id);
+                        bool elig = a != null && a.IsStructuralRaidActor && !claimed.Contains(id);
+                        armyState[k] = (
+                            live?.Members != null
+                                ? live.Members.Select(m => AiPower.ToPowerUnit(m)).ToList()
+                                : new List<AiPower.PowerUnit>(),
+                            elig);
+                        if (live != null)
+                            physical.SeedRecipient(k, live.IsGarrison,
+                                live.Members.Count(m => m != null && !m.IsHero),
+                                live.Members.Any(m => m != null && m.IsHero), live.Capacity);
+                        return (k, elig);
                     }
-                    case DeploymentKind.ReusableShell:
-                    {
-                        string k = "shell:" + (p.Deploy.Army?.Id ?? -1);
-                        if (!armyState.ContainsKey(k))
-                            armyState[k] = (new List<AiPower.PowerUnit>(), true, 2, false);
+                    default: // ReusableShell / NewArmy — fresh container, ProjectedPhysicalState
+                             // defaults it to an empty non-garrison (capacity 2). Hero-only solo is
+                             // excluded upstream by MaterializationDeliveryPolicy.
+                        armyState[k] = (new List<AiPower.PowerUnit>(), true);
                         return (k, true);
-                    }
-                    default: // NewArmy — fresh solo non-hero unit (hero-only solo is excluded by
-                             // CanDeliverDemandOperationally), structurally a raid actor.
-                    {
-                        string k = "new:" + p.StableKey;
-                        if (!armyState.ContainsKey(k))
-                            armyState[k] = (new List<AiPower.PowerUnit>(), true, 2, false);
-                        return (k, true);
-                    }
                 }
             }
             AiPower.PowerUnit ProjectedUnit(MaterializationPlan p)
@@ -197,31 +191,6 @@ namespace Game.Ai.V2
                 return total;
             }
 
-            // P0.3 — would `chosen` + `extra` still be physically placeable? One hero per recipient
-            // army; non-hero slots bounded by the projected free capacity; the combined generate-
-            // chain hand-slot peak within the free hand.
-            bool RecipientCapacityOk(
-                (MaterializationPlan plan, float ap, bool deliversHero, bool isHeroPlan,
-                 string armyKey, bool armyEligible, AiPower.PowerUnit unit) extra)
-            {
-                int handPeak = extra.plan.HandSlotsNeededAtPeak;
-                foreach (var c in chosen) handPeak += c.plan.HandSlotsNeededAtPeak;
-                if (handPeak > handSlotBudget)
-                    return false;
-                foreach (var g in chosen.Append(extra).GroupBy(c => c.armyKey))
-                {
-                    var st = armyState[g.Key]; // ResolveArmy always populates this for every pool key
-                    int heroesAdded = 0, nonHeroAdded = 0;
-                    foreach (var c in g) { if (c.isHeroPlan) heroesAdded++; else nonHeroAdded++; }
-                    if ((st.hasHero ? 1 : 0) + heroesAdded > 1)
-                        return false;
-                    int nonHeroCap = st.freeNonHero + (heroesAdded > 0 ? 1 : 0);
-                    if (nonHeroAdded > nonHeroCap)
-                        return false;
-                }
-                return true;
-            }
-
             void Consider()
             {
                 bool powerOk = !needPower || ProjectedFieldPowerDelta() + 0.001f >= needPowerAmt;
@@ -260,11 +229,13 @@ namespace Game.Ai.V2
                     if (!consumed.CardsDisjoint(c.plan)) continue;
                     if (c.plan.Generation != null && consumed.GenerationAttempts + 1 > genRemaining) continue;
                     if (consumed.ApUsed + c.ap > prepCeiling + 0.001f) continue;
-                    if (!RecipientCapacityOk(c)) continue;
+                    if (!physical.CanAdd(c.plan)) continue;
                     MaterializationConsumptionState.Token token = consumed.Push(c.plan);
+                    ProjectedPhysicalState.Token phys = physical.Add(c.plan);
                     chosen.Add(c);
                     Dfs(i + 1);
                     chosen.RemoveAt(chosen.Count - 1);
+                    physical.Remove(phys);
                     consumed.Pop(token);
                 }
             }
