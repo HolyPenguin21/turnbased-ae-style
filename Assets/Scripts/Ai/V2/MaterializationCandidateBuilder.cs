@@ -405,7 +405,11 @@ namespace Game.Ai.V2
                 + $"{runner.Value.plan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} [{bdR}]");
         }
 
-        public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
+        // AI-MGR-02 round 6 — the full set of PREFLIGHTED surplus materialization plans (each one
+        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). BestSurplus picks the
+        // highest-DecisionScore among these; the reaction feasibility probe needs the WHOLE set so
+        // it can find the genuinely CHEAPEST feasible plan, not just the best-scored one.
+        internal static List<MaterializationPlan> EnumerateSurplusPlans(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
         {
@@ -555,6 +559,15 @@ namespace Game.Ai.V2
                 }
             }
 
+            return candidates;
+        }
+
+        public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
+        {
+            List<MaterializationPlan> candidates = EnumerateSurplusPlans(
+                snap, player, root, hand, ctx, inv, commitments, reservation);
             if (candidates.Count == 0) return null;
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket

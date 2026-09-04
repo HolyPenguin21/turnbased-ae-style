@@ -87,7 +87,7 @@ namespace Game.UI
         // two happened, since each has its own message/next-step to show. `survivingArmy` is
         // whichever army is still standing on `battleHex` once this one leaves (the caller
         // already knows this — ResolveRetreat's own `survivingArmy`, HandleCaptureKillOutcome's
-        // own `hunterArmy`) — needed below for the own-base-garrison handover.
+        // own `hunterArmy`) — needed below for the vacated-building handover.
         private void PerformRetreat(ArmyData army, ArmyData survivingArmy, out bool destroyed)
         {
             HexCoord battleHex = army.Hex;
@@ -102,12 +102,24 @@ namespace Game.UI
             // retreating must vacate the base exactly the same way a garrison would. wasGarrison
             // (below) still tracks the narrower "this specific army IS the garrison" case, which
             // only matters for the IsGarrison-clear step just below, not for whether the base
-            // changes hands at all (see TryHandoverVacatedBase's own comment for why "no other
-            // engageable army of the old owner left on the hex" already covers the "garrison is
-            // still there, only a field army retreated" case correctly either way).
+            // changes hands at all (see TryHandoverOrDestroyVacatedBuilding's own comment for why
+            // "no other engageable army of the old owner left on the hex" already covers the
+            // "garrison is still there, only a field army retreated" case correctly either way).
+            //
+            // 2026-09-04 fix (project owner's own report): NOT limited to defendedBuilding.IsBase.
+            // A hero-only army sitting on its owner's bare hero-built extraction facility (IsBase
+            // false — see BuildingData / HexSelectionController.Factory.TryBuildExtractionFacility),
+            // whose hero then evades a Capture Kill Challenge and flees, left that facility behind
+            // intact with the hunter army standing right on it — neither HandleBuildingOnArmyDefeat
+            // (guarded on Members.Count == 0; the escaped hero keeps the army non-empty) nor this
+            // path (previously IsBase-only) touched it. retreatingFromOwnBuilding covers a facility
+            // too; TryHandoverOrDestroyVacatedBuilding funnels through BuildingRegistry.
+            // CaptureOrDestroy, which already splits Base→captured vs facility→destroyed.
+            // retreatingFromOwnBase stays for the narrower IsGarrison-clear step only (a bare
+            // facility never has a garrison of its own).
             BuildingData defendedBuilding = BuildingRegistry.FindAt(battleHex);
-            bool retreatingFromOwnBase = defendedBuilding != null && defendedBuilding.IsBase
-                && defendedBuilding.Owner == army.Owner;
+            bool retreatingFromOwnBuilding = defendedBuilding != null && defendedBuilding.Owner == army.Owner;
+            bool retreatingFromOwnBase = retreatingFromOwnBuilding && defendedBuilding.IsBase;
             bool wasGarrison = army.IsGarrison;
             PlayerSetupData previousOwner = defendedBuilding?.Owner;
 
@@ -202,9 +214,11 @@ namespace Game.UI
             // retreat that ends in the army being DESTROYED outright (no valid retreat hex) never
             // goes through FinishBattleEnd/HandleBuildingOnArmyDefeat either, so without this the
             // base stayed with the old owner forever even though nothing of theirs was left
-            // standing on it. One shared check covers both outcomes identically.
-            if (retreatingFromOwnBase)
-                TryHandoverVacatedBase(battleHex, defendedBuilding, previousOwner, survivingArmy);
+            // standing on it. One shared check covers both outcomes identically. 2026-09-04:
+            // retreatingFromOwnBuilding (Base OR bare facility), not retreatingFromOwnBase — see
+            // the IsBase note where these are computed.
+            if (retreatingFromOwnBuilding)
+                TryHandoverOrDestroyVacatedBuilding(battleHex, defendedBuilding, previousOwner, survivingArmy);
 
             // Leaving a Hex Event's own guard fight via Retreat counts as declining the event:
             // guard torn down, entry.Triggered cleared, standalone marker shown — see
@@ -213,24 +227,26 @@ namespace Game.UI
             hexSelectionController?.HandleRetreatFromHexEvent(battleHex, army?.Owner);
         }
 
-        // Per the user's own spec: a base loses its LAST defender of the old owner (garrison or
-        // ordinary field army, whichever just retreated/was destroyed above) hands the base to
+        // Per the user's own spec: a building loses its LAST defender of the old owner (garrison or
+        // ordinary field army, whichever just retreated/was destroyed above) hands the building to
         // whoever's left standing there — same "nobody of the old owner left to defend it" rule
         // CaptureOrDestroyIfUndefended already applies to an ordinary undefended walk-in, just
-        // reached here via combat+retreat instead. `previousOwner` (captured before this method
-        // runs, in PerformRetreat) rather than re-reading `building.Owner` — this method only ever
-        // runs once per retreat so the two are identical here, but naming it explicitly keeps this
-        // self-contained if that ever changes.
-        private void TryHandoverVacatedBase(HexCoord battleHex, BuildingData building, PlayerSetupData previousOwner,
+        // reached here via combat+retreat instead. Routes through BuildingRegistry.CaptureOrDestroy,
+        // which splits a Base (captured intact) from a bare hero-built extraction facility
+        // (destroyed outright) — this method doesn't care which it is. `previousOwner` (captured
+        // before this method runs, in PerformRetreat) rather than re-reading `building.Owner` —
+        // this method only ever runs once per retreat so the two are identical here, but naming it
+        // explicitly keeps this self-contained if that ever changes.
+        private void TryHandoverOrDestroyVacatedBuilding(HexCoord battleHex, BuildingData building, PlayerSetupData previousOwner,
             ArmyData survivingArmy)
         {
             if (building == null || survivingArmy == null || survivingArmy.Owner == null || survivingArmy.Owner == previousOwner)
-                return; // no real winner to hand the base to (both sides gone, or it's still the old owner's own army)
+                return; // no real winner to hand the building to (both sides gone, or it's still the old owner's own army)
             if (!survivingArmy.Hex.Equals(battleHex) || !BattleInitiator.IsEngageable(survivingArmy))
                 return; // didn't actually end up holding the hex (retreated/destroyed too)
 
             // A resident every member of which is hidden from the winner doesn't hold the
-            // base (see Game.Map.StealthSystem).
+            // building (see Game.Map.StealthSystem).
             bool otherDefenderRemains = ArmyRegistry.AllAt(battleHex)
                 .Any(resident => resident.Owner == previousOwner
                     && BattleInitiator.IsEngageable(resident, survivingArmy.Owner));

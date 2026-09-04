@@ -127,8 +127,9 @@ namespace Game.Map
             // elsewhere in the project is careful to call RestackArmiesOn right after a roster/
             // ownership change (HexSelectionController.Movement.cs's own move-in capture,
             // BattleScreenUI.Combat.cs's HandleBuildingOnArmyDefeat, ...), but a capture reached
-            // through BattleScreenUI.Retreat.cs's TryHandoverVacatedBase (a hero escaping a
-            // Capture Kill Challenge, then its now hero-only army retreating off its OWN base) is
+            // through BattleScreenUI.Retreat.cs's TryHandoverOrDestroyVacatedBuilding (a hero
+            // escaping a Capture Kill Challenge, then its now hero-only army retreating off its
+            // OWN base or facility) is
             // the very last thing PerformRetreat does — nothing downstream ever restacks this hex
             // again afterward. EnsureGarrisonForBuilding above may just have spawned a brand-new
             // empty garrison for the new owner, and VisualStateChanged's own ReturnStaleAviationAt

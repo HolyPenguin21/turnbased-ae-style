@@ -475,8 +475,8 @@ namespace Game.UI
             // a field army — see BattleInitiator.FindEnemyAt's own comment on why only one gets
             // fought at a time), chained one battle at a time via ResolveHexAfterVictory. Only
             // capture/destroy once EVERY one of the building owner's own engageable armies here
-            // is gone — same "any other defender left?" check TryHandoverVacatedBase already
-            // applies for the retreat path (BattleScreenUI.Retreat.cs). Without this, the base
+            // is gone — same "any other defender left?" check TryHandoverOrDestroyVacatedBuilding
+            // already applies for the retreat path (BattleScreenUI.Retreat.cs). Without this, the base
             // recoloured/gave vision to the winner the instant the FIRST defending army alone was
             // wiped out, even with a second battle for it still pending (see the project owner's
             // own report: clicking Delay before that second battle already showed the base as
