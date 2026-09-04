@@ -51,9 +51,20 @@ namespace Game.Turns
         // default; Editor Inspector checkbox only, no in-game UI.
         [SerializeField] private bool debugWatchAiTurns;
 
+        // Dev-only, independent of debugWatchAiTurns above: reveals the ENTIRE map (every hex,
+        // every army/building marker, via VisionSystem.DebugRevealAll — see that property's own
+        // comment) regardless of whose turn it is or what the current viewer has actually
+        // explored. Lets the whole roster/garrison composition be inspected (clicking any now-
+        // visible army marker still opens the normal read-only ArmyViewerModalUI — see
+        // HexSelectionController.TryHandleEnemyArmyMarkerClick) without switching whose honest
+        // vision debugWatchAiTurns shows. Off by default; Editor Inspector checkbox only, no
+        // in-game UI, same convention as debugWatchAiTurns.
+        [SerializeField] private bool debugRevealFullMap;
+
         private void OnValidate()
         {
             Game.Map.StealthSystem.DebugLog = debugWatchAiTurns;
+            Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
         }
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
@@ -248,6 +259,7 @@ namespace Game.Turns
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
             StealthSystem.DebugLog = debugWatchAiTurns;
+            Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
             if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
