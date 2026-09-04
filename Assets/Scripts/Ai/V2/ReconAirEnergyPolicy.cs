@@ -141,8 +141,7 @@ namespace Game.Ai.V2
                 if (!AviationRules.IsValidAirArmy(army))
                     continue;
                 bool inFlightSortie = ReconAssignmentRegistry.TryGet(player, army.Id, out _)
-                    || (AiTaskRegistry.TaskFor(player, army) is AiTask t
-                        && (t.Kind == AiTaskKind.AirRecon || t.Kind == AiTaskKind.AirStrike));
+                    || AirSortieRegistry.ForArmy(player, army) != null;
                 if (!inFlightSortie)
                     continue;
                 total += Mathf.Max(0, army.ActivationEnergyCost);

@@ -169,8 +169,7 @@ namespace Game.Ai.V2
 
                 HexCoord before = army.Hex;
                 var decision = AiDecision.Move(army, next.Value,
-                    $"V2 strategic pressure — advance toward known enemy Citadel at ({plan.TargetHex.Q},{plan.TargetHex.R})",
-                    null, 0f, AiTaskCategory.Aggression);
+                    $"V2 strategic pressure — advance toward known enemy Citadel at ({plan.TargetHex.Q},{plan.TargetHex.R})", 0f);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 

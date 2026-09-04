@@ -293,7 +293,6 @@ namespace Game.Ai
             // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
             // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
             if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
-                && (decision.Task == null || decision.Task.Kind == AiTaskKind.VisitHex)
                 && root != null
                 && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
             {
@@ -319,30 +318,20 @@ namespace Game.Ai
                     }
                 }
             }
-            // The mirror: this army is being moved for something a hidden unit can't finish
-            // (a raid/capture/patrol move ending in contact, or an undefended building
-            // takeover on arrival) — drop stealth on any hidden member now, immediately
-            // before the action, never earlier (stealth design §8). Free.
-            // Develop is excluded alongside VisitHex (P0, 2026-08-28): walking a Researcher/
-            // Assembler toward a Lab/Factory is a plain repositioning march, not a contact action
-            // — the reveal (Research only; never Production) happens at the Challenge itself, in
-            // AiDevelopmentPlanner.RunResearchProductionRoutine (spec §12), not here.
-            else if (wantsBuildingTakeover || (decision.Task != null
-                && decision.Task.Kind != AiTaskKind.VisitHex && decision.Task.Kind != AiTaskKind.Develop))
+            // The mirror: this move ends on an undefended enemy/neutral building this army will
+            // take over — a hidden unit can't capture, so drop stealth on any hidden member now,
+            // immediately before the action, never earlier (stealth design §8). Free.
+            else if (wantsBuildingTakeover)
             {
                 foreach (UnitData member in army.Members.ToList())
                     if (member.IsHidden)
                     {
                         // §4 — the ONLY voluntary AI scout reveal path. Canonical ExitStealth,
-                        // only immediately before a contact/takeover action, never during
-                        // Explore/Develop repositioning. Tagged so a debug run can prove why a
-                        // hidden scout became visible; ordinary movement emits no such line.
+                        // only immediately before a takeover action. Tagged so a debug run can
+                        // prove why a hidden scout became visible; ordinary movement emits none.
                         Game.Map.StealthSystem.ExitStealth(member);
-                        string reason = wantsBuildingTakeover
-                            ? "capture_or_destroy_building"
-                            : $"pre_action_{decision.Task.Kind}";
                         AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" ScoutStealthExit "
-                            + $"reason={reason} (immediately before the action)");
+                            + "reason=capture_or_destroy_building (immediately before the action)");
                     }
             }
 
@@ -358,16 +347,6 @@ namespace Game.Ai
                 : MoveOrderResult.CannotMove;
             if (trace != null)
                 trace.MoveResult = moveResult;
-
-            // The launch-Energy reservation AiAviationSupport.LaunchRoutine placed on this task
-            // (2026-08-26 P1 fix) only ever needs to survive until this exact moment — IssueMoveOrder
-            // just spent the REAL ActivationEnergyCost from root (or found it already spent, army
-            // already activated earlier this turn), either way there's nothing left for the
-            // reservation to protect. Release is idempotent (a no-op if nothing was ever reserved,
-            // e.g. every ordinary ground-army move, or a continuation step after the first), so this
-            // never needs a success/failure check on moveResult itself.
-            if (decision.Task != null && (decision.Task.Kind == AiTaskKind.AirStrike || decision.Task.Kind == AiTaskKind.AirRecon))
-                AiResourceReservation.Release(decision.Task);
 
             if (army.Controller != null)
                 yield return new WaitUntil(() => !army.Controller.IsMoving);
@@ -434,12 +413,6 @@ namespace Game.Ai
             AiDebugLog.Write(army.Hex.Equals(before)
                 ? $"[AI] {player.Nickname}: \"{army.Name}\" made no progress toward its target — reason={moveResult} — stayed at ({army.Hex.Q}, {army.Hex.R})."
                 : $"[AI] {player.Nickname}: \"{army.Name}\" arrived at ({army.Hex.Q}, {army.Hex.R}).{moveDelta}");
-
-            // AiTask.VisitLastProgressTurn's own stall watchdog (2026-08-24) — a real hex change is
-            // "progress" whether it came from routine scouting or a flee step; only actually moving
-            // resets the clock, a no-op order (moveResult != success, army.Hex == before) never does.
-            if (!army.Hex.Equals(before) && decision.Task != null && decision.Task.Kind == AiTaskKind.VisitHex)
-                decision.Task.VisitLastProgressTurn = ctx.TurnNumber;
 
             // §5 — record the actual step for a solo scout so V2 route ranking can prefer fresh
             // ground over re-treading this trail. Bounded; never blocks a hex.
@@ -600,11 +573,10 @@ namespace Game.Ai
         // it) and the army could never take its first step at all, despite the Energy genuinely
         // being there. Passing the task here excludes only ITS OWN reservation from the read,
         // never anyone else's — a rival task's claim still counts exactly as before.
-        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination,
-            AiTask reservationOwner = null) =>
+        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
                 && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
-                    && AiResourceReservation.Available(root, player, ResourceType.Energy, reservationOwner) >= army.ActivationEnergyCost));
+                    && AiResourceReservation.Available(root, player, ResourceType.Energy) >= army.ActivationEnergyCost));
 
         // Trailer for an action's own log line — "what did this actually cost", read as a
         // before/after snapshot around the spend rather than off the CardDefinition/ResourceCost

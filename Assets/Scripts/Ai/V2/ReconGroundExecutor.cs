@@ -271,8 +271,7 @@ namespace Game.Ai.V2
                     beforeHex, next.Value, actionWhy);
                 var move = AiDecision.Move(army, next.Value,
                     $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
-                    + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})",
-                    null, 0f, AiTaskCategory.Reconnaissance);
+                    + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
                 result.EnteredStealth |= trace.EnteredStealthThisStep;

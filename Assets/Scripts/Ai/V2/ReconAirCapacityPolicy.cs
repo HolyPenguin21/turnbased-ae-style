@@ -151,7 +151,7 @@ namespace Game.Ai.V2
             // OwnedAirfieldHexes order. Not budget-filtered / not capped — the prepass owns that.
             foreach (ArmyData a in ownAir
                 .Where(a => AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AiTaskRegistry.TaskFor(player, a) == null
+                    && AirSortieRegistry.ForArmy(player, a) == null
                     && a.CurrentMovement > 0)
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost))
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))

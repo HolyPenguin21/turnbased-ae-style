@@ -88,7 +88,7 @@ namespace Game.Aviation
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
                 if (army != excluding && army.Owner == owner && AviationRules.IsAirArmy(army))
                     used += army.Members.Count;
-            AiTask excludingTask = excluding != null ? AiTaskRegistry.TaskFor(owner, excluding) : null;
+            AirSortie excludingTask = excluding != null ? AirSortieRegistry.ForArmy(owner, excluding) : null;
             used += ReservedLandingSlots(hex, owner, excludingTask);
             return Mathf.Max(0, capacity - used);
         }
@@ -105,12 +105,12 @@ namespace Game.Aviation
         // owner's own report: two independently-launched 2-aircraft groups could otherwise both
         // claim the same single free slot on a 2-capacity base, since neither's outbound flight
         // was ever visible to the other's own capacity check until it actually landed).
-        private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AiTask excludingTask)
+        private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AirSortie excludingTask)
         {
             int reserved = 0;
-            foreach (AiTask task in AiTaskRegistry.TasksFor(owner))
+            foreach (AirSortie task in AirSortieRegistry.For(owner))
             {
-                if (task == excludingTask || (task.Kind != AiTaskKind.AirStrike && task.Kind != AiTaskKind.AirRecon))
+                if (task == excludingTask)
                     continue;
                 if (task.Army == null || !task.LandingHex.Equals(hex) || task.Army.Hex.Equals(hex))
                     continue;
@@ -838,24 +838,22 @@ namespace Game.Aviation
         // shape needed to change, only which landing hex wins when a plan DOES still exist. Returns
         // null (propose nothing this step) whenever nothing reachable exists at all — callers must
         // never strand the aircraft on a doomed order, per spec.
-        public static AiDecision ContinueSortie(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AiTask task,
-            string logLabel, string outboundReason, float continuationScore, AiTaskCategory category)
+        public static AiDecision ContinueSortie(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AirSortie task,
+            string logLabel, string outboundReason, float continuationScore)
         {
             if (task.Army?.Controller == null || !ArmyRegistry.AllForOwner(player).Contains(task.Army) || !AviationRules.IsAirArmy(task.Army))
             {
                 // Releases whatever launch-Energy reservation (see AiAviationSupport.LaunchRoutine)
                 // this task may still be holding — safe even if the army already moved and the
                 // reservation was already released there (Release is a no-op on an unknown task).
-                AiResourceReservation.Release(task);
-                AiTaskRegistry.Remove(player, task);
+                AirSortieRegistry.Remove(player, task);
                 return null;
             }
             if (task.Army.Members.Count == 0)
             {
                 // AA destroyed the whole sortie — ordinary empty-army cleanup applies (see
                 // AiTurnController.RunEmptyArmyCleanup), nothing left here to fly.
-                AiResourceReservation.Release(task);
-                AiTaskRegistry.Remove(player, task);
+                AirSortieRegistry.Remove(player, task);
                 return null;
             }
 
@@ -866,35 +864,34 @@ namespace Game.Aviation
             // intel turns up on it). Re-stamped every outbound step — including the step that
             // reaches it — so the cooldown counts from the sortie's last real progress. Recon only:
             // AirStrike has its own targeting and no such loop to guard against.
-            if (category == AiTaskCategory.Reconnaissance && task.AirOutbound)
+            if (task.Kind == AirSortieKind.Recon && task.Outbound)
                 AiMapMemory.RecordAirReconTarget(player, task.TargetHex, ctx.TurnNumber);
 
             // Outbound leg finished the moment the army reaches the objective — the strike itself
             // (if the target was still there) or the recon reveal already happened as a side effect
             // of the MoveArmy step that landed the army on this hex (AviationCombatPresenter.
             // ResolveStep). Turn for home.
-            if (task.AirOutbound && task.Army.Hex.Equals(task.TargetHex))
+            if (task.Outbound && task.Army.Hex.Equals(task.TargetHex))
             {
-                task.AirOutbound = false;
+                task.Outbound = false;
                 task.TargetHex = task.LandingHex;
             }
 
             // Return leg finished — the sortie is over.
-            if (!task.AirOutbound && task.Army.Hex.Equals(task.TargetHex))
+            if (!task.Outbound && task.Army.Hex.Equals(task.TargetHex))
             {
-                AiResourceReservation.Release(task);
-                AiTaskRegistry.Remove(player, task);
+                AirSortieRegistry.Remove(player, task);
                 return null;
             }
 
             HexCoord destination;
-            if (task.AirOutbound)
+            if (task.Outbound)
             {
                 Sortie? sortie = TryPlanSortiePreferForwardLanding(task.Army, task.TargetHex, ctx.Map, player);
                 if (sortie.HasValue)
                 {
                     task.LandingHex = sortie.Value.LandingHex;
-                    task.IsMultiTurnSortie = false;
+                    task.IsMultiTurn = false;
                     destination = task.TargetHex;
                 }
                 else
@@ -909,7 +906,7 @@ namespace Game.Aviation
                     if (multi.HasValue)
                     {
                         task.LandingHex = multi.Value.LandingHex;
-                        task.IsMultiTurnSortie = true;
+                        task.IsMultiTurn = true;
                         destination = task.TargetHex;
                         LogMultiTurnContinuation(player, task, logLabel, multi.Value, arrivingHome: false);
                     }
@@ -927,9 +924,9 @@ namespace Game.Aviation
                                 + "airfield reachable before fuel deadline; holds position.");
                             return null;
                         }
-                        task.AirOutbound = false;
+                        task.Outbound = false;
                         HexCoord home = fallback ?? multiFallback.Value.LandingHex;
-                        task.IsMultiTurnSortie = fallback == null;
+                        task.IsMultiTurn = fallback == null;
                         task.LandingHex = home;
                         task.TargetHex = home;
                         destination = home;
@@ -946,7 +943,7 @@ namespace Game.Aviation
                 {
                     task.LandingHex = confirmedLanding.Value;
                     task.TargetHex = confirmedLanding.Value;
-                    task.IsMultiTurnSortie = false;
+                    task.IsMultiTurn = false;
                     destination = confirmedLanding.Value;
                 }
                 else
@@ -960,27 +957,27 @@ namespace Game.Aviation
                     }
                     task.LandingHex = multiReturn.Value.LandingHex;
                     task.TargetHex = multiReturn.Value.LandingHex;
-                    task.IsMultiTurnSortie = true;
+                    task.IsMultiTurn = true;
                     destination = multiReturn.Value.LandingHex;
                     LogMultiTurnContinuation(player, task, logLabel, multiReturn.Value, arrivingHome: true);
                 }
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination, task))
+            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination))
                 return null;
             HexCoord? nextStep = AiTurnController.FindAffordableStep(ctx.Map, task.Army, destination);
             if (nextStep == null)
                 return null;
 
-            string reason = task.AirOutbound ? outboundReason : "returns to land";
-            return AiDecision.Move(task.Army, nextStep.Value, reason, task, continuationScore, category);
+            string reason = task.Outbound ? outboundReason : "returns to land";
+            return AiDecision.Move(task.Army, nextStep.Value, reason, continuationScore);
         }
 
         // Multi-turn diagnostic line (spec point 12/16) — reports the group's own live
         // SafeUnlandedEndsRemaining against what this specific plan still needs, so a playtester can
         // see exactly when the next turn's landing stops being optional. `arrivingHome` only changes
         // the wording (still pressing toward the objective vs. already turned for home).
-        private static void LogMultiTurnContinuation(PlayerSetupData player, AiTask task, string logLabel,
+        private static void LogMultiTurnContinuation(PlayerSetupData player, AirSortie task, string logLabel,
             MultiTurnSortie multi, bool arrivingHome)
         {
             int safeNow = SafeUnlandedEndsRemaining(task.Army.Members);
@@ -1030,7 +1027,7 @@ namespace Game.Aviation
         // AiTask itself once the army actually exists — Commit never does this for a Launch*
         // decision (decision.Task is deliberately left null by the factories; there is no task, and
         // nothing to claim, until the launch actually succeeds).
-        public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx, AiTaskKind taskKind)
+        public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx, AirSortieKind taskKind)
         {
             ArmyData airArmy = decision.ExistingArmy;
             if (airArmy == null)
@@ -1053,11 +1050,11 @@ namespace Game.Aviation
                     + $"from ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
             }
 
-            var task = new AiTask
+            var task = new AirSortie
             {
-                Kind = taskKind, Army = airArmy, TargetHex = decision.AirActionHex, LandingHex = decision.AirLandingHex, AirOutbound = true,
+                Kind = taskKind, Army = airArmy, TargetHex = decision.AirActionHex, LandingHex = decision.AirLandingHex, Outbound = true,
             };
-            AiTaskRegistry.Add(player, task);
+            AirSortieRegistry.Add(player, task);
 
             // Reserve this army's own first-move ActivationEnergyCost the instant the task exists
             // (2026-08-26 P1 fix, project owner's own report) — CanAffordLaunch above only checked
@@ -1071,7 +1068,6 @@ namespace Game.Aviation
             // AiTurnController.MoveArmyRoutine's own Release call — never held past that, unlike
             // BuildFacility/BuildBase's own multi-turn trickle reservation.
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
-            AiResourceReservation.TopUp(root, player, task, new ResourceCost { energy = airArmy.ActivationEnergyCost });
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} — target "
                 + $"({decision.AirActionHex.Q},{decision.AirActionHex.R}), landing ({decision.AirLandingHex.Q},{decision.AirLandingHex.R}).");
 
@@ -1087,12 +1083,11 @@ namespace Game.Aviation
             // CanIssueMoveNow's own reservationOwner param — closes that gap: by the time this
             // coroutine yields back to RunTurn's own step loop, the army has either taken its
             // first real step for real, or never left storage at all.
-            string logLabel = taskKind == AiTaskKind.AirStrike ? "AirStrike" : "AirRecon";
-            string outboundReason = taskKind == AiTaskKind.AirStrike
+            string logLabel = taskKind == AirSortieKind.Strike ? "AirStrike" : "AirRecon";
+            string outboundReason = taskKind == AirSortieKind.Strike
                 ? "presses on toward the strike target" : "flies on toward the recon target";
-            AiTaskCategory category = taskKind == AiTaskKind.AirStrike ? AiTaskCategory.Aggression : AiTaskCategory.Reconnaissance;
             AiDecision firstMove = ContinueSortie(player, root, ctx, task, logLabel, outboundReason,
-                AiConfig.airStrikeContinuationScore, category);
+                AiConfig.airStrikeContinuationScore);
             if (firstMove == null)
             {
                 // Can't even take the first step this turn — never leave the group formed and
@@ -1100,8 +1095,7 @@ namespace Game.Aviation
                 // to the airfield's own stored container, right where they started this step.
                 AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" — {taskKind} has no viable first step "
                     + "this turn, cancels the launch and returns aircraft to storage.");
-                AiResourceReservation.Release(task);
-                AiTaskRegistry.Remove(player, task);
+                AirSortieRegistry.Remove(player, task);
                 ArmyData homeAirfield = AviationActions.EnsureAirfield(ctx.HexSelection, player, airArmy.Hex);
                 foreach (UnitData aircraft in airArmy.Members.ToList())
                 {

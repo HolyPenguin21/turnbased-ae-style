@@ -72,7 +72,7 @@ namespace Game.Ai.V2
             int readyOnAirfield = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && AviationRules.IsValidAirArmy(a)
                     && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AiTaskRegistry.TaskFor(player, a) == null)
+                    && AirSortieRegistry.ForArmy(player, a) == null)
                 .Sum(a => Math.Max(1, a.Members.Count));
 
             void AirFallbackSummary(string exit) => AiDebugLog.Write(
@@ -100,7 +100,7 @@ namespace Game.Ai.V2
                 .Where(a => a != null && !used.Contains(a.Id)
                     && AviationRules.IsValidAirArmy(a) && a.Controller != null && a.CurrentMovement > 0
                     && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AiTaskRegistry.TaskFor(player, a) == null)
+                    && AirSortieRegistry.ForArmy(player, a) == null)
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : 1)
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationEnergyCost)
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
@@ -189,11 +189,10 @@ namespace Game.Ai.V2
                     AirActionHex = first.Value.Hex,
                     AirLandingHex = first.Value.LandingHex,
                     Score = first.Value.Score,
-                    Category = AiTaskCategory.Reconnaissance,
                     Reason = $"V2 Air Recon — {requestedMode} one-step launch; {first.Value.Reason}",
                 };
 
-                yield return AviationSupport.LaunchRoutine(player, launchDecision, ctx, AiTaskKind.AirRecon);
+                yield return AviationSupport.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
 
                 ArmyData launched = ArmyRegistry.AllForOwner(player)
                     .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
@@ -205,7 +204,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                AiTask reservationTask = AiTaskRegistry.TaskFor(player, launched);
+                AirSortie reservationTask = AirSortieRegistry.ForArmy(player, launched);
                 if (launched.Hex.Equals(airfieldHex))
                 {
                     RemoveAirReconReservation(player, launched);
@@ -215,9 +214,9 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                if (reservationTask != null && reservationTask.Kind == AiTaskKind.AirRecon)
+                if (reservationTask != null && reservationTask.Kind == AirSortieKind.Recon)
                 {
-                    reservationTask.AirOutbound = true;
+                    reservationTask.Outbound = true;
                     reservationTask.TargetHex = first.Value.Hex;
                     reservationTask.LandingHex = first.Value.LandingHex;
                 }
@@ -441,7 +440,7 @@ namespace Game.Ai.V2
                         break;
                     }
 
-                    AiTask reservation = EnsureAirReconReservation(player, air, landing, outbound: false);
+                    AirSortie reservation = EnsureAirReconReservation(player, air, landing, outbound: false);
                     if (reservation == null)
                     {
                         AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked — another task owns aircraft");
@@ -457,7 +456,7 @@ namespace Game.Ai.V2
                         + $"landing=({landing.Q},{landing.R}) informative={(alsoInformative ? 1 : 0)} {returnReason}");
                     bool moved = false;
                     yield return MoveOne(player, ctx, air, returnStep.Value, "V2 Air Recon — safe return",
-                        reservation, () => moved = true);
+                        () => moved = true);
                     movedAny |= moved;
                     if (!moved) break;
                     ArmyData afterReturn = Resolve(player, armyId);
@@ -490,7 +489,7 @@ namespace Game.Ai.V2
                 ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, armyId, air.Hex,
                     choice.Value.Hex, mode, ctx.TurnNumber);
                 mode = assignment.Mode;
-                AiTask reservationTask = EnsureAirReconReservation(player, air,
+                AirSortie reservationTask = EnsureAirReconReservation(player, air,
                     choice.Value.LandingHex, outbound: true, target: choice.Value.Hex);
                 if (reservationTask == null)
                 {
@@ -502,7 +501,7 @@ namespace Game.Ai.V2
                 sortie.ChosenLandingHex = choice.Value.LandingHex;
                 sortie.HasChosenLanding = true;
 
-                if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex, reservationTask))
+                if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex))
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} cannot afford/issue first step "
                         + $"AP{choice.Value.ActivationAp:0.#}/E{choice.Value.ActivationEnergy:0.#}; cancel/return");
@@ -516,7 +515,7 @@ namespace Game.Ai.V2
 
                 bool stepMoved = false;
                 yield return MoveOne(player, ctx, air, choice.Value.Hex,
-                    $"V2 Air Recon — {mode} {sortie.Phase} one-step live replan", reservationTask, () => stepMoved = true);
+                    $"V2 Air Recon — {mode} {sortie.Phase} one-step live replan", () => stepMoved = true);
                 movedAny |= stepMoved;
                 if (!stepMoved) break;
                 ArmyData afterStep = Resolve(player, armyId);
@@ -648,11 +647,11 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator MoveOne(PlayerSetupData player, AiTurnContext ctx, ArmyData air,
-            HexCoord next, string reason, AiTask reservationTask, Action onMoved)
+            HexCoord next, string reason, Action onMoved)
         {
             HexCoord before = air.Hex;
             bool visitedBefore = VisionSystem.IsVisited(player, next);
-            var decision = AiDecision.Move(air, next, reason, reservationTask, 0f, AiTaskCategory.Reconnaissance);
+            var decision = AiDecision.Move(air, next, reason, 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -776,19 +775,19 @@ namespace Game.Ai.V2
             return path != null && path.Hexes.Count > 1 ? path.Hexes[1] : (HexCoord?)null;
         }
 
-        private static AiTask EnsureAirReconReservation(PlayerSetupData player, ArmyData air,
+        private static AirSortie EnsureAirReconReservation(PlayerSetupData player, ArmyData air,
             HexCoord landing, bool outbound, HexCoord? target = null)
         {
-            AiTask task = AiTaskRegistry.TaskFor(player, air);
+            AirSortie task = AirSortieRegistry.ForArmy(player, air);
             if (task == null)
             {
-                task = new AiTask { Kind = AiTaskKind.AirRecon, Army = air };
-                AiTaskRegistry.Add(player, task);
+                task = new AirSortie { Kind = AirSortieKind.Recon, Army = air };
+                AirSortieRegistry.Add(player, task);
             }
-            if (task.Kind != AiTaskKind.AirRecon)
+            if (task.Kind != AirSortieKind.Recon)
                 return null;
 
-            task.AirOutbound = outbound;
+            task.Outbound = outbound;
             task.LandingHex = landing;
             task.TargetHex = target ?? landing;
             return task;
@@ -796,11 +795,10 @@ namespace Game.Ai.V2
 
         private static void RemoveAirReconReservation(PlayerSetupData player, ArmyData air)
         {
-            AiTask task = air != null ? AiTaskRegistry.TaskFor(player, air) : null;
-            if (task == null || task.Kind != AiTaskKind.AirRecon)
+            AirSortie task = air != null ? AirSortieRegistry.ForArmy(player, air) : null;
+            if (task == null || task.Kind != AirSortieKind.Recon)
                 return;
-            AiResourceReservation.Release(task);
-            AiTaskRegistry.Remove(player, task);
+            AirSortieRegistry.Remove(player, task);
         }
 
         private static void LogVisitedInvariant(PlayerSetupData player, HexCoord hex, bool visitedBefore, string phase)

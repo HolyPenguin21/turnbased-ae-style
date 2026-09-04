@@ -304,8 +304,7 @@ namespace Game.Ai.V2
 
                 HexCoord before = army.Hex;
                 var decision = AiDecision.Move(army, next.Value,
-                    $"V2 raid — strike #{pm.RaidTargetArmyId} at ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})",
-                    null, 0f, AiTaskCategory.Aggression);
+                    $"V2 raid — strike #{pm.RaidTargetArmyId} at ({pm.ExecutionHex.Q},{pm.ExecutionHex.R})", 0f);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
