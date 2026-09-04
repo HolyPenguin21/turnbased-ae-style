@@ -41,6 +41,12 @@ namespace Game.Ai.V2
         public AggressionDemandOutcome Outcome = AggressionDemandOutcome.None;
         public string Reason = "";
         public int BlockedByCooldown;
+        // Every non-covered / non-cooldown discovered-or-not objective whose canonical
+        // RaidOperationalReadiness is ReadyExecutable RIGHT NOW, with the ready RaidAssemblyPlan
+        // (its BaseArmyId is the canonical executable raid actor). The reaction direct-witness
+        // probe reads this instead of a GatePassed filter + cheapest arbitrary pathable army.
+        public IReadOnlyList<(AggressionObjective Objective, RaidAssemblyPlan Plan)> ReadyExecutable =
+            System.Array.Empty<(AggressionObjective, RaidAssemblyPlan)>();
         // Fully-formatted "[AI][V2][Demand][Aggression] …" lines — the caller replays them through
         // AiDebugLog so Build itself performs no logging.
         public IReadOnlyList<string> Diagnostics = System.Array.Empty<string>();
@@ -85,14 +91,18 @@ namespace Game.Ai.V2
             AggressionObjective chosen = null;
             RaidOperationalReadiness chosenReadiness = null;
             int blocked = 0;
-            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
+            var readyList = new List<(AggressionObjective, RaidAssemblyPlan)>();
+            // Non-creating read — Build must not register a fresh allocator-state entry as a side
+            // effect. null == no state yet == no cooldowns.
+            AiAllocatorState cooldownState = AiAllocatorStateRegistry.Peek(player);
 
             foreach (AggressionObjective o in objectives.OrderByDescending(x => x.BaseValue).ThenBy(x => x.TargetArmyId))
             {
                 if (coveredTargets.Contains(o.TargetArmyId))
                     continue;
                 StableMissionKey key = RaidKey(o);
-                if (cooldownState.TryGetCooldown(key, snap.TurnNumber, out MissionCooldownInfo cd))
+                if (cooldownState != null
+                    && cooldownState.TryGetCooldown(key, snap.TurnNumber, out MissionCooldownInfo cd))
                 {
                     blocked++;
                     diag.Add($"[AI][V2][Demand][Aggression] blocked {key} reason={cd.Reason} "
@@ -104,6 +114,7 @@ namespace Game.Ai.V2
                     snap, o, RaidDefenders(snap, o.TargetArmyId), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
+                    readyList.Add((o, readiness.ReadyPlan));
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={o.TargetArmyId} "
                         + $"reason=ready_free_army_clears_shared_readiness actor={readiness.ReadyPlan.BaseArmyId} "
                         + $"win={readiness.ReadyPlan.ProjectedWinChance:0.00} "
@@ -113,11 +124,16 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                chosen = o;
-                chosenReadiness = readiness;
-                break;
+                // First runnable shortage wins the demand; keep scanning so EVERY ready-executable
+                // discovered target is still surfaced for the direct-witness probe.
+                if (chosen == null)
+                {
+                    chosen = o;
+                    chosenReadiness = readiness;
+                }
             }
 
+            eval.ReadyExecutable = readyList;
             eval.BlockedByCooldown = blocked;
 
             if (chosen == null || chosenReadiness == null)

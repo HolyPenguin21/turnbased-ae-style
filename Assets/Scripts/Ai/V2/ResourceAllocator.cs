@@ -357,6 +357,11 @@ namespace Game.Ai.V2
             return s;
         }
 
+        // Non-creating read — for a pure/deterministic caller that must not register a new state
+        // entry as a side effect (AggressionDemandEvaluator). null == no state yet == no cooldowns.
+        public static AiAllocatorState Peek(PlayerSetupData player) =>
+            player != null && ByPlayer.TryGetValue(player, out AiAllocatorState s) ? s : null;
+
         public static void Clear() => ByPlayer.Clear();
     }
 

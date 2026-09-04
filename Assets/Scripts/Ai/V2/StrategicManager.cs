@@ -356,16 +356,6 @@ namespace Game.Ai.V2
             };
         }
 
-        // AI-MGR-01 P1.3 — the physical hand-card instances a chain consumes (base + equipment).
-        // The generation source is tracked separately by GenerationStep.CardKey.
-        private static IReadOnlyList<CardData> PlanCards(MaterializationPlan p)
-        {
-            var list = new List<CardData>(2);
-            if (p?.BaseCardInHand != null) list.Add(p.BaseCardInHand);
-            if (p?.EquipmentInHand != null) list.Add(p.EquipmentInHand);
-            return list;
-        }
-
         private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
             WorldSnapshot after, MaterializationPlan plan, AxisDemand demand)
         {
@@ -512,9 +502,13 @@ namespace Game.Ai.V2
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
             float bestSum = float.NegativeInfinity;
-            var usedCards = new HashSet<CardData>();
-            var usedGen = new HashSet<string>();
             var acc = new Dictionary<DemandState, DemandCandidate>();
+
+            // round 9 (P0.2) — the physical hand-card / generation-source / AP / H-E-M-T bookkeeping
+            // is now the shared MaterializationConsumptionState (same model the reaction closure DFS
+            // uses). Behaviour is unchanged: the ceilings (apPool / resPool / genAttemptsRemaining)
+            // and the check order are identical to the previous local implementation.
+            var consumed = new MaterializationConsumptionState();
 
             float apPool = root != null
                 ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
@@ -524,22 +518,17 @@ namespace Game.Ai.V2
                     ? Mathf.Max(0, Mathf.FloorToInt(Game.Ai.AiResourceReservation.Available(root, player, t)))
                     : int.MaxValue;
 
-            float apUsed = 0f;
-            int genUsed = 0;
-            var resUsed = new Dictionary<ResourceType, int>();
-            foreach (ResourceType t in ResourceBundle.All) resUsed[t] = 0;
-
             bool Fits(DemandCandidate c)
             {
                 float ap = (c.Plan?.ApCost ?? 0f) + c.FollowupAp;
-                if (apUsed + ap > apPool + AiConfigV2.allocatorSliceEpsilon)
+                if (consumed.ApUsed + ap > apPool + AiConfigV2.allocatorSliceEpsilon)
                     return false;
-                if (c.Plan?.Generation != null && genUsed + 1 > genAttemptsRemaining)
+                if (c.Plan?.Generation != null && consumed.GenerationAttempts + 1 > genAttemptsRemaining)
                     return false;
                 ResourceCost rc = c.Plan?.ResCost;
                 if (rc != null)
                     foreach (ResourceType t in ResourceBundle.All)
-                        if (resUsed[t] + rc.Get(t) > resPool[t])
+                        if (consumed.ResourceUsed(t) + rc.Get(t) > resPool[t])
                             return false;
                 return true;
             }
@@ -561,34 +550,17 @@ namespace Game.Ai.V2
                 {
                     if (!c.Worthwhile)
                         continue;
-                    IReadOnlyList<CardData> cards = PlanCards(c.Plan);
-                    string gk = c.Plan.Generation?.CardKey;
-                    if (cards.Any(usedCards.Contains))
-                        continue;
-                    if (!string.IsNullOrEmpty(gk) && usedGen.Contains(gk))
+                    if (!consumed.CardsDisjoint(c.Plan))
                         continue;
                     if (!Fits(c))
                         continue;
-                    foreach (CardData cc in cards) usedCards.Add(cc);
-                    bool addedGen = !string.IsNullOrEmpty(gk) && usedGen.Add(gk);
-                    bool countGen = c.Plan?.Generation != null;
-                    if (countGen) genUsed++;
-                    float apAdd = (c.Plan?.ApCost ?? 0f) + c.FollowupAp;
-                    apUsed += apAdd;
-                    ResourceCost rc = c.Plan?.ResCost;
-                    if (rc != null)
-                        foreach (ResourceType t in ResourceBundle.All) resUsed[t] += rc.Get(t);
+                    MaterializationConsumptionState.Token token = consumed.Push(c.Plan, c.FollowupAp);
 
                     acc[d] = c;
                     Rec(i + 1, sum + c.DecisionScore);
                     acc.Remove(d);
 
-                    if (rc != null)
-                        foreach (ResourceType t in ResourceBundle.All) resUsed[t] -= rc.Get(t);
-                    apUsed -= apAdd;
-                    if (countGen) genUsed--;
-                    foreach (CardData cc in cards) usedCards.Remove(cc);
-                    if (addedGen) usedGen.Remove(gk);
+                    consumed.Pop(token);
                 }
             }
             Rec(0, 0f);
