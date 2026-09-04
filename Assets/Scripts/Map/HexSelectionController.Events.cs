@@ -126,7 +126,7 @@ namespace Game.Map
                 // AI/Neutral mover — never shown a popup, matches battleContactPopup's own
                 // human-only gating a few lines above this call site (see the user's own
                 // explicit instruction: no popup ever renders/waits for an AI-only army).
-                bool shouldExplore = AiEventPlanner.ShouldExplore(mover, entry);
+                bool shouldExplore = HexEventGuardEstimate.ShouldExplore(mover, entry);
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} — {(shouldExplore ? "accepted" : "declined")}.");
                 if (shouldExplore)
                     return ResolveEventExplore(mover, hex, entry);

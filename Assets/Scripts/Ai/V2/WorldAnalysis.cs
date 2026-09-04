@@ -10,6 +10,8 @@ using Game.Players;
 using Game.Units;
 using UnityEngine;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -845,7 +847,7 @@ namespace Game.Ai.V2
                 && ((t.Contact.Position.HasValue
                         && HexGridMath.Distance(t.Contact.Position.Value, t.Asset.Hex) <= AiConfigV2.siegeRadius)
                     || (t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.siegeEnemyEtaTurns)));
-            model.UnderSiege = derivedSiege || AiDefencePlanner.IsUnderSiege(player, ctx);
+            model.UnderSiege = derivedSiege;
 
             return model;
         }

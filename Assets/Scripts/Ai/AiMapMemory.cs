@@ -500,7 +500,7 @@ namespace Game.Ai
 
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
-                ResourceType? dominant = AiEconomyPlanner.DominantResourceType(hex);
+                ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
                 if (dominant.HasValue)
                     resources[hex] = dominant.Value;
 

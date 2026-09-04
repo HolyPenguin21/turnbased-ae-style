@@ -4,6 +4,8 @@ using Game.Map;
 using Game.Players;
 using Game.Units;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

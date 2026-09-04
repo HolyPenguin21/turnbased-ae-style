@@ -1,7 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Aviation;
+using Game.Ai;
+using Game.Combat;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -10,7 +11,7 @@ using Game.Players;
 using Game.Units;
 using UnityEngine;
 
-namespace Game.Ai
+namespace Game.Aviation
 {
     // Shared, read-only aviation planning primitives — the one place AirStrikeTask/AirReconTask
     // (and AiManagementPlanner's own aviation card-placement branch) compute route/capacity logic,
@@ -18,7 +19,7 @@ namespace Game.Ai
     // WorthIt.cs already plays for combat estimation: pure functions over the exact same shared
     // rules a human player's own moves go through (AviationRules/AviationActions/HexPathfinder) —
     // never a parallel resolver, never mutates anything.
-    public static class AiAviationSupport
+    public static class AviationSupport
     {
         // Every one of this player's own owned, airfield-CAPABLE hexes (citadel + every later
         // Base) — NOT simply every garrison hex (AiTurnController.OwnGarrisonHexes), since a Base's

@@ -4,6 +4,8 @@ using Game.Cards;
 using Game.Units;
 using UnityEngine;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

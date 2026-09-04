@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // One authoritative OPERATIONAL shortage assessment for a frozen Raid objective. The objective

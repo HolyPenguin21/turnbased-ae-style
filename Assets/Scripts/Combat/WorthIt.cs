@@ -1,14 +1,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
-using Game.Combat;
+using Game.Ai;
 using Game.HexGrid;
 using Game.Map;
 using Game.Terrain;
 using Game.Units;
 using UnityEngine;
 
-namespace Game.Ai
+namespace Game.Combat
 {
     // The one shared "is this fight worth it" estimate every AI planner used to duplicate on its
     // own — AiAggressionPlanner's own IsEnemyWeaker and AiEventPlanner.ShouldExplore were both the

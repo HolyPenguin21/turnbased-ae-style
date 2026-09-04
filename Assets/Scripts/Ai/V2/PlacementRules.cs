@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         // an aviation card is worth playing stays entirely with StrategicCardEvaluator / Phase-B
         // arbitration. Uses only canonical gameplay APIs: AiCardCost (thin wrapper over
         // ArmyActions.EffectiveDeployApCost / card.EffectivePlayResourceCost), the shared
-        // AiAviationSupport.OwnedAirfieldHexes primitive (citadel + every airfield-capable Base, in
+        // AviationSupport.OwnedAirfieldHexes primitive (citadel + every airfield-capable Base, in
         // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact
         // STORED-container figure ArmyActions.DeployUnitFromCard itself gates on).
         public static bool TryFindAviationPlacement(WorldSnapshot snapshot, PlayerSetupData player,
@@ -55,7 +55,7 @@ namespace Game.Ai.V2
             if (!AiCardCost.CanAffordPlayResources(root, player, card))
             { reason = "unaffordable(resources)"; return false; }
 
-            foreach (HexCoord hex in AiAviationSupport.OwnedAirfieldHexes(player))
+            foreach (HexCoord hex in AviationSupport.OwnedAirfieldHexes(player))
                 if (AviationRules.FreeAirfieldCapacity(hex, player) > 0)
                 { target = hex; return true; }
 

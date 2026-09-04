@@ -9,6 +9,8 @@ using Game.Players;
 using Game.Units;
 using UnityEngine;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     public sealed class ProvisionedMission

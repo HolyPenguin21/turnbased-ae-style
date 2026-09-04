@@ -6,6 +6,8 @@ using Game.HexGrid;
 using Game.Players;
 using Game.Units;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

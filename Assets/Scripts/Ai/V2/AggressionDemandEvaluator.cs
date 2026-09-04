@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Players;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // Proposal-side physical feasibility for Raid. Like ScoutAdmissionRegistry, this NEVER binds

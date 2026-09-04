@@ -5,6 +5,8 @@ using Game.Map;
 using Game.Players;
 using UnityEngine;
 
+using Game.Combat;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

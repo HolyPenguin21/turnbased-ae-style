@@ -84,11 +84,11 @@ namespace Game.Ai.V2
             {
                 if (!map.TryGetTerrainAt(h, out _))
                     continue;
-                AiAviationSupport.Sortie? sortie =
-                    AiAviationSupport.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
-                AiAviationSupport.MultiTurnSortie? multi = null;
+                AviationSupport.Sortie? sortie =
+                    AviationSupport.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
+                AviationSupport.MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
-                    multi = AiAviationSupport.TryPlanMultiTurnSortie(airArmy, h, map, player);
+                    multi = AviationSupport.TryPlanMultiTurnSortie(airArmy, h, map, player);
                 if (!sortie.HasValue && !multi.HasValue)
                     continue;
 
@@ -121,7 +121,7 @@ namespace Game.Ai.V2
         // but prove the whole sortie using the storage-aware aviation planners. This keeps launch
         // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
-            AirStrikeTask.LaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
+            AirLaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
             AirReconScoringContext scoringCtx = null)
         {
             if (player == null || ctx?.Map == null || snapshot?.Self == null
@@ -140,11 +140,11 @@ namespace Game.Ai.V2
                 if (!ctx.Map.TryGetTerrainAt(h, out _))
                     continue;
 
-                AiAviationSupport.Sortie? sortie = AiAviationSupport.TryPlanSortieFromStorage(
+                AviationSupport.Sortie? sortie = AviationSupport.TryPlanSortieFromStorage(
                     candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
-                AiAviationSupport.MultiTurnSortie? multi = null;
+                AviationSupport.MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
-                    multi = AiAviationSupport.TryPlanMultiTurnSortieFromStorage(
+                    multi = AviationSupport.TryPlanMultiTurnSortieFromStorage(
                         candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
                 if (!sortie.HasValue && !multi.HasValue)
                     continue;

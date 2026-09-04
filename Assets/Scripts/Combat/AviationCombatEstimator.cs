@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.Ai;
 using Game.Units;
 using UnityEngine;
 
-namespace Game.Ai
+namespace Game.Combat
 {
     // Pure, side-effect-free readout of what a NOT-YET-FLOWN AirStrike sortie would probably do to
     // a known target roster (2026-08-26, AirStrike/Raid coordination spec, project owner's own

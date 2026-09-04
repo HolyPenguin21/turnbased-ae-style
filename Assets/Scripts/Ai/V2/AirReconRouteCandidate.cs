@@ -6,6 +6,8 @@ using Game.Map;
 using Game.Players;
 using UnityEngine;
 
+using Game.Aviation;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -503,11 +505,11 @@ namespace Game.Ai.V2
             // observation / facility / combat credit.
             int aaAdjacentHexes = 0;
             foreach (HexCoord h in routeHexes)
-                if (AiAviationSupport.KnownAaExposureAt(x.Player, h) > 0)
+                if (AviationSupport.KnownAaExposureAt(x.Player, h) > 0)
                     aaAdjacentHexes++;
             if (x.ReturnHexes != null)
                 foreach (HexCoord h in x.ReturnHexes)
-                    if (!h.Equals(x.From) && AiAviationSupport.KnownAaExposureAt(x.Player, h) > 0)
+                    if (!h.Equals(x.From) && AviationSupport.KnownAaExposureAt(x.Player, h) > 0)
                         aaAdjacentHexes++;
 
             // --- FriendlyFacilityCoverValue — forward corridor sweeps a stale own-facility
