@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using Game.HexGrid;
 using Game.Players;
 
+using Game.Aviation;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================

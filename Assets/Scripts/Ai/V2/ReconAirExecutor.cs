@@ -20,9 +20,9 @@ namespace Game.Ai.V2
     // visibility/IntelAge refresh and a fresh safety/reward decision.
     //
     // AiTaskKind.AirRecon is retained only as the EXISTING landing-slot reservation primitive.
-    // V2 never calls AviationSupport.ContinueSortie for these actors: ReconAssignment + the live
+    // V2 never calls AiAirSortiePlanner.ContinueSortie for these actors: ReconAssignment + the live
     // planner own direction/mode, while the task contributes only LandingHex capacity ownership and
-    // the ordinary first-move Energy-reservation seam already understood by AviationSupport.
+    // the ordinary first-move Energy-reservation seam already understood by AiAirSortiePlanner.
     internal static class ReconAirExecutor
     {
         // Per-turn air-recon actor cap and the storage launch-subset rule now live in the shared
@@ -57,11 +57,11 @@ namespace Game.Ai.V2
                 .OrderBy(a => a.Id)
                 .ToList();
 
-            int ownedAirfields = AviationSupport.OwnedAirfieldHexes(player).Count();
+            int ownedAirfields = AiAirSortiePlanner.OwnedAirfieldHexes(player).Count();
             // §P2 — three DISTINCT counts, never one ambiguous "aircraft=" that reads 0 while a
             // hangar holds two: aircraft parked in airfield storage, aircraft already airborne,
             // and aircraft sitting ready on their own airfield with no task.
-            int storedAircraftCount = AviationSupport.OwnedAirfieldHexes(player)
+            int storedAircraftCount = AiAirSortiePlanner.OwnedAirfieldHexes(player)
                 .Select(h => AviationRules.FindAirfieldAt(h, player))
                 .Where(s => s != null)
                 .Sum(s => s.Members.Count);
@@ -131,7 +131,7 @@ namespace Game.Ai.V2
             ReconMode requestedMode = RequestedMode(player, snapshot);
             if (ownedAirfields == 0)
                 airSkips.Add("noOwnedAirfield");
-            foreach (HexCoord airfieldHex in AviationSupport.OwnedAirfieldHexes(player).ToList())
+            foreach (HexCoord airfieldHex in AiAirSortiePlanner.OwnedAirfieldHexes(player).ToList())
             {
                 if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
                 ArmyData stored = AviationRules.FindAirfieldAt(airfieldHex, player);
@@ -147,7 +147,7 @@ namespace Game.Ai.V2
                 // information fallback, never a mass sortie). Take the cheapest-to-activate
                 // minimum subset; the rest stay ready in storage.
                 var launchSubset = SelectReconLaunchSubset(stored.Members);
-                if (!AviationSupport.CanAffordLaunch(root, player, launchSubset))
+                if (!AiAirSortiePlanner.CanAffordLaunch(root, player, launchSubset))
                 {
                     airSkips.Add("launchApEnergyUnavailable");
                     AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({airfieldHex.Q},{airfieldHex.R}) "
@@ -192,7 +192,7 @@ namespace Game.Ai.V2
                     Reason = $"V2 Air Recon — {requestedMode} one-step launch; {first.Value.Reason}",
                 };
 
-                yield return AviationSupport.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
+                yield return AiAirSortiePlanner.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
 
                 ArmyData launched = ArmyRegistry.AllForOwner(player)
                     .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
@@ -302,7 +302,7 @@ namespace Game.Ai.V2
                 // live every decision from the shared aviation rules (never a cached copy).
                 bool newTurn = sortie.BeginTurn(ctx.TurnNumber);
                 bool canRemainAirborne = !atAirfield
-                    && AviationSupport.CanEndTurnHereAndRecover(air, ctx.Map, player);
+                    && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
                 // MustRecoverThisTurn — the real multi-turn endurance deadline: the wing has ALREADY
                 // spent at least one turn-end aloft and can no longer prove another safe airborne
                 // EndTurn plus its mandatory return. Only then is Return a hard priority forced at
@@ -346,7 +346,7 @@ namespace Game.Ai.V2
                         {
                             sortie.LastDecisionReason = "must_recover: endurance deadline after hold";
                             AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold->Return reason=must_recover "
-                                + $"safeEnds={AviationSupport.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                                + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
                         }
                     }
                 }
@@ -356,7 +356,7 @@ namespace Game.Ai.V2
                     sortie.Phase = ReconAirPhase.Return;
                     sortie.LastDecisionReason = "must_recover: endurance deadline / no recovery plan remains";
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=must_recover "
-                        + $"safeEnds={AviationSupport.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                        + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
                 }
 
                 ReconMode mode = RequestedMode(player, snapshot);
@@ -390,7 +390,7 @@ namespace Game.Ai.V2
                         sortie.LastDecisionReason = "hold_airborne: two-turn endurance window, return deferred";
                         AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound hold_airborne "
                             + $"reason=two_turn_window mpSlackAfter={mpSlackAfterStep} "
-                            + $"safeEnds={AviationSupport.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                            + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
                         returnReserve = false;
                     }
                     if (marginalDrop || returnReserve)
@@ -553,7 +553,7 @@ namespace Game.Ai.V2
             if (!AviationActions.CanStrikeAtCurrentHex(air))
                 yield break;
 
-            if (AviationSupport.KnownAaExposureAt(player, air.Hex) > 0)
+            if (AiAirSortiePlanner.KnownAaExposureAt(player, air.Hex) > 0)
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
                     + "decision=SKIP reason=known_aa_on_hex");
@@ -562,8 +562,8 @@ namespace Game.Ai.V2
 
             // A strike costs no movement, so return feasibility should be unchanged — but verify a
             // safe landing exists at all before committing to reveal ourselves.
-            if (!AviationSupport.TryReplan(air, ctx.Map, player).HasValue
-                && !AviationSupport.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue)
+            if (!AiAirSortiePlanner.TryReplan(air, ctx.Map, player).HasValue
+                && !AiAirSortiePlanner.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue)
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
                     + "decision=SKIP reason=no_safe_return_before_strike");
@@ -614,15 +614,15 @@ namespace Game.Ai.V2
             ArmyData afterStrike = Resolve(player, air.Id);
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             bool safeReturnGone = afterStrike == null || !AviationRules.IsValidAirArmy(afterStrike)
-                || (!AviationSupport.TryReplan(afterStrike, ctx.Map, player).HasValue
-                    && !AviationSupport.TryReplanMultiTurnReturn(afterStrike, ctx.Map, player).HasValue);
+                || (!AiAirSortiePlanner.TryReplan(afterStrike, ctx.Map, player).HasValue
+                    && !AiAirSortiePlanner.TryReplanMultiTurnReturn(afterStrike, ctx.Map, player).HasValue);
 
             // AI-AIR-02 — a second strike next turn is only an OPTION, never forced. If the wing can
             // still prove it will legally end this turn aloft AND recover afterwards, hold airborne
             // and let a fresh state evaluation next turn decide (strike again, or turn for home).
             // Otherwise the reveal means turn for home now.
             bool canRemainAfterStrike = !safeReturnGone
-                && AviationSupport.CanEndTurnHereAndRecover(afterStrike, ctx.Map, player);
+                && AiAirSortiePlanner.CanEndTurnHereAndRecover(afterStrike, ctx.Map, player);
             if (sortie != null)
             {
                 sortie.MissionMode = ReconAirMissionMode.ReconStrike;
@@ -665,7 +665,7 @@ namespace Game.Ai.V2
             // AI-AIR-01 §5 — stamp the whole observed FOOTPRINT, not just the hex the wing landed
             // on, so a later route's RedundancyPenalty / hard "repeats a recent air observation"
             // reject reflects what was actually seen (a parallel route one hex over covers nearly
-            // the same ground). V2 never calls AviationSupport.ContinueSortie, the only V1 stamper.
+            // the same ground). V2 never calls AiAirSortiePlanner.ContinueSortie, the only V1 stamper.
             if (!after.Equals(before))
                 StampObservedFootprint(player, ctx, air, after);
             AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
@@ -678,7 +678,7 @@ namespace Game.Ai.V2
             landing = default;
             reason = null;
 
-            HexCoord? sameTurn = AviationSupport.TryReplan(air, map, player);
+            HexCoord? sameTurn = AiAirSortiePlanner.TryReplan(air, map, player);
             if (sameTurn.HasValue)
             {
                 landing = ApplyLandingHysteresis(player, map, air, sortie, sameTurn.Value, out string h);
@@ -686,8 +686,8 @@ namespace Game.Ai.V2
                 return FirstStep(map, air.Hex, landing);
             }
 
-            AviationSupport.MultiTurnSortie? multi =
-                AviationSupport.TryReplanMultiTurnReturn(air, map, player);
+            MultiTurnSortie? multi =
+                AiAirSortiePlanner.TryReplanMultiTurnReturn(air, map, player);
             if (multi.HasValue)
             {
                 landing = ApplyLandingHysteresis(player, map, air, sortie, multi.Value.LandingHex, out string h);
@@ -729,8 +729,8 @@ namespace Game.Ai.V2
                 return candidate;
             }
 
-            int prevForward = AviationSupport.NearestKnownEnemyDistance(player, sortie.ChosenLandingHex);
-            int newForward = AviationSupport.NearestKnownEnemyDistance(player, candidate);
+            int prevForward = AiAirSortiePlanner.NearestKnownEnemyDistance(player, sortie.ChosenLandingHex);
+            int newForward = AiAirSortiePlanner.NearestKnownEnemyDistance(player, candidate);
             int prevCost = PathCostOrMax(map, air, sortie.ChosenLandingHex);
             int newCost = PathCostOrMax(map, air, candidate);
             bool muchMoreForward = prevForward != int.MaxValue && newForward != int.MaxValue
@@ -751,15 +751,15 @@ namespace Game.Ai.V2
         {
             if (!AviationRules.IsOwnedAirfieldAt(landing, player))
                 return false;
-            if (AviationSupport.FreeLandingCapacity(landing, player, air) < air.Members.Count)
+            if (AiAirSortiePlanner.FreeLandingCapacity(landing, player, air) < air.Members.Count)
                 return false;
             HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
             if (path == null)
                 return false;
             if (AviationRules.PathMoveCost(air, path) > air.CurrentMovement)
                 return false;
-            int baseline = AviationSupport.KnownAaExposureAt(player, air.Hex);
-            return AviationSupport.KnownAaExposure(player, path) - baseline <= 0;
+            int baseline = AiAirSortiePlanner.KnownAaExposureAt(player, air.Hex);
+            return AiAirSortiePlanner.KnownAaExposure(player, path) - baseline <= 0;
         }
 
         private static int PathCostOrMax(HexMap map, ArmyData air, HexCoord landing)

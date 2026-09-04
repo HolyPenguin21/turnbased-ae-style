@@ -132,7 +132,7 @@ namespace Game.Setup
             // need to be in place before that happens.
             AiMapMemory.Clear();
             AiMapMemory.EnsureSubscribed();
-            AirSortieRegistry.Clear();
+            Game.Ai.V2.AirSortieRegistry.Clear();
             Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
             Game.Ai.V2.ScoutTrailRegistry.ClearAll(); // Strategy V2 bounded per-scout backtrack trail (spec §5)

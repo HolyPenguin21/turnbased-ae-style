@@ -84,11 +84,11 @@ namespace Game.Ai.V2
             {
                 if (!map.TryGetTerrainAt(h, out _))
                     continue;
-                AviationSupport.Sortie? sortie =
-                    AviationSupport.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
-                AviationSupport.MultiTurnSortie? multi = null;
+                Sortie? sortie =
+                    AiAirSortiePlanner.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
+                MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
-                    multi = AviationSupport.TryPlanMultiTurnSortie(airArmy, h, map, player);
+                    multi = AiAirSortiePlanner.TryPlanMultiTurnSortie(airArmy, h, map, player);
                 if (!sortie.HasValue && !multi.HasValue)
                     continue;
 
@@ -140,11 +140,11 @@ namespace Game.Ai.V2
                 if (!ctx.Map.TryGetTerrainAt(h, out _))
                     continue;
 
-                AviationSupport.Sortie? sortie = AviationSupport.TryPlanSortieFromStorage(
+                Sortie? sortie = AiAirSortiePlanner.TryPlanSortieFromStorage(
                     candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
-                AviationSupport.MultiTurnSortie? multi = null;
+                MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
-                    multi = AviationSupport.TryPlanMultiTurnSortieFromStorage(
+                    multi = AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
                         candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
                 if (!sortie.HasValue && !multi.HasValue)
                     continue;

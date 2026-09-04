@@ -305,7 +305,7 @@ namespace Game.Ai.V2
                 if (airfield == null || airfield.Members.Count < UnityEngine.Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
                     return false;
                 List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0 || !AviationSupport.CanAffordLaunch(root, player, subset))
+                if (subset.Count == 0 || !AiAirSortiePlanner.CanAffordLaunch(root, player, subset))
                     return false;
                 var candidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
                 choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx);
@@ -343,7 +343,7 @@ namespace Game.Ai.V2
 
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
                 bool canRemain = ctx.Map != null
-                    && AviationSupport.CanEndTurnHereAndRecover(wing, ctx.Map, player);
+                    && AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, ctx.Map, player);
                 // Turn arithmetic, not a BeginTurn() increment — matches the executor's own
                 // AirborneTurnsElapsed model exactly (AI-AIR-02 review P1: no drift when a turn's
                 // RunActor pass is skipped).

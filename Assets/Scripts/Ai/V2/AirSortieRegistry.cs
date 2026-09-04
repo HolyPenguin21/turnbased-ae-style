@@ -4,7 +4,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
-namespace Game.Ai
+namespace Game.Ai.V2
 {
     public enum AirSortieKind
     {

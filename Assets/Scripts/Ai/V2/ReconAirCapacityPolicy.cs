@@ -21,7 +21,7 @@ namespace Game.Ai.V2
     //      ReconAirExecutor.MaxAirActorsPerTurn, a private const the snapshot could not see);
     //    · SelectReconLaunchSubset + AiConfig.aviationLaunchMinReadyAircraft — a storage sortie is
     //      one minimum aircraft subset, never the whole hangar;
-    //    · AviationSupport.CanAffordLaunch semantics — AP + reservation-net Energy;
+    //    · AiAirSortiePlanner.CanAffordLaunch semantics — AP + reservation-net Energy;
     //    · a ready standalone wing is on an owned airfield with NO AiTask and MP left.
     //
     //  Evaluate() runs ONE greedy budget pass: the post-reservation AP/Energy budget, minus the
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
-            foreach (HexCoord hex in AviationSupport.OwnedAirfieldHexes(player))
+            foreach (HexCoord hex in AiAirSortiePlanner.OwnedAirfieldHexes(player))
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(hex, player);
                 if (airfield == null
