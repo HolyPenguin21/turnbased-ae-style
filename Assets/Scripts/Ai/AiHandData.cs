@@ -100,7 +100,7 @@ namespace Game.Ai
             if (_remainingDeck.Count == 0 || !HasFreeSlot)
                 return null;
 
-            int poolIndex = Random.Range(0, _remainingDeck.Count);
+            int poolIndex = UnityEngine.Random.Range(0, _remainingDeck.Count);
             CardDefinition definition = _remainingDeck[poolIndex];
             _remainingDeck.RemoveAt(poolIndex);
 

@@ -98,6 +98,36 @@ namespace Game.Aviation
             return IsAirArmy(army) ? path.Hexes.Count - 1 : path.TotalCost;
         }
 
+        // Live delta between normal and penalized movement, for UI display only — derived from
+        // the same EffectiveMoveCurrent this unit's actual move budget already uses, so a rule
+        // change (e.g. 50% to some other fraction) can't drift out of sync with what the UI shows.
+        public static int EmergencyMovePenalty(UnitData unit)
+        {
+            if (unit == null || !unit.HasEmergencyFlightPenalty)
+                return 0;
+            return unit.MoveCurrent - EffectiveMoveCurrent(unit);
+        }
+
+        // The fixed per-occurrence HP cost AviationTurnLifecycle.ResolveEndOfTurn already applies
+        // once this unit is in emergency state — same formula, not a UI-side copy of the 0.5f, so
+        // this stays correct if that rule's fraction ever changes.
+        public static int EmergencyHpPenalty(UnitData unit)
+        {
+            if (unit == null || !unit.HasEmergencyFlightPenalty)
+                return 0;
+            return Mathf.CeilToInt(unit.HitPointsMax * 0.5f);
+        }
+
+        // Turns of endurance left before this aircraft enters emergency state — full again right
+        // after ResetAfterLanding zeroes ConsecutiveUnlandedEnds. Ground units (TurnsWithoutRefuel
+        // == 0, never set) have no meaningful fuel and should not be shown one.
+        public static int RemainingFuel(UnitData unit)
+        {
+            if (unit == null)
+                return 0;
+            return Mathf.Max(0, unit.TurnsWithoutRefuel - unit.ConsecutiveUnlandedEnds);
+        }
+
         public static void ResetAfterLanding(UnitData aircraft)
         {
             if (!IsAviation(aircraft))

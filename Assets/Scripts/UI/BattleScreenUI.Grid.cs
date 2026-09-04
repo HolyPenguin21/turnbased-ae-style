@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cameras;
 using Game.Cards;
 using Game.Combat;
@@ -220,9 +221,12 @@ namespace Game.UI
             // with (only ever nonzero for the battle's original _defender — see
             // GetDisplayedDefenseBonus's own comment), so this always matches the real dice pool.
             int defenseBonus = GetDisplayedDefenseBonus(unit);
-            string defenseLine = defenseBonus != 0
-                ? $"Defense {unit.Defense + defenseBonus} ({defenseBonus:+0;-0})"
-                : $"Defense {unit.Defense}";
+            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus);
+
+            string hpLine = StatSuffixFormatter.WithPenaltySuffix(
+                $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit));
+            string moveLine = StatSuffixFormatter.WithPenaltySuffix(
+                $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit));
 
             // Type tags right after the name, and no Resistance line — same convention as
             // ArmyViewerModalUI.ShowUnitDetail, per the user's own request.
@@ -238,9 +242,11 @@ namespace Game.UI
                     $"{defenseLine}\n" +
                     $"Range {unit.Range}\n";
             text +=
-                $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
-                $"Move {unit.MoveCurrent}/{unit.MoveMax}\n" +
+                $"{hpLine}\n" +
+                $"{moveLine}\n" +
                 $"Initiative {unit.Initiative}";
+            if (unit.IsAviation)
+                text += $"\nFuel {AviationRules.RemainingFuel(unit)}/{unit.TurnsWithoutRefuel}";
             if (unit.IsHero)
                 text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
             string abilities = gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null;

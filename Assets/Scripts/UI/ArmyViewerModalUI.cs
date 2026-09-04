@@ -364,9 +364,12 @@ namespace Game.UI
                 // would actually defend with if attacked on this hex right now (see
                 // CurrentArmyDefenseBonus's own comment).
                 int defenseBonus = CurrentArmyDefenseBonus;
-                string defenseLine = defenseBonus != 0
-                    ? $"Defense {unit.Defense + defenseBonus} ({defenseBonus:+0;-0})"
-                    : $"Defense {unit.Defense}";
+                string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus);
+
+                string hpLine = StatSuffixFormatter.WithPenaltySuffix(
+                    $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit));
+                string moveLine = StatSuffixFormatter.WithPenaltySuffix(
+                    $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit));
 
                 string text = $"{unit.Name}\n";
                 if (unit.TypeTags.Count > 0)
@@ -380,9 +383,11 @@ namespace Game.UI
                         $"{defenseLine}\n" +
                         $"Range {unit.Range}\n";
                 text +=
-                    $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}\n" +
-                    $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}\n" +
+                    $"{hpLine}\n" +
+                    $"{moveLine}\n" +
                     $"Initiative {unit.Initiative}";
+                if (unit.IsAviation)
+                    text += $"\nFuel {AviationRules.RemainingFuel(unit)}/{unit.TurnsWithoutRefuel}";
                 if (unit.IsHero)
                     text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
                 // Full name + description per ability here (detail panel), as opposed to the
