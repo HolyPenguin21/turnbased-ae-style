@@ -36,7 +36,7 @@ namespace Game.Aviation
                     // Every overdue end inflicts the same fixed damage: half of this card's
                     // maximum HP. Whether it survives is therefore determined solely by its
                     // current HP; repairing it naturally lets it survive another missed landing.
-                    aircraft.HitPointsCurrent -= Mathf.CeilToInt(aircraft.HitPointsMax * 0.5f);
+                    aircraft.HitPointsCurrent -= AviationRules.EmergencyHpLoss(aircraft);
                     aircraft.HasEmergencyFlightPenalty = true;
                     if (aircraft.HitPointsCurrent > 0)
                     {

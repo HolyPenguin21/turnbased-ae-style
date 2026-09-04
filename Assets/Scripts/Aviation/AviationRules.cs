@@ -108,6 +108,14 @@ namespace Game.Aviation
             return unit.MoveCurrent - EffectiveMoveCurrent(unit);
         }
 
+        // Single source of truth for the per-occurrence emergency HP cost: AviationTurnLifecycle.
+        // ResolveEndOfTurn applies this to inflict the damage, EmergencyHpPenalty below reads it
+        // for UI display — neither hardcodes the 0.5f itself.
+        public static int EmergencyHpLoss(UnitData unit)
+        {
+            return Mathf.CeilToInt(unit.HitPointsMax * 0.5f);
+        }
+
         // The fixed per-occurrence HP cost AviationTurnLifecycle.ResolveEndOfTurn already applies
         // once this unit is in emergency state — same formula, not a UI-side copy of the 0.5f, so
         // this stays correct if that rule's fraction ever changes.
@@ -115,7 +123,7 @@ namespace Game.Aviation
         {
             if (unit == null || !unit.HasEmergencyFlightPenalty)
                 return 0;
-            return Mathf.CeilToInt(unit.HitPointsMax * 0.5f);
+            return EmergencyHpLoss(unit);
         }
 
         // Turns of endurance left before this aircraft enters emergency state — full again right
