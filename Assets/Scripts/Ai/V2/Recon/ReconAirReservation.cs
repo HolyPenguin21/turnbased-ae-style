@@ -31,10 +31,10 @@ namespace Game.Ai.V2
     //      capacity model. The pipeline also debits ProtectedAp off the AxisBudgetLedger and the
     //      allocator's physical Energy pool.
     //
-    //  The protection is CLEARED after TaskExecutor's terminal ReconAirExecutor.RunFallback has had
-    //  its chance to launch, so Strategic Manager Phase B sees the real remaining pool (the sortie
-    //  either launched — a real spend already reflected in PlayerRoot — or it did not and there is
-    //  no more air work this turn).
+    //  The protection is CLEARED by the orchestrator right before the terminal air-recon stage
+    //  (AirReconPlanner.Plan -> ReconAirExecutor.Execute), so Strategic Manager Phase B sees the
+    //  real remaining pool (the sortie either launched — a real spend already reflected in
+    //  PlayerRoot — or it did not and there is no more air work this turn).
     // ===========================================================================================
     internal sealed class ReconAirReservationState
     {

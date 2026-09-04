@@ -84,10 +84,14 @@ canonical game actions; it never selects objectives or invents alternative actio
   only evaluator calls are `Is*SatisfiedLive` completion checks (a legit §37 concern), never
   objective selection or replacement-mission synthesis (the stale-Explore replacement builder
   was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
-  * **Known residual (§35):** `Execution/ReconAirExecutor.RunFallback` is still a terminal
-    air-recon planning+execution pass (route/step/landing/strike selection) invoked from
-    `TaskExecutor` and `ReactionRoundExecutor`. Air recon has no Objective→Mission→Allocate→
-    Provision path yet; giving it one is the air-recon workstream, not an ARCH-02 extraction.
+* **Air recon is plan-then-execute.** `Recon/AirReconPlanner.Plan` does aircraft discovery,
+  actor selection/ordering, `ReconMode` selection, launch-subset selection, the
+  `PickFromStorage` minimum-useful-step gate and the energy-policy check, producing an
+  `AirReconPlan`. `Execution/ReconAirExecutor.Execute(plan, …)` only flies it (launch + the
+  per-step tactical loop, which reads live world state like ground recon does). The
+  orchestrator runs both as a terminal stage after `TaskExecutor.Execute`; `TaskExecutor` no
+  longer references air recon. A launch that goes unaffordable mid-pass is skipped and logged,
+  never re-planned.
 * **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
   calls `MaterializationExecutor` / `StrategicPhaseA/B`.
 * **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions / Reaction

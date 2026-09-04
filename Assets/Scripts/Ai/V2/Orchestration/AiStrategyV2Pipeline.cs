@@ -681,12 +681,14 @@ namespace Game.Ai.V2
             HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
 
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci,
-                () => ReconAirReservationPrepass.ReleaseProtection(player));
-            // Idempotent safety net — if Execute returned before reaching the terminal air fallback
-            // (e.g. no map) the callback never fired; make sure protection is not left holding AP /
-            // Energy into Strategic Manager Phase B.
+            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
+
+            // ARCH-02 §35 — terminal air-recon is its OWN stage: lift the recon-air resource
+            // protection (so a sortie's own CanAffordLaunch sees the AP/Energy held FOR it), PLAN
+            // the pass, then EXECUTE the plan. TaskExecutor no longer touches air recon.
             ReconAirReservationPrepass.ReleaseProtection(player);
+            AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
+            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot);
             foreach (ExecutionResult er in executed)
             {
                 // A synthesised replacement's proposal was never in the pre-execution

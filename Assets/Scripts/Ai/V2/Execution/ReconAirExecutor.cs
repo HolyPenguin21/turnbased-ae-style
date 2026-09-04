@@ -28,224 +28,126 @@ namespace Game.Ai.V2
         // Per-turn air-recon actor cap and the storage launch-subset rule now live in the shared
         // ReconAirCapacityPolicy so ReconCapacitySnapshot enforces the exact same limits.
 
-        public static IEnumerator RunFallback(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot)
+        // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (built by AirReconPlanner
+        // before this stage: actor discovery/selection, ReconMode, launch-subset, first-step gate
+        // and energy policy are all already decided) and flies it. It does not discover actors,
+        // choose a mode, pick a launch subset or decide whether a sortie is worthwhile.
+        public static IEnumerator Execute(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snapshot)
         {
-            // Spec §29 / review P1 #3 — AirRecon is not tied to the temporary ReconOnly isolation.
-            // It runs whenever there is a snapshot to fly against; per-airfield readiness, the
-            // Energy opportunity policy and the minimum-useful-score gate below decide whether any
-            // sortie is actually worth launching, in Full V2 exactly as in ReconOnly.
-            if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
+            if (plan == null || player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
             {
-                // Spec §6 — never leave "AirRecon path never reached" and "AirRecon evaluated and
-                // chose not to fly" indistinguishable in the log.
-                AiDebugLog.Write("[AI][V2][Recon][Air] fallback — not reached ("
-                    + $"player={(player != null ? 1 : 0)} root={(root != null ? 1 : 0)} "
-                    + $"map={(ctx?.Map != null ? 1 : 0)} snapshot={(snapshot?.Self != null ? 1 : 0)})");
+                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — not reached ({plan?.Summary ?? "no plan"})");
+                yield break;
+            }
+            AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
+
+            foreach (int id in plan.ContinueActorIds)
+            {
+                ArmyData air = Resolve(player, id);
+                if (air != null && AviationRules.IsValidAirArmy(air) && air.Controller != null
+                    && air.CurrentMovement > 0 && !AviationRules.IsOwnedAirfieldAt(air.Hex, player))
+                    yield return RunActor(player, root, ctx, snapshot, air);
+            }
+
+            foreach (int id in plan.ReadyActorIds)
+            {
+                ArmyData air = Resolve(player, id);
+                if (air != null && AviationRules.IsValidAirArmy(air) && air.Controller != null
+                    && air.CurrentMovement > 0)
+                    yield return RunActor(player, root, ctx, snapshot, air);
+            }
+
+            foreach (AirLaunchPlan lp in plan.Launches)
+                yield return LaunchOne(lp, player, root, ctx, snapshot);
+        }
+
+        // Fly one planned launch. The stale-plan guard (CanAffordLaunch re-check) mirrors §35:
+        // if an earlier sortie this pass consumed the AP/Energy, this launch is skipped and
+        // reported — the executor does NOT re-plan a different subset or airfield.
+        private static IEnumerator LaunchOne(AirLaunchPlan lp, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snapshot)
+        {
+            if (lp?.Subset == null || lp.Subset.Count == 0)
+                yield break;
+            if (!AiAirSortiePlanner.CanAffordLaunch(root, player, lp.Subset))
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
+                    + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");
                 yield break;
             }
 
-            var used = new HashSet<int>();
-            int actorsUsed = 0;
-            var airSkips = new List<string>();
+            ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
+                lp.LaunchEnergy, lp.Score, excludeArmyId: -1);
+            AiDebugLog.Write(energy.ToLog($"airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R})"));
+            if (!energy.Allowed)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
+                    + "— energy reserve now rejects the planned launch; skip, no replan");
+                yield break;
+            }
 
-            var active = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                    && a.Controller != null && a.CurrentMovement > 0
-                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+            bool firstVisitedBefore = VisionSystem.IsVisited(player, lp.FirstStepHex);
+            var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
+                .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
+            var launchDecision = new AiDecision
+            {
+                Kind = AiActionKind.LaunchAirRecon,
+                ExistingArmy = null,
+                TargetHex = lp.AirfieldHex,
+                AircraftToLaunch = lp.Subset,
+                AirActionHex = lp.FirstStepHex,
+                AirLandingHex = lp.LandingHex,
+                Score = lp.Score,
+                Reason = $"V2 Air Recon — {lp.Mode} one-step launch; {lp.Reason}",
+            };
+
+            yield return AiAirSortiePlanner.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
+
+            ArmyData launched = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
                 .OrderBy(a => a.Id)
-                .ToList();
-
-            int ownedAirfields = AiAirSortiePlanner.OwnedAirfieldHexes(player).Count();
-            // §P2 — three DISTINCT counts, never one ambiguous "aircraft=" that reads 0 while a
-            // hangar holds two: aircraft parked in airfield storage, aircraft already airborne,
-            // and aircraft sitting ready on their own airfield with no task.
-            int storedAircraftCount = AiAirSortiePlanner.OwnedAirfieldHexes(player)
-                .Select(h => AviationRules.FindAirfieldAt(h, player))
-                .Where(s => s != null)
-                .Sum(s => s.Members.Count);
-            int airborneAircraft = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player))
-                .Sum(a => Math.Max(1, a.Members.Count));
-            int readyOnAirfield = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                    && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AirSortieRegistry.ForArmy(player, a) == null)
-                .Sum(a => Math.Max(1, a.Members.Count));
-
-            void AirFallbackSummary(string exit) => AiDebugLog.Write(
-                $"[AI][V2][Recon][Air] fallback — {exit}: airfields={ownedAirfields} "
-                + $"stored={storedAircraftCount} airborne={airborneAircraft} ready={readyOnAirfield} "
-                + $"inFlightWithAssignment={active.Count} sortiesThisPass={actorsUsed} "
-                + $"skips=[{(airSkips.Count > 0 ? string.Join(",", airSkips) : "none")}]");
-
-            foreach (ArmyData air in active)
+                .FirstOrDefault();
+            if (launched == null)
             {
-                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
-                yield return RunActor(player, root, ctx, snapshot, air);
-                used.Add(air.Id);
-                actorsUsed++;
-            }
-
-            if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
-            {
-                airSkips.Add("actorLimitReached");
-                AirFallbackSummary("stop after in-flight actors");
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
+                    + "— launch formed no aircraft");
                 yield break;
             }
 
-            var candidates = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && !used.Contains(a.Id)
-                    && AviationRules.IsValidAirArmy(a) && a.Controller != null && a.CurrentMovement > 0
-                    && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AirSortieRegistry.ForArmy(player, a) == null)
-                .OrderBy(a => a.HasActivatedThisTurn ? 0 : 1)
-                .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationEnergyCost)
-                .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
-                .ThenBy(a => a.Id)
-                .ToList();
-
-            if (candidates.Count == 0)
-                airSkips.Add("noReadyAircraftOffAirfieldTask");
-
-            foreach (ArmyData air in candidates)
+            AirSortie reservationTask = AirSortieRegistry.ForArmy(player, launched);
+            if (launched.Hex.Equals(lp.AirfieldHex))
             {
-                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
-                bool moved = false;
-                yield return RunActor(player, root, ctx, snapshot, air, value => moved = value);
-                if (moved)
-                    actorsUsed++;
-                else
-                    airSkips.Add("readyAircraftNoUsefulStep");
-            }
-
-            if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
-            {
-                airSkips.Add("actorLimitReached");
-                AirFallbackSummary("stop after ready aircraft");
+                RemoveAirReconReservation(player, launched);
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
+                    + "first step made no progress; V2 assignment not started");
                 yield break;
             }
 
-            ReconMode requestedMode = RequestedMode(player, snapshot);
-            if (ownedAirfields == 0)
-                airSkips.Add("noOwnedAirfield");
-            foreach (HexCoord airfieldHex in AiAirSortiePlanner.OwnedAirfieldHexes(player).ToList())
+            if (reservationTask != null && reservationTask.Kind == AirSortieKind.Recon)
             {
-                if (actorsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
-                ArmyData stored = AviationRules.FindAirfieldAt(airfieldHex, player);
-                if (stored == null || stored.Members.Count < AiConfig.aviationLaunchMinReadyAircraft)
-                {
-                    airSkips.Add(stored == null ? "airfieldEmpty" : "belowMinReadyAircraft");
-                    continue;
-                }
-
-                // §P0 — a recon sortie needs ONE seeing aircraft, not the whole hangar. Launching
-                // every stored wing as a single stack sums their activation AP/Energy and
-                // permanently sinks the step score negative (spec §29 — air recon is an
-                // information fallback, never a mass sortie). Take the cheapest-to-activate
-                // minimum subset; the rest stay ready in storage.
-                var launchSubset = SelectReconLaunchSubset(stored.Members);
-                if (!AiAirSortiePlanner.CanAffordLaunch(root, player, launchSubset))
-                {
-                    airSkips.Add("launchApEnergyUnavailable");
-                    AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({airfieldHex.Q},{airfieldHex.R}) "
-                        + $"aircraft={launchSubset.Count}/{stored.Members.Count} — launch AP/Energy unavailable; skip");
-                    continue;
-                }
-
-                var storedAircraft = launchSubset;
-                var launchCandidate = new AirLaunchCandidate(airfieldHex, null, storedAircraft);
-                ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
-                    player, ctx, launchCandidate, snapshot, requestedMode, ctx.TurnNumber);
-                if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
-                {
-                    airSkips.Add("noUsefulRefreshStep");
-                    continue;
-                }
-
-                // §40–44 — a routine refresh sortie must not dip into Energy a playable high-value
-                // hand card (or another in-flight AirRecon activation) still needs.
-                int storageLaunchEnergy = storedAircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
-                ReconAirEnergyDecision storageEnergy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
-                    storageLaunchEnergy, first.Value.Score, excludeArmyId: -1);
-                AiDebugLog.Write(storageEnergy.ToLog($"airfield=({airfieldHex.Q},{airfieldHex.R})"));
-                if (!storageEnergy.Allowed)
-                {
-                    airSkips.Add("energyReserveRejectedLaunch");
-                    continue;
-                }
-
-                bool firstVisitedBefore = VisionSystem.IsVisited(player, first.Value.Hex);
-                var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
-                    .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
-                var launchDecision = new AiDecision
-                {
-                    Kind = AiActionKind.LaunchAirRecon,
-                    ExistingArmy = null,
-                    TargetHex = airfieldHex,
-                    AircraftToLaunch = storedAircraft,
-                    AirActionHex = first.Value.Hex,
-                    AirLandingHex = first.Value.LandingHex,
-                    Score = first.Value.Score,
-                    Reason = $"V2 Air Recon — {requestedMode} one-step launch; {first.Value.Reason}",
-                };
-
-                yield return AiAirSortiePlanner.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
-
-                ArmyData launched = ArmyRegistry.AllForOwner(player)
-                    .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
-                    .OrderBy(a => a.Id)
-                    .FirstOrDefault();
-                if (launched == null)
-                {
-                    airSkips.Add("launchFormedNoAircraft");
-                    continue;
-                }
-
-                AirSortie reservationTask = AirSortieRegistry.ForArmy(player, launched);
-                if (launched.Hex.Equals(airfieldHex))
-                {
-                    RemoveAirReconReservation(player, launched);
-                    airSkips.Add("launchFirstStepNoProgress");
-                    AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
-                        + "first step made no progress; V2 assignment not started");
-                    continue;
-                }
-
-                if (reservationTask != null && reservationTask.Kind == AirSortieKind.Recon)
-                {
-                    reservationTask.Outbound = true;
-                    reservationTask.TargetHex = first.Value.Hex;
-                    reservationTask.LandingHex = first.Value.LandingHex;
-                }
-
-                ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, launched.Id,
-                    airfieldHex, first.Value.Hex, requestedMode, ctx.TurnNumber);
-                ReconAssignmentRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
-                // Seed the per-sortie boomerang/phase state from the real launch hex so the trail
-                // and Outbound phase begin at the airfield, not one hex out.
-                ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, airfieldHex);
-                launchSortie.LaunchTurn = ctx.TurnNumber; // authoritative — set even if the launch step spends all MP and RunActor is skipped this turn
-                launchSortie.RecordStep(launched.Hex);
-                launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, first.Value.Score);
-                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                StampObservedFootprint(player, ctx, launched, launched.Hex);
-                LogVisitedInvariant(player, first.Value.Hex, firstVisitedBefore, "storage-launch-first-step");
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
-                    + $"launch=({airfieldHex.Q},{airfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
-                    + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
-
-                used.Add(launched.Id);
-                actorsUsed++;
-
-                if (launched.Controller != null && launched.CurrentMovement > 0
-                    && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
-                    yield return RunActor(player, root, ctx, snapshot, launched, initialStepAlreadyMoved: true);
+                reservationTask.Outbound = true;
+                reservationTask.TargetHex = lp.FirstStepHex;
+                reservationTask.LandingHex = lp.LandingHex;
             }
 
-            AirFallbackSummary(actorsUsed > 0 ? "done" : "evaluated, no sortie");
+            ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, launched.Id,
+                lp.AirfieldHex, lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
+            ReconAssignmentRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
+            ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
+            launchSortie.LaunchTurn = ctx.TurnNumber;
+            launchSortie.RecordStep(launched.Hex);
+            launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, lp.Score);
+            AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+            StampObservedFootprint(player, ctx, launched, launched.Hex);
+            LogVisitedInvariant(player, lp.FirstStepHex, firstVisitedBefore, "storage-launch-first-step");
+            AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
+                + $"launch=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
+                + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
+
+            if (launched.Controller != null && launched.CurrentMovement > 0
+                && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
+                yield return RunActor(player, root, ctx, snapshot, launched, initialStepAlreadyMoved: true);
         }
 
         private static IEnumerator RunActor(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
