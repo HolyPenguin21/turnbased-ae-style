@@ -139,7 +139,7 @@ namespace Game.Ai.V2.Initiative
             for (int i = 0; i < Types.Length; i++)
             {
                 a.Available[i] = Mathf.Max(0, AiResourceReservation.Available(root, player, Types[i]));
-                a.IncomePerTurn[i] = Mathf.Max(0, AiGoalScorer.IncomeFor(player, Types[i], map));
+                a.IncomePerTurn[i] = Mathf.Max(0, IncomeProjection.IncomeFor(player, Types[i], map));
             }
             return a;
         }

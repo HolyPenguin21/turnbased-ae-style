@@ -20,7 +20,7 @@ namespace Game.Ai.V2
     //
     //  PORTED FROM V1 (adapted, not rewritten):
     //    - AiStrategyDirector.Evaluate's "shared readings" block   -> BuildSelf / BuildKnown / BuildMapKnowledge
-    //    - AiGoalScorer.IncomeFor / TotalIncome                    -> BuildSelf.PerTurnIncome / BuildEconomy
+    //    - IncomeProjection.IncomeFor / TotalIncome                    -> BuildSelf.PerTurnIncome / BuildEconomy
     //    - AiDefencePlanner.CheatEstimateRaiderThreat (its SCOPE)  -> BuildThreat cheat-contact loop
     //      (the private method itself is left untouched in V1; V2 re-derives the same scan from
     //       TrueWorld.EnemyArmies using the SAME AiConfig radii/shape constants so the two can't
@@ -192,7 +192,7 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 self.Stockpile.Add(t, root != null ? root.GetResource(t) : 0);
-                self.PerTurnIncome.Add(t, AiGoalScorer.IncomeFor(player, t, ctx.Map));
+                self.PerTurnIncome.Add(t, IncomeProjection.IncomeFor(player, t, ctx.Map));
             }
             self.ActionPoints = root != null ? root.ActionPoints : 0;
 
@@ -391,7 +391,7 @@ namespace Game.Ai.V2
                     };
                     foreach (ResourceType t in ResourceBundle.All)
                     {
-                        opp.PerTurnIncome.Add(t, AiGoalScorer.IncomeFor(p, t, ctx.Map));
+                        opp.PerTurnIncome.Add(t, IncomeProjection.IncomeFor(p, t, ctx.Map));
                         opp.Stockpile.Add(t, pr != null ? pr.GetResource(t) : 0);
                     }
                     opponents.Add(opp);
@@ -573,7 +573,7 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float own = snap.Self.PerTurnIncome.Get(t);
-                var otherIncomes = others.Select(p => (float)AiGoalScorer.IncomeFor(p, t, ctx.Map)).ToList();
+                var otherIncomes = others.Select(p => (float)IncomeProjection.IncomeFor(p, t, ctx.Map)).ToList();
                 float median = Median(otherIncomes);
                 float ratio = own / Mathf.Max(1f, median);
                 perType.Add(new EconomyResourceStanding

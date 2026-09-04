@@ -109,7 +109,7 @@ namespace Game.Ai.V2
             // §41.5 / §43 soft term — a marginal sortie is trimmed when spendable Energy is thin
             // relative to near-term income; a healthy runway makes the same sortie cheap.
             float income = map != null
-                ? Mathf.Max(0f, AiGoalScorer.IncomeFor(player, ResourceType.Energy, map))
+                ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map))
                 : 0f;
             float effectiveSpendable = spendable + income * AiConfigV2.reconAirEnergyIncomeHorizon;
             float opportunityCost = launchEnergyCost / Mathf.Max(1f, effectiveSpendable);
