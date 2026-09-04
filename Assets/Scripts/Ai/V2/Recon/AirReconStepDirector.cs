@@ -62,6 +62,11 @@ namespace Game.Ai.V2
                 sortie.Phase = d.NextPhase.Value;
             if (d.NextDecisionReason != null)
                 sortie.LastDecisionReason = d.NextDecisionReason;
+            if (d.SetChosenLanding)
+            {
+                sortie.ChosenLandingHex = d.LandingHex;
+                sortie.HasChosenLanding = true;
+            }
         }
     }
 
@@ -112,11 +117,16 @@ namespace Game.Ai.V2
             public readonly ReconAirPhase? NextPhase;         // null => Phase unchanged
             public readonly string NextDecisionReason;        // null => LastDecisionReason unchanged
             public readonly float? NextBestOutboundScore;     // null => BestOutboundStepScore unchanged
+            // Return / Forward — the landing the director resolved (via PickReturnStep + landing
+            // hysteresis, or the Pick's own landing). Written to ChosenLandingHex / HasChosenLanding
+            // by Apply, i.e. only after the Move actually succeeded. LandingHex holds the value.
+            public readonly bool SetChosenLanding;
 
             private StepDecision(StepKind kind, HexCoord step, HexCoord landing, ReconMode mode,
                 float stepScore, string reason, bool alsoInformative, bool pivotToReturnAfterMove,
                 ReconAirPhase resumePhase, bool retireAssignment, bool removeReservation,
-                ReconAirPhase? nextPhase, string nextDecisionReason, float? nextBestOutboundScore)
+                ReconAirPhase? nextPhase, string nextDecisionReason, float? nextBestOutboundScore,
+                bool setChosenLanding)
             {
                 Kind = kind;
                 Step = step;
@@ -132,37 +142,39 @@ namespace Game.Ai.V2
                 NextPhase = nextPhase;
                 NextDecisionReason = nextDecisionReason;
                 NextBestOutboundScore = nextBestOutboundScore;
+                SetChosenLanding = setChosenLanding;
             }
 
             public static StepDecision Stop(string reason, bool retireAssignment = false,
                 bool removeReservation = false) =>
                 new StepDecision(StepKind.Stop, default, default, default, 0f, reason, false, false,
-                    ReconAirPhase.Return, retireAssignment, removeReservation, null, null, null);
+                    ReconAirPhase.Return, retireAssignment, removeReservation, null, null, null, false);
 
             public static StepDecision HoldEndTurn(string reason) =>
                 new StepDecision(StepKind.HoldEndTurn, default, default, default, 0f, reason, false,
-                    false, ReconAirPhase.Return, false, false, null, null, null);
+                    false, ReconAirPhase.Return, false, false, null, null, null, false);
 
             public static StepDecision HoldReopen(ReconAirPhase resumePhase, string reason) =>
                 new StepDecision(StepKind.HoldReopen, default, default, default, 0f, reason, false,
-                    false, resumePhase, false, false, null, reason, null);
+                    false, resumePhase, false, false, null, reason, null, false);
 
             public static StepDecision Strike(string reason) =>
                 new StepDecision(StepKind.Strike, default, default, default, 0f, reason, false, false,
-                    ReconAirPhase.Return, false, false, null, null, null);
+                    ReconAirPhase.Return, false, false, null, null, null, false);
 
             public static StepDecision Return(HexCoord step, HexCoord landing, bool alsoInformative,
                 string reason, string nextDecisionReason, float? nextBestOutboundScore) =>
                 new StepDecision(StepKind.ReturnStep, step, landing, default, 0f, reason,
                     alsoInformative, false, ReconAirPhase.Return, false, false,
-                    ReconAirPhase.Return, nextDecisionReason, nextBestOutboundScore);
+                    ReconAirPhase.Return, nextDecisionReason, nextBestOutboundScore, true);
 
             public static StepDecision Forward(HexCoord step, HexCoord landing, ReconMode mode,
                 float score, bool pivot, string reason, string nextDecisionReason,
                 float? nextBestOutboundScore) =>
                 new StepDecision(StepKind.ForwardStep, step, landing, mode, score, reason, false,
                     pivot, ReconAirPhase.Return, false, false,
-                    pivot ? ReconAirPhase.Return : (ReconAirPhase?)null, nextDecisionReason, nextBestOutboundScore);
+                    pivot ? ReconAirPhase.Return : (ReconAirPhase?)null, nextDecisionReason,
+                    nextBestOutboundScore, true);
         }
 
         // Decide the next thing this airborne wing should do — READ-ONLY. `newTurn` is the result
@@ -475,12 +487,15 @@ namespace Game.Ai.V2
             return null;
         }
 
+        // READ-ONLY (review r5) — computes which landing the hysteresis rule picks without writing
+        // sortie.ChosenLandingHex/HasChosenLanding. The caller's StepDecision carries the result
+        // (SetChosenLanding + LandingHex); ReconAirSortieLifecycle.Apply persists it after the
+        // matching Move actually succeeds.
         private static HexCoord ApplyLandingHysteresis(PlayerSetupData player, HexMap map, ArmyData air,
             ReconAirSortieState sortie, HexCoord candidate, out string reason)
         {
             if (sortie == null || !sortie.HasChosenLanding)
             {
-                if (sortie != null) { sortie.ChosenLandingHex = candidate; sortie.HasChosenLanding = true; }
                 reason = $" landing=adopt({candidate.Q},{candidate.R})";
                 return candidate;
             }
@@ -493,7 +508,6 @@ namespace Game.Ai.V2
             {
                 reason = $" landing=switch(prev_unreachable ({sortie.ChosenLandingHex.Q},{sortie.ChosenLandingHex.R}) "
                     + $"-> ({candidate.Q},{candidate.R}))";
-                sortie.ChosenLandingHex = candidate;
                 return candidate;
             }
 
@@ -507,7 +521,6 @@ namespace Game.Ai.V2
             if (muchMoreForward || muchCheaper)
             {
                 reason = $" landing=switch(forward {prevForward}->{newForward} cost {prevCost}->{newCost})";
-                sortie.ChosenLandingHex = candidate;
                 return candidate;
             }
             reason = $" landing=keep_hysteresis(prev ({sortie.ChosenLandingHex.Q},{sortie.ChosenLandingHex.R}) "

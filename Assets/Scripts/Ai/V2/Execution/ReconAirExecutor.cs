@@ -313,8 +313,9 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked — another task owns aircraft");
                     break;
                 }
-                sortie.ChosenLandingHex = d.LandingHex;
-                sortie.HasChosenLanding = true;
+                // ChosenLandingHex / HasChosenLanding are part of the intended transition now
+                // (d.SetChosenLanding) — applied by ReconAirSortieLifecycle.Apply only after the
+                // step below actually moves the wing (r5 — no landing write on a rejected move).
 
                 bool stepMoved = false;
                 yield return MoveOne(player, ctx, air, d.Step,
