@@ -78,8 +78,8 @@ namespace Game.Ai.V2
                             continue;
                         }
                         opDeliver++;
-                        ResourceCost chainCost = Game.Ai.AiCardCost.PlayResources(card);
-                        if (chainCost != null && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
+                        ResourceCost chainCost = CardCostRules.PlayResources(card);
+                        if (chainCost != null && !CardCostRules.CanAffordPlayResources(root, player, card))
                         {
                             resReject++;
                             foreach (ResourceType type in ResourceBundle.All)
@@ -107,9 +107,9 @@ namespace Game.Ai.V2
                     // CardPlayExecutor can reject resources before the branch above reaches its
                     // explicit chain-resource gate. Capture the exact deficit here too, but only
                     // for a capability/trait-matching card examined by this demand diagnostic.
-                    ResourceCost preflightCost = Game.Ai.AiCardCost.PlayResources(card);
+                    ResourceCost preflightCost = CardCostRules.PlayResources(card);
                     if (root != null && player != null && preflightCost != null
-                        && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
+                        && !CardCostRules.CanAffordPlayResources(root, player, card))
                     {
                         foreach (ResourceType type in ResourceBundle.All)
                         {
@@ -178,8 +178,8 @@ namespace Game.Ai.V2
             if (root == null || player == null || card == null)
                 return $"{cardName}: {reason ?? "preflight rejected"}";
 
-            ResourceCost cost = Game.Ai.AiCardCost.PlayResources(card);
-            if (cost != null && !Game.Ai.AiCardCost.CanAffordPlayResources(root, player, card))
+            ResourceCost cost = CardCostRules.PlayResources(card);
+            if (cost != null && !CardCostRules.CanAffordPlayResources(root, player, card))
             {
                 return $"{cardName}: resources need H/E/M/T={cost.human}/{cost.energy}/{cost.materials}/{cost.tech} "
                     + $"have={Available(ResourceType.Human)}/{Available(ResourceType.Energy)}/"

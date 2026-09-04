@@ -657,7 +657,7 @@ namespace Game.Ai.V2
                 if (d.cardType != CardType.Unit && d.cardType != CardType.Hero
                     && d.cardType != CardType.Facility && d.cardType != CardType.Base)
                     continue;
-                ResourceCost cost = AiCardCost.PlayResources(card);
+                ResourceCost cost = CardCostRules.PlayResources(card);
                 if (cost == null) continue;
                 foreach (ResourceType t in ResourceBundle.All)
                     need.Add(t, cost.Get(t));

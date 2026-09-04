@@ -1,9 +1,9 @@
-using Game.Cards;
+using Game.Ai;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
 
-namespace Game.Ai
+namespace Game.Cards
 {
     // The AI-side counterpart of CardData.EffectivePlay* — the cost of PLAYING one specific hand
     // CARD INSTANCE, correct for a Research/Production-created card (spec P0 §5): its ResourceCost
@@ -15,7 +15,11 @@ namespace Game.Ai
     // Use these wherever the AI already holds the CardData instance (a hand read). Paths that only
     // have a bare CardDefinition and no instance — BuildFacility's extraction-facility cards from
     // GameConfig — stay on the definition: there is no produced instance to consult.
-    public static class AiCardCost
+    // Physical rule: what it costs to PLAY a specific hand-card instance (AP + ResourceCost),
+    // correct for Research/Production-created cards. Extracted from the former Game.Ai.AiCardCost
+    // (ARCH-01) — a thin, canonical wrapper over ArmyActions.EffectiveDeployApCost and
+    // CardData.EffectivePlayResourceCost that both gameplay and the AI can share.
+    public static class CardCostRules
     {
         // Play-time AP. Delegates to ArmyActions.EffectiveDeployApCost(CardData), which already
         // folds in RapidReaction (0 AP) and ResearchProductionCreated (activationApCost).

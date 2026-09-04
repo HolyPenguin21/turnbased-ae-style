@@ -7,6 +7,8 @@ using Game.Map;
 using Game.Players;
 using UnityEngine;
 
+using Game.Cards;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -168,13 +170,13 @@ namespace Game.Ai.V2
             {
                 if (card == null)
                     continue;
-                int energy = AiCardCost.PlayResource(card, ResourceType.Energy);
+                int energy = CardCostRules.PlayResource(card, ResourceType.Energy);
                 if (energy < AiConfigV2.reconAirEnergyHighValueMinCost)
                     continue;
-                if (!root.CanSpendActionPoints(AiCardCost.PlayAp(card)))
+                if (!root.CanSpendActionPoints(CardCostRules.PlayAp(card)))
                     continue;
                 bool nonEnergyAffordable = NonEnergyTypes.All(t =>
-                    AiCardCost.PlayResource(card, t) <= root.GetResource(t));
+                    CardCostRules.PlayResource(card, t) <= root.GetResource(t));
                 if (!nonEnergyAffordable)
                     continue;
                 energyCosts.Add(energy);

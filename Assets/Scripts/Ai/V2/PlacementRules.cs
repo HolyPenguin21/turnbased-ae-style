@@ -49,10 +49,10 @@ namespace Game.Ai.V2
             if (player == null || root == null || card?.Definition == null)
             { reason = "missing args"; return false; }
 
-            int deployApCost = AiCardCost.PlayAp(card);
+            int deployApCost = CardCostRules.PlayAp(card);
             if (!root.CanSpendActionPoints(deployApCost))
             { reason = "unaffordable(ap)"; return false; }
-            if (!AiCardCost.CanAffordPlayResources(root, player, card))
+            if (!CardCostRules.CanAffordPlayResources(root, player, card))
             { reason = "unaffordable(resources)"; return false; }
 
             foreach (HexCoord hex in AviationSupport.OwnedAirfieldHexes(player))

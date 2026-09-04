@@ -87,7 +87,7 @@ namespace Game.Ai.V2.Initiative
             // Read an existing hand non-destructively — never create one just to price resources.
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand != null)
-                a.ApCostingActionsAvailable = hand.Hand.Count(c => c != null && AiCardCost.PlayAp(c) > 0);
+                a.ApCostingActionsAvailable = hand.Hand.Count(c => c != null && CardCostRules.PlayAp(c) > 0);
 
             float armyTerm = Mathf.Clamp01(a.ActionableFieldArmyCount
                 / Mathf.Max(1f, AiConfigV2.initiativeApPressureArmyFull));

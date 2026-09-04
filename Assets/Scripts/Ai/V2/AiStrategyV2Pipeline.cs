@@ -6,6 +6,8 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
+using Game.Cards;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -812,7 +814,7 @@ namespace Game.Ai.V2
             if (hand != null && endAp > 0)
                 foreach (Game.Cards.CardData c in hand.Hand)
                 {
-                    int ap = c != null ? AiCardCost.PlayAp(c) : 0;
+                    int ap = c != null ? CardCostRules.PlayAp(c) : 0;
                     if (ap > 0 && ap <= endAp) { affordableCardWaiting = true; break; }
                 }
 

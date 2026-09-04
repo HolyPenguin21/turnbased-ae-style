@@ -57,7 +57,7 @@ namespace Game.Ai.V2
         public bool RequiresCreateArmy => Kind == DeploymentKind.NewArmy;
 
         public int TotalApCost =>
-            (RequiresCreateArmy ? ArmyActions.CreateArmyApCost : 0) + AiCardCost.PlayAp(Card);
+            (RequiresCreateArmy ? ArmyActions.CreateArmyApCost : 0) + CardCostRules.PlayAp(Card);
     }
 
     public sealed class CardPlayResult
@@ -126,7 +126,7 @@ namespace Game.Ai.V2
             int totalAp = plan.TotalApCost;
             if (!root.CanSpendActionPoints(totalAp))
             { reason = $"need {totalAp} AP for the full sequence"; return false; }
-            if (!AiCardCost.CanAffordPlayResources(root, player, plan.Card))
+            if (!CardCostRules.CanAffordPlayResources(root, player, plan.Card))
             { reason = "resource cost unaffordable"; return false; }
 
             switch (plan.Kind)
