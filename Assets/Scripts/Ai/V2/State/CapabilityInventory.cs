@@ -81,7 +81,7 @@ namespace Game.Ai.V2
 
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (!RaidAssemblyPlanner.IsStructuralRaidActor(a))
+                if (!RaidActorEligibility.IsStructuralRaidActor(a))
                     continue;
 
                 totalGroundPower += a.EffectiveArmyPower;
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                if (!RaidAssemblyPlanner.IsReadyRaidActor(a))
+                if (!RaidActorEligibility.IsStructuralRaidActor(a))
                     continue;
 
                 availablePower += a.EffectiveArmyPower;

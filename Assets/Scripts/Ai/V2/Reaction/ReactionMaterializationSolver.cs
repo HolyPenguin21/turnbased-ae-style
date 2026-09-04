@@ -108,7 +108,7 @@ namespace Game.Ai.V2
                             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                             ArmyData live = ArmyRegistry.AllForOwner(player)
                                 .FirstOrDefault(x => x != null && x.Id == id);
-                            bool elig = a != null && RaidAssemblyPlanner.IsStructuralRaidActor(a)
+                            bool elig = a != null && RaidActorEligibility.IsStructuralRaidActor(a)
                                 && !claimed.Contains(id);
                             armyState[k] = (
                                 live?.Members != null

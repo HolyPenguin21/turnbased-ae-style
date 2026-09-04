@@ -145,7 +145,7 @@ namespace Game.Ai.V2
             report.AssemblableCap = cap;
 
             ArmySnapshot bestReadyArmy = snap.Self.Armies
-                .Where(a => RaidAssemblyPlanner.IsReadyRaidActor(a)
+                .Where(a => RaidActorEligibility.IsStructuralRaidActor(a)
                             && a.Members != null && a.Members.Count > 0)
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
@@ -166,7 +166,7 @@ namespace Game.Ai.V2
             int moverBudget = AiConfigV2.etaFallbackMoveBudget;
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (!RaidAssemblyPlanner.IsStructuralRaidActor(a)) continue;
+                if (!RaidActorEligibility.IsStructuralRaidActor(a)) continue;
                 fromHexes.Add(a.Hex);
                 if (a.MaxMovement > moverBudget) moverBudget = a.MaxMovement;
             }
