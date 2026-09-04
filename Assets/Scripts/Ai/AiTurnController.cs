@@ -176,31 +176,12 @@ namespace Game.Ai
         public bool EnteredStealthThisStep;  // a solo Recce slipped into stealth before this move (V2 step-7 "made progress" signal)
     }
 
-    // Level 0 of the AI architecture (see AI_ARCHITECTURE.html section 01 and the project owner's
-    // own 3-level split): map data + orchestrator with common methods + task ordering. This class
-    // owns the turn loop (RunTurn) and the unified per-step arbiter (Decide/Commit — "common
-    // methods, task ordering"), plus PerformDecision's own dispatch switch. It never itself
-    // decides WHAT to do inside one category — that's Level 1.
-    //
-    // Execution (the ...Routine coroutines that actually touch ArmyActions/HexSelectionController/
-    // UI) is split the same way: MoveArmyRoutine/PlayCardRoutine stay here because they're
-    // genuinely category-agnostic (MoveArmy is produced by Разведка/Экономика/Агрессия alike,
-    // PlayCard by Менеджмент AND Разведка's own Recce-assembly) — everything else executes exactly
-    // one AiActionKind that only one category ever produces, so it lives on that category's own
-    // Level-1 planner instead (see PerformDecision's own switch for the full map). PanTo/WaitStep
-    // are `internal`, not `private`, so those Level-1 routines can share them.
-    //
-    // Level 1 — one class per AiTaskCategory (AiScoutPlanner/Reconnaissance, AiEconomyPlanner/
-    // Economy, AiManagementPlanner/Management, AiAggressionPlanner/Aggression, AiDefencePlanner/
-    // Defence). Each exposes the
-    // continue/start/return-home candidate-gathering methods Decide calls into below, plus
-    // whatever primitives are genuinely shared across that category's own Level-2 tasks, plus its
-    // own category-specific execution routines (see above).
-    //
-    // Level 2 — one class per concrete AiTaskKind (VisitHexTask, BuildFacilityTask,
-    // ResourcesScrapTask, RaidWeakerArmyTask) — composition eligibility,
-    // concrete target-finding/scoring, and any task-specific behavioral quirks live there; the
-    // Level-1 planner above it only sequences calls into it.
+    // Post-ARCH-01: the AI turn entry point plus the shared execution primitives Strategy V2
+    // drives every turn through. RunTurn hands the whole turn to Game.Ai.V2.Pipeline. MoveArmyRoutine
+    // is the one coroutine that actually issues an army move order (V2's executors call it);
+    // FindAffordableStep / CanIssueMoveNow / the garrison-hex helpers / WouldTakeOverBuildingAt are
+    // the movement-legality primitives it and V2 share. PanTo/WaitStep/ResourceDeltaSuffix are the
+    // pacing + logging helpers. Nothing here decides WHAT to do — that is entirely V2's.
     //
     // Borrowing/creating armies, drawing cards, and issuing moves all go through the exact same
     // player-agnostic methods a human's own clicks use (Game.Map.ArmyActions,
@@ -243,7 +224,6 @@ namespace Game.Ai
             yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
             onDone?.Invoke();
             yield break;
-
         }
 
         // Internal, not private — AiAviationSupport.LaunchRoutine also calls this directly to
@@ -272,7 +252,6 @@ namespace Game.Ai
             ArmyData army = decision.ExistingArmy;
             if (army?.Controller == null)
                 yield break;
-
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
                 + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
 
