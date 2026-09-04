@@ -34,7 +34,7 @@ namespace Game.UI
         public int GetDisplayedDefenseBonus(UnitData unit)
         {
             ArmyData owner = OwningArmy(unit);
-            if (owner == null || owner != _defender)
+            if (owner == null || owner != _defender || AviationRules.IsAirArmy(owner))
                 return 0;
             return Mathf.RoundToInt(WorthIt.HexDefenseBonus(owner.Hex, map));
         }

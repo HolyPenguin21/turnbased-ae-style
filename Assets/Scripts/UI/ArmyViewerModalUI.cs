@@ -66,8 +66,9 @@ namespace Game.UI
         // for per-unit card display (see ArmyUnitCardUI.RefreshStatsRow). Every member of
         // _currentArmy shares this same hex, so it's one value for the whole grid, not per-unit.
         public int CurrentArmyDefenseBonus =>
-            _currentArmy?.VisualSnapshotDefenseBonus
-            ?? (_currentArmy != null ? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map)) : 0);
+            _currentArmy == null || AviationRules.IsAirArmy(_currentArmy)
+                ? 0
+                : _currentArmy.VisualSnapshotDefenseBonus ?? Mathf.RoundToInt(WorthIt.HexDefenseBonus(_currentArmy.Hex, map));
 
         private readonly List<ArmyUnitCardUI> _cards = new List<ArmyUnitCardUI>();
         private ArmyData _currentArmy;
@@ -363,13 +364,16 @@ namespace Game.UI
                 // Defense includes this army's own terrain/Base-building bonus — same figure it
                 // would actually defend with if attacked on this hex right now (see
                 // CurrentArmyDefenseBonus's own comment).
+                Color bonusColor = gameConfig != null ? gameConfig.statBonusColor : StatSuffixFormatter.DefaultBonusColor;
+                Color penaltyColor = gameConfig != null ? gameConfig.statPenaltyColor : StatSuffixFormatter.DefaultPenaltyColor;
+
                 int defenseBonus = CurrentArmyDefenseBonus;
-                string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus);
+                string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
 
                 string hpLine = StatSuffixFormatter.WithPenaltySuffix(
-                    $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit));
+                    $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit), penaltyColor);
                 string moveLine = StatSuffixFormatter.WithPenaltySuffix(
-                    $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit));
+                    $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit), penaltyColor);
 
                 string text = $"{unit.Name}\n";
                 if (unit.TypeTags.Count > 0)

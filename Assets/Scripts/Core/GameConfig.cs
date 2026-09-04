@@ -67,6 +67,15 @@ namespace Game.Core
         public ArmyButtonUI armyButtonPrefab;
         public ArmyUnitCardUI armyUnitCardPrefab;
 
+        [Header("Detailed Card Stat Colors")]
+        // Color of the "(+N)" suffix on a detailed-card stat line's hex/building modifier (e.g.
+        // Defense) — see StatSuffixFormatter.WithBonusSuffix, shared by ArmyViewerModalUI and
+        // BattleScreenUI.Grid's detailed unit cards.
+        public Color statBonusColor = new Color(0.243f, 0.851f, 0.486f);
+        // Color of the "(-N)" suffix for an active aviation emergency penalty (HP/Move) — see
+        // StatSuffixFormatter.WithPenaltySuffix.
+        public Color statPenaltyColor = new Color(1f, 0.361f, 0.361f);
+
         [Header("Citadel")]
         public ResourceYields citadelResourceBonus = new ResourceYields
         {

@@ -220,13 +220,16 @@ namespace Game.UI
             // Defense includes the same terrain/Base-building bonus BeginAttack actually rolls
             // with (only ever nonzero for the battle's original _defender — see
             // GetDisplayedDefenseBonus's own comment), so this always matches the real dice pool.
+            Color bonusColor = gameConfig != null ? gameConfig.statBonusColor : StatSuffixFormatter.DefaultBonusColor;
+            Color penaltyColor = gameConfig != null ? gameConfig.statPenaltyColor : StatSuffixFormatter.DefaultPenaltyColor;
+
             int defenseBonus = GetDisplayedDefenseBonus(unit);
-            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus);
+            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
 
             string hpLine = StatSuffixFormatter.WithPenaltySuffix(
-                $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit));
+                $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit), penaltyColor);
             string moveLine = StatSuffixFormatter.WithPenaltySuffix(
-                $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit));
+                $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit), penaltyColor);
 
             // Type tags right after the name, and no Resistance line — same convention as
             // ArmyViewerModalUI.ShowUnitDetail, per the user's own request.

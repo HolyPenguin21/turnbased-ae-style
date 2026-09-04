@@ -325,11 +325,12 @@ namespace Game.Map
             }
             remembered.Hex = hex;
             remembered.Snapshot = sighting.Army;
+            bool isAirArmy = AviationRules.IsAirArmy(remembered.Snapshot);
             int terrainDefense = 0;
-            if (map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) && terrain != null)
+            if (!isAirArmy && map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) && terrain != null)
                 terrainDefense = terrain.defenseModifier;
             BuildingData observedBuilding = BuildingRegistry.FindAt(hex);
-            int constructionDefense = observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
+            int constructionDefense = !isAirArmy && observedBuilding != null && observedBuilding.IsBase ? observedBuilding.Defense : 0;
             remembered.Snapshot.VisualSnapshotConstructionDefense = constructionDefense;
             remembered.Snapshot.VisualSnapshotDefenseBonus = terrainDefense + constructionDefense;
             remembered.Visual.transform.rotation = source.Controller.transform.rotation;
