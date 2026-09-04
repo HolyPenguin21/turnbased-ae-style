@@ -22,7 +22,7 @@ namespace Game.Ai.V2
         // arbitrary pathable army — the cheapest pathable army may not be the one that clears
         // RaidAssemblyPlanner, which under-reserved the budget.
         internal static List<ReactionWitness> ProbeTargetDriven(PlayerSetupData player, AiTurnContext ctx,
-            AggressionDemandEvaluation eval)
+            AggressionDemandEvaluation eval, ReactionStateBasis basis)
         {
             var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
@@ -44,7 +44,7 @@ namespace Game.Ai.V2
                     + $"target #{obj.TargetArmyId} (win {plan.ProjectedWinChance:0.00}, cover "
                     + $"{(plan.CoversAllDefenders ? 1 : 0)}); activation {activation:0.#} + move "
                     + $"{Mathf.Max(0f, AiConfigV2.reactionResponderMoveApEstimate):0.#} = {requiredAp:0.#} AP",
-                    plan.BaseArmyId, obj.TargetArmyId));
+                    basis, plan.BaseArmyId, obj.TargetArmyId));
             }
             if (witnesses.Count == 0)
                 AiDebugLog.Write("[AI][V2] reaction probe(targetDriven) — no discovered target is "
@@ -60,7 +60,7 @@ namespace Game.Ai.V2
         // projected RaidAvailableFieldPower delta, not raw Σ BasePower (round 9 P0.3).
         internal static List<ReactionWitness> ProbeMaterializationForDiscovery(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
-            ActorCommitments commitments, AggressionDemandEvaluation eval)
+            ActorCommitments commitments, AggressionDemandEvaluation eval, ReactionStateBasis basis)
         {
             var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
@@ -92,7 +92,7 @@ namespace Game.Ai.V2
             witnesses.Add(new ReactionWitness("MaterializeForDiscovery",
                 $"discovery:materialize:{eval.ChosenObjective.TargetArmyId}:{closure.Key}",
                 closure.TotalAp, closure.Envelope, closure.Detail,
-                -1, eval.ChosenObjective.TargetArmyId));
+                basis, -1, eval.ChosenObjective.TargetArmyId));
             return witnesses;
         }
 
@@ -101,7 +101,8 @@ namespace Game.Ai.V2
         // its persistent envelope is spendable. FitsSpendableResources excludes the HandFollowup
         // reservation owner so a re-probe after the envelope is placed doesn't fail against itself.
         internal static List<ReactionWitness> ProbeHandFollowup(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snap, AiHandData hand, ActorCommitments commitments)
+            AiTurnContext ctx, WorldSnapshot snap, AiHandData hand, ActorCommitments commitments,
+            ReactionStateBasis basis)
         {
             var witnesses = new List<ReactionWitness>();
             var reservation = new MaterializationReservation
@@ -144,7 +145,7 @@ namespace Game.Ai.V2
             witnesses.Add(new ReactionWitness("HandFollowup",
                 $"handFollowup:{best.ap:0.#}:{env}", requiredAp, best.env,
                 $"handFollowup witness: play {best.ap:0.#} AP (RequiredAp {requiredAp:0.#}) + envelope "
-                + $"[{env}] ({feasible.Count} feasible plays)"));
+                + $"[{env}] ({feasible.Count} feasible plays)", basis));
             return witnesses;
         }
 

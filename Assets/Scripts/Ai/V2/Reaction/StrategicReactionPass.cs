@@ -39,23 +39,26 @@ namespace Game.Ai.V2
         public readonly string Kind;             // "RespondToDiscovery" | "HandFollowup"
         public readonly float ReservedApBudget;  // BOUNDED replan budget (<= reactionReserveApCap), >= MinFeasibleAp
         public readonly ResourceCost Envelope;   // persistent H/E/M/T that must stay unspent (may be null)
+        public readonly ReactionStateBasis Basis; // §26 — turn + interrupt generation + AP the winning witness was proved against
         public readonly string Rationale;
         public readonly string FailReason;
 
         public StrategicReactionOpportunity(bool actionable, string ownerKey, string kind,
-            float reservedApBudget, ResourceCost envelope, string rationale, string failReason)
+            float reservedApBudget, ResourceCost envelope, ReactionStateBasis basis,
+            string rationale, string failReason)
         {
             IsActionable = actionable;
             OwnerKey = ownerKey;
             Kind = kind;
             ReservedApBudget = reservedApBudget;
             Envelope = envelope;
+            Basis = basis;
             Rationale = rationale;
             FailReason = failReason;
         }
 
         public static StrategicReactionOpportunity None(string failReason) =>
-            new StrategicReactionOpportunity(false, null, null, 0f, null, null, failReason);
+            new StrategicReactionOpportunity(false, null, null, 0f, null, default, null, failReason);
     }
 
     // Round 6/round 7 (P0.1/P0.2) — ONE feasible reaction the real pipeline would actually admit
@@ -64,10 +67,31 @@ namespace Game.Ai.V2
     // fixed `targetDriven ? A : B` branch — and reserves a bounded budget for the single cheapest
     // one. Execution is NOT bound to the witness (the reservation stays a generic replan budget) —
     // it only proves the budget protects something real.
+    // ARCH-02 §26 — the world/version a witness was proved against. A later re-validation compares
+    // this to the current turn + interrupt generation + AP; a mismatch means the witness is stale
+    // and must be rebuilt rather than trusted.
+    internal readonly struct ReactionStateBasis
+    {
+        public readonly int TurnNumber;
+        public readonly int InterruptVersion;   // StrategicInterruptRegistry.Version at probe time
+        public readonly float ApAtProbe;        // root.ActionPoints the RequiredAp was judged against
+
+        public ReactionStateBasis(int turnNumber, int interruptVersion, float apAtProbe)
+        {
+            TurnNumber = turnNumber;
+            InterruptVersion = interruptVersion;
+            ApAtProbe = apAtProbe;
+        }
+
+        public bool Matches(int turnNumber, int interruptVersion) =>
+            TurnNumber == turnNumber && InterruptVersion == interruptVersion;
+    }
+
     internal readonly struct ReactionWitness
     {
         public readonly string Kind;             // "RespondToDiscovery" | "MaterializeForDiscovery" | "HandFollowup"
         public readonly string ActionKey;        // stable deterministic tie-break key
+        public readonly ReactionStateBasis StateBasis;   // §26 — the world/version this was proved against
         // round 10 (P0.1) — the ONE full AP the protected reaction actually needs, downstream/move
         // envelope INCLUDED (direct: activation + responder-move; materialization: prep + downstream;
         // hand: play AP + follow-up floor). Arbitration ranks and gates on this exact number and
@@ -79,12 +103,14 @@ namespace Game.Ai.V2
         public readonly string Detail;
 
         public ReactionWitness(string kind, string actionKey, float requiredAp,
-            ResourceCost envelope, string detail, int witnessActorId = -1, int witnessTargetId = -1)
+            ResourceCost envelope, string detail, ReactionStateBasis stateBasis,
+            int witnessActorId = -1, int witnessTargetId = -1)
         {
             Kind = kind;
             ActionKey = actionKey;
             RequiredAp = requiredAp;
             Envelope = envelope;
+            StateBasis = stateBasis;
             WitnessActorId = witnessActorId;
             WitnessTargetId = witnessTargetId;
             Detail = detail;
@@ -143,6 +169,10 @@ namespace Game.Ai.V2
             int cap = AiConfigV2.reactionReserveApCap;
             float ceiling = Mathf.Min(apAvailable, (float)cap);
 
+            // §26 — the world/version every witness from this pass is proved against.
+            var basis = new ReactionStateBasis(snap.TurnNumber,
+                StrategicInterruptRegistry.Version(player, ctx.TurnNumber), apAvailable);
+
             // round 6 architectural-debt fix — the canonical normalized commitment source, not a
             // hand-rolled PreferredMoverArmyId scrape.
             ActorCommitments commitments = ActorCommitments.FromIntents(
@@ -169,12 +199,12 @@ namespace Game.Ai.V2
                 AggressionDemandEvaluation aggEval = AggressionDemandEvaluator.Build(snap,
                     AggressionObjectiveEvaluator.Enumerate(snap, CombatOpportunityAnalyzer.Analyze(snap)),
                     activeIntents, commitments, player);
-                witnesses.AddRange(ReactionOpportunityProbe.ProbeTargetDriven(player, ctx, aggEval));
+                witnesses.AddRange(ReactionOpportunityProbe.ProbeTargetDriven(player, ctx, aggEval, basis));
                 witnesses.AddRange(ReactionOpportunityProbe.ProbeMaterializationForDiscovery(
-                    player, root, ctx, snap, hand, commitments, aggEval));
+                    player, root, ctx, snap, hand, commitments, aggEval, basis));
             }
             if (followupDriven)
-                witnesses.AddRange(ReactionOpportunityProbe.ProbeHandFollowup(player, root, ctx, snap, hand, commitments));
+                witnesses.AddRange(ReactionOpportunityProbe.ProbeHandFollowup(player, root, ctx, snap, hand, commitments, basis));
 
             return ReactionWitnessSelector.Select(witnesses, ceiling, player, root, ctx);
         }

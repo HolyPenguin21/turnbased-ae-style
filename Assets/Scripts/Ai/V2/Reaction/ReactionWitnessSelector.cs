@@ -41,11 +41,12 @@ namespace Game.Ai.V2
 
             ReactionWitness win = feasible[0];
             float budget = win.RequiredAp; // reserve EXACTLY what the protected reaction needs (<= ceiling)
-            string rationale = $"{win.Detail}; reserve {budget:0.#} AP (full RequiredAp)";
+            string rationale = $"{win.Detail}; reserve {budget:0.#} AP (full RequiredAp); "
+                + $"basis T{win.StateBasis.TurnNumber}/iv{win.StateBasis.InterruptVersion}/ap{win.StateBasis.ApAtProbe:0.#}";
             if (feasible.Count > 1)
                 rationale += $"; chosen over {feasible.Count - 1} other feasible witness(es) by (RequiredAp, envelope cost, key)";
             return new StrategicReactionOpportunity(true, win.OwnerKey, win.Kind,
-                budget, win.Envelope, rationale, null);
+                budget, win.Envelope, win.StateBasis, rationale, null);
         }
     }
 }

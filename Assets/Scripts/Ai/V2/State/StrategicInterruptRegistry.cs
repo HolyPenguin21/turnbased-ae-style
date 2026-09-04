@@ -24,6 +24,9 @@ namespace Game.Ai.V2
             public AiHandData Hand;
             public Reason Reasons;
             public readonly HashSet<int> DiscoveredArmyIds = new HashSet<int>();
+            // ARCH-02 §26 — monotonic within a turn; bumped on every mutation of the pending set so
+            // a ReactionWitness can record the exact interrupt generation it was proved against.
+            public int Version;
         }
 
         private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
@@ -43,7 +46,10 @@ namespace Game.Ai.V2
             foreach (int id in armyIds)
                 if (id > 0) e.DiscoveredArmyIds.Add(id);
             if (e.DiscoveredArmyIds.Count > 0)
+            {
                 e.Reasons |= Reason.Discovery;
+                e.Version++;
+            }
         }
 
         public static void MarkHandOpportunity(PlayerSetupData player, int turn, AiHandData hand)
@@ -52,6 +58,7 @@ namespace Game.Ai.V2
             Entry e = GetOrReset(player, turn);
             if (hand != null) e.Hand = hand;
             e.Reasons |= Reason.HandOpportunity;
+            e.Version++;
         }
 
         public static void MarkCapabilityChanged(PlayerSetupData player, int turn, AiHandData hand)
@@ -60,7 +67,15 @@ namespace Game.Ai.V2
             Entry e = GetOrReset(player, turn);
             if (hand != null) e.Hand = hand;
             e.Reasons |= Reason.CapabilityChanged;
+            e.Version++;
         }
+
+        // ARCH-02 §26 — the current pending-invalidation generation for this turn (0 = nothing
+        // pending / different turn). A ReactionWitness records this so a later re-validation can
+        // tell "the world the witness was proved against is stale" without re-running the probe.
+        public static int Version(PlayerSetupData player, int turn) =>
+            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+                ? e.Version : 0;
 
         // Historical name retained for existing call sites. It now means ANY pending strategic
         // invalidation, not only contact discovery.
@@ -102,6 +117,7 @@ namespace Game.Ai.V2
                 return;
             e.Reasons &= ~Reason.Discovery;
             e.DiscoveredArmyIds.Clear();
+            e.Version++;
             if (e.Reasons == Reason.None)
                 ByPlayer.Remove(player);
         }
