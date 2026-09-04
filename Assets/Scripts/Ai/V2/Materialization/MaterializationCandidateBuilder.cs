@@ -739,33 +739,10 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
         }
 
+        // ARCH-02 §16 — moved to the canonical MaterializationDeliveryPolicy. This forwarder keeps
+        // the widely-used name for the builder's own gates and its external callers.
         internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
-        {
-            if (p == null || demand == null) return false;
-            switch (demand.Capability)
-            {
-                case CapabilityKind.ScoutCapability:
-                    return true;
-                case CapabilityKind.GarrisonCombatPower:
-                    return p.Deploy.Kind == DeploymentKind.Garrison;
-                case CapabilityKind.Hero:
-                    return p.Deploy.Kind == DeploymentKind.ExistingArmy
-                        && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
-                case CapabilityKind.FieldCombatPower:
-                {
-                    if (p.Deploy.Kind == DeploymentKind.Garrison) return false;
-                    CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
-                    bool hero = d != null && d.cardType == CardType.Hero;
-                    if (!hero) return true;
-                    return p.Deploy.Kind == DeploymentKind.ExistingArmy
-                        && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
-                }
-                default:
-                    return true;
-            }
-        }
+            => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand);
 
         private static bool ChainResourcesAffordable(PlayerRoot root, PlayerSetupData player, ResourceCost cost)
         {

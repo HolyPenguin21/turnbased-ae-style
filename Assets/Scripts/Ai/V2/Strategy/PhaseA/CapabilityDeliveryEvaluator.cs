@@ -33,27 +33,10 @@ namespace Game.Ai.V2
             return ids.OrderBy(id => id).ToList();
         }
 
+        // ARCH-02 §16 — the army-level delivery check now lives in MaterializationDeliveryPolicy
+        // alongside the plan-level one. Forwarder kept for this class's own lease bookkeeping.
         internal static bool IsOperationalForDemand(ArmySnapshot army, AxisDemand demand)
-        {
-            if (army == null || demand == null)
-                return false;
-            switch (demand.Capability)
-            {
-                case CapabilityKind.FieldCombatPower:
-                    return RaidAssemblyPlanner.IsReadyRaidActor(army);
-                case CapabilityKind.GarrisonCombatPower:
-                    return army.IsGarrison;
-                case CapabilityKind.Hero:
-                    return army.HasHero && RaidAssemblyPlanner.IsReadyRaidActor(army);
-                case CapabilityKind.ScoutCapability:
-                    if (!army.IsSoloRecce || army.CurrentMovement <= 0)
-                        return false;
-                    return (demand.RequiredTraits & TraitPreference.Stealth) == 0
-                        || army.IsHidden || army.CanEnterStealth;
-                default:
-                    return false;
-            }
-        }
+            => MaterializationDeliveryPolicy.IsArmyOperationalForDemand(army, demand);
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)

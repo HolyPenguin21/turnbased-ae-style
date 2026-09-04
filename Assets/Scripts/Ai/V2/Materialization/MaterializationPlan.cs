@@ -102,7 +102,11 @@ namespace Game.Ai.V2
         //  against the live world after minting and re-picks if it no longer holds.
         public PlacementOption Deploy;
 
-        // --- whole-chain accounting ---------------------------------------------------
+        // --- whole-chain accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
+        //  One cost description per plan, consumed identically by Phase A, Phase B, the reaction
+        //  closure and the portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
+        //  GenerationAttempts = (Generation != null ? 1 : 0); HandSlotPeak = HandSlotsNeededAtPeak.
+        //  No layer recomputes a "slightly different" cost of its own.
         public float ApCost;                      // CreateArmy + attach AP + deploy AP (generation adds 0 player AP)
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // free hand slots the chain needs at its most crowded moment (0 or 1)

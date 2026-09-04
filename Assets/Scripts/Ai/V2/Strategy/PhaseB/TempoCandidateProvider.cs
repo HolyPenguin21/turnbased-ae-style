@@ -247,37 +247,6 @@ namespace Game.Ai.V2
             return def != null && def.cardType == CardType.Hero;
         }
 
-        private static bool CanDeliverResidualOperationally(MaterializationPlan plan, AxisDemand demand)
-        {
-            if (plan == null || demand == null)
-                return false;
-            switch (demand.Capability)
-            {
-                case CapabilityKind.ScoutCapability:
-                    return true;
-                case CapabilityKind.GarrisonCombatPower:
-                    return plan.Deploy.Kind == DeploymentKind.Garrison;
-                case CapabilityKind.Hero:
-                    return plan.Deploy.Kind == DeploymentKind.ExistingArmy
-                        && plan.Deploy.Army != null
-                        && plan.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
-                case CapabilityKind.FieldCombatPower:
-                {
-                    if (plan.Deploy.Kind == DeploymentKind.Garrison)
-                        return false;
-                    CardDefinition def = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
-                    bool hero = def != null && def.cardType == CardType.Hero;
-                    if (!hero)
-                        return true;
-                    return plan.Deploy.Kind == DeploymentKind.ExistingArmy
-                        && plan.Deploy.Army != null
-                        && plan.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
-                }
-                default:
-                    return false;
-            }
-        }
-
         // §P1 — multiplier on the surplus-admission threshold for a generic garrison deposit when
         // the garrison is already a strong defensive stack (>= a fraction of BestStackPotential)
         // and no asset is threatened. 1f otherwise.
@@ -361,7 +330,7 @@ namespace Game.Ai.V2
 
             MaterializationPlan plan = pick.Value.plan;
             AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
-            AxisDemand residual = matchedResidual != null && CanDeliverResidualOperationally(plan, matchedResidual)
+            AxisDemand residual = matchedResidual != null && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual)
                 ? matchedResidual : null;
             SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
 
