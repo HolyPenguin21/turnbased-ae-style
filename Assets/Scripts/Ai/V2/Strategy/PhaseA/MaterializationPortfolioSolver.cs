@@ -53,7 +53,7 @@ namespace Game.Ai.V2
         internal static Dictionary<DemandState, DemandCandidate>
             BestInjectiveAssignment(
                 Dictionary<DemandState, List<DemandCandidate>> options,
-                PlayerRoot root, PlayerSetupData player, int genAttemptsRemaining)
+                PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, int genAttemptsRemaining)
         {
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
@@ -68,10 +68,12 @@ namespace Game.Ai.V2
 
             float apPool = root != null
                 ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
+            // ARCH-02 §45 — the shared spendable pool, netting the owner-aware reservation ledger
+            // AND the legacy recon-air pool (SpendableAmount), not just the latter.
             var resPool = new Dictionary<ResourceType, int>();
             foreach (ResourceType t in ResourceBundle.All)
                 resPool[t] = root != null
-                    ? Mathf.Max(0, Mathf.FloorToInt(Game.Ai.AiResourceReservation.Available(root, player, t)))
+                    ? Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     : int.MaxValue;
 
             bool Fits(DemandCandidate c)

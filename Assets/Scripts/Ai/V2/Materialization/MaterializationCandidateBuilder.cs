@@ -196,7 +196,7 @@ namespace Game.Ai.V2
                         MaterializationPlan p = MakeExistingPlan(MaterializationChainKind.Direct, demand,
                             card, i, null, -1, opt, baseAbilities);
                         AddIfFeasibleA(candidates, p, demand, def, stealthSurcharge, reservedFollowupAp,
-                            axisBudget, eps, root, hand, player);
+                            axisBudget, eps, root, hand, player, ctx);
                     }
                 }
 
@@ -222,7 +222,7 @@ namespace Game.Ai.V2
                             MaterializationPlan p = MakeExistingPlan(MaterializationChainKind.AttachDeploy, demand,
                                 card, i, eq, j, opt, projected);
                             AddIfFeasibleA(candidates, p, demand, def, stealthSurcharge, reservedFollowupAp,
-                                axisBudget, eps, root, hand, player);
+                                axisBudget, eps, root, hand, player, ctx);
                         }
                     }
                 }
@@ -254,7 +254,7 @@ namespace Game.Ai.V2
                                 demand, g, baseInHand: host, baseIdx: i, generatedIsEquipment: true, opt: opt,
                                 projected: projected);
                             AddIfFeasibleA(candidates, p, demand, hd, stealthSurcharge, reservedFollowupAp,
-                                axisBudget, eps, root, hand, player);
+                                axisBudget, eps, root, hand, player, ctx);
                         }
                     }
                 }
@@ -276,7 +276,7 @@ namespace Game.Ai.V2
                                 demand, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                                 projected: genAbilities);
                             AddIfFeasibleA(candidates, p, demand, gd, stealthSurcharge, reservedFollowupAp,
-                                axisBudget, eps, root, hand, player);
+                                axisBudget, eps, root, hand, player, ctx);
                         }
                     }
 
@@ -297,7 +297,7 @@ namespace Game.Ai.V2
                                 demand, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                                 projected: projected, equipInHand: eq, equipIdx: j);
                             AddIfFeasibleA(candidates, p, demand, gd, stealthSurcharge, reservedFollowupAp,
-                                axisBudget, eps, root, hand, player);
+                                axisBudget, eps, root, hand, player, ctx);
                         }
                     }
                 }
@@ -444,7 +444,7 @@ namespace Game.Ai.V2
                     direct.FinalCapability = cap;
                     if (strategicClaim != null && !CanDeliverDemandOperationally(direct, strategicClaim))
                         continue;
-                    if (StrategicSpendability.ReservesOkAfterChain(root, direct, player))
+                    if (StrategicSpendability.ReservesOkAfterChain(root, ctx, direct, player))
                     {
                         direct.Score = SurplusUtility(snap, direct, inv, recce, hero, hand, baseAbilities);
                         candidates.Add(direct);
@@ -469,7 +469,7 @@ namespace Game.Ai.V2
                         // a zero-delivery placement merely because the equipment raised utility.
                         if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
                             continue;
-                        if (!StrategicSpendability.ReservesOkAfterChain(root, att, player)) continue;
+                        if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, att, player)) continue;
                         // P1.4 — the evaluator owns the attach-step penalty (ChainStepPenalty in
                         // ResourceEfficiency); no extra subtraction here.
                         att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected);
@@ -519,7 +519,7 @@ namespace Game.Ai.V2
                                 genEq.FinalCapability = cap;
                                 if (strategicClaim != null && !CanDeliverDemandOperationally(genEq, strategicClaim))
                                     continue;
-                                if (!StrategicSpendability.ReservesOkAfterChain(root, genEq, player))
+                                if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, genEq, player))
                                     continue;
 
                                 // P1.4 — the evaluator owns the generation + attach step penalties
@@ -551,7 +551,7 @@ namespace Game.Ai.V2
                         if (genStrategicClaim != null && !CanDeliverDemandOperationally(gen, genStrategicClaim))
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
-                        if (!StrategicSpendability.ReservesOkAfterChain(root, gen, player)) continue;
+                        if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, gen, player)) continue;
                         // P1.4 — evaluator owns the generation step penalty + success-chance discount.
                         gen.Score = SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities);
                         candidates.Add(gen);
@@ -702,7 +702,7 @@ namespace Game.Ai.V2
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> sink,
             MaterializationPlan p, AxisDemand demand, CardDefinition baseDef, int stealthSurcharge,
             float reservedFollowupAp, float axisBudget, float eps, PlayerRoot root, AiHandData hand,
-            PlayerSetupData player)
+            PlayerSetupData player, AiTurnContext ctx)
         {
             // Operational shortages may not spend a card on a placement whose live capability delta
             // is known in advance to be zero. Garrison placement is preparation, not Field/Hero
@@ -717,7 +717,7 @@ namespace Game.Ai.V2
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;
             if (root.ActionPoints - need - AiConfigV2.housekeepingApReserve < -eps) return;
-            if (!ChainResourcesAffordable(root, player, p.ResCost)) return;
+            if (!ChainResourcesAffordable(root, player, ctx, p.ResCost)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;
             sink.Add((p, followupAp, p.ExpectedTraits));
         }
@@ -744,11 +744,15 @@ namespace Game.Ai.V2
         internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
             => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand);
 
-        private static bool ChainResourcesAffordable(PlayerRoot root, PlayerSetupData player, ResourceCost cost)
+        // ARCH-02 §45 — route through the one owner-aware spendability seam so a bounded reaction
+        // envelope (or any other explicit reservation) is respected here too, not just the legacy
+        // recon-air pool.
+        private static bool ChainResourcesAffordable(PlayerRoot root, PlayerSetupData player,
+            AiTurnContext ctx, ResourceCost cost)
         {
             if (cost == null) return true;
             foreach (Game.Economy.ResourceType t in ResourceBundle.All)
-                if (AiResourceReservation.Available(root, player, t) < cost.Get(t)) return false;
+                if (StrategicSpendability.SpendableAmount(player, root, ctx, t) < cost.Get(t)) return false;
             return true;
         }
 
