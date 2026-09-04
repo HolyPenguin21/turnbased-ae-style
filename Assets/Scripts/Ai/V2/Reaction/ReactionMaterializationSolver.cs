@@ -144,7 +144,7 @@ namespace Game.Ai.V2
             // Legal candidate pool — the SAME enumeration the hand-follow-up probe uses.
             var pool = new List<(MaterializationPlan plan, float ap, bool deliversHero, bool isHeroPlan,
                 string armyKey, bool armyEligible, AiPower.PowerUnit unit)>();
-            foreach (MaterializationPlan p in MaterializationCandidateBuilder.EnumerateSurplusPlans(
+            foreach (MaterializationPlan p in MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation))
             {
                 if (p == null) continue;

@@ -117,7 +117,7 @@ namespace Game.Ai.V2
                 options.Add((p.Card != null ? p.Card.EffectivePlayApCost : 0f,
                     p.Generation != null ? p.Generation.GenerationResourceCost
                         : (p.Card != null ? p.Card.EffectivePlayResourceCost : null)));
-            foreach (MaterializationPlan mp in MaterializationCandidateBuilder.EnumerateSurplusPlans(
+            foreach (MaterializationPlan mp in MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation))
                 options.Add((mp.ApCost, mp.ResCost));
 
