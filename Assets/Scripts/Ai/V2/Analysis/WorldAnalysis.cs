@@ -289,6 +289,10 @@ namespace Game.Ai.V2
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
+                IsStructuralRaidActor = isOwn
+                    && !a.IsPrison && !a.IsGarrison && !a.IsAirArmy && !a.IsAirfield
+                    && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
+                    && a.Members.Count > 0,
                 IsHidden = isOwn && a.Members.Count > 0 && a.Members.All(m => m.IsHidden),
                 CanEnterStealth = isOwn && a.Members.Any(StealthSystem.CanEnterStealth),
                 StealthLevel = isOwn

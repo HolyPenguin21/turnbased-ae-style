@@ -114,7 +114,7 @@ namespace Game.Ai.V2
                 return RaidAssemblyPlan.Infeasible("no own-force snapshot");
 
             ArmySnapshot a = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == armyId);
-            if (a == null || !RaidActorEligibility.IsStructuralRaidActor(a))
+            if (a == null || !a.IsStructuralRaidActor)
                 return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();

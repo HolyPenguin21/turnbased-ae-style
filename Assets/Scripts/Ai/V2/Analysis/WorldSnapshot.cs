@@ -140,6 +140,12 @@ namespace Game.Ai.V2
         public bool HasActivatedThisTurn;
         public int CurrentMovement;        // MP left THIS turn (MaxMovement minus what's spent)
         public bool IsSoloRecce;           // AiArmyRoles.IsSoloRecce — the cheap dedicated scout shape
+        // ARCH-02 §29/§59 — frozen at scan time from the live ArmyData so downstream layers
+        // (RaidActorEligibility, CombatOpportunityAnalyzer, CapabilityInventory) read one snapshot
+        // fact instead of re-deriving it from live ArmyRegistry state. Own armies only: a raid
+        // mover is always our own. Structural = not prison/air/airfield/garrison/soloRecce/
+        // solo-hero-awaiting-escort and has at least one member.
+        public bool IsStructuralRaidActor;
 
         // Stealth capability (own armies only — a fog/cheat-read enemy army's is unknown). Lets a
         // stealth-Required Scout mission tell which movers can actually satisfy it: a mover is

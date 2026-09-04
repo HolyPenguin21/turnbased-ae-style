@@ -57,11 +57,11 @@ namespace Game.Ai.V2
             switch (demand.Capability)
             {
                 case CapabilityKind.FieldCombatPower:
-                    return RaidActorEligibility.IsStructuralRaidActor(army);
+                    return army.IsStructuralRaidActor;
                 case CapabilityKind.GarrisonCombatPower:
                     return army.IsGarrison;
                 case CapabilityKind.Hero:
-                    return army.HasHero && RaidActorEligibility.IsStructuralRaidActor(army);
+                    return army.HasHero && army.IsStructuralRaidActor;
                 case CapabilityKind.ScoutCapability:
                     if (!army.IsSoloRecce || army.CurrentMovement <= 0)
                         return false;
