@@ -1250,10 +1250,12 @@ namespace Game.Ai.V2
         // the strategic reservation ledger AND the legacy recon-air reservation are both netted out
         // so the same resource is never promised to two owners. Also the canonical resource-
         // affordability probe reused by StrategicReactionPass (spec round 5 §3/§4).
-        // round 6 §P1 — `excludeReason` drops the caller's OWN reservations from the strategic
-        // spendable, so a re-probe of the very reaction that placed a hold doesn't fail against it.
+        // round 6 §P1 / round 7 (P1) — `excludeOwner` drops the caller's OWN reservation (by its
+        // EXACT Owner key, not the shared Reason) from the strategic spendable, so a re-probe of the
+        // very reaction that placed a hold doesn't fail against it and two owners sharing a Reason
+        // can't shadow each other.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ResourceCost cost, StrategicReservationReason? excludeReason = null)
+            AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
         {
             if (cost == null)
                 return true;
@@ -1263,10 +1265,10 @@ namespace Game.Ai.V2
                 if (need <= 0)
                     continue;
                 StrategicReservedResource srr = StrategicResourceReservationLedger.Map(t);
-                float strategic = excludeReason == null
+                float strategic = excludeOwner == null
                     ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
-                    : StrategicResourceReservationLedger.SpendableExcluding(
-                        player, ctx.TurnNumber, srr, root.GetResource(t), excludeReason.Value);
+                    : StrategicResourceReservationLedger.SpendableExcludingOwner(
+                        player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner);
                 float legacy = Mathf.Max(0f, Game.Ai.AiResourceReservation.Available(root, player, t));
                 if (Mathf.Min(strategic, legacy) + AiConfigV2.allocatorSliceEpsilon < need)
                     return false;

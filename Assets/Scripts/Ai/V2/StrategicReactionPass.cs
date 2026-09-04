@@ -60,30 +60,42 @@ namespace Game.Ai.V2
             new StrategicReactionOpportunity(false, null, null, 0f, null, null, failReason);
     }
 
-    // Round 6 — the WITNESS the feasibility probe returns: proof that at least one action the real
-    // pipeline would actually admit exists at the current state. Execution is NOT bound to it (the
-    // reservation stays a generic replan budget) — it only proves the budget protects something real.
-    internal readonly struct ReactionFeasibility
+    // Round 6/round 7 (P0.1/P0.2) — ONE feasible reaction the real pipeline would actually admit
+    // at the current state. BuildReactionOpportunity collects EVERY witness from EVERY enabled
+    // source (discovery-direct responder, discovery-materialization, hand follow-up) — never a
+    // fixed `targetDriven ? A : B` branch — and reserves a bounded budget for the single cheapest
+    // one. Execution is NOT bound to the witness (the reservation stays a generic replan budget) —
+    // it only proves the budget protects something real.
+    internal readonly struct ReactionWitness
     {
-        public readonly bool Feasible;
-        public readonly float MinFeasibleAp;      // AP the CHEAPEST admitted/feasible reaction needs
-        public readonly ResourceCost MinEnvelope; // persistent cost of that cheapest feasible reaction (may be null)
-        public readonly int WitnessActorId;      // responder army id (-1 for a hand play)
-        public readonly int WitnessTargetId;     // discovered target army id (-1 for a hand play)
+        public readonly string Kind;             // "RespondToDiscovery" | "MaterializeForDiscovery" | "HandFollowup"
+        public readonly string ActionKey;        // stable deterministic tie-break key
+        public readonly bool NeedsResponderMove; // budget estimate adds reactionResponderMoveApEstimate
+        public readonly float MinFeasibleAp;     // AP the cheapest admitted/feasible action needs
+        public readonly ResourceCost Envelope;   // persistent cost of that action (may be null)
+        public readonly int WitnessActorId;      // responder army id (-1 for a hand / materialization play)
+        public readonly int WitnessTargetId;     // discovered target army id (-1 for a pure hand play)
         public readonly string Detail;
 
-        public ReactionFeasibility(bool feasible, float minAp, ResourceCost minEnvelope,
-            string detail, int witnessActorId = -1, int witnessTargetId = -1)
+        public ReactionWitness(string kind, string actionKey, bool needsResponderMove, float minAp,
+            ResourceCost envelope, string detail, int witnessActorId = -1, int witnessTargetId = -1)
         {
-            Feasible = feasible;
+            Kind = kind;
+            ActionKey = actionKey;
+            NeedsResponderMove = needsResponderMove;
             MinFeasibleAp = minAp;
-            MinEnvelope = minEnvelope;
+            Envelope = envelope;
             WitnessActorId = witnessActorId;
             WitnessTargetId = witnessTargetId;
             Detail = detail;
         }
 
-        public static ReactionFeasibility No(string detail) => new ReactionFeasibility(false, 0f, null, detail);
+        // Reservation owner tag — concrete per witness kind, NOT the shared Reason. P1: the
+        // envelope-spendable check and the §6 re-probe exclude by THIS exact owner.
+        public string OwnerKey => "reaction-budget:" + Kind;
+
+        public float EnvelopeCost => Envelope == null ? 0f
+            : Envelope.human + Envelope.energy + Envelope.materials + Envelope.tech;
     }
 
     internal static class StrategicReactionPass
@@ -124,55 +136,97 @@ namespace Game.Ai.V2
 
             float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
             int cap = AiConfigV2.reactionReserveApCap;
+            float ceiling = Mathf.Min(apAvailable, (float)cap);
 
             // round 6 architectural-debt fix — the canonical normalized commitment source, not a
             // hand-rolled PreferredMoverArmyId scrape.
             ActorCommitments commitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
 
-            ReactionFeasibility probe = targetDriven
-                ? ProbeTargetDriven(player, root, ctx, snap, commitments)
-                : ProbeHandFollowup(player, root, ctx, snap, hand, commitments);
-            if (!probe.Feasible)
-                return StrategicReactionOpportunity.None(probe.Detail);
+            // P0.1 — StrategicInterruptRegistry stores reasons as FLAGS, so a Discovery and a
+            // HandOpportunity can both be pending at once. Probe every ENABLED source and let the
+            // cheapest genuine witness win — no fixed Discovery>Hand (or Hand>Discovery) priority.
+            // P0.2 — a discovered target whose aggression gate is not (yet) passed is still a real
+            // reaction when the DemandLayer shortage it raises has a legal Phase-A materialization;
+            // that is exactly what Phase A exists for (Raid accepted -> GatePassed=false because
+            // power is short now -> DemandLayer asks for power -> Phase A plays a Unit -> Refresh
+            // -> Raid executable). ProbeMaterializationForDiscovery composes the real primitives
+            // (AggressionObjectiveEvaluator + RaidOperationalReadiness + the surplus materialization
+            // enumerator), not a second planner.
+            var witnesses = new List<ReactionWitness>();
+            if (targetDriven)
+            {
+                CombatOpportunityReport aggReport = CombatOpportunityAnalyzer.Analyze(snap);
+                witnesses.AddRange(ProbeTargetDriven(player, root, ctx, snap, commitments, aggReport));
+                witnesses.AddRange(ProbeMaterializationForDiscovery(
+                    player, root, ctx, snap, hand, commitments, aggReport));
+            }
+            if (followupDriven)
+                witnesses.AddRange(ProbeHandFollowup(player, root, ctx, snap, hand, commitments));
 
-            string kind = targetDriven ? "RespondToDiscovery" : "HandFollowup";
-            float estimate = targetDriven
-                ? probe.MinFeasibleAp + AiConfigV2.reactionResponderMoveApEstimate
-                : Mathf.Max(probe.MinFeasibleAp, AiConfigV2.reactionFollowupApEstimate);
-            float budget = Mathf.Min(estimate, Mathf.Min(apAvailable, (float)cap));
+            // Filter to what a bounded budget can actually protect, then rank: cheapest AP, then
+            // smallest persistent-resource opportunity cost, then a stable deterministic key. P1 —
+            // the envelope-spendable check excludes THIS witness's own prospective reservation OWNER
+            // (not merely its shared Reason), so the §6 re-probe of an already-placed budget does not
+            // fail against itself and two distinct reaction owners cannot shadow each other.
+            var feasible = witnesses
+                .Where(w => w.MinFeasibleAp <= ceiling + 0.001f)
+                .Where(w => w.Envelope == null
+                    || StrategicManager.FitsSpendableResources(player, root, ctx, w.Envelope, w.OwnerKey))
+                .OrderBy(w => w.MinFeasibleAp)
+                .ThenBy(w => w.EnvelopeCost)
+                .ThenBy(w => w.ActionKey, System.StringComparer.Ordinal)
+                .ToList();
+            if (feasible.Count == 0)
+                return StrategicReactionOpportunity.None(witnesses.Count == 0
+                    ? "noFeasibleReaction(no witness from any enabled source)"
+                    : $"noFeasibleReaction({witnesses.Count} witness(es), none within AP ceiling "
+                        + $"{ceiling:0.#} + spendable envelope)");
+
+            ReactionWitness win = feasible[0];
+            string kind = win.Kind;
+            float estimate = win.NeedsResponderMove
+                ? win.MinFeasibleAp + AiConfigV2.reactionResponderMoveApEstimate
+                : Mathf.Max(win.MinFeasibleAp, AiConfigV2.reactionFollowupApEstimate);
+            float budget = Mathf.Min(estimate, ceiling);
 
             // §4 — do NOT reserve a budget that cannot cover even the cheapest feasible reaction.
-            if (budget + 0.001f < probe.MinFeasibleAp)
+            if (budget + 0.001f < win.MinFeasibleAp)
                 return StrategicReactionOpportunity.None(
-                    $"budgetBelowMinimumFeasible: cheapest feasible {kind} needs {probe.MinFeasibleAp:0.#} AP, "
+                    $"budgetBelowMinimumFeasible: cheapest feasible {kind} needs {win.MinFeasibleAp:0.#} AP, "
                     + $"ceiling {cap}, available {apAvailable:0.#} — not protected");
 
             string rationale = estimate > cap
-                ? $"{probe.Detail}; estimate {estimate:0.#} AP > ceiling {cap} -> bounded budget {budget:0.#}"
-                : $"{probe.Detail}; budget {budget:0.#} AP";
-            return new StrategicReactionOpportunity(true, "reaction-budget:" + kind, kind,
-                budget, probe.MinEnvelope, rationale, null);
+                ? $"{win.Detail}; estimate {estimate:0.#} AP > ceiling {cap} -> bounded budget {budget:0.#}"
+                : $"{win.Detail}; budget {budget:0.#} AP";
+            if (feasible.Count > 1)
+                rationale += $"; chosen over {feasible.Count - 1} other feasible witness(es) by (AP, envelope cost, key)";
+            return new StrategicReactionOpportunity(true, win.OwnerKey, kind,
+                budget, win.Envelope, rationale, null);
         }
 
-        // §P0 (round 6) — a discovered target is a feasible reaction target only if the REAL
+        // §P0 (round 6) — a discovered target is a DIRECT-responder reaction target only if the REAL
         // aggression admission gate passes for it (raidTargetMaxDefenders / raidObjectiveMinBaseValue
         // / … are all folded into AggressionObjective.GatePassed), AND an uncommitted own field army
         // can begin a safe step toward it with spendable activation AP. Pathability alone is not
-        // enough. The objective set is built stateless (CombatOpportunityAnalyzer.Analyze — no radar
-        // state mutation), so the probe can run twice a turn without skewing the radar.
-        private static ReactionFeasibility ProbeTargetDriven(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snap, ActorCommitments commitments)
+        // enough. `report` is built stateless by the caller (CombatOpportunityAnalyzer.Analyze — no
+        // radar state mutation), so the probe can run twice a turn without skewing the radar. A
+        // discovered target that FAILS the gate is handled by ProbeMaterializationForDiscovery.
+        private static List<ReactionWitness> ProbeTargetDriven(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snap, ActorCommitments commitments, CombatOpportunityReport report)
         {
+            var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
 
-            CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
             var admitted = AggressionObjectiveEvaluator.Enumerate(snap, report)
                 .Where(o => o != null && o.GatePassed && targetIds.Contains(o.TargetArmyId))
                 .ToList();
             if (admitted.Count == 0)
-                return ReactionFeasibility.No("targetDriven: no discovered target passes the aggression admission "
-                    + "gate (GatePassed=false for all — e.g. too many defenders / base value below threshold)");
+            {
+                AiDebugLog.Write("[AI][V2] reaction probe(targetDriven) — no discovered target passes the "
+                    + "aggression admission gate; materialization path evaluated separately");
+                return witnesses;
+            }
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
             float cheapest = float.MaxValue;
@@ -199,20 +253,139 @@ namespace Game.Ai.V2
                 }
             }
             if (cheapest == float.MaxValue)
-                return ReactionFeasibility.No("targetDriven: an admitted target exists but no uncommitted "
-                    + "responder can path to it");
-            return new ReactionFeasibility(true, cheapest, null,
+            {
+                AiDebugLog.Write("[AI][V2] reaction probe(targetDriven) — an admitted target exists but no "
+                    + "uncommitted responder can path to it");
+                return witnesses;
+            }
+            witnesses.Add(new ReactionWitness("RespondToDiscovery",
+                $"discovery:direct:{witnessActor}->{witnessTarget}", needsResponderMove: true, cheapest, null,
                 $"targetDriven witness: army #{witnessActor} -> admitted target #{witnessTarget}, "
-                + $"min activation {cheapest:0.#} AP", witnessActor, witnessTarget);
+                + $"min activation {cheapest:0.#} AP", witnessActor, witnessTarget));
+            return witnesses;
+        }
+
+        // P0.2 — a discovered target whose aggression gate is NOT (yet) passed is still a real
+        // reaction when the shortage DemandLayer would raise for it (Hero / FieldCombatPower) has a
+        // legal Phase-A materialization inside the reaction envelope. Composes the REAL primitives:
+        // AggressionObjectiveEvaluator (accepted objective, no GatePassed filter) + the same
+        // covered-target / cooldown admission DemandLayer.AggressionDemands uses + RaidOperational
+        // Readiness (the authoritative shortage) + the surplus materialization enumerator (the same
+        // one ProbeHandFollowup uses, gated by CanDeliverDemandOperationally). No second planner.
+        private static List<ReactionWitness> ProbeMaterializationForDiscovery(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
+            ActorCommitments commitments, CombatOpportunityReport report)
+        {
+            var witnesses = new List<ReactionWitness>();
+            HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
+
+            var objectives = AggressionObjectiveEvaluator.Enumerate(snap, report)
+                .Where(o => o != null && targetIds.Contains(o.TargetArmyId))
+                .OrderByDescending(o => o.BaseValue).ThenBy(o => o.TargetArmyId)
+                .ToList();
+            if (objectives.Count == 0)
+                return witnesses;
+
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
+
+            // Mirror DemandLayer.AggressionDemands: a target already covered by a committed raid, or
+            // under an allocator cooldown, would not raise a fresh demand — so it is not a reaction.
+            var covered = new HashSet<int>();
+            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+                if (i?.Kind == MissionKind.Raid && i.Raid != null && i.PreferredMoverArmyId != null
+                    && commitments != null && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
+                    covered.Add(i.Raid.TargetArmyId);
+
+            var reservation = new MaterializationReservation
+            {
+                GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber),
+            };
+            float ceiling = Mathf.Min(root != null ? Mathf.Max(0f, root.ActionPoints) : 0f,
+                (float)AiConfigV2.reactionReserveApCap);
+            List<MaterializationPlan> surplus = null;
+
+            foreach (AggressionObjective o in objectives)
+            {
+                if (covered.Contains(o.TargetArmyId))
+                    continue;
+                if (cooldownState.TryGetCooldown(RaidKeyFor(o), snap.TurnNumber, out _))
+                    continue;
+
+                RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
+                    snap, o, RaidDefendersFor(snap, o.TargetArmyId), commitments, inv);
+                // ReadyExecutable -> ProbeTargetDriven territory. NeedsAssembly -> the real pipeline
+                // DEFERs (buying more power does not help). Only a real Hero / FieldCombatPower
+                // shortage is a materialization reaction.
+                if (readiness.ReadyExecutable || readiness.NeedsAssembly)
+                    continue;
+                if (!readiness.NeedsHero && !readiness.NeedsPower)
+                    continue;
+
+                AxisDemand demand = readiness.NeedsHero
+                    ? new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Aggression,
+                        Capability = CapabilityKind.Hero,
+                        DesiredAmount = 1,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = o.LastKnownHex,
+                        Value = o.BaseValue,
+                        Explain = $"reaction: raid #{o.TargetArmyId} needs a free deployed hero",
+                    }
+                    : new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Aggression,
+                        Capability = CapabilityKind.FieldCombatPower,
+                        DesiredAmount = readiness.RequestedPower,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = o.LastKnownHex,
+                        Value = o.BaseValue,
+                        Explain = $"reaction: raid #{o.TargetArmyId} needs ~{readiness.RequestedPower:0.#} more field power",
+                    };
+
+                surplus = surplus ?? MaterializationCandidateBuilder.EnumerateSurplusPlans(
+                    snap, player, root, hand, ctx, inv, commitments, reservation);
+
+                const string owner = "reaction-budget:MaterializeForDiscovery";
+                MaterializationPlan pick = surplus
+                    .Where(p => p != null
+                        && MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, demand)
+                        && p.ApCost <= ceiling + 0.001f
+                        && StrategicManager.FitsSpendableResources(player, root, ctx, p.ResCost, owner))
+                    .OrderBy(p => p.ApCost)
+                    .ThenBy(p => ResCostSum(p.ResCost))
+                    .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
+                    .FirstOrDefault();
+                if (pick == null)
+                    continue;
+
+                string envStr = pick.ResCost == null ? "-"
+                    : $"H{pick.ResCost.human} E{pick.ResCost.energy} M{pick.ResCost.materials} T{pick.ResCost.tech}";
+                witnesses.Add(new ReactionWitness("MaterializeForDiscovery",
+                    $"discovery:materialize:{o.TargetArmyId}:{pick.StableKey}", needsResponderMove: false,
+                    pick.ApCost, pick.ResCost,
+                    $"materializeForDiscovery witness: raid #{o.TargetArmyId} shortage "
+                    + $"{(readiness.NeedsHero ? "Hero" : "FieldCombatPower")} -> legal Phase-A play {pick.Kind} "
+                    + $"[{pick.StableKey}] min {pick.ApCost:0.#} AP + envelope [{envStr}]",
+                    -1, o.TargetArmyId));
+            }
+            if (witnesses.Count == 0)
+                AiDebugLog.Write("[AI][V2] reaction probe(materializeForDiscovery) — no discovered target has a "
+                    + "Hero/FieldCombatPower shortage with a legal in-envelope Phase-A materialization");
+            return witnesses;
         }
 
         // §3/§P1 (round 6) — a hand follow-up is feasible only if SOME legal play (from the full
         // preflighted enumeration, not just the best-scored one) fits the reaction AP ceiling AND
-        // its persistent envelope is spendable. FitsSpendableResources excludes the reaction pass's
-        // OWN reservation so a re-probe after the envelope is placed doesn't fail against itself.
-        private static ReactionFeasibility ProbeHandFollowup(PlayerSetupData player, PlayerRoot root,
+        // its persistent envelope is spendable. FitsSpendableResources excludes the HandFollowup
+        // reservation owner so a re-probe after the envelope is placed doesn't fail against itself.
+        private static List<ReactionWitness> ProbeHandFollowup(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snap, AiHandData hand, ActorCommitments commitments)
         {
+            var witnesses = new List<ReactionWitness>();
             var reservation = new MaterializationReservation
             {
                 GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber),
@@ -231,20 +404,45 @@ namespace Game.Ai.V2
 
             float ap = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
             float ceiling = Mathf.Min(ap, (float)AiConfigV2.reactionReserveApCap);
+            const string owner = "reaction-budget:HandFollowup";
             var feasible = options
                 .Where(o => o.ap <= ceiling + 0.001f
-                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env,
-                        StrategicReservationReason.StrategicReactionPass))
+                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env, owner))
                 .OrderBy(o => o.ap)
+                .ThenBy(o => ResCostSum(o.env))
                 .ToList();
             if (feasible.Count == 0)
-                return ReactionFeasibility.No("handFollowup: no legal hand play fits the reaction AP ceiling "
-                    + $"({ceiling:0.#}) + spendable-resource check");
+            {
+                AiDebugLog.Write("[AI][V2] reaction probe(handFollowup) — no legal hand play fits the reaction "
+                    + $"AP ceiling ({ceiling:0.#}) + spendable-resource check");
+                return witnesses;
+            }
             var best = feasible[0];
             string env = best.env == null ? "-"
                 : $"H{best.env.human} E{best.env.energy} M{best.env.materials} T{best.env.tech}";
-            return new ReactionFeasibility(true, best.ap, best.env,
-                $"handFollowup witness: min {best.ap:0.#} AP + envelope [{env}] ({feasible.Count} feasible plays)");
+            witnesses.Add(new ReactionWitness("HandFollowup",
+                $"handFollowup:{best.ap:0.#}:{env}", needsResponderMove: false, best.ap, best.env,
+                $"handFollowup witness: min {best.ap:0.#} AP + envelope [{env}] ({feasible.Count} feasible plays)"));
+            return witnesses;
+        }
+
+        private static float ResCostSum(ResourceCost c) => c == null ? 0f
+            : c.human + c.energy + c.materials + c.tech;
+
+        private static StableMissionKey RaidKeyFor(AggressionObjective o) =>
+            new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
+
+        private static IReadOnlyList<WorthIt.DefenderProfile> RaidDefendersFor(WorldSnapshot snap, int targetArmyId)
+        {
+            if (snap?.Known == null || targetArmyId == 0)
+                return System.Array.Empty<WorthIt.DefenderProfile>();
+            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
+                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
+            foreach (AiMapMemory.KnownEnemySighting s in sightings)
+                if (s.ArmyId == targetArmyId)
+                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            return System.Array.Empty<WorthIt.DefenderProfile>();
         }
 
         // §6 — before the bounded reaction round runs, a genuinely feasible reaction must STILL

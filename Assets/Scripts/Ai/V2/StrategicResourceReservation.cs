@@ -103,20 +103,22 @@ namespace Game.Ai.V2
         }
 
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res)
-            => Active(player, turn, res, null);
+            => Active(player, turn, res, (string)null);
 
-        // AI-MGR-02 round 6 — `ignoreReason` excludes a caller's OWN reservations from the sum, so
-        // a pass can re-check "would this still be affordable if MY hold weren't there" without
-        // temporarily tearing its reservation down (which would let another action grab the freed
-        // resource). Used by the reaction feasibility re-probe (§P1).
+        // AI-MGR-02 round 7 (P1) — `ignoreOwner` excludes a caller's OWN reservation from the sum by
+        // its EXACT Owner key (not by the shared Reason), so a pass can re-check "would this still be
+        // affordable if MY hold weren't there" without tearing its reservation down (which would let
+        // another action grab the freed resource), AND two reaction owners that share
+        // Reason=StrategicReactionPass cannot shadow each other's revalidation. Used by the reaction
+        // feasibility probe / re-probe (StrategicReactionPass §P1).
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res,
-            StrategicReservationReason? ignoreReason)
+            string ignoreOwner)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return 0f;
             float sum = 0f;
             foreach (StrategicResourceReservation r in e.Reservations)
-                if (r.Resource == res && (ignoreReason == null || r.Reason != ignoreReason.Value))
+                if (r.Resource == res && (ignoreOwner == null || r.Owner != ignoreOwner))
                     sum += Mathf.Max(0f, r.Amount);
             return sum;
         }
@@ -126,10 +128,11 @@ namespace Game.Ai.V2
         public static float Spendable(PlayerSetupData player, int turn, StrategicReservedResource res, float total)
             => Mathf.Max(0f, total - Active(player, turn, res));
 
-        // As Spendable, but excluding the caller's own reservations (by reason). See Active(…, ignoreReason).
-        public static float SpendableExcluding(PlayerSetupData player, int turn, StrategicReservedResource res,
-            float total, StrategicReservationReason ignoreReason)
-            => Mathf.Max(0f, total - Active(player, turn, res, ignoreReason));
+        // As Spendable, but excluding the caller's own reservation by its EXACT Owner key (P1).
+        // See Active(…, ignoreOwner).
+        public static float SpendableExcludingOwner(PlayerSetupData player, int turn, StrategicReservedResource res,
+            float total, string ignoreOwner)
+            => Mathf.Max(0f, total - Active(player, turn, res, ignoreOwner));
 
         public static float SpendableAp(PlayerSetupData player, int turn, float totalAp) =>
             Spendable(player, turn, StrategicReservedResource.ActionPoints, totalAp);
