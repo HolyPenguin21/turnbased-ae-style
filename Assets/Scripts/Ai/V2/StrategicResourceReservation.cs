@@ -152,18 +152,6 @@ namespace Game.Ai.V2
             return removed > 0;
         }
 
-        // The Owner tag of the first active reservation for a reason (or null). AI-MGR-02 §P1.3 —
-        // the reaction pass stores the concrete action key here and revalidates it before executing.
-        public static string OwnerOf(PlayerSetupData player, int turn, StrategicReservationReason reason)
-        {
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
-                return null;
-            foreach (StrategicResourceReservation r in e.Reservations)
-                if (r.Reason == reason)
-                    return r.Owner;
-            return null;
-        }
-
         public static bool HasAny(PlayerSetupData player, int turn) =>
             player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Count > 0;

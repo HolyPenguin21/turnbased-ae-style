@@ -697,12 +697,12 @@ namespace Game.Ai.V2
             result.Reservation.GenerationAttemptsUsed =
                 Mathf.Max(result.Reservation.GenerationAttemptsUsed, budget.GenerationAttemptsUsed);
 
-            // --- §7 (round 4) reaction reservation: a BOUNDED AP BUDGET for the same-turn reaction
-            //     replan (not an exact action cost — the replan re-runs the whole pipeline and
-            //     picks its own action). Reserve AP only; the replan's own affordability checks
-            //     handle persistent resources. Owner is a stable "reaction-budget" tag.
+            // --- §7 (round 5) reaction reservation: a BOUNDED AP BUDGET + the persistent H/E/M/T
+            //     ENVELOPE that a REAL feasibility probe proved is needed to keep at least one
+            //     feasible reaction possible. The budget stays generic (the replan picks its own
+            //     action) but is only created when the probe passes and the AP >= min feasible AP.
             StrategicReactionOpportunity reactionOpp =
-                StrategicReactionPass.BuildReactionOpportunity(player, root, ctx);
+                StrategicReactionPass.BuildReactionOpportunity(player, root, ctx, snap);
             if (reactionOpp.IsActionable)
             {
                 StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
@@ -714,19 +714,35 @@ namespace Game.Ai.V2
                         Amount = reactionOpp.ReservedApBudget,
                         ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                     });
-                AiDebugLog.Write($"[AI][V2]   strat.B — reaction actionable ({reactionOpp.Kind}); reserve BOUNDED "
-                    + $"{F(reactionOpp.ReservedApBudget)} AP replan budget (owner={reactionOpp.OwnerKey} "
-                    + $"exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
+                if (reactionOpp.Envelope != null)
+                    foreach (ResourceType rt in ResourceBundle.All)
+                    {
+                        int n = reactionOpp.Envelope.Get(rt);
+                        if (n <= 0) continue;
+                        StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
+                            new StrategicResourceReservation
+                            {
+                                Owner = reactionOpp.OwnerKey,
+                                Reason = StrategicReservationReason.StrategicReactionPass,
+                                Resource = StrategicResourceReservationLedger.Map(rt),
+                                Amount = n,
+                                ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                            });
+                    }
+                AiDebugLog.Write($"[AI][V2]   strat.B — reaction feasible ({reactionOpp.Kind}); reserve BOUNDED "
+                    + $"{F(reactionOpp.ReservedApBudget)} AP"
+                    + (reactionOpp.Envelope != null ? $" + envelope [{ResCostStr(reactionOpp.Envelope)}]" : "")
+                    + $" (owner={reactionOpp.OwnerKey} exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
                     + $"{F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}.");
             }
             else
             {
                 // spec §7 — an existing reaction budget reservation is released the moment no
-                // same-turn reaction is actionable (same-turn re-arbitration is Housekeeping's re-run).
+                // feasible same-turn reaction remains (same-turn re-arbitration is Housekeeping's re-run).
                 StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
-                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no actionable reaction "
+                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no FEASIBLE reaction "
                         + $"({reactionOpp.FailReason}); NOT reserving — tempo uses the full pool (spec §7)");
             }
 
@@ -1232,8 +1248,9 @@ namespace Game.Ai.V2
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock:
         // the strategic reservation ledger AND the legacy recon-air reservation are both netted out
-        // so the same resource is never promised to two owners.
-        private static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
+        // so the same resource is never promised to two owners. Also the canonical resource-
+        // affordability probe reused by StrategicReactionPass (spec round 5 §3/§4).
+        internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost)
         {
             if (cost == null)

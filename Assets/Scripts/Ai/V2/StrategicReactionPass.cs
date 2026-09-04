@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Ai;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -26,36 +28,55 @@ namespace Game.Ai.V2
         public int Rounds;
     }
 
-    // AI-MGR-02 §7 (round 4) — a BOUNDED REACTION BUDGET, honestly named. The bounded reaction
-    // round re-runs the whole Demand→Mission→Provision→Execute pipeline and picks its OWN action,
-    // so there is no single pre-planned action to price exactly. This struct therefore describes:
-    //   · whether a same-turn reaction is worth reserving for at all (there is pending content AND
-    //     at least one plausible way to act on it), and
-    //   · a bounded AP budget for that replan (ReservedApBudget), capped at reactionReserveApCap.
-    // The reservation Owner is a stable "reaction-budget" tag; it is revalidated before the round
-    // runs (§P1.3) and released if no reaction is actionable any more.
+    // AI-MGR-02 §7 (round 5) — a BOUNDED REACTION BUDGET backed by a REAL feasibility probe. The
+    // bounded reaction round re-runs the whole Demand→Mission→Provision→Execute pipeline and picks
+    // its own action, so the budget stays GENERIC (not bound to one exact actor/card). But it is
+    // only created when the SAME gates the real pipeline uses prove at least one feasible reaction
+    // exists, the reserved AP is >= that reaction's minimum feasible AP, and the persistent
+    // H/E/M/T envelope needed to keep it feasible is reserved alongside the AP.
     internal readonly struct StrategicReactionOpportunity
     {
         public readonly bool IsActionable;
         public readonly string OwnerKey;         // reservation owner tag ("reaction-budget:<kind>")
         public readonly string Kind;             // "RespondToDiscovery" | "HandFollowup"
-        public readonly float ReservedApBudget;  // BOUNDED replan budget (<= reactionReserveApCap), not an exact cost
-        public readonly string Rationale;        // human-readable "why this budget"
+        public readonly float ReservedApBudget;  // BOUNDED replan budget (<= reactionReserveApCap), >= MinFeasibleAp
+        public readonly ResourceCost Envelope;   // persistent H/E/M/T that must stay unspent (may be null)
+        public readonly string Rationale;
         public readonly string FailReason;
 
         public StrategicReactionOpportunity(bool actionable, string ownerKey, string kind,
-            float reservedApBudget, string rationale, string failReason)
+            float reservedApBudget, ResourceCost envelope, string rationale, string failReason)
         {
             IsActionable = actionable;
             OwnerKey = ownerKey;
             Kind = kind;
             ReservedApBudget = reservedApBudget;
+            Envelope = envelope;
             Rationale = rationale;
             FailReason = failReason;
         }
 
         public static StrategicReactionOpportunity None(string failReason) =>
-            new StrategicReactionOpportunity(false, null, null, 0f, null, failReason);
+            new StrategicReactionOpportunity(false, null, null, 0f, null, null, failReason);
+    }
+
+    // The result of running the real-pipeline feasibility probe for one reaction kind.
+    internal readonly struct ReactionFeasibility
+    {
+        public readonly bool Feasible;
+        public readonly float MinFeasibleAp;      // AP the cheapest genuinely feasible reaction needs
+        public readonly ResourceCost MinEnvelope; // persistent cost of that cheapest feasible reaction (may be null)
+        public readonly string Detail;
+
+        public ReactionFeasibility(bool feasible, float minAp, ResourceCost minEnvelope, string detail)
+        {
+            Feasible = feasible;
+            MinFeasibleAp = minAp;
+            MinEnvelope = minEnvelope;
+            Detail = detail;
+        }
+
+        public static ReactionFeasibility No(string detail) => new ReactionFeasibility(false, 0f, null, detail);
     }
 
     internal static class StrategicReactionPass
@@ -69,19 +90,19 @@ namespace Game.Ai.V2
             return !AiStrategyV2Scope.IsReconOnly;
         }
 
-        // AI-MGR-02 §7 (round 4) — is a same-turn bounded reaction replan worth reserving AP for,
-        // and how much (bounded)? Actionable requires a pending invalidation, a resolvable hand AND
-        // a PLAUSIBLE way to act: a discovered target with at least one eligible responder army, or
-        // pending follow-up with at least one card that passes a lightweight affordability gate.
-        // ReservedApBudget is a CEILING-bounded budget for the replan, never a claim about a
-        // specific action's exact cost (the replan re-runs the whole pipeline and chooses freely).
+        // AI-MGR-02 §7 (round 5) — reserve a bounded reaction budget ONLY when a real feasibility
+        // probe proves at least one genuinely feasible reaction exists, and only for an AP budget
+        // >= its minimum feasible AP, plus its persistent-resource envelope. `snap` is the world
+        // the probe runs against (the same one the caller will arbitrate / replan with).
         internal static StrategicReactionOpportunity BuildReactionOpportunity(PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx)
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap)
         {
             if (!CanStrategicReactionPassRun(player, ctx))
                 return StrategicReactionOpportunity.None("cannotRun(scope)");
             if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 return StrategicReactionOpportunity.None("noPendingInvalidation");
+            if (snap == null)
+                return StrategicReactionOpportunity.None("noProbeSnapshot");
 
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null)
@@ -97,63 +118,121 @@ namespace Game.Ai.V2
             float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
             int cap = AiConfigV2.reactionReserveApCap;
 
-            if (targetDriven)
-            {
-                // Actionability gate: at least one own field army could respond. Budget estimate:
-                // the cheapest such responder's activation + one move step — but this is only an
-                // ESTIMATE feeding a bounded budget, so it is allowed to exceed the ceiling; we
-                // then reserve the ceiling and say so (never silently shrink an "exact" number).
-                int cheapestResponderCost = int.MaxValue;
-                foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
-                {
-                    if (a == null || a.Members.Count == 0 || a.CurrentMovement <= 0
-                        || a.IsGarrison || a.IsPrison || a.IsAirfield || a.IsAirArmy
-                        || AiArmyRoles.IsSoloRecce(a))
-                        continue;
-                    int c = a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
-                    if (!a.HasActivatedThisTurn && !root.CanSpendActionPoints(a.ActivationApCost))
-                        continue;
-                    cheapestResponderCost = Mathf.Min(cheapestResponderCost, c);
-                }
-                if (cheapestResponderCost == int.MaxValue)
-                    return StrategicReactionOpportunity.None("noEligibleResponder");
+            ReactionFeasibility probe = targetDriven
+                ? ProbeTargetDriven(player, root, ctx)
+                : ProbeHandFollowup(player, root, ctx, snap, hand);
+            if (!probe.Feasible)
+                return StrategicReactionOpportunity.None(probe.Detail);
 
-                float estimate = cheapestResponderCost + AiConfigV2.reactionResponderMoveApEstimate;
-                float budget = Mathf.Min(estimate, Mathf.Min(apAvailable, cap));
-                if (budget <= 0f)
-                    return StrategicReactionOpportunity.None("noApAvailable");
-                string rationale = estimate > cap
-                    ? $"estimate {estimate:0.#} AP exceeds ceiling {cap}; reserving the ceiling as a bounded replan budget"
-                    : $"cheapest responder {cheapestResponderCost} + move {AiConfigV2.reactionResponderMoveApEstimate}";
-                return new StrategicReactionOpportunity(true, "reaction-budget:RespondToDiscovery",
-                    "RespondToDiscovery", budget, rationale, null);
-            }
+            string kind = targetDriven ? "RespondToDiscovery" : "HandFollowup";
+            float estimate = targetDriven
+                ? probe.MinFeasibleAp + AiConfigV2.reactionResponderMoveApEstimate
+                : Mathf.Max(probe.MinFeasibleAp, AiConfigV2.reactionFollowupApEstimate);
+            float budget = Mathf.Min(estimate, Mathf.Min(apAvailable, (float)cap));
 
-            // Hand-only follow-up. Actionability gate: at least one hand card clears a lightweight
-            // affordability check (AP + persistent cost). This is NOT a claim that this exact card
-            // will be played — the replan chooses — it only proves a hand replay is plausible.
-            var affordable = hand.Hand
-                .Where(c => c?.Definition != null
-                    && c.EffectivePlayApCost <= apAvailable + 0.001f
-                    && (c.EffectivePlayResourceCost == null || c.EffectivePlayResourceCost.CanAfford(root)))
-                .OrderBy(c => c.EffectivePlayApCost)
-                .ToList();
-            if (affordable.Count == 0)
-                return StrategicReactionOpportunity.None("noAffordableHandCard");
+            // §4 — do NOT reserve a budget that cannot cover even the cheapest feasible reaction.
+            if (budget + 0.001f < probe.MinFeasibleAp)
+                return StrategicReactionOpportunity.None(
+                    $"budgetBelowMinimumFeasible: cheapest feasible {kind} needs {probe.MinFeasibleAp:0.#} AP, "
+                    + $"ceiling {cap}, available {apAvailable:0.#} — not protected");
 
-            float cardEstimate = Mathf.Max(affordable[0].EffectivePlayApCost, AiConfigV2.reactionFollowupApEstimate);
-            float cardBudget = Mathf.Min(cardEstimate, Mathf.Min(apAvailable, cap));
-            if (cardBudget <= 0f)
-                return StrategicReactionOpportunity.None("noApAvailable");
-            return new StrategicReactionOpportunity(true, "reaction-budget:HandFollowup", "HandFollowup",
-                cardBudget, $"cheapest affordable hand card {affordable[0].EffectivePlayApCost:0.#} AP", null);
+            string rationale = estimate > cap
+                ? $"{probe.Detail}; estimate {estimate:0.#} AP > ceiling {cap} -> bounded budget {budget:0.#}"
+                : $"{probe.Detail}; budget {budget:0.#} AP";
+            return new StrategicReactionOpportunity(true, "reaction-budget:" + kind, kind,
+                budget, probe.MinEnvelope, rationale, null);
         }
 
-        // §P1.3 — before the bounded reaction round runs, a same-turn reaction must still be
-        // actionable at all. If not, its budget reservation is released so the AP re-enters
-        // arbitration this turn (HousekeepingManager's tempo re-run).
-        internal static bool ReactionStillActionable(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
-            => BuildReactionOpportunity(player, root, ctx).IsActionable;
+        // §2 — a discovered target has a genuinely feasible response: an UNCOMMITTED own field army
+        // that can begin a safe step toward at least one honestly-known target hex and whose
+        // activation AP is spendable (the same actor / commitment / reachability gates the real
+        // pipeline uses). Full mission/provisioning feasibility is what the bounded round itself
+        // establishes; §6 re-runs this probe immediately before it and releases on failure.
+        private static ReactionFeasibility ProbeTargetDriven(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
+            var targetHexes = AiMapMemory.AllKnownEnemySightings(player)
+                .Where(s => targetIds.Contains(s.ArmyId))
+                .Select(s => s.Hex)
+                .Distinct()
+                .ToList();
+            if (targetHexes.Count == 0)
+                return ReactionFeasibility.No("targetDriven: no honestly-known hex for any discovered target");
+
+            var claimed = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i?.PreferredMoverArmyId != null)
+                .Select(i => i.PreferredMoverArmyId.Value));
+
+            float cheapest = float.MaxValue;
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+            {
+                if (a == null || a.Members.Count == 0 || a.CurrentMovement <= 0
+                    || a.IsGarrison || a.IsPrison || a.IsAirfield || a.IsAirArmy
+                    || AiArmyRoles.IsSoloRecce(a) || AiArmyRoles.IsSoloHeroAwaitingEscort(a)
+                    || claimed.Contains(a.Id))
+                    continue;
+                if (!a.HasActivatedThisTurn && !root.CanSpendActionPoints(a.ActivationApCost))
+                    continue;
+                bool reachable = targetHexes.Any(h => VisitHexTask.FindNextSafeStep(ctx.Map, a, h) != null);
+                if (!reachable)
+                    continue;
+                cheapest = Mathf.Min(cheapest, a.HasActivatedThisTurn ? 0f : a.ActivationApCost);
+            }
+            if (cheapest == float.MaxValue)
+                return ReactionFeasibility.No("targetDriven: no uncommitted responder can path to a discovered target");
+            return new ReactionFeasibility(true, cheapest, null,
+                $"targetDriven: reachable uncommitted responder, min activation {cheapest:0.#} AP");
+        }
+
+        // §3 — a hand follow-up has a genuinely feasible reaction: a card that passes the SAME
+        // placement / host / airfield / base-slot / generation preflight the real pipeline uses
+        // (NonCombatCardPlayer.BestPlay + MaterializationCandidateBuilder.BestSurplus), AND whose
+        // AP + persistent envelope is spendable through the canonical reservation ledger.
+        private static ReactionFeasibility ProbeHandFollowup(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snap, AiHandData hand)
+        {
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
+            var reservation = new MaterializationReservation
+            {
+                GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber),
+            };
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+
+            var options = new List<(float ap, ResourceCost env)>();
+            NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
+                snap, player, root, hand, ctx, out _, null, reservation);
+            if (nc != null)
+                options.Add((nc.Card != null ? nc.Card.EffectivePlayApCost : 0f,
+                    nc.Generation != null ? nc.Generation.GenerationResourceCost
+                        : (nc.Card != null ? nc.Card.EffectivePlayResourceCost : null)));
+            var surplus = MaterializationCandidateBuilder.BestSurplus(
+                snap, player, root, hand, ctx, inv, commitments, reservation);
+            if (surplus != null)
+                options.Add((surplus.Value.plan.ApCost, surplus.Value.plan.ResCost));
+
+            float ap = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
+            var feasible = options
+                .Where(o => o.ap <= ap + 0.001f
+                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env))
+                .OrderBy(o => o.ap)
+                .ToList();
+            if (feasible.Count == 0)
+                return ReactionFeasibility.No(
+                    "handFollowup: no hand card passes the real placement/host/slot preflight + spendable-resource check");
+            var best = feasible[0];
+            string env = best.env == null ? "-"
+                : $"H{best.env.human} E{best.env.energy} M{best.env.materials} T{best.env.tech}";
+            return new ReactionFeasibility(true, best.ap, best.env,
+                $"handFollowup: feasible reaction, min {best.ap:0.#} AP + envelope [{env}]");
+        }
+
+        // §6 — before the bounded reaction round runs, a genuinely feasible reaction must STILL
+        // exist (the same probe, not a weaker one). If not, its budget + envelope reservation is
+        // released so the resources re-enter arbitration this turn (Housekeeping's tempo re-run).
+        internal static bool ReactionStillActionable(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snap)
+            => BuildReactionOpportunity(player, root, ctx, snap).IsActionable;
 
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
@@ -194,24 +273,25 @@ namespace Game.Ai.V2
             if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 yield break;
 
-            // §P1.3 — before running the bounded round, a same-turn reaction must still be
-            // actionable at all (a responder / affordable card still exists). If not, release the
-            // budget reservation now so the freed AP re-enters arbitration THIS turn
-            // (HousekeepingManager's tempo re-run) instead of being pinned to a dead budget.
-            if (round == 0
-                && StrategicResourceReservationLedger.HasAny(player, ctx.TurnNumber)
-                && !ReactionStillActionable(player, root, ctx))
-            {
-                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
-                    StrategicReservationReason.StrategicReactionPass);
-                AiDebugLog.Write("[AI][V2] reaction — no same-turn reaction is actionable any more; "
-                    + "released the reaction-budget reservation before executing");
-            }
-
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null)
                 StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
+
+            // §6 — immediately before the bounded round, re-run the SAME feasibility probe. If no
+            // genuinely feasible reaction remains, release the budget + envelope reservation now so
+            // the resources re-enter arbitration THIS turn (HousekeepingManager's tempo re-run)
+            // instead of being pinned to a dead budget.
+            if (round == 0 && hand != null
+                && StrategicResourceReservationLedger.HasAny(player, ctx.TurnNumber)
+                && !ReactionStillActionable(player, root, ctx,
+                    WorldAnalysis.Scan(player, root, hand, ctx)))
+            {
+                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                    StrategicReservationReason.StrategicReactionPass);
+                AiDebugLog.Write("[AI][V2] reaction — the feasibility probe no longer finds a feasible "
+                    + "reaction; released the reaction-budget + envelope reservation before executing");
+            }
 
             StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
             result.Ran = true;
