@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         ObservationUnavailable,
     }
 
-    public sealed class ExecutionResult
+    public sealed class ExecutionResult : IV2ActionResult
     {
         public StableMissionKey Key;
         public HexCoord StartHex;
@@ -69,6 +69,24 @@ namespace Game.Ai.V2
         // interrupts a scout AFTER it has moved / entered stealth / made a discovery is a
         // ProductiveStop instead and never sets this.
         public bool BlockedBeforeMovement;
+
+        // ARCH-02 §36 — the common lifecycle projection. A mission execution "succeeded" when it
+        // reached its goal or made real forward progress; StepsMoved / EnteredStealth / ReachedGoal
+        // are the world-changing signals; a non-progressing stop reports its StopReason.
+        public V2ActionOutcome Outcome
+        {
+            get
+            {
+                bool moved = StepsMoved > 0;
+                bool ok = ReachedGoal || moved;
+                bool changed = moved || EnteredStealth || ReachedGoal;
+                return new V2ActionOutcome(
+                    succeeded: ok, stateChanged: changed, apSpent: ApSpent, resourcesSpent: null,
+                    played: false, generated: false, attached: false, moved: moved, created: false,
+                    needsReplan: false, stateVersionAfter: -1,
+                    failReason: ok ? null : StopReason.ToString());
+            }
+        }
     }
 
     internal static class TaskExecutor

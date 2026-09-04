@@ -33,7 +33,7 @@ namespace Game.Ai.V2
     //  of the player's own HERO-LED armies on the target hex. V2 has no economy/development mover
     //  mission yet, so this fires only when a hero is already in position.
     // ===========================================================================================
-    internal sealed class InfraFulfillResult
+    internal sealed class InfraFulfillResult : IV2ActionResult
     {
         public bool Built;
         public float ApSpent;
@@ -41,6 +41,11 @@ namespace Game.Ai.V2
         public string Detail;
 
         public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
+
+        public V2ActionOutcome Outcome => new V2ActionOutcome(
+            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            played: Built, generated: false, attached: false, moved: false, created: Built,
+            needsReplan: false, stateVersionAfter: -1, failReason: Built ? null : Detail);
     }
 
     internal static class InfrastructureFulfillment

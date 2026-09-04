@@ -19,7 +19,7 @@ namespace Game.Ai.V2
     //  is NOT atomic on its own — the wrapper captures and restores the full pre-transaction state
     //  (AP, resources, facility slot, hero move points, a half-registered new site) on a throw.
     // ===========================================================================================
-    public sealed class BuildingPlayResult
+    public sealed class BuildingPlayResult : IV2ActionResult
     {
         public bool Built;
         public float ApSpent;
@@ -28,6 +28,11 @@ namespace Game.Ai.V2
         public string FailReason;
 
         public static BuildingPlayResult Fail(string why) => new BuildingPlayResult { FailReason = why };
+
+        public V2ActionOutcome Outcome => new V2ActionOutcome(
+            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            played: CardConsumed, generated: false, attached: false, moved: false, created: Built,
+            needsReplan: false, stateVersionAfter: -1, failReason: Built ? null : FailReason);
     }
 
     public static class BuildingPlayExecutor

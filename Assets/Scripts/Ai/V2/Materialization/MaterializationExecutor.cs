@@ -102,6 +102,15 @@ namespace Game.Ai.V2
             }
 
             int apStart = root.ActionPoints;
+            int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
+                m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
+            void StampResources()
+            {
+                int dh = h0 - root.GetResource(ResourceType.Human), de = e0 - root.GetResource(ResourceType.Energy),
+                    dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
+                res.ResourcesSpent = (dh | de | dm | dt) == 0
+                    ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
+            }
 
             // ---------------------------------------------------------------- 1. generate ----
             CardData generated = null;
@@ -113,6 +122,7 @@ namespace Game.Ai.V2
                 if (!go.Success)
                 {
                     res.ApSpent = apStart - root.ActionPoints;
+                StampResources();
                     res.FailReason = go.FailReason;
                     return res;
                 }
@@ -127,6 +137,7 @@ namespace Game.Ai.V2
             if (baseCard == null || !hand.Hand.Contains(baseCard))
             {
                 res.ApSpent = apStart - root.ActionPoints;
+                StampResources();
                 res.FailReason = "base card missing after generation";
                 return res;
             }
@@ -137,12 +148,14 @@ namespace Game.Ai.V2
                 if (equipmentCard == null || equipmentCard == baseCard || !hand.Hand.Contains(equipmentCard))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
+                StampResources();
                     res.FailReason = "equipment card missing";
                     return res;
                 }
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
+                StampResources();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
                 }
@@ -163,6 +176,7 @@ namespace Game.Ai.V2
             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
                 res.ApSpent = apStart - root.ActionPoints;
+                StampResources();
                 res.PlacementStale = true;
                 res.FailReason = $"deploy placement stale after chain ({preflightFail ?? "preflight failed"}); "
                     + "caller must refresh and replan";
@@ -171,8 +185,10 @@ namespace Game.Ai.V2
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
             res.ApSpent = apStart - root.ActionPoints;
+            StampResources();
             if (play.StateChanged)
                 res.StateChanged = true;
+            res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)
                 res.FailReason = play.FailReason ?? "deploy failed";

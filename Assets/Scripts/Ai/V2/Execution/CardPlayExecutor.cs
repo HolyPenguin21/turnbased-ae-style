@@ -62,7 +62,7 @@ namespace Game.Ai.V2
             (RequiresCreateArmy ? ArmyActions.CreateArmyApCost : 0) + CardCostRules.PlayAp(Card);
     }
 
-    public sealed class CardPlayResult
+    public sealed class CardPlayResult : IV2ActionResult
     {
         public bool Deployed;
         public bool ArmyCreated;
@@ -70,6 +70,11 @@ namespace Game.Ai.V2
         public float ApSpent;        // REAL AP delta measured on PlayerRoot
         public bool StateChanged;
         public string FailReason;
+
+        public V2ActionOutcome Outcome => new V2ActionOutcome(
+            succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            played: Deployed, generated: false, attached: false, moved: false, created: ArmyCreated,
+            needsReplan: false, stateVersionAfter: -1, failReason: Deployed ? null : FailReason);
     }
 
     public static class CardPlayExecutor

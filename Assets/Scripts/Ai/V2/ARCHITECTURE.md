@@ -96,5 +96,10 @@ canonical game actions; it never selects objectives or invents alternative actio
   `StrategicEffectRegistry.Roles(...)`, so a new effect needs a registry entry, not a manager
   `if`.
 * **Execution results are a structured family** — `MaterializationResult` / `CardPlayResult` /
-  `BuildingPlayResult` / `ExecutionResult` / `ProvisioningResult` each carry a success verb +
-  `StateChanged` + `ApSpent` + a fail reason; no bare `bool` where the caller owns lifecycle.
+  `BuildingPlayResult` / `InfraFulfillResult` / `ExecutionResult` implement `IV2ActionResult` and
+  project to the common `V2ActionOutcome` (`Succeeded` / `StateChanged` / `ApSpent` /
+  `ResourcesSpent` / `Played` / `Generated` / `Attached` / `Moved` / `Created` / `NeedsReplan` /
+  `StateVersionAfter` / `FailReason`). Each keeps its domain payload; a caller that only needs the
+  lifecycle facts reads `.Outcome`. `MaterializationExecutor` now measures the real H/E/M/T delta
+  for `ResourcesSpent`. (`ProvisioningResult` stays on its own `Success`/`Failure` shape —
+  provisioning is §34, not §35 execution.)
