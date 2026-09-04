@@ -153,8 +153,14 @@ namespace Game.UI
         // second chained battle's own retreat contact clobbering it). Survives ResetBattlePanel on
         // purpose — that only tears down the JUST-finished battle's own UI state, not a
         // still-pending consequence of it.
-        private readonly Queue<(HexCoord hex, List<ArmyData> participants, bool targetHeroOnly)> _pendingRetreatContacts =
-            new Queue<(HexCoord hex, List<ArmyData> participants, bool targetHeroOnly)>();
+        // Deliberately does NOT carry a targetHeroOnly bool alongside the facts — that
+        // classification depends on reveal having already run (see BattleInitiator.
+        // IsCombatCapable's own note on hidden members), so it's computed fresh from the
+        // BattleEncounterContext PrepareCommittedEncounter hands back at drain time (see
+        // TryChainPendingRetreatContact), not stale-cached from whatever it looked like back
+        // when this was enqueued.
+        private readonly Queue<(HexCoord hex, List<ArmyData> participants)> _pendingRetreatContacts =
+            new Queue<(HexCoord hex, List<ArmyData> participants)>();
 
         // A unit's actual owning army, independent of which grid ROWS it currently occupies — a
         // non-hero unit can advance across the neutral row into the opposing side's own rows
@@ -741,18 +747,25 @@ namespace Game.UI
         {
             if (_pendingRetreatContacts.Count == 0 || battleContactPopup == null)
                 return false;
-            (HexCoord hex, List<ArmyData> participants, bool targetHeroOnly) contact = _pendingRetreatContacts.Dequeue();
+            (HexCoord hex, List<ArmyData> participants) contact = _pendingRetreatContacts.Dequeue();
             // STEALTH-COMBAT-01: this contact was queued back when it was landed on (see
             // PerformRetreat) — possibly while its participants were still hidden — and reveal is
             // deliberately deferred until the queue actually reaches it and it's about to show,
             // not at enqueue time. Right here, immediately before battleContactPopup.Show below.
-            Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(contact.hex, contact.participants,
-                contact.participants.Count > 0 ? contact.participants[0].Owner : null);
+            // The observer passed in can't just be contact.participants[0].Owner (that's
+            // whichever side happened to be the "hunter" — see PerformRetreat's own comment,
+            // could just as easily be an AI/Neutral army) — ResolveHumanObserver finds the actual
+            // human this popup is about to be shown to, same reasoning as GameTurnController.
+            // ResolveDelayedBattlesThen's own fix for this. Its returned context is also the
+            // single source of truth for TargetHeroOnly below — it's computed AFTER reveal, so
+            // this never re-derives it separately from stale, possibly-still-hidden data.
+            Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
+                contact.hex, contact.participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(contact.participants));
             Action onClosed = _onClosed;
-            battleContactPopup.Show(contact.hex, contact.participants,
+            battleContactPopup.Show(contact.hex, contact.participants, encounter.PresentationObserver,
                 onFight: () =>
                 {
-                    if (contact.targetHeroOnly)
+                    if (encounter.TargetHeroOnly)
                         BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
                     else
                         Show(contact.hex, contact.participants, onClosed);

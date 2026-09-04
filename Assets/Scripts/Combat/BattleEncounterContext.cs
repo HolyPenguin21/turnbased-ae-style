@@ -14,7 +14,12 @@ namespace Game.Combat
     public sealed class BattleEncounterContext
     {
         public readonly HexCoord Hex;
-        public readonly List<ArmyData> Participants;
+        // Defensive copy of whatever list was passed in, exposed read-only — a caller holding
+        // this context must never be able to Add/Remove/Clear the actual encounter roster out
+        // from under whoever else is holding the same context (readonly on the field itself
+        // only stops reference reassignment, not mutating the List it points at).
+        private readonly List<ArmyData> _participants;
+        public IReadOnlyList<ArmyData> Participants => _participants;
         // participants[0]/[1] by this project's own long-standing convention (see
         // BattleScreenUI.Show's own comment) — named here too so callers stop re-deriving them.
         public readonly ArmyData Initiator;
@@ -23,16 +28,19 @@ namespace Game.Combat
         // contact site already branches on to route into BeginCaptureKillEncounter instead of a
         // normal Ground Combat round (see BattleInitiator.IsCombatCapable).
         public readonly bool TargetHeroOnly;
-        // The human viewer this encounter is being presented to, if any — carried purely so a
-        // future observer-aware UI tweak has it on hand; not used to gate reveal itself (reveal
-        // is unconditional for the real participants, see PrepareCommittedEncounter).
+        // The human viewer this encounter is being presented to, if any — read by
+        // BattleContactPopupUI's stealth-aware side-list filter (see ShowSideList) instead of
+        // the global VisionSystem.CurrentViewer, which in a hot-seat delayed/queued battle can
+        // already belong to a different human by the time that popup actually opens. Not used to
+        // gate reveal itself (reveal is unconditional for the real participants, see
+        // PrepareCommittedEncounter).
         public readonly PlayerSetupData PresentationObserver;
 
         public BattleEncounterContext(HexCoord hex, List<ArmyData> participants, ArmyData initiator,
             ArmyData target, bool targetHeroOnly, PlayerSetupData presentationObserver)
         {
             Hex = hex;
-            Participants = participants;
+            _participants = new List<ArmyData>(participants ?? (IEnumerable<ArmyData>)System.Array.Empty<ArmyData>());
             Initiator = initiator;
             Target = target;
             TargetHeroOnly = targetHeroOnly;

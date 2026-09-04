@@ -121,9 +121,15 @@ namespace Game.UI
 
         // The interactive form — first contact, still this same turn. Both actions available:
         // fight now, or delay until every player has passed (see the manual's Delay Attack).
-        public void Show(HexCoord hex, List<ArmyData> participants, Action onFight, Action onDelay)
+        // `observer` is the human this specific encounter is being presented to — see
+        // ShowSideList's own comment for why this must come from the caller's
+        // BattleEncounterContext (BattleEncounterCoordinator.ResolveHumanObserver in the
+        // delayed/queued paths) rather than the global VisionSystem.CurrentViewer, which in a
+        // hot-seat game may currently belong to a different human than whoever this popup is
+        // actually opening for.
+        public void Show(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action onFight, Action onDelay)
         {
-            Populate(hex, participants);
+            Populate(hex, participants, observer);
             // A defender with no combat-capable unit left (hero-only army/garrison) isn't fought
             // in the Tactical Battle Module at all — onFight routes straight into a Capture/Kill
             // Challenge sequence (see the callers' own targetHeroOnly branch / BattleScreenUI.
@@ -150,9 +156,9 @@ namespace Game.UI
         // The informational form — a delayed battle is actually starting now, at the turn
         // boundary: every player has already passed, so there's nothing left to decide, just a
         // single acknowledgement before the (placeholder) battle screen opens.
-        public void ShowResolved(HexCoord hex, List<ArmyData> participants, Action onContinue)
+        public void ShowResolved(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action onContinue)
         {
-            Populate(hex, participants);
+            Populate(hex, participants, observer);
             if (fightButtonLabel != null)
                 fightButtonLabel.text = "Continue";
 
@@ -166,7 +172,7 @@ namespace Game.UI
                 delayButton.gameObject.SetActive(false);
         }
 
-        private void Populate(HexCoord hex, List<ArmyData> participants)
+        private void Populate(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer)
         {
             SetPanelActive(true);
             // Fresh state every time this popup opens — a prior session could conceivably have
@@ -207,14 +213,14 @@ namespace Game.UI
                     _columns.Add(column);
                 }
 
-            PopulateSideLists(hex, participants);
+            PopulateSideLists(hex, participants, observer);
         }
 
         // Every distinct owner among participants, in the order it first appears — usually just
         // the mover (participants[0]'s owner) and the defender it made contact with, matching
         // "left" and "right" — see the two fields' own comments for what happens with more (or
         // fewer) than two.
-        private void PopulateSideLists(HexCoord hex, List<ArmyData> participants)
+        private void PopulateSideLists(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer)
         {
             var owners = new List<PlayerSetupData>();
             if (participants != null)
@@ -222,8 +228,8 @@ namespace Game.UI
                     if (!owners.Contains(army.Owner))
                         owners.Add(army.Owner);
 
-            ShowSideList(leftArmyList, hex, owners.Count > 0 ? owners[0] : null, participants);
-            ShowSideList(rightArmyList, hex, owners.Count > 1 ? owners[owners.Count - 1] : null, participants);
+            ShowSideList(leftArmyList, hex, owners.Count > 0 ? owners[0] : null, participants, observer);
+            ShowSideList(rightArmyList, hex, owners.Count > 1 ? owners[owners.Count - 1] : null, participants, observer);
         }
 
         // Only that owner's armies actually ON this hex — not every army they have anywhere on
@@ -232,10 +238,12 @@ namespace Game.UI
         // BattleEncounterVisibility.VisibleEncounterArmiesAt, not a raw ArmyRegistry.AllAt scan,
         // so a fully-hidden non-participant army of this owner never leaks into the roster; the
         // armies actually fighting (participants, already revealed by BattleEncounterCoordinator
-        // by the time this popup ever opens) always show regardless. Observer is whichever human
-        // this popup is currently rendered for — same VisionSystem.CurrentViewer every map marker
-        // already keys visibility off.
-        private void ShowSideList(ArmyButtonRowUI list, HexCoord hex, PlayerSetupData owner, List<ArmyData> participants)
+        // by the time this popup ever opens) always show regardless. `observer` is whichever
+        // human THIS ENCOUNTER is being presented to (see Show/ShowResolved's own comment) — NOT
+        // the global VisionSystem.CurrentViewer, which in a hot-seat delayed battle can already
+        // belong to a different human than whoever this popup is actually opening for.
+        private void ShowSideList(ArmyButtonRowUI list, HexCoord hex, PlayerSetupData owner, List<ArmyData> participants,
+            PlayerSetupData observer)
         {
             if (list == null)
                 return;
@@ -245,7 +253,7 @@ namespace Game.UI
                 return;
             }
             List<ArmyData> armies = BattleEncounterVisibility.VisibleEncounterArmiesAt(
-                hex, owner, VisionSystem.CurrentViewer, participants);
+                hex, owner, observer, participants);
             list.Show(armies, army =>
             {
                 // Hidden outright (not just the buttons disabled) — the army modal opening ON

@@ -37,5 +37,23 @@ namespace Game.Combat
 
             return new BattleEncounterContext(hex, participants, initiator, target, targetHeroOnly, presentationObserver);
         }
+
+        // Best-guess presentation observer for a call site that doesn't already know exactly
+        // which human this encounter is about to be shown to — the first participant actually
+        // owned by a human, in participant order, or null when no participant is human (nothing
+        // for a human-only popup to present to; those callers already skip such UI in that
+        // case). Exists mainly for the delayed/queued paths (a retreat-into-contact drained
+        // later, a delayed battle drained at the turn boundary) where naively reading
+        // participants[0].Owner can silently hand back an AI as "the observer" in a hot-seat
+        // game — see BattleContactPopupUI's own side-list filter, which needs the real human.
+        public static PlayerSetupData ResolveHumanObserver(List<ArmyData> participants)
+        {
+            if (participants == null)
+                return null;
+            foreach (ArmyData army in participants)
+                if (army?.Owner != null && army.Owner.IsHuman)
+                    return army.Owner;
+            return null;
+        }
     }
 }

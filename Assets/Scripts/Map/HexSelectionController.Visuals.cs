@@ -231,20 +231,43 @@ namespace Game.Map
             }
         }
 
-        private void RefreshRememberedArmyVisuals()
+        // Stale-entry garbage collection only (an army HumanVisualMemory no longer has a sighting
+        // for at all) — a whole-map sweep because "still remembered somewhere" isn't a per-hex
+        // question, unlike the actual show/hide decision below. Called once per RefreshAllVisibility
+        // pass (see that method), not per hex.
+        private void RemoveUnrememberedArmyVisualsForAllViewers()
         {
-            var shownGroups = new HashSet<(HexCoord hex, PlayerSetupData owner)>();
-            foreach (KeyValuePair<PlayerSetupData, Dictionary<int, RememberedArmyVisual>> entry in _rememberedArmyVisuals)
+            foreach (PlayerSetupData viewer in new List<PlayerSetupData>(_rememberedArmyVisuals.Keys))
+                RemoveUnrememberedArmyVisuals(viewer);
+        }
+
+        // Per-hex counterpart of RefreshRememberedBuildingVisual, folded into
+        // ReconcileHexVisualState itself (MAP-VIS-01) rather than a separate whole-map pass a
+        // caller had to remember to run after the fact — that used to let ReconcileHexVisualState
+        // decide live army visibility with one predicate while this decided remembered army
+        // visibility with a different, non-DebugRevealAll-aware one (VisionSystem.IsVisible
+        // instead of CurrentViewerCanRenderLiveHex), so the two could disagree and show a live
+        // marker AND a remembered ghost for the same army at once whenever DebugRevealAll made
+        // the live one visible without also making the raw vision check true (same bug class
+        // CheckBuildingVisualInvariant already guards for the building case). Only ever shows a
+        // SINGLE remembered marker per (hex, owner) — mirrors ReconcileHexVisualState's own live
+        // "one marker per owner" rule (representativeForOwner) so a viewer who remembers several
+        // of the same owner's armies on one hex doesn't get several overlapping ghosts.
+        private void RefreshRememberedArmyVisualsAt(HexCoord hex)
+        {
+            var shownOwnersAtHex = new HashSet<PlayerSetupData>();
+            foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, List<RememberedArmyVisual>>> entry in _rememberedArmyVisualsByHex)
             {
-                RemoveUnrememberedArmyVisuals(entry.Key);
-                foreach (RememberedArmyVisual remembered in entry.Value.Values)
+                if (!entry.Value.TryGetValue(hex, out List<RememberedArmyVisual> atHex))
+                    continue;
+                foreach (RememberedArmyVisual remembered in atHex)
                 {
                     if (remembered.Visual == null)
                         continue;
                     bool visible = entry.Key == VisionSystem.CurrentViewer
-                        && !VisionSystem.IsVisible(entry.Key, remembered.Hex)
+                        && !CurrentViewerCanRenderLiveHex(hex)
                         && remembered.Snapshot != null
-                        && shownGroups.Add((remembered.Hex, remembered.Snapshot.Owner));
+                        && shownOwnersAtHex.Add(remembered.Snapshot.Owner);
                     remembered.Visual.SetVisible(visible);
                 }
             }
@@ -302,9 +325,15 @@ namespace Game.Map
             {
                 if (!entry.Value.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
                     continue;
+                // !CurrentViewerCanRenderLiveHex, not !VisionSystem.IsVisible(entry.Key, hex) —
+                // see that helper's own comment: this must read the exact same DebugRevealAll-
+                // aware fact the live building's own SetVisible check just used a moment ago
+                // (liveBuildingVisible in ReconcileHexVisualState), or a fogged-but-remembered hex
+                // with DebugRevealAll on shows both the live building (DebugRevealAll made it
+                // visible) AND this remembered ghost (raw IsVisible still says fogged) at once.
                 bool visible = entry.Key == VisionSystem.CurrentViewer
                     && HumanVisualMemory.IsBuildingKnown(entry.Key, hex)
-                    && !VisionSystem.IsVisible(entry.Key, hex);
+                    && !CurrentViewerCanRenderLiveHex(hex);
                 snapshot.SetVisible(visible);
             }
         }
@@ -316,6 +345,16 @@ namespace Game.Map
                     if (snapshot != null)
                         snapshot.SetVisible(visible);
         }
+
+        // The one fact that decides whether a LIVE marker is allowed to render for `hex` right
+        // now — same DebugRevealAll-aware check ReconcileHexVisualState's own liveBuildingVisible
+        // and live-army visibility tests already use (VisionSystem.IsVisibleToCurrentViewer).
+        // Named/pulled out specifically so every REMEMBERED-visual visibility decision
+        // (RefreshRememberedBuildingVisual, RefreshRememberedArmyVisualsAt) reads this exact same
+        // fact instead of an independently written vision check — see this file's own class
+        // comment and CheckBuildingVisualInvariant for the duplicate-marker bug two different
+        // predicates (one DebugRevealAll-aware, one not) used to produce.
+        private static bool CurrentViewerCanRenderLiveHex(HexCoord hex) => VisionSystem.IsVisibleToCurrentViewer(hex);
 
         // Where a given army should sit on `hex`, resolved from every other non-empty army
         // currently there too (see HexObjectLayout) — not a fixed per-army corner any more.
@@ -477,7 +516,7 @@ namespace Game.Map
                 // already gets (see VisionSystem.HasEverSeenByCurrentViewer, MapResourceDisplay).
                 bool everSeenNeutral = army.Owner != null && army.Owner.IsNeutral && VisionSystem.HasEverSeenByCurrentViewer(hex);
                 bool visible = (representativeForOwner[army.Owner] == army || controller.IsMoving)
-                    && (army.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex)
+                    && (army.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex)
                         || everSeenNeutral)
                     // An enemy army every member of which is hidden from the current viewer
                     // (and undetected) shows no marker at all (see Game.Map.StealthSystem). A
@@ -530,7 +569,7 @@ namespace Game.Map
                 if (building != null && building.Visual != null)
                 {
                     building.Visual.transform.position = map.HexToWorld(hex) + ToWorldOffset(layout.BuildingOffset);
-                    liveBuildingVisible = building.Owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(hex);
+                    liveBuildingVisible = building.Owner == VisionSystem.CurrentViewer || CurrentViewerCanRenderLiveHex(hex);
                     building.Visual.SetVisible(liveBuildingVisible);
                 }
             }
@@ -540,12 +579,19 @@ namespace Game.Map
             // hidden. RefreshRememberedBuildingVisual (still in this same pass, right after the
             // live building's own visibility was just decided above) is what actually sets the
             // remembered clone's visibility per this same rule (entry.Key == CurrentViewer &&
-            // IsBuildingKnown && !IsVisible) — reading it back here right after is what lets the
-            // DEV invariant check below catch the two ever disagreeing.
+            // IsBuildingKnown && !CurrentViewerCanRenderLiveHex) — reading it back here right
+            // after is what lets the DEV invariant check below catch the two ever disagreeing.
             RefreshRememberedBuildingVisual(hex);
+            // Same "one reconciliation pass" treatment for remembered ARMY ghosts — used to be a
+            // separate whole-map RefreshRememberedArmyVisuals() call a caller had to remember to
+            // run after the fact (RefreshAllVisibility, below); folded in here so live and
+            // remembered army visibility are always decided together, right here, from the same
+            // CurrentViewerCanRenderLiveHex fact the armiesHere loop above already used.
+            RefreshRememberedArmyVisualsAt(hex);
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             CheckBuildingVisualInvariant(hex, liveBuildingVisible);
+            CheckArmyVisualInvariant(hex, armiesHere);
 #endif
         }
 
@@ -567,6 +613,35 @@ namespace Game.Map
             if (liveBuildingVisible && rememberedBuildingVisible)
                 Debug.LogError($"[MAP-VIS] invariant violation: viewer={viewer.Nickname} hex=({hex.Q},{hex.R}) "
                     + $"liveBuildingVisible=true rememberedBuildingVisible=true");
+        }
+
+        // Same invariant as CheckBuildingVisualInvariant, for the army-ghost side of this pass
+        // (RefreshRememberedArmyVisualsAt) — a live army marker and a remembered "Last Seen"
+        // ghost of the SAME owner on the SAME hex must never both be visible to the current
+        // viewer at once. Checked per owner (not per army) since only one live marker is ever
+        // shown per owner (representativeForOwner) and only one remembered ghost per owner
+        // (RefreshRememberedArmyVisualsAt's own shownOwnersAtHex dedup).
+        private void CheckArmyVisualInvariant(HexCoord hex, List<ArmyData> armiesHere)
+        {
+            PlayerSetupData viewer = VisionSystem.CurrentViewer;
+            if (viewer == null || !_rememberedArmyVisualsByHex.TryGetValue(viewer,
+                out Dictionary<HexCoord, List<RememberedArmyVisual>> byHex)
+                || !byHex.TryGetValue(hex, out List<RememberedArmyVisual> rememberedAtHex))
+                return;
+
+            foreach (ArmyData army in armiesHere)
+            {
+                if (army?.Controller?.Visual == null || !army.Controller.Visual.IsVisible)
+                    continue;
+                foreach (RememberedArmyVisual remembered in rememberedAtHex)
+                {
+                    if (remembered.Visual == null || !remembered.Visual.IsVisible
+                        || remembered.Snapshot == null || remembered.Snapshot.Owner != army.Owner)
+                        continue;
+                    Debug.LogError($"[MAP-VIS] invariant violation: viewer={viewer.Nickname} hex=({hex.Q},{hex.R}) "
+                        + $"owner={army.Owner?.Nickname} liveArmyVisible=true rememberedArmyVisible=true");
+                }
+            }
         }
 #endif
 
@@ -591,9 +666,20 @@ namespace Game.Map
             foreach (Dictionary<HexCoord, MapObjectVisual> visuals in _rememberedBuildingVisuals.Values)
                 foreach (HexCoord hex in visuals.Keys)
                     hexes.Add(hex);
+            // Same reasoning as the remembered-building hexes just above, for remembered ARMY
+            // ghosts: a hex with only a memory of an army that's since fully left ArmyRegistry
+            // (destroyed while hidden, say) has no live registry/building entry left to
+            // contribute it to `hexes` on its own, so without this its ghost would never get
+            // reconciled — see RefreshRememberedArmyVisualsAt, now run per-hex from inside
+            // ReconcileHexVisualState below rather than as its own separate whole-map pass.
+            foreach (Dictionary<HexCoord, List<RememberedArmyVisual>> byHex in _rememberedArmyVisualsByHex.Values)
+                foreach (HexCoord hex in byHex.Keys)
+                    hexes.Add(hex);
             foreach (HexCoord hex in hexes)
                 ReconcileHexVisualState(hex, null);
-            RefreshRememberedArmyVisuals();
+            // Whole-map stale-entry cleanup only (see its own comment) — the actual show/hide
+            // decision for every still-remembered army ghost already happened per-hex above.
+            RemoveUnrememberedArmyVisualsForAllViewers();
         }
 
         // HexObjectLayout lays out one slot per distinct owner, not one per army — same-owner

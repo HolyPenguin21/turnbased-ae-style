@@ -167,10 +167,18 @@ namespace Game.Map
             }
 
             var participants = new List<ArmyData> { mover, guard };
+            // STEALTH-COMBAT-01: a freshly spawned guard has nothing to reveal (SpawnEventGuard
+            // never creates it hidden), but this still goes through the same one authoritative
+            // reveal boundary every other real contact point uses — no entry point that's about
+            // to show battle/pre-battle UI gets to skip PrepareCommittedEncounter, this one
+            // included (it used to call BeginCaptureKillEncounter/Show directly).
+            Game.Combat.BattleEncounterContext encounter =
+                Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(hex, participants, mover.Owner);
             // Same hero-only branch every other contact point in this project already has (see
             // HexSelectionController.Movement.cs's own onFight callback) — nothing for a normal
-            // Ground Combat round to do against a target with no non-hero units.
-            if (!BattleInitiator.IsCombatCapable(guard))
+            // Ground Combat round to do against a target with no non-hero units. Sourced from the
+            // context above, not re-derived, same reasoning as every other entry point.
+            if (encounter.TargetHeroOnly)
                 battleScreen?.BeginCaptureKillEncounter(mover, guard, null);
             else
                 battleScreen?.Show(hex, participants, null);

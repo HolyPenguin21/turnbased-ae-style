@@ -355,7 +355,7 @@ namespace Game.Map
             // anything and once hung the whole turn loop.
             if (battleContactPopup != null && mover.Owner != null && mover.Owner.IsHuman)
             {
-                battleContactPopup.Show(hex, participants,
+                battleContactPopup.Show(hex, participants, encounter.PresentationObserver,
                     onFight: () =>
                     {
                         if (targetHeroOnly)

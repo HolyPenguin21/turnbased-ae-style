@@ -784,6 +784,37 @@ namespace Game.UI
             armyButtonRow.Show(siblings, SwitchTo);
         }
 
+        // Individual stealth (see Game.Map.StealthSystem): when inspecting SOMEONE ELSE's army
+        // (read-only mode), only the members this viewer can actually see are visible AT ALL —
+        // a still-hidden member simply isn't in the roster. The owner always sees their own
+        // full roster (hidden members included, flagged by ArmyUnitCardUI). This is the ONE
+        // projection both RefreshGrid and ShowArmySummary must read from — previously only the
+        // grid filtered by this, while the summary panel (hero lookup, unit count, capacity,
+        // Fate, Move) kept reading _currentArmy.Members directly, so a fully-hidden hero/unit
+        // still shaped those numbers even though its card never showed (see the user's own
+        // report: a mixed-visibility army's header still counted/leaked hidden members).
+        private List<UnitData> VisibleMembers()
+        {
+            if (_currentArmy == null)
+                return new List<UnitData>();
+            if (!_readOnly)
+                return _currentArmy.Members;
+            Game.Players.PlayerSetupData viewer = Game.Map.VisionSystem.CurrentViewer;
+            return _currentArmy.Members.Where(m => !Game.Map.StealthSystem.IsHiddenFrom(m, viewer)).ToList();
+        }
+
+        // ArmyData.EffectiveCapacity itself always reads the army's raw (unfiltered) Members —
+        // fine for the owner's own full-roster view, but in read-only mode it would still let a
+        // hidden member push the capacity/slot count up, hinting at something the grid isn't
+        // actually showing. Recomputed here from whatever roster the caller is actually
+        // displaying (VisibleMembers' result) using the same ComputeCapacity rule, so it always
+        // agrees with what's on screen. Identical to _currentArmy.EffectiveCapacity whenever
+        // `members` is the unfiltered roster (owner/edit mode).
+        private int EffectiveCapacityFor(List<UnitData> members) =>
+            _currentArmy != null
+                ? System.Math.Max(ArmyData.ComputeCapacity(members, _currentArmy.IsGarrison), members.Count)
+                : 0;
+
         // One slot per point of EffectiveCapacity, not just one per actual Member — the empty
         // ones render as faint placeholders (see ArmyUnitCardUI.Setup) so it's obvious a card
         // can be dropped there, instead of the grid just looking randomly short of a full row.
@@ -796,18 +827,8 @@ namespace Game.UI
             if (gridContainer == null || gameConfig == null || gameConfig.armyUnitCardPrefab == null || _currentArmy == null)
                 return;
 
-            // Individual stealth (see Game.Map.StealthSystem): when inspecting SOMEONE ELSE's
-            // army, only the members this viewer can actually see are shown — a still-hidden
-            // member simply isn't in the roster. The owner always sees their own full roster
-            // (hidden members included, flagged by ArmyUnitCardUI).
-            List<UnitData> shown = _currentArmy.Members;
-            if (_readOnly)
-            {
-                Game.Players.PlayerSetupData viewer = Game.Map.VisionSystem.CurrentViewer;
-                shown = _currentArmy.Members.Where(m => !Game.Map.StealthSystem.IsHiddenFrom(m, viewer)).ToList();
-            }
-
-            int slots = System.Math.Max(_currentArmy.EffectiveCapacity, shown.Count);
+            List<UnitData> shown = VisibleMembers();
+            int slots = System.Math.Max(EffectiveCapacityFor(shown), shown.Count);
             for (int i = 0; i < slots; i++)
             {
                 UnitData member = i < shown.Count ? shown[i] : null;
@@ -835,13 +856,20 @@ namespace Game.UI
             if (detailText == null || _currentArmy == null)
                 return;
 
-            UnitData hero = _currentArmy.Members.FirstOrDefault(m => m.IsHero);
+            // Same observer-aware roster RefreshGrid's own cards are built from (see
+            // VisibleMembers) — every stat below derives from THIS, not _currentArmy.Members
+            // directly, so a fully-hidden hero/unit can never shape a number here that its own
+            // card isn't shown for.
+            List<UnitData> members = VisibleMembers();
+            int effectiveCapacity = EffectiveCapacityFor(members);
+
+            UnitData hero = members.FirstOrDefault(m => m.IsHero);
             string leaderLine = hero != null
-                ? $"{hero.Name} Commanding ({_currentArmy.EffectiveCapacity})"
-                : $"No Hero Commanding ({_currentArmy.EffectiveCapacity})";
+                ? $"{hero.Name} Commanding ({effectiveCapacity})"
+                : $"No Hero Commanding ({effectiveCapacity})";
 
             int heroCount = hero != null ? 1 : 0;
-            int unitCount = _currentArmy.Members.Count - heroCount;
+            int unitCount = members.Count - heroCount;
             string membersLine = heroCount > 0
                 ? $"1 Hero and {unitCount} Unit{(unitCount == 1 ? "" : "s")}"
                 : $"{unitCount} Unit{(unitCount == 1 ? "" : "s")}";
@@ -862,9 +890,17 @@ namespace Game.UI
                     buildingDefMod = building.Defense;
             }
 
+            // Same "slowest member caps the whole army" rule as ArmyData.CurrentMovement/
+            // MaxMovement, just recomputed against `members` instead of reading those
+            // properties straight off _currentArmy — those always read the raw, unfiltered
+            // roster, which in read-only mode could let a hidden slow (or fast) unit shift the
+            // displayed Move numbers even though it isn't shown anywhere in the grid.
+            int currentMovement = members.Count > 0 ? members.Min(AviationRules.EffectiveMoveCurrent) : 0;
+            int maxMovement = members.Count > 0 ? members.Min(m => m.MoveMax) : 0;
+
             detailText.text = $"{_currentArmy.Name}\n{leaderLine}\n{membersLine}\n" +
                 $"{fatePoints} Fate Points\n" +
-                $"Move: {_currentArmy.CurrentMovement}/{_currentArmy.MaxMovement}\n" +
+                $"Move: {currentMovement}/{maxMovement}\n" +
                 $"Terrain Def: {terrainDefMod:+0;-0;+0}\nConstruction Def: {buildingDefMod:+0;-0;+0}";
         }
 

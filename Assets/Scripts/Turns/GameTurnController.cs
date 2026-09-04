@@ -509,8 +509,14 @@ namespace Game.Turns
                 // STEALTH-COMBAT-01: this delayed/contested pairing is a committed encounter the
                 // instant it's drained here — reveal right now, before ShowResolved (or a direct
                 // Show()/BeginCaptureKillEncounter for a no-human pairing) below ever displays it.
-                Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(battle.Hex, battle.Participants,
-                    battle.Participants.Count > 0 ? battle.Participants[0].Owner : null);
+                // The observer can't just be battle.Participants[0].Owner — in a hot-seat game
+                // that's whichever side happened to be the original mover/hunter, which is just as
+                // likely to be an AI as the human this popup is actually about to render for (see
+                // BattleContactPopupUI.ShowSideList's own note) — ResolveHumanObserver finds the
+                // real one. The context this returns is also the single source of truth for
+                // TargetHeroOnly below, instead of a second, separately re-derived bool.
+                Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
+                    battle.Hex, battle.Participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(battle.Participants));
 
                 // ShowResolved only makes sense when a human is actually there to click its own
                 // "Continue" button — same human-only gating every other contact point in this
@@ -523,9 +529,9 @@ namespace Game.Turns
                 // click nobody was ever going to make — the exact same hang, just through a rarer
                 // door.
                 bool acknowledged = false;
-                bool anyHuman = battle.Participants.Any(a => a.Owner != null && a.Owner.IsHuman);
+                bool anyHuman = encounter.PresentationObserver != null;
                 if (battleContactPopup != null && anyHuman)
-                    battleContactPopup.ShowResolved(battle.Hex, battle.Participants, () => acknowledged = true);
+                    battleContactPopup.ShowResolved(battle.Hex, battle.Participants, encounter.PresentationObserver, () => acknowledged = true);
                 else
                     acknowledged = true;
                 yield return new WaitUntil(() => acknowledged);
@@ -536,7 +542,7 @@ namespace Game.Turns
                 // units, so this goes straight to a Capture Kill Challenge sequence instead (see
                 // BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
                 // original mover/hunter — see IsStillAGenuineBattle's own comment.
-                bool targetHeroOnly = battle.Participants.Count > 1 && !BattleInitiator.IsCombatCapable(battle.Participants[1]);
+                bool targetHeroOnly = encounter.TargetHeroOnly;
                 if (battleScreen != null && targetHeroOnly)
                     battleScreen.BeginCaptureKillEncounter(battle.Participants[0], battle.Participants[1], () => closed = true);
                 else if (battleScreen != null)

@@ -198,8 +198,7 @@ namespace Game.UI
                     {
                         ArmyData hunter = armyCanFight ? army : contactedEnemy;
                         ArmyData target = armyCanFight ? contactedEnemy : army;
-                        _pendingRetreatContacts.Enqueue((destination, new List<ArmyData> { hunter, target },
-                            !BattleInitiator.IsCombatCapable(target)));
+                        _pendingRetreatContacts.Enqueue((destination, new List<ArmyData> { hunter, target }));
                     }
                 }
             }

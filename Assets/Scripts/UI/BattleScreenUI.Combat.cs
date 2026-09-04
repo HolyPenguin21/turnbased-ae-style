@@ -742,7 +742,7 @@ namespace Game.UI
                 // AI-vs-Neutral contact used to (see that branch's own comment for the full report).
                 if (survivor.Owner != null && survivor.Owner.IsHuman && battleContactPopup != null)
                 {
-                    battleContactPopup.Show(hex, participants,
+                    battleContactPopup.Show(hex, participants, encounter.PresentationObserver,
                         onFight: () =>
                         {
                             if (nextEnemyHeroOnly)
