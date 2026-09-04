@@ -129,6 +129,9 @@ namespace Game.Ai.V2
                 Built = outcome.Ok,
                 StateChanged = outcome.Ok,
                 ApSpent = outcome.ApSpent,
+                // The site charges the facility definition's resourceCost (same figure
+                // InfrastructureFulfillment admits the build against). No hand card is consumed.
+                ResourcesSpent = outcome.Ok ? facilityDef.resourceCost : null,
                 StateVersionAfter = outcome.Ok ? V2StateVersion.Bump() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };

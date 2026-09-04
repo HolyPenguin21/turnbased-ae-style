@@ -59,8 +59,10 @@ canonical game actions; it never selects objectives or invents alternative actio
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
 | Materialization delivery ("can this satisfy demand X") | `Materialization/MaterializationDeliveryPolicy` (plan- and army-level) |
-| Chain enumeration (score-free) | `Materialization/MaterializationChainEnumerator` |
-| Per-chain Phase-A feasibility | `Materialization/MaterializationFeasibility` |
+| Chain enumeration (raw shapes only — no preflight, no feasibility, no score) | `Materialization/MaterializationChainEnumerator` |
+| Per-chain feasibility (Preflight + Phase-A entitlement/AP/resource gate + Phase-B reserves/strategic-claim gate) | `Materialization/MaterializationFeasibility` (`FilterForDemand` / `FilterSurplus`) |
+| Air-recon per-step tactical decisions (phase machine / mode / `Pick` / return-step + landing hysteresis / activation gates / opportunistic-strike arbitration) | `Recon/AirReconStepDirector` |
+| Air-recon information-weighting (Explore vs Refresh) | `Recon/AirReconModePolicy` |
 | Plan construction + `StrategicActionCost` + `StableKey` | `Materialization/MaterializationPlanFactory` |
 | Capability / trait / equipment-host matching | `Materialization/MaterializationChainMatching` |
 | Joint physical projection (recipient / hero / hand slots) | `Materialization/ProjectedPhysicalState` |
@@ -92,14 +94,19 @@ canonical game actions; it never selects objectives or invents alternative actio
   only evaluator calls are `Is*SatisfiedLive` completion checks (a legit §37 concern), never
   objective selection or replacement-mission synthesis (the stale-Explore replacement builder
   was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
-* **Air recon is plan-then-execute.** `Recon/AirReconPlanner.Plan` does aircraft discovery,
-  actor selection/ordering, `ReconMode` selection, launch-subset selection, the
-  `PickFromStorage` minimum-useful-step gate and the energy-policy check, producing an
-  `AirReconPlan`. `Execution/ReconAirExecutor.Execute(plan, …)` only flies it (launch + the
-  per-step tactical loop, which reads live world state like ground recon does). The
-  orchestrator runs both as a terminal stage after `TaskExecutor.Execute`; `TaskExecutor` no
-  longer references air recon. A launch that goes unaffordable mid-pass is skipped and logged,
-  never re-planned.
+* **Air recon is plan-then-execute — including the per-step loop.** `Recon/AirReconPlanner.Plan`
+  does the pass-level admission (aircraft discovery, actor selection/ordering, `ReconMode`,
+  launch-subset, the `PickFromStorage` minimum-useful-step gate, the energy-policy check),
+  producing an `AirReconPlan`. Every *per-step* tactical decision — the Outbound/Turning/Hold/
+  Return phase machine, live `ReconMode` resolution, the `ReconAirStepPlanner.Pick` call, the
+  return-step + landing hysteresis, the activation energy / affordability gates and the
+  opportunistic-strike arbitration — lives in `Recon/AirReconStepDirector.PlanStep`, which
+  replans live on every call. `Execution/ReconAirExecutor` only issues the canonical Move /
+  Strike / assignment-bookkeeping call each returned `StepDecision` names and bumps
+  `V2StateVersion` on each confirmed mutation; it produces an `AirReconExecutionResult`
+  (`IV2ActionResult`). The orchestrator runs plan+execute as a terminal stage after
+  `TaskExecutor.Execute`; `TaskExecutor` no longer references air recon. A launch that goes
+  unaffordable mid-pass is skipped and logged, never re-planned.
 * **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
   calls `MaterializationExecutor` / `StrategicPhaseA/B`.
 * **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions / Reaction
@@ -108,10 +115,19 @@ canonical game actions; it never selects objectives or invents alternative actio
   `StrategicEffectRegistry.Roles(...)`, so a new effect needs a registry entry, not a manager
   `if`.
 * **Execution results are a structured family** — `MaterializationResult` / `CardPlayResult` /
-  `BuildingPlayResult` / `InfraFulfillResult` / `ExecutionResult` implement `IV2ActionResult` and
-  project to the common `V2ActionOutcome` (`Succeeded` / `StateChanged` / `ApSpent` /
-  `ResourcesSpent` / `Played` / `Generated` / `Attached` / `Moved` / `Created` / `NeedsReplan` /
-  `StateVersionAfter` / `FailReason`). Each keeps its domain payload; a caller that only needs the
-  lifecycle facts reads `.Outcome`. `MaterializationExecutor` now measures the real H/E/M/T delta
-  for `ResourcesSpent`. (`ProvisioningResult` stays on its own `Success`/`Failure` shape —
-  provisioning is §34, not §35 execution.)
+  `BuildingPlayResult` / `InfraFulfillResult` / `ExecutionResult` / `AirReconExecutionResult`
+  implement `IV2ActionResult` and project to the common `V2ActionOutcome` (`Succeeded` /
+  `StateChanged` / `ApSpent` / `ResourcesSpent` / `Played` / `Generated` / `Attached` / `Moved` /
+  `Created` / `NeedsReplan` / `StateVersionAfter` / `FailReason`). Each keeps its domain payload; a
+  caller that only needs the lifecycle facts reads `.Outcome`. `MaterializationExecutor` measures
+  the real H/E/M/T delta for `ResourcesSpent`; `BuildingPlayExecutor.BuildExtractionFacility`
+  reports the facility definition's `resourceCost` and `InfraFulfillResult.Outcome.Played` is the
+  real hand-card consumption (true for the DEV Facility card, false for the hero-built extraction
+  site). (`ProvisioningResult` stays on its own `Success`/`Failure` shape — provisioning is §34,
+  not §35 execution.)
+* **One execution state-version counter** — `State/V2StateVersion`. It is bumped by every V2
+  execution-tier operation that mutates authoritative world state: `CardPlayExecutor` /
+  `BuildingPlayExecutor` / `MaterializationExecutor` / `TaskExecutor`, the air-recon executor
+  (per confirmed move / launch / strike) and `StrategicPhaseB` tempo (Draw / capacity-upgrade /
+  Pressure, which their own executors do not version). Phase B's parked-candidate lifecycle keys
+  on `V2StateVersion.Current` directly — there is no second local counter.

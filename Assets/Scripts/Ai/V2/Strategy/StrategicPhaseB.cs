@@ -108,9 +108,9 @@ namespace Game.Ai.V2
 
             // §P1.8 — parking is keyed by (ActionKey, StateVersion). A parked candidate stays
             // parked only while StateVersion is unchanged; any real mutation bumps the version and
-            // every park goes stale (== the whole candidate set is rebuilt, spec §2/§3).
+            // every park goes stale (== the whole candidate set is rebuilt, spec §2/§3). ARCH-02
+            // review r3 — the version IS the canonical V2StateVersion, not a second local counter.
             var parkedAt = new Dictionary<string, int>(System.StringComparer.Ordinal);
-            int stateVersion = 0;
             int iter = 0;
             string stopReason = null;
             while (!budget.TotalCapHit && iter <= AiConfigV2.maxEndOfTurnTempoActionsPerTurn + 1)
@@ -142,7 +142,7 @@ namespace Game.Ai.V2
                     .OrderByDescending(c => c.Utility)
                     .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
                 {
-                    string block = TempoBlockReason(c, spendableAp, budget, parkedAt, stateVersion, player, root, ctx);
+                    string block = TempoBlockReason(c, spendableAp, budget, parkedAt, player, root, ctx);
                     float holdOfConsumed = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
                         ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost) : 0f;
                     float eff = c.Utility - holdOfConsumed;
@@ -235,13 +235,17 @@ namespace Game.Ai.V2
 
                 if (exec.StateChanged || exec.Progressed)
                 {
-                    stateVersion++;
+                    // Canonical bump. PlayMat / PlayNonCombat already bump inside their executors;
+                    // Draw / MaintenanceSpend / PressureSpend do not, so bump here too — a double
+                    // bump is harmless (only the change matters) and it keeps the invariant that
+                    // any real tempo mutation stales every parked candidate.
+                    V2StateVersion.Bump();
                     result.StateChanged |= exec.StateChanged;
                 }
                 if (!exec.Progressed)
                 {
-                    parkedAt[best.ActionKey] = stateVersion;
-                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}@v{stateVersion}");
+                    parkedAt[best.ActionKey] = V2StateVersion.Current;
+                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}@v{V2StateVersion.Current}");
                 }
                 if (exec.Interrupt)
                 {
@@ -309,9 +313,9 @@ namespace Game.Ai.V2
         // null => the candidate may be chosen; otherwise a short reason it is currently blocked.
         // Every cap is checked against the turn budget (spec §P0.4), not a per-call local.
         private static string TempoBlockReason(TempoCandidate c, float spendableAp, StrategicTempoBudget budget,
-            Dictionary<string, int> parkedAt, int stateVersion, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+            Dictionary<string, int> parkedAt, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
-            if (parkedAt.TryGetValue(c.ActionKey, out int v) && v == stateVersion)
+            if (parkedAt.TryGetValue(c.ActionKey, out int v) && v == V2StateVersion.Current)
                 return $"parked@v{v}";
             if (c.CountsAsSurplusCardPlay && budget.CardCapHit) return "surplus card-play budget";
             if (c.CountsAsTerminalDraw && budget.DrawCapHit) return "draw budget";

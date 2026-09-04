@@ -146,7 +146,7 @@ namespace Game.Ai.V2
                 obsRunnable.Count, 0, UnityEngine.Mathf.Max(0, desiredObs - activeObsLaneActors.Count));
 
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
-            ReconMode mode = ReconAirExecutor.RequestedMode(player, snap);
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
 
             // ONE authoritative greedy, in the executor's own order, over a SINGLE cumulative AP /
             // Energy budget (so several sorties never each pass against the full stockpile) with the

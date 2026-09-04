@@ -688,7 +688,11 @@ namespace Game.Ai.V2
             // the pass, then EXECUTE the plan. TaskExecutor no longer touches air recon.
             ReconAirReservationPrepass.ReleaseProtection(player);
             AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
-            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot);
+            var airReconResult = new AirReconExecutionResult();
+            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult);
+            AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
+                + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
+                + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter}");
             foreach (ExecutionResult er in executed)
             {
                 // A synthesised replacement's proposal was never in the pre-execution

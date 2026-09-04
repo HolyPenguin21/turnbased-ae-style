@@ -161,9 +161,10 @@ namespace Game.Ai.V2
             System.Collections.Generic.ISet<CardData> excludeCards = null,
             System.Collections.Generic.ISet<string> excludeGenKeys = null)
         {
-            var candidates = MaterializationChainEnumerator.EnumerateForDemand(
-                snap, player, root, hand, ctx, demand, ledger, commitments, reservedFollowupAp,
-                reservation, excludeCards, excludeGenKeys);
+            var raw = MaterializationChainEnumerator.EnumerateForDemand(
+                snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
+            var candidates = MaterializationFeasibility.FilterForDemand(
+                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);
 
             if (candidates.Count == 0) return new List<DemandCandidate>();
 
@@ -276,8 +277,10 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
         {
-            List<MaterializationPlan> candidates = MaterializationChainEnumerator.EnumerateSurplusPlans(
+            List<MaterializationPlan> raw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
+            List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
+                raw, player, root, hand, ctx, reservation);
             if (candidates.Count == 0) return null;
 
             // Scoring is SEPARATE from enumeration (DoD): the enumerator returns score-free plans;

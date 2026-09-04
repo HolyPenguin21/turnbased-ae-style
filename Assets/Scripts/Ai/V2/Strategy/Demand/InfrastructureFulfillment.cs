@@ -39,6 +39,9 @@ namespace Game.Ai.V2
         public float ApSpent;
         public ResourceCost ResourcesSpent;   // forwarded from the BuildingPlayResult
         public bool StateChanged;
+        // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
+        // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
+        public bool CardPlayed;
         public int StateVersionAfter = -1;
         public string Detail;
 
@@ -46,7 +49,7 @@ namespace Game.Ai.V2
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
             succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: Built, generated: false, attached: false, moved: false, created: Built,
+            played: CardPlayed, generated: false, attached: false, moved: false, created: Built,
             needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : Detail);
     }
 
@@ -103,10 +106,12 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2]   infra — {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
                 return new InfraFulfillResult { Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
-                    ResourcesSpent = r.ResourcesSpent, StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
+                    ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                    StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
             }
             return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
-                ResourcesSpent = r.ResourcesSpent, StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
+                ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt

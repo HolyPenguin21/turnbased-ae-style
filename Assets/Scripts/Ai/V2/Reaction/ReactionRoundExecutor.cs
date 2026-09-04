@@ -224,7 +224,12 @@ namespace Game.Ai.V2
             // ARCH-02 §35 — terminal air-recon as its own plan-then-execute stage (see Pipeline).
             ReconAirReservationPrepass.ReleaseProtection(player);
             AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
-            yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot);
+            var reactionAirResult = new AirReconExecutionResult();
+            yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult);
+            if (reactionAirResult.Mutated)
+                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — reaction outcome moved={reactionAirResult.AnyMoved} "
+                    + $"launched={reactionAirResult.AnyLaunched} struck={reactionAirResult.AnyStruck} "
+                    + $"stateVer={reactionAirResult.StateVersionAfter}");
             result.Executed += executed.Count(MissionRevalidator.WasAttempt);
             foreach (ExecutionResult er in executed)
             {

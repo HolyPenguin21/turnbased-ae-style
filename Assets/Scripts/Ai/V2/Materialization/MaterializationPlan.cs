@@ -99,7 +99,9 @@ namespace Game.Ai.V2
         // --- deploy placement -----------------------------------------------------------
         //  For an existing base card this is a fully validated option. For a generated base it is
         //  the best option from a pre-mint enumeration; MaterializationExecutor re-validates it
-        //  against the live world after minting and re-picks if it no longer holds.
+        //  against the live world after minting and, if it no longer holds, returns a stale-
+        //  placement failure (result.PlacementStale) — it does NOT substitute a different
+        //  placement. The caller refreshes the world and replans (ARCH-02 §35).
         public PlacementOption Deploy;
 
         // --- whole-chain accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------

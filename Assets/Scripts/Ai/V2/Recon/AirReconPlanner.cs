@@ -89,7 +89,7 @@ namespace Game.Ai.V2
                 }
 
             // 3. stored aircraft — one concrete launch per airfield, gated exactly as before.
-            ReconMode mode = ReconAirExecutor.RequestedMode(player, snapshot);
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
             var airfields = AiAirSortiePlanner.OwnedAirfieldHexes(player).ToList();
             if (airfields.Count == 0)
                 skips.Add("noOwnedAirfield");
