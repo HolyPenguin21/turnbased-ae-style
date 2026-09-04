@@ -112,7 +112,6 @@ namespace Game.Ai.V2
                 ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
                 ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
             }
-            int replacementsUsed = 0;
 
             for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
             {
@@ -144,51 +143,9 @@ namespace Game.Ai.V2
 
                 MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
 
-                // The proposal/ledger layer may still replace a stale Explore attempt before it
-                // executes. This is mission accounting, not actor identity: ReconAssignment is
-                // actor-keyed and survives replacement, while the fresh proposal simply provides a
-                // better strategic anchor for the same live per-step executor.
-                HashSet<HexCoord> takenFoci = null;
-                if (validity == MissionValidity.StaleGoalMet)
-                {
-                    takenFoci = new HashSet<HexCoord>();
-                    for (int qi = 0; qi < queue.Count; qi++)
-                        if (qi != missionIndex && queue[qi] != null)
-                            takenFoci.Add(queue[qi].ExecutionHex);
-                    if (reservedExploreFoci != null)
-                        foreach (HexCoord h in reservedExploreFoci)
-                            takenFoci.Add(h);
-                }
-
-                if (pm.Kind == MissionKind.Scout
-                    && validity == MissionValidity.StaleGoalMet
-                    && replacementsUsed < AiConfigV2.maxReplacementMissionsPerPass
-                    && MissionRevalidator.TryPickReplacementExploreFocus(snapshot, player, pm, army.Hex,
-                        takenFoci, out HexCoord replFocus)
-                    && !VisionSystem.IsVisited(player, replFocus))
-                {
-                    ProvisionedMission repl = MissionRevalidator.BuildExploreReplacement(pm, replFocus, player);
-                    if (!MissionRevalidator.IsStale(MissionRevalidator.Validate(player, root, ctx, repl)))
-                    {
-                        result.FinalHex = army.Hex;
-                        result.ApSpent = 0f;
-                        result.ReachedGoal = true;
-                        result.Replaced = true;
-                        result.StopReason = ExecutionStopReason.ReachedGoal;
-                        ApCheck(pm, apBefore, root, result);
-                        results.Add(result);
-
-                        queue.Add(repl);
-                        replacementsUsed++;
-                        AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — stale proposal "
-                            + $"superseded → {repl.Key} actor=#{repl.MoverArmyId} "
-                            + $"anchor=({replFocus.Q},{replFocus.R}); durable ReconAssignment retained");
-                        AiDebugLog.Write($"[AI][V2] exec [{repl.Mission?.AttemptId}] replacementOf={pm.Mission?.AttemptId} "
-                            + $"stableKey={repl.Key}");
-                        continue;
-                    }
-                }
-
+                // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
+                // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
+                // + the mission planner re-target the durable ReconAssignment on the next pass.
                 if (MissionRevalidator.IsStale(validity))
                 {
                     result.FinalHex = army.Hex;

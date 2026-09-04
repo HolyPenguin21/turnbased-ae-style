@@ -79,9 +79,15 @@ canonical game actions; it never selects objectives or invents alternative actio
 
 * **One `ResourceAllocator`** — no per-mission/per-axis allocator.
 * **One `StrategicCardEvaluator`** — no `Hero`/`Reaction`/`PhaseB`/`Aviation` card scorer.
-* **Executors do not plan or rescore** — `Execution/*` and `ReactionRoundExecutor` call
-  canonical gameplay actions and return a structured result; the only evaluator calls are
-  `Is*SatisfiedLive` completion checks (a legit §37 concern), never objective selection.
+* **Executors do not plan or rescore** — `Execution/TaskExecutor`, `ReconGroundExecutor` and
+  `ReactionRoundExecutor` call canonical gameplay actions and return a structured result; the
+  only evaluator calls are `Is*SatisfiedLive` completion checks (a legit §37 concern), never
+  objective selection or replacement-mission synthesis (the stale-Explore replacement builder
+  was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
+  * **Known residual (§35):** `Execution/ReconAirExecutor.RunFallback` is still a terminal
+    air-recon planning+execution pass (route/step/landing/strike selection) invoked from
+    `TaskExecutor` and `ReactionRoundExecutor`. Air recon has no Objective→Mission→Allocate→
+    Provision path yet; giving it one is the air-recon workstream, not an ARCH-02 extraction.
 * **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
   calls `MaterializationExecutor` / `StrategicPhaseA/B`.
 * **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions / Reaction
