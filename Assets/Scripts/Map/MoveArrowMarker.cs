@@ -271,10 +271,10 @@ namespace Game.Map
         // shared tangent) on longer, multi-hex paths. Here every waypoint gets ONE tangent,
         // built from its neighbours (central difference, so segments on either side of it
         // agree and the path stays C1-continuous through it) with the same sideways curveBend
-        // lean added to every tangent — consistent handedness is what makes the whole path
-        // read as one flowing arc rather than a wavy chain. A 2-point path (a single hex hop)
-        // still bows, since both its tangents come from the same one segment direction plus
-        // that same bend.
+        // lean added to every interior tangent — consistent handedness is what makes the whole
+        // path read as one flowing arc rather than a wavy chain. The final tangent and, for a
+        // 2-point path (a single hex hop), the first tangent too are left unbent, so the arrow
+        // always approaches the destination hex center straight-on rather than at an angle.
         private List<Vector3> BuildCurve(IReadOnlyList<Vector3> waypoints)
         {
             int n = waypoints.Count;
@@ -292,7 +292,14 @@ namespace Game.Map
                 baseDir.y = 0f;
                 baseDir.Normalize();
                 Vector3 perpendicular = new Vector3(-baseDir.z, 0f, baseDir.x);
-                tangents[i] = (baseDir + perpendicular * _style.curveBend).normalized;
+                // The final tangent stays unbent so the last segment approaches the
+                // destination hex center straight-on instead of curving in at an angle
+                // (the bend on every other tangent is what gives multi-hex paths their
+                // flowing arc, but at the endpoint it reads as an S-curve/overshoot).
+                // A 2-point path (single hex hop) has no chain to flow with, so it gets
+                // no bend at all and renders as a straight segment into the target.
+                float bend = (n == 2 || i == n - 1) ? 0f : _style.curveBend;
+                tangents[i] = (baseDir + perpendicular * bend).normalized;
             }
 
             var result = new List<Vector3> { waypoints[0] };
