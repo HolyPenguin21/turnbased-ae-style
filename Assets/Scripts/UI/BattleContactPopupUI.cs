@@ -222,14 +222,20 @@ namespace Game.UI
                     if (!owners.Contains(army.Owner))
                         owners.Add(army.Owner);
 
-            ShowSideList(leftArmyList, hex, owners.Count > 0 ? owners[0] : null);
-            ShowSideList(rightArmyList, hex, owners.Count > 1 ? owners[owners.Count - 1] : null);
+            ShowSideList(leftArmyList, hex, owners.Count > 0 ? owners[0] : null, participants);
+            ShowSideList(rightArmyList, hex, owners.Count > 1 ? owners[owners.Count - 1] : null, participants);
         }
 
         // Only that owner's armies actually ON this hex — not every army they have anywhere on
         // the map (see the user's own correction: this lists who's actually available to commit
-        // to THIS fight, not the owner's whole roster).
-        private void ShowSideList(ArmyButtonRowUI list, HexCoord hex, PlayerSetupData owner)
+        // to THIS fight, not the owner's whole roster). STEALTH-COMBAT-01 §7: stealth-aware —
+        // BattleEncounterVisibility.VisibleEncounterArmiesAt, not a raw ArmyRegistry.AllAt scan,
+        // so a fully-hidden non-participant army of this owner never leaks into the roster; the
+        // armies actually fighting (participants, already revealed by BattleEncounterCoordinator
+        // by the time this popup ever opens) always show regardless. Observer is whichever human
+        // this popup is currently rendered for — same VisionSystem.CurrentViewer every map marker
+        // already keys visibility off.
+        private void ShowSideList(ArmyButtonRowUI list, HexCoord hex, PlayerSetupData owner, List<ArmyData> participants)
         {
             if (list == null)
                 return;
@@ -238,7 +244,8 @@ namespace Game.UI
                 list.Hide();
                 return;
             }
-            List<ArmyData> armies = ArmyRegistry.AllAt(hex).FindAll(a => a.Owner == owner && a.Members.Count > 0);
+            List<ArmyData> armies = BattleEncounterVisibility.VisibleEncounterArmiesAt(
+                hex, owner, VisionSystem.CurrentViewer, participants);
             list.Show(armies, army =>
             {
                 // Hidden outright (not just the buttons disabled) — the army modal opening ON

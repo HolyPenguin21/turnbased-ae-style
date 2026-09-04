@@ -136,6 +136,40 @@ namespace Game.Map
                     ExitStealth(member);
         }
 
+        // Atomic bulk reveal for a committed battle encounter (STEALTH-COMBAT-01) — reveals every
+        // hidden member of every army in `participants` (same per-unit clean-up as ExitStealth:
+        // IsHidden cleared, personal detection state dropped) but fires ONE consolidated
+        // StealthChanged/StealthChangedAt for the whole batch instead of one per unit the way a
+        // loop of ExitStealth calls would. Only ever the REAL participants of this one encounter —
+        // never other armies of the same owner sharing the hex, neighboring hidden armies, or
+        // anything else merely nearby. See Game.Combat.BattleEncounterCoordinator.
+        // PrepareCommittedEncounter, the only intended caller — RevealArmy (single army, below)
+        // stays for the few remaining callers that only ever have one side to reveal.
+        public static void RevealForBattle(IEnumerable<ArmyData> participants, HexCoord hex)
+        {
+            if (participants == null)
+                return;
+            bool anyChanged = false;
+            foreach (ArmyData army in participants)
+            {
+                if (army == null)
+                    continue;
+                foreach (UnitData member in new List<UnitData>(army.Members))
+                {
+                    if (!member.IsHidden)
+                        continue;
+                    member.IsHidden = false;
+                    _detected.Remove(member);
+                    anyChanged = true;
+                }
+            }
+            if (anyChanged)
+            {
+                StealthChanged?.Invoke();
+                StealthChangedAt?.Invoke(hex);
+            }
+        }
+
         // Death / removal from play / return-to-deck — drop every trace so a recycled
         // UnitData reference can never carry a stale detection.
         public static void OnUnitRemoved(UnitData unit)

@@ -334,20 +334,20 @@ namespace Game.Map
 
             var participants = new List<ArmyData> { mover, enemy };
 
-            // Joining a battle is a full reveal (project owner's own call): every hidden
-            // member of BOTH armies drops stealth and fights as an ordinary unit. FindEnemyAt
-            // already refused contact against a FULLY-hidden defender, and CanInitiateContact
-            // refused a fully-hidden mover — a mixed army on either side is what reaches here,
-            // and it behaves like any other army once revealed. Done BEFORE the hero-only
-            // classification so it reads the true, full roster.
-            Game.Map.StealthSystem.RevealArmy(enemy);
-            Game.Map.StealthSystem.RevealArmy(mover);
+            // STEALTH-COMBAT-01: contact has just committed to a real encounter (FindEnemyAt
+            // already refused a fully-hidden defender, CanInitiateContact refused a fully-hidden
+            // mover) — this is the one authoritative reveal boundary, run BEFORE any battle/
+            // pre-battle UI (including the Fight/Delay popup just below) ever shows, and BEFORE
+            // the hero-only classification so it reads the true, full roster. Never touches any
+            // OTHER army sharing this hex.
+            Game.Combat.BattleEncounterContext encounter =
+                Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(hex, participants, mover.Owner);
 
             // A hero-only contact (see BattleInitiator.IsEngageable vs IsCombatCapable) has
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
             // side, nothing to click/attack — so it skips the grid entirely and goes straight to
             // a Capture Kill Challenge sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-            bool targetHeroOnly = !BattleInitiator.IsCombatCapable(enemy);
+            bool targetHeroOnly = encounter.TargetHeroOnly;
 
             // A human-controlled mover gets the interactive Fight/Delay choice, same as always.
             // An AI/Neutral mover fights immediately instead of ever choosing Delay — see this

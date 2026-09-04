@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Game.HexGrid;
 
@@ -81,20 +82,53 @@ namespace Game.Map
             return null;
         }
 
+        // MAP-VIS-01: fired once a relocation's whole transaction (index re-key + recompute +
+        // content notifications, below) has fully completed — never mid-transaction. A future
+        // subscriber that wants "this army just moved" instead of two separate content-changed
+        // notifications for oldHex/newHex can use this; nothing in this project subscribes yet.
+        public static event Action<ArmyData, HexCoord, HexCoord> ArmyRelocated;
+
         // Re-keys `army` from wherever it's currently filed to `newHex` — the only way
         // ArmyData.Hex ever changes after creation. Needed now that whole armies move (see
         // HexSelectionController.TryIssueMoveOrder); a no-op if it's already there.
-        // Note: Unregister/Register both already recompute the owner's vision on their own (see
-        // above) — the per-step recompute during the move itself (see ArmyController.MoveRoutine's
-        // shouldStopEarly callback) already reflects wherever the army actually is mid-animation,
-        // so this re-keying doesn't need its own extra recompute on top of that.
+        //
+        // MAP-VIS-01 (2026-09-04, project owner's own root-cause report): deliberately NOT
+        // implemented as Unregister(army) + army.Hex = newHex + Register(army) any more — those
+        // two public methods each fire VisionSystem.RecomputeFor/NotifyContentChanged
+        // independently, which used to mean any subscriber (chiefly HexSelectionController's own
+        // visual-memory/layout wiring) could observe the army registered NOWHERE at all for the
+        // brief window between the Unregister and the Register — a single logical relocation
+        // (e.g. a retreat) firing two disjoint "this hex's content changed" events instead of one
+        // atomic "this army moved" transaction. That's what let the live building visual and its
+        // remembered "Last Seen" clone at oldHex/newHex get refreshed at genuinely different
+        // moments, with different HexObjectLayout results each time — a duplicate citadel visual
+        // (one centred, one at an edge offset) instead of the one-or-the-other invariant
+        // HexSelectionController.Visuals.cs's ReconcileHexVisualState now enforces.
+        //
+        // Below: re-key the index directly (no events), THEN — once the registry is in its final,
+        // fully-consistent state — recompute vision and notify content-changed for both hexes
+        // exactly once each. No subscriber can ever observe the intermediate "registered nowhere"
+        // state any more.
         public static void MoveArmy(ArmyData army, HexCoord newHex)
         {
             if (army == null || army.Hex.Equals(newHex))
                 return;
-            Unregister(army);
+
+            HexCoord oldHex = army.Hex;
+            if (ByHex.TryGetValue(oldHex, out List<ArmyData> oldList))
+                oldList.Remove(army);
             army.Hex = newHex;
-            Register(army);
+            if (!ByHex.TryGetValue(newHex, out List<ArmyData> newList))
+            {
+                newList = new List<ArmyData>();
+                ByHex[newHex] = newList;
+            }
+            newList.Add(army);
+
+            VisionSystem.RecomputeFor(army.Owner);
+            VisionSystem.NotifyContentChanged(oldHex);
+            VisionSystem.NotifyContentChanged(newHex);
+            ArmyRelocated?.Invoke(army, oldHex, newHex);
         }
 
         // Every army belonging to one player, across every hex — used to reset

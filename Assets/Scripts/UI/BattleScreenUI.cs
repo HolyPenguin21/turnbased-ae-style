@@ -285,11 +285,20 @@ namespace Game.UI
             _attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             _defender = participants != null && participants.Count > 1 ? participants[1] : null;
 
-            // Joining a battle is a full reveal on both sides (project owner's own call) —
-            // every hidden member fights as an ordinary unit. Usually already done at the
-            // contact site (HexSelectionController.Movement.cs); repeated here as the single
-            // choke every battle-start path passes through (delayed battles, chained
-            // encounters), and idempotent for an already-visible unit.
+            // STEALTH-COMBAT-01: reveal is no longer primarily done here — every real entry
+            // point (HexSelectionController.Movement.cs's TryBeginBattleAt, BattleScreenUI.
+            // Combat.cs's ResolveHexAfterVictory, TryChainPendingRetreatContact above,
+            // GameTurnController.ResolveDelayedBattlesThen) already calls Game.Combat.
+            // BattleEncounterCoordinator.PrepareCommittedEncounter — the one authoritative
+            // reveal boundary — immediately before it ever shows a battle/pre-battle UI. What's
+            // left here is only an idempotent safety net (a no-op for an already-revealed
+            // participant) plus a DEV diagnostic for the case that safety net actually had to
+            // do something, meaning some caller reached Show() without going through the
+            // coordinator first.
+            bool attackerHadHidden = _attacker != null && _attacker.Members.Exists(m => m.IsHidden);
+            bool defenderHadHidden = _defender != null && _defender.Members.Exists(m => m.IsHidden);
+            if (attackerHadHidden || defenderHadHidden)
+                BattleDebugLog.Write("[STEALTH-COMBAT] BattleScreen.Show received hidden participant after committed encounter preparation");
             Game.Map.StealthSystem.RevealArmy(_attacker);
             Game.Map.StealthSystem.RevealArmy(_defender);
 
@@ -733,6 +742,12 @@ namespace Game.UI
             if (_pendingRetreatContacts.Count == 0 || battleContactPopup == null)
                 return false;
             (HexCoord hex, List<ArmyData> participants, bool targetHeroOnly) contact = _pendingRetreatContacts.Dequeue();
+            // STEALTH-COMBAT-01: this contact was queued back when it was landed on (see
+            // PerformRetreat) — possibly while its participants were still hidden — and reveal is
+            // deliberately deferred until the queue actually reaches it and it's about to show,
+            // not at enqueue time. Right here, immediately before battleContactPopup.Show below.
+            Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(contact.hex, contact.participants,
+                contact.participants.Count > 0 ? contact.participants[0].Owner : null);
             Action onClosed = _onClosed;
             battleContactPopup.Show(contact.hex, contact.participants,
                 onFight: () =>

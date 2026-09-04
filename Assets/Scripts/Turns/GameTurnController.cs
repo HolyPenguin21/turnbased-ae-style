@@ -506,6 +506,12 @@ namespace Game.Turns
                 if (!IsStillAGenuineBattle(battle))
                     continue;
 
+                // STEALTH-COMBAT-01: this delayed/contested pairing is a committed encounter the
+                // instant it's drained here — reveal right now, before ShowResolved (or a direct
+                // Show()/BeginCaptureKillEncounter for a no-human pairing) below ever displays it.
+                Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(battle.Hex, battle.Participants,
+                    battle.Participants.Count > 0 ? battle.Participants[0].Owner : null);
+
                 // ShowResolved only makes sense when a human is actually there to click its own
                 // "Continue" button — same human-only gating every other contact point in this
                 // project already applies (see HexSelectionController.Movement.cs's own onFight/

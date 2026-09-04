@@ -262,9 +262,15 @@ namespace Game.UI
             else if (targetArmy.Owner != null && targetArmy.Owner.IsHuman)
                 _localArmy = targetArmy;
 
-            // Joining the encounter is a full reveal (project owner's own call) — any hidden
-            // hero on either side drops stealth. A fully-hidden target never reaches here
-            // (BattleInitiator.FindEnemyAt excluded it); this covers a mixed hero-only army.
+            // STEALTH-COMBAT-01: reveal is now the committed-encounter coordinator's job, run by
+            // every caller (TryBeginBattleAt, ResolveHexAfterVictory, TryChainPendingRetreatContact,
+            // ResolveDelayedBattlesThen) before it ever routes into this method — kept here only
+            // as an idempotent safety net (a fully-hidden target never reaches here anyway, see
+            // BattleInitiator.FindEnemyAt), same as BattleScreenUI.Show's own safety-net copy.
+            bool hunterHadHidden = hunterArmy.Members.Exists(m => m.IsHidden);
+            bool targetHadHidden = targetArmy.Members.Exists(m => m.IsHidden);
+            if (hunterHadHidden || targetHadHidden)
+                BattleDebugLog.Write("[STEALTH-COMBAT] BeginCaptureKillEncounter received hidden participant after committed encounter preparation");
             Game.Map.StealthSystem.RevealArmy(targetArmy);
             Game.Map.StealthSystem.RevealArmy(hunterArmy);
 
@@ -712,6 +718,13 @@ namespace Game.UI
             if (nextEnemy != null)
             {
                 var participants = new List<ArmyData> { survivor, nextEnemy };
+                // STEALTH-COMBAT-01: this chained pairing is its own committed encounter — reveal
+                // right here, before either the contact popup or a direct Show()/
+                // BeginCaptureKillEncounter below can display anything for it. survivor was
+                // already revealed by whatever encounter it just won; nextEnemy may not have been
+                // (a second, previously-unrevealed army sharing the hex).
+                Game.Combat.BattleEncounterContext encounter =
+                    Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(hex, participants, survivor.Owner);
                 // Same hero-only branch as HexSelectionController.Movement.cs's own contact
                 // handling / GameTurnController.ResolveDelayedBattlesThen's own targetHeroOnly
                 // check — nothing for a normal Ground Combat round to do against a target with no
@@ -719,7 +732,7 @@ namespace Game.UI
                 // Challenge instead. This chained-second-army path used to always call Show(),
                 // opening a full battle with an empty grid row for a hero-only nextEnemy (see the
                 // user's own report).
-                bool nextEnemyHeroOnly = !BattleInitiator.IsCombatCapable(nextEnemy);
+                bool nextEnemyHeroOnly = encounter.TargetHeroOnly;
 
                 // Same human-only gating as the very first contact on the strategic map (see
                 // HexSelectionController.Movement.cs's own onFight/onDelay branch) — this used to
