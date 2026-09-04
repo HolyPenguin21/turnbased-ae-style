@@ -272,9 +272,12 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                         + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
                         + $"att={(play.Attached ? 1 : 0)}");
-                    if (play.StateChanged)
+                    // ARCH-02 §35 — a stale-placement failure means "replan me", not "block me":
+                    // refresh so the next TopForDemand enumerates against the current world, and
+                    // leave the demand active. The loop is still bounded by chainAttempts.
+                    if (play.StateChanged || play.PlacementStale)
                         snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    if (!play.StateChanged && plan.Generation == null)
+                    if (!play.StateChanged && !play.PlacementStale && plan.Generation == null)
                         selected.State.Blocked = true;
                     continue;
                 }

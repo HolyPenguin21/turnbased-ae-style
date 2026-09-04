@@ -155,23 +155,18 @@ namespace Game.Ai.V2
             }
 
             // ---------------------------------------------------------------- 4. deploy ----
+            // ARCH-02 §35 — the executor takes the plan's placement verbatim. If it no longer
+            // preflights (a generate step just minted, or an earlier chain this pass consumed the
+            // slot), that is a STALE PLAN: report it and let the caller refresh + replan. The
+            // executor never enumerates a replacement placement of its own.
             CardPlayPlan deployPlan = plan.Deploy.Bind(baseCard);
-            if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out _))
+            if (!CardPlayExecutor.Preflight(player, root, hand, ctx, deployPlan, out string preflightFail))
             {
-                // The pre-mint placement option is stale (a generated base never had a validated
-                // one). Re-pick any legal option now.
-                bool soloOnly = plan.FinalCapability == CapabilityKind.ScoutCapability;
-                PlacementOption? fresh = PlacementSelector
-                    .BuildOptions(snap, player, baseCard.Definition, commitments, soloOnly)
-                    .Select(o => (PlacementOption?)o)
-                    .FirstOrDefault(o => CardPlayExecutor.Preflight(player, root, hand, ctx, o.Value.Bind(baseCard), out _));
-                if (fresh == null)
-                {
-                    res.ApSpent = apStart - root.ActionPoints;
-                    res.FailReason = "no legal deployment after chain";
-                    return res;
-                }
-                deployPlan = fresh.Value.Bind(baseCard);
+                res.ApSpent = apStart - root.ActionPoints;
+                res.PlacementStale = true;
+                res.FailReason = $"deploy placement stale after chain ({preflightFail ?? "preflight failed"}); "
+                    + "caller must refresh and replan";
+                return res;
             }
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);

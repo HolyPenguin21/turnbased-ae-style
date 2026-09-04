@@ -132,6 +132,10 @@ namespace Game.Ai.V2
         public bool Generated;
         public bool Attached;
         public float ApSpent;                     // real PlayerRoot AP delta across the whole chain
+        // ARCH-02 §35 — set when plan.Deploy no longer preflights at execution time. The chain did
+        // NOT deploy and the executor did NOT substitute a placement; the caller must refresh the
+        // world and replan (do not treat the demand as structurally blocked).
+        public bool PlacementStale;
         public string FailReason;
 
         // Diagnostic identity of the actor/facility/mode prefix reached by the attempt. Exact retry
