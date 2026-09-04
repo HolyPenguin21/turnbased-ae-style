@@ -70,21 +70,30 @@ namespace Game.Ai.V2
         // ProductiveStop instead and never sets this.
         public bool BlockedBeforeMovement;
 
-        // ARCH-02 §36 — the common lifecycle projection. A mission execution "succeeded" when it
-        // reached its goal or made real forward progress; StepsMoved / EnteredStealth / ReachedGoal
-        // are the world-changing signals; a non-progressing stop reports its StopReason.
+        // ARCH-02 §36 — a stale-goal mission that did nothing (revalidation found the objective
+        // already satisfied: ReachedGoal=true, 0 AP, no movement). It "succeeded" in that the
+        // objective is met, but it changed NOTHING — the common contract must not report
+        // StateChanged for it.
+        public bool StaleNoOp;
+        public int StateVersionAfter = -1;
+
+        // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor: only a
+        // real movement step or a stealth entry moved the world. Reaching a goal that was already
+        // satisfied (StaleNoOp) is a success but NOT a state change.
         public V2ActionOutcome Outcome
         {
             get
             {
                 bool moved = StepsMoved > 0;
-                bool ok = ReachedGoal || moved;
-                bool changed = moved || EnteredStealth || ReachedGoal;
+                bool succeeded = ReachedGoal || moved;
+                bool changed = moved || EnteredStealth;   // NOT ReachedGoal — a stale no-op changed nothing
                 return new V2ActionOutcome(
-                    succeeded: ok, stateChanged: changed, apSpent: ApSpent, resourcesSpent: null,
-                    played: false, generated: false, attached: false, moved: moved, created: false,
-                    needsReplan: false, stateVersionAfter: -1,
-                    failReason: ok ? null : StopReason.ToString());
+                    succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
+                    resourcesSpent: null, played: false, generated: false, attached: false,
+                    moved: moved, created: false, needsReplan: false,
+                    stateVersionAfter: StateVersionAfter,
+                    failReason: succeeded ? (StaleNoOp && !moved ? "goal already satisfied (no-op)" : null)
+                                          : StopReason.ToString());
             }
         }
     }
@@ -158,6 +167,8 @@ namespace Game.Ai.V2
                     result.FinalHex = army.Hex;
                     result.ApSpent = 0f;
                     result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
+                    result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
+                    result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
                     result.StopReason = validity == MissionValidity.StaleMoverLost
                         ? ExecutionStopReason.MoverLost
                         : validity == MissionValidity.StaleGoalMet
@@ -177,6 +188,7 @@ namespace Game.Ai.V2
                     yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
                         queue, missionIndex, snapshot);
                     ApCheck(pm, apBefore, root, result);
+                    StampVersion(result);
                     results.Add(result);
                     continue;
                 }
@@ -185,6 +197,7 @@ namespace Game.Ai.V2
                 {
                     yield return RunRaid(player, root, ctx, pm, result, apBefore);
                     ApCheck(pm, apBefore, root, result);
+                    StampVersion(result);
                     results.Add(result);
                     continue;
                 }
@@ -313,5 +326,15 @@ namespace Game.Ai.V2
             AiV2Trace.CheckExecutionAp(pm?.Mission?.AttemptId, apBefore,
                 root != null ? root.ActionPoints : apBefore,
                 result != null ? result.ApSpent : 0f);
+
+        // ARCH-02 §36 — bump the shared state version iff this mission execution actually moved the
+        // world (a real step or a stealth entry), then stamp it onto the result.
+        private static void StampVersion(ExecutionResult result)
+        {
+            if (result == null) return;
+            if (result.StepsMoved > 0 || result.EnteredStealth)
+                V2StateVersion.Bump();
+            result.StateVersionAfter = V2StateVersion.Current;
+        }
     }
 }

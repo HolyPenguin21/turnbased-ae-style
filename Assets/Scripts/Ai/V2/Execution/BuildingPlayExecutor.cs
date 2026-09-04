@@ -23,16 +23,18 @@ namespace Game.Ai.V2
     {
         public bool Built;
         public float ApSpent;
+        public ResourceCost ResourcesSpent;   // the founding card's resource cost on a success (null = none / n/a)
         public bool StateChanged;
+        public int StateVersionAfter = -1;
         public bool CardConsumed;
         public string FailReason;
 
         public static BuildingPlayResult Fail(string why) => new BuildingPlayResult { FailReason = why };
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
             played: CardConsumed, generated: false, attached: false, moved: false, created: Built,
-            needsReplan: false, stateVersionAfter: -1, failReason: Built ? null : FailReason);
+            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : FailReason);
     }
 
     public static class BuildingPlayExecutor
@@ -82,6 +84,8 @@ namespace Game.Ai.V2
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
+                ResourcesSpent = card.EffectivePlayResourceCost,
+                StateVersionAfter = V2StateVersion.Bump(),
             };
         }
 
@@ -104,6 +108,8 @@ namespace Game.Ai.V2
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
+                ResourcesSpent = card.EffectivePlayResourceCost,
+                StateVersionAfter = V2StateVersion.Bump(),
             };
         }
 
@@ -123,6 +129,7 @@ namespace Game.Ai.V2
                 Built = outcome.Ok,
                 StateChanged = outcome.Ok,
                 ApSpent = outcome.ApSpent,
+                StateVersionAfter = outcome.Ok ? V2StateVersion.Bump() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };
         }

@@ -138,6 +138,7 @@ namespace Game.Ai.V2
         // NOT deploy and the executor did NOT substitute a placement; the caller must refresh the
         // world and replan (do not treat the demand as structurally blocked).
         public bool PlacementStale;
+        public int StateVersionAfter = -1;
         public string FailReason;
 
         // Diagnostic identity of the actor/facility/mode prefix reached by the attempt. Exact retry
@@ -148,6 +149,6 @@ namespace Game.Ai.V2
             succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent,
             resourcesSpent: ResourcesSpent, played: Deployed, generated: Generated, attached: Attached,
             moved: false, created: ArmyCreated, needsReplan: PlacementStale,
-            stateVersionAfter: -1, failReason: Deployed ? null : FailReason);
+            stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
 }

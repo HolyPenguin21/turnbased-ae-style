@@ -37,15 +37,17 @@ namespace Game.Ai.V2
     {
         public bool Built;
         public float ApSpent;
+        public ResourceCost ResourcesSpent;   // forwarded from the BuildingPlayResult
         public bool StateChanged;
+        public int StateVersionAfter = -1;
         public string Detail;
 
         public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
             played: Built, generated: false, attached: false, moved: false, created: Built,
-            needsReplan: false, stateVersionAfter: -1, failReason: Built ? null : Detail);
+            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : Detail);
     }
 
     internal static class InfrastructureFulfillment
@@ -100,9 +102,11 @@ namespace Game.Ai.V2
             if (!r.Built)
             {
                 AiDebugLog.Write($"[AI][V2]   infra — {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
-                return new InfraFulfillResult { Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent, Detail = r.FailReason };
+                return new InfraFulfillResult { Built = false, StateChanged = r.StateChanged, ApSpent = r.ApSpent,
+                    ResourcesSpent = r.ResourcesSpent, StateVersionAfter = r.StateVersionAfter, Detail = r.FailReason };
             }
-            return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged, Detail = cand.Explain };
+            return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
+                ResourcesSpent = r.ResourcesSpent, StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt

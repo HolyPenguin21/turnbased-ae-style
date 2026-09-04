@@ -110,6 +110,8 @@ namespace Game.Ai.V2
                     dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
                 res.ResourcesSpent = (dh | de | dm | dt) == 0
                     ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
+                if (res.StateChanged) V2StateVersion.Bump();
+                res.StateVersionAfter = V2StateVersion.Current;
             }
 
             // ---------------------------------------------------------------- 1. generate ----
