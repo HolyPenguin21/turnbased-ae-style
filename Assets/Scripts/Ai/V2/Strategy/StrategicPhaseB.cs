@@ -235,11 +235,15 @@ namespace Game.Ai.V2
 
                 if (exec.StateChanged || exec.Progressed)
                 {
-                    // Canonical bump. PlayMat / PlayNonCombat already bump inside their executors;
-                    // Draw / MaintenanceSpend / PressureSpend do not, so bump here too — a double
-                    // bump is harmless (only the change matters) and it keeps the invariant that
-                    // any real tempo mutation stales every parked candidate.
-                    V2StateVersion.Bump();
+                    // Canonical bump — exactly ONCE per mutating action. PlayMat / PlayNonCombat
+                    // already bump inside MaterializationExecutor / CardPlayExecutor (and their
+                    // result's StateVersionAfter must stay == V2StateVersion.Current), so bumping
+                    // again here would break that equality. Draw / MaintenanceSpend / PressureSpend
+                    // do NOT version themselves — bump for those.
+                    bool executorSelfVersions = best.Kind == TempoKind.PlayMat
+                        || best.Kind == TempoKind.PlayNonCombat;
+                    if (!executorSelfVersions)
+                        V2StateVersion.Bump();
                     result.StateChanged |= exec.StateChanged;
                 }
                 if (!exec.Progressed)

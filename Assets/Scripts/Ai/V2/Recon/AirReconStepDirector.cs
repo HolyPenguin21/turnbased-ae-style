@@ -29,6 +29,42 @@ namespace Game.Ai.V2
         }
     }
 
+    // ARCH-02 review r4 — the explicit lifecycle owner for a wing's ReconAirSortieState. The
+    // planner (AirReconStepDirector.PlanStep) is read-only; ReconAirExecutor calls these to record
+    // authoritative facts (Observe / BeginTurn) and to apply a StepDecision's intended transition
+    // AFTER a successful gameplay action (Apply). A rejected / failed action never reaches Apply,
+    // so the sortie state cannot drift ahead of what actually happened.
+    internal static class ReconAirSortieLifecycle
+    {
+        // Idempotent facts about where the wing physically is right now — not a pending transition.
+        internal static void Observe(ReconAirSortieState sortie, ArmyData air, AiTurnContext ctx, bool atAirfield)
+        {
+            if (sortie.LaunchTurn < 0)
+                sortie.LaunchTurn = atAirfield ? ctx.TurnNumber : ctx.TurnNumber - 1;
+            if (!air.Hex.Equals(sortie.LaunchHex))
+            {
+                sortie.ClaimedSector = ReconDirectionModel.Sector(sortie.LaunchHex, air.Hex);
+                sortie.HasClaim = true;
+            }
+        }
+
+        // Mark this AI turn as processed for the sortie (Hold-reopen-once semantics). Executor-owned.
+        internal static bool BeginTurn(ReconAirSortieState sortie, int turn) => sortie.BeginTurn(turn);
+
+        // Apply the StepDecision's intended durable transition. Call ONLY after the executor
+        // confirmed the matching gameplay action succeeded.
+        internal static void Apply(ReconAirSortieState sortie, in AirReconStepDirector.StepDecision d)
+        {
+            if (sortie == null) return;
+            if (d.NextBestOutboundScore.HasValue)
+                sortie.BestOutboundStepScore = d.NextBestOutboundScore.Value;
+            if (d.NextPhase.HasValue)
+                sortie.Phase = d.NextPhase.Value;
+            if (d.NextDecisionReason != null)
+                sortie.LastDecisionReason = d.NextDecisionReason;
+        }
+    }
+
     // ARCH-02 §35 / review r3 P0 — the per-step air-recon PLANNER. Every tactical decision that
     // used to live inside ReconAirExecutor.RunActor is here: phase state machine (Outbound /
     // Turning / Hold / Return), ReconMode resolution, the ReconAirStepPlanner.Pick call, the
@@ -60,7 +96,7 @@ namespace Game.Ai.V2
 
             // ReturnStep only — the step also happens to be an informative Pick target.
             public readonly bool AlsoInformative;
-            // ForwardStep only — this was the Turning pivot step; stamp Phase=Return after it moves.
+            // ForwardStep only — this was the Turning pivot step (log "pivot step taken").
             public readonly bool PivotToReturnAfterMove;
             // HoldReopen only — phase to resume unless the arrival strike forced Return.
             public readonly ReconAirPhase ResumePhase;
@@ -68,9 +104,19 @@ namespace Game.Ai.V2
             public readonly bool RetireAssignment;
             public readonly bool RemoveReservation;
 
+            // ---- INTENDED lifecycle transition ------------------------------------------------
+            //  ARCH-02 review r4 — PlanStep is read-only; the durable ReconAirSortieState mutation
+            //  it would have made is described here and applied by ReconAirSortieLifecycle.Apply
+            //  ONLY AFTER the executor has successfully performed the corresponding gameplay call.
+            //  A rejected / failed action therefore leaves the sortie state untouched.
+            public readonly ReconAirPhase? NextPhase;         // null => Phase unchanged
+            public readonly string NextDecisionReason;        // null => LastDecisionReason unchanged
+            public readonly float? NextBestOutboundScore;     // null => BestOutboundStepScore unchanged
+
             private StepDecision(StepKind kind, HexCoord step, HexCoord landing, ReconMode mode,
                 float stepScore, string reason, bool alsoInformative, bool pivotToReturnAfterMove,
-                ReconAirPhase resumePhase, bool retireAssignment, bool removeReservation)
+                ReconAirPhase resumePhase, bool retireAssignment, bool removeReservation,
+                ReconAirPhase? nextPhase, string nextDecisionReason, float? nextBestOutboundScore)
             {
                 Kind = kind;
                 Step = step;
@@ -83,63 +129,68 @@ namespace Game.Ai.V2
                 ResumePhase = resumePhase;
                 RetireAssignment = retireAssignment;
                 RemoveReservation = removeReservation;
+                NextPhase = nextPhase;
+                NextDecisionReason = nextDecisionReason;
+                NextBestOutboundScore = nextBestOutboundScore;
             }
 
             public static StepDecision Stop(string reason, bool retireAssignment = false,
                 bool removeReservation = false) =>
                 new StepDecision(StepKind.Stop, default, default, default, 0f, reason, false, false,
-                    ReconAirPhase.Return, retireAssignment, removeReservation);
+                    ReconAirPhase.Return, retireAssignment, removeReservation, null, null, null);
 
             public static StepDecision HoldEndTurn(string reason) =>
                 new StepDecision(StepKind.HoldEndTurn, default, default, default, 0f, reason, false,
-                    false, ReconAirPhase.Return, false, false);
+                    false, ReconAirPhase.Return, false, false, null, null, null);
 
             public static StepDecision HoldReopen(ReconAirPhase resumePhase, string reason) =>
                 new StepDecision(StepKind.HoldReopen, default, default, default, 0f, reason, false,
-                    false, resumePhase, false, false);
+                    false, resumePhase, false, false, null, reason, null);
 
             public static StepDecision Strike(string reason) =>
                 new StepDecision(StepKind.Strike, default, default, default, 0f, reason, false, false,
-                    ReconAirPhase.Return, false, false);
+                    ReconAirPhase.Return, false, false, null, null, null);
 
             public static StepDecision Return(HexCoord step, HexCoord landing, bool alsoInformative,
-                string reason) =>
+                string reason, string nextDecisionReason, float? nextBestOutboundScore) =>
                 new StepDecision(StepKind.ReturnStep, step, landing, default, 0f, reason,
-                    alsoInformative, false, ReconAirPhase.Return, false, false);
+                    alsoInformative, false, ReconAirPhase.Return, false, false,
+                    ReconAirPhase.Return, nextDecisionReason, nextBestOutboundScore);
 
             public static StepDecision Forward(HexCoord step, HexCoord landing, ReconMode mode,
-                float score, bool pivotToReturnAfterMove, string reason) =>
+                float score, bool pivot, string reason, string nextDecisionReason,
+                float? nextBestOutboundScore) =>
                 new StepDecision(StepKind.ForwardStep, step, landing, mode, score, reason, false,
-                    pivotToReturnAfterMove, ReconAirPhase.Return, false, false);
+                    pivot, ReconAirPhase.Return, false, false,
+                    pivot ? ReconAirPhase.Return : (ReconAirPhase?)null, nextDecisionReason, nextBestOutboundScore);
         }
 
-        // Decide the next thing this airborne wing should do. `arrivalStrikeCheck` is true right
-        // after the executor completed a move this pass (or a storage launch's first step) — the
-        // "strike after every completed air step" rule. Pure planning: it may mutate the sortie's
-        // own Phase / bookkeeping fields but issues NO gameplay call.
+        // Decide the next thing this airborne wing should do — READ-ONLY. `newTurn` is the result
+        // of the executor's own sortie.BeginTurn(turn) lifecycle call; `arrivalStrikeCheck` is true
+        // right after the executor completed a move this pass (or a storage launch's first step).
+        // PlanStep issues NO gameplay call and makes NO durable ReconAirSortieState change: any
+        // Phase / reason / best-score transition it wants is returned on the StepDecision and
+        // applied by ReconAirSortieLifecycle.Apply after a confirmed successful action. (The one
+        // exception is a transient sortie.Phase = Turning around the pivot re-Pick, restored in a
+        // finally before return — the scorer reads Phase, and it never survives the call.)
         internal static StepDecision PlanStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot, ArmyData air, ReconAirSortieState sortie, bool arrivalStrikeCheck)
+            WorldSnapshot snapshot, ArmyData air, ReconAirSortieState sortie, bool newTurn,
+            bool arrivalStrikeCheck)
         {
             int armyId = air.Id;
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
-
-            if (sortie.LaunchTurn < 0)
-                sortie.LaunchTurn = atAirfield ? ctx.TurnNumber : ctx.TurnNumber - 1;
             int airborneTurns = sortie.AirborneTurnsElapsed(ctx.TurnNumber);
-            if (!air.Hex.Equals(sortie.LaunchHex))
-            {
-                sortie.ClaimedSector = ReconDirectionModel.Sector(sortie.LaunchHex, air.Hex);
-                sortie.HasClaim = true;
-            }
 
-            bool newTurn = sortie.BeginTurn(ctx.TurnNumber);
+            ReconAirPhase workingPhase = sortie.Phase;
+            string decisionReason = null;
+            float? nextBestOutboundScore = null;
+
             bool canRemainAirborne = !atAirfield
                 && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
             bool mustRecoverThisTurn = !atAirfield && airborneTurns >= 1 && !canRemainAirborne;
-            sortie.MustRecoverThisTurn = mustRecoverThisTurn;
 
             // ---- Hold resolution -------------------------------------------------------------
-            if (sortie.Phase == ReconAirPhase.Hold)
+            if (workingPhase == ReconAirPhase.Hold)
             {
                 if (!newTurn)
                 {
@@ -147,9 +198,6 @@ namespace Game.Ai.V2
                         + $"airborneTurns={airborneTurns} reason={sortie.LastDecisionReason}");
                     return StepDecision.HoldEndTurn("hold set earlier this turn");
                 }
-                // A Hold set on a PREVIOUS turn re-opens now: the executor first re-runs the
-                // arrival strike check at the current hex (per-turn attack availability refreshed),
-                // then resumes. Return is forced if the endurance deadline has arrived.
                 ReconAirPhase resume = mustRecoverThisTurn ? ReconAirPhase.Return : ReconAirPhase.Outbound;
                 if (mustRecoverThisTurn)
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold->Return reason=must_recover "
@@ -158,16 +206,15 @@ namespace Game.Ai.V2
                     mustRecoverThisTurn ? "must_recover: endurance deadline after hold" : "hold reopened on fresh turn");
             }
 
-            if (mustRecoverThisTurn && sortie.Phase == ReconAirPhase.Outbound)
+            if (mustRecoverThisTurn && workingPhase == ReconAirPhase.Outbound)
             {
-                sortie.Phase = ReconAirPhase.Return;
-                sortie.LastDecisionReason = "must_recover: endurance deadline / no recovery plan remains";
+                workingPhase = ReconAirPhase.Return;
+                decisionReason = "must_recover: endurance deadline / no recovery plan remains";
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=must_recover "
                     + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
             }
 
             // ---- opportunistic strike at the current hex ------------------------------------
-            // "after a completed air step" — only when the executor just moved this pass.
             if (arrivalStrikeCheck && !atAirfield && EvaluateOpportunisticStrike(player, ctx, air).Favourable)
                 return StepDecision.Strike("favourable strike at current hex");
 
@@ -179,17 +226,18 @@ namespace Game.Ai.V2
             ReconAirStepPlanner.StepChoice? choice =
                 ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
 
-            if (!atAirfield && sortie.Phase == ReconAirPhase.Outbound && choice.HasValue)
+            if (!atAirfield && workingPhase == ReconAirPhase.Outbound && choice.HasValue)
             {
-                sortie.BestOutboundStepScore = Math.Max(sortie.BestOutboundStepScore, choice.Value.Score);
+                float bestOutbound = Math.Max(sortie.BestOutboundStepScore, choice.Value.Score);
+                nextBestOutboundScore = bestOutbound;
                 int mpSlackAfterStep = air.CurrentMovement - choice.Value.RouteCost;
-                bool marginalDrop = sortie.BestOutboundStepScore > 0.01f
-                    && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * sortie.BestOutboundStepScore;
+                bool marginalDrop = bestOutbound > 0.01f
+                    && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
                 bool returnReserve = choice.Value.RequiredTurns <= 1
                     && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
                 if (returnReserve && canRemainAirborne && !mustRecoverThisTurn)
                 {
-                    sortie.LastDecisionReason = "hold_airborne: two-turn endurance window, return deferred";
+                    decisionReason = "hold_airborne: two-turn endurance window, return deferred";
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound hold_airborne "
                         + $"reason=two_turn_window mpSlackAfter={mpSlackAfterStep} "
                         + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
@@ -199,34 +247,45 @@ namespace Game.Ai.V2
                 {
                     string why = returnReserve ? "return_reserve" : "marginal_gain";
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Turning reason={why} "
-                        + $"stepScore={choice.Value.Score:0.00} best={sortie.BestOutboundStepScore:0.00} "
+                        + $"stepScore={choice.Value.Score:0.00} best={bestOutbound:0.00} "
                         + $"mpSlackAfter={mpSlackAfterStep}");
-                    sortie.Phase = ReconAirPhase.Turning;
+                    workingPhase = ReconAirPhase.Turning;
                 }
             }
 
             bool forwardStepUseful = choice.HasValue
                 && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
 
-            if (!atAirfield && sortie.Phase == ReconAirPhase.Turning)
+            if (!atAirfield && workingPhase == ReconAirPhase.Turning)
             {
-                choice = ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+                // The scorer reads sortieState.Phase (Turning gets a lateral weighting). Set it for
+                // the re-Pick ONLY, restore before returning — nothing durable survives PlanStep.
+                ReconAirPhase saved = sortie.Phase;
+                sortie.Phase = ReconAirPhase.Turning;
+                try
+                {
+                    choice = ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+                }
+                finally
+                {
+                    sortie.Phase = saved;
+                }
                 forwardStepUseful = choice.HasValue
                     && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
                 if (!forwardStepUseful)
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return reason=no_safe_pivot");
-                    sortie.Phase = ReconAirPhase.Return;
+                    workingPhase = ReconAirPhase.Return;
                 }
             }
 
-            if (!atAirfield && sortie.Phase == ReconAirPhase.Outbound && !forwardStepUseful)
+            if (!atAirfield && workingPhase == ReconAirPhase.Outbound && !forwardStepUseful)
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=no_safe_forward_step");
-                sortie.Phase = ReconAirPhase.Return;
+                workingPhase = ReconAirPhase.Return;
             }
 
-            bool mustReturn = !atAirfield && (sortie.Phase == ReconAirPhase.Return || !forwardStepUseful);
+            bool mustReturn = !atAirfield && (workingPhase == ReconAirPhase.Return || !forwardStepUseful);
             if (mustReturn)
             {
                 HexCoord? returnStep = PickReturnStep(player, ctx.Map, air, sortie, out HexCoord landing,
@@ -239,7 +298,8 @@ namespace Game.Ai.V2
                 }
                 bool alsoInformative = choice.HasValue && choice.Value.Hex.Equals(returnStep.Value)
                     && choice.Value.Score >= ReconAirStepPlanner.MinimumUsefulScore;
-                return StepDecision.Return(returnStep.Value, landing, alsoInformative, returnReason);
+                return StepDecision.Return(returnStep.Value, landing, alsoInformative, returnReason,
+                    decisionReason, nextBestOutboundScore);
             }
 
             if (!forwardStepUseful)
@@ -266,9 +326,9 @@ namespace Game.Ai.V2
                     retireAssignment: atAirfield, removeReservation: atAirfield);
             }
 
-            bool pivot = sortie.Phase == ReconAirPhase.Turning;
+            bool pivotStep = workingPhase == ReconAirPhase.Turning;
             return StepDecision.Forward(choice.Value.Hex, choice.Value.LandingHex, mode,
-                choice.Value.Score, pivot, choice.Value.Reason);
+                choice.Value.Score, pivotStep, choice.Value.Reason, decisionReason, nextBestOutboundScore);
         }
 
         // ==========================================================================================

@@ -23,6 +23,7 @@ namespace Game.Ai.V2
         public bool AnyStruck;
         public int Steps;
         public float ApSpent;
+        public Game.Cards.ResourceCost ResourcesSpent;   // real H/E/M/T delta over the pass (null = none)
         public int StateVersionAfter = -1;
 
         public void RecordMove() { AnyMoved = true; Steps++; }
@@ -32,7 +33,7 @@ namespace Game.Ai.V2
         public bool Mutated => AnyMoved || AnyLaunched || AnyStruck;
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Mutated, stateChanged: Mutated, apSpent: ApSpent, resourcesSpent: null,
+            succeeded: Mutated, stateChanged: Mutated, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
             played: false, generated: false, attached: false, moved: AnyMoved, created: AnyLaunched,
             needsReplan: false, stateVersionAfter: StateVersionAfter,
             failReason: Mutated ? null : "air recon pass changed nothing");
@@ -60,6 +61,10 @@ namespace Game.Ai.V2
             }
             AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
             int apBefore = root.ActionPoints;
+            int h0 = root.GetResource(Game.Economy.ResourceType.Human);
+            int e0 = root.GetResource(Game.Economy.ResourceType.Energy);
+            int m0 = root.GetResource(Game.Economy.ResourceType.Materials);
+            int t0 = root.GetResource(Game.Economy.ResourceType.Tech);
 
             foreach (int id in plan.ContinueActorIds)
             {
@@ -81,6 +86,13 @@ namespace Game.Ai.V2
                 yield return LaunchOne(lp, player, root, ctx, snapshot, result);
 
             result.ApSpent = Math.Max(0, apBefore - root.ActionPoints);
+            int hSpent = Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
+            int eSpent = Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy));
+            int mSpent = Math.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials));
+            int tSpent = Math.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech));
+            result.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
+                ? new Game.Cards.ResourceCost { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
+                : null;
             result.StateVersionAfter = V2StateVersion.Current;
         }
 
@@ -145,9 +157,11 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // ARCH-02 §36 — a formed sortie that left the airfield is an authoritative mutation.
+            // ARCH-02 §36 — a formed sortie that left the airfield is an authoritative mutation:
+            // the aircraft was created AND took its first movement step off the airfield.
             V2StateVersion.Bump();
             result.RecordLaunch();
+            result.RecordMove();
 
             AirSortie reservationTask = AirSortieRegistry.ForArmy(player, launched);
             if (reservationTask != null && reservationTask.Kind == AirSortieKind.Recon)
@@ -216,8 +230,12 @@ namespace Game.Ai.V2
                     break;
 
                 ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, armyId, air.Hex);
+                // Explicit lifecycle bookkeeping is the executor's job, not the planner's:
+                // observe where the wing actually is, then mark this AI turn processed.
+                ReconAirSortieLifecycle.Observe(sortie, air, ctx, atAirfield);
+                bool newTurn = ReconAirSortieLifecycle.BeginTurn(sortie, ctx.TurnNumber);
                 AirReconStepDirector.StepDecision d = AirReconStepDirector.PlanStep(
-                    player, root, ctx, snapshot, air, sortie, arrivalStrikeCheck);
+                    player, root, ctx, snapshot, air, sortie, newTurn, arrivalStrikeCheck);
                 arrivalStrikeCheck = false;
 
                 if (d.Kind == AirReconStepDirector.StepKind.Stop)
@@ -244,9 +262,11 @@ namespace Game.Ai.V2
                         break;
                     }
                     // The strike (if it fired) may already have set Return; only a still-Hold
-                    // sortie resumes to the director's chosen ResumePhase.
+                    // sortie resumes to the director's chosen ResumePhase. Apply stamps the
+                    // decision reason now that the hold has actually been acted on.
                     if (sortie.Phase == ReconAirPhase.Hold)
                         sortie.Phase = d.ResumePhase;
+                    ReconAirSortieLifecycle.Apply(sortie, d);
                     ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
@@ -275,6 +295,7 @@ namespace Game.Ai.V2
                     if (!moved) break;
                     V2StateVersion.Bump();
                     result.RecordMove();
+                    ReconAirSortieLifecycle.Apply(sortie, d);   // Phase=Return + reason + best-score, now the step actually happened
                     ArmyData afterReturn = Resolve(player, armyId);
                     if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
                     arrivalStrikeCheck = true;
@@ -304,11 +325,11 @@ namespace Game.Ai.V2
                 result.RecordMove();
                 ArmyData afterStep = Resolve(player, armyId);
                 if (afterStep != null) sortie.RecordStep(afterStep.Hex);
-                if (d.PivotToReturnAfterMove && sortie.Phase == ReconAirPhase.Turning)
-                {
+                // Apply the intended transition ONLY now that the move succeeded (r4 — a rejected
+                // ForwardStep must not leave the sortie in Turning/Return).
+                ReconAirSortieLifecycle.Apply(sortie, d);
+                if (d.PivotToReturnAfterMove)
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return pivot step taken");
-                    sortie.Phase = ReconAirPhase.Return;
-                }
                 arrivalStrikeCheck = true;
                 ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
             }
