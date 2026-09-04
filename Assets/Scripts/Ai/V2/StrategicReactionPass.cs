@@ -60,19 +60,26 @@ namespace Game.Ai.V2
             new StrategicReactionOpportunity(false, null, null, 0f, null, null, failReason);
     }
 
-    // The result of running the real-pipeline feasibility probe for one reaction kind.
+    // Round 6 — the WITNESS the feasibility probe returns: proof that at least one action the real
+    // pipeline would actually admit exists at the current state. Execution is NOT bound to it (the
+    // reservation stays a generic replan budget) — it only proves the budget protects something real.
     internal readonly struct ReactionFeasibility
     {
         public readonly bool Feasible;
-        public readonly float MinFeasibleAp;      // AP the cheapest genuinely feasible reaction needs
+        public readonly float MinFeasibleAp;      // AP the CHEAPEST admitted/feasible reaction needs
         public readonly ResourceCost MinEnvelope; // persistent cost of that cheapest feasible reaction (may be null)
+        public readonly int WitnessActorId;      // responder army id (-1 for a hand play)
+        public readonly int WitnessTargetId;     // discovered target army id (-1 for a hand play)
         public readonly string Detail;
 
-        public ReactionFeasibility(bool feasible, float minAp, ResourceCost minEnvelope, string detail)
+        public ReactionFeasibility(bool feasible, float minAp, ResourceCost minEnvelope,
+            string detail, int witnessActorId = -1, int witnessTargetId = -1)
         {
             Feasible = feasible;
             MinFeasibleAp = minAp;
             MinEnvelope = minEnvelope;
+            WitnessActorId = witnessActorId;
+            WitnessTargetId = witnessTargetId;
             Detail = detail;
         }
 
@@ -118,9 +125,14 @@ namespace Game.Ai.V2
             float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
             int cap = AiConfigV2.reactionReserveApCap;
 
+            // round 6 architectural-debt fix — the canonical normalized commitment source, not a
+            // hand-rolled PreferredMoverArmyId scrape.
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
+
             ReactionFeasibility probe = targetDriven
-                ? ProbeTargetDriven(player, root, ctx)
-                : ProbeHandFollowup(player, root, ctx, snap, hand);
+                ? ProbeTargetDriven(player, root, ctx, snap, commitments)
+                : ProbeHandFollowup(player, root, ctx, snap, hand, commitments);
             if (!probe.Feasible)
                 return StrategicReactionOpportunity.None(probe.Detail);
 
@@ -143,27 +155,28 @@ namespace Game.Ai.V2
                 budget, probe.MinEnvelope, rationale, null);
         }
 
-        // §2 — a discovered target has a genuinely feasible response: an UNCOMMITTED own field army
-        // that can begin a safe step toward at least one honestly-known target hex and whose
-        // activation AP is spendable (the same actor / commitment / reachability gates the real
-        // pipeline uses). Full mission/provisioning feasibility is what the bounded round itself
-        // establishes; §6 re-runs this probe immediately before it and releases on failure.
-        private static ReactionFeasibility ProbeTargetDriven(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        // §P0 (round 6) — a discovered target is a feasible reaction target only if the REAL
+        // aggression admission gate passes for it (raidTargetMaxDefenders / raidObjectiveMinBaseValue
+        // / … are all folded into AggressionObjective.GatePassed), AND an uncommitted own field army
+        // can begin a safe step toward it with spendable activation AP. Pathability alone is not
+        // enough. The objective set is built stateless (CombatOpportunityAnalyzer.Analyze — no radar
+        // state mutation), so the probe can run twice a turn without skewing the radar.
+        private static ReactionFeasibility ProbeTargetDriven(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snap, ActorCommitments commitments)
         {
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
-            var targetHexes = AiMapMemory.AllKnownEnemySightings(player)
-                .Where(s => targetIds.Contains(s.ArmyId))
-                .Select(s => s.Hex)
-                .Distinct()
+
+            CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
+            var admitted = AggressionObjectiveEvaluator.Enumerate(snap, report)
+                .Where(o => o != null && o.GatePassed && targetIds.Contains(o.TargetArmyId))
                 .ToList();
-            if (targetHexes.Count == 0)
-                return ReactionFeasibility.No("targetDriven: no honestly-known hex for any discovered target");
+            if (admitted.Count == 0)
+                return ReactionFeasibility.No("targetDriven: no discovered target passes the aggression admission "
+                    + "gate (GatePassed=false for all — e.g. too many defenders / base value below threshold)");
 
-            var claimed = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
-                .Where(i => i?.PreferredMoverArmyId != null)
-                .Select(i => i.PreferredMoverArmyId.Value));
-
+            HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
             float cheapest = float.MaxValue;
+            int witnessActor = -1, witnessTarget = -1;
             foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
             {
                 if (a == null || a.Members.Count == 0 || a.CurrentMovement <= 0
@@ -173,26 +186,33 @@ namespace Game.Ai.V2
                     continue;
                 if (!a.HasActivatedThisTurn && !root.CanSpendActionPoints(a.ActivationApCost))
                     continue;
-                bool reachable = targetHexes.Any(h => VisitHexTask.FindNextSafeStep(ctx.Map, a, h) != null);
-                if (!reachable)
+                AggressionObjective reached = admitted.FirstOrDefault(
+                    o => VisitHexTask.FindNextSafeStep(ctx.Map, a, o.LastKnownHex) != null);
+                if (reached == null)
                     continue;
-                cheapest = Mathf.Min(cheapest, a.HasActivatedThisTurn ? 0f : a.ActivationApCost);
+                float cost = a.HasActivatedThisTurn ? 0f : a.ActivationApCost;
+                if (cost < cheapest)
+                {
+                    cheapest = cost;
+                    witnessActor = a.Id;
+                    witnessTarget = reached.TargetArmyId;
+                }
             }
             if (cheapest == float.MaxValue)
-                return ReactionFeasibility.No("targetDriven: no uncommitted responder can path to a discovered target");
+                return ReactionFeasibility.No("targetDriven: an admitted target exists but no uncommitted "
+                    + "responder can path to it");
             return new ReactionFeasibility(true, cheapest, null,
-                $"targetDriven: reachable uncommitted responder, min activation {cheapest:0.#} AP");
+                $"targetDriven witness: army #{witnessActor} -> admitted target #{witnessTarget}, "
+                + $"min activation {cheapest:0.#} AP", witnessActor, witnessTarget);
         }
 
-        // §3 — a hand follow-up has a genuinely feasible reaction: a card that passes the SAME
-        // placement / host / airfield / base-slot / generation preflight the real pipeline uses
-        // (NonCombatCardPlayer.BestPlay + MaterializationCandidateBuilder.BestSurplus), AND whose
-        // AP + persistent envelope is spendable through the canonical reservation ledger.
+        // §3/§P1 (round 6) — a hand follow-up is feasible only if SOME legal play (from the full
+        // preflighted enumeration, not just the best-scored one) fits the reaction AP ceiling AND
+        // its persistent envelope is spendable. FitsSpendableResources excludes the reaction pass's
+        // OWN reservation so a re-probe after the envelope is placed doesn't fail against itself.
         private static ReactionFeasibility ProbeHandFollowup(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snap, AiHandData hand)
+            AiTurnContext ctx, WorldSnapshot snap, AiHandData hand, ActorCommitments commitments)
         {
-            ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
             var reservation = new MaterializationReservation
             {
                 GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber),
@@ -200,31 +220,31 @@ namespace Game.Ai.V2
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
 
             var options = new List<(float ap, ResourceCost env)>();
-            NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
-                snap, player, root, hand, ctx, out _, null, reservation);
-            if (nc != null)
-                options.Add((nc.Card != null ? nc.Card.EffectivePlayApCost : 0f,
-                    nc.Generation != null ? nc.Generation.GenerationResourceCost
-                        : (nc.Card != null ? nc.Card.EffectivePlayResourceCost : null)));
-            var surplus = MaterializationCandidateBuilder.BestSurplus(
-                snap, player, root, hand, ctx, inv, commitments, reservation);
-            if (surplus != null)
-                options.Add((surplus.Value.plan.ApCost, surplus.Value.plan.ResCost));
+            foreach (NonCombatCardPlayer.NonCombatPlay p in NonCombatCardPlayer.EnumeratePlays(
+                snap, player, root, hand, ctx, null, reservation))
+                options.Add((p.Card != null ? p.Card.EffectivePlayApCost : 0f,
+                    p.Generation != null ? p.Generation.GenerationResourceCost
+                        : (p.Card != null ? p.Card.EffectivePlayResourceCost : null)));
+            foreach (MaterializationPlan mp in MaterializationCandidateBuilder.EnumerateSurplusPlans(
+                snap, player, root, hand, ctx, inv, commitments, reservation))
+                options.Add((mp.ApCost, mp.ResCost));
 
             float ap = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
+            float ceiling = Mathf.Min(ap, (float)AiConfigV2.reactionReserveApCap);
             var feasible = options
-                .Where(o => o.ap <= ap + 0.001f
-                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env))
+                .Where(o => o.ap <= ceiling + 0.001f
+                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env,
+                        StrategicReservationReason.StrategicReactionPass))
                 .OrderBy(o => o.ap)
                 .ToList();
             if (feasible.Count == 0)
-                return ReactionFeasibility.No(
-                    "handFollowup: no hand card passes the real placement/host/slot preflight + spendable-resource check");
+                return ReactionFeasibility.No("handFollowup: no legal hand play fits the reaction AP ceiling "
+                    + $"({ceiling:0.#}) + spendable-resource check");
             var best = feasible[0];
             string env = best.env == null ? "-"
                 : $"H{best.env.human} E{best.env.energy} M{best.env.materials} T{best.env.tech}";
             return new ReactionFeasibility(true, best.ap, best.env,
-                $"handFollowup: feasible reaction, min {best.ap:0.#} AP + envelope [{env}]");
+                $"handFollowup witness: min {best.ap:0.#} AP + envelope [{env}] ({feasible.Count} feasible plays)");
         }
 
         // §6 — before the bounded reaction round runs, a genuinely feasible reaction must STILL

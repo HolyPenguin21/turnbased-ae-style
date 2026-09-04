@@ -1250,8 +1250,10 @@ namespace Game.Ai.V2
         // the strategic reservation ledger AND the legacy recon-air reservation are both netted out
         // so the same resource is never promised to two owners. Also the canonical resource-
         // affordability probe reused by StrategicReactionPass (spec round 5 §3/§4).
+        // round 6 §P1 — `excludeReason` drops the caller's OWN reservations from the strategic
+        // spendable, so a re-probe of the very reaction that placed a hold doesn't fail against it.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ResourceCost cost)
+            AiTurnContext ctx, ResourceCost cost, StrategicReservationReason? excludeReason = null)
         {
             if (cost == null)
                 return true;
@@ -1260,8 +1262,11 @@ namespace Game.Ai.V2
                 int need = cost.Get(t);
                 if (need <= 0)
                     continue;
-                float strategic = StrategicResourceReservationLedger.Spendable(
-                    player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t), root.GetResource(t));
+                StrategicReservedResource srr = StrategicResourceReservationLedger.Map(t);
+                float strategic = excludeReason == null
+                    ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
+                    : StrategicResourceReservationLedger.SpendableExcluding(
+                        player, ctx.TurnNumber, srr, root.GetResource(t), excludeReason.Value);
                 float legacy = Mathf.Max(0f, Game.Ai.AiResourceReservation.Available(root, player, t));
                 if (Mathf.Min(strategic, legacy) + AiConfigV2.allocatorSliceEpsilon < need)
                     return false;

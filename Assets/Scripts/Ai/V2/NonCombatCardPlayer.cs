@@ -94,16 +94,24 @@ namespace Game.Ai.V2
             MaterializationReservation reservation = null)
         {
             blocked = new List<string>();
-            if (player == null || root == null || hand?.Hand == null || ctx == null)
-                return null;
-
             NonCombatPlay best = null;
-            void Consider(NonCombatPlay p)
-            {
-                if (p != null && (onlyKind == null || p.Kind == onlyKind.Value)
-                    && (best == null || p.Score > best.Score))
+            foreach (NonCombatPlay p in EnumeratePlays(snap, player, root, hand, ctx, blocked, reservation))
+                if ((onlyKind == null || p.Kind == onlyKind.Value) && (best == null || p.Score > best.Score))
                     best = p;
-            }
+            return best;
+        }
+
+        // AI-MGR-02 round 6 — every LEGAL non-combat play for the current hand (each already
+        // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
+        // BestPlay picks the highest-Score one; the reaction feasibility probe needs the whole set
+        // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
+        internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
+            MaterializationReservation reservation = null)
+        {
+            if (player == null || root == null || hand?.Hand == null || ctx == null)
+                yield break;
+            if (blocked == null) blocked = new List<string>();
 
             var ownBaseHexes = OwnedBaseHexes(snap, player);
 
@@ -117,8 +125,10 @@ namespace Game.Ai.V2
                     && (def.cardType == CardType.Unit || def.cardType == CardType.Hero
                         || AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities)))
                     continue;
-                Consider(BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
-                    ownBaseHexes, blocked));
+                NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
+                    ownBaseHexes, blocked);
+                if (p != null)
+                    yield return p;
             }
 
             // AI-MGR-01 review-r4 finding 9b — generated non-combat cards. A Research/Production
@@ -141,15 +151,10 @@ namespace Game.Ai.V2
                         ownBaseHexes, blocked);
                     if (p == null)
                         continue;
-                    // Score is already the authoritative NetScore: ScoreNonCombat folded the
-                    // generation ResourceCost + success-chance discount + step penalty in (see
-                    // BuildPlayFor passing `generation`). No post-multiply here.
                     p.Explain = $"generate:{gd.displayName} -> " + p.Explain;
-                    Consider(p);
+                    yield return p;
                 }
             }
-
-            return best;
         }
 
         // AI-MGR-01 review-r4 finding 9b — one non-combat play for one card (real hand card, or a
