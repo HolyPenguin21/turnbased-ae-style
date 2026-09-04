@@ -182,18 +182,18 @@ namespace Game.Ai.V2
             {
                 CardData card = handList[i];
                 CardDefinition def = card?.Definition;
-                if (def == null || def.isAviation || Excluded(card) || !MatchesCapabilityDef(def, demand.Capability))
+                if (def == null || def.isAviation || Excluded(card) || !MaterializationChainMatching.MatchesCapabilityDef(def, demand.Capability))
                     continue;
 
-                IReadOnlyList<string> baseAbilities = EffectiveAbilities(def, card.Equipment);
-                if (AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability)
-                    && MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
+                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability)
+                    && MaterializationChainMatching.MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
                 {
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
                     {
                         if (!CardPlayExecutor.Preflight(player, root, hand, ctx, opt.Bind(card), out _))
                             continue;
-                        MaterializationPlan p = MakeExistingPlan(MaterializationChainKind.Direct, demand,
+                        MaterializationPlan p = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct, demand,
                             card, i, null, -1, opt, baseAbilities);
                         AddIfFeasibleA(candidates, p, demand, def, stealthSurcharge, reservedFollowupAp,
                             axisBudget, eps, root, hand, player, ctx);
@@ -208,18 +208,18 @@ namespace Game.Ai.V2
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
                         if (eqDef == null || Excluded(eq) || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
-                            || !EquipmentDefFitsHostDef(eqDef, def))
+                            || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
-                        if (!AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability)
-                            || !MeetsRequiredTraits(projected, demand.RequiredTraits))
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability)
+                            || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
                         foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
                         {
                             if (!CardPlayExecutor.Preflight(player, root, hand, ctx, opt.Bind(card), out _))
                                 continue;
-                            MaterializationPlan p = MakeExistingPlan(MaterializationChainKind.AttachDeploy, demand,
+                            MaterializationPlan p = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy, demand,
                                 card, i, eq, j, opt, projected);
                             AddIfFeasibleA(candidates, p, demand, def, stealthSurcharge, reservedFollowupAp,
                                 axisBudget, eps, root, hand, player, ctx);
@@ -240,17 +240,17 @@ namespace Game.Ai.V2
                         CardData host = handList[i];
                         CardDefinition hd = host?.Definition;
                         if (hd == null || Excluded(host) || hd.isAviation || host.Equipment != null
-                            || !MatchesCapabilityDef(hd, demand.Capability) || !EquipmentDefFitsHostDef(gd, hd))
+                            || !MaterializationChainMatching.MatchesCapabilityDef(hd, demand.Capability) || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                             continue;
-                        IReadOnlyList<string> hostAbilities = EffectiveAbilities(hd, null);
+                        IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
                         List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
-                        if (!AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability)
-                            || !MeetsRequiredTraits(projected, demand.RequiredTraits))
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability)
+                            || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
                         foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly))
                         {
-                            MaterializationPlan p = MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
+                            MaterializationPlan p = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
                                 demand, g, baseInHand: host, baseIdx: i, generatedIsEquipment: true, opt: opt,
                                 projected: projected);
                             AddIfFeasibleA(candidates, p, demand, hd, stealthSurcharge, reservedFollowupAp,
@@ -261,18 +261,18 @@ namespace Game.Ai.V2
                 else
                 {
                     if ((gd.cardType != CardType.Unit && gd.cardType != CardType.Hero) || gd.isAviation
-                        || !MatchesCapabilityDef(gd, demand.Capability))
+                        || !MaterializationChainMatching.MatchesCapabilityDef(gd, demand.Capability))
                         continue;
-                    IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
+                    IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);
                     List<PlacementOption> genOpts = PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly);
                     if (genOpts.Count == 0) continue;
 
-                    if (AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability)
-                        && MeetsRequiredTraits(genAbilities, demand.RequiredTraits))
+                    if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability)
+                        && MaterializationChainMatching.MeetsRequiredTraits(genAbilities, demand.RequiredTraits))
                     {
                         foreach (PlacementOption opt in genOpts)
                         {
-                            MaterializationPlan p = MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
+                            MaterializationPlan p = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
                                 demand, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                                 projected: genAbilities);
                             AddIfFeasibleA(candidates, p, demand, gd, stealthSurcharge, reservedFollowupAp,
@@ -285,15 +285,15 @@ namespace Game.Ai.V2
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
                         if (eqDef == null || Excluded(eq) || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
-                            || !EquipmentDefFitsHostDef(eqDef, gd))
+                            || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, gd))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(genAbilities, eqDef.equipment);
-                        if (!AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability)
-                            || !MeetsRequiredTraits(projected, demand.RequiredTraits))
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability)
+                            || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
                         foreach (PlacementOption opt in genOpts)
                         {
-                            MaterializationPlan p = MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
+                            MaterializationPlan p = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
                                 demand, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                                 projected: projected, equipInHand: eq, equipIdx: j);
                             AddIfFeasibleA(candidates, p, demand, gd, stealthSurcharge, reservedFollowupAp,
@@ -428,7 +428,7 @@ namespace Game.Ai.V2
                 CapabilityKind cap = recce ? CapabilityKind.ScoutCapability
                     : hero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
                 bool soloOnly = cap == CapabilityKind.ScoutCapability;
-                IReadOnlyList<string> baseAbilities = EffectiveAbilities(def, card.Equipment);
+                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
 
                 // §2 — if this card is still strategically relevant to an unresolved capability
                 // demand, Phase B may only spend it on a placement that would actually deliver
@@ -439,7 +439,7 @@ namespace Game.Ai.V2
                 foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
                 {
                     if (!CardPlayExecutor.Preflight(player, root, hand, ctx, opt.Bind(card), out _)) continue;
-                    MaterializationPlan direct = MakeExistingPlan(MaterializationChainKind.Direct, null,
+                    MaterializationPlan direct = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct, null,
                         card, i, null, -1, opt, baseAbilities);
                     direct.FinalCapability = cap;
                     if (strategicClaim != null && !CanDeliverDemandOperationally(direct, strategicClaim))
@@ -457,11 +457,11 @@ namespace Game.Ai.V2
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
                         if (eqDef == null || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
-                            || !EquipmentDefFitsHostDef(eqDef, def))
+                            || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
-                        if (!AbilitiesSatisfyCapability(projected, def.cardType, cap)) continue;
-                        MaterializationPlan att = MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, cap)) continue;
+                        MaterializationPlan att = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
                             card, i, eq, j, opt, projected);
                         att.FinalCapability = cap;
                         // Same strategic-claim protection as Direct/GeneratedDeploy. An attached
@@ -498,10 +498,10 @@ namespace Game.Ai.V2
                             CardDefinition hd = host?.Definition;
                             if (hd == null || hd.isAviation || host.Equipment != null
                                 || (hd.cardType != CardType.Unit && hd.cardType != CardType.Hero)
-                                || !EquipmentDefFitsHostDef(gd, hd))
+                                || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                                 continue;
 
-                            IReadOnlyList<string> hostAbilities = EffectiveAbilities(hd, null);
+                            IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
                             List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
                             bool recce = AbilityParams.AbilitiesHaveAnyRecce(projected);
                             bool hero = hd.cardType == CardType.Hero;
@@ -512,7 +512,7 @@ namespace Game.Ai.V2
 
                             foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly))
                             {
-                                MaterializationPlan genEq = MakeGeneratedPlan(
+                                MaterializationPlan genEq = MaterializationPlanFactory.MakeGeneratedPlan(
                                     MaterializationChainKind.GenerateAttachDeploy, null, g,
                                     baseInHand: host, baseIdx: i, generatedIsEquipment: true,
                                     opt: opt, projected: projected);
@@ -539,12 +539,12 @@ namespace Game.Ai.V2
                     CapabilityKind genCap = genRecce ? CapabilityKind.ScoutCapability
                         : genHero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
                     bool genSoloOnly = genCap == CapabilityKind.ScoutCapability;
-                    IReadOnlyList<string> genAbilities = EffectiveAbilities(gd, null);
+                    IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);
                     AxisDemand genStrategicClaim = UnresolvedClaimFor(reservation, genCap, genAbilities);
 
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments, genSoloOnly))
                     {
-                        MaterializationPlan gen = MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
+                        MaterializationPlan gen = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
                             null, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
                             projected: genAbilities);
                         gen.FinalCapability = genCap;
@@ -599,104 +599,8 @@ namespace Game.Ai.V2
             return (bestPlan, bestDecision);
         }
 
-        private static MaterializationPlan MakeExistingPlan(MaterializationChainKind kind, AxisDemand demand,
-            CardData baseCard, int baseIdx, CardData equip, int equipIdx, PlacementOption opt,
-            IReadOnlyList<string> projected)
-        {
-            var p = new MaterializationPlan
-            {
-                Kind = kind,
-                OwnerAxis = demand?.RequestingAxis,
-                FinalCapability = demand?.Capability ?? CapabilityKind.FieldCombatPower,
-                ExpectedTraits = TraitsOf(projected),
-                BaseCardInHand = baseCard,
-                EquipmentInHand = kind == MaterializationChainKind.AttachDeploy ? equip : null,
-                Deploy = opt,
-                ProjectedAbilities = projected,
-            };
-            FillCostsAndKey(p, baseCard.Definition, baseCard, equip, baseIdx, equipIdx, -1);
-            return p;
-        }
 
-        private static MaterializationPlan MakeGeneratedPlan(MaterializationChainKind kind, AxisDemand demand,
-            GenerationStep g, CardData baseInHand, int baseIdx, bool generatedIsEquipment, PlacementOption opt,
-            IReadOnlyList<string> projected, CardData equipInHand = null, int equipIdx = -1)
-        {
-            var p = new MaterializationPlan
-            {
-                Kind = kind,
-                OwnerAxis = demand?.RequestingAxis,
-                FinalCapability = demand?.Capability ?? CapabilityKind.FieldCombatPower,
-                ExpectedTraits = TraitsOf(projected),
-                Generation = g,
-                Deploy = opt,
-                ProjectedAbilities = projected,
-            };
-            CardDefinition baseDef;
-            if (generatedIsEquipment)
-            {
-                p.BaseCardInHand = baseInHand;
-                p.GeneratedEquipmentDef = g.CardDef;
-                baseDef = baseInHand.Definition;
-            }
-            else
-            {
-                p.GeneratedBaseDef = g.CardDef;
-                p.EquipmentInHand = kind == MaterializationChainKind.GenerateAttachDeploy ? equipInHand : null;
-                baseDef = g.CardDef;
-            }
-            FillCostsAndKey(p, baseDef, p.BaseCardInHand, p.EquipmentInHand ?? equipInHand, baseIdx, equipIdx, 0);
-            return p;
-        }
 
-        private static void FillCostsAndKey(MaterializationPlan p, CardDefinition baseDef, CardData baseInstance,
-            CardData equipInstance, int baseIdx, int equipIdx, int genMark)
-        {
-            int human = 0, energy = 0, materials = 0, tech = 0;
-            float ap = 0f;
-            ap += p.Deploy.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0;
-            if (p.GeneratedBaseDef != null)
-                ap += baseDef != null ? ArmyActions.EffectiveDeployApCost(baseDef) : 0;
-            else if (baseInstance != null)
-            {
-                ap += baseInstance.EffectivePlayApCost;
-                Accumulate(baseInstance.EffectivePlayResourceCost, ref human, ref energy, ref materials, ref tech);
-            }
-            if (p.UsesEquipment)
-            {
-                if (p.GeneratedEquipmentDef != null)
-                    ap += p.GeneratedEquipmentDef.activationApCost;
-                else if (equipInstance != null)
-                {
-                    ap += equipInstance.EffectivePlayApCost;
-                    Accumulate(equipInstance.EffectivePlayResourceCost, ref human, ref energy, ref materials, ref tech);
-                }
-            }
-            if (p.Generation != null && p.Generation.CardDef?.resourceCost != null)
-            {
-                ResourceCost rc = p.Generation.CardDef.resourceCost;
-                human += rc.human; energy += rc.energy; materials += rc.materials; tech += rc.tech;
-            }
-            p.ApCost = ap;
-            p.ResCost = (human | energy | materials | tech) == 0
-                ? null : new ResourceCost { human = human, energy = energy, materials = materials, tech = tech };
-            p.HandSlotsNeededAtPeak = p.Generation != null ? 1 : 0;
-
-            string baseKey = p.GeneratedBaseDef != null
-                ? "gen:" + p.GeneratedBaseDef.displayName
-                : (baseDef != null ? baseDef.displayName : "?") + ":" + baseIdx;
-            string eqKey = p.GeneratedEquipmentDef != null
-                ? "gen:" + p.GeneratedEquipmentDef.displayName
-                : (p.EquipmentInHand?.Definition != null ? p.EquipmentInHand.Definition.displayName + ":" + equipIdx : "-");
-            string genKey = p.Generation != null ? p.Generation.CardKey : "-";
-            p.StableKey = $"{(int)p.Kind}|{(int)p.FinalCapability}|{baseKey}|{eqKey}|{genKey}|{p.Deploy.Key}";
-        }
-
-        private static void Accumulate(ResourceCost c, ref int h, ref int e, ref int m, ref int t)
-        {
-            if (c == null) return;
-            h += c.human; e += c.energy; m += c.materials; t += c.tech;
-        }
 
         private static void AddIfFeasibleA(
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> sink,
@@ -730,7 +634,7 @@ namespace Game.Ai.V2
         {
             if (reservation == null || reservation.UnresolvedDemands.Count == 0)
                 return null;
-            TraitPreference projTraits = TraitsOf(projectedAbilities);
+            TraitPreference projTraits = MaterializationChainMatching.TraitsOf(projectedAbilities);
             return reservation.UnresolvedDemands
                 .Where(d => d != null && d.DesiredAmount > 0f && d.Capability == cap
                     && (projTraits & d.RequiredTraits) == d.RequiredTraits)
@@ -800,72 +704,10 @@ namespace Game.Ai.V2
             return cand.NetScore;
         }
 
-        private static IReadOnlyList<string> EffectiveAbilities(CardDefinition def, CardDefinition attachedEquipment)
-        {
-            var baseList = def?.grantedAbilities != null ? new List<string>(def.grantedAbilities) : new List<string>();
-            if (attachedEquipment?.equipment == null) return baseList;
-            return EquipmentSystem.EffectiveAbilities(baseList, attachedEquipment.equipment);
-        }
 
-        private static bool MatchesCapabilityDef(CardDefinition d, CapabilityKind kind)
-        {
-            if (d == null || d.isAviation) return false;
-            bool recce = AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities);
-            switch (kind)
-            {
-                case CapabilityKind.ScoutCapability: return recce;
-                case CapabilityKind.Hero: return d.cardType == CardType.Hero && !recce;
-                case CapabilityKind.FieldCombatPower:
-                case CapabilityKind.GarrisonCombatPower:
-                    return !recce && (d.cardType == CardType.Unit || d.cardType == CardType.Hero);
-                default: return false;
-            }
-        }
 
-        private static bool AbilitiesSatisfyCapability(IReadOnlyList<string> abilities, CardType type, CapabilityKind kind)
-        {
-            bool recce = AbilityParams.AbilitiesHaveAnyRecce(abilities);
-            switch (kind)
-            {
-                case CapabilityKind.ScoutCapability: return recce;
-                case CapabilityKind.Hero: return type == CardType.Hero;
-                case CapabilityKind.FieldCombatPower:
-                case CapabilityKind.GarrisonCombatPower: return type == CardType.Unit || type == CardType.Hero;
-                default: return false;
-            }
-        }
 
-        private static bool MeetsRequiredTraits(IReadOnlyList<string> abilities, TraitPreference required)
-        {
-            if (required == TraitPreference.None) return true;
-            if ((required & TraitPreference.Stealth) != 0 && !AbilityParams.AbilitiesHaveAnyStealth(abilities))
-                return false;
-            if ((required & (TraitPreference.AntiArmour | TraitPreference.Ranged | TraitPreference.Melee)) != 0)
-                return false;
-            return true;
-        }
 
-        private static TraitPreference TraitsOf(IReadOnlyList<string> abilities)
-        {
-            TraitPreference t = TraitPreference.None;
-            if (AbilityParams.AbilitiesHaveAnyStealth(abilities)) t |= TraitPreference.Stealth;
-            return t;
-        }
-
-        private static bool EquipmentDefFitsHostDef(CardDefinition eq, CardDefinition host)
-        {
-            if (eq == null || eq.cardType != CardType.Equipment || eq.equipment == null) return false;
-            if (host == null || (host.cardType != CardType.Unit && host.cardType != CardType.Hero)) return false;
-            EquipmentHostKind kind = host.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            EquipmentGrant grant = eq.equipment;
-            if (grant.hostKinds == null || !grant.hostKinds.Contains(kind)) return false;
-            if (grant.hostTypeTags != null && grant.hostTypeTags.Count > 0)
-            {
-                if (host.unitTypeTags == null || !grant.hostTypeTags.Any(need => host.unitTypeTags.Contains(need)))
-                    return false;
-            }
-            return true;
-        }
 
     }
 }
