@@ -342,138 +342,21 @@ namespace Game.Ai.V2
             }
         }
 
+        // Round 8 (P1) — thin wrapper over the canonical AggressionDemandEvaluator. The whole
+        // admission / selection / shortage contract now lives in ONE primitive shared with
+        // StrategicReactionPass, so the reaction probe can never disagree with the real pipeline.
+        // This wrapper only replays the evaluator's diagnostics and yields its demands into the
+        // pipeline stream (where trace ids are attached).
         private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot snap, DesireBreakdown b,
             IReadOnlyList<AggressionObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player)
         {
-            if (snap?.Self == null)
-            {
-                AiDebugLog.Write("[AI][V2][Demand][Aggression] decision=NONE reason=no_self_snapshot");
-                yield break;
-            }
-            if (objectives == null || objectives.Count == 0)
-            {
-                AiDebugLog.Write("[AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives");
-                yield break;
-            }
-
-            var coveredTargets = new HashSet<int>();
-            if (activeIntents != null && commitments != null)
-                foreach (MissionIntent i in activeIntents)
-                {
-                    if (i?.Kind != MissionKind.Raid || i.Raid == null || i.PreferredMoverArmyId == null)
-                        continue;
-                    if (!commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
-                        continue;
-                    coveredTargets.Add(i.Raid.TargetArmyId);
-                    AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={i.Raid.TargetArmyId} "
-                        + $"reason=covered_by_active_raid actor={i.PreferredMoverArmyId.Value}");
-                }
-
-            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-            AggressionObjective chosen = null;
-            RaidOperationalReadiness chosenReadiness = null;
-            int blocked = 0;
-            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
-
-            foreach (AggressionObjective o in objectives.OrderByDescending(x => x.BaseValue).ThenBy(x => x.TargetArmyId))
-            {
-                if (coveredTargets.Contains(o.TargetArmyId))
-                    continue;
-                StableMissionKey key = RaidKey(o);
-                if (cooldownState.TryGetCooldown(key, snap.TurnNumber, out MissionCooldownInfo cd))
-                {
-                    blocked++;
-                    AiDebugLog.Write($"[AI][V2][Demand][Aggression] blocked {key} reason={cd.Reason} "
-                        + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(snap.TurnNumber)}");
-                    continue;
-                }
-
-                RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
-                    snap, o, RaidDefenders(snap, o.TargetArmyId), commitments, inv);
-                if (readiness.ReadyExecutable)
-                {
-                    AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={o.TargetArmyId} "
-                        + $"reason=ready_free_army_clears_shared_readiness actor={readiness.ReadyPlan.BaseArmyId} "
-                        + $"win={readiness.ReadyPlan.ProjectedWinChance:0.00} "
-                        + $"cover={(readiness.ReadyPlan.CoversAllDefenders ? 1 : 0)} "
-                        + $"freePower={inv.RaidAvailableFieldPower:0.#} requiredPower={readiness.RequiredPower:0.#} "
-                        + $"frozenAsmWin={o.AssemblableWinChance:0.00}");
-                    continue;
-                }
-
-                chosen = o;
-                chosenReadiness = readiness;
-                break;
-            }
-
-            if (chosen == null || chosenReadiness == null)
-            {
-                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=SATISFIED reason=no_runnable_capability_shortage "
-                    + $"objectives={objectives.Count} blocked={blocked} freePower={inv.RaidAvailableFieldPower:0.#} "
-                    + $"committedPower={inv.CommittedFieldCombatPower:0.#} freeHeroes={inv.AvailableHeroes} "
-                    + $"committedHeroes={inv.CommittedHeroes}");
-                yield break;
-            }
-
-            if (chosenReadiness.NeedsAssembly)
-            {
-                // §11 — enough numeric power and a raid-eligible hero exist; the target is not
-                // executable only because no legal same-hex formation clears the estimator. That
-                // is an organization gap owned by RaidAssembly / Housekeeping / the bounded
-                // re-admission — buying more FieldCombatPower would not help.
-                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=DEFER targetArmy={chosen.TargetArmyId} "
-                    + $"reason=assembly_gap detail=\"{chosenReadiness.AssemblyReason}\" "
-                    + $"freePower={inv.RaidAvailableFieldPower:0.#} requiredPower={chosenReadiness.RequiredPower:0.#} "
-                    + $"freeHeroes={inv.AvailableHeroes} committedHeroes={inv.CommittedHeroes} blocked={blocked} "
-                    + $"readyDetail=\"{chosenReadiness.ReadyReason}\"");
-                yield break;
-            }
-
-            if (chosenReadiness.NeedsHero)
-            {
-                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
-                    + $"capability=Hero desired=1 reason=no_free_deployed_hero freeHeroes={inv.AvailableHeroes} "
-                    + $"committedHeroes={inv.CommittedHeroes} blocked={blocked} readiness=REJECT "
-                    + $"detail=\"{chosenReadiness.ReadyReason}\"");
-                yield return new AxisDemand
-                {
-                    RequestingAxis = DesireAxis.Aggression,
-                    Capability = CapabilityKind.Hero,
-                    DesiredAmount = 1,
-                    RequiredTraits = TraitPreference.None,
-                    MinimumFollowupAp = 0f,
-                    TargetHex = chosen.LastKnownHex,
-                    Value = chosen.BaseValue,
-                    Explain = $"raid #{chosen.TargetArmyId} needs a free deployed hero; free {inv.AvailableHeroes}, "
-                        + $"committed {inv.CommittedHeroes}; blocked targets {blocked}; {chosenReadiness.ReadyReason}",
-                };
-            }
-
-            if (chosenReadiness.NeedsPower)
-            {
-                AiDebugLog.Write($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
-                    + $"capability=FieldCombatPower desired={chosenReadiness.RequestedPower:0.#} "
-                    + $"reason={chosenReadiness.PowerReason} freePower={inv.RaidAvailableFieldPower:0.#} "
-                    + $"committedPower={inv.CommittedFieldCombatPower:0.#} requiredPower={chosenReadiness.RequiredPower:0.#} "
-                    + $"blocked={blocked} readiness=REJECT detail=\"{chosenReadiness.ReadyReason}\" "
-                    + $"frozenReadyWin={chosen.ReadyWinChance:0.00} frozenAsmWin={chosen.AssemblableWinChance:0.00} "
-                    + $"frozenCover={(chosen.CanCoverAllDefenders ? 1 : 0)}");
-                yield return new AxisDemand
-                {
-                    RequestingAxis = DesireAxis.Aggression,
-                    Capability = CapabilityKind.FieldCombatPower,
-                    DesiredAmount = chosenReadiness.RequestedPower,
-                    RequiredTraits = TraitPreference.None,
-                    MinimumFollowupAp = 0f,
-                    TargetHex = chosen.LastKnownHex,
-                    Value = chosen.BaseValue,
-                    Explain = $"raid #{chosen.TargetArmyId} needs ~{chosenReadiness.RequestedPower:0.#} more free field capability "
-                        + $"({chosenReadiness.PowerReason}; free {inv.RaidAvailableFieldPower:0.#}, committed "
-                        + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenReadiness.RequiredPower:0.#}; "
-                        + $"blocked targets {blocked}; {chosenReadiness.ReadyReason})",
-                };
-            }
+            AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
+                snap, objectives, activeIntents, commitments, player);
+            foreach (string line in eval.Diagnostics)
+                AiDebugLog.Write(line);
+            foreach (AxisDemand d in eval.Demands)
+                yield return d;
         }
 
         private static StableMissionKey ReconKey(ReconObjective o) =>
@@ -481,22 +364,6 @@ namespace Game.Ai.V2
                 o.Kind == ReconObjectiveKind.Surveil ? (int)ScoutTargetKind.Surveil : (int)ScoutTargetKind.Explore,
                 o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
                 o.FocusHex.Q, o.FocusHex.R);
-
-        private static StableMissionKey RaidKey(AggressionObjective o) =>
-            new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
-
-        private static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId)
-        {
-            if (snap?.Known == null || targetArmyId == 0)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (s.ArmyId == targetArmyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
-        }
 
         // ---------------------------------------------------------------------------------------
         //  DEF — a threatened Citadel/Base whose committed defence is below requirement. NEVER

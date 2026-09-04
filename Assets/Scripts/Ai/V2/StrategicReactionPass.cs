@@ -265,13 +265,21 @@ namespace Game.Ai.V2
             return witnesses;
         }
 
-        // P0.2 — a discovered target whose aggression gate is NOT (yet) passed is still a real
-        // reaction when the shortage DemandLayer would raise for it (Hero / FieldCombatPower) has a
-        // legal Phase-A materialization inside the reaction envelope. Composes the REAL primitives:
-        // AggressionObjectiveEvaluator (accepted objective, no GatePassed filter) + the same
-        // covered-target / cooldown admission DemandLayer.AggressionDemands uses + RaidOperational
-        // Readiness (the authoritative shortage) + the surplus materialization enumerator (the same
-        // one ProbeHandFollowup uses, gated by CanDeliverDemandOperationally). No second planner.
+        // Search bounds for the materialization-closure projection (P0). AP and card/generation caps
+        // come from real config + the live MGR-02 turn budget; these two only stop the DFS from
+        // exploring pathologically deep / wide.
+        private const int reactionMatMaxActions = 3;
+        private const int reactionMatPoolCap = 8;
+
+        // P0.2 / round 8 (P0) — a discovered target whose aggression gate is NOT (yet) passed is a
+        // real reaction ONLY if a BOUNDED combination of legal materialization actions fully closes
+        // the canonical RaidOperationalReadiness shortage (NumericPowerDeficit or the Hero deficit),
+        // AND the cumulative prep AP + H/E/M/T envelope + a bounded downstream AP reserve for the
+        // subsequent canonical replan all fit inside reactionReserveApCap / spendable resources /
+        // the MGR-02 turn caps. It does NOT try to prove projected ReadyExecutable — after the real
+        // play + RefreshOperationalState the pipeline re-runs RaidAssemblyPlanner and decides
+        // executable vs NeedsAssembly itself. Consumes the canonical AggressionDemandEvaluator (the
+        // SAME primitive DemandLayer.AggressionDemands uses) — no mirrored admission rules.
         private static List<ReactionWitness> ProbeMaterializationForDiscovery(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
             ActorCommitments commitments, CombatOpportunityReport report)
@@ -279,103 +287,199 @@ namespace Game.Ai.V2
             var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
 
-            var objectives = AggressionObjectiveEvaluator.Enumerate(snap, report)
-                .Where(o => o != null && targetIds.Contains(o.TargetArmyId))
-                .OrderByDescending(o => o.BaseValue).ThenBy(o => o.TargetArmyId)
-                .ToList();
-            if (objectives.Count == 0)
+            // Read-only approximation of the pipeline's active intents (turn-start ResolveActive has
+            // already run this turn; it mutates state, so a probe must not call it).
+            var activeIntents = MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
+                snap, AggressionObjectiveEvaluator.Enumerate(snap, report), activeIntents, commitments, player);
+
+            if (eval.Outcome != AggressionDemandOutcome.Demand || eval.ChosenObjective == null
+                || eval.Readiness == null)
+            {
+                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) — canonical aggression demand "
+                    + $"outcome={eval.Outcome} ({eval.Reason}); no materialization reaction");
                 return witnesses;
+            }
+            if (!targetIds.Contains(eval.ChosenObjective.TargetArmyId))
+            {
+                AiDebugLog.Write($"[AI][V2] reaction probe(materializeForDiscovery) — canonical demand targets raid "
+                    + $"#{eval.ChosenObjective.TargetArmyId}, not among this discovery "
+                    + $"[{string.Join(",", targetIds.OrderBy(x => x))}]");
+                return witnesses;
+            }
+
+            MaterializationClosure closure = ProjectMaterializationClosure(
+                player, root, ctx, snap, hand, commitments, eval.ChosenObjective, eval.Readiness);
+            if (closure == null)
+            {
+                AiDebugLog.Write("[AI][V2] reaction probe(materializeForDiscovery) — no bounded legal "
+                    + "materialization combination closes the canonical shortage within the reaction budget");
+                return witnesses;
+            }
+
+            witnesses.Add(new ReactionWitness("MaterializeForDiscovery",
+                $"discovery:materialize:{eval.ChosenObjective.TargetArmyId}:{closure.Key}",
+                needsResponderMove: false, closure.TotalAp, closure.Envelope, closure.Detail,
+                -1, eval.ChosenObjective.TargetArmyId));
+            return witnesses;
+        }
+
+        // P0 — the whole shortage must close, not just improve. A bounded DFS over legal
+        // materialization candidates that operationally deliver the needed capability; accepts the
+        // subset with the smallest total prep AP that drives Σ projected FieldCombatPower ≥
+        // NumericPowerDeficit (and/or lands ≥ 1 hero) while staying inside every real bound.
+        private sealed class MaterializationClosure
+        {
+            public float TotalAp;          // Σ prep AP + bounded downstream AP reserve
+            public ResourceCost Envelope;  // Σ prep H/E/M/T (may be null)
+            public string Key;             // deterministic subset key
+            public string Detail;
+        }
+
+        private static MaterializationClosure ProjectMaterializationClosure(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
+            ActorCommitments commitments, AggressionObjective objective, RaidOperationalReadiness readiness)
+        {
+            bool needPower = readiness.NeedsPower;
+            bool needHero = readiness.NeedsHero;
+            if (!needPower && !needHero)
+                return null;
+
+            float apAvail = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
+            float apCeiling = Mathf.Min(apAvail, (float)AiConfigV2.reactionReserveApCap);
+            float downstreamAp = Mathf.Max(0f, AiConfigV2.reactionResponderMoveApEstimate);
+            float prepCeiling = apCeiling - downstreamAp;
+            if (prepCeiling < -0.001f)
+                return null;
+
+            StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
+            int maxActions = Mathf.Min(reactionMatMaxActions, Mathf.Min(
+                AiConfigV2.maxSurplusActionsPerTurn - budget.SurplusCardActionsUsed,
+                AiConfigV2.maxEndOfTurnTempoActionsPerTurn - budget.TotalTempoActionsUsed));
+            if (maxActions <= 0)
+                return null;
+            int genRemaining = AiConfigV2.maxGenerationActionsPerTurn - budget.GenerationAttemptsUsed;
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
-            AiAllocatorState cooldownState = AiAllocatorStateRegistry.GetOrCreate(player);
-
-            // Mirror DemandLayer.AggressionDemands: a target already covered by a committed raid, or
-            // under an allocator cooldown, would not raise a fresh demand — so it is not a reaction.
-            var covered = new HashSet<int>();
-            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
-                if (i?.Kind == MissionKind.Raid && i.Raid != null && i.PreferredMoverArmyId != null
-                    && commitments != null && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
-                    covered.Add(i.Raid.TargetArmyId);
-
             var reservation = new MaterializationReservation
             {
-                GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber),
+                GenerationAttemptsUsed = budget.GenerationAttemptsUsed,
             };
-            float ceiling = Mathf.Min(root != null ? Mathf.Max(0f, root.ActionPoints) : 0f,
-                (float)AiConfigV2.reactionReserveApCap);
-            List<MaterializationPlan> surplus = null;
-
-            foreach (AggressionObjective o in objectives)
+            var heroDemand = new AxisDemand
             {
-                if (covered.Contains(o.TargetArmyId))
-                    continue;
-                if (cooldownState.TryGetCooldown(RaidKeyFor(o), snap.TurnNumber, out _))
-                    continue;
+                RequestingAxis = DesireAxis.Aggression, Capability = CapabilityKind.Hero,
+                DesiredAmount = 1, RequiredTraits = TraitPreference.None, MinimumFollowupAp = 0f,
+                TargetHex = objective.LastKnownHex, Value = objective.BaseValue,
+            };
+            var powerDemand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression, Capability = CapabilityKind.FieldCombatPower,
+                DesiredAmount = Mathf.Max(1f, readiness.RequestedPower), RequiredTraits = TraitPreference.None,
+                MinimumFollowupAp = 0f, TargetHex = objective.LastKnownHex, Value = objective.BaseValue,
+            };
 
-                RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
-                    snap, o, RaidDefendersFor(snap, o.TargetArmyId), commitments, inv);
-                // ReadyExecutable -> ProbeTargetDriven territory. NeedsAssembly -> the real pipeline
-                // DEFERs (buying more power does not help). Only a real Hero / FieldCombatPower
-                // shortage is a materialization reaction.
-                if (readiness.ReadyExecutable || readiness.NeedsAssembly)
-                    continue;
-                if (!readiness.NeedsHero && !readiness.NeedsPower)
-                    continue;
-
-                AxisDemand demand = readiness.NeedsHero
-                    ? new AxisDemand
-                    {
-                        RequestingAxis = DesireAxis.Aggression,
-                        Capability = CapabilityKind.Hero,
-                        DesiredAmount = 1,
-                        RequiredTraits = TraitPreference.None,
-                        MinimumFollowupAp = 0f,
-                        TargetHex = o.LastKnownHex,
-                        Value = o.BaseValue,
-                        Explain = $"reaction: raid #{o.TargetArmyId} needs a free deployed hero",
-                    }
-                    : new AxisDemand
-                    {
-                        RequestingAxis = DesireAxis.Aggression,
-                        Capability = CapabilityKind.FieldCombatPower,
-                        DesiredAmount = readiness.RequestedPower,
-                        RequiredTraits = TraitPreference.None,
-                        MinimumFollowupAp = 0f,
-                        TargetHex = o.LastKnownHex,
-                        Value = o.BaseValue,
-                        Explain = $"reaction: raid #{o.TargetArmyId} needs ~{readiness.RequestedPower:0.#} more field power",
-                    };
-
-                surplus = surplus ?? MaterializationCandidateBuilder.EnumerateSurplusPlans(
-                    snap, player, root, hand, ctx, inv, commitments, reservation);
-
-                const string owner = "reaction-budget:MaterializeForDiscovery";
-                MaterializationPlan pick = surplus
-                    .Where(p => p != null
-                        && MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, demand)
-                        && p.ApCost <= ceiling + 0.001f
-                        && StrategicManager.FitsSpendableResources(player, root, ctx, p.ResCost, owner))
-                    .OrderBy(p => p.ApCost)
-                    .ThenBy(p => ResCostSum(p.ResCost))
-                    .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
-                    .FirstOrDefault();
-                if (pick == null)
-                    continue;
-
-                string envStr = pick.ResCost == null ? "-"
-                    : $"H{pick.ResCost.human} E{pick.ResCost.energy} M{pick.ResCost.materials} T{pick.ResCost.tech}";
-                witnesses.Add(new ReactionWitness("MaterializeForDiscovery",
-                    $"discovery:materialize:{o.TargetArmyId}:{pick.StableKey}", needsResponderMove: false,
-                    pick.ApCost, pick.ResCost,
-                    $"materializeForDiscovery witness: raid #{o.TargetArmyId} shortage "
-                    + $"{(readiness.NeedsHero ? "Hero" : "FieldCombatPower")} -> legal Phase-A play {pick.Kind} "
-                    + $"[{pick.StableKey}] min {pick.ApCost:0.#} AP + envelope [{envStr}]",
-                    -1, o.TargetArmyId));
+            // Legal candidate pool — the SAME enumeration the hand-follow-up probe uses.
+            var pool = new List<(MaterializationPlan plan, float ap, ResourceCost env, float power,
+                bool hero, bool gen, string key)>();
+            foreach (MaterializationPlan p in MaterializationCandidateBuilder.EnumerateSurplusPlans(
+                snap, player, root, hand, ctx, inv, commitments, reservation))
+            {
+                if (p == null) continue;
+                bool dHero = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, heroDemand);
+                bool dPower = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, powerDemand);
+                if (!dHero && !dPower) continue;
+                CardDefinition def = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                float pw = def != null ? Mathf.Max(0f, AiPower.ToPowerUnit(def).BasePower) : 0f;
+                pool.Add((p, Mathf.Max(0f, p.ApCost), p.ResCost, dPower ? pw : 0f, dHero,
+                    p.UsesGenerator, p.StableKey));
             }
-            if (witnesses.Count == 0)
-                AiDebugLog.Write("[AI][V2] reaction probe(materializeForDiscovery) — no discovered target has a "
-                    + "Hero/FieldCombatPower shortage with a legal in-envelope Phase-A materialization");
-            return witnesses;
+            if (pool.Count == 0)
+                return null;
+            pool = pool
+                .OrderBy(c => c.ap).ThenBy(c => ResCostSum(c.env)).ThenBy(c => c.key, System.StringComparer.Ordinal)
+                .Take(reactionMatPoolCap).ToList();
+
+            float needPowerAmt = needPower ? Mathf.Max(0f, readiness.NumericPowerDeficit) : 0f;
+            const string owner = "reaction-budget:MaterializeForDiscovery";
+
+            float bestPrepAp = float.MaxValue, bestEnvSum = float.MaxValue;
+            ResourceCost bestEnv = null;
+            string bestKey = null;
+            var chosen = new List<(MaterializationPlan plan, float ap, ResourceCost env, float power,
+                bool hero, bool gen, string key)>();
+
+            void Consider()
+            {
+                bool powerOk = !needPower || chosen.Sum(c => c.power) + 0.001f >= needPowerAmt;
+                bool heroOk = !needHero || chosen.Any(c => c.hero);
+                if (!powerOk || !heroOk)
+                    return;
+                float apSum = chosen.Sum(c => c.ap);
+                if (apSum > prepCeiling + 0.001f)
+                    return;
+                ResourceCost env = SumEnvelope(chosen.Select(c => c.env));
+                if (!StrategicManager.FitsSpendableResources(player, root, ctx, env, owner))
+                    return;
+                float envSum = ResCostSum(env);
+                if (apSum < bestPrepAp - 0.001f
+                    || (apSum <= bestPrepAp + 0.001f && envSum < bestEnvSum - 0.001f))
+                {
+                    bestPrepAp = apSum;
+                    bestEnvSum = envSum;
+                    bestEnv = env;
+                    bestKey = string.Join("+", chosen.Select(c => c.key).OrderBy(k => k, System.StringComparer.Ordinal));
+                }
+            }
+
+            void Dfs(int start, float apSum, int genCount)
+            {
+                Consider();
+                if (chosen.Count >= maxActions)
+                    return;
+                for (int i = start; i < pool.Count; i++)
+                {
+                    var c = pool[i];
+                    if (c.gen && genCount + 1 > genRemaining) continue;
+                    if (apSum + c.ap > prepCeiling + 0.001f) continue;
+                    chosen.Add(c);
+                    Dfs(i + 1, apSum + c.ap, genCount + (c.gen ? 1 : 0));
+                    chosen.RemoveAt(chosen.Count - 1);
+                }
+            }
+            Dfs(0, 0f, 0);
+
+            if (bestKey == null)
+                return null;
+
+            float total = bestPrepAp + downstreamAp;
+            string envStr = bestEnv == null || ResCostSum(bestEnv) <= 0f ? "-"
+                : $"H{bestEnv.human} E{bestEnv.energy} M{bestEnv.materials} T{bestEnv.tech}";
+            string shortage = needHero && needPower ? $"Hero+power≥{needPowerAmt:0.#}"
+                : needHero ? "Hero" : $"power≥{needPowerAmt:0.#}";
+            return new MaterializationClosure
+            {
+                TotalAp = total,
+                Envelope = bestEnv != null && ResCostSum(bestEnv) > 0f ? bestEnv : null,
+                Key = bestKey,
+                Detail = $"materializeForDiscovery witness: raid #{objective.TargetArmyId} shortage {shortage} "
+                    + $"closed by [{bestKey}] — prep {bestPrepAp:0.#} AP + downstream {downstreamAp:0.#} AP "
+                    + $"+ envelope [{envStr}]",
+            };
+        }
+
+        private static ResourceCost SumEnvelope(IEnumerable<ResourceCost> parts)
+        {
+            var sum = new ResourceCost();
+            foreach (ResourceCost p in parts)
+            {
+                if (p == null) continue;
+                sum.human += p.human;
+                sum.energy += p.energy;
+                sum.materials += p.materials;
+                sum.tech += p.tech;
+            }
+            return sum;
         }
 
         // §3/§P1 (round 6) — a hand follow-up is feasible only if SOME legal play (from the full
@@ -428,22 +532,6 @@ namespace Game.Ai.V2
 
         private static float ResCostSum(ResourceCost c) => c == null ? 0f
             : c.human + c.energy + c.materials + c.tech;
-
-        private static StableMissionKey RaidKeyFor(AggressionObjective o) =>
-            new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
-
-        private static IReadOnlyList<WorthIt.DefenderProfile> RaidDefendersFor(WorldSnapshot snap, int targetArmyId)
-        {
-            if (snap?.Known == null || targetArmyId == 0)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (s.ArmyId == targetArmyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
-        }
 
         // §6 — before the bounded reaction round runs, a genuinely feasible reaction must STILL
         // exist (the same probe, not a weaker one). If not, its budget + envelope reservation is
