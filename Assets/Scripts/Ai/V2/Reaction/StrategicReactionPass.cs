@@ -182,7 +182,7 @@ namespace Game.Ai.V2
             var feasible = witnesses
                 .Where(w => w.RequiredAp <= ceiling + 0.001f)
                 .Where(w => w.Envelope == null
-                    || StrategicManager.FitsSpendableResources(player, root, ctx, w.Envelope, w.OwnerKey))
+                    || StrategicSpendability.FitsSpendableResources(player, root, ctx, w.Envelope, w.OwnerKey))
                 .OrderBy(w => w.RequiredAp)
                 .ThenBy(w => w.EnvelopeCost)
                 .ThenBy(w => w.ActionKey, System.StringComparer.Ordinal)
@@ -505,7 +505,7 @@ namespace Game.Ai.V2
                     human = consumed.HumanUsed, energy = consumed.EnergyUsed,
                     materials = consumed.MaterialsUsed, tech = consumed.TechUsed,
                 };
-                if (!StrategicManager.FitsSpendableResources(player, root, ctx, env, owner))
+                if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, env, owner))
                     return;
                 float envSum = ResCostSum(env);
                 if (consumed.ApUsed < bestPrepAp - 0.001f
@@ -588,7 +588,7 @@ namespace Game.Ai.V2
             const string owner = "reaction-budget:HandFollowup";
             var feasible = options
                 .Where(o => o.ap <= ceiling + 0.001f
-                    && StrategicManager.FitsSpendableResources(player, root, ctx, o.env, owner))
+                    && StrategicSpendability.FitsSpendableResources(player, root, ctx, o.env, owner))
                 .OrderBy(o => o.ap)
                 .ThenBy(o => ResCostSum(o.env))
                 .ToList();

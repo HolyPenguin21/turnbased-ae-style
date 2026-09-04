@@ -444,7 +444,7 @@ namespace Game.Ai.V2
                     direct.FinalCapability = cap;
                     if (strategicClaim != null && !CanDeliverDemandOperationally(direct, strategicClaim))
                         continue;
-                    if (StrategicManager.ReservesOkAfterChain(root, direct, player))
+                    if (StrategicSpendability.ReservesOkAfterChain(root, direct, player))
                     {
                         direct.Score = SurplusUtility(snap, direct, inv, recce, hero, hand, baseAbilities);
                         candidates.Add(direct);
@@ -469,7 +469,7 @@ namespace Game.Ai.V2
                         // a zero-delivery placement merely because the equipment raised utility.
                         if (strategicClaim != null && !CanDeliverDemandOperationally(att, strategicClaim))
                             continue;
-                        if (!StrategicManager.ReservesOkAfterChain(root, att, player)) continue;
+                        if (!StrategicSpendability.ReservesOkAfterChain(root, att, player)) continue;
                         // P1.4 — the evaluator owns the attach-step penalty (ChainStepPenalty in
                         // ResourceEfficiency); no extra subtraction here.
                         att.Score = SurplusUtility(snap, att, inv, recce, hero, hand, projected);
@@ -519,7 +519,7 @@ namespace Game.Ai.V2
                                 genEq.FinalCapability = cap;
                                 if (strategicClaim != null && !CanDeliverDemandOperationally(genEq, strategicClaim))
                                     continue;
-                                if (!StrategicManager.ReservesOkAfterChain(root, genEq, player))
+                                if (!StrategicSpendability.ReservesOkAfterChain(root, genEq, player))
                                     continue;
 
                                 // P1.4 — the evaluator owns the generation + attach step penalties
@@ -551,7 +551,7 @@ namespace Game.Ai.V2
                         if (genStrategicClaim != null && !CanDeliverDemandOperationally(gen, genStrategicClaim))
                             continue;
                         if (gen.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) continue;
-                        if (!StrategicManager.ReservesOkAfterChain(root, gen, player)) continue;
+                        if (!StrategicSpendability.ReservesOkAfterChain(root, gen, player)) continue;
                         // P1.4 — evaluator owns the generation step penalty + success-chance discount.
                         gen.Score = SurplusUtility(snap, gen, inv, genRecce, genHero, hand, genAbilities);
                         candidates.Add(gen);
