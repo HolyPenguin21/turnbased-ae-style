@@ -286,19 +286,14 @@ namespace Game.Ai
             // post-hoc field assignment where a starting-hand draw could overflow it.
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize, ctx.HandCapacity);
 
-            // ---- AI Strategy V2 fork (2026-08-29) — see Game.Ai.V2 / AiStrategyV2Pipeline.cs ----
-            // V1 (everything below this block) is the shipping default. V2 is a parallel,
-            // independently switchable pipeline behind AiConfig.aiStrategyV2Enabled. The two NEVER
-            // both run in one AI turn: with the flag set, V2 owns the turn end to end and RunTurn
-            // returns right here. V1 code below is left fully intact for method-by-method porting
-            // into V2 — do NOT delete it. Placed after AiMapMemory.OnTurnStarted + hand creation so
-            // V2 inherits the same freshly-expired memory and hand the V1 path would have seen.
-            if (AiConfig.aiStrategyV2Enabled)
-            {
-                yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
-                onDone?.Invoke();
-                yield break;
-            }
+            // ---- Global Map AI = Strategy V2, unconditionally (ARCH-01, 2026-09-04) ----
+            // The former V1/V2 fork is gone: V2 owns every AI turn end to end. Placed after
+            // AiMapMemory.OnTurnStarted + hand creation so V2 inherits the freshly-expired memory
+            // and the capacity-capped hand. The legacy V1 turn body that used to follow this point
+            // is deleted in ARCH-01 01D; nothing routes to it any more.
+            yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
+            onDone?.Invoke();
+            yield break;
 
             int startArmies = ArmyRegistry.AllForOwner(player).Count(a => !a.IsGarrison && !a.IsPrison);
             int startHuman = root.GetResource(ResourceType.Human);

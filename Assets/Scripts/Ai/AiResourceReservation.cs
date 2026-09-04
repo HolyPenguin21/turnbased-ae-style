@@ -107,12 +107,12 @@ namespace Game.Ai
         {
             if (root == null)
                 return 0;
-            if (AiConfig.aiStrategyV2Enabled)
-            {
-                int v2Reserved = V2ExtraReservation != null ? Math.Max(0, V2ExtraReservation(player, type)) : 0;
-                return Math.Max(0, root.GetResource(type) - v2Reserved);
-            }
-            return root.GetResource(type) - TotalReservedExcluding(player, type, excluding);
+            // ARCH-01: Strategy V2 owns every AI turn. The real PlayerRoot stockpile is the
+            // authoritative physical pool; V2's own atomic spending/claims are handled by its
+            // pipeline. `excluding` is retained for signature compatibility with call sites but is
+            // no longer consulted (it only ever fed the deleted V1 BuildFacility reservation path).
+            int v2Reserved = V2ExtraReservation != null ? Math.Max(0, V2ExtraReservation(player, type)) : 0;
+            return Math.Max(0, root.GetResource(type) - v2Reserved);
         }
 
         public static bool CanAfford(PlayerRoot root, PlayerSetupData player, ResourceCost cost)
