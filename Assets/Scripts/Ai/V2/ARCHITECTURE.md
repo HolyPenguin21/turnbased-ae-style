@@ -59,6 +59,14 @@ canonical game actions; it never selects objectives or invents alternative actio
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
 | Materialization delivery ("can this satisfy demand X") | `Materialization/MaterializationDeliveryPolicy` (plan- and army-level) |
+| Chain enumeration (score-free) | `Materialization/MaterializationChainEnumerator` |
+| Per-chain Phase-A feasibility | `Materialization/MaterializationFeasibility` |
+| Plan construction + `StrategicActionCost` + `StableKey` | `Materialization/MaterializationPlanFactory` |
+| Capability / trait / equipment-host matching | `Materialization/MaterializationChainMatching` |
+| Joint physical projection (recipient / hero / hand slots) | `Materialization/ProjectedPhysicalState` |
+| Projected army capacity rule (planner == executor) | `Materialization/ArmyCapacityRules` |
+| Air-recon planning (actor / mode / launch / first-step / energy) | `Recon/AirReconPlanner` |
+| Execution state-version counter | `State/V2StateVersion` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |
 | Jointly-feasible materialization portfolio | `Strategy/PhaseA/MaterializationPortfolioSolver` |
