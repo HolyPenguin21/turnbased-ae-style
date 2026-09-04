@@ -181,12 +181,12 @@ namespace Game.Combat
         }
 
         // Graded two-sided net-advantage margin — MonteCarloTrials simulated exchanges (above),
-        // averaged. Positive = worth it on average, magnitude = how lopsided; `enemyDefense`/
+        // averaged. Positive = the attacker comes out ahead on average, magnitude = how lopsided; `enemyDefense`/
         // `enemyAttack` are always the OTHER side's remembered aggregate sums (KnownEnemySighting.
         // DefenseSum/AttackSum, or a Hex Event guard's card-stat sums — `enemyDefense` should
         // already include HexDefenseBonus where the caller has a hex to add it from, same as
         // before).
-        public static float Score(ArmyData attacker, float enemyDefense, float enemyAttack)
+        public static float ExpectedExchangeMargin(ArmyData attacker, float enemyDefense, float enemyAttack)
         {
             float ourAttack = AttackSum(attacker);
             float ourDefense = DefenseSum(attacker);
@@ -196,8 +196,6 @@ namespace Game.Combat
                 total += SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense, rng);
             return total / MonteCarloTrials;
         }
-
-        public static bool IsWorthIt(ArmyData attacker, float enemyDefense, float enemyAttack) => Score(attacker, enemyDefense, enemyAttack) > 0f;
 
         // The single win-chance formula every category's army-vs-threat comparison must route
         // through from now on (2026-08-22, project owner's own explicit call: "все сравнения армий
@@ -638,14 +636,6 @@ namespace Game.Combat
         // Routes through the full-roster WinChance whenever `defenders` carries a real per-unit
         // snapshot (see MeetsWinChance's own comment — same reasoning, same 2026-08-22 change);
         // falls back to the aggregate-sum Score only when no composition is remembered at all.
-        public static bool IsWorthIt(ArmyData attacker, float enemyDefense, float enemyAttack,
-            IReadOnlyCollection<DefenderProfile> defenders, float hexDefenseBonus = 0f)
-        {
-            bool worthIt = defenders != null && defenders.Count > 0
-                ? WinChance(attacker, defenders, hexDefenseBonus) > 0.5f
-                : IsWorthIt(attacker, enemyDefense, enemyAttack);
-            return worthIt && CanDamageAll(attacker, defenders, hexDefenseBonus);
-        }
 
         // The hex's own contribution alone, no army — terrain.defenseModifier (see
         // TerrainTypeEntry's own comment: added to the defender's dice pool only, in every real
