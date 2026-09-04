@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Game.Cards;
 using Game.Players;
@@ -14,6 +15,16 @@ namespace Game.Ai
     public class AiHandData
     {
         public readonly List<CardData> Hand = new List<CardData>();
+
+        // Fired after every successful mutation of Hand, from whichever single entry point
+        // actually changed it (AddCard/RemoveCard below, including DrawOne's own draw) — the one
+        // thing CardHandUI's AI hand debug view (see its own OnDebugHandChanged) needs to stay
+        // live across an AI turn without any executor having to know a debug view might be
+        // watching (DEBUG-UI-01: every V2 card-execution path already goes through one of these
+        // two methods as "the executor owns the hand boundary", so this is the one place a
+        // refresh notification can live without duplicating it into recruit/equipment/generated/
+        // etc separately).
+        public event Action HandChanged;
 
         // Shared hand capacity (spec P0 §10) — set from CardHandUI.MaxHandSize via AiTurnContext
         // (AiHandRegistry can't reach the scene, so the value is pushed in on construction — see
@@ -59,6 +70,24 @@ namespace Game.Ai
 
         public void SetCapacity(int capacity) => Capacity = Mathf.Max(0, capacity);
 
+        // The only two places Hand is ever added to/removed from outside DrawOne — every V2
+        // card-execution path (deploy, base/facility build, aviation, equipment attach,
+        // Research/Production mint) and the non-draw hex-event grant path (HexSelectionController.
+        // GrantCard) call these instead of touching the list directly, so HandChanged always fires.
+        public void AddCard(CardData card)
+        {
+            Hand.Add(card);
+            HandChanged?.Invoke();
+        }
+
+        public bool RemoveCard(CardData card)
+        {
+            bool removed = Hand.Remove(card);
+            if (removed)
+                HandChanged?.Invoke();
+            return removed;
+        }
+
         // Same PopRandomCard + AddCard pairing CardHandUI's own OnDrawClicked uses, minus
         // the AP check (the caller's job — see AiTurnController) and minus any UI animation.
         // Null once the deck's empty, same "nothing left to draw" outcome CardHandUI has too.
@@ -76,7 +105,7 @@ namespace Game.Ai
             _remainingDeck.RemoveAt(poolIndex);
 
             var card = new CardData(definition);
-            Hand.Add(card);
+            AddCard(card);
             return card;
         }
     }

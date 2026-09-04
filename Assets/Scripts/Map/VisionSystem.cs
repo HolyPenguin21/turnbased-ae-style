@@ -48,14 +48,18 @@ namespace Game.Map
 
         public static PlayerSetupData CurrentViewer { get; set; }
 
-        // Dev-only override — see GameTurnController.debugWatchAiTurns' own comment. Touches
-        // only the three CurrentViewer-facing read paths directly below, never the underlying
-        // per-player Visible/Visited/EverSeen sets themselves and never IsVisible/IsVisited/
-        // HasEverSeen taking an explicit `player` argument — those are what AiMapMemory and every
-        // other per-player AI read directly (see this class's own header comment), so this can
-        // only ever change what gets RENDERED to whichever human is CurrentViewer, never what any
-        // player (AI included) actually knows. Not reset by Clear() — a dev preference outlives
-        // any one game session, same as any other Inspector-set debug toggle.
+        // Dev-only reveal-everything override, independent of CurrentViewer/debugWatchAiTurns
+        // (DEBUG-UI-01: previously forced on by GameTurnController.debugWatchAiTurns, which
+        // defeated the point of watching an AI's own honest FOW — now nothing in the game sets
+        // this on its own, it's here purely for other debug tools that explicitly want a
+        // reveal-all render). Touches only the three CurrentViewer-facing read paths directly
+        // below, never the underlying per-player Visible/Visited/EverSeen sets themselves and
+        // never IsVisible/IsVisited/HasEverSeen taking an explicit `player` argument — those are
+        // what AiMapMemory and every other per-player AI read directly (see this class's own
+        // header comment), so this can only ever change what gets RENDERED to whichever player is
+        // CurrentViewer, never what any player (AI included) actually knows. Not reset by Clear()
+        // — a dev preference outlives any one game session, same as any other Inspector-set debug
+        // toggle.
         public static bool DebugRevealAll { get; set; }
 
         public static void Configure(GameConfig config)

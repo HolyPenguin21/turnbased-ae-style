@@ -329,7 +329,7 @@ namespace Game.Ai.V2
                     ok = AviationActions.TryDeployFromCard(play.Card.Definition, player, root,
                         ctx.HexSelection, play.TargetHex, out failReason, null, play.Card);
                     if (ok)
-                        hand.Hand.Remove(play.Card);
+                        hand.RemoveCard(play.Card);
                     break;
                 }
                 case PlayKind.Base:
@@ -356,7 +356,7 @@ namespace Game.Ai.V2
                     }
                     ok = EquipmentSystem.TryAttach(play.Card, play.EquipHost, root, out failReason);
                     if (ok)
-                        hand.Hand.Remove(play.Card);
+                        hand.RemoveCard(play.Card);
                     break;
                 }
                 default:

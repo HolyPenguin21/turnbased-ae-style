@@ -302,6 +302,9 @@ namespace Game.UI
         {
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
+            if (_debugHand != null)
+                _debugHand.HandChanged -= OnDebugHandChanged;
+            _debugHand = null;
             if (turnController != null)
             {
                 turnController.CardDraggingBlockedChanged -= OnCardDraggingBlockedChanged;
@@ -361,6 +364,11 @@ namespace Game.UI
 
         private static PlayerRoot FindHumanRoot() => GameSession.FindHumanRoot();
 
+        // The AiHandData currently backing the debug view, if any — kept only so ShowAiHandDebug/
+        // HideAiHandDebug can subscribe/unsubscribe HandChanged on the right instance (same
+        // subscribe-on-set pattern as ResourceBarUI._displayedRoot / PlayerRoot.ResourcesChanged).
+        private AiHandData _debugHand;
+
         // Dev-only: swaps the visible hand row for `hand`'s own cards (see GameTurnController.
         // debugWatchAiTurns) — the real hand's own _cards are only hidden, never touched, so
         // nothing about the human's actual hand/deck state changes. Read-only in practice without
@@ -373,13 +381,33 @@ namespace Game.UI
             if (cardPrefab == null || handContainer == null)
                 return;
 
-            foreach (CardUI card in _debugCards)
-                Destroy(card.gameObject);
-            _debugCards.Clear();
+            // Every V2 card-execution path (deploy/build/equipment/generated) plus the hex-event
+            // grant path mutates the hand only through AiHandData.AddCard/RemoveCard, both of
+            // which raise HandChanged (DEBUG-UI-01) — subscribing here is what keeps this view
+            // live for the rest of the AI's turn without any executor pushing a refresh itself.
+            if (hand != _debugHand)
+            {
+                if (_debugHand != null)
+                    _debugHand.HandChanged -= OnDebugHandChanged;
+                _debugHand = hand;
+                if (_debugHand != null)
+                    _debugHand.HandChanged += OnDebugHandChanged;
+            }
 
             foreach (CardUI card in _cards)
                 card.gameObject.SetActive(false);
             _showingDebugHand = true;
+
+            RenderDebugHand(hand);
+        }
+
+        private void OnDebugHandChanged() => RenderDebugHand(_debugHand);
+
+        private void RenderDebugHand(AiHandData hand)
+        {
+            foreach (CardUI card in _debugCards)
+                Destroy(card.gameObject);
+            _debugCards.Clear();
 
             // The deck counter switches to THIS player's own remaining-deck count too —
             // otherwise it stays frozen on whichever player's turn last actually wrote it (the
@@ -400,16 +428,6 @@ namespace Game.UI
             }
         }
 
-        // Re-lays-out the currently shown debug hand from `hand`'s latest contents — a no-op
-        // unless ShowAiHandDebug is already active, so Game.Ai.AiTurnController can call this
-        // after every decision step (hand contents can change mid-turn — a draw, a deploy) without
-        // needing to know whether debugWatchAiTurns is even on.
-        public void RefreshAiHandDebugIfShowing(AiHandData hand)
-        {
-            if (_showingDebugHand)
-                ShowAiHandDebug(hand);
-        }
-
         // Reverts to the real hand — called once a human's own turn begins again (see
         // GameTurnController.BeginPlayerTurn).
         public void HideAiHandDebug()
@@ -417,6 +435,10 @@ namespace Game.UI
             if (!_showingDebugHand)
                 return;
             _showingDebugHand = false;
+
+            if (_debugHand != null)
+                _debugHand.HandChanged -= OnDebugHandChanged;
+            _debugHand = null;
 
             foreach (CardUI card in _debugCards)
                 Destroy(card.gameObject);

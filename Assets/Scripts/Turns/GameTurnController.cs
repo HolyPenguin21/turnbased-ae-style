@@ -40,20 +40,19 @@ namespace Game.Turns
 
         // Dev-only: one switch for watching an AI turn play out. When on it (a) makes the fog
         // overlay follow whichever AI is currently acting instead of staying on the last human's
-        // view (see BeginPlayerTurn), and shows that AI's own hand/resource debug panels;
-        // (b) reveals every hex to VisionSystem.CurrentViewer as if they'd stood on it
-        // (VisionSystem.DebugRevealAll — purely a render-side override of the CurrentViewer-facing
-        // read paths, never touches any player's own Visible/Visited/EverSeen sets, so it can't
-        // leak into what an AI itself perceives; AiMapMemory reads those sets directly, not
-        // through CurrentViewer — see VisionSystem's own class comment); and (c) writes one line
-        // per stealth-detection challenge to Logs/AiDebug.log / the Console (StealthSystem.DebugLog
-        // — observer, hidden unit, hex, spot vs hide dice/hits, outcome; never player-facing,
-        // stealth design §3/§9). Off by default; Editor Inspector checkbox only, no in-game UI.
+        // view (see BeginPlayerTurn), showing exactly that AI's own visible/explored/unseen hexes
+        // (VisionSystem.CurrentViewer, read through the same per-player Visible/Visited/EverSeen
+        // sets AiMapMemory itself reads — this does NOT touch VisionSystem.DebugRevealAll, which
+        // stays an independent, separately-controlled reveal-everything override so this debug
+        // view shows honestly what the AI could see, not the whole map), and shows that AI's own
+        // hand/resource debug panels; and (b) writes one line per stealth-detection challenge to
+        // Logs/AiDebug.log / the Console (StealthSystem.DebugLog — observer, hidden unit, hex,
+        // spot vs hide dice/hits, outcome; never player-facing, stealth design §3/§9). Off by
+        // default; Editor Inspector checkbox only, no in-game UI.
         [SerializeField] private bool debugWatchAiTurns;
 
         private void OnValidate()
         {
-            VisionSystem.DebugRevealAll = debugWatchAiTurns;
             Game.Map.StealthSystem.DebugLog = debugWatchAiTurns;
         }
 
@@ -248,7 +247,6 @@ namespace Game.Turns
             // OnValidate already applies this on every Inspector edit, but that never fires on a
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
-            VisionSystem.DebugRevealAll = debugWatchAiTurns;
             StealthSystem.DebugLog = debugWatchAiTurns;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
@@ -937,9 +935,9 @@ namespace Game.Turns
                     turnInfoPopup.ShowForOther(player);
                 // debugWatchAiTurns' hand/resources half (see ShowAiHandDebug/ShowRootDebug's
                 // own comments) — shown before RunTurn starts so both are already visible for the
-                // very first decision; the hand stays live via ctx.HumanCardHandUI's own refresh
-                // calls, resources via PlayerRoot.ResourcesChanged same as the human's own always
-                // did.
+                // very first decision; both stay live for the rest of the turn off their own
+                // change events (AiHandData.HandChanged, PlayerRoot.ResourcesChanged) rather than
+                // any per-step push from RunTurn.
                 if (debugWatchAiTurns && cardHand != null)
                     cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
                 if (debugWatchAiTurns)

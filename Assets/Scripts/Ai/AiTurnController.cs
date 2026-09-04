@@ -31,11 +31,6 @@ namespace Game.Ai
         public RtsCameraController Camera;
         public HexMap Map;
         public HexSelectionController HexSelection;
-        // Kept alongside StartingDeckCatalog/etc (all read from this same source, see From)
-        // purely so RunTurn can push live hand updates to CardHandUI.RefreshAiHandDebugIfShowing
-        // — a no-op whenever debugWatchAiTurns isn't showing this player's hand, so this never
-        // needs to know that flag itself.
-        public CardHandUI HumanCardHandUI;
         public StartingDeckCatalog StartingDeckCatalog;
         public int StartingHandSize;
         public int DrawApCost;
@@ -147,7 +142,6 @@ namespace Game.Ai
                 Camera = camera,
                 Map = map,
                 HexSelection = hexSelection,
-                HumanCardHandUI = humanCardHand,
                 StartingDeckCatalog = humanCardHand != null ? humanCardHand.StartingDeckCatalog : null,
                 StartingHandSize = humanCardHand != null ? humanCardHand.StartingHandSize : 0,
                 DrawApCost = humanCardHand != null ? humanCardHand.DrawApCost : 2,

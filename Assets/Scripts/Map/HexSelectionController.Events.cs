@@ -346,7 +346,7 @@ namespace Game.Map
             if (owner.IsHuman)
                 cardHandUI.AddCardToHand(card);
             else
-                AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.Hand.Add(card);
+                AiHandRegistry.GetOrCreate(owner, cardHandUI.StartingDeckCatalog, cardHandUI.StartingHandSize)?.AddCard(card);
         }
     }
 }

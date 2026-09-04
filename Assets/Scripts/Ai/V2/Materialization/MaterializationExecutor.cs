@@ -87,7 +87,7 @@ namespace Game.Ai.V2
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
 
             CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
-            hand.Hand.Add(minted);
+            hand.AddCard(minted);
             return new GenerationOutcome(true, minted, true, null);
         }
 
@@ -164,7 +164,7 @@ namespace Game.Ai.V2
                 // The executor owns the hand boundary — the same rule CardPlayExecutor holds for a
                 // deploy: EquipmentSystem.TryAttach does not touch the hand; the equipment card
                 // leaves it HERE, exactly once, only on a successful attach.
-                hand.Hand.Remove(equipmentCard);
+                hand.RemoveCard(equipmentCard);
                 res.Attached = true;
                 res.StateChanged = true;
             }

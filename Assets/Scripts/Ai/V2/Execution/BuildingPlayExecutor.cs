@@ -80,7 +80,7 @@ namespace Game.Ai.V2
             if (!outcome.Ok)
                 return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
 
-            hand.Hand.Remove(card);   // caller-owned hand, only on success
+            hand.RemoveCard(card);   // caller-owned hand, only on success
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
@@ -104,7 +104,7 @@ namespace Game.Ai.V2
             if (!outcome.Ok)
                 return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
 
-            hand.Hand.Remove(card);
+            hand.RemoveCard(card);
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,

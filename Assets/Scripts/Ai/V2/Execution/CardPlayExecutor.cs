@@ -217,7 +217,7 @@ namespace Game.Ai.V2
                 return result;
             }
 
-            hand.Hand.Remove(plan.Card);   // exactly once, only on success — the canonical V2 boundary
+            hand.RemoveCard(plan.Card);   // exactly once, only on success — the canonical V2 boundary
             result.Deployed = true;
             // A successful deploy ALWAYS changed the world: a new unit exists, the target army
             // grew, the hand shrank, capability supply moved — even for a 0-AP / 0-resource card.
