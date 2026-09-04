@@ -55,16 +55,40 @@ canonical game actions; it never selects objectives or invents alternative actio
 
 | Concern | Canonical owner |
 |---|---|
-| Own-force power | `Evaluation/Power/AiPower` |
-| Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` |
+| Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
+| Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
+| Materialization delivery ("can this satisfy demand X") | `Materialization/MaterializationDeliveryPolicy` (plan- and army-level) |
+| Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |
+| Jointly-feasible materialization portfolio | `Strategy/PhaseA/MaterializationPortfolioSolver` |
+| Delivered capability + Housekeeping lease | `Strategy/PhaseA/CapabilityDeliveryEvaluator` |
 | Card placement legality | `Materialization/PlacementRules` |
+| Strategic spendability ("does this cost fit spendable resources") | `State/StrategicSpendability` |
 | Actor occupancy truth | `State/ActorCommitments` |
-| Explicit resource reservations | `State/StrategicResourceReservationLedger` |
+| Explicit resource reservations (owner-aware) | `State/StrategicResourceReservationLedger` |
 | AP entitlement split | `State/AxisBudgetLedger` (AP-only) |
 | Turn tempo budget | `State/StrategicTempoBudget` |
+| Persistent-resource hold policy | `Strategy/PhaseB/HoldEvaluator` |
+| Raid actor eligibility | `Missions/Raid/RaidActorEligibility.IsStructuralRaidActor` (no "Ready" alias) |
+| Raid win-chance gates (start vs continue) | `Missions/Raid/RaidAdmissionPolicy` |
+| Reaction feasibility evidence | `Reaction/ReactionWitness` + `ReactionOpportunityProbe` |
+| Reaction witness arbitration (§28) | `Reaction/ReactionWitnessSelector` |
 
-Later ARCH-02 sub-phases add canonical `StrategicActionCost` (materialization cost),
-a projected physical-state primitive (joint capacity), and a unified execution
-`Result` family; those extend this table, they do not fork it.
+## Verified boundary invariants (02F–02H audit)
+
+* **One `ResourceAllocator`** — no per-mission/per-axis allocator.
+* **One `StrategicCardEvaluator`** — no `Hero`/`Reaction`/`PhaseB`/`Aviation` card scorer.
+* **Executors do not plan or rescore** — `Execution/*` and `ReactionRoundExecutor` call
+  canonical gameplay actions and return a structured result; the only evaluator calls are
+  `Is*SatisfiedLive` completion checks (a legit §37 concern), never objective selection.
+* **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
+  calls `MaterializationExecutor` / `StrategicPhaseA/B`.
+* **The strategic layer is skill-agnostic** — Strategy / Materialization / Missions / Reaction
+  branch only on the AI's own `CapabilityKind` taxonomy, never on a gameplay ability name
+  (`Splash` / `Regen` / `Summon` / `AbilityKind.*`). Ability specifics stay behind
+  `StrategicEffectRegistry.Roles(...)`, so a new effect needs a registry entry, not a manager
+  `if`.
+* **Execution results are a structured family** — `MaterializationResult` / `CardPlayResult` /
+  `BuildingPlayResult` / `ExecutionResult` / `ProvisioningResult` each carry a success verb +
+  `StateChanged` + `ApSpent` + a fail reason; no bare `bool` where the caller owns lifecycle.
