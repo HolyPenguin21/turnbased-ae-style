@@ -29,11 +29,16 @@ namespace Game.Combat
         public static BattleEncounterContext PrepareCommittedEncounter(HexCoord hex, List<ArmyData> participants,
             PlayerSetupData presentationObserver = null)
         {
+            // Reveal FIRST, then resolve/classify — matching this file's own documented lifecycle
+            // (committed encounter → reveal → classify → presentation) so TargetHeroOnly (and any
+            // future classification added here) is always computed from the true, post-reveal
+            // roster rather than "accidentally" being safe only because today's classification
+            // happens not to depend on stealth.
+            StealthSystem.RevealForBattle(participants, hex);
+
             ArmyData initiator = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData target = participants != null && participants.Count > 1 ? participants[1] : null;
             bool targetHeroOnly = target != null && !BattleInitiator.IsCombatCapable(target);
-
-            StealthSystem.RevealForBattle(participants, hex);
 
             return new BattleEncounterContext(hex, participants, initiator, target, targetHeroOnly, presentationObserver);
         }

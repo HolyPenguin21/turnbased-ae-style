@@ -85,6 +85,14 @@ namespace Game.UI
         // this view — the battle popup's own side columns are the only way to pick which army to
         // inspect there.
         private bool _hideArmySwitcher;
+        // Set by the ShowLocked(army, observer) overload — the encounter's own PresentationObserver
+        // (see BattleEncounterContext), NOT necessarily VisionSystem.CurrentViewer. In a hot-seat
+        // delayed battle the global viewer can already belong to a different human than whoever
+        // this modal is actually being shown to (see BattleContactPopupUI's own side-list filter,
+        // which has the same problem and the same fix). Null whenever this modal was opened via
+        // any other Show* path — VisibleMembers falls back to VisionSystem.CurrentViewer then,
+        // same as before this field existed.
+        private Game.Players.PlayerSetupData _readOnlyObserver;
         // Display-only siblings captured in the same last-seen hex. Unlike a live read-only
         // view these must never query ArmyRegistry, which may already contain newer hidden data.
         private IReadOnlyList<ArmyData> _snapshotSiblings;
@@ -218,6 +226,7 @@ namespace Game.UI
             _readOnly = false;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
+            _readOnlyObserver = null;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -233,6 +242,7 @@ namespace Game.UI
             _readOnly = true;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
+            _readOnlyObserver = null;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -243,6 +253,7 @@ namespace Game.UI
             _readOnly = true;
             _hideArmySwitcher = false;
             _snapshotSiblings = siblings;
+            _readOnlyObserver = null;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -254,10 +265,22 @@ namespace Game.UI
         // battle popup's own side list's job, not this modal's.
         public void ShowLocked(ArmyData army)
         {
+            ShowLocked(army, null);
+        }
+
+        // Same as ShowLocked(army) but with an explicit read-only observer — see
+        // _readOnlyObserver's own comment for why the caller (BattleContactPopupUI) can't just
+        // rely on VisionSystem.CurrentViewer here: in a hot-seat delayed battle the global viewer
+        // and this encounter's PresentationObserver can be two different humans. Passing null
+        // (or using the overload above) falls back to VisionSystem.CurrentViewer in
+        // VisibleMembers, same as before this overload existed.
+        public void ShowLocked(ArmyData army, Game.Players.PlayerSetupData observer)
+        {
             LastClosedSelectableArmy = null;
             _readOnly = true;
             _hideArmySwitcher = true;
             _snapshotSiblings = null;
+            _readOnlyObserver = observer;
             ActivatePanel();
             SwitchTo(army);
         }
@@ -304,6 +327,7 @@ namespace Game.UI
             _readOnly = false;
             _hideArmySwitcher = false;
             _snapshotSiblings = null;
+            _readOnlyObserver = null;
             if (wasShowing)
             {
                 Closed?.Invoke();
@@ -799,7 +823,7 @@ namespace Game.UI
                 return new List<UnitData>();
             if (!_readOnly)
                 return _currentArmy.Members;
-            Game.Players.PlayerSetupData viewer = Game.Map.VisionSystem.CurrentViewer;
+            Game.Players.PlayerSetupData viewer = _readOnlyObserver ?? Game.Map.VisionSystem.CurrentViewer;
             return _currentArmy.Members.Where(m => !Game.Map.StealthSystem.IsHiddenFrom(m, viewer)).ToList();
         }
 

@@ -263,7 +263,7 @@ namespace Game.UI
                 // so only THIS specific open/close pair triggers it).
                 SetPanelActive(false);
                 _hiddenForSideListModal = true;
-                armyViewerModal?.ShowLocked(army);
+                armyViewerModal?.ShowLocked(army, observer);
                 SetActionButtonsInteractable(false);
             });
         }

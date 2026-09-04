@@ -751,33 +751,56 @@ namespace Game.UI
             // STEALTH-COMBAT-01: this contact was queued back when it was landed on (see
             // PerformRetreat) — possibly while its participants were still hidden — and reveal is
             // deliberately deferred until the queue actually reaches it and it's about to show,
-            // not at enqueue time. Right here, immediately before battleContactPopup.Show below.
-            // The observer passed in can't just be contact.participants[0].Owner (that's
-            // whichever side happened to be the "hunter" — see PerformRetreat's own comment,
-            // could just as easily be an AI/Neutral army) — ResolveHumanObserver finds the actual
-            // human this popup is about to be shown to, same reasoning as GameTurnController.
+            // not at enqueue time. Right here, immediately before battleContactPopup.Show/direct
+            // resolution below. The presentation observer passed in can't just be
+            // contact.participants[0].Owner (that's whichever side happened to be the "hunter" —
+            // see PerformRetreat's own comment, could just as easily be an AI/Neutral army) —
+            // ResolveHumanObserver finds the actual human this encounter should be PRESENTED to
+            // (read-only side-list filtering), same reasoning as GameTurnController.
             // ResolveDelayedBattlesThen's own fix for this. Its returned context is also the
             // single source of truth for TargetHeroOnly below — it's computed AFTER reveal, so
             // this never re-derives it separately from stale, possibly-still-hidden data.
             Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
                 contact.hex, contact.participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(contact.participants));
             Action onClosed = _onClosed;
-            battleContactPopup.Show(contact.hex, contact.participants, encounter.PresentationObserver,
-                onFight: () =>
-                {
-                    if (encounter.TargetHeroOnly)
-                        BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
-                    else
-                        Show(contact.hex, contact.participants, onClosed);
-                },
-                onDelay: () =>
-                {
-                    DelayedBattleRegistry.Add(new PendingBattle { Hex = contact.hex, Participants = contact.participants });
-                    // Delaying THIS queued contact doesn't mean the queue is empty — try the next
-                    // one before actually closing (same reasoning as every other Hide() site).
-                    if (!TryChainPendingRetreatContact())
-                        Hide();
-                });
+
+            // Whether an interactive Fight/Delay popup shows at all is decided by who the
+            // INITIATOR (the hunter, participants[0] — see PerformRetreat) is, never by whether a
+            // human happens to be watching (PresentationObserver can be non-null even when the
+            // hunter is AI, e.g. an AI hunter chasing onto a human target's hex — see
+            // HexSelectionController.Movement.cs's TryBeginBattleAt for the exact same rule
+            // applied to an ordinary strategic move). An AI/Neutral hunter always fights
+            // immediately, same "nobody to click a popup" reasoning as everywhere else — this
+            // also covers the AI-vs-AI case where PresentationObserver is null entirely.
+            ArmyData hunter = contact.participants.Count > 0 ? contact.participants[0] : null;
+            if (battleContactPopup != null && hunter?.Owner != null && hunter.Owner.IsHuman)
+            {
+                battleContactPopup.Show(contact.hex, contact.participants, encounter.PresentationObserver,
+                    onFight: () =>
+                    {
+                        if (encounter.TargetHeroOnly)
+                            BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
+                        else
+                            Show(contact.hex, contact.participants, onClosed);
+                    },
+                    onDelay: () =>
+                    {
+                        DelayedBattleRegistry.Add(new PendingBattle { Hex = contact.hex, Participants = contact.participants });
+                        // Delaying THIS queued contact doesn't mean the queue is empty — try the
+                        // next one before actually closing (same reasoning as every other Hide()
+                        // site).
+                        if (!TryChainPendingRetreatContact())
+                            Hide();
+                    });
+            }
+            else if (encounter.TargetHeroOnly)
+            {
+                BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
+            }
+            else
+            {
+                Show(contact.hex, contact.participants, onClosed);
+            }
             return true;
         }
 
