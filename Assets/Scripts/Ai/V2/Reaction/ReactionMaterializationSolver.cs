@@ -107,6 +107,7 @@ namespace Game.Ai.V2
                 switch (p.Deploy.Kind)
                 {
                     case DeploymentKind.ExistingArmy:
+                    case DeploymentKind.Garrison:
                     {
                         int id = p.Deploy.Army?.Id ?? -1;
                         ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);

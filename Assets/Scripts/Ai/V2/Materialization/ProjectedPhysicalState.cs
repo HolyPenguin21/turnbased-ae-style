@@ -24,8 +24,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal sealed class ProjectedPhysicalState
     {
-        private const int FieldBaseCapacity = 2;
-        private const int GarrisonBaseCapacity = 4;
+        private const int FieldBaseCapacity = 2;   // ArmyData.BaseCapacity — a fresh, un-seeded
+                                                   // (NewArmy / ReusableShell) recipient's nominal.
 
         // Canonical recipient identity for a plan's deploy target. NewArmy is keyed by StableKey so
         // two distinct fresh-army plans never share a projection; every other kind by army id.
@@ -90,13 +90,13 @@ namespace Game.Ai.V2
             _recipients.TryGetValue(key, out Recipient r) ? r
             : new Recipient { IsGarrison = false, BaseNominalCapacity = FieldBaseCapacity };
 
+        // ARCH-02 §58 — the fit test goes through the shared ArmyCapacityRules, the same primitive
+        // CardPlayExecutor.CanFitAfterDeploy uses, so planner and executor cannot disagree.
         private static bool RosterFits(in Recipient r)
         {
             int members = r.BaseNonHero + (r.BaseHasHero ? 1 : 0) + r.AddedNonHero + r.AddedHeroes;
-            int cap = r.BaseHasHero ? r.BaseNominalCapacity
-                : r.AddedHeroes > 0 ? r.FirstAddedHeroCr
-                : (r.IsGarrison ? GarrisonBaseCapacity : FieldBaseCapacity);
-            return members <= cap;
+            return ArmyCapacityRules.RosterFits(r.BaseNominalCapacity, r.BaseHasHero,
+                members, r.AddedHeroes, r.FirstAddedHeroCr);
         }
 
         internal readonly struct Token

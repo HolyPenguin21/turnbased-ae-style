@@ -68,13 +68,15 @@ namespace Game.Ai.V2
         public bool ArmyCreated;
         public ArmyData ArmyShell;   // reused/created/target; a retained reusable asset if deploy failed
         public float ApSpent;        // REAL AP delta measured on PlayerRoot
+        public ResourceCost ResourcesSpent;  // REAL H/E/M/T delta (null = none)
         public bool StateChanged;
+        public int StateVersionAfter = -1;
         public string FailReason;
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: null,
+            succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
             played: Deployed, generated: false, attached: false, moved: false, created: ArmyCreated,
-            needsReplan: false, stateVersionAfter: -1, failReason: Deployed ? null : FailReason);
+            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
 
     public static class CardPlayExecutor
@@ -95,9 +97,9 @@ namespace Game.Ai.V2
         internal static int ProjectedCapacityAfterDeploy(
             int nominalCapacity, bool targetHasHero, CardDefinition incoming)
         {
-            if (incoming != null && incoming.cardType == CardType.Hero && !targetHasHero)
-                return incoming.commandRating;
-            return nominalCapacity;
+            bool incomingHero = incoming != null && incoming.cardType == CardType.Hero;
+            return ArmyCapacityRules.ProjectedCapacity(nominalCapacity, targetHasHero,
+                incomingHero ? 1 : 0, incomingHero ? incoming.commandRating : 0);
         }
 
         // Shared V2 projected-capacity predicate. Mirrors ArmyActions.DeployUnitFromCard: capacity
@@ -191,6 +193,7 @@ namespace Game.Ai.V2
                     result.ApSpent = apStart - root.ActionPoints;   // real (0 on a clean refusal)
                     result.StateChanged = result.ApSpent > 0f;
                     result.FailReason = "CreateArmy failed";
+                    Stamp(result, resStart, root);
                     return result;
                 }
                 result.ArmyCreated = true;
@@ -210,6 +213,7 @@ namespace Game.Ai.V2
             if (!deployed)
             {
                 result.FailReason = deployFail ?? "DeployUnitFromCard failed";
+                Stamp(result, resStart, root);
                 return result;
             }
 
@@ -218,6 +222,7 @@ namespace Game.Ai.V2
             // A successful deploy ALWAYS changed the world: a new unit exists, the target army
             // grew, the hand shrank, capability supply moved — even for a 0-AP / 0-resource card.
             result.StateChanged = true;
+            Stamp(result, resStart, root);
             return result;
         }
 
@@ -234,6 +239,21 @@ namespace Game.Ai.V2
             for (int i = 0; i < a.Length; i++)
                 if (a[i] != b[i]) return false;
             return true;
+        }
+
+        // Res == { Human, Energy, Materials, Tech }.
+        private static ResourceCost DeltaCost(int[] start, int[] end)
+        {
+            int h = start[0] - end[0], e = start[1] - end[1], m = start[2] - end[2], t = start[3] - end[3];
+            return (h | e | m | t) == 0 ? null
+                : new ResourceCost { human = h, energy = e, materials = m, tech = t };
+        }
+
+        private static void Stamp(CardPlayResult r, int[] resStart, PlayerRoot root)
+        {
+            r.ResourcesSpent = DeltaCost(resStart, Snapshot(root));
+            if (r.StateChanged) V2StateVersion.Bump();
+            r.StateVersionAfter = V2StateVersion.Current;
         }
     }
 }
