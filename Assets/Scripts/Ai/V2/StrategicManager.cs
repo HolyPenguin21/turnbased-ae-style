@@ -697,9 +697,10 @@ namespace Game.Ai.V2
             result.Reservation.GenerationAttemptsUsed =
                 Mathf.Max(result.Reservation.GenerationAttemptsUsed, budget.GenerationAttemptsUsed);
 
-            // --- §7/§P1.1/§P1.2 reaction reservation: reserve the EXACT validated cost of a
-            //     CONCRETE actionable reaction (a named action, a real actor, a legal target), or
-            //     reserve nothing. The reservation Owner is the action key, not "the pass".
+            // --- §7 (round 4) reaction reservation: a BOUNDED AP BUDGET for the same-turn reaction
+            //     replan (not an exact action cost — the replan re-runs the whole pipeline and
+            //     picks its own action). Reserve AP only; the replan's own affordability checks
+            //     handle persistent resources. Owner is a stable "reaction-budget" tag.
             StrategicReactionOpportunity reactionOpp =
                 StrategicReactionPass.BuildReactionOpportunity(player, root, ctx);
             if (reactionOpp.IsActionable)
@@ -707,42 +708,26 @@ namespace Game.Ai.V2
                 StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
                     new StrategicResourceReservation
                     {
-                        Owner = reactionOpp.ActionKey,
+                        Owner = reactionOpp.OwnerKey,
                         Reason = StrategicReservationReason.StrategicReactionPass,
                         Resource = StrategicReservedResource.ActionPoints,
-                        Amount = reactionOpp.ExactApRequired,
+                        Amount = reactionOpp.ReservedApBudget,
                         ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                     });
-                if (reactionOpp.ResourceCost != null)
-                    foreach (ResourceType rt in ResourceBundle.All)
-                    {
-                        int n = reactionOpp.ResourceCost.Get(rt);
-                        if (n <= 0) continue;
-                        StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
-                            new StrategicResourceReservation
-                            {
-                                Owner = reactionOpp.ActionKey,
-                                Reason = StrategicReservationReason.StrategicReactionPass,
-                                Resource = StrategicResourceReservationLedger.Map(rt),
-                                Amount = n,
-                                ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                            });
-                    }
-                AiDebugLog.Write($"[AI][V2]   strat.B — reaction actionable ({reactionOpp.ActionKind}, "
-                    + $"actor #{reactionOpp.ActorId}); reserve EXACT {F(reactionOpp.ExactApRequired)} AP"
-                    + (reactionOpp.ResourceCost != null ? $" + res [{ResCostStr(reactionOpp.ResourceCost)}]" : "")
-                    + $" (owner={reactionOpp.ActionKey} exp=EndOfReaction), spendable AP now "
+                AiDebugLog.Write($"[AI][V2]   strat.B — reaction actionable ({reactionOpp.Kind}); reserve BOUNDED "
+                    + $"{F(reactionOpp.ReservedApBudget)} AP replan budget (owner={reactionOpp.OwnerKey} "
+                    + $"exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
                     + $"{F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}.");
             }
             else
             {
-                // spec §7 — an existing reaction reservation whose owner is no longer actionable is
-                // released immediately (same-turn re-arbitration is HousekeepingManager's re-run).
+                // spec §7 — an existing reaction budget reservation is released the moment no
+                // same-turn reaction is actionable (same-turn re-arbitration is Housekeeping's re-run).
                 StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
-                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no concrete actionable "
-                        + $"reaction ({reactionOpp.FailReason}); NOT reserving — tempo uses the full pool (spec §7)");
+                    AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no actionable reaction "
+                        + $"({reactionOpp.FailReason}); NOT reserving — tempo uses the full pool (spec §7)");
             }
 
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
@@ -768,44 +753,54 @@ namespace Game.Ai.V2
                 var cands = BuildTempoCandidates(snap, player, root, hand, ctx, commitments, result,
                     reconObjectives, spendableAp, budget, verbose: iter == 0);
 
-                TempoCandidate holdC = cands.First(c => c.Kind == TempoKind.Hold);
-                TempoCandidate endC = cands.First(c => c.Kind == TempoKind.EndTurn);
-                float holdU = holdC.Utility;
-                float endU = endC.Utility;
-                float terminalBar = Mathf.Max(holdU, endU);
+                float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;   // 0
+                float holdPolicyFull = HoldResourcesUtility(root, snap, null);        // whole pool — diagnostic only
 
                 LogTempoIterationHeader(ctx, root, snap, player, hand, budget, iter, spendableAp);
 
-                // §P0.2/§P0.3 — PlayCard utility is the StrategicCardEvaluator NetScore VERBATIM.
-                // The arbiter never subtracts a hold term from a spend; HoldResources competes as a
-                // real terminal candidate: bestActionableSpend.Utility vs max(HoldResources, EndTurn).
+                // §P0 (round 4) — ONE comparable space, but HoldResources is NOT a global stop gate.
+                //   · PlayCard (mat / non-combat): utility = StrategicCardEvaluator NetScore VERBATIM
+                //     (the evaluator already owns HoldValue / ScarcityValue / ResourcePressureBenefit).
+                //   · AP-only actions (Draw, AP-only Pressure): utility verbatim — keeping H/E/M/T is
+                //     COMPATIBLE with spending AP, so the persistent-hold policy never blocks them.
+                //   · Non-card spend (capacity upgrade): effective = utility − holdOfConsumed, i.e.
+                //     the retention value of ONLY the persistent resources IT consumes.
+                // A candidate is eligible when effective > max(EndTurn, tempoMinSpendUtility).
                 TempoCandidate best = null;
+                float bestEff = float.NegativeInfinity;
                 foreach (TempoCandidate c in cands
                     .Where(c => IsSpend(c.Kind))
                     .OrderByDescending(c => c.Utility)
                     .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
                 {
                     string block = TempoBlockReason(c, spendableAp, budget, parkedAt, stateVersion, player, root, ctx);
-                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} apCost {F(c.ApCost)}"
-                        + $" resCost [{ResCostStr(c.ResCost)}] key={c.ActionKey}"
+                    float holdOfConsumed = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
+                        ? HoldResourcesUtility(root, snap, c.ResCost) : 0f;
+                    float eff = c.Utility - holdOfConsumed;
+                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} holdOfConsumed {F(holdOfConsumed)}"
+                        + $" eff {F(eff)} apCost {F(c.ApCost)} resCost [{ResCostStr(c.ResCost)}] key={c.ActionKey}"
                         + (block != null ? $" BLOCKED: {block}" : "")
                         + (c.DrawDiag != null ? $" {{{c.DrawDiag}}}" : "")
                         + $" — {c.Label}");
-                    if (block == null && (best == null || c.Utility > best.Utility))
+                    if (block == null && eff > bestEff)
+                    {
                         best = c;
+                        bestEff = eff;
+                    }
                 }
 
-                AiDebugLog.Write($"[AI][V2]     cand Hold util {F(holdU)}  |  cand EndTurn util {F(endU)}");
+                AiDebugLog.Write($"[AI][V2]     policy Hold(full pool) {F(holdPolicyFull)} (diag only)  |  EndTurn {F(endU)}");
 
+                float spendBar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, endU);
                 if (best == null)
                 {
                     stopReason = "no eligible spend candidate " + BudgetSummary(budget);
                     break;
                 }
-                if (best.Utility <= Mathf.Max(AiConfigV2.tempoMinSpendUtility, terminalBar))
+                if (bestEff <= spendBar)
                 {
-                    stopReason = $"max(Hold {F(holdU)}, EndTurn {F(endU)}) >= best spend {best.Kind} {F(best.Utility)} "
-                        + $"(minSpend {F(AiConfigV2.tempoMinSpendUtility)})";
+                    stopReason = $"best spend {best.Kind} eff {F(bestEff)} <= max(minSpend {F(AiConfigV2.tempoMinSpendUtility)}, "
+                        + $"endTurn {F(endU)}) = {F(spendBar)}";
                     break;
                 }
 
@@ -863,7 +858,7 @@ namespace Game.Ai.V2
                         draw: exec.Progressed && best.CountsAsTerminalDraw,
                         generationAttempt: false);
 
-                AiDebugLog.Write($"[AI][V2]   tempo[{iter - 1}] — WINNER {best.Kind} util {F(best.Utility)} — {best.Label}"
+                AiDebugLog.Write($"[AI][V2]   tempo[{iter - 1}] — WINNER {best.Kind} util {F(best.Utility)} eff {F(bestEff)} — {best.Label}"
                     + $"  => ok {(exec.Succeeded ? 1 : 0)} progressed {(exec.Progressed ? 1 : 0)} stateChanged {(exec.StateChanged ? 1 : 0)}"
                     + $" spent ap {exec.ApSpent} H/E/M/T {exec.HumanSpent}/{exec.EnergySpent}/{exec.MaterialsSpent}/{exec.TechSpent}"
                     + $" card {(exec.CardPlayed ? 1 : 0)} drawn {(exec.Drawn ? 1 : 0)} gen {(exec.Generated ? 1 : 0)} attach {(exec.Attached ? 1 : 0)}"
@@ -916,8 +911,9 @@ namespace Game.Ai.V2
             return $"H{c.human} E{c.energy} M{c.materials} T{c.tech}";
         }
 
-        // Per-iteration mandatory diagnostic: AP, per-resource total/reserved/spendable/soft-cap/
-        // expected-income/expected-overflow, hand, deck, and the shared turn budget.
+        // Per-iteration mandatory diagnostic: AP, per-resource total/reserved/spendable/runway-target/
+        // expected-income/strategic-overstock (NOT a physical overflow — the game has no storage cap),
+        // hand, deck, and the shared turn budget.
         private static void LogTempoIterationHeader(AiTurnContext ctx, PlayerRoot root, WorldSnapshot snap,
             PlayerSetupData player, AiHandData hand, StrategicTempoBudget budget, int iter, float spendableAp)
         {
@@ -932,9 +928,9 @@ namespace Game.Ai.V2
                 float spendable = Mathf.Max(0f, stock - reserved);
                 float incomeTarget = snap?.Economy?.IncomeTarget.Get(rt) ?? 0f;
                 float nextIncome = snap?.Self != null ? snap.Self.PerTurnIncome.Get(rt) : 0f;
-                float cap = Mathf.Max(comfortable, incomeTarget * AiConfigV2.tempoHoldOverflowCapHorizon);
-                float overflow = Mathf.Max(0f, (stock + nextIncome) - cap);
-                sb.Append($"{rt.ToString()[0]} {stock}(rsv {F(reserved)} sp {F(spendable)} cap {F(cap)} inc {F(nextIncome)} ovf {F(overflow)}) ");
+                float runwayTarget = Mathf.Max(comfortable, incomeTarget * AiConfigV2.tempoHoldOverstockRunwayHorizon);
+                float overstock = Mathf.Max(0f, (stock + nextIncome) - runwayTarget);
+                sb.Append($"{rt.ToString()[0]} {stock}(rsv {F(reserved)} sp {F(spendable)} runway {F(runwayTarget)} inc {F(nextIncome)} overstock {F(overstock)}) ");
             }
             sb.Append($"| hand {hand.Hand.Count}/{ctx.HandCapacity} deck {hand.RemainingDeckCount} ");
             sb.Append(BudgetSummary(budget));
@@ -1185,24 +1181,20 @@ namespace Game.Ai.V2
             }
         }
 
-        // spec §P0.2/§P0.5 — HoldResources as a REAL terminal candidate: the value of NOT spending
-        // the loose persistent stockpile (AP is never held; it does not carry over). It is NOT a
-        // per-action correction — the arbiter compares it (and EndTurn) against the best spend.
+        // §P0 (round 4) — the H/E/M/T RETENTION policy value. NOT a global stop gate: the arbiter
+        // calls this ONLY for a non-card spend, passing that spend's own ResourceCost as
+        // `onlyConsumed` so the value covers just the resources it burns (an AP-only action never
+        // consults this; PlayCard's retention is StrategicCardEvaluator's job). Passing null returns
+        // the whole-pool value — used only for the diagnostic line.
         //   base = (fragility*fragilityWeight + scarcity*scarcityWeight) * scale
-        //          where scarcity = 1 - min over resources of (stock / comfortable)
-        //   - Σ near-cap overflow pressure:  the game has no hard resource cap, so the cap is a
-        //     SOFT cap = max(comfortable, IncomeTarget[r] * overflowCapHorizon). For each resource
-        //     ExpectedOverflow = max(0, (stock + PerTurnIncome[r]) - softCap); the term is summed
-        //     (floored at 0 per resource) so a scarce Tech cannot re-inflate a Materials overflow.
-        private static float HoldResourcesUtility(PlayerRoot root, WorldSnapshot snap)
+        //          where scarcity = 1 - min over the in-scope resources of (stock / comfortable)
+        //   - Σ STRATEGIC OVERSTOCK relief: the game has NO hard resource cap so nothing is
+        //     physically lost; a resource far above its runway need (runwayTarget = max(comfortable,
+        //     IncomeTarget[r] * overstockRunwayHorizon)) is just worth less to hoard. overstock =
+        //     max(0, (stock + PerTurnIncome[r]) - runwayTarget); summed, floored at 0 per resource.
+        private static float HoldResourcesUtility(PlayerRoot root, WorldSnapshot snap, ResourceCost onlyConsumed = null)
         {
             if (root == null)
-                return 0f;
-            int persistent = root.GetResource(Game.Economy.ResourceType.Human)
-                + root.GetResource(Game.Economy.ResourceType.Energy)
-                + root.GetResource(Game.Economy.ResourceType.Materials)
-                + root.GetResource(Game.Economy.ResourceType.Tech);
-            if (persistent <= 0)
                 return 0f;
 
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
@@ -1210,25 +1202,32 @@ namespace Game.Ai.V2
             float comfortable = Mathf.Max(1f, AiConfigV2.tempoHoldResourceComfortableStock);
 
             float minStockNorm = 1f;
-            float overflowPressure = 0f;
+            float overstockRelief = 0f;
+            bool anyInScope = false;
             foreach (ResourceType rt in ResourceBundle.All)
             {
+                if (onlyConsumed != null && onlyConsumed.Get(rt) <= 0)
+                    continue;
+                anyInScope = true;
                 int stock = root.GetResource(rt);
                 minStockNorm = Mathf.Min(minStockNorm, Mathf.Clamp01(stock / comfortable));
 
                 float incomeTarget = snap?.Economy?.IncomeTarget.Get(rt) ?? 0f;
                 float nextIncome = snap?.Self != null ? snap.Self.PerTurnIncome.Get(rt) : 0f;
-                float softCap = Mathf.Max(comfortable, incomeTarget * AiConfigV2.tempoHoldOverflowCapHorizon);
-                float expectedOverflow = Mathf.Max(0f, (stock + nextIncome) - softCap);
-                overflowPressure += expectedOverflow * AiConfigV2.tempoHoldOverflowPressureWeight;
+                float runwayTarget = Mathf.Max(comfortable, incomeTarget * AiConfigV2.tempoHoldOverstockRunwayHorizon);
+                float overstock = Mathf.Max(0f, (stock + nextIncome) - runwayTarget);
+                overstockRelief += overstock * AiConfigV2.tempoHoldOverstockReliefWeight;
             }
+            if (!anyInScope)
+                return 0f;
+
             float scarcity = 1f - minStockNorm;
             float u = (fragility * AiConfigV2.tempoHoldFragilityWeight
                        + scarcity * AiConfigV2.tempoHoldScarcityWeight)
                       * AiConfigV2.tempoHoldPersistentResourceValueScale;
-            u -= Mathf.Min(AiConfigV2.tempoHoldOverflowPressureCap, overflowPressure);
+            u -= Mathf.Min(AiConfigV2.tempoHoldOverstockReliefCap, overstockRelief);
             return Mathf.Clamp(u,
-                -AiConfigV2.tempoHoldOverflowPressureCap, AiConfigV2.tempoHoldPersistentResourceValueCap);
+                -AiConfigV2.tempoHoldOverstockReliefCap, AiConfigV2.tempoHoldPersistentResourceValueCap);
         }
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock:

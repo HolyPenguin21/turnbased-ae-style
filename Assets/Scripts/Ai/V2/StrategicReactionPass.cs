@@ -26,36 +26,36 @@ namespace Game.Ai.V2
         public int Rounds;
     }
 
-    // AI-MGR-02 §7/§P1.1/§P1.2 — a CONCRETE reaction opportunity: a named action, a real actor, a
-    // legal target and the EXACT resources that action needs. The Phase-B reservation is tagged
-    // with ActionKey (not "the pass"), reserves exactly ExactApRequired (+ ResourceCost), and is
-    // revalidated before the reaction executes (§P1.3).
+    // AI-MGR-02 §7 (round 4) — a BOUNDED REACTION BUDGET, honestly named. The bounded reaction
+    // round re-runs the whole Demand→Mission→Provision→Execute pipeline and picks its OWN action,
+    // so there is no single pre-planned action to price exactly. This struct therefore describes:
+    //   · whether a same-turn reaction is worth reserving for at all (there is pending content AND
+    //     at least one plausible way to act on it), and
+    //   · a bounded AP budget for that replan (ReservedApBudget), capped at reactionReserveApCap.
+    // The reservation Owner is a stable "reaction-budget" tag; it is revalidated before the round
+    // runs (§P1.3) and released if no reaction is actionable any more.
     internal readonly struct StrategicReactionOpportunity
     {
         public readonly bool IsActionable;
-        public readonly string ActionKey;      // reservation owner
-        public readonly string OwnerName;      // player nickname (or null)
-        public readonly int ActorId;           // responding army id (or -1 for a hand replay)
-        public readonly string ActionKind;     // "RespondToDiscovery" | "ReplayHandCard"
-        public readonly float ExactApRequired;
-        public readonly Game.Cards.ResourceCost ResourceCost;   // exact persistent cost (may be null)
+        public readonly string OwnerKey;         // reservation owner tag ("reaction-budget:<kind>")
+        public readonly string Kind;             // "RespondToDiscovery" | "HandFollowup"
+        public readonly float ReservedApBudget;  // BOUNDED replan budget (<= reactionReserveApCap), not an exact cost
+        public readonly string Rationale;        // human-readable "why this budget"
         public readonly string FailReason;
 
-        public StrategicReactionOpportunity(bool actionable, string actionKey, string ownerName, int actorId,
-            string actionKind, float exactAp, Game.Cards.ResourceCost resourceCost, string failReason)
+        public StrategicReactionOpportunity(bool actionable, string ownerKey, string kind,
+            float reservedApBudget, string rationale, string failReason)
         {
             IsActionable = actionable;
-            ActionKey = actionKey;
-            OwnerName = ownerName;
-            ActorId = actorId;
-            ActionKind = actionKind;
-            ExactApRequired = exactAp;
-            ResourceCost = resourceCost;
+            OwnerKey = ownerKey;
+            Kind = kind;
+            ReservedApBudget = reservedApBudget;
+            Rationale = rationale;
             FailReason = failReason;
         }
 
         public static StrategicReactionOpportunity None(string failReason) =>
-            new StrategicReactionOpportunity(false, null, null, -1, null, 0f, null, failReason);
+            new StrategicReactionOpportunity(false, null, null, 0f, null, failReason);
     }
 
     internal static class StrategicReactionPass
@@ -69,11 +69,12 @@ namespace Game.Ai.V2
             return !AiStrategyV2Scope.IsReconOnly;
         }
 
-        // AI-MGR-02 §7/§P1.1/§P1.2 — build the CONCRETE opportunity. Actionable requires a pending
-        // invalidation, a resolvable hand AND either a discovered target with a real eligible
-        // responder army, or a hand follow-up with a card that is playable right now. The result
-        // names the exact actor + action + exact AP/ResourceCost; reactionReserveApCap is only a
-        // safety ceiling on that exact amount, never the reservation size itself.
+        // AI-MGR-02 §7 (round 4) — is a same-turn bounded reaction replan worth reserving AP for,
+        // and how much (bounded)? Actionable requires a pending invalidation, a resolvable hand AND
+        // a PLAUSIBLE way to act: a discovered target with at least one eligible responder army, or
+        // pending follow-up with at least one card that passes a lightweight affordability gate.
+        // ReservedApBudget is a CEILING-bounded budget for the replan, never a claim about a
+        // specific action's exact cost (the replan re-runs the whole pipeline and chooses freely).
         internal static StrategicReactionOpportunity BuildReactionOpportunity(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx)
         {
@@ -94,75 +95,65 @@ namespace Game.Ai.V2
                 return StrategicReactionOpportunity.None("noActionableContent");
 
             float apAvailable = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
-            float ceiling = Mathf.Min(apAvailable, AiConfigV2.reactionReserveApCap);
-            string ownerName = player.Nickname;
-            var sortedTargets = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber).OrderBy(x => x).ToList();
+            int cap = AiConfigV2.reactionReserveApCap;
 
             if (targetDriven)
             {
-                // A discovered target => the replan funds a response by a CONCRETE own field army:
-                // the cheapest eligible responder. No eligible responder => nothing to react with.
-                ArmyData responder = null;
-                int responderCost = int.MaxValue;
+                // Actionability gate: at least one own field army could respond. Budget estimate:
+                // the cheapest such responder's activation + one move step — but this is only an
+                // ESTIMATE feeding a bounded budget, so it is allowed to exceed the ceiling; we
+                // then reserve the ceiling and say so (never silently shrink an "exact" number).
+                int cheapestResponderCost = int.MaxValue;
                 foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
                 {
                     if (a == null || a.Members.Count == 0 || a.CurrentMovement <= 0
                         || a.IsGarrison || a.IsPrison || a.IsAirfield || a.IsAirArmy
                         || AiArmyRoles.IsSoloRecce(a))
                         continue;
-                    int cost = a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
+                    int c = a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
                     if (!a.HasActivatedThisTurn && !root.CanSpendActionPoints(a.ActivationApCost))
                         continue;
-                    if (responder == null || cost < responderCost
-                        || (cost == responderCost && a.Id < responder.Id))
-                    {
-                        responder = a;
-                        responderCost = cost;
-                    }
+                    cheapestResponderCost = Mathf.Min(cheapestResponderCost, c);
                 }
-                if (responder == null)
+                if (cheapestResponderCost == int.MaxValue)
                     return StrategicReactionOpportunity.None("noEligibleResponder");
 
-                float exactAp = Mathf.Clamp(responderCost + AiConfigV2.reactionResponderMoveApEstimate, 0f, ceiling);
-                if (exactAp <= 0f)
-                    return StrategicReactionOpportunity.None("noApToReserve");
-                string key = $"reaction:respond:{responder.Id}:[{string.Join(",", sortedTargets)}]";
-                return new StrategicReactionOpportunity(true, key, ownerName, responder.Id,
-                    "RespondToDiscovery", exactAp, null, null);
+                float estimate = cheapestResponderCost + AiConfigV2.reactionResponderMoveApEstimate;
+                float budget = Mathf.Min(estimate, Mathf.Min(apAvailable, cap));
+                if (budget <= 0f)
+                    return StrategicReactionOpportunity.None("noApAvailable");
+                string rationale = estimate > cap
+                    ? $"estimate {estimate:0.#} AP exceeds ceiling {cap}; reserving the ceiling as a bounded replan budget"
+                    : $"cheapest responder {cheapestResponderCost} + move {AiConfigV2.reactionResponderMoveApEstimate}";
+                return new StrategicReactionOpportunity(true, "reaction-budget:RespondToDiscovery",
+                    "RespondToDiscovery", budget, rationale, null);
             }
 
-            // Hand-only follow-up => the replan replays ONE concrete hand card. Pick the cheapest
-            // card that is actually playable RIGHT NOW (AP + persistent resources affordable). If
-            // none is playable, do not reserve for a phantom card.
-            var playable = hand.Hand
+            // Hand-only follow-up. Actionability gate: at least one hand card clears a lightweight
+            // affordability check (AP + persistent cost). This is NOT a claim that this exact card
+            // will be played — the replan chooses — it only proves a hand replay is plausible.
+            var affordable = hand.Hand
                 .Where(c => c?.Definition != null
                     && c.EffectivePlayApCost <= apAvailable + 0.001f
                     && (c.EffectivePlayResourceCost == null || c.EffectivePlayResourceCost.CanAfford(root)))
                 .OrderBy(c => c.EffectivePlayApCost)
-                .ThenBy(c => c.Definition.displayName, System.StringComparer.Ordinal)
                 .ToList();
-            if (playable.Count == 0)
-                return StrategicReactionOpportunity.None("noPlayableFollowupCard");
+            if (affordable.Count == 0)
+                return StrategicReactionOpportunity.None("noAffordableHandCard");
 
-            var card = playable[0];
-            float cardAp = Mathf.Clamp(Mathf.Max(card.EffectivePlayApCost, AiConfigV2.reactionFollowupApEstimate),
-                0f, ceiling);
-            if (cardAp <= 0f)
-                return StrategicReactionOpportunity.None("noApToReserve");
-            string ckey = $"reaction:replay:{card.Definition.displayName}";
-            return new StrategicReactionOpportunity(true, ckey, ownerName, -1, "ReplayHandCard",
-                cardAp, card.EffectivePlayResourceCost, null);
+            float cardEstimate = Mathf.Max(affordable[0].EffectivePlayApCost, AiConfigV2.reactionFollowupApEstimate);
+            float cardBudget = Mathf.Min(cardEstimate, Mathf.Min(apAvailable, cap));
+            if (cardBudget <= 0f)
+                return StrategicReactionOpportunity.None("noApAvailable");
+            return new StrategicReactionOpportunity(true, "reaction-budget:HandFollowup", "HandFollowup",
+                cardBudget, $"cheapest affordable hand card {affordable[0].EffectivePlayApCost:0.#} AP", null);
         }
 
-        // §P1.3 — the SAME concrete opportunity must still exist right before the reaction executes.
-        internal static bool ReactionOwnerStillValid(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, string reservedActionKey)
-        {
-            if (string.IsNullOrEmpty(reservedActionKey))
-                return false;
-            StrategicReactionOpportunity now = BuildReactionOpportunity(player, root, ctx);
-            return now.IsActionable && now.ActionKey == reservedActionKey;
-        }
+        // §P1.3 — before the bounded reaction round runs, a same-turn reaction must still be
+        // actionable at all. If not, its budget reservation is released so the AP re-enters
+        // arbitration this turn (HousekeepingManager's tempo re-run).
+        internal static bool ReactionStillActionable(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+            => BuildReactionOpportunity(player, root, ctx).IsActionable;
 
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
@@ -203,22 +194,18 @@ namespace Game.Ai.V2
             if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 yield break;
 
-            // §P1.3 — revalidate the reserved reaction owner right before executing. If the exact
-            // concrete opportunity no longer exists (actor moved/lost, target gone, hand changed),
-            // release its reservation now so the freed resources re-enter arbitration THIS turn
-            // (HousekeepingManager's tempo re-run) instead of being pinned to a dead action.
-            if (round == 0)
+            // §P1.3 — before running the bounded round, a same-turn reaction must still be
+            // actionable at all (a responder / affordable card still exists). If not, release the
+            // budget reservation now so the freed AP re-enters arbitration THIS turn
+            // (HousekeepingManager's tempo re-run) instead of being pinned to a dead budget.
+            if (round == 0
+                && StrategicResourceReservationLedger.HasAny(player, ctx.TurnNumber)
+                && !ReactionStillActionable(player, root, ctx))
             {
-                string reservedKey = StrategicResourceReservationLedger.OwnerOf(
-                    player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
-                if (!string.IsNullOrEmpty(reservedKey)
-                    && !ReactionOwnerStillValid(player, root, ctx, reservedKey))
-                {
-                    StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
-                        StrategicReservationReason.StrategicReactionPass);
-                    AiDebugLog.Write($"[AI][V2] reaction — reserved owner '{reservedKey}' is no longer a "
-                        + "concrete actionable opportunity; released its reservation before executing");
-                }
+                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                    StrategicReservationReason.StrategicReactionPass);
+                AiDebugLog.Write("[AI][V2] reaction — no same-turn reaction is actionable any more; "
+                    + "released the reaction-budget reservation before executing");
             }
 
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);

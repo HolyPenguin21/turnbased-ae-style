@@ -586,29 +586,31 @@ namespace Game.Ai.V2
         // stranded AP is used for a marginally-useful action, but a genuinely worthless one still
         // loses to EndTurn (spec §4 — "high SpendPressure is not play garbage at any cost").
         public const float tempoMinSpendUtility = 0.05f;
-        // AI-MGR-02 §P0.2/§P0.3 — HoldResources is a REAL terminal candidate, NOT a per-action
-        // correction. The arbiter compares bestActionableSpend.Utility vs max(HoldResources,
-        // EndTurn); it never subtracts a hold term from a PlayCard NetScore (that would double-count
-        // against StrategicCardEvaluator, which already owns HoldValue / ResourcePressureBenefit).
-        //   HoldResources.Utility = (fragility*fragilityWeight + scarcity*scarcityWeight)*scale
-        //                           - Σ near-cap overflow pressure (spec §P0.5), clamped to cap.
+        // AI-MGR-02 §P0 (round 4) — HoldResources is NOT a global "stop everything" gate. AP is
+        // never held, so an AP-only action (Draw, AP-only Pressure) is COMPATIBLE with keeping the
+        // persistent pool and competes only against EndTurn / tempoMinSpendUtility. The H/E/M/T
+        // retention policy below is applied ONLY to a candidate that actually CONSUMES a persistent
+        // resource, and only for the resources it consumes — a scarce Tech never blocks a
+        // Materials-only spend. PlayCard is exempt entirely: StrategicCardEvaluator already owns its
+        // own HoldValue / ScarcityValue / ResourcePressureBenefit and its NetScore is used verbatim.
+        //   holdOfConsumed(cost) = Σ over r with cost[r]>0 of
+        //        (fragility*fragilityWeight + scarcity*scarcityWeight)*scale
+        //        - strategic-overstock relief (below), clamped.
         public const int   tempoHoldResourceComfortableStock = 8;    // a resource at/above this is not "scarce"
         public const float tempoHoldFragilityWeight = 0.5f;
         public const float tempoHoldScarcityWeight = 1.0f;
         public const float tempoHoldPersistentResourceValueScale = 1.6f;
         public const float tempoHoldPersistentResourceValueCap = 2.5f; // a strong play (NetScore > this) still wins
-        // AI-MGR-02 §P0.5 — near-cap OVERFLOW pressure, per resource. The game has no hard resource
-        // storage cap, so the "cap" is a SOFT cap = this deck's sustainable per-turn IncomeTarget
-        // for that resource * horizon (a comfortable runway). For each resource:
-        //   ResourceCap      = max(comfortableStock, IncomeTarget[r] * tempoHoldOverflowCapHorizon)
-        //   ProjectedStock   = CurrentStock + ExpectedNextIncome (snap.Self.PerTurnIncome[r])
-        //   ExpectedOverflow = max(0, ProjectedStock - ResourceCap)
-        // ExpectedOverflow lowers HoldResources.Utility (spend the over-supplied resource); a scarce
-        // OTHER resource cannot re-raise it because the term is summed per resource, floored at 0
-        // for non-overflowing ones.
-        public const float tempoHoldOverflowCapHorizon = 6f;         // turns of IncomeTarget that define the soft cap
-        public const float tempoHoldOverflowPressureWeight = 0.20f;  // per projected-overflow unit, subtracted from HoldResources.Utility
-        public const float tempoHoldOverflowPressureCap = 3.0f;      // max total negative contribution from overflow
+        // AI-MGR-02 §P1 (round 4) — STRATEGIC OVERSTOCK relief, per resource. The game has NO hard
+        // resource storage cap (PlayerRoot.AddResource is unbounded), so nothing is physically lost
+        // and this is NOT "overflow". It only expresses: a resource held far above the deck's
+        // sustainable runway need is worth LESS to keep, so a spend that consumes it is penalised
+        // less. runwayTarget = max(comfortableStock, IncomeTarget[r] * tempoHoldOverstockRunwayHorizon);
+        // overstock = max(0, (stock + PerTurnIncome[r]) - runwayTarget); summed per resource, floored
+        // at 0 each so a scarce resource cannot re-inflate another resource's relief.
+        public const float tempoHoldOverstockRunwayHorizon = 6f;     // turns of IncomeTarget that define the runway target
+        public const float tempoHoldOverstockReliefWeight = 0.20f;   // per overstock unit, subtracted from holdOfConsumed
+        public const float tempoHoldOverstockReliefCap = 3.0f;       // max total overstock relief
         // DrawCard candidate utility, same [~0..5] NetScore band as PlayCard (spec §1 — Draw is a
         // full peer, not a terminal fallback, and is NOT penalised for holding H/E/M/T it does not
         // spend — Draw costs only AP).
@@ -634,9 +636,11 @@ namespace Game.Ai.V2
         // candidates through NonCombatCardPlayer -> StrategicCardEvaluator (spec §5, one card
         // scorer). This is the only remaining maintenance utility band.
         public const float tempoMaintenanceCapacityUpgradeValue = 0.70f;
-        // spec §7 — the bounded reaction pass reserves a CONCRETE estimate of what it would spend
-        // (cheapest eligible responder's activation + a move step, or one card play for a
-        // hand-only follow-up), never the whole pool. This is the hard ceiling on that estimate.
+        // spec §7 (round 4) — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
+        // replan, not an exact action cost (the replan re-runs the whole Demand→Mission→Provision
+        // pipeline and picks its own action, so there is no single pre-planned action to price).
+        // This is the ceiling on that budget; the estimate feeding it may legitimately exceed it —
+        // the replan is simply bounded to this many AP.
         public const int reactionReserveApCap = 6;
         // spec §7 — AP estimate for a hand-only (no discovered target) reaction follow-up when the
         // hand carries no priced card to sample; a single modest replay.
