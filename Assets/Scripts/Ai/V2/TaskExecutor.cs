@@ -295,7 +295,7 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, pm.ExecutionHex);
+                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, pm.ExecutionHex);
                 if (next == null)
                 {
                     stop = ExecutionStopReason.NoSafeStep;

@@ -291,7 +291,7 @@ namespace Game.Ai.V2
                     {
                         ArmyData liveMover = ResolveArmy(player, mover.ArmyId);
                         if (liveMover == null
-                            || VisitHexTask.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
+                            || SafeStepPathing.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
                             continue;
                     }
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
@@ -304,7 +304,7 @@ namespace Game.Ai.V2
                 if (live == null) continue;
                 foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
                 {
-                    if (VisitHexTask.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
+                    if (SafeStepPathing.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
                         continue;
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired: true);
                     list.Add(new ScoutExecutionCandidate(mover, v.ExecutionHex, pc.EffActivationAp,
@@ -552,7 +552,7 @@ namespace Game.Ai.V2
                         $"focus ({focus.Q},{focus.R}) now holds a known army"));
             }
 
-            HexCoord? firstStep = VisitHexTask.FindNextSafeStep(ctx.Map, army, executionHex);
+            HexCoord? firstStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex);
             if (firstStep == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({army.Hex.Q},{army.Hex.R}) toward ({executionHex.Q},{executionHex.R})"));
@@ -615,7 +615,7 @@ namespace Game.Ai.V2
                     {
                         ArmyData live = ResolveArmy(player, mv.ArmyId);
                         return live != null
-                            && VisitHexTask.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
+                            && SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
                     });
                     if (!anyReachable)
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
@@ -764,7 +764,7 @@ namespace Game.Ai.V2
                 plan.ProjectedWinChance = projectedWin;
             }
 
-            if (VisitHexTask.FindNextSafeStep(ctx.Map, host, targetHex) == null)
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, host, targetHex) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward raid target ({targetHex.Q},{targetHex.R})"));
 

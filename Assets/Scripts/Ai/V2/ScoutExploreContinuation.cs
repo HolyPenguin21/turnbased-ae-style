@@ -45,7 +45,7 @@ namespace Game.Ai.V2
                     || AiMapMemory.IsScoutDangerous(player, h)
                     || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
                     continue;
-                if (!VisitHexTask.FindNextSafeStep(map, army, h).HasValue)
+                if (!SafeStepPathing.FindNextSafeStep(map, army, h).HasValue)
                     continue;
 
                 int moveCost = terrain != null ? System.Math.Max(1, terrain.moveCost) : 1;

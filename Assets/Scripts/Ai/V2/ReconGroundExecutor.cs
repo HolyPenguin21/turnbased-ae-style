@@ -210,13 +210,13 @@ namespace Game.Ai.V2
                 {
                     case ReconReactionAction.Flee:
                         if (reaction.TargetHex.HasValue)
-                            next = VisitHexTask.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                            next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
                         actionWhy = "Flee";
                         break;
 
                     case ReconReactionAction.EvadeDetector:
                         if (reaction.TargetHex.HasValue)
-                            next = VisitHexTask.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                            next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
                         actionWhy = "EvadeDetector";
                         break;
 

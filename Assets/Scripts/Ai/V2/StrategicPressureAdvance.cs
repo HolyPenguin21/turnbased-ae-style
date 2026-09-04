@@ -160,7 +160,7 @@ namespace Game.Ai.V2
                 if (!army.HasActivatedThisTurn && !root.CanSpendActionPoints(army.ActivationApCost))
                     break;
 
-                HexCoord? next = VisitHexTask.FindNextSafeStep(ctx.Map, army, plan.TargetHex);
+                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, plan.TargetHex);
                 if (!next.HasValue)
                 {
                     AiDebugLog.Write($"[AI][V2] strategic pressure — stop army #{army.Id}: no safe step toward Citadel");

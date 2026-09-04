@@ -567,10 +567,10 @@ namespace Game.Ai.V2
                 return false;
 
             if (target.Kind != ScoutTargetKind.Surveil)
-                return VisitHexTask.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
+                return SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
 
             foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
-                if (VisitHexTask.FindNextSafeStep(ctx.Map, live, v.ExecutionHex) != null)
+                if (SafeStepPathing.FindNextSafeStep(ctx.Map, live, v.ExecutionHex) != null)
                     return true;
             return false;
         }
