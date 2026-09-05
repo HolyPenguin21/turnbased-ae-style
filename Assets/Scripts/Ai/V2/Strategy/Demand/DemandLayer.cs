@@ -615,59 +615,121 @@ namespace Game.Ai.V2
             //     lane already covers desiredGround=1, but an idle actor reachable to Ground AND
             //     Observation was still being offered a full, unreduced Ground slot to compete for).
             var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
-            int groundIdleWitnessed = 0, obsIdleWitnessed = 0;
             int remainingGroundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundLaneWitnessed);
             int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed
                 - capacity.AirborneReconLanes - capacity.SpareAirObservationSorties);
-            int groundJobCount = groundVisitRunnable?.Count ?? 0;
-            int obsJobCount = observationRunnable?.Count ?? 0;
-            if (idleActors.Count > 0 && (remainingGroundSlots > 0 || remainingObsSlots > 0)
-                && (groundJobCount > 0 || obsJobCount > 0))
-            {
-                // Node layout: 0 = source; 1..A = actors; A+1..A+G = ground jobs; ..+O = obs jobs;
-                // then groundAgg, obsAgg; last = sink.
-                int actorBase = 1;
-                int groundJobBase = actorBase + idleActors.Count;
-                int obsJobBase = groundJobBase + groundJobCount;
-                int groundAgg = obsJobBase + obsJobCount;
-                int obsAgg = groundAgg + 1;
-                int sink = obsAgg + 1;
-                int nodeCount = sink + 1;
-                var graph = new List<FlowEdge>[nodeCount];
-                for (int n = 0; n < nodeCount; n++) graph[n] = new List<FlowEdge>();
 
-                for (int i = 0; i < idleActors.Count; i++)
-                    AddFlowEdge(graph, 0, actorBase + i, 1);
-                for (int j = 0; j < groundJobCount; j++)
-                    AddFlowEdge(graph, groundJobBase + j, groundAgg, 1);
-                for (int j = 0; j < obsJobCount; j++)
-                    AddFlowEdge(graph, obsJobBase + j, obsAgg, 1);
-                if (remainingGroundSlots > 0)
-                    AddFlowEdge(graph, groundAgg, sink, remainingGroundSlots);
-                if (remainingObsSlots > 0)
-                    AddFlowEdge(graph, obsAgg, sink, remainingObsSlots);
-                for (int i = 0; i < idleActors.Count; i++)
-                {
-                    ArmySnapshot a = idleActors[i];
-                    if (remainingGroundSlots > 0)
-                        for (int j = 0; j < groundJobCount; j++)
-                            if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, groundVisitRunnable[j].ToTarget()))
-                                AddFlowEdge(graph, actorBase + i, groundJobBase + j, 1);
-                    if (remainingObsSlots > 0)
-                        for (int j = 0; j < obsJobCount; j++)
-                            if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, observationRunnable[j].ToTarget()))
-                                AddFlowEdge(graph, actorBase + i, obsJobBase + j, 1);
-                }
+            // --- Two-phase (breadth THEN depth) — plain single-shot max-flow only maximises TOTAL
+            //     flow, and is mathematically indifferent between covering both classes evenly and
+            //     dumping everything into one: desiredGround=2, desiredObservation=1, both actors A
+            //     and B able to serve either — (Ground=2,Obs=0) and (Ground=1,Obs=1) are BOTH valid
+            //     maximum-flow solutions of equal total value, but only the second is correct: with
+            //     the first, obsWitnessedSupply reads exactly 0 (not "1 short of desired", ZERO), which
+            //     is precisely what Rule 1 reads as "no usable actor at all" and bootstraps a brand
+            //     new Scout for a shortage that does not really exist.
+            //
+            //     Phase 1 (breadth): solve with EACH class's sink capped at min(remaining, 1) — a
+            //     class already fully covered (remaining=0) gets no cap at all (no edge, so it cannot
+            //     "steal" flow it doesn't need). Capping every other outstanding class at exactly 1
+            //     forces the solver to spread across classes instead of piling into one, so this phase
+            //     answers "can every still-needed class get AT LEAST one unit, simultaneously, given
+            //     actor/job constraints" — which is exactly the coverage priority needed.
+            //     Phase 2 (depth): the actors AND jobs phase 1 used are removed entirely (an actor
+            //     already assigned, or a job already claimed, must not be reused), then a second
+            //     ordinary max-flow fills any additional depth up to the TRUE remaining quota with
+            //     whatever idle capacity is left over. No priority needed here — once every class has
+            //     its first unit (or provably cannot), further depth is ordinary optimisation.
+            (int groundP1, int obsP1, var usedActors, var usedGroundIdx, var usedObsIdx) = SolveReconFlow(
+                ctx, player, snap, idleActors, groundVisitRunnable, observationRunnable,
+                Mathf.Min(remainingGroundSlots, 1), Mathf.Min(remainingObsSlots, 1));
 
-                MaxFlow(graph, 0, sink);
-                // Flow actually used on an aggregator->sink edge = original capacity minus whatever
-                // residual capacity is left on it after max-flow (its reverse edge's capacity, since
-                // that edge never had any capacity of its own to begin with).
-                groundIdleWitnessed = remainingGroundSlots > 0 ? UsedCapacity(graph, groundAgg, sink) : 0;
-                obsIdleWitnessed = remainingObsSlots > 0 ? UsedCapacity(graph, obsAgg, sink) : 0;
-            }
+            var leftoverActors = idleActors.Where(a => !usedActors.Contains(a.ArmyId)).ToList();
+            var leftoverGround = groundVisitRunnable == null ? new List<ReconObjective>()
+                : groundVisitRunnable.Where((o, idx) => !usedGroundIdx.Contains(idx)).ToList();
+            var leftoverObs = observationRunnable == null ? new List<ReconObjective>()
+                : observationRunnable.Where((o, idx) => !usedObsIdx.Contains(idx)).ToList();
+
+            (int groundP2, int obsP2, _, _, _) = SolveReconFlow(
+                ctx, player, snap, leftoverActors, leftoverGround, leftoverObs,
+                remainingGroundSlots - groundP1, remainingObsSlots - obsP1);
+
+            int groundIdleWitnessed = groundP1 + groundP2;
+            int obsIdleWitnessed = obsP1 + obsP2;
 
             return new ReconWitnessResult(groundLaneWitnessed, obsLaneWitnessed, groundIdleWitnessed, obsIdleWitnessed);
+        }
+
+        // One max-flow solve: source -> each actor (cap 1) -> each individual job it can reach
+        // (cap 1) -> that job's class-aggregator (cap 1, job uniqueness) -> sink (cap = groundCap /
+        // obsCap). Returns the flow used per class, plus WHICH actors (by ArmyId) and WHICH job
+        // indices (into the groundJobs/obsJobs lists passed in) carried flow, so a caller running a
+        // follow-up phase can exclude them (an actor or job already claimed must not be reused).
+        private static (int GroundUsed, int ObsUsed, HashSet<int> UsedActorIds, HashSet<int> UsedGroundJobIndex,
+            HashSet<int> UsedObsJobIndex) SolveReconFlow(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
+            IReadOnlyList<ArmySnapshot> actors, IReadOnlyList<ReconObjective> groundJobs,
+            IReadOnlyList<ReconObjective> obsJobs, int groundCap, int obsCap)
+        {
+            var usedActorIds = new HashSet<int>();
+            var usedGroundIdx = new HashSet<int>();
+            var usedObsIdx = new HashSet<int>();
+            int groundJobCount = groundJobs?.Count ?? 0;
+            int obsJobCount = obsJobs?.Count ?? 0;
+            groundCap = Mathf.Max(0, groundCap);
+            obsCap = Mathf.Max(0, obsCap);
+            if (actors == null || actors.Count == 0 || (groundCap <= 0 && obsCap <= 0)
+                || (groundJobCount == 0 && obsJobCount == 0))
+                return (0, 0, usedActorIds, usedGroundIdx, usedObsIdx);
+
+            // Node layout: 0 = source; 1..A = actors; A+1..A+G = ground jobs; ..+O = obs jobs;
+            // then groundAgg, obsAgg; last = sink.
+            int actorBase = 1;
+            int groundJobBase = actorBase + actors.Count;
+            int obsJobBase = groundJobBase + groundJobCount;
+            int groundAgg = obsJobBase + obsJobCount;
+            int obsAgg = groundAgg + 1;
+            int sink = obsAgg + 1;
+            int nodeCount = sink + 1;
+            var graph = new List<FlowEdge>[nodeCount];
+            for (int n = 0; n < nodeCount; n++) graph[n] = new List<FlowEdge>();
+
+            for (int i = 0; i < actors.Count; i++)
+                AddFlowEdge(graph, 0, actorBase + i, 1);
+            for (int j = 0; j < groundJobCount; j++)
+                AddFlowEdge(graph, groundJobBase + j, groundAgg, 1);
+            for (int j = 0; j < obsJobCount; j++)
+                AddFlowEdge(graph, obsJobBase + j, obsAgg, 1);
+            if (groundCap > 0)
+                AddFlowEdge(graph, groundAgg, sink, groundCap);
+            if (obsCap > 0)
+                AddFlowEdge(graph, obsAgg, sink, obsCap);
+            for (int i = 0; i < actors.Count; i++)
+            {
+                ArmySnapshot a = actors[i];
+                if (groundCap > 0)
+                    for (int j = 0; j < groundJobCount; j++)
+                        if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, groundJobs[j].ToTarget()))
+                            AddFlowEdge(graph, actorBase + i, groundJobBase + j, 1);
+                if (obsCap > 0)
+                    for (int j = 0; j < obsJobCount; j++)
+                        if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, obsJobs[j].ToTarget()))
+                            AddFlowEdge(graph, actorBase + i, obsJobBase + j, 1);
+            }
+
+            MaxFlow(graph, 0, sink);
+
+            for (int i = 0; i < actors.Count; i++)
+                if (UsedCapacity(graph, 0, actorBase + i) > 0)
+                    usedActorIds.Add(actors[i].ArmyId);
+            for (int j = 0; j < groundJobCount; j++)
+                if (UsedCapacity(graph, groundJobBase + j, groundAgg) > 0)
+                    usedGroundIdx.Add(j);
+            for (int j = 0; j < obsJobCount; j++)
+                if (UsedCapacity(graph, obsJobBase + j, obsAgg) > 0)
+                    usedObsIdx.Add(j);
+
+            int groundUsed = groundCap > 0 ? UsedCapacity(graph, groundAgg, sink) : 0;
+            int obsUsed = obsCap > 0 ? UsedCapacity(graph, obsAgg, sink) : 0;
+            return (groundUsed, obsUsed, usedActorIds, usedGroundIdx, usedObsIdx);
         }
 
         // Minimal max-flow network for the idle-actor witness above. Always tiny (a handful of idle
