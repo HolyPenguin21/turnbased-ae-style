@@ -524,11 +524,12 @@ namespace Game.Ai.V2
         // its OWN current committed target; (b) an idle, uncommitted GROUND actor can serve EITHER a
         // Ground or an Observation job (it is one physical actor, one requirement class at a time), so
         // matching it against each class independently would double-count any actor reachable to jobs
-        // of both. Idle actors are matched with ONE joint maximum bipartite matching (Kuhn's
-        // algorithm) across BOTH job lists at once, ordered by strategic value (both lists are already
-        // value-sorted) so a contested actor goes to the more valuable job — never to a class
-        // hardcoded as "always wins". Actor/job counts here are always small (a handful of scouts
-        // against a handful of runnable objectives per demand pass), so this is cheap.
+        // of both — and matching it against a flat list of individual objectives from both classes at
+        // once is not enough either: maximum-CARDINALITY matching over individual jobs can legally
+        // over-satisfy one class while starving the other (two jobs matched is still "2" even if both
+        // are Ground and Observation needed exactly one each) — see the coverage-vs-cardinality note
+        // below. Actor/job counts here are always small (a handful of scouts against a handful of
+        // runnable objectives per demand pass), so the matching is cheap regardless of formulation.
         private static ReconWitnessResult ComputeReconWitness(AiTurnContext ctx, PlayerSetupData player,
             WorldSnapshot snap, ReconCapacitySnapshot capacity, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, IReadOnlyList<ReconObjective> groundVisitRunnable,
@@ -559,11 +560,19 @@ namespace Game.Ai.V2
                     };
                 }
 
+            // A single actorId is only ever counted once across BOTH lane buckets — normally this is
+            // a lifecycle guarantee (one army, one active durable Scout intent), but if continuity
+            // state is ever momentarily corrupted into two durable intents on the same actor (already
+            // a documented, [CHECK]-surfaced possibility elsewhere in this file), the FIRST class
+            // checked must not let the SAME actor also count toward the second.
+            var laneActorCounted = new HashSet<int>();
             int RevalidateLane(IEnumerable<int> ids)
             {
                 int n = 0;
                 foreach (int id in ids)
                 {
+                    if (!laneActorCounted.Add(id))
+                        continue;
                     ArmySnapshot a = Resolve(id);
                     if (a == null || !laneTarget.TryGetValue(id, out ScoutMissionTarget t))
                         continue;
@@ -576,42 +585,66 @@ namespace Game.Ai.V2
             int groundLaneWitnessed = RevalidateLane(capacity.GenericGroundLaneActors);
             int obsLaneWitnessed = RevalidateLane(capacity.GenericObservationLaneActors);
 
-            var jobs = new List<(ReconObjective Objective, bool IsGround)>();
-            if (groundVisitRunnable != null)
-                foreach (ReconObjective o in groundVisitRunnable) jobs.Add((o, true));
-            if (observationRunnable != null)
-                foreach (ReconObjective o in observationRunnable) jobs.Add((o, false));
-            jobs = jobs.OrderByDescending(j => j.Objective.BaseValue).ToList();
-
+            // --- Idle actors: coverage, not cardinality. Matching Ground and Observation JOBS
+            //     independently (or even jointly by individual job) only maximises how many jobs get
+            //     an actor — NOT how many of the two REQUIRED CLASSES end up covered. Example: actor A
+            //     can only do {G1, G2}, actor B can do {G1, O1}; a plain maximum matching can legally
+            //     land on A->G2, B->G1 (2 jobs matched, but Observation left at 0) instead of the
+            //     coverage-optimal A->G1, B->O1 (both classes covered) — both are valid maximum
+            //     matchings of the SAME graph, and nothing in a per-job matching tells the algorithm
+            //     which one DemandLayer actually needs.
+            //
+            //     Reformulated as actor x CLASS-QUOTA-SLOT instead of actor x individual-objective: an
+            //     anonymous "slot" represents one still-desired unit of a class's concurrency (not a
+            //     specific objective — DemandLayer only needs the COUNT witnessed per class, never
+            //     which objective backs it; the CREATE/deferred blocks below already pick their own
+            //     "best" objective independently). An actor connects to ALL of a class's slots if it
+            //     can reach ANY job of that class. Because every matched slot now directly IS one unit
+            //     of coverage by construction, plain maximum-CARDINALITY matching over this graph is
+            //     mathematically the maximum ACHIEVABLE coverage — no weighting or value tie-break
+            //     needed, and it is symmetric between classes (no hardcoded "ground wins" ordering).
             var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
             int groundIdleWitnessed = 0, obsIdleWitnessed = 0;
-            if (idleActors.Count > 0 && jobs.Count > 0)
+            int groundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency);
+            int obsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency);
+            int slotTotal = groundSlots + obsSlots;
+            if (idleActors.Count > 0 && slotTotal > 0)
             {
-                int jobCount = Mathf.Min(jobs.Count, AiConfigV2.persistenceWitnessProbeObjectives);
-                var reachableJobs = new List<List<int>>(idleActors.Count);
-                for (int i = 0; i < idleActors.Count; i++)
+                int groundJobCap = Mathf.Min(groundVisitRunnable?.Count ?? 0, AiConfigV2.persistenceWitnessProbeObjectives);
+                int obsJobCap = Mathf.Min(observationRunnable?.Count ?? 0, AiConfigV2.persistenceWitnessProbeObjectives);
+
+                bool CanReachAny(ArmySnapshot actor, IReadOnlyList<ReconObjective> jobs, int cap)
                 {
-                    var reach = new List<int>();
-                    for (int j = 0; j < jobCount; j++)
-                        if (ReconActorReservationPlanner.CanExecute(
-                            ctx, player, snap, idleActors[i], jobs[j].Objective.ToTarget()))
-                            reach.Add(j);
-                    reachableJobs.Add(reach);
+                    for (int j = 0; j < cap; j++)
+                        if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, actor, jobs[j].ToTarget()))
+                            return true;
+                    return false;
                 }
 
-                var jobAssignedToActor = new int[jobCount];
-                for (int j = 0; j < jobCount; j++)
-                    jobAssignedToActor[j] = -1;
+                var reachableSlots = new List<List<int>>(idleActors.Count);
+                foreach (ArmySnapshot a in idleActors)
+                {
+                    var slots = new List<int>();
+                    if (groundSlots > 0 && CanReachAny(a, groundVisitRunnable, groundJobCap))
+                        for (int j = 0; j < groundSlots; j++) slots.Add(j);
+                    if (obsSlots > 0 && CanReachAny(a, observationRunnable, obsJobCap))
+                        for (int j = 0; j < obsSlots; j++) slots.Add(groundSlots + j);
+                    reachableSlots.Add(slots);
+                }
+
+                var slotAssignedToActor = new int[slotTotal];
+                for (int j = 0; j < slotTotal; j++)
+                    slotAssignedToActor[j] = -1;
                 for (int i = 0; i < idleActors.Count; i++)
                 {
-                    var visitedJobs = new bool[jobCount];
-                    TryAugmentMatch(i, reachableJobs, visitedJobs, jobAssignedToActor);
+                    var visitedSlots = new bool[slotTotal];
+                    TryAugmentMatch(i, reachableSlots, visitedSlots, slotAssignedToActor);
                 }
-                for (int j = 0; j < jobCount; j++)
+                for (int j = 0; j < slotTotal; j++)
                 {
-                    if (jobAssignedToActor[j] < 0)
+                    if (slotAssignedToActor[j] < 0)
                         continue;
-                    if (jobs[j].IsGround) groundIdleWitnessed++;
+                    if (j < groundSlots) groundIdleWitnessed++;
                     else obsIdleWitnessed++;
                 }
             }
