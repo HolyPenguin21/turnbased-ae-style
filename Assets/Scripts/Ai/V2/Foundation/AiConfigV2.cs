@@ -756,13 +756,6 @@ namespace Game.Ai.V2
         //     evaluations: 0 = act the same turn the deficit appears; 1 = require it to persist one
         //     extra turn, filtering single-turn flicker between mission stages (spec §7 "persistent").
         public const int reconCapacityDeficitPersistTurns = 1;
-        // Persistence-gate witness check (DemandLayer.CountFeasibleIdleActors) — a defensive upper
-        // bound on how many of a class's runnable objectives get a real SafeStepPathing / vantage
-        // check per idle actor. The matching needs the TRUE answer (a truncated scan can silently
-        // change which actor<->job pairing is found feasible), so this is deliberately generous —
-        // a real per-turn runnable-objective list is always far below it — and exists only to bound
-        // worst-case cost, not to approximate the check.
-        public const int persistenceWitnessProbeObjectives = 24;
         public const float scoutStepCoverageSectorWeight = 0.30f;  // ReconGroundStepPlanner coverageFactor: 1/(1 + this*sectorClaims + nearbyWeight*nearbyClaims)
         public const float scoutStepCoverageNearbyWeight = 0.55f;
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
