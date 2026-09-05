@@ -220,13 +220,14 @@ namespace Game.Ai.V2
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
             //     unable to reach any runnable objective (blocked path, no reachable Surveil vantage),
             //     which only ReconActorReservationPlanner.CanExecute actually knows via
-            //     SafeStepPathing / SurveilVantageSelector. An actor already on an active durable lane
-            //     counts without re-probing (its path was validated when the lane started, and it is
-            //     assigned to an objective OUTSIDE this runnable/uncovered set, so it never competes
-            //     with the matching below). An idle, uncommitted actor only counts if a maximum
-            //     bipartite matching (CountFeasibleIdleActors) can assign it a DISTINCT reachable
-            //     runnable objective — two idle actors that can only both reach the SAME exclusive job
-            //     must count as ONE unit of usable capacity, not two.
+            //     SafeStepPathing / SurveilVantageSelector. A durable lane actor is re-validated
+            //     against its OWN current committed target (its path was only proven valid when the
+            //     lane started — it may since have spent its MP/AP or lost the path). An idle,
+            //     uncommitted actor only counts if a single JOINT bipartite matching across BOTH
+            //     Ground and Observation runnable jobs (ComputeReconWitness) can assign it a DISTINCT
+            //     reachable job — matching Ground and Observation independently would double-count any
+            //     idle ground scout reachable to jobs of both classes as capacity for both at once,
+            //     when physically it can only ever serve one.
             //
             //     This witnessed count — not the raw one — is what both the persistence-streak
             //     registry and the Rule-1/Rule-2 math below are computed against: a raw non-zero
@@ -235,11 +236,18 @@ namespace Game.Ai.V2
             //     never physically act would silently zero out the very deficit this gate exists to
             //     detect (regression: 1 unreachable existing scout, desired=1 => raw deficit reads 0,
             //     nothing would ever be created without this).
-            int groundWitnessedSupply = capacity.GenericGroundLaneActors.Count
-                + CountFeasibleIdleActors(ctx, player, snap, capacity.IdleGroundScouts, groundVisitRunnable);
-            int obsWitnessedSupply = capacity.GenericObservationLaneActors.Count
-                + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties
-                + CountFeasibleIdleActors(ctx, player, snap, capacity.IdleGroundScouts, observationRunnable);
+            // GENERIC only (mirrors ReconCapacitySnapshot's own obsGeneric/groundGeneric filtering) —
+            // a stealth-required job must never be satisfiable by matching a plain, non-stealth actor
+            // against it just because CanExecute proves a path exists; CanExecute checks reachability,
+            // not the mover's stealth capability, so an unfiltered list would let a stealth-only
+            // requirement quietly count as covered by generic capacity.
+            var groundVisitGeneric = groundVisitRunnable.Where(o => !IsStealthObjective(o)).ToList();
+            var observationGeneric = observationRunnable.Where(o => !IsStealthObjective(o)).ToList();
+            ReconWitnessResult witness = ComputeReconWitness(ctx, player, snap, capacity, activeIntents,
+                commitments, groundVisitGeneric, observationGeneric);
+            int groundWitnessedSupply = witness.GroundLaneWitnessed + witness.GroundIdleWitnessed;
+            int obsWitnessedSupply = witness.ObsLaneWitnessed
+                + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties + witness.ObsIdleWitnessed;
             int groundEffectiveDeficit =
                 Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundWitnessedSupply);
             int obsEffectiveDeficit =
@@ -490,52 +498,125 @@ namespace Game.Ai.V2
                 o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
                 o.FocusHex.Q, o.FocusHex.R);
 
-        // Persistence-gate witness (Rule 1/Rule 2). Returns how many IDLE, uncommitted actors in
-        // `idleArmyIds` can each be given a DISTINCT reachable runnable objective, per
-        // ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing / SurveilVantageSelector
-        // primitive the real planner uses downstream). A raw non-zero actor count is not proof of
-        // real capacity — a blocked path or an unreachable Surveil vantage can leave an "idle" scout
-        // with genuinely nothing it can do — and neither is a bare existence check: two idle actors
-        // that can BOTH only reach the same single exclusive job represent ONE unit of real capacity,
-        // not two. This runs a small maximum bipartite matching (Kuhn's algorithm) over actors x
-        // runnable objectives, both tiny sets for a single demand pass, so the exact count is cheap.
-        private static int CountFeasibleIdleActors(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
-            IReadOnlyCollection<int> idleArmyIds, IReadOnlyList<ReconObjective> runnableForClass)
+        // Result of ComputeReconWitness — witnessed (proven-executable) actor counts, split by
+        // requirement class. NOT the same as capacity.Generic*LaneActors.Count / IdleGroundScouts.Count
+        // (those are raw, unverified) — see ComputeReconWitness.
+        private readonly struct ReconWitnessResult
         {
-            if (idleArmyIds == null || idleArmyIds.Count == 0
-                || runnableForClass == null || runnableForClass.Count == 0)
-                return 0;
-            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
-            if (armies == null)
-                return 0;
-
-            var idleActors = armies.Where(a => a != null && idleArmyIds.Contains(a.ArmyId)).ToList();
-            if (idleActors.Count == 0)
-                return 0;
-
-            int jobCount = Mathf.Min(runnableForClass.Count, AiConfigV2.persistenceWitnessProbeObjectives);
-            var reachableJobs = new List<List<int>>(idleActors.Count);
-            for (int i = 0; i < idleActors.Count; i++)
+            public readonly int GroundLaneWitnessed;
+            public readonly int ObsLaneWitnessed;
+            public readonly int GroundIdleWitnessed;
+            public readonly int ObsIdleWitnessed;
+            public ReconWitnessResult(int groundLane, int obsLane, int groundIdle, int obsIdle)
             {
-                var jobs = new List<int>();
+                GroundLaneWitnessed = groundLane;
+                ObsLaneWitnessed = obsLane;
+                GroundIdleWitnessed = groundIdle;
+                ObsIdleWitnessed = obsIdle;
+            }
+        }
+
+        // Persistence-gate witness (Rule 1/Rule 2) — turns raw actor COUNTS into PROVEN-executable
+        // ones, per ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing /
+        // SurveilVantageSelector primitive the real planner uses downstream). Two things a raw count
+        // cannot tell you: (a) a durable lane actor's path was only proven valid when the lane
+        // started — it may since have spent its MP/AP or lost the path, so it is re-validated against
+        // its OWN current committed target; (b) an idle, uncommitted GROUND actor can serve EITHER a
+        // Ground or an Observation job (it is one physical actor, one requirement class at a time), so
+        // matching it against each class independently would double-count any actor reachable to jobs
+        // of both. Idle actors are matched with ONE joint maximum bipartite matching (Kuhn's
+        // algorithm) across BOTH job lists at once, ordered by strategic value (both lists are already
+        // value-sorted) so a contested actor goes to the more valuable job — never to a class
+        // hardcoded as "always wins". Actor/job counts here are always small (a handful of scouts
+        // against a handful of runnable objectives per demand pass), so this is cheap.
+        private static ReconWitnessResult ComputeReconWitness(AiTurnContext ctx, PlayerSetupData player,
+            WorldSnapshot snap, ReconCapacitySnapshot capacity, IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments, IReadOnlyList<ReconObjective> groundVisitRunnable,
+            IReadOnlyList<ReconObjective> observationRunnable)
+        {
+            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>();
+            ArmySnapshot Resolve(int id) => armies.FirstOrDefault(a => a != null && a.ArmyId == id);
+
+            // --- Active-lane re-validation. Same claimed-generic-lane filter ReconCapacitySnapshot.Build
+            //     uses (non-stealth durable Scout intents), so the target built here is the exact one
+            //     the lane actor is currently committed to. Since RequiresStealth is excluded (exactly
+            //     as ReconCapacitySnapshot excludes it from generic lanes), Kind is always Explore/
+            //     Refresh here, never Surveil — so no EnemyContactSnapshot lookup is needed to build a
+            //     valid ScoutMissionTarget from the durable ScoutIntent.
+            var laneTarget = new Dictionary<int, ScoutMissionTarget>();
+            if (activeIntents != null && commitments != null)
+                foreach (MissionIntent i in activeIntents)
+                {
+                    if (i?.Scout == null || i.PreferredMoverArmyId == null
+                        || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value) || i.Scout.RequiresStealth)
+                        continue;
+                    laneTarget[i.PreferredMoverArmyId.Value] = new ScoutMissionTarget
+                    {
+                        FocusHex = i.Scout.FocusHex,
+                        Kind = i.Scout.Kind,
+                        Stealth = StealthRequirement.None,
+                        DetectionRisk = 0f,
+                    };
+                }
+
+            int RevalidateLane(IEnumerable<int> ids)
+            {
+                int n = 0;
+                foreach (int id in ids)
+                {
+                    ArmySnapshot a = Resolve(id);
+                    if (a == null || !laneTarget.TryGetValue(id, out ScoutMissionTarget t))
+                        continue;
+                    if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, t))
+                        n++;
+                }
+                return n;
+            }
+
+            int groundLaneWitnessed = RevalidateLane(capacity.GenericGroundLaneActors);
+            int obsLaneWitnessed = RevalidateLane(capacity.GenericObservationLaneActors);
+
+            var jobs = new List<(ReconObjective Objective, bool IsGround)>();
+            if (groundVisitRunnable != null)
+                foreach (ReconObjective o in groundVisitRunnable) jobs.Add((o, true));
+            if (observationRunnable != null)
+                foreach (ReconObjective o in observationRunnable) jobs.Add((o, false));
+            jobs = jobs.OrderByDescending(j => j.Objective.BaseValue).ToList();
+
+            var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
+            int groundIdleWitnessed = 0, obsIdleWitnessed = 0;
+            if (idleActors.Count > 0 && jobs.Count > 0)
+            {
+                int jobCount = Mathf.Min(jobs.Count, AiConfigV2.persistenceWitnessProbeObjectives);
+                var reachableJobs = new List<List<int>>(idleActors.Count);
+                for (int i = 0; i < idleActors.Count; i++)
+                {
+                    var reach = new List<int>();
+                    for (int j = 0; j < jobCount; j++)
+                        if (ReconActorReservationPlanner.CanExecute(
+                            ctx, player, snap, idleActors[i], jobs[j].Objective.ToTarget()))
+                            reach.Add(j);
+                    reachableJobs.Add(reach);
+                }
+
+                var jobAssignedToActor = new int[jobCount];
                 for (int j = 0; j < jobCount; j++)
-                    if (ReconActorReservationPlanner.CanExecute(
-                        ctx, player, snap, idleActors[i], runnableForClass[j].ToTarget()))
-                        jobs.Add(j);
-                reachableJobs.Add(jobs);
+                    jobAssignedToActor[j] = -1;
+                for (int i = 0; i < idleActors.Count; i++)
+                {
+                    var visitedJobs = new bool[jobCount];
+                    TryAugmentMatch(i, reachableJobs, visitedJobs, jobAssignedToActor);
+                }
+                for (int j = 0; j < jobCount; j++)
+                {
+                    if (jobAssignedToActor[j] < 0)
+                        continue;
+                    if (jobs[j].IsGround) groundIdleWitnessed++;
+                    else obsIdleWitnessed++;
+                }
             }
 
-            var jobAssignedToActor = new int[jobCount];
-            for (int j = 0; j < jobAssignedToActor.Length; j++)
-                jobAssignedToActor[j] = -1;
-            int matched = 0;
-            for (int i = 0; i < idleActors.Count; i++)
-            {
-                var visitedJobs = new bool[jobCount];
-                if (TryAugmentMatch(i, reachableJobs, visitedJobs, jobAssignedToActor))
-                    matched++;
-            }
-            return matched;
+            return new ReconWitnessResult(groundLaneWitnessed, obsLaneWitnessed, groundIdleWitnessed, obsIdleWitnessed);
         }
 
         // Standard augmenting-path step of Kuhn's algorithm: try to give actor `actor` one of its
