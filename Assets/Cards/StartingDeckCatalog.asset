@@ -39,7 +39,7 @@ MonoBehaviour:
     - cardKey: The Ashen/Nova Sterling
       count: 1
     - cardKey: The Ashen/Hooded
-      count: 3
+      count: 2
     - cardKey: The Ashen/Dust Runner
       count: 1
     - cardKey: The Ashen/Tech Scrapper
@@ -47,11 +47,11 @@ MonoBehaviour:
     - cardKey: The Ashen/AA Rad Hunter
       count: 1
     - cardKey: The Ashen/LI Ash Drifter
-      count: 0
+      count: 1
     - cardKey: The Ashen/LI Ash Runner
-      count: 2
+      count: 1
     - cardKey: The Ashen/MI Iron Husk
-      count: 2
+      count: 0
     - cardKey: The Ashen/Scav Carrier
       count: 0
     - cardKey: The Ashen/Rad Brute
@@ -61,7 +61,7 @@ MonoBehaviour:
     - cardKey: The Ashen/BS Grave Engine
       count: 0
     - cardKey: The Ashen/MT Rust Tank
-      count: 0
+      count: 2
     - cardKey: The Ashen/Leviathan
       count: 0
     - cardKey: The Ashen/Scrap Mortar
@@ -75,11 +75,11 @@ MonoBehaviour:
     - cardKey: The Ashen/Scrapwing
       count: 1
     - cardKey: Neutral/b_Lab
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Factory
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Intel
-      count: 0
+      count: 1
     - cardKey: The Ashen/HT Boomstick
       count: 0
   - deckName: Iron Concord Starter
@@ -110,13 +110,13 @@ MonoBehaviour:
     - cardKey: Iron Concord/Scrapper
       count: 0
     - cardKey: Iron Concord/AA Crawler
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Light Infantry
       count: 2
     - cardKey: Iron Concord/Iron guards
       count: 0
     - cardKey: Iron Concord/Medium infantry
-      count: 2
+      count: 0
     - cardKey: Iron Concord/Flamer
       count: 0
     - cardKey: Iron Concord/AT Infantry
@@ -130,9 +130,9 @@ MonoBehaviour:
     - cardKey: Iron Concord/BS Plasma
       count: 0
     - cardKey: Iron Concord/Light Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Medium Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Heavy Tank
       count: 0
     - cardKey: Iron Concord/Artillery Cannon
@@ -150,8 +150,8 @@ MonoBehaviour:
     - cardKey: Iron Concord/Rusty Vulture
       count: 1
     - cardKey: Neutral/b_Lab
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Factory
-      count: 0
+      count: 1
     - cardKey: Neutral/b_Intel
-      count: 0
+      count: 1

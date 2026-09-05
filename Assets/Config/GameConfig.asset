@@ -23,6 +23,8 @@ MonoBehaviour:
   armySlotTop: {x: 0, y: 0.375}
   armyButtonPrefab: {fileID: 1990000000000010006, guid: 653d9030c73145938c14734d2e6d04ec, type: 3}
   armyUnitCardPrefab: {fileID: 1980000000000010005, guid: 78f3cecc3db145188cabd4b3abea979a, type: 3}
+  statBonusColor: {r: 0.06243326, g: 0.5754717, b: 0.26764867, a: 1}
+  statPenaltyColor: {r: 0.8113208, g: 0.22579211, b: 0.22579211, a: 1}
   citadelResourceBonus:
     human: 1
     energy: 1

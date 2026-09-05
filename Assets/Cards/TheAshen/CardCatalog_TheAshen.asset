@@ -604,9 +604,9 @@ MonoBehaviour:
     attack: 3
     defenseRating: 1
     resistanceRating: 2
-    range: 2
+    range: 1
     hitPoints: 5
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
