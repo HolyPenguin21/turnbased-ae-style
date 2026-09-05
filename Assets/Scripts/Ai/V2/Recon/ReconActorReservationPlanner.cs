@@ -554,31 +554,12 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        // Exposed (was private) so DemandLayer's persistence-gate witness check can reuse the exact
-        // same path-feasibility primitive the real planner uses, instead of a raw actor-count proxy —
-        // see DemandLayer.HasFeasibleIdleWitness.
+        // Thin wrapper over the canonical seam (ReconOperationalFeasibility) — DemandLayer's
+        // persistence-gate witness check and this planner's own actor matching MUST agree on one
+        // feasibility model, never two independently-drifting definitions. See
+        // ReconOperationalFeasibility.OperationallyFeasibleIfFunded for the actual rules.
         internal static bool CanExecute(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
-            ArmySnapshot mover, ScoutMissionTarget target)
-        {
-            if (mover == null)
-                return false;
-            if (ctx?.Map == null)
-                return true;
-
-            ArmyData live = ResolveArmy(player, mover.ArmyId);
-            if (live == null)
-                return false;
-
-            if (target.Kind != ScoutTargetKind.Surveil)
-                return SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
-
-            foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
-                if (SafeStepPathing.FindNextSafeStep(ctx.Map, live, v.ExecutionHex) != null)
-                    return true;
-            return false;
-        }
-
-        private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            ArmySnapshot mover, ScoutMissionTarget target) =>
+            ReconOperationalFeasibility.OperationallyFeasibleIfFunded(ctx, player, snap, mover, target);
     }
 }
