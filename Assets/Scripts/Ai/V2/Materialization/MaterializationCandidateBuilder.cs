@@ -114,8 +114,18 @@ namespace Game.Ai.V2
         public AxisDemand BestUnresolvedDemandFor(MaterializationPlan plan)
         {
             if (plan == null) return null;
+            // A demand still IsPersistenceDeferred did NOT clear the persistence gate this pass — it
+            // is a valid, unresolved, but NOT actionable-yet demand (spec "Persistence Gate:
+            // Bootstrap & No-Alternative-Work Escape"). It must never grant Phase B's residual
+            // urgency bonus or the residual-only safeguard bypasses (GenericSurplusWouldChurn /
+            // ScoutSurplusPortfolioSaturated) — that would let ordinary Phase-B surplus scoring do an
+            // end-run around the very gate that just kept this demand from playing in Phase A.
+            // TryPromotePersistenceDeferred clears the flag on the SAME AxisDemand instance the
+            // moment it actually promotes it, so a promoted demand is indistinguishable from a
+            // normal one here — exactly the desired behaviour.
             return UnresolvedDemands
-                .Where(d => d != null && d.DesiredAmount > 0f && d.Capability == plan.FinalCapability
+                .Where(d => d != null && !d.IsPersistenceDeferred && d.DesiredAmount > 0f
+                    && d.Capability == plan.FinalCapability
                     && (plan.ExpectedTraits & d.RequiredTraits) == d.RequiredTraits)
                 .OrderByDescending(d => d.Value)
                 .ThenBy(d => (int)d.RequestingAxis)

@@ -371,6 +371,7 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
                 IsPersistenceDeferred = d.IsPersistenceDeferred,
+                ExistingUsableCapacityAtEmission = d.ExistingUsableCapacityAtEmission,
             };
         }
 
@@ -428,6 +429,10 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
                     + $"decision=PROMOTE previousGate=persistence reason=no_alternative_actionable_work "
                     + $"deliverableCandidates={top.Count} best={top[0].Plan.StableKey}");
+                // A promoted demand IS now an ordinary actionable demand — clear the flag on the
+                // SAME AxisDemand instance so residual reporting / Phase B's UnresolvedClaimFor
+                // cannot tell it apart from a demand that was never persistence-gated at all.
+                ds.Demand.IsPersistenceDeferred = false;
                 deferredStates.Remove(ds);
                 states.Add(ds);
                 promotedAny = true;

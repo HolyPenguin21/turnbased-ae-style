@@ -108,8 +108,10 @@ namespace Game.Ai.V2
             if (reservation == null || reservation.UnresolvedDemands.Count == 0)
                 return null;
             TraitPreference projTraits = MaterializationChainMatching.TraitsOf(projectedAbilities);
+            // See MaterializationReservation.BestUnresolvedDemandFor — a still-deferred persistence
+            // demand must not grant the strategic-claim ap/resource affordability relaxation either.
             return reservation.UnresolvedDemands
-                .Where(d => d != null && d.DesiredAmount > 0f && d.Capability == cap
+                .Where(d => d != null && !d.IsPersistenceDeferred && d.DesiredAmount > 0f && d.Capability == cap
                     && (projTraits & d.RequiredTraits) == d.RequiredTraits)
                 .OrderByDescending(d => d.Value)
                 .ThenBy(d => (int)d.RequestingAxis)
