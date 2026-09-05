@@ -322,6 +322,7 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
+                    ExistingUsableCapacityAtEmission = capacity.GroundTraversalSupply,
                     Explain = $"GroundTraversal deficit {capacity.GroundTraversalDeficit} not yet persistent "
                         + $"(streak {groundStreak}); {groundVisitRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
@@ -348,6 +349,7 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
+                    ExistingUsableCapacityAtEmission = capacity.ObservationSupply,
                     Explain = $"Observation deficit {capacity.ObservationDeficit} not yet persistent "
                         + $"(streak {obsStreak}); {observationRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",

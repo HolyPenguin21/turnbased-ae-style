@@ -112,6 +112,17 @@ namespace Game.Ai.V2
         // deliverable candidate exists for it right now (never a phantom fulfillment).
         public bool IsPersistenceDeferred;
 
+        // How much PRE-EXISTING usable capacity of this demand's class the emitting axis measured
+        // at emission time (0 when none). StrategicPhaseA's own per-turn loop runs BEFORE
+        // MissionLayer/the mission allocator bind an idle-but-uncommitted existing actor to a
+        // runnable job, so Phase A cannot see whether such an actor is about to get real work.
+        // A no-alternative-work reconciliation MUST NOT promote a persistence-deferred demand while
+        // this is > 0 — that would materialise an extra unit of capacity ahead of an existing actor
+        // that (very likely, given the runnable opportunity that raised this demand exists) is about
+        // to be given work of its own a few pipeline stages later, stealing its AP/resources.
+        // Left at its 0 default for demands that never go through IsPersistenceDeferred.
+        public int ExistingUsableCapacityAtEmission;
+
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
             + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"

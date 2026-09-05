@@ -398,6 +398,20 @@ namespace Game.Ai.V2
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
             foreach (DemandState ds in deferredStates.ToList())
             {
+                // Phase A runs BEFORE MissionLayer / the mission allocator bind an idle-but-
+                // uncommitted EXISTING actor of this demand's class to a runnable job — that binding
+                // is real alternative actionable work Phase A simply cannot see yet. Promoting here
+                // regardless would materialise extra capacity ahead of an actor about to get its own
+                // work, and steal its share of the same AxisBudgetLedger a few stages early. Only
+                // promote while the class had ZERO pre-existing usable capacity at emission — the
+                // only case where there is provably no such actor to hide work behind.
+                if (ds.Demand.ExistingUsableCapacityAtEmission > 0)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
+                        + "decision=DEFER reason=existing_capacity_may_still_get_operational_work "
+                        + $"existingUsable={ds.Demand.ExistingUsableCapacityAtEmission}; stays deferred, Phase B proceeds");
+                    continue;
+                }
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
                     ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK);
