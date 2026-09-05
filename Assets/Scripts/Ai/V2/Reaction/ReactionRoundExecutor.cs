@@ -91,14 +91,12 @@ namespace Game.Ai.V2
 
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
-            // AI-RECON-01 — the reaction round runs its OWN air reservation prepass. The main pass's
-            // reservation was already consumed by its terminal air fallback (aircraft moved / AP
-            // spent), so reusing its stale ReservedLaunchSorties would let DemandLayer suppress a
-            // ground scout for capacity that no longer exists. Reset + re-evaluate against the
-            // now-current AP / Energy / movement.
-            ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
+            // RECON-AIR-02 (round 5) — no separate prepass any more: DemandLayer measures air
+            // capacity itself (ReconAssignmentPlanner.MeasureAirCapacity), recomputed fresh against
+            // the now-current AP / Energy / movement every call — the reaction round gets a live
+            // re-evaluation for free, with no stale registry to reset.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             result.Demands += demands.Count;
 
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
@@ -159,7 +157,7 @@ namespace Game.Ai.V2
                     if (provision.Success)
                     {
                         provSession.RegisterSuccess(key, provision.Provisioned);
-                        session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp);
+                        session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
                         outcomeLedger.RecordProvisionSuccess(fe.Mission, provision.Provisioned);
                         provisioned.Add(provision.Provisioned);
                         AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
@@ -221,13 +219,15 @@ namespace Game.Ai.V2
             // ProvisionedMissions; it no longer selects independently.
             AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
             var reactionAirResult = new AirReconExecutionResult();
-            yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult);
+            // RECON-AIR-06 — same per-mission ExecutionResult collection as the main pipeline.
+            var reactionAirPerMissionResults = new List<ExecutionResult>();
+            yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult, reactionAirPerMissionResults);
             if (reactionAirResult.Mutated)
                 AiDebugLog.Write($"[AI][V2][Recon][Air] exec — reaction outcome moved={reactionAirResult.AnyMoved} "
                     + $"launched={reactionAirResult.AnyLaunched} struck={reactionAirResult.AnyStruck} "
-                    + $"stateVer={reactionAirResult.StateVersionAfter}");
+                    + $"stateVer={reactionAirResult.StateVersionAfter} perMission={reactionAirPerMissionResults.Count}");
             result.Executed += executed.Count(MissionRevalidator.WasAttempt);
-            foreach (ExecutionResult er in executed)
+            foreach (ExecutionResult er in executed.Concat(reactionAirPerMissionResults))
             {
                 if (er.IsReplacement && er.Source?.Mission != null)
                 {

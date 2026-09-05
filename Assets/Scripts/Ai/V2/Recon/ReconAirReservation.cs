@@ -10,226 +10,30 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AI-RECON-01 — RECON AIR STRUCTURAL CAPACITY PREPASS  (round 3 rework)
+    //  AI-RECON-01 / RECON-AIR-02 (round 5) — SHARED AIR-RECON "WOULD THIS SLOT FLY" PRIMITIVE
     // ===========================================================================================
-    //  Runs BEFORE DemandLayer. It answers ONE question, READ-ONLY:
+    //  Round 3 removed the separate pre-Demand AP/Energy reservation ledger this file used to own.
+    //  Round 5 (RECON-AIR-02) removes the second thing it still owned after that: a SEPARATE
+    //  orchestrated capacity-sizing STAGE (`Run`) with its own per-turn registry/state
+    //  (ReconAirReservationState / ReconAirReservationRegistry), called before DemandLayer and read
+    //  back by ReconCapacitySnapshot.Build. That was a second capacity authority parallel to
+    //  ReconAssignmentPlanner.MeasureCapacity (the ONE canonical "how much of this is there ANY
+    //  usable actor for" answer for ground). The greedy sizing loop that used to live in `Run` now
+    //  lives in ReconAssignmentPlanner.MeasureAirCapacity — called directly by DemandLayer,
+    //  recomputed fresh every call (no cross-call state, no registry), the same way the ground
+    //  witness numbers in MeasureCapacity always have been.
     //
-    //     "If nothing else changes, how many air-observation lanes could plausibly fly this turn?"
-    //
-    //  It does NOT do strategic air targeting, route scoring or multi-turn sortie planning — that
-    //  is AIR-01 / AIR-02. Its only output is a structural signal ReconCapacitySnapshot uses for
-    //  SIZING (GuaranteedObservationLanes / ReservedAirborneWings / ReservedLaunchSorties) — the
-    //  same "how much of this is there ANY usable actor for" question ReconAssignmentPlanner.
-    //  MeasureCapacity answers for ground, generalised to air.
-    //
-    //  ROUND 3 CHANGE (Problem 1 — see AI-V2-RECON-CONSOLIDATION round 3 review): this prepass used
-    //  to ALSO reserve concrete AP/Energy for its picks — ProtectedAp/ProtectedEnergy, netted out of
-    //  AiResourceReservation.Available() and subtracted from AxisBudgetLedger/ResourceAllocator
-    //  BEFORE either existed for the turn. That was a second, pre-funding ledger living outside the
-    //  Generic Funding stage — exactly the "two vertical pipelines" problem this round removes.
-    //  There is no longer any resource protection here: Recon Air's AP/Energy is not reserved ahead
-    //  of Phase A. A structural read here that promised capacity Phase A later spent was accepted as
-    //  the correct trade — same failure mode a ground Scout has always had (funded, then the actor
-    //  or its resources are gone by Provisioning time) — see the round-3 report for the precise risk
-    //  this reopens.
-    //
-    //  Round 4: concrete air actor / launch-subset SELECTION for real execution now happens in
-    //  ReconAssignmentPlanner.AppendAirCandidates (the same single Assignment owner Ground has),
-    //  reusing THIS file's SlotWouldFly as the shared feasibility primitive so the two callers can
-    //  never diverge. AirReconPlanner.Plan / ReconAirExecutor.Execute stay the terminal stage, but
-    //  only turn Assignment's already-picked actor/airfield+subset into execution input — they no
-    //  longer pick independently. The pre-Demand structural read here can still promise capacity
-    //  that a later pass's real Assignment does not end up using (same risk a ground Scout has
-    //  always had between MeasureCapacity and AssignFunded) — that staleness is handled the normal
-    //  way, by live per-turn tactical replanning in Execution, not by this prepass reserving anything.
+    //  What remains HERE is only the feasibility PRIMITIVE both that sizing pass and
+    //  ReconAssignmentPlanner.AppendAirCandidates' real per-mission Assignment need to agree on:
+    //  "would the AIR-01 route scorer actually launch this slot, right now, at all" — a route
+    //  (`Pick` / `PickFromStorage`) whose score clears `MinimumUsefulScore`, AND the Energy
+    //  opportunity policy. This is a STRUCTURAL "can anything useful happen" question (fine for
+    //  capacity sizing); it is NOT proof that a specific actor can serve a SPECIFIC mission target
+    //  (that is RECON-AIR-04 / AppendAirCandidates' own job, using the SAME Pick/PickFromStorage
+    //  primitive but anchored at the mission's actual target).
     // ===========================================================================================
-    internal sealed class ReconAirReservationState
-    {
-        public int Turn = -1;
-        public readonly HashSet<int> ReservedAirActorIds = new HashSet<int>();
-        // Airfields whose hangar launch subset is a reserved sortie (storage slots have no army id
-        // yet). Telemetry / accounting only — the executor re-derives the concrete subset.
-        public readonly HashSet<HexCoord> ReservedAirfieldHexes = new HashSet<HexCoord>();
-        public int ReservedAirborneWings;
-        public int ReservedLaunchSorties;
-        public int GuaranteedObservationLanes;
-        public string Explain = "no air reservation";
-
-        public void Reset(int turn)
-        {
-            Turn = turn;
-            ReservedAirActorIds.Clear();
-            ReservedAirfieldHexes.Clear();
-            ReservedAirborneWings = 0;
-            ReservedLaunchSorties = 0;
-            GuaranteedObservationLanes = 0;
-            Explain = "no air reservation";
-        }
-    }
-
-    internal static class ReconAirReservationRegistry
-    {
-        private static readonly Dictionary<PlayerSetupData, ReconAirReservationState> ByPlayer =
-            new Dictionary<PlayerSetupData, ReconAirReservationState>();
-
-        public static ReconAirReservationState GetOrCreate(PlayerSetupData player)
-        {
-            if (player == null)
-                return new ReconAirReservationState();
-            if (!ByPlayer.TryGetValue(player, out ReconAirReservationState s))
-                ByPlayer[player] = s = new ReconAirReservationState();
-            return s;
-        }
-
-        // The reservation as it applies to `turn` — an empty state if the last prepass was for a
-        // different turn, so stale protection can never leak forward.
-        public static ReconAirReservationState ForTurn(PlayerSetupData player, int turn)
-        {
-            ReconAirReservationState s = GetOrCreate(player);
-            return s.Turn == turn ? s : new ReconAirReservationState();
-        }
-
-        public static void Clear() => ByPlayer.Clear();
-    }
-
     internal static class ReconAirReservationPrepass
     {
-        public static void Run(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            IReadOnlyList<ReconObjective> reconObjectives)
-        {
-            ReconAirReservationState state = ReconAirReservationRegistry.GetOrCreate(player);
-            int turn = snap?.TurnNumber ?? 0;
-            state.Reset(turn);
-
-            if (player == null || root == null)
-            {
-                AiDebugLog.Write("[AI][V2][ReconAirRes] no player/root — nothing structurally available");
-                return;
-            }
-
-            // How many GENERIC Observation lanes (Refresh / Surveil, non-stealth) are worth
-            // guaranteeing with air: runnable generic observation objectives, capped by the desired
-            // observation concurrency minus the generic observation lanes already claimed by a
-            // ground/air actor.
-            var obsRunnable = (reconObjectives ?? System.Array.Empty<ReconObjective>())
-                .Where(o => o != null && o.BaseValue > 0f
-                    && o.Kind != ReconObjectiveKind.Explore
-                    && o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f))
-                .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey)
-                .ToList();
-
-            var activeObsLaneActors = new HashSet<int>();
-            if (activeIntents != null && commitments != null)
-                foreach (MissionIntent i in activeIntents)
-                    if (i?.Scout != null && !i.Scout.RequiresStealth
-                        && i.Scout.Kind != ScoutTargetKind.Explore
-                        && i.PreferredMoverArmyId.HasValue
-                        && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
-                        activeObsLaneActors.Add(i.PreferredMoverArmyId.Value);
-
-            int desiredObs = ReconConcurrencyPolicy.DesiredForClass(
-                snap, obsRunnable, ReconConcurrencyPolicy.ReconCoverageClass.Observation);
-            int observationNeed = UnityEngine.Mathf.Clamp(
-                obsRunnable.Count, 0, UnityEngine.Mathf.Max(0, desiredObs - activeObsLaneActors.Count));
-
-            ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
-            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
-
-            // ONE authoritative greedy, in the executor's own order, over a SINGLE cumulative AP /
-            // Energy budget (so several sorties never each pass against the full stockpile) with the
-            // AIR-01 route gate applied per candidate (so a route-invalid earlier aircraft cannot
-            // hide a valid later one).
-            int apLeft = detail.ApBudgetBase;
-            int energyLeft = detail.EnergyBudgetBase;
-            int slotsUsed = 0;
-            int reservedEnergyThisPass = 0;
-            int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
-
-            // R3 review fix — wedges (from our Citadel) reserved by an accepted STORAGE launch this
-            // pass. They have no live army yet, so the next SlotWouldFly probe would not see them;
-            // feeding them forward stops two reserved launch sorties both claiming one wedge and
-            // producing a GuaranteedObservationLanes count that collapses in execution.
-            HexCoord citadelHex = snap?.Self != null ? snap.Self.Citadel : default;
-            var provisionalWedges = new List<ReconSector>();
-
-            // Airborne recon wings first. They consume an executor slot regardless, and their owed
-            // recovery AP/Energy is ALWAYS protected. NOTE: EnergyBudgetBase already netted out the
-            // ReconAirEnergyPolicy "committed" term, which INCLUDES every unactivated in-flight
-            // recon/strike wing's owed Energy — so do NOT subtract wing.Energy from energyLeft again
-            // (that was a double-count that could turn already-executable aviation into a false
-            // deficit and needlessly materialise a ground scout). Likewise reservedEnergyThisPass
-            // tracks only NEW spare-launch Energy — an airborne wing is already in `committed`.
-            // AP is not pre-committed anywhere, so apLeft IS decremented per wing. Whether the wing
-            // can really activate is decided by SlotWouldFly -> ReconAirEnergyPolicy (which excludes
-            // the wing itself and sees the true stock).
-            foreach (AirObservationSlot wing in detail.AirborneWings)
-            {
-                if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
-                    break;
-                airborneProbed++;
-                slotsUsed++;
-                apLeft -= wing.Ap;
-
-                if (apLeft >= 0 && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass,
-                        provisionalWedges, out _))
-                {
-                    state.ReservedAirborneWings++;
-                    if (wing.ActorId.HasValue)
-                        state.ReservedAirActorIds.Add(wing.ActorId.Value);
-                }
-                else
-                {
-                    airborneStuck++;   // recovery protected, but not observation capacity
-                }
-            }
-
-            int launchNeed = UnityEngine.Mathf.Max(0, observationNeed - state.ReservedAirborneWings);
-            foreach (AirObservationSlot slot in detail.SpareCandidatesInOrder)
-            {
-                if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn
-                    || state.ReservedLaunchSorties >= launchNeed)
-                    break;
-                launchProbed++;
-                if (slot.Ap > apLeft || slot.Energy > energyLeft)
-                {
-                    launchRejected++;
-                    continue;   // executor moves on to the next candidate in order
-                }
-                if (!SlotWouldFly(player, root, ctx, snap, mode, slot, reservedEnergyThisPass,
-                        provisionalWedges, out HexCoord slotChosenHex))
-                {
-                    launchRejected++;
-                    continue;
-                }
-                apLeft -= slot.Ap;
-                energyLeft -= slot.Energy;
-                reservedEnergyThisPass += slot.Energy;
-                state.ReservedLaunchSorties++;
-                slotsUsed++;
-                if (slot.ActorId.HasValue)
-                    state.ReservedAirActorIds.Add(slot.ActorId.Value);
-                else
-                    state.ReservedAirfieldHexes.Add(slot.AirfieldHex);
-                // Every accepted LAUNCH slot (ready wing on its airfield OR hangar subset) has no
-                // live ReconPatrolState during the prepass — it only gets one when it actually flies
-                // in the executor — so the live wedge scan cannot see it. Record its chosen wedge so
-                // the next SlotWouldFly probe does. The airborne-wings loop above is exempt: those
-                // wings already hold a ReconPatrolState and are counted live.
-                if (ctx?.Map != null)
-                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, slotChosenHex));
-            }
-
-            state.GuaranteedObservationLanes = state.ReservedAirborneWings + state.ReservedLaunchSorties;
-            state.Explain = $"structuralObsLanes={state.GuaranteedObservationLanes} "
-                + $"(airborne {state.ReservedAirborneWings}/{airborneProbed} stuck {airborneStuck} + "
-                + $"launch {state.ReservedLaunchSorties}/{launchProbed} rejected {launchRejected}) "
-                + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
-                + $"apLeft={apLeft} energyLeft={energyLeft} mode={mode} (read-only sizing signal — "
-                + "no AP/Energy reserved; real actor pick happens fresh at terminal air-recon execution)";
-            AiDebugLog.Write($"[AI][V2][ReconAirRes] {state.Explain}");
-        }
-
         // Would the AIR-01 route scorer actually launch this slot? Mirrors the executor's own gates
         // for BOTH a ready standalone wing and a hangar launch: a route (`Pick` / `PickFromStorage`)
         // whose score clears `MinimumUsefulScore`, AND the Energy opportunity policy — with the
@@ -237,7 +41,7 @@ namespace Game.Ai.V2
         // each pass against the full stockpile.
         //
         // Round 4 — INTERNAL (was private) so ReconAssignmentPlanner's real air-candidate builder
-        // (BuildCandidates) can call the SAME feasibility check this read-only sizing prepass uses,
+        // (BuildCandidates) can call the SAME feasibility check this read-only sizing pass uses,
         // instead of re-deriving a second copy. Assignment calls it with committedEnergyThisPass=0
         // and provisionalWedges=null (a single-mission candidate probe has no running per-pass
         // budget/wedge state to fold in — Provisioning's later sequential AP/Energy claim against
@@ -330,7 +134,7 @@ namespace Game.Ai.V2
         // calling BeginTurn(), so the reservation probe never mutates the real sortie lifecycle.
         // A ready standalone wing (no live sortie) gets the same fresh Outbound state the executor
         // seeds at the wing's hex before its first step.
-        private static ReconAirSortieState ProjectScoringSortie(PlayerSetupData player, AiTurnContext ctx, ArmyData wing)
+        internal static ReconAirSortieState ProjectScoringSortie(PlayerSetupData player, AiTurnContext ctx, ArmyData wing)
         {
             if (wing == null)
                 return null;
@@ -370,6 +174,5 @@ namespace Game.Ai.V2
             }
             return proj;
         }
-
     }
 }

@@ -349,6 +349,15 @@ namespace Game.Ai.V2
         public const int scoutNotionalActivationAp = 1;  // used when no concrete mover exists yet (Provisioning, step 6, resolves it)
         public const int scoutOptionalStealthAp = 1;
 
+        // RECON-AIR-01 — a generic (non-stealth) Refresh/Surveil mission is executable by EITHER a
+        // ground scout OR an air actor (see ReconAssignmentPlanner.AppendAirCandidates); the
+        // Mission-stage estimate must therefore size an envelope wide enough for air's typical
+        // activation cost too, not only a ground scout's. Both are notional, worst-reasonable-case
+        // figures — Assignment/Provisioning refine to the real bound actor's cost afterward, exactly
+        // like the ground AP estimate already does.
+        public const float airReconNotionalActivationAp = 1f;
+        public const float airReconNotionalLaunchEnergy = 2f;
+
         // =======================================================================================
         //  RESOURCE ALLOCATOR  (Strategy V2 build-order step 5)
         //  radar -> per-axis BudgetSlices of the shared pool -> many-to-many packing -> ordered
@@ -826,6 +835,12 @@ namespace Game.Ai.V2
         public const float airReconRouteObservationDecay = 0.82f;   // geometric decay per route hex away from the aircraft — near-term coverage counts most
         public const float airReconRouteObservationRingWeight = 0.35f; // weight on a route hex's 6 immediate neighbours (corridor width), on top of the hex itself
         public const int airReconRouteObservationMaxHexes = 14;     // hard cap on scored route hexes per candidate (bounds the per-decision cost)
+        // RECON-AIR-05 (round 5) — the strongest anchor: Assignment/Continuity already bound this
+        // sortie to a SPECIFIC Refresh/Surveil target this turn (or a durable one, for a continuing
+        // sortie), and the tactical planner must drift toward it rather than pick a fresh unrelated
+        // objective. Weighted above every discovered/inferred anchor (Citadel included) since it is
+        // a real commitment, not an inference.
+        public const float airReconMissionFocusWeight = 0.90f;
         public const float airReconCitadelDirectionWeight = 0.70f;  // first step heads into the enemy-Citadel sector (× confidence: 1.0 known, 0.55 hidden-bias only)
         public const float airReconCitadelHiddenConfidence = 0.55f;
         public const float airReconFacilityCoverWeight = 0.40f;     // route passes within airReconFacilityCoverRadius of an OWN facility whose perimeter intel is stale

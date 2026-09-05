@@ -468,17 +468,15 @@ namespace Game.Ai.V2
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
 
-            // AI-RECON-01 (round 3) — Recon Air STRUCTURAL Capacity Prepass. BEFORE DemandLayer: a
-            //     read-only sizing signal (how many air-observation lanes could plausibly fly) that
-            //     ReconCapacitySnapshot uses the same way it uses ground supply counts. No AP/Energy
-            //     is reserved here any more, and no concrete actor is claimed — see
-            //     ReconAirReservation.cs header for why the old pre-ledger protection was removed.
-            ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
+            // RECON-AIR-02 (round 5) — the old separate Recon Air Reservation Prepass stage is
+            //     gone: DemandLayer now measures air capacity itself via
+            //     ReconAssignmentPlanner.MeasureAirCapacity (the same canonical capacity owner
+            //     ground already uses), recomputed fresh every call — no cross-call registry.
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
             //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
@@ -596,7 +594,7 @@ namespace Game.Ai.V2
                     if (result.Success)
                     {
                         provSession.RegisterSuccess(key, result.Provisioned);
-                        session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
+                        session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp, result.Provisioned.ClaimedPhysical);
                         ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
                         provisioned.Add(result.Provisioned);
                         AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
@@ -665,11 +663,18 @@ namespace Game.Ai.V2
             // executor's input shape.
             AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
             var airReconResult = new AirReconExecutionResult();
-            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult);
+            // RECON-AIR-06 — `airPerMissionResults` collects one ExecutionResult PER air-executed
+            // ProvisionedMission this pass (the SAME shape Ground's `executed` list carries), so each
+            // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like
+            // Ground's do — a provisioned air mission no longer silently falls through to
+            // Finalize()'s Blocked default for lack of any recorded Execution.
+            var airPerMissionResults = new List<ExecutionResult>();
+            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult, airPerMissionResults);
             AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
                 + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
-                + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter}");
-            foreach (ExecutionResult er in executed)
+                + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter} "
+                + $"perMission={airPerMissionResults.Count}");
+            foreach (ExecutionResult er in executed.Concat(airPerMissionResults))
             {
                 // A synthesised replacement's proposal was never in the pre-execution
                 // RegisterProposals set — register it here so continuity/reconciliation sees the

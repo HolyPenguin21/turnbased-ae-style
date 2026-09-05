@@ -51,8 +51,16 @@ namespace Game.Ai.V2
     // AiTaskKind.AirRecon is retained only as the EXISTING landing-slot reservation primitive.
     internal static class ReconAirExecutor
     {
+        // RECON-AIR-06 (round 5) — `perMissionResults` collects one ExecutionResult PER air-executed
+        // ProvisionedMission this pass, the SAME shape Ground's TaskExecutor produces, so each one
+        // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like Ground's
+        // do. The aggregate `result` (AirReconExecutionResult) remains — it is still what the
+        // orchestrator logs as a pass-wide telemetry rollup — but it is no longer the ONLY thing
+        // produced; a caller that omits `perMissionResults` (older call sites / tests) still gets the
+        // aggregate only, exactly the previous behaviour.
         public static IEnumerator Execute(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result = null)
+            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result = null,
+            List<ExecutionResult> perMissionResults = null)
         {
             result ??= new AirReconExecutionResult();
             if (plan == null || player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
@@ -68,24 +76,44 @@ namespace Game.Ai.V2
             int m0 = root.GetResource(Game.Economy.ResourceType.Materials);
             int t0 = root.GetResource(Game.Economy.ResourceType.Tech);
 
+            // Continuing wings have no fresh ProvisionedMission this pass (Continuity, not fresh
+            // Assignment — see AirReconPlanner's header) — anchor their live replanning at the
+            // durable target already recorded on their ReconPatrolState (RECON-AIR-05), but they
+            // produce no per-mission ExecutionResult (there is no ledger row for them this turn).
             foreach (int id in plan.ContinueActorIds)
             {
                 ArmyData air = Resolve(player, id);
                 if (air != null && AviationRules.IsValidAirArmy(air) && air.Controller != null
                     && air.CurrentMovement > 0 && !AviationRules.IsOwnedAirfieldAt(air.Hex, player))
-                    yield return RunActor(player, root, ctx, snapshot, air, result);
+                {
+                    HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, id, out ReconPatrolState st)
+                        ? st.StrategicAnchor : (HexCoord?)null;
+                    yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
+                }
             }
 
             foreach (int id in plan.ReadyActorIds)
             {
                 ArmyData air = Resolve(player, id);
-                if (air != null && AviationRules.IsValidAirArmy(air) && air.Controller != null
-                    && air.CurrentMovement > 0)
-                    yield return RunActor(player, root, ctx, snapshot, air, result);
+                if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null
+                    || air.CurrentMovement <= 0)
+                    continue;
+
+                plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
+                ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, air.Hex, air.Id) : null;
+                int apBeforeActor = root.ActionPoints;
+                yield return RunActor(player, root, ctx, snapshot, air, result,
+                    missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
+                if (perMission != null)
+                {
+                    perMission.ApSpent = Math.Max(0f, apBeforeActor - root.ActionPoints);
+                    FinalizePerMissionResult(player, pm, perMission);
+                    perMissionResults?.Add(perMission);
+                }
             }
 
             foreach (AirLaunchPlan lp in plan.Launches)
-                yield return LaunchOne(lp, player, root, ctx, snapshot, result);
+                yield return LaunchOne(lp, player, root, ctx, snapshot, result, perMissionResults);
 
             result.ApSpent = Math.Max(0, apBefore - root.ActionPoints);
             int hSpent = Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
@@ -101,15 +129,31 @@ namespace Game.Ai.V2
         // Fly one planned launch. The stale-plan guard (CanAffordLaunch re-check) mirrors §35: if
         // an earlier sortie this pass consumed the AP/Energy, this launch is skipped and reported —
         // the executor does NOT re-plan a different subset or airfield.
+        //
+        // RECON-AIR-06 — every exit path (including the early "skip, no replan" ones) reports a
+        // per-mission ExecutionResult when lp.Mission is set, so a ProvisionedMission that never
+        // actually launched still gets a real ledger row (StepsMoved=0, an honest StopReason)
+        // instead of silently vanishing from MissionOutcomeLedger/MissionContinuity.
         private static IEnumerator LaunchOne(AirLaunchPlan lp, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result)
+            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result,
+            List<ExecutionResult> perMissionResults = null)
         {
+            ProvisionedMission pm = lp?.Mission;
+            void ReportNoLaunch(ExecutionStopReason why)
+            {
+                if (pm == null || perMissionResults == null) return;
+                ExecutionResult er = NewPerMissionResult(pm, lp.AirfieldHex, -1);
+                er.StopReason = why;
+                perMissionResults.Add(er);
+            }
+
             if (lp?.Subset == null || lp.Subset.Count == 0)
                 yield break;
             if (!AiAirSortiePlanner.CanAffordLaunch(root, player, lp.Subset))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");
+                ReportNoLaunch(ExecutionStopReason.MoverLost);
                 yield break;
             }
 
@@ -120,6 +164,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— energy reserve now rejects the planned launch; skip, no replan");
+                ReportNoLaunch(ExecutionStopReason.MoverLost);
                 yield break;
             }
 
@@ -138,6 +183,7 @@ namespace Game.Ai.V2
                 Reason = $"V2 Air Recon — {lp.Mode} one-step launch; {lp.Reason}",
             };
 
+            int apBeforeLaunch = root.ActionPoints;
             yield return AiAirSortiePlanner.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
 
             ArmyData launched = ArmyRegistry.AllForOwner(player)
@@ -148,6 +194,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— launch formed no aircraft");
+                ReportNoLaunch(ExecutionStopReason.MoverLost);
                 yield break;
             }
 
@@ -156,6 +203,7 @@ namespace Game.Ai.V2
                 RemoveAirReconReservation(player, launched);
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
                     + "first step made no progress; V2 assignment not started");
+                ReportNoLaunch(ExecutionStopReason.NoSafeStep);
                 yield break;
             }
 
@@ -187,22 +235,78 @@ namespace Game.Ai.V2
                 + $"launch=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
                 + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
 
+            // RECON-AIR-06 — the real ArmyId now exists. From here, the synthetic negative ActorKey
+            // Assignment used to hold the airfield's uniqueness claim is resolved to the real
+            // ArmyId — that real id is what the per-mission result (and, through it, Continuity)
+            // carries from now on, never the synthetic key.
+            ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, lp.AirfieldHex, launched.Id) : null;
+            if (perMission != null)
+            {
+                perMission.StepsMoved = 1; // the launch's own first step, off the airfield
+                perMission.StartHex = lp.AirfieldHex;
+            }
+
             if (launched.Controller != null && launched.CurrentMovement > 0
                 && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
-                yield return RunActor(player, root, ctx, snapshot, launched, result, arrivalStrikeCheckPending: true);
+                // RECON-AIR-05 — anchor further live replanning at the SAME Refresh target this
+                // launch was bound to (lp.Mission.FocusHex), not a fresh pick.
+                yield return RunActor(player, root, ctx, snapshot, launched, result,
+                    arrivalStrikeCheckPending: true, missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
+
+            if (perMission != null)
+            {
+                perMission.ApSpent = Math.Max(0f, apBeforeLaunch - root.ActionPoints);
+                FinalizePerMissionResult(player, pm, perMission);
+                perMissionResults?.Add(perMission);
+            }
+        }
+
+        // RECON-AIR-06 — shared per-mission ExecutionResult scaffold, mirroring how
+        // TaskExecutor/ReconGroundExecutor seed one: Key/Source/StartHex from the ProvisionedMission,
+        // ActualActorArmyId the REAL army id (>=0) once known (-1 = none yet / never materialised).
+        private static ExecutionResult NewPerMissionResult(ProvisionedMission pm, HexCoord startHex, int actorArmyId) =>
+            new ExecutionResult
+            {
+                Key = pm.Key,
+                Source = pm,
+                StartHex = startHex,
+                FinalHex = startHex,
+                ActualActorArmyId = actorArmyId >= 0 ? actorArmyId : (int?)null,
+            };
+
+        // RECON-AIR-06 — the same "is the bound objective satisfied" question Ground's
+        // RefreshObjectiveSatisfied asks, reused verbatim here so Air's per-mission result carries
+        // the SAME ReachedGoal/ObjectiveSatisfied semantics Ground's does.
+        private static void FinalizePerMissionResult(PlayerSetupData player, ProvisionedMission pm, ExecutionResult er)
+        {
+            if (player == null || pm == null || er == null || er.ReachedGoal)
+                return;
+            bool satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
+                ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
+                : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
+            if (satisfied)
+                er.ReachedGoal = true;
         }
 
         // Thin execute loop. Every decision comes from AirReconStepDirector; the executor only
         // resolves live liveness (lost / battle / landed / out of MP) and then issues the canonical
         // gameplay call the decision names.
+        //
+        // RECON-AIR-05/06 — `missionFocusHex` is forwarded to every PlanStep call so the tactical
+        // planner's live replanning stays anchored at the bound target; `perMissionResult`, when
+        // given, accumulates this actor's StepsMoved/FinalHex/StopReason for its ONE provisioned
+        // mission this pass (a continuing wing with no fresh mission passes null — see Execute).
         private static IEnumerator RunActor(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot, ArmyData initial, AirReconExecutionResult result,
-            bool arrivalStrikeCheckPending = false)
+            bool arrivalStrikeCheckPending = false, HexCoord? missionFocusHex = null,
+            ExecutionResult perMissionResult = null)
         {
             bool movedAny = arrivalStrikeCheckPending;
             bool arrivalStrikeCheck = arrivalStrikeCheckPending;
             int armyId = initial.Id;
             int guard = Math.Max(4, initial.CurrentMovement + 5);
+            int localSteps = 0;
+            ExecutionStopReason localStop = ExecutionStopReason.OutOfMovement;
 
             while (guard-- > 0)
             {
@@ -212,11 +316,15 @@ namespace Game.Ai.V2
                     ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
                     ReconAirSortieRegistry.Retire(player, armyId);
                     if (air != null) RemoveAirReconReservation(player, air);
+                    localStop = ExecutionStopReason.MoverLost;
                     break;
                 }
 
                 if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
+                {
+                    localStop = ExecutionStopReason.BattleStarted;
                     break;
+                }
 
                 bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
                 if (atAirfield && movedAny)
@@ -226,10 +334,14 @@ namespace Game.Ai.V2
                     ReconPatrolStateRegistry.Retire(player, armyId, "air recon landed");
                     ReconAirSortieRegistry.Retire(player, armyId);
                     RemoveAirReconReservation(player, air);
+                    localStop = ExecutionStopReason.OutOfMovement;
                     break;
                 }
                 if (air.CurrentMovement <= 0)
+                {
+                    localStop = ExecutionStopReason.OutOfMovement;
                     break;
+                }
 
                 ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(player, armyId, air.Hex);
                 // Explicit lifecycle bookkeeping is the executor's job, not the planner's:
@@ -237,7 +349,7 @@ namespace Game.Ai.V2
                 ReconAirSortieLifecycle.Observe(sortie, air, ctx, atAirfield);
                 bool newTurn = ReconAirSortieLifecycle.BeginTurn(sortie, ctx.TurnNumber);
                 AirReconStepDirector.StepDecision d = AirReconStepDirector.PlanStep(
-                    player, root, ctx, snapshot, air, sortie, newTurn, arrivalStrikeCheck);
+                    player, root, ctx, snapshot, air, sortie, newTurn, arrivalStrikeCheck, missionFocusHex);
                 arrivalStrikeCheck = false;
 
                 if (d.Kind == AirReconStepDirector.StepKind.Stop)
@@ -246,11 +358,15 @@ namespace Game.Ai.V2
                         ReconPatrolStateRegistry.Retire(player, armyId, d.Reason);
                     if (d.RemoveReservation)
                         RemoveAirReconReservation(player, air);
+                    localStop = ExecutionStopReason.NoSafeStep;
                     break;
                 }
 
                 if (d.Kind == AirReconStepDirector.StepKind.HoldEndTurn)
+                {
+                    localStop = ExecutionStopReason.OutOfMovement;
                     break;
+                }
 
                 if (d.Kind == AirReconStepDirector.StepKind.HoldReopen)
                 {
@@ -286,6 +402,7 @@ namespace Game.Ai.V2
                     if (reservation == null)
                     {
                         AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} return blocked — another task owns aircraft");
+                        localStop = ExecutionStopReason.NoSafeStep;
                         break;
                     }
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Return "
@@ -294,9 +411,10 @@ namespace Game.Ai.V2
                     bool moved = false;
                     yield return MoveOne(player, ctx, air, d.Step, "V2 Air Recon — safe return", () => moved = true);
                     movedAny |= moved;
-                    if (!moved) break;
+                    if (!moved) { localStop = ExecutionStopReason.MoveRejected; break; }
                     V2StateVersion.Bump();
                     result.RecordMove();
+                    localSteps++;
                     ReconAirSortieLifecycle.Apply(sortie, d);   // Phase=Return + reason + best-score, now the step actually happened
                     ArmyData afterReturn = Resolve(player, armyId);
                     if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
@@ -313,6 +431,7 @@ namespace Game.Ai.V2
                 if (reservationTask == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} step blocked — another task owns aircraft");
+                    localStop = ExecutionStopReason.NoSafeStep;
                     break;
                 }
                 // ChosenLandingHex / HasChosenLanding are part of the intended transition now
@@ -323,9 +442,10 @@ namespace Game.Ai.V2
                 yield return MoveOne(player, ctx, air, d.Step,
                     $"V2 Air Recon — {assignment.Mode} {sortie.Phase} one-step live replan", () => stepMoved = true);
                 movedAny |= stepMoved;
-                if (!stepMoved) break;
+                if (!stepMoved) { localStop = ExecutionStopReason.MoveRejected; break; }
                 V2StateVersion.Bump();
                 result.RecordMove();
+                localSteps++;
                 ArmyData afterStep = Resolve(player, armyId);
                 if (afterStep != null) sortie.RecordStep(afterStep.Hex);
                 // Apply the intended transition ONLY now that the move succeeded (r4 — a rejected
@@ -342,6 +462,16 @@ namespace Game.Ai.V2
             ArmyData settled = Resolve(player, armyId);
             if (!movedAny && settled != null && AviationRules.IsOwnedAirfieldAt(settled.Hex, player))
                 ReconAirSortieRegistry.Retire(player, armyId);
+
+            // RECON-AIR-06 — fold this actor's steps/final position/stop reason into its bound
+            // mission's ExecutionResult (StepsMoved accumulates — LaunchOne may have already counted
+            // the launch's own first step before handing off to this same RunActor call).
+            if (perMissionResult != null)
+            {
+                perMissionResult.StepsMoved += localSteps;
+                perMissionResult.FinalHex = settled?.Hex ?? perMissionResult.FinalHex;
+                perMissionResult.StopReason = localStop;
+            }
         }
 
         // §46 — EXECUTION of an opportunistic air strike the director already judged favourable and

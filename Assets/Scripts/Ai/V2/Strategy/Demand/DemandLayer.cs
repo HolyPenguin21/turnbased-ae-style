@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -12,13 +13,14 @@ namespace Game.Ai.V2
         public static List<AxisDemand> Generate(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
             IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null)
+            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
+            PlayerRoot root = null)
         {
             var demands = new List<AxisDemand>();
             // §17 — decay the resource-starvation feedback once per turn before it is read.
             if (player != null && snap != null)
                 ResourceStarvationRegistry.DecayOncePerTurn(player, snap.TurnNumber);
-            demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx));
+            demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx, root));
             demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown, player));
@@ -111,7 +113,7 @@ namespace Game.Ai.V2
 
         private static IEnumerable<AxisDemand> ReconDemands(WorldSnapshot snap,
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx)
+            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx, PlayerRoot root = null)
         {
             if (snap?.Self?.Armies == null)
             {
@@ -195,9 +197,15 @@ namespace Game.Ai.V2
             var stealthObsRunnable = stealthRunnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var stealthGroundRunnable = stealthRunnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
 
+            // RECON-AIR-02 (round 5) — DemandLayer's ONLY calls for Recon capacity, both ground and
+            // air, are to ReconAssignmentPlanner (the one canonical Assignment/capacity owner). The
+            // air witness is measured first because ReconCapacitySnapshot.Build needs it as an INPUT
+            // to size its own Desired/deficit fields (see MeasureAirCapacity's header comment).
+            (int airborneWitnessed, int spareLaunchWitnessed) = ReconAssignmentPlanner.MeasureAirCapacity(
+                ctx, player, root, snap, objectives, activeIntents, commitments);
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
                 snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player,
-                ReconAirReservationRegistry.ForTurn(player, snap.TurnNumber));
+                airborneWitnessed, spareLaunchWitnessed);
             AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
                 + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
                 + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "

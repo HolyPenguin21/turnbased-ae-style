@@ -55,6 +55,14 @@ namespace Game.Ai.V2
         public bool IsReplacement;
         public ProvisionedMission Source;
 
+        // RECON-AIR-06 — the REAL ArmyId this mission's actor resolved to, when it can differ from
+        // ProvisionedMission.MoverArmyId. Ground/Raid always match (never set — null keeps
+        // Finalize()'s existing r.Provisioned.MoverArmyId read). Air's AirLaunch is the one case
+        // that DOES differ: Assignment bound the mission to a synthetic per-airfield negative id (no
+        // ArmyData exists yet), and only once the aircraft actually launches does a real ArmyId
+        // exist — that real id belongs in MissionContinuity from then on, not the synthetic key.
+        public int? ActualActorArmyId;
+
         // Spec §1/§7 (review P1 #1) — set by the continuous ground Recon executor when ReachedGoal
         // is true only because the CURRENT focus hex (a live waypoint) was satisfied, while the
         // actor's durable Explore/Refresh role is still runnable. The ledger then classifies this

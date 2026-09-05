@@ -53,6 +53,11 @@ namespace Game.Ai.V2
         public readonly int StandOff;          // Distance(ExecutionHex, FocusHex); 0 for Explore
         public readonly bool AlreadyHidden;
         public readonly float RequiredAp;      // EffActivationAp + (stealth transition if Required && !hidden)
+        // RECON-AIR-01 — the concrete, actor-specific Energy this candidate's first activation
+        // needs. 0 for every Ground candidate (ground scouts never spend Energy to activate); a real
+        // figure for AirExisting (the wing's own ActivationEnergyCost) / AirLaunch (Σ the launch
+        // subset's LaunchEnergyCost), the SAME role RequiredAp already plays for AP.
+        public readonly float RequiredEnergy;
 
         // Round 4 — executor identity. Ground candidates (and AirExisting) carry Army != null and
         // ExecutorKind defaults to Ground for every pre-round-4 call site (optional params). An
@@ -65,7 +70,7 @@ namespace Game.Ai.V2
         public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
             ScoutExecutorKind executorKind = ScoutExecutorKind.Ground, HexCoord airfieldHex = default,
-            IReadOnlyList<UnitData> launchSubset = null)
+            IReadOnlyList<UnitData> launchSubset = null, float requiredEnergy = 0f)
         {
             Army = army;
             ExecutionHex = executionHex;
@@ -79,6 +84,7 @@ namespace Game.Ai.V2
             ExecutorKind = executorKind;
             AirfieldHex = airfieldHex;
             LaunchSubset = launchSubset;
+            RequiredEnergy = requiredEnergy;
         }
 
         public bool IsStealthCapableMover => Army != null && (Army.IsHidden || Army.CanEnterStealth);

@@ -357,6 +357,12 @@ namespace Game.Ai.V2
                     ExecutionResult e = r.Execution;
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
+                    // RECON-AIR-06 — an AirLaunch mission was bound at Assignment time to a
+                    // synthetic per-airfield actor id (no ArmyData existed yet); once execution
+                    // actually launched the aircraft, ActualActorArmyId carries the REAL ArmyId, and
+                    // that is what MissionContinuity must track from now on, not the synthetic key.
+                    if (e.ActualActorArmyId.HasValue)
+                        o.MoverArmyId = e.ActualActorArmyId;
                     bool raidEngaged = o.MissionKind == MissionKind.Raid
                         && (e.StopReason == ExecutionStopReason.BattleStarted
                             || e.StopReason == ExecutionStopReason.HexEventStarted);

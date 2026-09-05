@@ -61,7 +61,7 @@ namespace Game.Ai.V2
 
         public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
             WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null,
-            AirReconScoringContext scoringCtx = null)
+            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null)
         {
             if (player == null || ctx?.Map == null || airArmy == null || snapshot?.Self == null
                 || !AviationRules.IsValidAirArmy(airArmy) || airArmy.CurrentMovement <= 0)
@@ -70,8 +70,9 @@ namespace Game.Ai.V2
             HexMap map = ctx.Map;
             // AI-AIR-01 — form the strategic direction FIRST from landmarks (enemy concentration,
             // Citadel, own facility perimeters, corridors, frontier last). Supersedes the raw
-            // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only.
-            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn);
+            // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only. RECON-AIR-05 —
+            // `missionFocusHex` folds the bound Recon mission's target in as one more anchor.
+            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn, missionFocusHex);
             // Live, not frozen. A wing launched from storage did not exist in the turn-start
             // SelfSnapshot, and a composition-changing aviation rule must be reflected immediately.
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
@@ -122,7 +123,7 @@ namespace Game.Ai.V2
         // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
             AirLaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
-            AirReconScoringContext scoringCtx = null)
+            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null)
         {
             if (player == null || ctx?.Map == null || snapshot?.Self == null
                 || candidate.ExistingArmy != null || candidate.Aircraft == null || candidate.Aircraft.Count == 0)
@@ -132,7 +133,7 @@ namespace Game.Ai.V2
                 + candidate.Aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
             float activationAp = candidate.Aircraft.Sum(u => u != null ? u.ActivationApCost : 0);
             float activationEnergy = candidate.Aircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
-            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn);
+            AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn, missionFocusHex);
             var choices = new List<StepChoice>();
 
             foreach (HexCoord h in HexGridMath.Neighbors(candidate.AirfieldHex))

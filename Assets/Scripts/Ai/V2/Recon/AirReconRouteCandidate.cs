@@ -82,7 +82,16 @@ namespace Game.Ai.V2
 
     internal static class AirReconAnchorModel
     {
-        public static AirReconAnchorSet Build(WorldSnapshot snapshot, PlayerSetupData self, int turn)
+        // RECON-AIR-05 (round 5) — `missionFocusHex` is the SPECIFIC Refresh/Surveil target
+        // Assignment already bound this actor to (ReconAssignmentPlanner.AppendAirCandidates) or
+        // the durable ReconPatrolState.StrategicAnchor a continuing sortie was launched for
+        // (ReconAirExecutor). It is folded in as ONE MORE strategic anchor/pressure source — the
+        // SAME AddPressure pattern every other anchor already uses — rather than turning the route
+        // scorer into a literal path-follower: the tactical planner still re-picks its immediate
+        // step live every turn, but that replanning now happens with the bound objective as part of
+        // its own strategic pull, so it drifts toward it instead of ever picking an unrelated one.
+        public static AirReconAnchorSet Build(WorldSnapshot snapshot, PlayerSetupData self, int turn,
+            HexCoord? missionFocusHex = null)
         {
             var set = new AirReconAnchorSet();
             if (snapshot?.Self == null)
@@ -97,6 +106,17 @@ namespace Game.Ai.V2
             void AddPressure(ReconSector s, float w)
             {
                 if (w > 0f) pressure[s] += w;
+            }
+
+            // --- 0. Bound mission objective — the STRONGEST anchor when present: Assignment/
+            //     Continuity already committed this actor to a specific Refresh/Surveil target, and
+            //     the tactical planner must never independently drift toward a different one. ------
+            if (missionFocusHex.HasValue)
+            {
+                ReconSector ms = ReconDirectionModel.Sector(origin, missionFocusHex.Value);
+                anchors.Add(new AirReconStrategicAnchor(AirReconAnchorKind.IntelRefresh,
+                    ms, AiConfigV2.airReconMissionFocusWeight, missionFocusHex.Value, true));
+                AddPressure(ms, AiConfigV2.airReconMissionFocusWeight);
             }
 
             // --- 1. Enemy concentration (sanitized cheat: one base unit per true-world army). ----

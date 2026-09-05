@@ -82,7 +82,8 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments,
             PlayerSetupData player,
-            ReconAirReservationState airReservation = null)
+            int airborneWitnessed = 0,
+            int spareLaunchWitnessed = 0)
         {
             var obsGeneric = (observationRunnable ?? System.Array.Empty<ReconObjective>())
                 .Where(o => !IsStealth(o)).ToList();
@@ -99,15 +100,14 @@ namespace Game.Ai.V2
                     snap, groundGeneric, ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal),
                 CombinedDesiredConcurrency = Mathf.Min(allGeneric.Count, ReconConcurrencyPolicy.DesiredForClass(
                     snap, allGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Combined)),
-                // AI-RECON-01 — air observation capacity is only what the Recon Air Reservation
-                // Prepass has actually PINNED + resource-protected this turn, never a fresh unpinned
-                // ReconAirCapacityPolicy re-evaluation the pipeline never committed to (that was the
-                // phantom-capacity path: model says the helicopter covers a lane, nothing reserved
-                // its AP/Energy, Phase A spends it, the sortie can't launch).
-                AirborneReconLanes = Mathf.Max(0, airReservation?.ReservedAirborneWings
-                    ?? snap?.Self?.AirborneReconWings ?? 0),
-                SpareAirObservationSorties = Mathf.Max(0, airReservation?.ReservedLaunchSorties
-                    ?? snap?.Self?.SpareAirObservationSorties ?? 0),
+                // RECON-AIR-02 (round 5) — air observation capacity is the WITNESSED count
+                // ReconAssignmentPlanner.MeasureAirCapacity just computed (the same "does a usable
+                // actor structurally exist" question MeasureCapacity answers for ground), not a
+                // fresh unpinned ReconAirCapacityPolicy re-evaluation the pipeline never committed to
+                // (that was the phantom-capacity path: model says the helicopter covers a lane,
+                // nothing reserved its AP/Energy, Phase A spends it, the sortie can't launch).
+                AirborneReconLanes = Mathf.Max(0, airborneWitnessed),
+                SpareAirObservationSorties = Mathf.Max(0, spareLaunchWitnessed),
             };
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();

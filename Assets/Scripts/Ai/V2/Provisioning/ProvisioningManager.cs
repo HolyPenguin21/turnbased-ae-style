@@ -29,6 +29,10 @@ namespace Game.Ai.V2
         public bool RaidTargetIsNeutral;
         public ResourceVector ClaimedPhysical;
         public float ClaimedAp;
+        // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
+        // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
+        // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
+        public float ClaimedEnergy;
         public bool StealthApReserved;
         // AI-RECON-02 — this Scout mission's requirement is a stealthy one (StealthRequirement.
         // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
@@ -94,6 +98,13 @@ namespace Game.Ai.V2
     {
         public readonly WorldSnapshot Snapshot;
         public float ApClaimed { get; private set; }
+        // RECON-AIR-03 — the cumulative real Energy every AirLaunch mission provisioned so far
+        // THIS pass has claimed. Mirrors ApClaimed's role for AP: without this, two separate
+        // AirLaunch missions provisioned sequentially within the same pass each check affordability
+        // against the SAME unmutated root Energy stock independently, so both can pass even though
+        // launching both together would exceed it (ProvisioningManager.ProvisionAir checks against
+        // this before accepting a launch).
+        public float EnergyClaimed { get; private set; }
         public readonly HashSet<int> ClaimedArmyIds = new HashSet<int>();
 
         private readonly Dictionary<StableMissionKey, ProvisionedMission> _successful =
@@ -116,6 +127,7 @@ namespace Game.Ai.V2
         {
             _successful[k] = m;
             ApClaimed += m.ClaimedAp;
+            EnergyClaimed += m.ClaimedEnergy;
             ClaimedArmyIds.Add(m.MoverArmyId);
         }
 
@@ -420,20 +432,24 @@ namespace Game.Ai.V2
                 TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
                 BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
                 ClaimedAp = realNeed,
+                ClaimedPhysical = funded.PhysicalDraw,
                 StealthApReserved = stealthAp > 0,
                 RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
             });
         }
 
-        // Round 4 — claim the air actor/subset Assignment already picked. Mirrors the ground claim
-        // path's shape (revalidate the assigned actor is still usable, revalidate the target is
-        // still worth serving, produce a ProvisionedMission) but NEVER touches AP/Energy the way
-        // ground does: round 3 already established that air's AP/Energy is not reserved ahead of
-        // Phase A — the real affordability gate stays where it always was, at the terminal air
-        // execution stage (ReconAirEnergyPolicy / AiAirSortiePlanner.CanAffordLaunch /
-        // CanIssueMoveNow), which re-checks against the live post-ground-movement world state
-        // anyway. ClaimedAp is therefore 0 here — this mission does not compete for the generic AP
-        // envelope the way a ground Scout's activation AP does.
+        // RECON-AIR-01 (round 5) — claim the air actor/subset Assignment already picked, THROUGH
+        // THE SAME generic funding/provisioning accounting Ground uses: the real AP/Energy Assignment
+        // resolved for this exact actor/subset (ScoutExecutionCandidate.RequiredAp/RequiredEnergy —
+        // see ReconAssignmentPlanner.AppendAirCandidates) is checked against the envelope Funding
+        // granted (funded.Tentative.Ap / funded.PhysicalDraw.Energy) and, if it fits, claimed for
+        // real — ClaimedAp/ClaimedEnergy are no longer hard-coded 0. If it does not fit, this returns
+        // the ordinary EnvelopeTooSmall failure and lets the existing repack/reprice loop
+        // (ResourceAllocator.RegisterProvisionFailure) handle it exactly like ground already does —
+        // no separate air ledger. The terminal air execution stage (ReconAirEnergyPolicy /
+        // AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow) still re-checks against the live
+        // post-ground-movement world state before actually spending anything — this claim is the
+        // FUNDING-side accounting, not a bypass of that final live gate.
         private static ProvisioningResult ProvisionAir(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, ScoutExecutionCandidate exec,
             ScoutMissionTarget target, StableMissionKey key)
@@ -489,6 +505,37 @@ namespace Game.Ai.V2
                 launchSubset = new List<UnitData>(exec.LaunchSubset);
             }
 
+            // RECON-AIR-01 — the real, actor-specific cost Assignment already resolved for THIS
+            // exact candidate (see AppendAirCandidates: a live Pick/PickFromStorage against the
+            // bound mission target, not a generic "some useful step exists" probe). Compare against
+            // the envelope Funding granted; claim for real only if it fits.
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            float realAp = exec.RequiredAp;
+            float realEnergy = exec.RequiredEnergy;
+            float apEnvelope = funded.Tentative.Ap;
+            float energyEnvelope = funded.PhysicalDraw.Energy;
+            if (realAp > apEnvelope + eps || realEnergy > energyEnvelope + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
+                    $"air actor #{moverArmyId} needs {N(realAp)} AP / {N(realEnergy)} Energy, "
+                    + $"envelope is {N(apEnvelope)} AP / {N(energyEnvelope)} Energy"));
+
+            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            if (realAp > turnApLeft + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: air actor #{moverArmyId} needs {N(realAp)}, {N(turnApLeft)} left after earlier claims"));
+
+            // RECON-AIR-03 — the cumulative, SEQUENTIAL check the funded-envelope comparison above
+            // cannot provide on its own: two separate AirLaunch (or AirExisting) missions provisioned
+            // one after another THIS pass both see the SAME unmutated root.Energy (Provisioning never
+            // mutates world resources — only Execution does), so each could pass its OWN envelope
+            // check independently while jointly exceeding the real stockpile. session.EnergyClaimed
+            // accumulates every earlier real claim this pass, mirroring session.ApClaimed for AP.
+            float liveEnergyLeft = root.GetResource(Game.Economy.ResourceType.Energy) - session.EnergyClaimed;
+            if (realEnergy > liveEnergyLeft + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
+                    + $"{N(liveEnergyLeft)} left after earlier claims this pass"));
+
             return ProvisioningResult.Ok(new ProvisionedMission
             {
                 Mission = m,
@@ -500,7 +547,9 @@ namespace Game.Ai.V2
                 ExecutionHex = executionHex,
                 TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
                 BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
-                ClaimedAp = 0f,
+                ClaimedAp = realAp,
+                ClaimedEnergy = realEnergy,
+                ClaimedPhysical = new ResourceVector(0f, 0f, realEnergy, 0f, 0f),
                 StealthApReserved = false,
                 RequiresStealth = false,
                 ExecutorKind = exec.ExecutorKind,

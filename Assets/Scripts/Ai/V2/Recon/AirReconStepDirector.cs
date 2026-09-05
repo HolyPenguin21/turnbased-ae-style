@@ -187,7 +187,7 @@ namespace Game.Ai.V2
         // finally before return — the scorer reads Phase, and it never survives the call.)
         internal static StepDecision PlanStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot, ArmyData air, ReconAirSortieState sortie, bool newTurn,
-            bool arrivalStrikeCheck)
+            bool arrivalStrikeCheck, HexCoord? missionFocusHex = null)
         {
             int armyId = air.Id;
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
@@ -236,7 +236,8 @@ namespace Game.Ai.V2
                 mode = existing.Mode;
 
             ReconAirStepPlanner.StepChoice? choice =
-                ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+                ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie,
+                    missionFocusHex: missionFocusHex);
 
             if (!atAirfield && workingPhase == ReconAirPhase.Outbound && choice.HasValue)
             {
@@ -276,7 +277,8 @@ namespace Game.Ai.V2
                 sortie.Phase = ReconAirPhase.Turning;
                 try
                 {
-                    choice = ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie);
+                    choice = ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie,
+                        missionFocusHex: missionFocusHex);
                 }
                 finally
                 {

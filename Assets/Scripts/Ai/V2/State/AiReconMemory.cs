@@ -43,7 +43,6 @@ namespace Game.Ai.V2
             ReconAirSortieRegistry.ClearAll();
             AirReconCoverageRegistry.ClearAll();
             ReconCapacityDeficitRegistry.ClearAll();
-            ReconAirReservationRegistry.Clear();
             ScoutTrailRegistry.ClearAll();
             ReconAcceptanceAudit.ClearAll();
         }

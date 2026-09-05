@@ -38,7 +38,13 @@ namespace Game.Ai.V2
         public bool MoverAlreadyHidden;
 
         public float ApMinimum, ApDesired, ApMaximum;
-        public float ActivationEnergy;
+        // RECON-AIR-01 — split into a Min/Desired/Max envelope like AP, instead of one flat
+        // ActivationEnergy figure: a ground executor genuinely needs 0, so Minimum/Desired must stay
+        // 0 (never force a physical Energy draw for a mission that may well execute on the ground);
+        // only Maximum/Desired-for-air-plausible-classes widens to cover a real air actor's cost —
+        // see EnergyDesired's assignment below, which is what actually feeds the physical funding
+        // pool (ResourceAllocator.PhysicalDesired), unlike EnergyMaximum which is currently unread.
+        public float EnergyMinimum, EnergyDesired, EnergyMaximum;
         public int EtaTurns;
         public float EstimatedDistance;
     }
@@ -94,12 +100,22 @@ namespace Game.Ai.V2
             float stealthAp = AiConfigV2.scoutOptionalStealthAp;
             float notionalActivationAp = AiConfigV2.scoutNotionalActivationAp;
 
+            // RECON-AIR-01 — Refresh/Surveil are the two classes AppendAirCandidates ever binds to
+            // an air actor (Explore is a physical ground visit only; a stealth-Required / positive-
+            // DetectionRisk mission can never be air, per the same hard invariant Assignment
+            // enforces). Widen the envelope for exactly that class, never for Explore or stealth.
+            bool airPlausible = (target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsRefresh(target.Kind))
+                && target.Stealth != StealthRequirement.Required && !(target.DetectionRisk > 0f);
+
             if (target.Kind == ScoutTargetKind.Surveil)
             {
                 float req = notionalActivationAp
                     + (target.Stealth == StealthRequirement.None ? 0f : stealthAp);
-                est.ApMinimum = est.ApDesired = est.ApMaximum = req;
-                est.ActivationEnergy = 0;
+                est.ApMinimum = est.ApDesired = req;
+                est.ApMaximum = Mathf.Max(req, airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f);
+                est.EnergyMinimum = 0f;
+                est.EnergyDesired = est.EnergyMaximum =
+                    airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
                 est.EstimatedDistance = 0f;
                 est.EtaTurns = 0;
                 return est;
@@ -116,18 +132,22 @@ namespace Game.Ai.V2
                 ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
                 : target.FocusHex;
 
-            est.ActivationEnergy = 0;
+            est.EnergyMinimum = 0f;
+            est.EnergyDesired = est.EnergyMaximum =
+                airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
             est.EstimatedDistance = DistFrom(notionalFrom);
             est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
 
+            float airApFloor = airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f;
             switch (target.Stealth)
             {
                 case StealthRequirement.None:
-                    est.ApMinimum = est.ApDesired = est.ApMaximum = notionalActivationAp;
+                    est.ApMinimum = est.ApDesired = notionalActivationAp;
+                    est.ApMaximum = Mathf.Max(notionalActivationAp, airApFloor);
                     break;
                 case StealthRequirement.Preferred:
                     est.ApMinimum = est.ApDesired = notionalActivationAp;
-                    est.ApMaximum = notionalActivationAp + stealthAp;
+                    est.ApMaximum = Mathf.Max(notionalActivationAp + stealthAp, airApFloor);
                     break;
                 case StealthRequirement.Required:
                     // Generic estimate cannot know whether the eventual mover is already hidden;

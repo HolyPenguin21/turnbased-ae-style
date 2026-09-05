@@ -21,6 +21,11 @@ namespace Game.Ai.V2
         public float Score;
         public string Reason;
         public int LaunchEnergy;
+        // RECON-AIR-05/06 — the ProvisionedMission Assignment bound this launch to. Threaded down so
+        // the executor can (a) anchor the tactical planner's live replanning at the bound target
+        // (RECON-AIR-05) and (b) produce a per-mission ExecutionResult once the real ArmyId exists
+        // (RECON-AIR-06), instead of only the pass-wide aggregate.
+        public ProvisionedMission Mission;
     }
 
     // The complete air-recon decision for a pass: actors to continue, ready aircraft to send, and
@@ -30,6 +35,11 @@ namespace Game.Ai.V2
         public readonly List<int> ContinueActorIds = new List<int>(); // airborne, has a ReconPatrolState
         public readonly List<int> ReadyActorIds = new List<int>();    // on own airfield, no task
         public readonly List<AirLaunchPlan> Launches = new List<AirLaunchPlan>();
+        // RECON-AIR-05/06 — the ProvisionedMission a ReadyActorIds entry is bound to (AirExisting).
+        // ContinueActorIds carries none — a continuing sortie has no fresh ProvisionedMission this
+        // turn (Continuity, not fresh Assignment; see the class header) and its bound target already
+        // lives on the durable ReconPatrolState.StrategicAnchor instead.
+        public readonly Dictionary<int, ProvisionedMission> ReadyMissionByActorId = new Dictionary<int, ProvisionedMission>();
         public string Summary;
 
         public bool IsEmpty =>
@@ -98,6 +108,7 @@ namespace Game.Ai.V2
                         continue;
                     }
                     plan.ReadyActorIds.Add(wing.Id);
+                    plan.ReadyMissionByActorId[wing.Id] = pm;
                     continue;
                 }
 
@@ -113,8 +124,11 @@ namespace Game.Ai.V2
                 }
 
                 var launchCandidate = new AirLaunchCandidate(pm.AirfieldHex, null, pm.LaunchSubset);
+                // RECON-AIR-05 — anchor at the bound Refresh target Assignment already committed
+                // this launch to, so the live replan happens AROUND that objective, not a fresh one.
                 ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
-                    player, ctx, launchCandidate, snapshot, mode, ctx.TurnNumber);
+                    player, ctx, launchCandidate, snapshot, mode, ctx.TurnNumber,
+                    scoringCtx: null, missionFocusHex: pm.FocusHex);
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 {
                     skips.Add("noUsefulRefreshStep");
@@ -139,6 +153,7 @@ namespace Game.Ai.V2
                     LandingHex = first.Value.LandingHex,
                     Score = first.Value.Score,
                     Reason = first.Value.Reason,
+                    Mission = pm,
                     LaunchEnergy = launchEnergy,
                 });
             }

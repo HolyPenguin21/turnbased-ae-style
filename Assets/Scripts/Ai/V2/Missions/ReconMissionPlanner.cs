@@ -232,9 +232,9 @@ namespace Game.Ai.V2
                 ApMinimum = est.ApMinimum,
                 ApDesired = est.ApDesired,
                 ApMaximum = est.ApMaximum,
-                EnergyMinimum = est.ActivationEnergy,
-                EnergyDesired = est.ActivationEnergy,
-                EnergyMaximum = est.ActivationEnergy,
+                EnergyMinimum = est.EnergyMinimum,
+                EnergyDesired = est.EnergyDesired,
+                EnergyMaximum = est.EnergyMaximum,
                 EtaTurns = est.EtaTurns,
                 EstimatedDistance = est.EstimatedDistance,
             };

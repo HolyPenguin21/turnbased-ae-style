@@ -534,7 +534,13 @@ namespace Game.Ai.V2
         // provenance (strict per-axis draw + remainder part) and the AP actually claimed, so a
         // later re-pack applies that spend to the right slices instead of recomputing a fresh
         // Tentative for work that is done.
-        public void RegisterProvisionSuccess(FundedEntry funded, float claimedAp)
+        // RECON-AIR-01 — `claimedPhysical` lets a caller (ProvisioningManager.ProvisionAir) lock the
+        // REAL physical draw (Energy) an air actor's bound cost resolved to, mirroring how
+        // `claimedAp` already overrides the funded AP envelope with the real figure. Omitted (null)
+        // keeps the pre-existing behaviour — the funded Desired estimate is what gets locked — which
+        // is exactly right for Ground/Raid, whose real physical draw never differs from what was
+        // funded.
+        public void RegisterProvisionSuccess(FundedEntry funded, float claimedAp, ResourceVector? claimedPhysical = null)
         {
             if (funded?.Mission == null)
                 return;
@@ -543,7 +549,7 @@ namespace Game.Ai.V2
                 strict[kv.Key] = kv.Value.Ap;
             _lockedClaims[StableMissionKey.For(funded.Mission)] =
                 new LockedAllocation(funded.Mission, strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp,
-                    funded.PhysicalDraw);
+                    claimedPhysical ?? funded.PhysicalDraw);
         }
 
         public TentativeAllocation Pack()
