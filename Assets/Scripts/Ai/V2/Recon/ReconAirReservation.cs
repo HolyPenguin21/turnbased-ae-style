@@ -313,10 +313,20 @@ namespace Game.Ai.V2
                 excludeArmyId = -1;
             }
 
-            if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+            if (!choice.HasValue)
                 return false;
-            if (!ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map, launchEnergy, choice.Value.Score,
-                    excludeArmyId, committedEnergyThisPass).Allowed)
+
+            // AI-MGR — the reservation decision itself: Resource Outlook -> Hand/Deck Energy
+            // Pressure -> Sortie Value -> Reservation Decision. Replaces the old flat
+            // "route clears MinimumUsefulScore + ReconAirEnergyPolicy hard/soft gate" pair with one
+            // staged, diagnosable evaluator — having an aircraft + a legal route is no longer, on
+            // its own, an entitlement to protect AP/Energy.
+            AviationReservationDecision decision = AviationSortieReservationEvaluator.EvaluateRecon(
+                player, root, ctx.Map, slot.Ap, launchEnergy, choice.Value.Score,
+                excludeArmyId, 0, committedEnergyThisPass);
+            AiDebugLog.Write(decision.ToLog(slot.ActorId.HasValue
+                ? $"actor=#{slot.ActorId.Value}" : $"airfield=({slot.AirfieldHex.Q},{slot.AirfieldHex.R})"));
+            if (!decision.ShouldReserve)
                 return false;
             chosenHex = choice.Value.Hex;
             return true;

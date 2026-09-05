@@ -866,6 +866,17 @@ namespace Game.Ai.V2
         public const float reconAirEnergyOppWeight = 0.5f;          // how hard the soft opportunity term pulls final utility down
         public const float reconAirEnergyMinUtility = 0f;           // launch only when informationValue - oppWeight*oppCost clears this (hard reserve already handled separately)
 
+        // =======================================================================================
+        //  AVIATION SORTIE RESERVATION EVALUATOR  (AviationSortieReservationEvaluator)
+        //  Resource Outlook -> Hand/Deck Energy Pressure -> Sortie Value -> Reservation Decision.
+        //  Reuses ReconAirEnergyPolicy's hand/deck pressure scan; these tunables govern only the
+        //  staged decision itself (headroom horizon, sortie-value floor, opportunity weighting).
+        // =======================================================================================
+        public const float aviationReserveIncomeHorizon = 3f;       // turns of Energy income folded into headroom / effective-spendable
+        public const float aviationReserveMinSortieUtility = airReconMinimumUsefulScore; // a route below this is never worth protecting, regardless of resources
+        public const float aviationReserveOpportunityWeight = 0.5f; // how hard the soft opportunity term pulls net utility down
+        public const float aviationReserveMinNetUtility = 0f;       // reserve only when sortieUtility - opportunityCost clears this
+
         // --- Resource-starvation economic feedback (spec §17, P2). Bounded, decaying pressure
         //     raised when AGG/RCN strategic chains keep failing for lack of a specific empty
         //     resource stock; consumed as ONE bounded Economy value bump on a known extraction

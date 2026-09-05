@@ -131,7 +131,9 @@ namespace Game.Ai.V2
         // first MoveArmy step, so an already-activated wing owes nothing; one still sitting
         // un-activated after launch does, and a later spend must not eat it (spec §41.1
         // "already committed/funded actions").
-        private static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId)
+        // Exposed (AviationSortieReservationEvaluator) — no hardcoded card names live here or in the
+        // caller; this stays the single source of "Energy other in-flight air wings still owe".
+        internal static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId)
         {
             int total = 0;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -158,7 +160,9 @@ namespace Game.Ai.V2
         // largest such card in full, plus reconAirEnergyExtraHandFraction of the rest — never the
         // whole deck (§44), never a card already played, never one that needs resources the AI
         // does not have.
-        private static int ProtectedHandEnergy(PlayerRoot root, PlayerSetupData player)
+        // Exposed (AviationSortieReservationEvaluator §2 Hand Energy Pressure) — generic over
+        // whatever cards happen to be in hand, no name/type hardcoding.
+        internal static int ProtectedHandEnergy(PlayerRoot root, PlayerSetupData player)
         {
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null || hand.Hand.Count == 0)
@@ -198,7 +202,9 @@ namespace Game.Ai.V2
         // §41.4 Research/Production opportunity is intentionally not added here: under ReconOnly no
         // such action exists, and when Full V2 returns its own funded Develop actions already claim
         // their Energy through the pipeline before AirRecon is evaluated.
-        private static int ProtectedNearTermDrawEnergy(PlayerSetupData player)
+        // Exposed (AviationSortieReservationEvaluator §2 Deck Energy Pressure) — probability-weighted
+        // (mean of the remaining deck), not "deck contains an Energy card => hoard forever".
+        internal static int ProtectedNearTermDrawEnergy(PlayerSetupData player)
         {
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null || !hand.HasFreeSlot || !hand.HasCardsLeftToDraw)
