@@ -221,8 +221,15 @@ namespace Game.Ai.V2
                 reservationTask.LandingHex = lp.LandingHex;
             }
 
+            // RECON-AIR-06 (round 6 / Bug A) — seed StrategicAnchor from the Assignment-bound
+            // mission target (pm.FocusHex), NOT the tactical first step. lp.FirstStepHex is where
+            // the wing is headed THIS step, not what it is flying FOR; feeding it in here is what
+            // let the anchor drift into a moving tactical waypoint. Mirrors Ground's pattern
+            // (ReconGroundExecutor's `strategicAnchor` local = pm.FocusHex/ExecutionHex, re-affirmed
+            // identically every call) — fall back to the tactical step only when no mission is
+            // bound (should not normally happen for a fresh launch).
             ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, launched.Id,
-                lp.AirfieldHex, lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
+                lp.AirfieldHex, pm?.FocusHex ?? lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
             ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
             ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
             launchSortie.LaunchTurn = ctx.TurnNumber;
@@ -424,8 +431,15 @@ namespace Game.Ai.V2
                 }
 
                 // ForwardStep
+                // RECON-AIR-06 (round 6 / Bug A) — re-affirm StrategicAnchor from the SAME bound
+                // mission target (missionFocusHex, carried in from Execute/RunActor's caller) every
+                // step, not from d.Step (the tactical hex just chosen for THIS move). Passing the
+                // identical value each turn is what makes GetOrCreate's own hold/hysteresis logic a
+                // no-op for a continuing mission (assignment.StrategicAnchor already equals it), and
+                // is exactly the pattern Ground's ReconGroundExecutor uses. Only fall back to the
+                // tactical step when no mission is bound at all (idle/unassigned live replanning).
                 ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, armyId, air.Hex,
-                    d.Step, d.Mode, ctx.TurnNumber);
+                    missionFocusHex ?? d.Step, d.Mode, ctx.TurnNumber);
                 AirSortie reservationTask = EnsureAirReconReservation(player, air, d.LandingHex,
                     outbound: true, target: d.Step);
                 if (reservationTask == null)

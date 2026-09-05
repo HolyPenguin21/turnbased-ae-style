@@ -33,6 +33,10 @@ namespace Game.Ai.V2
 
     internal enum AirReconAnchorKind
     {
+        MissionFocus,            // round 6 (Bug B) — the Assignment-bound mission target itself; kept
+                                  // distinct from IntelRefresh so it is never confused with a generic
+                                  // stale-sighting anchor and never funnelled through the shared
+                                  // Clamp01 enemyInterest bucket (see AirReconRouteScorer.Score)
         EnemyConcentration,      // known / probable / hidden enemy army mass — sanitized to a sector
         EnemyCitadel,            // known Citadel, or its real sector as a hidden directional bias
         FriendlyFacilityApproach,// own production/resource facility perimeter with stale intel
@@ -72,6 +76,13 @@ namespace Game.Ai.V2
             new Dictionary<ReconSector, float>();
         public ReconSector? CitadelSector;
         public float CitadelConfidence;   // 1.0 formally known, < 1 hidden directional bias only
+        // round 6 (Bug B) — the Assignment-bound mission target's sector, kept OUT of SectorPressure/
+        // AddPressure deliberately: it gets its own additive scorer term (mirroring CitadelSector)
+        // instead of being funnelled through the shared Clamp01 enemyInterest bucket, which is what
+        // let Citadel's separate additive term (airReconCitadelDirectionWeight, uncapped) outweigh a
+        // bound mission's realized contribution despite mission focus having the higher configured
+        // weight. See AirReconRouteScorer.Score's missionFocusDir term for the max-value proof.
+        public ReconSector? MissionFocusSector;
         // Own facility perimeter hexes whose intel has gone stale — a route that sweeps near one
         // earns FriendlyFacilityCoverValue.
         public IReadOnlyList<HexCoord> StaleFacilityHexes = Array.Empty<HexCoord>();
@@ -111,12 +122,20 @@ namespace Game.Ai.V2
             // --- 0. Bound mission objective — the STRONGEST anchor when present: Assignment/
             //     Continuity already committed this actor to a specific Refresh/Surveil target, and
             //     the tactical planner must never independently drift toward a different one. ------
+            // round 6 (Bug B) — deliberately NOT routed through AddPressure/SectorPressure: that
+            // bucket feeds AirReconRouteScorer's `enemyInterest` term, which is Clamp01-capped
+            // BEFORE airReconDirectionWeight is applied, so no configured weight here could ever
+            // make its realized contribution exceed airReconDirectionWeight (0.65) — less than
+            // Citadel's own separate, uncapped additive term (airReconCitadelDirectionWeight, 0.70).
+            // MissionFocusSector instead drives its OWN additive scorer term (missionFocusDir),
+            // exactly like CitadelSector/CitadelConfidence already do, sized to dominate by
+            // construction. See AirReconRouteScorer.Score for the max-value ordering proof.
             if (missionFocusHex.HasValue)
             {
                 ReconSector ms = ReconDirectionModel.Sector(origin, missionFocusHex.Value);
-                anchors.Add(new AirReconStrategicAnchor(AirReconAnchorKind.IntelRefresh,
+                anchors.Add(new AirReconStrategicAnchor(AirReconAnchorKind.MissionFocus,
                     ms, AiConfigV2.airReconMissionFocusWeight, missionFocusHex.Value, true));
-                AddPressure(ms, AiConfigV2.airReconMissionFocusWeight);
+                set.MissionFocusSector = ms;
             }
 
             // --- 1. Enemy concentration (sanitized cheat: one base unit per true-world army). ----
@@ -306,6 +325,7 @@ namespace Game.Ai.V2
         public readonly float InformationGain;
         public readonly float StaleIntelRefreshValue;
         public readonly float EnemyInterest;
+        public readonly float MissionFocusDirectionValue;
         public readonly float EnemyCitadelDirectionValue;
         public readonly float FriendlyFacilityCoverValue;
         public readonly float RouteObservationValue;
@@ -322,7 +342,8 @@ namespace Game.Ai.V2
 
         public AirReconRouteCandidate(HexCoord firstStep, HexCoord objectiveHex, HexCoord landingHex,
             AirReconAnchorKind? anchorKind, float informationGain, float staleIntelRefreshValue,
-            float enemyInterest, float enemyCitadelDirectionValue, float friendlyFacilityCoverValue,
+            float enemyInterest, float missionFocusDirectionValue, float enemyCitadelDirectionValue,
+            float friendlyFacilityCoverValue,
             float routeObservationValue, float combatOpportunityValue, float travelCost,
             float activationCost, float recoveryRisk, float redundancyPenalty, float totalScore,
             bool rejected, string rejectReason, string breakdown)
@@ -334,6 +355,7 @@ namespace Game.Ai.V2
             InformationGain = informationGain;
             StaleIntelRefreshValue = staleIntelRefreshValue;
             EnemyInterest = enemyInterest;
+            MissionFocusDirectionValue = missionFocusDirectionValue;
             EnemyCitadelDirectionValue = enemyCitadelDirectionValue;
             FriendlyFacilityCoverValue = friendlyFacilityCoverValue;
             RouteObservationValue = routeObservationValue;
@@ -456,6 +478,21 @@ namespace Game.Ai.V2
             ReconSector stepSector = ReconDirectionModel.Sector(sectorOrigin, x.FirstStep);
             float sectorPressure = x.Anchors != null ? x.Anchors.PressureFor(stepSector) : 0f;
             float enemyInterest = AiConfigV2.airReconDirectionWeight * Mathf.Clamp01(sectorPressure);
+
+            // --- MissionFocusDirectionValue — round 6 (Bug B) fix. The Assignment-bound mission
+            // target gets its OWN additive term, exactly like Citadel below, instead of being
+            // funnelled through the shared Clamp01(sectorPressure) bucket above (enemyInterest maxes
+            // at airReconDirectionWeight=0.65 no matter the anchor's configured weight — feeding
+            // mission focus through it made a bound commitment realize LESS pull than Citadel's own
+            // separate uncapped term). Max-value proof mission focus dominates Citadel when both
+            // point at the same step:
+            //   missionFocusDir_max = airReconMissionFocusWeight            = 0.90
+            //   citadelDir_max      = airReconCitadelDirectionWeight * 1.0  = 0.70
+            //   0.90 > 0.70  ⇒ dominates by construction (see AiConfigV2 — citadel weight is the
+            //   base value; mission-focus weight is defined as citadel weight + an explicit margin).
+            float missionFocusDir = 0f;
+            if (x.Anchors?.MissionFocusSector != null && x.Anchors.MissionFocusSector.Value == stepSector)
+                missionFocusDir = AiConfigV2.airReconMissionFocusWeight;
 
             // --- EnemyCitadelDirectionValue — first step heads into the Citadel sector. ----------
             float citadelDir = 0f;
@@ -596,7 +633,7 @@ namespace Game.Ai.V2
                     routeObs += lateralWeight * AiConfigV2.airReconLateralNoveltyBonus;
             }
 
-            float positive = infoGain + staleRefresh + enemyInterest + citadelDir
+            float positive = infoGain + staleRefresh + enemyInterest + missionFocusDir + citadelDir
                 + facilityCover + routeObs + combatOpp;
             float total = positive - travelCost - activationCost - recoveryRisk - redundancy;
 
@@ -639,7 +676,7 @@ namespace Game.Ai.V2
 
             string breakdown =
                 $"info={infoGain:0.00} stale={staleRefresh:0.00} enemyInt={enemyInterest:0.00} "
-                + $"citDir={citadelDir:0.00} facCover={facilityCover:0.00} routeObs={routeObs:0.00}"
+                + $"missionDir={missionFocusDir:0.00} citDir={citadelDir:0.00} facCover={facilityCover:0.00} routeObs={routeObs:0.00}"
                 + $"(corridor={routeHexes.Count},informative={informativeHexes},novelty={observationNovelty:0.00},"
                 + $"recentOverlap={recentAirCoverageOverlap}) "
                 + $"combat={combatOpp:0.00} -travel={travelCost:0.00} -activation={activationCost:0.00} "
@@ -649,8 +686,9 @@ namespace Game.Ai.V2
                 + (rejected ? $" [REJECT {reject}]" : string.Empty);
 
             return new AirReconRouteCandidate(x.FirstStep, x.ObjectiveHex, x.LandingHex, anchorKind,
-                infoGain, staleRefresh, enemyInterest, citadelDir, facilityCover, routeObs, combatOpp,
-                travelCost, activationCost, recoveryRisk, redundancy, total, rejected, reject, breakdown);
+                infoGain, staleRefresh, enemyInterest, missionFocusDir, citadelDir, facilityCover,
+                routeObs, combatOpp, travelCost, activationCost, recoveryRisk, redundancy, total,
+                rejected, reject, breakdown);
         }
 
         // Per-hex information usefulness on the SAME basis ReconAirStepPlanner.ScoreInformation

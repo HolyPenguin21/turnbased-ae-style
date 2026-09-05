@@ -835,13 +835,21 @@ namespace Game.Ai.V2
         public const float airReconRouteObservationDecay = 0.82f;   // geometric decay per route hex away from the aircraft — near-term coverage counts most
         public const float airReconRouteObservationRingWeight = 0.35f; // weight on a route hex's 6 immediate neighbours (corridor width), on top of the hex itself
         public const int airReconRouteObservationMaxHexes = 14;     // hard cap on scored route hexes per candidate (bounds the per-decision cost)
-        // RECON-AIR-05 (round 5) — the strongest anchor: Assignment/Continuity already bound this
-        // sortie to a SPECIFIC Refresh/Surveil target this turn (or a durable one, for a continuing
-        // sortie), and the tactical planner must drift toward it rather than pick a fresh unrelated
-        // objective. Weighted above every discovered/inferred anchor (Citadel included) since it is
-        // a real commitment, not an inference.
-        public const float airReconMissionFocusWeight = 0.90f;
         public const float airReconCitadelDirectionWeight = 0.70f;  // first step heads into the enemy-Citadel sector (× confidence: 1.0 known, 0.55 hidden-bias only)
+        // RECON-AIR-05 (round 5) / Bug B fix (round 6) — the strongest anchor: Assignment/Continuity
+        // already bound this sortie to a SPECIFIC Refresh/Surveil target this turn (or a durable one,
+        // for a continuing sortie), and the tactical planner must drift toward it rather than pick a
+        // fresh unrelated objective. Weighted above every discovered/inferred anchor (Citadel
+        // included) since it is a real commitment, not an inference — AirReconRouteScorer.Score gives
+        // this its own additive term (missionFocusDir), same shape as Citadel's own additive term
+        // (citadelDir = airReconCitadelDirectionWeight * confidence, confidence <= 1), so defining
+        // this weight as citadel's weight PLUS an explicit margin makes
+        // "mission focus dominates Citadel when both are present" true BY CONSTRUCTION, not by
+        // coincidence of two independently-picked constants:
+        //   missionFocusDir_max (0.90) = airReconCitadelDirectionWeight (0.70) + margin (0.20)
+        //                              > citadelDir_max = airReconCitadelDirectionWeight * 1.0 (0.70)
+        public const float airReconMissionFocusDominanceMargin = 0.20f;
+        public const float airReconMissionFocusWeight = airReconCitadelDirectionWeight + airReconMissionFocusDominanceMargin;
         public const float airReconCitadelHiddenConfidence = 0.55f;
         public const float airReconFacilityCoverWeight = 0.40f;     // route passes within airReconFacilityCoverRadius of an OWN facility whose perimeter intel is stale
         public const int airReconFacilityCoverRadius = 2;
