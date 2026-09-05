@@ -48,6 +48,13 @@ namespace Game.Ai.V2
         public int ObservationDeficit;
         public int GroundTraversalDeficit;
 
+        // Raw usable-supply counts behind the two deficits above (pre-bootstrap). Persistence-gate
+        // Rule 1 (zero-capacity bootstrap) needs the EXACT class-scoped supply, not the cross-class
+        // union in ExistingGroundUsableCapacity below — an Observation lane can be served by air
+        // with zero ground actors present, so "0 ground usable" must not gate Observation bootstrap.
+        public int GroundTraversalSupply;
+        public int ObservationSupply;
+
         // Distinct GENERIC GROUND actors already in hand — deduped ids (a scout counted once even
         // though it could serve either class): active generic Explore/Refresh/Surveil lanes plus
         // idle-usable solo Recce. This is what DemandLayer's global-concurrency clamp subtracts.
@@ -140,6 +147,7 @@ namespace Game.Ai.V2
             // --- Ground-traversal has first claim on the shared idle-scout pool: it is the only
             //     requirement class aviation cannot help with.
             int groundTravSupply = cap.GenericGroundLaneActors.Count + cap.IdleGroundScouts.Count;
+            cap.GroundTraversalSupply = groundTravSupply;
             cap.GroundTraversalDeficit =
                 Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - groundTravSupply);
 
@@ -151,6 +159,7 @@ namespace Game.Ai.V2
                 + cap.AirborneReconLanes
                 + cap.SpareAirObservationSorties
                 + idleGroundForObs;
+            cap.ObservationSupply = obsSupply;
             cap.ObservationDeficit = Mathf.Max(0, cap.DesiredObservationConcurrency - obsSupply);
 
             var distinctGround = new HashSet<int>(cap.GenericGroundLaneActors);

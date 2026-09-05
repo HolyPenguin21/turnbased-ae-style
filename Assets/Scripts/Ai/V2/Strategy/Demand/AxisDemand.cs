@@ -102,6 +102,16 @@ namespace Game.Ai.V2
         // penalty: a destination that already reaches this figure should not keep attracting cards.
         public float RequiredCapabilityPower;
 
+        // Persistence-gate escape (spec: "Persistence Gate: Bootstrap & No-Alternative-Work
+        // Escape"). True for a demand an axis raised for a REAL runnable opportunity + deliverable
+        // capability gap, but whose capacity deficit has not yet persisted long enough to auto-play.
+        // Not axis-specific — any axis's persistence gate can use it. StrategicPhaseA excludes it
+        // from the normal per-turn arbitration pool and only reconsiders it once every currently
+        // active (non-deferred) demand this pass is satisfied, blocked, or infeasible — i.e. once
+        // there is no other actionable work left to prefer over it — and only if a legal/affordable
+        // deliverable candidate exists for it right now (never a phantom fulfillment).
+        public bool IsPersistenceDeferred;
+
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
             + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"

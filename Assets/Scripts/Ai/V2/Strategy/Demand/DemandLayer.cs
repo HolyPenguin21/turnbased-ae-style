@@ -221,8 +221,31 @@ namespace Game.Ai.V2
                 player, turn, ReconDeficitKind.Observation, capacity.ObservationDeficit, out int obsStreak);
             bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
                 player, turn, ReconDeficitKind.GroundTraversal, capacity.GroundTraversalDeficit, out int groundStreak);
-            int obsNew = obsPersist ? capacity.ObservationDeficit : 0;
-            int groundNew = groundPersist ? capacity.GroundTraversalDeficit : 0;
+
+            // --- Rule 1 (persistence-gate spec) — Zero-Capacity Bootstrap. A real runnable
+            //     opportunity that NO usable actor of the required class can currently serve at all
+            //     must get at least its first unit of capacity right away — persistence exists to
+            //     stop churny re-materialization of ADDITIONAL capacity, not to starve an axis that
+            //     has nothing usable whatsoever. Scoped per class: Observation counts air supply too
+            //     (an idle helicopter means Observation is not zero-capacity even with 0 ground
+            //     actors), GroundTraversal never does (aviation cannot substitute a physical visit).
+            int groundBootstrap = capacity.GroundTraversalSupply == 0 && groundVisitRunnable.Count > 0
+                ? Mathf.Min(1, capacity.GroundTraversalDeficit) : 0;
+            int obsBootstrap = capacity.ObservationSupply == 0 && observationRunnable.Count > 0
+                ? Mathf.Min(1, capacity.ObservationDeficit) : 0;
+
+            int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, capacity.ObservationDeficit - obsBootstrap) : 0);
+            int groundNew = groundBootstrap + (groundPersist ? Mathf.Max(0, capacity.GroundTraversalDeficit - groundBootstrap) : 0);
+            if (groundBootstrap > 0)
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
+                    + $"reason=zero_capacity_bootstrap class=GroundTraversal runnable={groundVisitRunnable.Count} "
+                    + $"usableCapacity={capacity.GroundTraversalSupply} deficit={capacity.GroundTraversalDeficit} "
+                    + $"bootstrapped={groundBootstrap}");
+            if (obsBootstrap > 0)
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
+                    + $"reason=zero_capacity_bootstrap class=Observation runnable={observationRunnable.Count} "
+                    + $"usableCapacity={capacity.ObservationSupply} deficit={capacity.ObservationDeficit} "
+                    + $"bootstrapped={obsBootstrap}");
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
             //     served first.
@@ -245,6 +268,20 @@ namespace Game.Ai.V2
             int matGround = Mathf.Min(groundPart, genericNew);
             int matObs = genericNew - matGround;
 
+            // --- Rule 2 (persistence-gate spec) escape candidates. The part of each class's raw
+            //     deficit that is real (beyond the Rule-1 bootstrap unit) but has not yet persisted
+            //     long enough is not simply dropped: it is carried forward as a PERSISTENCE-DEFERRED
+            //     demand, room-bounded exactly like a normal materialisation would be, so
+            //     StrategicPhaseA's reconciliation pass can still promote it later THIS turn if it
+            //     turns out there is no other actionable work worth preferring over it.
+            int roomLeftForDeferred = Mathf.Max(0, roomForNew - stealthNew - genericNew);
+            int groundResidualUnpersisted = groundPersist ? 0
+                : Mathf.Max(0, capacity.GroundTraversalDeficit - groundBootstrap);
+            int obsResidualUnpersisted = obsPersist ? 0
+                : Mathf.Max(0, capacity.ObservationDeficit - obsBootstrap);
+            int groundDeferred = Mathf.Min(groundResidualUnpersisted, roomLeftForDeferred);
+            int obsDeferred = Mathf.Min(obsResidualUnpersisted, Mathf.Max(0, roomLeftForDeferred - groundDeferred));
+
             const float reconFixedOverheadAp = 0f;
 
             if (stealthNew <= 0 && genericNew <= 0)
@@ -261,8 +298,60 @@ namespace Game.Ai.V2
                     + $"missStealth={missStealth} stealthFree={stealthFree} active={activeReconExecutions} "
                     + $"hard={ReconConcurrencyPolicy.HardCap} combinedCeiling={capacity.CombinedDesiredConcurrency} "
                     + $"existingGroundUsable={capacity.ExistingGroundUsableCapacity} usefulGenericRoom={usefulGenericRoom} "
-                    + $"groundFloor={groundNew} roomForNew={roomForNew} blocked={blocked}");
-                yield break;
+                    + $"groundFloor={groundNew} roomForNew={roomForNew} blocked={blocked} "
+                    + $"deferredCandidates=(ground={groundDeferred},obs={obsDeferred})");
+            }
+
+            if (groundDeferred > 0)
+            {
+                ReconObjective best = groundVisitRunnable.FirstOrDefault(o => !IsStealthObjective(o))
+                    ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
+                    + $"class=GroundTraversal persistenceDeferredEmitted=true desired={groundDeferred} "
+                    + $"runnable={groundVisitRunnable.Count} usableCapacity={capacity.GroundTraversalSupply} "
+                    + $"streak={groundStreak}");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Recon,
+                    Capability = CapabilityKind.ScoutCapability,
+                    DesiredAmount = groundDeferred,
+                    RequiredTraits = TraitPreference.None,
+                    PreferredTraits = TraitPreference.Stealth,
+                    MinimumFollowupAp = reconFixedOverheadAp,
+                    TargetHex = best.FocusHex,
+                    Value = best.BaseValue,
+                    ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
+                    IsPersistenceDeferred = true,
+                    Explain = $"GroundTraversal deficit {capacity.GroundTraversalDeficit} not yet persistent "
+                        + $"(streak {groundStreak}); {groundVisitRunnable.Count} runnable job(s); "
+                        + "deferred pending no-alternative-work reconciliation",
+                };
+            }
+
+            if (obsDeferred > 0)
+            {
+                ReconObjective best = observationRunnable.FirstOrDefault(o => !IsStealthObjective(o))
+                    ?? observationRunnable.FirstOrDefault() ?? runnable[0];
+                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
+                    + $"class=Observation persistenceDeferredEmitted=true desired={obsDeferred} "
+                    + $"runnable={observationRunnable.Count} usableCapacity={capacity.ObservationSupply} "
+                    + $"streak={obsStreak}");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Recon,
+                    Capability = CapabilityKind.ScoutCapability,
+                    DesiredAmount = obsDeferred,
+                    RequiredTraits = TraitPreference.None,
+                    PreferredTraits = TraitPreference.Stealth,
+                    MinimumFollowupAp = reconFixedOverheadAp,
+                    TargetHex = best.FocusHex,
+                    Value = best.BaseValue,
+                    ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
+                    IsPersistenceDeferred = true,
+                    Explain = $"Observation deficit {capacity.ObservationDeficit} not yet persistent "
+                        + $"(streak {obsStreak}); {observationRunnable.Count} runnable job(s); "
+                        + "deferred pending no-alternative-work reconciliation",
+                };
             }
 
             if (stealthNew > 0)

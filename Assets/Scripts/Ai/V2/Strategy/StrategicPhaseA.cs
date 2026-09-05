@@ -73,7 +73,7 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
-            var states = demands.Select((d, i) => new DemandState
+            var allStates = demands.Select((d, i) => new DemandState
                 {
                     Demand = d,
                     Remaining = d != null ? Mathf.Max(0f, d.DesiredAmount) : 0f,
@@ -81,7 +81,17 @@ namespace Game.Ai.V2
                 })
                 .Where(s => s.Demand != null && s.Remaining > 0f)
                 .ToList();
-            if (states.Count == 0)
+
+            // Persistence-gate reconciliation (spec "Bootstrap & No-Alternative-Work Escape") —
+            // a demand an axis marked IsPersistenceDeferred is a REAL runnable opportunity with a
+            // deliverable capability gap, but its capacity deficit has not persisted long enough to
+            // auto-play. It must not compete in the normal arbitration pool from the start (that
+            // would defeat the point of persistence), so it is held out of `states` here and only
+            // reconsidered once every other demand this pass is satisfied, blocked, or infeasible —
+            // see TryPromotePersistenceDeferred below.
+            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred).ToList();
+            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();
+            if (states.Count == 0 && deferredStates.Count == 0)
                 return result;
 
             // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
@@ -142,7 +152,12 @@ namespace Game.Ai.V2
             {
                 List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f).ToList();
                 if (active.Count == 0)
+                {
+                    if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
+                        ledger, commitments, result.Reservation))
+                        continue;
                     break;
+                }
 
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
 
@@ -203,6 +218,12 @@ namespace Game.Ai.V2
                                 if (root.GetResource(rt) <= 0f)
                                     ResourceStarvationRegistry.RecordBlock(player, rt);
                     }
+                    // No currently-active demand has any feasible chain this round — the AI is about
+                    // to give up on real strategic work for this pass. Before it does, give any
+                    // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
+                    if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
+                        ledger, commitments, result.Reservation))
+                        continue;
                     break;
                 }
 
@@ -316,6 +337,12 @@ namespace Game.Ai.V2
             result.Reservation.UnresolvedDemands.Clear();
             foreach (DemandState state in states.Where(s => s.Remaining > 0f))
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
+            // Deferred demands never promoted this pass (no runnable window to try them, or no
+            // deliverable candidate — AC7) are still real unmet strategic need; carry them into the
+            // same residual pool the reaction pass / Phase B read, so a later chance this turn is not
+            // treated as if the need never existed.
+            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), ledger now " + ledger.DebugLine());
@@ -343,7 +370,51 @@ namespace Game.Ai.V2
                 EconomyResourceType = d.EconomyResourceType,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
+                IsPersistenceDeferred = d.IsPersistenceDeferred,
             };
+        }
+
+        // Persistence-gate reconciliation (spec "Bootstrap & No-Alternative-Work Escape", Rule 2).
+        // Called only at a point where the normal per-turn arbitration loop is about to give up —
+        // every currently active (non-deferred) demand is satisfied, blocked, or has no feasible
+        // chain this round. That is exactly "no other actionable work exists to prefer instead" in
+        // Phase A's own frame, so any persistence-deferred demand gets one real shot: if it has a
+        // legal/affordable/operationally-deliverable candidate RIGHT NOW (the same TopForDemand
+        // query every other demand uses — never a phantom fulfillment, AC7), it is moved into the
+        // normal `states` pool and competes there through the ordinary candidate scoring (AC10);
+        // otherwise it is left deferred and the caller proceeds to Phase B as usual (AC7/AC8).
+        // Every deferred demand is tried once per call so several axes can each get a fair chance
+        // in the same reconciliation window; promotion never re-derives runnable-opportunity or
+        // capacity facts — those were already established once by the emitting axis (DemandLayer).
+        private static bool TryPromotePersistenceDeferred(List<DemandState> states,
+            List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger, ActorCommitments commitments,
+            MaterializationReservation reservation)
+        {
+            if (deferredStates.Count == 0)
+                return false;
+
+            bool promotedAny = false;
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+            foreach (DemandState ds in deferredStates.ToList())
+            {
+                List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
+                    ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
+                    reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK);
+                deferredStates.Remove(ds);
+                if (top.Count == 0)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
+                        + "decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds");
+                    continue;
+                }
+                AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
+                    + $"decision=PROMOTE previousGate=persistence reason=no_alternative_actionable_work "
+                    + $"deliverableCandidates={top.Count} best={top[0].Plan.StableKey}");
+                states.Add(ds);
+                promotedAny = true;
+            }
+            return promotedAny;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
