@@ -1,9 +1,22 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
+    // Round 4 — WHO executes a funded Recon mission is Assignment's job for BOTH movers now.
+    // Ground: exactly one live ArmySnapshot (a fielded solo Recce), matching ScoutExecutionCandidate.
+    // Air adds two shapes, mirroring what AirReconPlanner used to pick independently:
+    //   AirExisting — a real, already-existing air ArmySnapshot (a ready standalone wing sitting on
+    //     its own airfield with no sortie task). Same ArmyId-keyed shape as Ground.
+    //   AirLaunch   — a NOT-YET-EXISTING sortie: a concrete minimum aircraft subset from one owned
+    //     airfield's hangar. There is no live ArmyId to key uniqueness on (the aircraft only becomes
+    //     an ArmyData when Provisioning/Execution actually launches it — the same reason Raid assembly
+    //     from donors needs its own ArmyData-less bookkeeping), so ScoutExecutionCandidate.ActorKey
+    //     synthesises a stable per-airfield negative id for the batch solver's one-actor-per-job
+    //     uniqueness constraint instead of reading Army.ArmyId.
+    public enum ScoutExecutorKind { Ground, AirExisting, AirLaunch }
     // ===========================================================================================
     //  SCOUT MOVER SELECTOR  (Assignment-stage low-level actor enumeration primitive)
     // ===========================================================================================
@@ -41,8 +54,18 @@ namespace Game.Ai.V2
         public readonly bool AlreadyHidden;
         public readonly float RequiredAp;      // EffActivationAp + (stealth transition if Required && !hidden)
 
+        // Round 4 — executor identity. Ground candidates (and AirExisting) carry Army != null and
+        // ExecutorKind defaults to Ground for every pre-round-4 call site (optional params). An
+        // AirLaunch candidate carries Army == null plus the concrete airfield/subset Provisioning
+        // must claim; ActorKey below is the ONLY thing the batch solver may use for actor identity.
+        public readonly ScoutExecutorKind ExecutorKind;
+        public readonly HexCoord AirfieldHex;                    // AirLaunch only
+        public readonly IReadOnlyList<UnitData> LaunchSubset;    // AirLaunch only
+
         public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
-            int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp)
+            int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
+            ScoutExecutorKind executorKind = ScoutExecutorKind.Ground, HexCoord airfieldHex = default,
+            IReadOnlyList<UnitData> launchSubset = null)
         {
             Army = army;
             ExecutionHex = executionHex;
@@ -53,9 +76,21 @@ namespace Game.Ai.V2
             StandOff = standOff;
             AlreadyHidden = alreadyHidden;
             RequiredAp = requiredAp;
+            ExecutorKind = executorKind;
+            AirfieldHex = airfieldHex;
+            LaunchSubset = launchSubset;
         }
 
         public bool IsStealthCapableMover => Army != null && (Army.IsHidden || Army.CanEnterStealth);
+
+        // The batch solver's one-actor-per-job identity key. A real mover (Ground / AirExisting) is
+        // its own ArmyId; an AirLaunch candidate (no ArmyData yet) is a stable per-airfield synthetic
+        // id, deliberately far outside the real ArmyId range, so two funded missions in the same pass
+        // can never both claim the same airfield's hangar subset.
+        public int ActorKey => Army != null ? Army.ArmyId : SyntheticAirfieldActorId(AirfieldHex);
+
+        public static int SyntheticAirfieldActorId(HexCoord airfieldHex) =>
+            -(2_000_000 + (airfieldHex.Q & 0xFFF) * 4096 + (airfieldHex.R & 0xFFF));
     }
 
     public static class ScoutMoverSelector

@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // ARCH-02 §35 — the air-recon INFORMATION-WEIGHTING policy. Aviation only ever REVEALS a hex
     // (it never marks one ground-Visited). While a large fraction of the whole board is still
     // never-observed it values that dark territory (Explore); otherwise it re-checks stale known
-    // hexes (Refresh). Shared by AirReconPlanner (initial admission) and AirReconStepDirector
+    // hexes (Refresh). Shared by AirReconPlanner (storage-launch first-step gate) and AirReconStepDirector
     // (per-step) so the executor never owns this decision.
     internal static class AirReconModePolicy
     {

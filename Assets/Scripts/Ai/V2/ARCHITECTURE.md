@@ -67,7 +67,8 @@ canonical game actions; it never selects objectives or invents alternative actio
 | Capability / trait / equipment-host matching | `Materialization/MaterializationChainMatching` |
 | Joint physical projection (recipient / hero / hand slots) | `Materialization/ProjectedPhysicalState` |
 | Projected army capacity rule (planner == executor) | `Materialization/ArmyCapacityRules` |
-| Air-recon planning (actor / mode / launch / first-step / energy) | `Recon/AirReconPlanner` |
+| Air-recon actor/target selection (round 4 — same owner as ground) | `Recon/ReconAssignmentPlanner` (`AppendAirCandidates`) |
+| Air-recon execution-input assembly (mode / launch-subset re-derivation / first-step gate / energy) | `Recon/AirReconPlanner` |
 | Execution state-version counter | `State/V2StateVersion` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |
@@ -94,18 +95,36 @@ canonical game actions; it never selects objectives or invents alternative actio
   only evaluator calls are `Is*SatisfiedLive` completion checks (a legit §37 concern), never
   objective selection or replacement-mission synthesis (the stale-Explore replacement builder
   was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
-* **Air recon is plan-then-execute — including the per-step loop.** `Recon/AirReconPlanner.Plan`
-  does the pass-level admission (aircraft discovery, actor selection/ordering, `ReconMode`,
-  launch-subset, the `PickFromStorage` minimum-useful-step gate, the energy-policy check),
-  producing an `AirReconPlan`. Every *per-step* tactical decision — the Outbound/Turning/Hold/
-  Return phase machine, live `ReconMode` resolution, the `ReconAirStepPlanner.Pick` call, the
-  return-step + landing hysteresis, the activation energy / affordability gates and the
-  opportunistic-strike arbitration — lives in `Recon/AirReconStepDirector.PlanStep`, which
-  replans live on every call. `Execution/ReconAirExecutor` only issues the canonical Move /
-  Strike / assignment-bookkeeping call each returned `StepDecision` names and bumps
+* **Air recon Assignment/Execution split (round 4).** WHICH air actor (an existing ready standalone
+  wing) or WHICH airfield+launch-subset serves a funded Observation (Refresh / non-stealth Surveil)
+  mission is decided by `Recon/ReconAssignmentPlanner.AppendAirCandidates` — the SAME single
+  Assignment owner, and the same batch one-actor-per-job solver, Ground candidates already go
+  through (`BuildCandidates` / `AssignFunded`; `ScoutExecutorKind.AirExisting` / `AirLaunch` on
+  `ScoutExecutionCandidate`). Feasibility reuses `ReconAirReservationPrepass.SlotWouldFly` — the
+  same primitive the pre-Demand capacity sizing prepass uses — so the two can never diverge into two
+  different feasibility answers for the same question. `Provisioning/ProvisioningManager.ProvisionAir`
+  claims the concrete actor/subset the same way ground Provisioning claims a ground mover, producing
+  a `ProvisionedMission` tagged with `ExecutorKind`/`AirfieldHex`/`LaunchSubset`. Air never satisfies
+  Explore/GroundTraversal and never a stealth-Required / positive-DetectionRisk mission — both hard
+  invariants are enforced in `AppendAirCandidates` before any candidate is built.
+  Air recon stays plan-then-execute for the *tactical* half. `Recon/AirReconPlanner.Plan` no longer
+  selects; it turns this pass's air-bound `ProvisionedMission`s (plus wings already continuing a
+  prior sortie, which are Mission Continuity's concern, not fresh Assignment's) into an `AirReconPlan`
+  — re-deriving the concrete first step/landing/score fresh via `PickFromStorage` against current
+  world state (legitimate live execution-input assembly, mirroring how `ReconGroundExecutor`
+  re-derives its own next step every turn too). Every *per-step* tactical decision — the
+  Outbound/Turning/Hold/Return phase machine, live `ReconMode` resolution, the
+  `ReconAirStepPlanner.Pick` call, the return-step + landing hysteresis, the activation energy /
+  affordability gates and the opportunistic-strike arbitration — still lives in
+  `Recon/AirReconStepDirector.PlanStep`, which replans live on every call; the tactical step-scoring
+  algorithm itself (`AirReconRouteScorer` / `AirReconAnchorModel`) is unchanged this round — it does
+  not take a bound target hex (see the round-4 report for why that was left as a documented, narrow,
+  deliberate scope boundary rather than a rewrite). `Execution/ReconAirExecutor` only issues the
+  canonical Move / Strike / assignment-bookkeeping call each returned `StepDecision` names and bumps
   `V2StateVersion` on each confirmed mutation; it produces an `AirReconExecutionResult`
-  (`IV2ActionResult`). The orchestrator runs plan+execute as a terminal stage after
-  `TaskExecutor.Execute`; `TaskExecutor` no longer references air recon. A launch that goes
+  (`IV2ActionResult`). The orchestrator splits `TaskExecutor`'s ground/raid input from air-executed
+  Scout `ProvisionedMission`s before calling `TaskExecutor.Execute`, then runs air plan+execute as a
+  terminal stage; `TaskExecutor` itself still never references air recon. A launch that goes
   unaffordable mid-pass is skipped and logged, never re-planned.
 * **Provisioning plays no strategic cards** — `Provisioning/*` binds actors and locks; it never
   calls `MaterializationExecutor` / `StrategicPhaseA/B`.

@@ -33,10 +33,15 @@ namespace Game.Ai.V2
     //  or its resources are gone by Provisioning time) — see the round-3 report for the precise risk
     //  this reopens.
     //
-    //  Concrete air actor / launch-subset SELECTION for real execution remains the terminal stage's
-    //  job (AirReconPlanner.Plan -> ReconAirExecutor.Execute, unchanged by this round) — it re-picks
-    //  fresh at the end of the turn against the real, current world state, which is a stronger
-    //  guarantee than trusting a pre-Demand pick that could be hours-of-turn-logic stale by then.
+    //  Round 4: concrete air actor / launch-subset SELECTION for real execution now happens in
+    //  ReconAssignmentPlanner.AppendAirCandidates (the same single Assignment owner Ground has),
+    //  reusing THIS file's SlotWouldFly as the shared feasibility primitive so the two callers can
+    //  never diverge. AirReconPlanner.Plan / ReconAirExecutor.Execute stay the terminal stage, but
+    //  only turn Assignment's already-picked actor/airfield+subset into execution input — they no
+    //  longer pick independently. The pre-Demand structural read here can still promise capacity
+    //  that a later pass's real Assignment does not end up using (same risk a ground Scout has
+    //  always had between MeasureCapacity and AssignFunded) — that staleness is handled the normal
+    //  way, by live per-turn tactical replanning in Execution, not by this prepass reserving anything.
     // ===========================================================================================
     internal sealed class ReconAirReservationState
     {
@@ -230,7 +235,16 @@ namespace Game.Ai.V2
         // whose score clears `MinimumUsefulScore`, AND the Energy opportunity policy — with the
         // Energy already reserved by earlier slots this pass folded in so several candidates cannot
         // each pass against the full stockpile.
-        private static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+        //
+        // Round 4 — INTERNAL (was private) so ReconAssignmentPlanner's real air-candidate builder
+        // (BuildCandidates) can call the SAME feasibility check this read-only sizing prepass uses,
+        // instead of re-deriving a second copy. Assignment calls it with committedEnergyThisPass=0
+        // and provisionalWedges=null (a single-mission candidate probe has no running per-pass
+        // budget/wedge state to fold in — Provisioning's later sequential AP/Energy claim against
+        // session.ApClaimed is what actually prevents double-spending across missions THIS pass,
+        // exactly mirroring how ground Assignment/BuildCandidates also ignores the aggregate AP
+        // budget and leaves it to Provisioning).
+        internal static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot, int committedEnergyThisPass,
             IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
         {

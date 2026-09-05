@@ -39,12 +39,14 @@ namespace Game.Ai.V2
             failReason: Mutated ? null : "air recon pass changed nothing");
     }
 
-    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (built by AirReconPlanner: actor
-    // discovery/selection, ReconMode, launch-subset, first-step gate and energy policy) and, for
-    // each airborne actor, asks AirReconStepDirector for the next tactical decision and issues
-    // exactly the canonical Move / Strike / assignment-bookkeeping call it names. It never chooses
-    // a mode, a step, a landing, a phase transition or whether a strike is worthwhile — that all
-    // lives in the director, which is free to replan live on every call.
+    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (round 4: actor/airfield/subset WHO
+    // is now picked by ReconAssignmentPlanner/ProvisioningManager, the same single owner Ground has;
+    // AirReconPlanner only turns that binding, plus continuing wings, into this plan's shape — mode,
+    // first-step gate and energy policy re-derived fresh as execution-input assembly, never a second
+    // actor selection) and, for each airborne actor, asks AirReconStepDirector for the next tactical
+    // decision and issues exactly the canonical Move / Strike / assignment-bookkeeping call it names.
+    // It never chooses a mode, a step, a landing, a phase transition or whether a strike is
+    // worthwhile — that all lives in the director, which is free to replan live on every call.
     //
     // AiTaskKind.AirRecon is retained only as the EXISTING landing-slot reservation primitive.
     internal static class ReconAirExecutor

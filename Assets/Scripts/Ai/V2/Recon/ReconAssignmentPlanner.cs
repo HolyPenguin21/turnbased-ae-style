@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -192,7 +194,8 @@ namespace Game.Ai.V2
         //     one-to-one solver + its scoring stay behaviourally identical, only the owner moves).
         // =======================================================================================
         internal static List<ScoutExecutionCandidate> BuildCandidates(WorldSnapshot snap, AiTurnContext ctx,
-            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
+            PlayerRoot root = null, IReadOnlyList<AirObservationSlot> airPool = null)
         {
             var list = new List<ScoutExecutionCandidate>();
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
@@ -228,7 +231,79 @@ namespace Game.Ai.V2
                     break;
                 }
             }
+
+            AppendAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds, airPool);
             return list;
+        }
+
+        // =======================================================================================
+        //  ROUND 4 — AIR CANDIDATES. Fuses WHICH air actor/airfield executes a funded Observation
+        //  mission into the SAME Assignment owner as Ground, instead of AirReconPlanner picking
+        //  independently and late. Preserves the hard invariant air never satisfies
+        //  Explore/GroundTraversal (never reached — caller filters), and never a stealth-Required /
+        //  positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
+        //  per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
+        //  owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
+        //  already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
+        //  ReconAirCapacityPolicy.EvaluateDetailed — the same primitive ReconAirReservationPrepass
+        //  uses for sizing, so the actor pool Assignment considers can never diverge from what the
+        //  capacity signal promised Demand. Feasibility is the SAME SlotWouldFly check the prepass
+        //  runs (extracted, not re-derived) — proves the actor can fly a useful, safe step THIS turn;
+        //  it is not a promise about which hex, exactly the same "structural/executable" fidelity
+        //  Ground's SafeStepPathing.FindNextSafeStep check has (a soft heading nudge, not a locked
+        //  route — see the round-4 report for why the tactical step scorer itself is left untouched).
+        //
+        //  Round-4 scope note: an AirLaunch candidate (no live ArmyData yet) is restricted to
+        //  Refresh-kind targets — FocusHex is used directly, no vantage computation needed. Surveil
+        //  vantage selection (SurveilVantageSelector.Rank) needs a real ArmySnapshot position/vision,
+        //  which only AirExisting (an already-existing ready wing) has; extending vantage ranking to
+        //  a not-yet-launched hangar subset was judged out of this round's safe scope.
+        // =======================================================================================
+        private static void AppendAirCandidates(List<ScoutExecutionCandidate> list, WorldSnapshot snap,
+            AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, ScoutMissionTarget target,
+            ISet<int> excludeArmyIds, IReadOnlyList<AirObservationSlot> airPool)
+        {
+            if (airPool == null || airPool.Count == 0 || root == null || ctx?.Map == null || snap?.Self == null)
+                return;
+            bool observationClass = ReconScoutKinds.IsRefresh(target.Kind) || ReconScoutKinds.IsSurveil(target.Kind);
+            bool stealthOrRisky = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f;
+            if (!observationClass || stealthOrRisky)
+                return;
+
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
+            foreach (AirObservationSlot slot in airPool)
+            {
+                if (slot.ActorId.HasValue)
+                {
+                    if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
+                        continue;
+                    ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
+                    if (mover == null)
+                        continue;
+                    if (!ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, slot, 0,
+                            null, out HexCoord _))
+                        continue;
+                    HexCoord executionHex = ResolveExecutionHex(snap, mover, target);
+                    list.Add(new ScoutExecutionCandidate(mover, executionHex, slot.Ap, 1, 0, 0f, 0, false,
+                        slot.Ap, ScoutExecutorKind.AirExisting));
+                }
+                else
+                {
+                    if (target.Kind != ScoutTargetKind.Refresh)
+                        continue; // round-4 scope — see note above
+                    if (!ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, slot, 0,
+                            null, out HexCoord _))
+                        continue;
+                    ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
+                    if (airfield == null)
+                        continue;
+                    List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
+                    if (subset.Count == 0)
+                        continue;
+                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, slot.Ap, 1, 0, 0f, 0, false,
+                        slot.Ap, ScoutExecutorKind.AirLaunch, slot.AirfieldHex, subset));
+                }
+            }
         }
 
         // AssignFunded — best one-to-one actor/execution-candidate assignment across every OPEN
@@ -239,17 +314,29 @@ namespace Game.Ai.V2
         // the batch solve itself used, so Provisioning's classifier never re-derives eligibility.
         public static ReconAssignmentResult AssignFunded(
             WorldSnapshot snap, AiTurnContext ctx, PlayerSetupData player,
-            List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds)
+            List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds, PlayerRoot root = null)
         {
             var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
                 return result;
 
+            // Round 4 — the SAME ordered, per-pass-capped air-actor pool for every mission in this
+            // batch (continuing wings excluded — they are Continuity's, not fresh Assignment's; see
+            // AppendAirCandidates). Computed once so the MaxAirReconActorsPerTurn ceiling is a
+            // property of the WHOLE batch, not silently re-granted per mission.
+            List<AirObservationSlot> airPool = null;
+            if (root != null && player != null)
+            {
+                ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
+                int remaining = Mathf.Max(0, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn - detail.AirborneWings.Count);
+                airPool = detail.SpareCandidatesInOrder.Take(remaining).ToList();
+            }
+
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
             foreach (FundedEntry fe in open)
             {
                 var target = (ScoutMissionTarget)fe.Mission.Target;
-                cands.Add(BuildCandidates(snap, ctx, player, target, alreadyClaimedArmyIds));
+                cands.Add(BuildCandidates(snap, ctx, player, target, alreadyClaimedArmyIds, root, airPool));
             }
 
             var chosen = new int[open.Count];
@@ -279,7 +366,7 @@ namespace Game.Ai.V2
             if (open.Count > 0)
                 AiDebugLog.Write($"[AI][V2][Recon][Assignment] assignFunded — {open.Count} open, assigned ["
                     + string.Join(" ", result.Assigned.Select(kv =>
-                        $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]"
+                        $"{kv.Key}->{kv.Value.ExecutorKind}#{kv.Value.ActorKey}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]"
                     + (result.Rejected.Count > 0 ? $" rejected [{string.Join(" ", result.Rejected.Select(kv => $"{kv.Key}:{kv.Value}"))}]" : ""));
             return result;
         }
@@ -348,7 +435,7 @@ namespace Game.Ai.V2
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
             for (int c = 0; c < cands[i].Count; c++)
             {
-                int aid = cands[i][c].Army.ArmyId;
+                int aid = cands[i][c].ActorKey;
                 if (usedArmyIds.Contains(aid)) continue;
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
@@ -376,8 +463,8 @@ namespace Game.Ai.V2
                 priorityCoverage += n - i;
 
                 int? preferred = open[i].Mission.PreferredMoverArmyId;
-                if (preferred.HasValue && cand.Army.ArmyId != preferred.Value
-                    && cands[i].Any(alt => alt.Army.ArmyId == preferred.Value))
+                if (preferred.HasValue && cand.ActorKey != preferred.Value
+                    && cands[i].Any(alt => alt.ActorKey == preferred.Value))
                     actorDiscontinuity++;
 
                 var target = (ScoutMissionTarget)open[i].Mission.Target;
@@ -411,7 +498,7 @@ namespace Game.Ai.V2
                 else
                 {
                     ScoutExecutionCandidate cand = cands[i][chosen[i]];
-                    key[b] = cand.Army.ArmyId;
+                    key[b] = cand.ActorKey;
                     key[b + 1] = cand.ExecutionHex.Q;
                     key[b + 2] = cand.ExecutionHex.R;
                 }

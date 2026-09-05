@@ -36,15 +36,27 @@ namespace Game.Ai.V2
             ContinueActorIds.Count == 0 && ReadyActorIds.Count == 0 && Launches.Count == 0;
     }
 
-    // ARCH-02 §35 / DoD "Execution не планирует" — the air-recon PLANNER. It does all of what the
-    // former ReconAirExecutor.RunFallback did before it ever launched anything: aircraft discovery,
-    // actor selection/ordering, ReconMode selection, per-airfield launch-subset selection, the
-    // ReconAirStepPlanner.PickFromStorage minimum-useful-step gate and the ReconAirEnergyPolicy
-    // check. It produces an AirReconPlan; ReconAirExecutor only flies it.
+    // ===========================================================================================
+    //  ROUND 4 — AirReconPlanner is EXECUTION-INPUT ASSEMBLY ONLY. It no longer discovers or SELECTS
+    //  which actor/airfield/subset flies (that decision now belongs entirely to
+    //  ReconAssignmentPlanner/ProvisioningManager, the SAME single owner Ground already has — see
+    //  ReconAssignmentPlanner.AppendAirCandidates / ProvisioningManager.ProvisionAir). This class:
+    //
+    //    1. Carries forward already-airborne wings with a live ReconPatrolState (ContinueActorIds) —
+    //       untouched by this pass's Assignment; an in-flight sortie is Mission Continuity's concern,
+    //       exactly like a ground scout mid-Explore is not re-Assigned every turn either.
+    //    2. Turns each air-executed ProvisionedMission (AirExisting / AirLaunch, already bound to a
+    //       concrete actor/airfield+subset by Assignment/Provisioning) into the local
+    //       ReadyActorIds / AirLaunchPlan shape ReconAirExecutor already consumes — calling
+    //       ReconAirStepPlanner.PickFromStorage/Pick here is legitimate LIVE execution-input
+    //       assembly (re-deriving the concrete first step fresh against current world state,
+    //       exactly the same "replan the live step at execution time" latitude
+    //       ReconGroundExecutor/ReconAirStepDirector already have — never a second SELECTION pass).
+    // ===========================================================================================
     internal static class AirReconPlanner
     {
         internal static AirReconPlan Plan(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot)
+            WorldSnapshot snapshot, IReadOnlyList<ProvisionedMission> airProvisioned)
         {
             var plan = new AirReconPlan();
             if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
@@ -53,64 +65,54 @@ namespace Game.Ai.V2
                 return plan;
             }
 
-            int cap = ReconAirCapacityPolicy.MaxAirReconActorsPerTurn;
             var skips = new List<string>();
-            var claimed = new HashSet<int>();
-            int Planned() => plan.ContinueActorIds.Count + plan.ReadyActorIds.Count + plan.Launches.Count;
 
-            // 1. airborne aircraft that already own a ReconPatrolState — continue them.
+            // 1. airborne aircraft that already own a ReconPatrolState — continue them. Untouched by
+            //    this pass's Assignment (Mission Continuity, not fresh selection).
             foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
                          .Where(a => a != null && AviationRules.IsValidAirArmy(a)
                              && a.Controller != null && a.CurrentMovement > 0
                              && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
                              && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
                          .OrderBy(a => a.Id))
-            {
-                if (Planned() >= cap) { skips.Add("actorLimitReached"); break; }
                 plan.ContinueActorIds.Add(air.Id);
-                claimed.Add(air.Id);
-            }
 
-            // 2. ready aircraft sitting on their own airfield with no sortie task.
-            if (Planned() < cap)
-                foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
-                             .Where(a => a != null && !claimed.Contains(a.Id)
-                                 && AviationRules.IsValidAirArmy(a) && a.Controller != null && a.CurrentMovement > 0
-                                 && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                                 && AirSortieRegistry.ForArmy(player, a) == null)
-                             .OrderBy(a => a.HasActivatedThisTurn ? 0 : 1)
-                             .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationEnergyCost)
-                             .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
-                             .ThenBy(a => a.Id))
-                {
-                    if (Planned() >= cap) { skips.Add("actorLimitReached"); break; }
-                    plan.ReadyActorIds.Add(air.Id);
-                    claimed.Add(air.Id);
-                }
-
-            // 3. stored aircraft — one concrete launch per airfield, gated exactly as before.
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
-            var airfields = AiAirSortiePlanner.OwnedAirfieldHexes(player).ToList();
-            if (airfields.Count == 0)
-                skips.Add("noOwnedAirfield");
-            foreach (HexCoord airfieldHex in airfields)
+
+            // 2/3. Every air-executed ProvisionedMission this pass — Assignment already picked WHICH
+            //      actor (AirExisting) or WHICH airfield+subset (AirLaunch); this is purely turning
+            //      that binding into the executor's input shape.
+            foreach (ProvisionedMission pm in airProvisioned ?? Array.Empty<ProvisionedMission>())
             {
-                if (Planned() >= cap) { skips.Add("actorLimitReached"); break; }
-                ArmyData stored = AviationRules.FindAirfieldAt(airfieldHex, player);
-                if (stored == null || stored.Members.Count < AiConfig.aviationLaunchMinReadyAircraft)
+                if (pm == null || pm.Kind != MissionKind.Scout)
+                    continue;
+
+                if (pm.ExecutorKind == ScoutExecutorKind.AirExisting)
                 {
-                    skips.Add(stored == null ? "airfieldEmpty" : "belowMinReadyAircraft");
+                    ArmyData wing = ArmyRegistry.AllForOwner(player)
+                        .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                    if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Controller == null
+                        || wing.CurrentMovement <= 0)
+                    {
+                        skips.Add($"readyGone#{pm.MoverArmyId}");
+                        continue;
+                    }
+                    plan.ReadyActorIds.Add(wing.Id);
                     continue;
                 }
 
-                List<UnitData> launchSubset = ReconAirCapacityPolicy.SelectReconLaunchSubset(stored.Members);
-                if (!AiAirSortiePlanner.CanAffordLaunch(root, player, launchSubset))
+                if (pm.ExecutorKind != ScoutExecutorKind.AirLaunch)
+                    continue;
+
+                ArmyData stored = AviationRules.FindAirfieldAt(pm.AirfieldHex, player);
+                if (stored == null || pm.LaunchSubset == null || pm.LaunchSubset.Count == 0
+                    || !AiAirSortiePlanner.CanAffordLaunch(root, player, pm.LaunchSubset))
                 {
-                    skips.Add("launchApEnergyUnavailable");
+                    skips.Add("launchNoLongerAffordable");
                     continue;
                 }
 
-                var launchCandidate = new AirLaunchCandidate(airfieldHex, null, launchSubset);
+                var launchCandidate = new AirLaunchCandidate(pm.AirfieldHex, null, pm.LaunchSubset);
                 ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
                     player, ctx, launchCandidate, snapshot, mode, ctx.TurnNumber);
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
@@ -119,7 +121,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                int launchEnergy = launchSubset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
+                int launchEnergy = pm.LaunchSubset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
                 ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
                     launchEnergy, first.Value.Score, excludeArmyId: -1);
                 if (!energy.Allowed)
@@ -130,8 +132,8 @@ namespace Game.Ai.V2
 
                 plan.Launches.Add(new AirLaunchPlan
                 {
-                    AirfieldHex = airfieldHex,
-                    Subset = launchSubset,
+                    AirfieldHex = pm.AirfieldHex,
+                    Subset = pm.LaunchSubset,
                     Mode = mode,
                     FirstStepHex = first.Value.Hex,
                     LandingHex = first.Value.LandingHex,
@@ -142,7 +144,7 @@ namespace Game.Ai.V2
             }
 
             plan.Summary = $"continue={plan.ContinueActorIds.Count} ready={plan.ReadyActorIds.Count} "
-                + $"launches={plan.Launches.Count} cap={cap} "
+                + $"launches={plan.Launches.Count} "
                 + $"skips=[{(skips.Count > 0 ? string.Join(",", skips) : "none")}]";
             return plan;
         }

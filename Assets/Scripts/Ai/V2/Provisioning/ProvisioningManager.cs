@@ -35,6 +35,14 @@ namespace Game.Ai.V2
         // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
         public bool RequiresStealth;
         public bool IsReplacement;
+
+        // Round 4 — which executor this Scout mission is bound to. Ground (default) is executed by
+        // ReconGroundExecutor through TaskExecutor, exactly as before. AirExisting/AirLaunch are
+        // executed by ReconAirExecutor (the orchestrator routes provisioned Scout missions to the
+        // right executor by this tag BEFORE calling TaskExecutor.Execute — see AiStrategyV2Pipeline).
+        public ScoutExecutorKind ExecutorKind = ScoutExecutorKind.Ground;
+        public HexCoord AirfieldHex;                       // AirLaunch only
+        public System.Collections.Generic.List<Game.Units.UnitData> LaunchSubset; // AirLaunch only
     }
 
     public readonly struct ProvisionFailure
@@ -146,15 +154,17 @@ namespace Game.Ai.V2
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation)
         {
-            PrepareScoutAssignments(player, ctx, session, allocation);
+            PrepareScoutAssignments(player, root, ctx, session, allocation);
             PrepareRaidAssignments(session, allocation);
         }
 
         // Delegates the actual actor<->job matching to ReconAssignmentPlanner (the ONE canonical
         // Assignment owner, spec Level 5) — ProvisioningManager only collects the open FUNDED Scout
         // missions, hands them over, and stores the result. Only funded missions ever reach here:
-        // there is no pre-funding reservation state to reconcile against any more.
-        private static void PrepareScoutAssignments(PlayerSetupData player, AiTurnContext ctx,
+        // there is no pre-funding reservation state to reconcile against any more. Round 4 — `root`
+        // is now threaded through so AssignFunded can size/probe the air-actor pool (Energy/AP gates)
+        // the same way ReconAirReservationPrepass already does for capacity sizing.
+        private static void PrepareScoutAssignments(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation)
         {
             var open = new List<FundedEntry>();
@@ -170,7 +180,7 @@ namespace Game.Ai.V2
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
             ReconAssignmentResult result = ReconAssignmentPlanner.AssignFunded(
-                session.Snapshot, ctx, player, open, session.ClaimedArmyIds);
+                session.Snapshot, ctx, player, open, session.ClaimedArmyIds, root);
             session.SetAssignment(result);
         }
 
@@ -321,6 +331,9 @@ namespace Game.Ai.V2
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
                 return ClassifyNoAssignment(session, key, target);
 
+            if (exec.ExecutorKind != ScoutExecutorKind.Ground)
+                return ProvisionAir(player, root, ctx, session, funded, exec, target, key);
+
             int moverArmyId = exec.Army.ArmyId;
             ArmyData army = ResolveArmy(player, moverArmyId);
             if (army == null || army.Owner != player || army.Members.Count == 0
@@ -409,6 +422,90 @@ namespace Game.Ai.V2
                 ClaimedAp = realNeed,
                 StealthApReserved = stealthAp > 0,
                 RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
+            });
+        }
+
+        // Round 4 — claim the air actor/subset Assignment already picked. Mirrors the ground claim
+        // path's shape (revalidate the assigned actor is still usable, revalidate the target is
+        // still worth serving, produce a ProvisionedMission) but NEVER touches AP/Energy the way
+        // ground does: round 3 already established that air's AP/Energy is not reserved ahead of
+        // Phase A — the real affordability gate stays where it always was, at the terminal air
+        // execution stage (ReconAirEnergyPolicy / AiAirSortiePlanner.CanAffordLaunch /
+        // CanIssueMoveNow), which re-checks against the live post-ground-movement world state
+        // anyway. ClaimedAp is therefore 0 here — this mission does not compete for the generic AP
+        // envelope the way a ground Scout's activation AP does.
+        private static ProvisioningResult ProvisionAir(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, FundedEntry funded, ScoutExecutionCandidate exec,
+            ScoutMissionTarget target, StableMissionKey key)
+        {
+            MissionProposal m = funded.Mission;
+            bool surveil = target.Kind == ScoutTargetKind.Surveil;
+            HexCoord focus = target.FocusHex;
+            HexCoord executionHex = exec.ExecutionHex;
+
+            if (surveil)
+            {
+                int trackedId = target.Contact?.Army?.ArmyId ?? -1;
+                if (trackedId < 0 || target.Contact.Source != ContactSource.Honest
+                    || target.Contact.Knowledge != ContactKnowledge.LastKnown)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "surveil target is no longer an honest last-known contact"));
+                int baseline = target.Contact.LastObservedTurn;
+                if (VisionSystem.IsVisible(player, focus) || HasFresherSighting(player, trackedId, baseline))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"tracked #{trackedId} already re-observed (focus ({focus.Q},{focus.R}), baseline turn {baseline})"));
+            }
+            else
+            {
+                // Air only serves Refresh in this round's scope (see AppendAirCandidates).
+                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
+            }
+
+            int moverArmyId;
+            HexCoord airfieldHex = default;
+            List<UnitData> launchSubset = null;
+
+            if (exec.ExecutorKind == ScoutExecutorKind.AirExisting)
+            {
+                ArmyData wing = ResolveArmy(player, exec.Army.ArmyId);
+                if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
+                    || wing.CurrentMovement <= 0 || !AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                    || AirSortieRegistry.ForArmy(player, wing) != null)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"assigned air actor #{exec.Army.ArmyId} is no longer a usable ready standalone wing"));
+                moverArmyId = wing.Id;
+            }
+            else // AirLaunch
+            {
+                ArmyData airfield = AviationRules.FindAirfieldAt(exec.AirfieldHex, player);
+                if (airfield == null || exec.LaunchSubset == null || exec.LaunchSubset.Count == 0
+                    || !AiAirSortiePlanner.CanAffordLaunch(root, player, exec.LaunchSubset))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"assigned launch airfield ({exec.AirfieldHex.Q},{exec.AirfieldHex.R}) no longer has an affordable subset"));
+                moverArmyId = exec.ActorKey;
+                airfieldHex = exec.AirfieldHex;
+                launchSubset = new List<UnitData>(exec.LaunchSubset);
+            }
+
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = m,
+                Key = key,
+                Kind = MissionKind.Scout,
+                ScoutKind = target.Kind,
+                MoverArmyId = moverArmyId,
+                FocusHex = focus,
+                ExecutionHex = executionHex,
+                TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
+                BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
+                ClaimedAp = 0f,
+                StealthApReserved = false,
+                RequiresStealth = false,
+                ExecutorKind = exec.ExecutorKind,
+                AirfieldHex = airfieldHex,
+                LaunchSubset = launchSubset,
             });
         }
 

@@ -205,11 +205,21 @@ namespace Game.Ai.V2
             // be told the whole focus set, not just what reached the queue. Shared helper keeps the
             // two passes from drifting.
             HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
+            // Round 4 — split ground/raid from air-executed Scout missions before TaskExecutor, same
+            // as the main pipeline (see AiStrategyV2Pipeline for the full rationale).
+            var groundProvisioned = provisioned
+                .Where(pm => pm.Kind != MissionKind.Scout || pm.ExecutorKind == ScoutExecutorKind.Ground)
+                .ToList();
+            var airProvisioned = provisioned
+                .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
+                .ToList();
+            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot, exploreProposalFoci);
 
             // ARCH-02 §35 — terminal air-recon as its own plan-then-execute stage (see Pipeline).
             // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
-            AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
+            // Round 4 — AirReconPlanner assembles execution input from this pass's air-bound
+            // ProvisionedMissions; it no longer selects independently.
+            AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
             var reactionAirResult = new AirReconExecutionResult();
             yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult);
             if (reactionAirResult.Mutated)

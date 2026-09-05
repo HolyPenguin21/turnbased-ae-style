@@ -643,13 +643,27 @@ namespace Game.Ai.V2
             //     uses the SAME helper for its identical lifecycle.
             HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
 
+            // Round 4 — a Scout ProvisionedMission bound to an air actor by ReconAssignmentPlanner/
+            // ProvisioningManager.ProvisionAir must NOT go through TaskExecutor/ReconGroundExecutor
+            // (which expects a live ground solo-Recce mover); it is execution-input for the terminal
+            // air-recon stage instead. Ground + Raid missions are unaffected.
+            var groundProvisioned = provisioned
+                .Where(pm => pm.Kind != MissionKind.Scout || pm.ExecutorKind == ScoutExecutorKind.Ground)
+                .ToList();
+            var airProvisioned = provisioned
+                .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
+                .ToList();
+
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
+            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot, exploreProposalFoci);
 
             // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
             // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
             // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
-            AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
+            // Round 4 — AirReconPlanner no longer SELECTS; it turns this pass's air-bound
+            // ProvisionedMissions (WHO/WHICH-TARGET already decided by Assignment) into the
+            // executor's input shape.
+            AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
             var airReconResult = new AirReconExecutionResult();
             yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult);
             AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
