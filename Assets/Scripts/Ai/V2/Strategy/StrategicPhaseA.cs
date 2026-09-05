@@ -401,9 +401,12 @@ namespace Game.Ai.V2
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
                     ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK);
-                deferredStates.Remove(ds);
                 if (top.Count == 0)
                 {
+                    // Stays a VALID, UNRESOLVED, temporarily-unfulfillable demand — must remain in
+                    // deferredStates (not removed) so it still reaches Reservation.UnresolvedDemands
+                    // below. Removing it here would silently turn "no candidate right now" into
+                    // "no demand ever existed", losing the residual for Phase B and next turn's log.
                     AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
                         + "decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds");
                     continue;
@@ -411,6 +414,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
                     + $"decision=PROMOTE previousGate=persistence reason=no_alternative_actionable_work "
                     + $"deliverableCandidates={top.Count} best={top[0].Plan.StableKey}");
+                deferredStates.Remove(ds);
                 states.Add(ds);
                 promotedAny = true;
             }
