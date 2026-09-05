@@ -27,7 +27,7 @@ namespace Game.Ai.V2
     // concrete launches. No gameplay state is touched building this.
     internal sealed class AirReconPlan
     {
-        public readonly List<int> ContinueActorIds = new List<int>(); // airborne, has a ReconAssignment
+        public readonly List<int> ContinueActorIds = new List<int>(); // airborne, has a ReconPatrolState
         public readonly List<int> ReadyActorIds = new List<int>();    // on own airfield, no task
         public readonly List<AirLaunchPlan> Launches = new List<AirLaunchPlan>();
         public string Summary;
@@ -58,12 +58,12 @@ namespace Game.Ai.V2
             var claimed = new HashSet<int>();
             int Planned() => plan.ContinueActorIds.Count + plan.ReadyActorIds.Count + plan.Launches.Count;
 
-            // 1. airborne aircraft that already own a ReconAssignment — continue them.
+            // 1. airborne aircraft that already own a ReconPatrolState — continue them.
             foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
                          .Where(a => a != null && AviationRules.IsValidAirArmy(a)
                              && a.Controller != null && a.CurrentMovement > 0
                              && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                             && ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+                             && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
                          .OrderBy(a => a.Id))
             {
                 if (Planned() >= cap) { skips.Add("actorLimitReached"); break; }

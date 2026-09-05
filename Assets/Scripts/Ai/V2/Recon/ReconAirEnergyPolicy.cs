@@ -142,7 +142,7 @@ namespace Game.Ai.V2
                     continue;
                 if (!AviationRules.IsValidAirArmy(army))
                     continue;
-                bool inFlightSortie = ReconAssignmentRegistry.TryGet(player, army.Id, out _)
+                bool inFlightSortie = ReconPatrolStateRegistry.TryGet(player, army.Id, out _)
                     || AirSortieRegistry.ForArmy(player, army) != null;
                 if (!inFlightSortie)
                     continue;

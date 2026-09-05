@@ -339,7 +339,7 @@ namespace Game.Ai.V2
         // sortie". -1 = exclude nothing (a not-yet-launched storage candidate).
         public int ExcludeSortieId = -1;
         // Wedges (from our Citadel) an air slot accepted EARLIER in the SAME reservation prepass
-        // has claimed but not yet launched — invisible to the live ReconAssignment scan, so they
+        // has claimed but not yet launched — invisible to the live ReconPatrolState scan, so they
         // are added to the candidate's sector-coverage count here.
         public IReadOnlyList<ReconSector> ProvisionalWedgeClaims;
 

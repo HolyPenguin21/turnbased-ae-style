@@ -371,7 +371,6 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
                 IsPersistenceDeferred = d.IsPersistenceDeferred,
-                ExistingUsableCapacityAtEmission = d.ExistingUsableCapacityAtEmission,
             };
         }
 
@@ -399,36 +398,14 @@ namespace Game.Ai.V2
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
             foreach (DemandState ds in deferredStates.ToList())
             {
-                // Phase A runs BEFORE MissionLayer / the mission allocator bind an idle-but-
-                // uncommitted EXISTING actor of this demand's class to a runnable job — that binding
-                // is real alternative actionable work Phase A simply cannot see yet. Promoting here
-                // regardless would materialise extra capacity ahead of an actor about to get its own
-                // funded work, and steal its share of the same AxisBudgetLedger a few stages early.
-                //
-                // ExistingUsableCapacityAtEmission alone is only OperationallyFeasibleIfFunded — it
-                // says an actor COULD do this work, not that it WILL get paid to. AxisBudgetLedger
-                // already exists here (it is passed into StrategicPhaseA), so this is the one place
-                // in the pipeline that can ask the post-ledger question: does the requesting axis
-                // actually hold AP right now (FundedActionableNow)? If it does not, the existing
-                // actor is not "alternative actionable work" and must not block the escape — it is
-                // exactly as unfunded as the promoted demand would otherwise be.
-                bool existingCapacity = ds.Demand.ExistingUsableCapacityAtEmission > 0;
-                bool axisFunded = ReconOperationalFeasibility.FundedActionableNow(ledger, ds.Demand.RequestingAxis);
-                if (existingCapacity && axisFunded)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
-                        + "decision=DEFER reason=existing_capacity_may_still_get_operational_work "
-                        + $"existingFeasibleIfFunded={ds.Demand.ExistingUsableCapacityAtEmission} "
-                        + $"axisBalance={ledger.Balance(ds.Demand.RequestingAxis):0.00}; stays deferred, Phase B proceeds");
-                    continue;
-                }
-                if (existingCapacity && !axisFunded)
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.A persistence-reconcile — {ds.Demand}: "
-                        + $"existingFeasibleIfFunded={ds.Demand.ExistingUsableCapacityAtEmission} but "
-                        + $"fundedActionableNow=false (axisBalance={ledger.Balance(ds.Demand.RequestingAxis):0.00}); "
-                        + "does not block escape, evaluating promotion");
-                }
+                // §6/§7 — Demand already measures its persistence-gate deficit against EXISTING
+                // FEASIBLE capacity only (desired - existing feasible), never against future mission
+                // funding (AxisDemand no longer even carries ExistingUsableCapacityAtEmission — the
+                // pre-ledger/post-ledger composite that lived here, FundedActionableNow, is removed
+                // entirely per the architecture rule against a third concept combining CAPABILITY and
+                // FUNDING). So the only question left for the reconciliation window is the generic
+                // one every other demand answers the same way: is there a legal/affordable/
+                // deliverable candidate for it RIGHT NOW (AC7) — never a phantom fulfillment.
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
                     ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK);

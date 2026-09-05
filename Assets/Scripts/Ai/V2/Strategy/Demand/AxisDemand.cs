@@ -112,24 +112,6 @@ namespace Game.Ai.V2
         // deliverable candidate exists for it right now (never a phantom fulfillment).
         public bool IsPersistenceDeferred;
 
-        // How much PRE-EXISTING OperationallyFeasibleIfFunded capacity of this demand's class the
-        // emitting axis measured at emission time (0 when none) — see ReconOperationalFeasibility.
-        // This does NOT mean funded/actionable-now: it is measured before AxisBudgetLedger.Create
-        // even runs, so it says nothing about whether the requesting axis will actually hold AP for
-        // that actor's work. StrategicPhaseA's own per-turn loop also runs BEFORE MissionLayer/the
-        // mission allocator bind an idle-but-uncommitted existing actor to a runnable job, so Phase A
-        // cannot see whether such an actor is about to get real work either.
-        // A no-alternative-work reconciliation must NOT promote a persistence-deferred demand while
-        // this is > 0 AND the requesting axis's AxisBudgetLedger balance is still funded (see
-        // ReconOperationalFeasibility.FundedActionableNow, checked post-ledger in StrategicPhaseA) —
-        // that would materialise an extra unit of capacity ahead of an existing actor that is about
-        // to be given funded work of its own a few pipeline stages later, stealing its AP/resources.
-        // When the axis is NOT funded, this pre-existing count must not block the escape — an actor
-        // that physically exists but that its own axis cannot pay for right now is not "alternative
-        // actionable work".
-        // Left at its 0 default for demands that never go through IsPersistenceDeferred.
-        public int ExistingUsableCapacityAtEmission;
-
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
             + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"

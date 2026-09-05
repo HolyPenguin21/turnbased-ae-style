@@ -232,7 +232,7 @@ namespace Game.Ai.V2
 
             // ---- normal forward / return flow --------------------------------------------------
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
-            if (ReconAssignmentRegistry.TryGet(player, armyId, out ReconAssignment existing))
+            if (ReconPatrolStateRegistry.TryGet(player, armyId, out ReconPatrolState existing))
                 mode = existing.Mode;
 
             ReconAirStepPlanner.StepChoice? choice =

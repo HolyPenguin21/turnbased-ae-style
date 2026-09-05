@@ -675,7 +675,7 @@ namespace Game.Ai.V2
                 state.Remove(v.IntentKey);
                 active.Remove(v);
                 if (v.PreferredMoverArmyId.HasValue)
-                    ReconAssignmentRegistry.Retire(player, v.PreferredMoverArmyId.Value, "recon lane surplus trim");
+                    ReconPatrolStateRegistry.Retire(player, v.PreferredMoverArmyId.Value, "recon lane surplus trim");
                 dropped++;
                 AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
                     + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
@@ -802,7 +802,7 @@ namespace Game.Ai.V2
                         bool existingScoutRole = intent != null
                             && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
                         // Fresh role: the mission was provisioned AND executed at least one step
-                        // this turn (so ReconAssignment already exists). A provisioning-only
+                        // this turn (so ReconPatrolState already exists). A provisioning-only
                         // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
                         // false / MadeProgress == false and is correctly NOT made durable.
                         bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress

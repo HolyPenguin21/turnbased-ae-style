@@ -230,9 +230,6 @@ namespace Game.Ai.V2
         // fund a backup the same turn.
         ExecutionCapacity,         // the mission's execution lane is already at K (locked + commitments + funded)
         MissionConflict,           // pairwise-conflicts a currently funded / locked mission in the same lane
-        // AI-RECON-01 — a Recon proposal with no bound scout yet. NOT a failure / cooldown: the
-        // planner's Rematch pass can still bind a freed actor to it this same turn.
-        ReconActorUnreserved,
     }
 
     public sealed class DeferredEntry
@@ -695,15 +692,6 @@ namespace Game.Ai.V2
                 if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;
 
-                // AI-RECON-01 (P1) — actor-before-budget applies to commitments too: a durable
-                // Soft/Hard Recon proposal ReconActorReservationPlanner could not bind a scout to
-                // must NOT get an AP reservation only to fail provisioning. Defer it unstaffed.
-                if (m.Kind == MissionKind.Scout && m.ReservedMoverArmyId == null)
-                {
-                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ReconActorUnreserved });
-                    continue;
-                }
-
                 Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
                 if (shares == null)
                 {
@@ -850,16 +838,11 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    // AI-RECON-01 — a Recon proposal is fundable only once ReconActorReservationPlanner
-                    // has bound a concrete scout to it. An unbound one is NOT rejected / on cooldown /
-                    // structurally impossible — the planner's Rematch pass (driven from the pipeline's
-                    // re-pack loop) may bind an actor freed by a budget defer / provisioning failure
-                    // this same turn and a later Pack() then funds it.
-                    if (m.Kind == MissionKind.Scout && m.ReservedMoverArmyId == null)
-                    {
-                        alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.ReconActorUnreserved });
-                        continue;
-                    }
+                    // Mission -> ResourceAllocator -> Provisioning -> actor binding (original V2
+                    // pipeline order, spec §7). A Scout mission is funded exactly like every other
+                    // mission kind here — no pre-reserved-actor gate; ProvisioningManager/
+                    // ReconAssignmentPlanner bind the concrete scout AFTER funding and report a
+                    // generic ProvisionFailure (MoverContended / NoMoverExists / ...) if none exists.
 
                     // Conflict BEFORE capacity: a conflicting candidate is categorically inadmissible
                     // against the current portfolio (and consumes no slot), so the more-specific reason

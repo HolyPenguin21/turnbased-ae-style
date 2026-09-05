@@ -59,7 +59,7 @@ namespace Game.Ai.V2
         private const float StrongEnemyFleeWinChance = AiConfigV2.scoutReactionFleeWinChance;
 
         public static ReconReactionDecision Evaluate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn)
+            ReconPatrolState assignment, int turn)
         {
             if (player == null || map == null || army == null || assignment == null)
                 return new ReconReactionDecision(ReconReactionAction.StopAndReplan, null, null, 0f,
@@ -336,7 +336,7 @@ namespace Game.Ai.V2
         private static bool IsArmyInStealth(ArmyData army) =>
             army != null && army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
 
-        private static ReconReactionDecision Log(ArmyData army, ReconAssignment assignment,
+        private static ReconReactionDecision Log(ArmyData army, ReconPatrolState assignment,
             ReconReactionDecision decision)
         {
             AiDebugLog.Write($"[AI][V2][Recon][Reaction] actor=#{army.Id} mode={assignment.Mode} {decision}");

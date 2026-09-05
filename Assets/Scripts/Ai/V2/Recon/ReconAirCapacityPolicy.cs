@@ -33,7 +33,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal readonly struct ReconAirObservationCapacity
     {
-        // Own air armies already flying a durable ReconAssignment — active observation lanes the
+        // Own air armies already flying a durable ReconPatrolState — active observation lanes the
         // executor will spend a slot CONTINUING this turn.
         public readonly int AirborneReconWings;
         // Additional recon sorties that could actually be launched THIS turn — slot- AND
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
             foreach (ArmyData a in ownAir
                 .Where(a => !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
                     && a.Controller != null && a.CurrentMovement > 0
-                    && ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+                    && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
                 .OrderBy(a => a.Id))
             {
                 detail.AirborneWings.Add(new AirObservationSlot(a.Id, default,

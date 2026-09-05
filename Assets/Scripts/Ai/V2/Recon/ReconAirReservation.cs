@@ -228,10 +228,10 @@ namespace Game.Ai.V2
                 else
                     state.ReservedAirfieldHexes.Add(slot.AirfieldHex);
                 // Every accepted LAUNCH slot (ready wing on its airfield OR hangar subset) has no
-                // live ReconAssignment during the prepass — it only gets one when it actually flies
+                // live ReconPatrolState during the prepass — it only gets one when it actually flies
                 // in the executor — so the live wedge scan cannot see it. Record its chosen wedge so
                 // the next SlotWouldFly probe does. The airborne-wings loop above is exempt: those
-                // wings already hold a ReconAssignment and are counted live.
+                // wings already hold a ReconPatrolState and are counted live.
                 if (ctx?.Map != null)
                     provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, slotChosenHex));
             }
@@ -265,7 +265,7 @@ namespace Game.Ai.V2
             // R3/R4 review fix — probe with the SAME scoring inputs the executor will hand Pick:
             // this sortie's own footprint excluded from "recent coverage by another sortie", the
             // air slots reserved-but-not-launched this pass as sector coverage, the executor's own
-            // per-actor MODE (a durable ReconAssignment wins over the global RequestedMode), and a
+            // per-actor MODE (a durable ReconPatrolState wins over the global RequestedMode), and a
             // read-only PROJECTION of the sortie's turn-start phase / trail so trail-overlap and
             // lateral shaping match. Without the last two a continuing Outbound wing scored ~0.30
             // higher here than in the executor and could be reserved as capacity the executor then
@@ -293,7 +293,7 @@ namespace Game.Ai.V2
                     return false;
 
                 ReconMode mode = airborne
-                    && ReconAssignmentRegistry.TryGet(player, wing.Id, out ReconAssignment asg)
+                    && ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState asg)
                     ? asg.Mode : globalMode;
                 choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);

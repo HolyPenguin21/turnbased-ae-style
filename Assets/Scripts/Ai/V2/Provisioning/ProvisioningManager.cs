@@ -132,16 +132,18 @@ namespace Game.Ai.V2
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation,
-            IReadOnlyCollection<int> reconReservedActorIds = null)
+            ProvisioningSession session, TentativeAllocation allocation)
         {
-            PrepareScoutAssignments(player, ctx, session, allocation, reconReservedActorIds);
+            PrepareScoutAssignments(player, ctx, session, allocation);
             PrepareRaidAssignments(session, allocation);
         }
 
+        // Delegates the actual actor<->job matching to ReconAssignmentPlanner (the ONE canonical
+        // Assignment owner, spec Level 5) — ProvisioningManager only collects the open FUNDED Scout
+        // missions, hands them over, and stores the result. Only funded missions ever reach here:
+        // there is no pre-funding reservation state to reconcile against any more.
         private static void PrepareScoutAssignments(PlayerSetupData player, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation,
-            IReadOnlyCollection<int> reconReservedActorIds)
+            ProvisioningSession session, TentativeAllocation allocation)
         {
             var open = new List<FundedEntry>();
             if (allocation?.Funded != null)
@@ -155,46 +157,9 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
-            // AI-RECON-01 — scouts reserved by ReconActorReservationPlanner for ANY other Recon job,
-            // not just the funded ones. If a mission's own reserved scout has become ineligible and
-            // it has to rematch across free scouts, it must NOT poach a scout still bound to a
-            // sibling job (funded, deferred, or awaiting a later re-pack) — that turns a valid
-            // sibling into a false MoverContended and makes the reservation context lie.
-            var reservedElsewhere = new HashSet<int>();
-            if (reconReservedActorIds != null)
-                foreach (int id in reconReservedActorIds)
-                    reservedElsewhere.Add(id);
-            foreach (FundedEntry fe in open)
-                if (fe.Mission.ReservedMoverArmyId.HasValue)
-                    reservedElsewhere.Add(fe.Mission.ReservedMoverArmyId.Value);
-
-            var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
-            foreach (FundedEntry fe in open)
-            {
-                var target = (ScoutMissionTarget)fe.Mission.Target;
-                var otherReserved = new HashSet<int>(reservedElsewhere);
-                if (fe.Mission.ReservedMoverArmyId.HasValue)
-                    otherReserved.Remove(fe.Mission.ReservedMoverArmyId.Value);
-                cands.Add(BuildExecutionCandidates(session.Snapshot, ctx, player, target, session.ClaimedArmyIds,
-                    fe.Mission.ReservedMoverArmyId, otherReserved));
-            }
-
-            var chosen = new int[open.Count];
-            var best = new int[open.Count];
-            for (int i = 0; i < best.Length; i++) best[i] = -1;
-            long[] bestKey = null;
-            RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
-
-            var map = new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
-            for (int i = 0; i < open.Count; i++)
-                if (best[i] >= 0)
-                    map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
+            Dictionary<StableMissionKey, ScoutExecutionCandidate> map = ReconAssignmentPlanner.AssignFunded(
+                session.Snapshot, ctx, player, open, session.ClaimedArmyIds);
             session.SetAssignment(map);
-
-            if (open.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   provision prepare scout — {open.Count} open, assigned ["
-                    + string.Join(" ", map.Select(kv =>
-                        $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]");
         }
 
         private static void PrepareRaidAssignments(ProvisioningSession session, TentativeAllocation allocation)
@@ -247,164 +212,6 @@ namespace Game.Ai.V2
 
         private static float RaidActorPower(WorldSnapshot snap, int id) =>
             snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id)?.EffectiveArmyPower ?? float.MaxValue;
-
-        private static List<ScoutExecutionCandidate> BuildExecutionCandidates(WorldSnapshot snap, AiTurnContext ctx,
-            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
-            int? reservedMoverArmyId = null, ISet<int> reservedElsewhere = null)
-        {
-            var list = new List<ScoutExecutionCandidate>();
-            bool stealthRequired = target.Stealth == StealthRequirement.Required;
-            bool surveil = target.Kind == ScoutTargetKind.Surveil;
-
-            // AI-RECON-01 — ReconActorReservationPlanner is the SINGLE owner of Recon actor
-            // assignment. If it bound a concrete scout to this mission, provisioning uses THAT actor
-            // and nothing else: a scout that is no longer eligible yields an EMPTY candidate list ->
-            // a clean provisioning failure -> the pipeline's Rematch rebinds. Provisioning never
-            // silently picks a different free scout (that made the reservation context lie — two
-            // owners of the assignment).
-            List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
-            if (reservedMoverArmyId.HasValue)
-            {
-                movers = movers.Where(a => a.ArmyId == reservedMoverArmyId.Value).ToList();
-                if (movers.Count == 0)
-                    AiDebugLog.Write($"[AI][V2][ReconActor] reserved mover #{reservedMoverArmyId.Value} for "
-                        + $"({target.FocusHex.Q},{target.FocusHex.R}) no longer eligible at provision — "
-                        + "failing back to ReconActorReservationPlanner.Rematch");
-            }
-            else if (reservedElsewhere != null && reservedElsewhere.Count > 0)
-            {
-                // Defensive: an unreserved Scout should not reach provisioning (the allocator gates
-                // ReservedMoverArmyId == null), but if it does, still never poach a bound sibling.
-                movers = movers.Where(a => !reservedElsewhere.Contains(a.ArmyId)).ToList();
-            }
-
-            foreach (ArmySnapshot mover in movers)
-            {
-                if (!surveil)
-                {
-                    // Spec §3 — an (objective, actor) pair only enters the assignment solve if THIS
-                    // actor can currently take a safe first step toward the objective. Without this
-                    // the solver reserves a physical scout for a Refresh/Explore that provisioning
-                    // already knows cannot move (NoExecutableStep), starving an executable Explore
-                    // incumbent with a false MoverContended. Executability is actor-specific: a
-                    // different eligible mover with a real route still yields its own candidate, and
-                    // the objective is never globally dropped here.
-                    if (ctx?.Map != null)
-                    {
-                        ArmyData liveMover = ResolveArmy(player, mover.ArmyId);
-                        if (liveMover == null
-                            || SafeStepPathing.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
-                            continue;
-                    }
-                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
-                    list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
-                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
-                    continue;
-                }
-
-                ArmyData live = ResolveArmy(player, mover.ArmyId);
-                if (live == null) continue;
-                foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
-                {
-                    if (SafeStepPathing.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
-                        continue;
-                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired: true);
-                    list.Add(new ScoutExecutionCandidate(mover, v.ExecutionHex, pc.EffActivationAp,
-                        pc.EtaTurns, pc.Distance, v.DetectionRisk, v.StandOff, pc.AlreadyHidden, pc.RequiredAp));
-                    break;
-                }
-            }
-            return list;
-        }
-
-        private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
-            int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best)
-        {
-            if (i == open.Count)
-            {
-                long[] key = ScoreScoutAssignment(open, cands, chosen);
-                if (bestKey == null || Lex(key, bestKey) < 0)
-                {
-                    bestKey = key;
-                    Array.Copy(chosen, best, chosen.Length);
-                }
-                return;
-            }
-
-            chosen[i] = -1;
-            RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
-            for (int c = 0; c < cands[i].Count; c++)
-            {
-                int aid = cands[i][c].Army.ArmyId;
-                if (usedArmyIds.Contains(aid)) continue;
-                usedArmyIds.Add(aid);
-                chosen[i] = c;
-                RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best);
-                usedArmyIds.Remove(aid);
-            }
-            chosen[i] = -1;
-        }
-
-        private static long[] ScoreScoutAssignment(List<FundedEntry> open,
-            List<List<ScoutExecutionCandidate>> cands, int[] chosen)
-        {
-            int n = open.Count;
-            int covered = 0;
-            long priorityCoverage = 0;
-            int actorDiscontinuity = 0;
-            int wastedStealth = 0;
-            long risk = 0, standOff = 0, requiredAp = 0, eta = 0, dist = 0;
-
-            for (int i = 0; i < n; i++)
-            {
-                if (chosen[i] < 0) continue;
-                ScoutExecutionCandidate cand = cands[i][chosen[i]];
-                covered++;
-                priorityCoverage += n - i;
-
-                int? preferred = open[i].Mission.PreferredMoverArmyId;
-                if (preferred.HasValue && cand.Army.ArmyId != preferred.Value
-                    && cands[i].Any(alt => alt.Army.ArmyId == preferred.Value))
-                    actorDiscontinuity++;
-
-                var target = (ScoutMissionTarget)open[i].Mission.Target;
-                bool needStealth = target.Stealth == StealthRequirement.Required;
-                if (!needStealth && cand.IsStealthCapableMover
-                    && cands[i].Any(alt => !alt.IsStealthCapableMover))
-                    wastedStealth++;
-
-                risk += Mathf.RoundToInt(cand.DetectionRisk * 1_000_000f);
-                standOff += cand.StandOff;
-                requiredAp += Mathf.RoundToInt(cand.RequiredAp);
-                eta += cand.EtaTurns;
-                dist += cand.Distance;
-            }
-
-            var key = new long[9 + 3 * n];
-            key[0] = -covered;
-            key[1] = -priorityCoverage;
-            key[2] = actorDiscontinuity;
-            key[3] = wastedStealth;
-            key[4] = risk;
-            key[5] = -standOff;
-            key[6] = requiredAp;
-            key[7] = eta;
-            key[8] = dist;
-            for (int i = 0; i < n; i++)
-            {
-                int b = 9 + 3 * i;
-                if (chosen[i] < 0)
-                    key[b] = key[b + 1] = key[b + 2] = long.MaxValue;
-                else
-                {
-                    ScoutExecutionCandidate cand = cands[i][chosen[i]];
-                    key[b] = cand.Army.ArmyId;
-                    key[b + 1] = cand.ExecutionHex.Q;
-                    key[b + 2] = cand.ExecutionHex.R;
-                }
-            }
-            return key;
-        }
 
         private static void RecurseRaid(int i, List<FundedEntry> open, List<List<int>> cands,
             int[] chosen, HashSet<int> usedArmyIds, WorldSnapshot snap, ref long[] bestKey, int[] best)

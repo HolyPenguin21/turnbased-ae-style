@@ -213,7 +213,7 @@ namespace Game.Ai.V2
 
         // AI-RECON-02 — air OBSERVATION capacity, from the shared ReconAirCapacityPolicy (the same
         // slot cap + launch-subset + AP/Energy gate ReconAirExecutor launches against):
-        //   AirborneReconWings         — own wings already flying a durable ReconAssignment; each is
+        //   AirborneReconWings         — own wings already flying a durable ReconPatrolState; each is
         //                                an active observation lane the executor will continue.
         //   SpareAirObservationSorties — ADDITIONAL recon sorties launchable this turn, bounded by
         //                                MaxAirReconActorsPerTurn minus in-flight air slots AND by

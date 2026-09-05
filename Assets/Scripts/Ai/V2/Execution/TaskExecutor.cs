@@ -11,7 +11,7 @@ namespace Game.Ai.V2
 {
     // Executes provisioned V2 missions through authoritative game paths. TaskExecutor now owns
     // only the shared mission lifecycle/accounting shell plus Raid execution. Ground Scout
-    // execution is delegated to ReconGroundExecutor, whose durable ReconAssignment and live
+    // execution is delegated to ReconGroundExecutor, whose durable ReconPatrolState and live
     // one-step planner replace the old fixed Explore focus + single follow-through loop.
     public enum ExecutionStopReason
     {
@@ -149,7 +149,7 @@ namespace Game.Ai.V2
                     result.ApSpent = 0f;
                     ApCheck(pm, apBefore, root, result);
                     results.Add(result);
-                    ReconAssignmentRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
+                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
                     continue;
                 }
@@ -161,7 +161,7 @@ namespace Game.Ai.V2
 
                 // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
                 // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
-                // + the mission planner re-target the durable ReconAssignment on the next pass.
+                // + the mission planner re-target the durable ReconPatrolState on the next pass.
                 if (MissionRevalidator.IsStale(validity))
                 {
                     result.FinalHex = army.Hex;
@@ -177,7 +177,7 @@ namespace Game.Ai.V2
                     ApCheck(pm, apBefore, root, result);
                     results.Add(result);
                     if (validity == MissionValidity.StaleMoverLost)
-                        ReconAssignmentRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
+                        ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — revalidation: {validity}; "
                         + "no movement, 0 AP");
                     continue;

@@ -39,7 +39,7 @@ namespace Game.Ai.V2
             ByPlayer.Clear();
             AiReconIntelMemory.Clear();
             ReconIntelSnapshotRegistry.Clear();
-            ReconAssignmentRegistry.ClearAll();
+            ReconPatrolStateRegistry.ClearAll();
             ReconAirSortieRegistry.ClearAll();
             AirReconCoverageRegistry.ClearAll();
             ReconCapacityDeficitRegistry.ClearAll();

@@ -171,9 +171,9 @@ namespace Game.Ai.V2
                 reservationTask.LandingHex = lp.LandingHex;
             }
 
-            ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, launched.Id,
+            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, launched.Id,
                 lp.AirfieldHex, lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
-            ReconAssignmentRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
+            ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
             ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
             launchSortie.LaunchTurn = ctx.TurnNumber;
             launchSortie.RecordStep(launched.Hex);
@@ -207,7 +207,7 @@ namespace Game.Ai.V2
                 ArmyData air = Resolve(player, armyId);
                 if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null)
                 {
-                    ReconAssignmentRegistry.Retire(player, armyId, "air mover lost / invalid");
+                    ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
                     ReconAirSortieRegistry.Retire(player, armyId);
                     if (air != null) RemoveAirReconReservation(player, air);
                     break;
@@ -221,7 +221,7 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Landing at "
                         + $"({air.Hex.Q},{air.Hex.R}); sortie complete");
-                    ReconAssignmentRegistry.Retire(player, armyId, "air recon landed");
+                    ReconPatrolStateRegistry.Retire(player, armyId, "air recon landed");
                     ReconAirSortieRegistry.Retire(player, armyId);
                     RemoveAirReconReservation(player, air);
                     break;
@@ -241,7 +241,7 @@ namespace Game.Ai.V2
                 if (d.Kind == AirReconStepDirector.StepKind.Stop)
                 {
                     if (d.RetireAssignment)
-                        ReconAssignmentRegistry.Retire(player, armyId, d.Reason);
+                        ReconPatrolStateRegistry.Retire(player, armyId, d.Reason);
                     if (d.RemoveReservation)
                         RemoveAirReconReservation(player, air);
                     break;
@@ -257,7 +257,7 @@ namespace Game.Ai.V2
                     if (afterHoldStrike == null || !AviationRules.IsValidAirArmy(afterHoldStrike)
                         || afterHoldStrike.Controller == null)
                     {
-                        ReconAssignmentRegistry.Retire(player, armyId, "air mover lost / invalid");
+                        ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
                         ReconAirSortieRegistry.Retire(player, armyId);
                         break;
                     }
@@ -267,14 +267,14 @@ namespace Game.Ai.V2
                     if (sortie.Phase == ReconAirPhase.Hold)
                         sortie.Phase = d.ResumePhase;
                     ReconAirSortieLifecycle.Apply(sortie, d);
-                    ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
+                    ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
 
                 if (d.Kind == AirReconStepDirector.StepKind.Strike)
                 {
                     yield return ExecuteOpportunisticStrike(player, ctx, air, sortie, result);
-                    ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
+                    ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
 
@@ -299,12 +299,12 @@ namespace Game.Ai.V2
                     ArmyData afterReturn = Resolve(player, armyId);
                     if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
                     arrivalStrikeCheck = true;
-                    ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
+                    ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                     continue;
                 }
 
                 // ForwardStep
-                ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, armyId, air.Hex,
+                ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, armyId, air.Hex,
                     d.Step, d.Mode, ctx.TurnNumber);
                 AirSortie reservationTask = EnsureAirReconReservation(player, air, d.LandingHex,
                     outbound: true, target: d.Step);
@@ -332,7 +332,7 @@ namespace Game.Ai.V2
                 if (d.PivotToReturnAfterMove)
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return pivot step taken");
                 arrivalStrikeCheck = true;
-                ReconAssignmentRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
+                ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
             }
 
             // A ready wing that was evaluated this pass but never actually left its airfield must

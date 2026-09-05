@@ -715,7 +715,7 @@ namespace Game.Ai.V2
 
         // --- Ground Recon reaction / assignment / concurrency / step-scoring tunables (spec §24).
         //     Previously scattered as private/internal consts and inline literals across
-        //     ReconReactionPolicy / ReconAssignment / ReconConcurrencyPolicy / ReconGroundStepPlanner.
+        //     ReconReactionPolicy / ReconPatrolState / ReconConcurrencyPolicy / ReconGroundStepPlanner.
         public const float scoutReactionAttackWinChance = 0.80f;   // ReconReactionPolicy — min win chance for an opportunistic solo-Recce attack
         public const float scoutReactionAttackMaxCriticalAfter = 0.25f; // ...reject the attack if even a WIN leaves the scout critically wounded this often (WorthIt.BattleEstimate)
         public const float scoutReactionFleeWinChance = 0.50f;     // ReconReactionPolicy — flee when the worst exposed known threat drops our win chance below this
@@ -725,7 +725,7 @@ namespace Game.Ai.V2
         public const float scoutFleeFutureReconWeight = 1.5f;       // a flee hex from which recon can usefully resume (unvisited-neighbour fraction)
         public const float scoutFleeDetectorWeight = 2.5f;          // penalty per unit of known detector risk at the flee hex
         public const float scoutFleeBacktrackWeight = 0.5f;         // penalty per recent scout-trail hit at the flee hex
-        public const int reconAssignmentModeHoldTurns = 1;         // ReconAssignmentRegistry — min turns between Explore<->Refresh mode switches for one actor
+        public const int reconAssignmentModeHoldTurns = 1;         // ReconPatrolStateRegistry — min turns between Explore<->Refresh mode switches for one actor
         public const float reconModeSwitchMargin = 0.15f;          // ...and the requested mode's strategic score must beat the current mode's by at least this (spec §25 — score-based, not just time-based)
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
         public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early

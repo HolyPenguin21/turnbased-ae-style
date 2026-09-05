@@ -219,13 +219,14 @@ namespace Game.Ai.V2
             // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
             //     unable to reach any runnable objective (blocked path, no reachable Surveil vantage),
-            //     which only ReconActorReservationPlanner.CanExecute actually knows via
+            //     which only ReconAssignmentPlanner.CanExecute actually knows via
             //     SafeStepPathing / SurveilVantageSelector. A durable lane actor is re-validated
             //     against its OWN current committed target (its path was only proven valid when the
             //     lane started — it may since have spent its MP/AP or lost the path). An idle,
             //     uncommitted actor only counts if a single JOINT bipartite matching across BOTH
-            //     Ground and Observation runnable jobs (ComputeReconWitness) can assign it a DISTINCT
-            //     reachable job — matching Ground and Observation independently would double-count any
+            //     Ground and Observation runnable jobs (ReconAssignmentPlanner.MeasureCapacity) can
+            //     assign it a DISTINCT reachable job — matching Ground and Observation independently
+            //     would double-count any
             //     idle ground scout reachable to jobs of both classes as capacity for both at once,
             //     when physically it can only ever serve one.
             //
@@ -243,8 +244,11 @@ namespace Game.Ai.V2
             // requirement quietly count as covered by generic capacity.
             var groundVisitGeneric = groundVisitRunnable.Where(o => !IsStealthObjective(o)).ToList();
             var observationGeneric = observationRunnable.Where(o => !IsStealthObjective(o)).ToList();
-            ReconWitnessResult witness = ComputeReconWitness(ctx, player, snap, capacity, activeIntents,
-                commitments, groundVisitGeneric, observationGeneric);
+            // §5/§9 — the ONE read-only aggregate query Demand is allowed to ask Assignment. Demand
+            // does not know (and must not know) HOW the actor<->job matching behind this number was
+            // produced — see ReconAssignmentPlanner.MeasureCapacity.
+            ReconCapacityMeasurement witness = ReconAssignmentPlanner.MeasureCapacity(ctx, player, snap, capacity,
+                activeIntents, commitments, groundVisitGeneric, observationGeneric);
             int groundWitnessedSupply = witness.GroundLaneWitnessed + witness.GroundIdleWitnessed;
             int obsWitnessedSupply = witness.ObsLaneWitnessed
                 + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties + witness.ObsIdleWitnessed;
@@ -364,7 +368,6 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = groundWitnessedSupply,
                     Explain = $"GroundTraversal effective deficit {groundEffectiveDeficit} not yet persistent "
                         + $"(streak {groundStreak}); {groundVisitRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
@@ -391,7 +394,6 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = obsWitnessedSupply,
                     Explain = $"Observation effective deficit {obsEffectiveDeficit} not yet persistent "
                         + $"(streak {obsStreak}); {observationRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
@@ -497,313 +499,6 @@ namespace Game.Ai.V2
                 o.Kind == ReconObjectiveKind.Surveil ? (int)ScoutTargetKind.Surveil : (int)ScoutTargetKind.Explore,
                 o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
                 o.FocusHex.Q, o.FocusHex.R);
-
-        // Result of ComputeReconWitness — witnessed (proven-executable) actor counts, split by
-        // requirement class. NOT the same as capacity.Generic*LaneActors.Count / IdleGroundScouts.Count
-        // (those are raw, unverified) — see ComputeReconWitness.
-        private readonly struct ReconWitnessResult
-        {
-            public readonly int GroundLaneWitnessed;
-            public readonly int ObsLaneWitnessed;
-            public readonly int GroundIdleWitnessed;
-            public readonly int ObsIdleWitnessed;
-            public ReconWitnessResult(int groundLane, int obsLane, int groundIdle, int obsIdle)
-            {
-                GroundLaneWitnessed = groundLane;
-                ObsLaneWitnessed = obsLane;
-                GroundIdleWitnessed = groundIdle;
-                ObsIdleWitnessed = obsIdle;
-            }
-        }
-
-        // Persistence-gate witness (Rule 1/Rule 2) — turns raw actor COUNTS into PROVEN-executable
-        // ones, per ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing /
-        // SurveilVantageSelector primitive the real planner uses downstream). Two things a raw count
-        // cannot tell you: (a) a durable lane actor's path was only proven valid when the lane
-        // started — it may since have spent its MP/AP or lost the path, so it is re-validated against
-        // its OWN current committed target; (b) an idle, uncommitted GROUND actor can serve EITHER a
-        // Ground or an Observation job (it is one physical actor, one requirement class at a time), so
-        // matching it against each class independently would double-count any actor reachable to jobs
-        // of both — and matching it against a flat list of individual objectives from both classes at
-        // once is not enough either: maximum-CARDINALITY matching over individual jobs can legally
-        // over-satisfy one class while starving the other (two jobs matched is still "2" even if both
-        // are Ground and Observation needed exactly one each) — see the coverage-vs-cardinality note
-        // below. Actor/job counts here are always small (a handful of scouts against a handful of
-        // runnable objectives per demand pass), so the matching is cheap regardless of formulation.
-        private static ReconWitnessResult ComputeReconWitness(AiTurnContext ctx, PlayerSetupData player,
-            WorldSnapshot snap, ReconCapacitySnapshot capacity, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, IReadOnlyList<ReconObjective> groundVisitRunnable,
-            IReadOnlyList<ReconObjective> observationRunnable)
-        {
-            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>();
-            ArmySnapshot Resolve(int id) => armies.FirstOrDefault(a => a != null && a.ArmyId == id);
-
-            // --- Active-lane re-validation. Same claimed-generic-lane filter ReconCapacitySnapshot.Build
-            //     uses (non-stealth durable Scout intents), so the target built here is the exact one
-            //     the lane actor is currently committed to. Since RequiresStealth is excluded (exactly
-            //     as ReconCapacitySnapshot excludes it from generic lanes), Kind is always Explore/
-            //     Refresh here, never Surveil — so no EnemyContactSnapshot lookup is needed to build a
-            //     valid ScoutMissionTarget from the durable ScoutIntent.
-            var laneTarget = new Dictionary<int, ScoutMissionTarget>();
-            if (activeIntents != null && commitments != null)
-                foreach (MissionIntent i in activeIntents)
-                {
-                    if (i?.Scout == null || i.PreferredMoverArmyId == null
-                        || !commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value) || i.Scout.RequiresStealth)
-                        continue;
-                    laneTarget[i.PreferredMoverArmyId.Value] = new ScoutMissionTarget
-                    {
-                        FocusHex = i.Scout.FocusHex,
-                        Kind = i.Scout.Kind,
-                        Stealth = StealthRequirement.None,
-                        DetectionRisk = 0f,
-                    };
-                }
-
-            // A single actorId is only ever counted once across BOTH lane buckets — normally this is
-            // a lifecycle guarantee (one army, one active durable Scout intent), but if continuity
-            // state is ever momentarily corrupted into two durable intents on the same actor (already
-            // a documented, [CHECK]-surfaced possibility elsewhere in this file), it must not be
-            // double counted. The claim is only recorded on a PROVEN (CanExecute-true) lane — a
-            // corrupted actor whose Ground lane happens to be stale must still get its Observation
-            // lane checked, not be silently zeroed out by an unproven earlier attempt.
-            var laneActorClaimed = new HashSet<int>();
-            int RevalidateLane(IEnumerable<int> ids)
-            {
-                int n = 0;
-                foreach (int id in ids)
-                {
-                    if (laneActorClaimed.Contains(id))
-                        continue;
-                    ArmySnapshot a = Resolve(id);
-                    if (a == null || !laneTarget.TryGetValue(id, out ScoutMissionTarget t))
-                        continue;
-                    if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, t))
-                    {
-                        laneActorClaimed.Add(id);
-                        n++;
-                    }
-                }
-                return n;
-            }
-
-            int groundLaneWitnessed = RevalidateLane(capacity.GenericGroundLaneActors);
-            int obsLaneWitnessed = RevalidateLane(capacity.GenericObservationLaneActors);
-
-            // --- Idle actors: a small max-flow network, not a bipartite matching. Two earlier,
-            //     simpler formulations were each provably insufficient on their own:
-            //       1. Matching actor<->individual-objective maximises JOB COUNT, not CLASS COVERAGE —
-            //          actor A={G1,G2}, actor B={G1,O1}, desired 1 Ground + 1 Observation: a valid
-            //          maximum matching can legally land on B->G1, A->G2 (2 jobs matched, Observation
-            //          still 0) instead of the coverage-optimal A->G1, B->O1.
-            //       2. Replacing individual jobs with anonymous per-class "quota slots" fixes #1 but
-            //          throws away JOB uniqueness: if G1 is the only Ground job either A or B can
-            //          reach (G2 unreachable by anyone) and desiredGround=2, both A and B would be
-            //          allowed onto separate anonymous Ground slots — but there is only ONE real job
-            //          (G1) either of them could physically execute; the real Recon reservation
-            //          pipeline enforces one actor per concrete job, so true capacity here is 1, not 2.
-            //     A flow network keeps BOTH constraints (job <= 1 actor, actor <= 1 job) AND the
-            //     REMAINING per-class quota (below) as one problem: source -> each idle actor (cap 1)
-            //     -> each individual job it can reach (cap 1) -> that job's class-aggregator (cap 1,
-            //     enforcing job uniqueness) -> sink (cap = remaining quota for that class). Max-flow
-            //     through this network is the mathematically maximum coverage achievable respecting
-            //     every constraint at once — standard result, no custom heuristic risk.
-            //
-            //     Quota is REMAINING, not full desired: active lanes already witnessed above must
-            //     reduce how much idle capacity can still count, or an idle actor could be "witnessed"
-            //     into a slot a lane actor is already proven to be filling (regression: 1 active Ground
-            //     lane already covers desiredGround=1, but an idle actor reachable to Ground AND
-            //     Observation was still being offered a full, unreduced Ground slot to compete for).
-            var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
-            int remainingGroundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundLaneWitnessed);
-            int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed
-                - capacity.AirborneReconLanes - capacity.SpareAirObservationSorties);
-
-            // --- Two-phase (breadth THEN depth) — plain single-shot max-flow only maximises TOTAL
-            //     flow, and is mathematically indifferent between covering both classes evenly and
-            //     dumping everything into one: desiredGround=2, desiredObservation=1, both actors A
-            //     and B able to serve either — (Ground=2,Obs=0) and (Ground=1,Obs=1) are BOTH valid
-            //     maximum-flow solutions of equal total value, but only the second is correct: with
-            //     the first, obsWitnessedSupply reads exactly 0 (not "1 short of desired", ZERO), which
-            //     is precisely what Rule 1 reads as "no usable actor at all" and bootstraps a brand
-            //     new Scout for a shortage that does not really exist.
-            //
-            //     Phase 1 (breadth): solve with EACH class's sink capped at min(remaining, 1) — a
-            //     class already fully covered (remaining=0) gets no cap at all (no edge, so it cannot
-            //     "steal" flow it doesn't need). Capping every other outstanding class at exactly 1
-            //     forces the solver to spread across classes instead of piling into one, so this phase
-            //     answers "can every still-needed class get AT LEAST one unit, simultaneously, given
-            //     actor/job constraints" — which is exactly the coverage priority needed.
-            //     Phase 2 (depth): the actors AND jobs phase 1 used are removed entirely (an actor
-            //     already assigned, or a job already claimed, must not be reused), then a second
-            //     ordinary max-flow fills any additional depth up to the TRUE remaining quota with
-            //     whatever idle capacity is left over. No priority needed here — once every class has
-            //     its first unit (or provably cannot), further depth is ordinary optimisation.
-            (int groundP1, int obsP1, var usedActors, var usedGroundIdx, var usedObsIdx) = SolveReconFlow(
-                ctx, player, snap, idleActors, groundVisitRunnable, observationRunnable,
-                Mathf.Min(remainingGroundSlots, 1), Mathf.Min(remainingObsSlots, 1));
-
-            var leftoverActors = idleActors.Where(a => !usedActors.Contains(a.ArmyId)).ToList();
-            var leftoverGround = groundVisitRunnable == null ? new List<ReconObjective>()
-                : groundVisitRunnable.Where((o, idx) => !usedGroundIdx.Contains(idx)).ToList();
-            var leftoverObs = observationRunnable == null ? new List<ReconObjective>()
-                : observationRunnable.Where((o, idx) => !usedObsIdx.Contains(idx)).ToList();
-
-            (int groundP2, int obsP2, _, _, _) = SolveReconFlow(
-                ctx, player, snap, leftoverActors, leftoverGround, leftoverObs,
-                remainingGroundSlots - groundP1, remainingObsSlots - obsP1);
-
-            int groundIdleWitnessed = groundP1 + groundP2;
-            int obsIdleWitnessed = obsP1 + obsP2;
-
-            return new ReconWitnessResult(groundLaneWitnessed, obsLaneWitnessed, groundIdleWitnessed, obsIdleWitnessed);
-        }
-
-        // One max-flow solve: source -> each actor (cap 1) -> each individual job it can reach
-        // (cap 1) -> that job's class-aggregator (cap 1, job uniqueness) -> sink (cap = groundCap /
-        // obsCap). Returns the flow used per class, plus WHICH actors (by ArmyId) and WHICH job
-        // indices (into the groundJobs/obsJobs lists passed in) carried flow, so a caller running a
-        // follow-up phase can exclude them (an actor or job already claimed must not be reused).
-        private static (int GroundUsed, int ObsUsed, HashSet<int> UsedActorIds, HashSet<int> UsedGroundJobIndex,
-            HashSet<int> UsedObsJobIndex) SolveReconFlow(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
-            IReadOnlyList<ArmySnapshot> actors, IReadOnlyList<ReconObjective> groundJobs,
-            IReadOnlyList<ReconObjective> obsJobs, int groundCap, int obsCap)
-        {
-            var usedActorIds = new HashSet<int>();
-            var usedGroundIdx = new HashSet<int>();
-            var usedObsIdx = new HashSet<int>();
-            int groundJobCount = groundJobs?.Count ?? 0;
-            int obsJobCount = obsJobs?.Count ?? 0;
-            groundCap = Mathf.Max(0, groundCap);
-            obsCap = Mathf.Max(0, obsCap);
-            if (actors == null || actors.Count == 0 || (groundCap <= 0 && obsCap <= 0)
-                || (groundJobCount == 0 && obsJobCount == 0))
-                return (0, 0, usedActorIds, usedGroundIdx, usedObsIdx);
-
-            // Node layout: 0 = source; 1..A = actors; A+1..A+G = ground jobs; ..+O = obs jobs;
-            // then groundAgg, obsAgg; last = sink.
-            int actorBase = 1;
-            int groundJobBase = actorBase + actors.Count;
-            int obsJobBase = groundJobBase + groundJobCount;
-            int groundAgg = obsJobBase + obsJobCount;
-            int obsAgg = groundAgg + 1;
-            int sink = obsAgg + 1;
-            int nodeCount = sink + 1;
-            var graph = new List<FlowEdge>[nodeCount];
-            for (int n = 0; n < nodeCount; n++) graph[n] = new List<FlowEdge>();
-
-            for (int i = 0; i < actors.Count; i++)
-                AddFlowEdge(graph, 0, actorBase + i, 1);
-            for (int j = 0; j < groundJobCount; j++)
-                AddFlowEdge(graph, groundJobBase + j, groundAgg, 1);
-            for (int j = 0; j < obsJobCount; j++)
-                AddFlowEdge(graph, obsJobBase + j, obsAgg, 1);
-            if (groundCap > 0)
-                AddFlowEdge(graph, groundAgg, sink, groundCap);
-            if (obsCap > 0)
-                AddFlowEdge(graph, obsAgg, sink, obsCap);
-            for (int i = 0; i < actors.Count; i++)
-            {
-                ArmySnapshot a = actors[i];
-                if (groundCap > 0)
-                    for (int j = 0; j < groundJobCount; j++)
-                        if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, groundJobs[j].ToTarget()))
-                            AddFlowEdge(graph, actorBase + i, groundJobBase + j, 1);
-                if (obsCap > 0)
-                    for (int j = 0; j < obsJobCount; j++)
-                        if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, obsJobs[j].ToTarget()))
-                            AddFlowEdge(graph, actorBase + i, obsJobBase + j, 1);
-            }
-
-            MaxFlow(graph, 0, sink);
-
-            for (int i = 0; i < actors.Count; i++)
-                if (UsedCapacity(graph, 0, actorBase + i) > 0)
-                    usedActorIds.Add(actors[i].ArmyId);
-            for (int j = 0; j < groundJobCount; j++)
-                if (UsedCapacity(graph, groundJobBase + j, groundAgg) > 0)
-                    usedGroundIdx.Add(j);
-            for (int j = 0; j < obsJobCount; j++)
-                if (UsedCapacity(graph, obsJobBase + j, obsAgg) > 0)
-                    usedObsIdx.Add(j);
-
-            int groundUsed = groundCap > 0 ? UsedCapacity(graph, groundAgg, sink) : 0;
-            int obsUsed = obsCap > 0 ? UsedCapacity(graph, obsAgg, sink) : 0;
-            return (groundUsed, obsUsed, usedActorIds, usedGroundIdx, usedObsIdx);
-        }
-
-        // Minimal max-flow network for the idle-actor witness above. Always tiny (a handful of idle
-        // scouts, a handful of runnable objectives, 2 class-aggregator nodes) — not a general-purpose
-        // flow utility, so no need for anything beyond a plain BFS augmenting-path search per unit of
-        // flow (Edmonds-Karp).
-        private sealed class FlowEdge
-        {
-            public int To;
-            public int Capacity;
-            public int Reverse;
-        }
-
-        private static void AddFlowEdge(List<FlowEdge>[] graph, int from, int to, int capacity)
-        {
-            graph[from].Add(new FlowEdge { To = to, Capacity = capacity, Reverse = graph[to].Count });
-            graph[to].Add(new FlowEdge { To = from, Capacity = 0, Reverse = graph[from].Count - 1 });
-        }
-
-        private static int UsedCapacity(List<FlowEdge>[] graph, int from, int to)
-        {
-            foreach (FlowEdge e in graph[from])
-                if (e.To == to)
-                {
-                    // The paired reverse edge on `to` started at 0 and gained exactly the flow pushed
-                    // through this edge.
-                    return graph[to][e.Reverse].Capacity;
-                }
-            return 0;
-        }
-
-        private static int MaxFlow(List<FlowEdge>[] graph, int source, int sink)
-        {
-            int flow = 0;
-            int n = graph.Length;
-            while (true)
-            {
-                var parentNode = new int[n];
-                var parentEdge = new int[n];
-                for (int i = 0; i < n; i++) { parentNode[i] = -1; parentEdge[i] = -1; }
-                parentNode[source] = source;
-                var queue = new Queue<int>();
-                queue.Enqueue(source);
-                while (queue.Count > 0)
-                {
-                    int u = queue.Dequeue();
-                    if (u == sink) break;
-                    for (int e = 0; e < graph[u].Count; e++)
-                    {
-                        FlowEdge edge = graph[u][e];
-                        if (edge.Capacity > 0 && parentNode[edge.To] < 0)
-                        {
-                            parentNode[edge.To] = u;
-                            parentEdge[edge.To] = e;
-                            queue.Enqueue(edge.To);
-                        }
-                    }
-                }
-                if (parentNode[sink] < 0)
-                    break;
-
-                int aug = int.MaxValue;
-                for (int v = sink; v != source; v = parentNode[v])
-                    aug = Mathf.Min(aug, graph[parentNode[v]][parentEdge[v]].Capacity);
-                for (int v = sink; v != source; v = parentNode[v])
-                {
-                    FlowEdge edge = graph[parentNode[v]][parentEdge[v]];
-                    edge.Capacity -= aug;
-                    graph[v][edge.Reverse].Capacity += aug;
-                }
-                flow += aug;
-            }
-            return flow;
-        }
 
         // ---------------------------------------------------------------------------------------
         //  DEF — a threatened Citadel/Base whose committed defence is below requirement. NEVER

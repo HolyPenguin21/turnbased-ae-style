@@ -41,7 +41,7 @@ namespace Game.Ai.V2
         }
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn, WorldSnapshot snapshot = null)
+            ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null)
         {
             if (player == null || map == null || army == null || assignment == null
                 || army.CurrentMovement <= 0)
@@ -149,7 +149,7 @@ namespace Game.Ai.V2
         }
 
         private static bool TryScoreImmediate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn, HexCoord h, HomePressure home, out StepChoice choice)
+            ReconPatrolState assignment, int turn, HexCoord h, HomePressure home, out StepChoice choice)
         {
             choice = default;
             if (!map.TryGetTerrainAt(h, out var terrain))
@@ -213,8 +213,8 @@ namespace Game.Ai.V2
             // scout may still enter the same corridor when terrain/safety leaves no better option,
             // but equal candidates in unclaimed sectors win. Nearby strategic anchors are weighted
             // more strongly than merely sharing a broad six-way sector.
-            int sectorClaims = ReconAssignmentRegistry.OtherSectorClaims(player, army.Id, stepSector);
-            int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
+            int sectorClaims = ReconPatrolStateRegistry.OtherSectorClaims(player, army.Id, stepSector);
+            int nearbyClaims = ReconPatrolStateRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
                 Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
             float coverageFactor = 1f / (1f + AiConfigV2.scoutStepCoverageSectorWeight * sectorClaims
                 + AiConfigV2.scoutStepCoverageNearbyWeight * nearbyClaims);
@@ -265,7 +265,7 @@ namespace Game.Ai.V2
         }
 
         private static float Lookahead(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconAssignment assignment, int turn, HexCoord from, int depth, int movementLeft,
+            ReconPatrolState assignment, int turn, HexCoord from, int depth, int movementLeft,
             HashSet<HexCoord> seen)
         {
             if (depth <= 0 || movementLeft <= 0)
@@ -300,7 +300,7 @@ namespace Game.Ai.V2
                             AiConfigV2.scoutSurveilStaleTurnsHi, age)
                         : 0f;
 
-                int nearbyClaims = ReconAssignmentRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
+                int nearbyClaims = ReconPatrolStateRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
                     Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
                 local *= 1f / (1f + AiConfigV2.scoutLookaheadNearbyClaimWeight * nearbyClaims);
                 local *= Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);

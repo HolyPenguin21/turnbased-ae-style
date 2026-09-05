@@ -306,13 +306,6 @@ namespace Game.Ai.V2
         // (a tie-break, not a reservation). null for a fresh proposal.
         public int? PreferredMoverArmyId;
 
-        // AI-RECON-01 — the concrete scout ReconActorReservationPlanner reserved for this Recon
-        // mission BEFORE the allocator funded it. Unlike PreferredMoverArmyId (a soft tie-break)
-        // this is a hard binding: ProvisioningManager restricts the mission's assignment to this
-        // actor, falling back to a free-scout rematch only if it has become unusable by provisioning
-        // time (invalidation — spec §7). null when no actor could be reserved.
-        public int? ReservedMoverArmyId;
-
         // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
         // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
         // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments, never through the
@@ -447,7 +440,7 @@ namespace Game.Ai.V2
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
 
             // 3c. The ONE Recon-opportunity enumeration for the turn — shared by DemandLayer and
-            //     MissionLayer. FROZEN here (before StrategicManager touches own forces): Strategic
+            //     ReconMissionPlanner. FROZEN here (before StrategicManager touches own forces): Strategic
             //     Manager changes which SCOUT can execute, never which objectives exist.
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
@@ -518,20 +511,12 @@ namespace Game.Ai.V2
             // 4. Planners -> mission proposals (+ requirements via the shared estimator). Reads the
             //    DesireBreakdown + the FROZEN Recon objectives, never re-derives the analysis behind
             //    them. Also materialises every active intent and applies the retarget margin.
-            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown,
+            List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             if (!AiStrategyV2Scope.IsReconOnly)
                 missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                     activeIntents, aggressionObjectives));
             missions = AiStrategyV2Scope.ApplyMissionScope(missions);
-            // AI-RECON-01 — bind each surviving Recon proposal to a concrete eligible scout BEFORE
-            // the allocator funds it (dedup jobs, seed the reservation context from continuity +
-            // this-turn claims, match scarce jobs first, drop proposals with no distinct actor or
-            // beyond the still-unmet concurrency). ProvisioningManager then receives an already
-            // actor-bound Recon mission and MoverContended reverts to a defensive-only outcome.
-            var reconActorCtx = new ReconActorReservationContext();
-            ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
-                activeIntents, reconObjectives);
             // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
             // list order, stable across the re-pack loop), then bind the conservative
             // Demand→Mission causal link (spec §1.6).
@@ -596,10 +581,8 @@ namespace Game.Ai.V2
             int reallocPass = 0;
             while (true)
             {
-                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
-                    reconActorCtx.ReservedActorIds);
+                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
                 bool anyFailure = false;
-                bool anySuccess = false;
                 bool allFailuresArePoolWide = true;
                 foreach (FundedEntry fe in allocation.Funded)
                 {
@@ -617,7 +600,6 @@ namespace Game.Ai.V2
                     ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
                     if (result.Success)
                     {
-                        anySuccess = true;
                         provSession.RegisterSuccess(key, result.Provisioned);
                         session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp);
                         ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
@@ -641,13 +623,6 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, result.Failure);
                         ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                        // AI-RECON-01 — the allocator has already put this Scout in _rejectedThisTurn
-                        // (every failure disposition but RepriceThisTurn does); mirror that so the
-                        // planner never re-pins an actor to a mission the allocator will not re-fund.
-                        if (fe.Mission.Kind == MissionKind.Scout
-                            && result.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
-                            ReconActorReservationPlanner.RecordProvisionFailure(reconActorCtx, fe.Mission,
-                                result.Failure.Kind);
                         AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
                             + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                     }
@@ -658,14 +633,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
                     break;
                 }
-                // AI-RECON-01 — re-assign Recon scouts from the current portfolio. `portfolioChanged`
-                // = a provisioning success or failure freed AP / actors this iteration, so the last
-                // Pack's budget/capacity deferrals are stale and must be re-evaluated (not folded
-                // into the transient wave-skip set). The real Pack — never a private AP model — is
-                // the budget authority; the planner only reacts to its verdicts.
-                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession,
-                    allocation, portfolioChanged: anyFailure || anySuccess);
-                if (!reconRematched && (!session.HasNewFailures || session.Converged))
+                if (!session.HasNewFailures || session.Converged)
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;

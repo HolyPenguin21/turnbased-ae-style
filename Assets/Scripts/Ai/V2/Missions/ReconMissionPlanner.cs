@@ -14,7 +14,7 @@ namespace Game.Ai.V2
     //    Refresh — stale previously-observed information; ground route/terrain witness.
     //    Surveil — stale enemy contact; observation-vantage semantics in provisioning.
     // ===========================================================================================
-    internal static class MissionLayer
+    internal static class ReconMissionPlanner
     {
         private readonly struct ScoutCandidate
         {
@@ -110,16 +110,11 @@ namespace Game.Ai.V2
                 ordinaryCount++;
             }
 
+            // §8 — Mission does not decide concrete actor availability; whether an actor exists to
+            // execute this proposal is Assignment's question (ReconAssignmentPlanner /
+            // ProvisioningManager, which report NoMoverExists / MoverContended if none does).
             foreach (ScoutCandidate c in picked)
-            {
-                if (!ScoutMoverSelector.HasStructuralCandidate(snap, c.Target))
-                {
-                    AiDebugLog.Write($"[AI][V2]   mission suppress — Scout {CandidateKey(c)} "
-                        + "reason=no_materialized_scout_after_phaseA");
-                    continue;
-                }
                 proposals.Add(BuildProposal(snap, c));
-            }
 
             ScoutPricingWitness.Apply(snap, proposals);
             return proposals;
@@ -179,18 +174,11 @@ namespace Game.Ai.V2
             bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
 
             ScoutMissionTarget target = o.ToTarget();
-            float intrinsicAdmission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
-            ScoutRouteCostEvaluator.Assessment route = ScoutRouteCostEvaluator.Evaluate(snap, target);
-            bool ground = explore || refresh;
-            // Spec §3/§7 — "route unknown" (no eligible mover can path to the focus) is a real
-            // negative signal, not a neutral one. Penalize it instead of keeping the full multiplier
-            // so an impossible Refresh cannot out-rank an executable Explore during admission.
-            float routeMultiplier = !ground
-                ? 1f
-                : route.HasRoute
-                    ? route.AdmissionMultiplier
-                    : AiConfigV2.scoutRouteUnknownAdmissionMultiplier;
-            float admission = intrinsicAdmission * routeMultiplier;
+            // §8 — Mission ranking reflects the strategic objective only. Actor-specific route
+            // executability (which mover, whether IT can currently path there) is Assignment's
+            // question, not Mission's — a generic per-actor route scan here would let mover
+            // availability quietly bias which objective gets proposed at all.
+            float admission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
 
             string explain;
             if (explore)
@@ -198,16 +186,14 @@ namespace Game.Ai.V2
                 explain = $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
                     + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
                     + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x exploreP {F(rawSubDesire)} "
-                    + $"localFloor {F(localSubDesire)} intrinsicLAS {F(intrinsicAdmission)}"
-                    + RouteExplain(route, routeMultiplier);
+                    + $"localFloor {F(localSubDesire)} LAS {F(admission)}";
             }
             else if (refresh)
             {
                 explain = $"Refresh @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} "
                     + $"strategic {F(o.StrategicRelevance)} direction {F(o.DirectionPressure)} prox {F(proximity)}"
                     + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x refreshP {F(rawSubDesire)} "
-                    + $"intrinsicLAS {F(intrinsicAdmission)}"
-                    + RouteExplain(route, routeMultiplier);
+                    + $"LAS {F(admission)}";
             }
             else if (surveil)
             {
@@ -226,12 +212,6 @@ namespace Game.Ai.V2
             return new ScoutCandidate(target, o.BaseValue, admission, explain,
                 freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
-
-        private static string RouteExplain(ScoutRouteCostEvaluator.Assessment route, float multiplier) =>
-            route.HasRoute
-                ? $" routeMP {route.MovementCost} eta {route.EtaTurns} visitsNow {route.ExpectedVisitsThisTurn} "
-                  + $"remainMP {route.RemainingMovementAtFocus} routeX {F(multiplier)}"
-                : $" route unknown routeX {F(multiplier)} (penalized)";
 
         private static float ComputeLocalAdmissionScore(float baseValue, float subDesire, float detectionRisk) =>
             baseValue * subDesire

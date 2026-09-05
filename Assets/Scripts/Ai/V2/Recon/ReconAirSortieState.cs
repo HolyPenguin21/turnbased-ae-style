@@ -9,10 +9,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PER-SORTIE AIR RECON STATE  (spec §33 / §34 / §38 / §48)
     // ===========================================================================================
-    //  A ground ReconAssignment is a durable, cross-turn actor identity. An air sortie is not: it
+    //  A ground ReconPatrolState is a durable, cross-turn actor identity. An air sortie is not: it
     //  is one launch -> boomerang -> landing arc, and its trail / phase / chosen-landing reset the
     //  moment the wing lands (or the sortie is lost). This state therefore lives beside
-    //  ReconAssignmentRegistry, keyed by army id, and is retired on exactly the same events.
+    //  ReconPatrolStateRegistry, keyed by army id, and is retired on exactly the same events.
     //
     //  Phases (spec §34 / AI-AIR-02):
     //    Outbound  press toward useful information; boomerang shaping applies here

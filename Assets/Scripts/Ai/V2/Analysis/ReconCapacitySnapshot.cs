@@ -37,7 +37,7 @@ namespace Game.Ai.V2
         public readonly HashSet<int> IdleGroundScouts = new HashSet<int>();
 
         // Air observation capacity — counts, not ids (a hangar sortie has no army id yet).
-        public int AirborneReconLanes;          // wings already flying a durable ReconAssignment
+        public int AirborneReconLanes;          // wings already flying a durable ReconPatrolState
         public int SpareAirObservationSorties;  // ADDITIONAL sorties launchable this turn (slot + AP/Energy bounded)
 
         // Sized for GENERIC lanes only.

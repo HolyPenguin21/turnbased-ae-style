@@ -190,7 +190,7 @@ namespace Game.Ai.V2
                 out float staleInformation);
 
             // R2 review fix — one coverage read, one reference frame. Every assigned Recon actor
-            // (air sortie OR ground scout with a live ReconAssignment) is placed in its wedge FROM
+            // (air sortie OR ground scout with a live ReconPatrolState) is placed in its wedge FROM
             // OUR CITADEL using its LIVE ArmyRegistry position; the candidate's wedge is measured
             // the same way. Idle Recce (no assignment) is not counted. Storage launches get a real
             // count too (moverArmyId -1 simply excludes nobody). R3 review fix — add air slots the
@@ -268,9 +268,9 @@ namespace Game.Ai.V2
         }
 
         // spec §5 "already adequately covered by another assigned Recon actor" — count every
-        // OTHER army that holds a live ReconAssignment (air sortie or ground scout; idle Recce has
+        // OTHER army that holds a live ReconPatrolState (air sortie or ground scout; idle Recce has
         // none) and whose LIVE position falls in `wedge` measured from `citadel`. One registry
-        // (ReconAssignmentRegistry, shared by ReconAirExecutor + ReconGroundExecutor), one origin,
+        // (ReconPatrolStateRegistry, shared by ReconAirExecutor + ReconGroundExecutor), one origin,
         // live ArmyRegistry positions — no snapshot staleness, no mixed reference frames.
         private static int CountAssignedReconActorsInWedge(PlayerSetupData player, HexCoord citadel,
             ReconSector wedge, int excludeArmyId)
@@ -280,7 +280,7 @@ namespace Game.Ai.V2
             {
                 if (a == null || a.Id == excludeArmyId)
                     continue;
-                if (!ReconAssignmentRegistry.TryGet(player, a.Id, out _))
+                if (!ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
                     continue;
                 if (ReconDirectionModel.Sector(citadel, a.Hex) == wedge)
                     n++;

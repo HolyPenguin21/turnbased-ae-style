@@ -112,16 +112,13 @@ namespace Game.Ai.V2
             if (phaseA.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
-            List<MissionProposal> missions = MissionLayer.Propose(snapshot, assessment.Breakdown,
+            List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives));
-            // AI-RECON-01 — the reaction round runs the SAME DemandLayer -> MissionLayer -> Allocator
-            // -> Provisioning path as the main pass, so it needs the same actor-before-budget
-            // reservation, or every reaction-round Scout would defer ReconActorUnreserved.
-            var reconActorCtx = new ReconActorReservationContext();
-            ReconActorReservationPlanner.Plan(reconActorCtx, snapshot, ctx, player, missions, actorCommitments,
-                activeIntents, reconObjectives);
+            // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path
+            // as the main pass — Scout actor binding happens in Provisioning (ReconAssignmentPlanner)
+            // exactly like the main pass, no separate reservation stage needed here either.
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
@@ -146,10 +143,8 @@ namespace Game.Ai.V2
             while (true)
             {
                 bool anyFailure = false;
-                bool anySuccess = false;
                 bool allFailuresArePoolWide = true;
-                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
-                    reconActorCtx.ReservedActorIds);
+                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null) continue;
@@ -165,7 +160,6 @@ namespace Game.Ai.V2
                         player, root, hand, ctx, provSession, fe);
                     if (provision.Success)
                     {
-                        anySuccess = true;
                         provSession.RegisterSuccess(key, provision.Provisioned);
                         session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp);
                         outcomeLedger.RecordProvisionSuccess(fe.Mission, provision.Provisioned);
@@ -188,10 +182,6 @@ namespace Game.Ai.V2
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);
-                        if (fe.Mission.Kind == MissionKind.Scout
-                            && provision.Failure.Kind != ProvisionFailureKind.EnvelopeTooSmall)
-                            ReconActorReservationPlanner.RecordProvisionFailure(reconActorCtx, fe.Mission,
-                                provision.Failure.Kind);
                         AiDebugLog.Write($"[AI][V2]   reaction provision [{fe.Mission.AttemptId}] {key} — FAIL "
                             + $"{provision.Failure.Kind} [{provision.Failure.Disposition}] "
                             + provision.Failure.Detail);
@@ -203,9 +193,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write("[AI][V2] reaction — every funded mission's capability pool is exhausted this cycle; stop key-by-key reallocation");
                     break;
                 }
-                bool reconRematched = ReconActorReservationPlanner.Rematch(reconActorCtx, missions, provSession,
-                    allocation, portfolioChanged: anyFailure || anySuccess);
-                if (!reconRematched && (!session.HasNewFailures || session.Converged))
+                if (!session.HasNewFailures || session.Converged)
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)
                     break;

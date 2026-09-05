@@ -16,7 +16,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  One provisioned Scout mission still owns AP/accounting for this turn, but a single focus
     //  hex no longer owns the actor's tactical movement. The provisioned objective seeds/refreshes
-    //  a durable ReconAssignment; every actual move is ONE adjacent step selected from live state.
+    //  a durable ReconPatrolState; every actual move is ONE adjacent step selected from live state.
     //
     //  After each authoritative MoveArmyRoutine returns, vision/contact/stealth/event state has
     //  settled. We record discovery, mark assignment progress, then start the next iteration by
@@ -38,7 +38,7 @@ namespace Game.Ai.V2
             }
 
             // Spec §25 — strategic scores for the score-based Explore<->Refresh mode hysteresis in
-            // ReconAssignmentRegistry. Same raw signals the strategic layer's sub-pressures use.
+            // ReconPatrolStateRegistry. Same raw signals the strategic layer's sub-pressures use.
             float exploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
             float refreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot);
 
@@ -70,7 +70,7 @@ namespace Game.Ai.V2
             HexCoord strategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
                 ? pm.ExecutionHex
                 : pm.FocusHex;
-            ReconAssignment assignment = ReconAssignmentRegistry.GetOrCreate(player, army.Id,
+            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
                 army.Hex, strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
 
             // A Required-stealth mission must enter before the first activation/move. Do not let
@@ -113,13 +113,13 @@ namespace Game.Ai.V2
                 if (army == null || army.Owner != player)
                 {
                     stop = ExecutionStopReason.MoverLost;
-                    ReconAssignmentRegistry.Retire(player, pm.MoverArmyId, "mover lost");
+                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost");
                     break;
                 }
                 if (!AiArmyRoles.IsSoloRecce(army))
                 {
                     stop = ExecutionStopReason.MoverLost;
-                    ReconAssignmentRegistry.Retire(player, pm.MoverArmyId, "actor no longer solo Recce");
+                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "actor no longer solo Recce");
                     break;
                 }
                 if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
@@ -136,7 +136,7 @@ namespace Game.Ai.V2
 
                 // Re-anchor the durable actor assignment from the newest strategic objective, but
                 // do not recreate it and do not turn the anchor into a fixed route destination.
-                assignment = ReconAssignmentRegistry.GetOrCreate(player, army.Id, army.Hex,
+                assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
                     strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
 
                 ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
@@ -179,7 +179,7 @@ namespace Game.Ai.V2
                             army.Hex, captureStartedHidden, changed);
                         if (changed)
                         {
-                            ReconAssignmentRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
+                            ReconPatrolStateRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
                             AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} resolved structure at "
                                 + $"({army.Hex.Q},{army.Hex.R}); movement={army.CurrentMovement}");
                             RefreshObjectiveSatisfied(player, pm, result);
@@ -282,7 +282,7 @@ namespace Game.Ai.V2
                 if (moved)
                 {
                     result.StepsMoved++;
-                    ReconAssignmentRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
+                    ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
                     // Keep the tactical IntelAge sidecar explicitly current at the authoritative
                     // transition boundary. This is idempotent with VisionSystem callbacks and does
                     // NOT mutate the frozen strategic snapshot or ground Visited state.
@@ -299,7 +299,7 @@ namespace Game.Ai.V2
                 if (army == null)
                 {
                     stop = ExecutionStopReason.MoverLost;
-                    ReconAssignmentRegistry.Retire(player, pm.MoverArmyId, "mover lost during step");
+                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost during step");
                     break;
                 }
                 if (trace.BattleOccurred)
@@ -388,7 +388,7 @@ namespace Game.Ai.V2
             {
                 result.ReachedGoal = true;
                 // Spec §1 — for a ground Explore/Refresh actor this is a satisfied WAYPOINT, not a
-                // finished role: the durable ReconAssignment persists and the MissionIntent should
+                // finished role: the durable ReconPatrolState persists and the MissionIntent should
                 // be re-focused next turn, not retired. Surveil completion is a genuine done.
                 result.DurableRoleContinues = !ReconScoutKinds.IsSurveil(pm.ScoutKind)
                     && AiArmyRoles.IsSoloRecce(Resolve(player, pm.MoverArmyId));
