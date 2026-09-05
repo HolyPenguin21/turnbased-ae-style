@@ -488,7 +488,7 @@ namespace Game.Ai.V2
             // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
             //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the

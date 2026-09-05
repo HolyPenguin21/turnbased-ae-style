@@ -554,7 +554,10 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        private static bool CanExecute(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
+        // Exposed (was private) so DemandLayer's persistence-gate witness check can reuse the exact
+        // same path-feasibility primitive the real planner uses, instead of a raw actor-count proxy —
+        // see DemandLayer.HasFeasibleIdleWitness.
+        internal static bool CanExecute(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
             ArmySnapshot mover, ScoutMissionTarget target)
         {
             if (mover == null)

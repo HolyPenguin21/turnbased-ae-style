@@ -98,7 +98,7 @@ namespace Game.Ai.V2
             // now-current AP / Energy / movement.
             ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx);
             result.Demands += demands.Count;
 
             ReconAirReservationState airReservation =

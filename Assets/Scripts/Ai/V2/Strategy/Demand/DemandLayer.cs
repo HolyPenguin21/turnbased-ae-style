@@ -12,13 +12,13 @@ namespace Game.Ai.V2
         public static List<AxisDemand> Generate(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
             IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, PlayerSetupData player)
+            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null)
         {
             var demands = new List<AxisDemand>();
             // §17 — decay the resource-starvation feedback once per turn before it is read.
             if (player != null && snap != null)
                 ResourceStarvationRegistry.DecayOncePerTurn(player, snap.TurnNumber);
-            demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player));
+            demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx));
             demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown, player));
@@ -111,7 +111,7 @@ namespace Game.Ai.V2
 
         private static IEnumerable<AxisDemand> ReconDemands(WorldSnapshot snap,
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, PlayerSetupData player)
+            ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx)
         {
             if (snap?.Self?.Armies == null)
             {
@@ -222,6 +222,24 @@ namespace Game.Ai.V2
             bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
                 player, turn, ReconDeficitKind.GroundTraversal, capacity.GroundTraversalDeficit, out int groundStreak);
 
+            // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
+            //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
+            //     unable to reach any runnable objective (blocked path, no reachable Surveil vantage),
+            //     which only ReconActorReservationPlanner.CanExecute actually knows via
+            //     SafeStepPathing / SurveilVantageSelector. An actor already on an active durable lane
+            //     counts as witnessed without re-probing (its path was validated when the lane
+            //     started); an idle, uncommitted actor is only witnessed if it can currently reach at
+            //     least one runnable objective of the class. This feeds BOTH the Rule-1 bootstrap
+            //     trigger and the Rule-2 ExistingUsableCapacityAtEmission gate below — a raw non-zero
+            //     count that turns out unreachable must behave exactly like zero usable capacity.
+            bool groundWitnessed = capacity.GenericGroundLaneActors.Count > 0
+                || HasFeasibleIdleWitness(ctx, player, snap, capacity.IdleGroundScouts, groundVisitRunnable);
+            bool obsWitnessed = capacity.GenericObservationLaneActors.Count > 0
+                || capacity.AirborneReconLanes > 0 || capacity.SpareAirObservationSorties > 0
+                || HasFeasibleIdleWitness(ctx, player, snap, capacity.IdleGroundScouts, observationRunnable);
+            int groundWitnessedUsable = groundWitnessed ? capacity.GroundTraversalSupply : 0;
+            int obsWitnessedUsable = obsWitnessed ? capacity.ObservationSupply : 0;
+
             // --- Rule 1 (persistence-gate spec) — Zero-Capacity Bootstrap. A real runnable
             //     opportunity that NO usable actor of the required class can currently serve at all
             //     must get at least its first unit of capacity right away — persistence exists to
@@ -229,9 +247,9 @@ namespace Game.Ai.V2
             //     has nothing usable whatsoever. Scoped per class: Observation counts air supply too
             //     (an idle helicopter means Observation is not zero-capacity even with 0 ground
             //     actors), GroundTraversal never does (aviation cannot substitute a physical visit).
-            int groundBootstrap = capacity.GroundTraversalSupply == 0 && groundVisitRunnable.Count > 0
+            int groundBootstrap = groundWitnessedUsable == 0 && groundVisitRunnable.Count > 0
                 ? Mathf.Min(1, capacity.GroundTraversalDeficit) : 0;
-            int obsBootstrap = capacity.ObservationSupply == 0 && observationRunnable.Count > 0
+            int obsBootstrap = obsWitnessedUsable == 0 && observationRunnable.Count > 0
                 ? Mathf.Min(1, capacity.ObservationDeficit) : 0;
 
             int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, capacity.ObservationDeficit - obsBootstrap) : 0);
@@ -239,12 +257,13 @@ namespace Game.Ai.V2
             if (groundBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=GroundTraversal runnable={groundVisitRunnable.Count} "
-                    + $"usableCapacity={capacity.GroundTraversalSupply} deficit={capacity.GroundTraversalDeficit} "
-                    + $"bootstrapped={groundBootstrap}");
+                    + $"usableCapacity={capacity.GroundTraversalSupply}(witnessed={groundWitnessedUsable}) "
+                    + $"deficit={capacity.GroundTraversalDeficit} bootstrapped={groundBootstrap}");
             if (obsBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=Observation runnable={observationRunnable.Count} "
-                    + $"usableCapacity={capacity.ObservationSupply} deficit={capacity.ObservationDeficit} "
+                    + $"usableCapacity={capacity.ObservationSupply}(witnessed={obsWitnessedUsable}) "
+                    + $"deficit={capacity.ObservationDeficit} "
                     + $"bootstrapped={obsBootstrap}");
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
@@ -322,7 +341,7 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = capacity.GroundTraversalSupply,
+                    ExistingUsableCapacityAtEmission = groundWitnessedUsable,
                     Explain = $"GroundTraversal deficit {capacity.GroundTraversalDeficit} not yet persistent "
                         + $"(streak {groundStreak}); {groundVisitRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
@@ -349,7 +368,7 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = capacity.ObservationSupply,
+                    ExistingUsableCapacityAtEmission = obsWitnessedUsable,
                     Explain = $"Observation deficit {capacity.ObservationDeficit} not yet persistent "
                         + $"(streak {obsStreak}); {observationRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
@@ -455,6 +474,35 @@ namespace Game.Ai.V2
                 o.Kind == ReconObjectiveKind.Surveil ? (int)ScoutTargetKind.Surveil : (int)ScoutTargetKind.Explore,
                 o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
                 o.FocusHex.Q, o.FocusHex.R);
+
+        // Persistence-gate witness (Rule 1/Rule 2) — does at least one IDLE, uncommitted actor in
+        // `idleArmyIds` have a REAL feasible path/mission to at least one of the best runnable
+        // objectives, per ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing /
+        // SurveilVantageSelector primitive the real planner uses downstream)? A raw non-zero actor
+        // count is not proof of that — a blocked path or an unreachable Surveil vantage can leave an
+        // "idle" scout with genuinely nothing it can do this turn. Capped to a handful of the best
+        // objectives per actor: this only needs to prove "at least one", not rank every possibility.
+        private static bool HasFeasibleIdleWitness(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
+            IReadOnlyCollection<int> idleArmyIds, IReadOnlyList<ReconObjective> runnableForClass)
+        {
+            if (idleArmyIds == null || idleArmyIds.Count == 0
+                || runnableForClass == null || runnableForClass.Count == 0)
+                return false;
+            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
+            if (armies == null)
+                return false;
+
+            int probe = Mathf.Min(runnableForClass.Count, AiConfigV2.persistenceWitnessProbeObjectives);
+            foreach (ArmySnapshot a in armies)
+            {
+                if (a == null || !idleArmyIds.Contains(a.ArmyId))
+                    continue;
+                for (int i = 0; i < probe; i++)
+                    if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, runnableForClass[i].ToTarget()))
+                        return true;
+            }
+            return false;
+        }
 
         // ---------------------------------------------------------------------------------------
         //  DEF — a threatened Citadel/Base whose committed defence is below requirement. NEVER
