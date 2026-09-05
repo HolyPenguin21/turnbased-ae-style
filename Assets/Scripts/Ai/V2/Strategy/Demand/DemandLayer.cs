@@ -206,9 +206,11 @@ namespace Game.Ai.V2
             // --- Stealth lane: its own value/coverage estimate vs free stealth-capable movers. Not
             //     persistence-gated (a stealth job with no stealth actor is a real capability gap,
             //     not stage flicker) and not reduced by aviation or generic scouts.
+            // §5 — Demand knows only the aggregate ReconAssignmentPlanner reports, never
+            // ScoutMoverSelector's own eligibility rule (that rule belongs to Assignment alone).
             var claimed = commitments?.ClaimedArmyIdSet;
-            int stealthFree = ScoutMoverSelector.Eligible(snap,
-                new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed).Count;
+            int stealthFree = ReconAssignmentPlanner.CountEligibleMovers(snap,
+                new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed);
             int desiredStealthLanes = Mathf.Min(stealthRunnable.Count,
                 ReconConcurrencyPolicy.DesiredForClass(snap, stealthObsRunnable,
                     ReconConcurrencyPolicy.ReconCoverageClass.Observation)

@@ -115,6 +115,26 @@ namespace Game.Ai.V2
             EvaluateCandidate(ctx, player, snap, mover, target).Feasible;
 
         // =======================================================================================
+        //  ELIGIBILITY FACADE — every non-Assignment caller that needs to know "which/how-many
+        //  actors could structurally serve this class of job" goes through THESE, never straight to
+        //  ScoutMoverSelector. ScoutMoverSelector stays the low-level enumeration primitive
+        //  Assignment itself is built on (BuildCandidates/MeasureCapacity call it directly), but no
+        //  OTHER layer (Demand, Provisioning's diagnostic classifier, the capability-pool registry)
+        //  is allowed a second copy of "what counts as eligible" — this facade is the one seam.
+        // =======================================================================================
+        internal static List<ArmySnapshot> EligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
+            ISet<int> excludeArmyIds) => ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
+
+        internal static int CountEligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
+            ISet<int> excludeArmyIds) => EligibleMovers(snap, target, excludeArmyIds).Count;
+
+        internal static IEnumerable<ArmySnapshot> StructuralCandidates(WorldSnapshot snap,
+            ScoutMissionTarget target) => ScoutMoverSelector.StructuralCandidates(snap, target);
+
+        internal static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target) =>
+            ScoutMoverSelector.HasStructuralCandidate(snap, target);
+
+        // =======================================================================================
         //  E. ResolveExecutionHex — Explore/Refresh execute AT the target; Surveil executes from the
         //     best currently-reachable vantage.
         // =======================================================================================

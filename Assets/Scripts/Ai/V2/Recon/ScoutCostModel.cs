@@ -77,92 +77,62 @@ namespace Game.Ai.V2
             };
         }
 
+        // §6/§8 — Mission-stage estimation is actor-agnostic: it must size the MissionRequirements
+        // envelope from POLICY constants and generic geometry only, never by enumerating or ranking
+        // concrete movers (that is ReconAssignmentPlanner's job, strictly after Funding). MoverKnown
+        // is therefore always false here — Assignment is what actually proves an executor exists —
+        // and every AP/energy/ETA figure below is a notional-mover, worst-reasonable-case estimate
+        // good enough to size a funding request. ReconAssignmentPlanner.EvaluateCandidate /
+        // BuildCandidates refine the real figure once a concrete actor is bound; if the bound
+        // actor's real cost exceeds what this estimate funded, ProvisioningManager's envelope check
+        // already reports EnvelopeTooSmall (ProvisionDisposition.RepriceThisTurn) and
+        // ResourceAllocator re-funds at the raised floor next pass — the existing repack loop, not a
+        // second actor-aware estimator here.
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target)
         {
-            var est = new ScoutCostEstimate();
-
-            // Admission needs the same physical eligibility picture as the cost estimator, but it
-            // must not bind an actor. Refresh target->eligible IDs here while the current snapshot
-            // is already in hand; MissionAdmissionPolicy consumes only that ephemeral metadata.
-            ScoutAdmissionRegistry.Record(snap, target);
+            var est = new ScoutCostEstimate { MoverKnown = false, MoverAlreadyHidden = false };
+            float stealthAp = AiConfigV2.scoutOptionalStealthAp;
+            float notionalActivationAp = AiConfigV2.scoutNotionalActivationAp;
 
             if (target.Kind == ScoutTargetKind.Surveil)
             {
-                float stealthAp0 = AiConfigV2.scoutOptionalStealthAp;
-                var eligible = ScoutMoverSelector.Eligible(snap, target, null);
-                if (eligible.Count > 0)
-                {
-                    est.MoverKnown = true;
-                    est.MoverAlreadyHidden = eligible.Any(a => a.IsHidden);
-                    float minAp = eligible.Min(a =>
-                        (a.HasActivatedThisTurn ? 0 : a.ActivationApCost) + (a.IsHidden ? 0f : stealthAp0));
-                    est.ApMinimum = est.ApDesired = est.ApMaximum = minAp;
-                }
-                else
-                {
-                    est.MoverKnown = false;
-                    est.ApMinimum = est.ApDesired = est.ApMaximum = AiConfigV2.scoutNotionalActivationAp + stealthAp0;
-                }
+                float req = notionalActivationAp
+                    + (target.Stealth == StealthRequirement.None ? 0f : stealthAp);
+                est.ApMinimum = est.ApDesired = est.ApMaximum = req;
                 est.ActivationEnergy = 0;
                 est.EstimatedDistance = 0f;
                 est.EtaTurns = 0;
                 return est;
             }
 
-            if (snap?.Self == null)
-            {
-                est.MoverKnown = false;
-                float notional = AiConfigV2.scoutNotionalActivationAp
-                    + (target.Stealth == StealthRequirement.Required ? AiConfigV2.scoutOptionalStealthAp : 0);
-                est.ApMinimum = est.ApDesired = est.ApMaximum = notional;
-                est.EtaTurns = 1;
-                return est;
-            }
-
-            var ranked = ScoutMoverSelector.Rank(snap, target, null);
-
-            int fleetBudget = snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max();
+            // Generic route geometry: distance from the nearest own base to the target — a policy
+            // heuristic, not a pathfind against any concrete mover's current position.
+            int fleetBudget = snap?.Self?.Armies != null
+                ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
             if (fleetBudget <= 0) fleetBudget = 1;
 
             int DistFrom(HexCoord h) => HexGridMath.Distance(h, target.FocusHex);
-            HexCoord notionalFrom = snap.Self.BaseHexes != null && snap.Self.BaseHexes.Count > 0
+            HexCoord notionalFrom = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Count > 0
                 ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
                 : target.FocusHex;
 
-            float activationAp;
-            if (ranked.Count > 0)
-            {
-                ScoutMoverCandidate top = ranked[0];
-                est.MoverKnown = true;
-                est.MoverAlreadyHidden = top.AlreadyHidden;
-                activationAp = top.EffActivationAp;
-                est.ActivationEnergy = top.Army.HasActivatedThisTurn ? 0 : top.Army.ActivationEnergyCost;
-                est.EstimatedDistance = top.Distance;
-                est.EtaTurns = top.EtaTurns;
-            }
-            else
-            {
-                est.MoverKnown = false;
-                est.MoverAlreadyHidden = false;
-                activationAp = AiConfigV2.scoutNotionalActivationAp;
-                est.ActivationEnergy = 0;
-                est.EstimatedDistance = DistFrom(notionalFrom);
-                est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
-            }
+            est.ActivationEnergy = 0;
+            est.EstimatedDistance = DistFrom(notionalFrom);
+            est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
 
-            float stealthAp = AiConfigV2.scoutOptionalStealthAp;
             switch (target.Stealth)
             {
                 case StealthRequirement.None:
-                    est.ApMinimum = est.ApDesired = est.ApMaximum = activationAp;
+                    est.ApMinimum = est.ApDesired = est.ApMaximum = notionalActivationAp;
                     break;
                 case StealthRequirement.Preferred:
-                    est.ApMinimum = est.ApDesired = activationAp;
-                    est.ApMaximum = activationAp + stealthAp;
+                    est.ApMinimum = est.ApDesired = notionalActivationAp;
+                    est.ApMaximum = notionalActivationAp + stealthAp;
                     break;
                 case StealthRequirement.Required:
-                    float req = activationAp + (est.MoverAlreadyHidden ? 0f : stealthAp);
-                    est.ApMinimum = est.ApDesired = est.ApMaximum = req;
+                    // Generic estimate cannot know whether the eventual mover is already hidden;
+                    // size the worst-reasonable (not-yet-hidden) case, refined by Assignment.
+                    est.ApMinimum = est.ApDesired = est.ApMaximum = notionalActivationAp + stealthAp;
                     break;
             }
 

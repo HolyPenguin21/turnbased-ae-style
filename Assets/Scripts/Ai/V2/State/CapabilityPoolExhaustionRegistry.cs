@@ -108,11 +108,11 @@ namespace Game.Ai.V2
             switch (pool)
             {
                 case CapabilityPoolKind.Scout:
-                    return ScoutMoverSelector.Eligible(snap,
-                        new ScoutMissionTarget { Stealth = StealthRequirement.None }, null).Count > 0;
+                    return ReconAssignmentPlanner.CountEligibleMovers(snap,
+                        new ScoutMissionTarget { Stealth = StealthRequirement.None }, null) > 0;
                 case CapabilityPoolKind.StealthScout:
-                    return ScoutMoverSelector.Eligible(snap,
-                        new ScoutMissionTarget { Stealth = StealthRequirement.Required }, null).Count > 0;
+                    return ReconAssignmentPlanner.CountEligibleMovers(snap,
+                        new ScoutMissionTarget { Stealth = StealthRequirement.Required }, null) > 0;
                 case CapabilityPoolKind.FieldCombat:
                 {
                     CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
@@ -173,7 +173,7 @@ namespace Game.Ai.V2
                         return false;
                     // Ignore ProvisioningSession claims on purpose — changing the mission key
                     // cannot conjure another eligible ready scout this cycle.
-                    return ScoutMoverSelector.Eligible(snap, target, null).Count == 0;
+                    return ReconAssignmentPlanner.CountEligibleMovers(snap, target, null) == 0;
 
                 case MissionKind.Raid:
                 {

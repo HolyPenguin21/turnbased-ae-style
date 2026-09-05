@@ -406,7 +406,7 @@ namespace Game.Ai.V2
             WorldSnapshot snap = session.Snapshot;
             bool needStealth = target.Stealth == StealthRequirement.Required;
 
-            if (!ScoutMoverSelector.HasStructuralCandidate(snap, target))
+            if (!ReconAssignmentPlanner.HasStructuralCandidate(snap, target))
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
 
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
                 // focus was preferred elsewhere. If unclaimed eligible scouts exist but NONE can
                 // reach the focus this turn, that is NoExecutableStep, not contention — so a stuck
                 // impossible Refresh never reads as if it stole an executable Explore's mover.
-                var freeEligible = ScoutMoverSelector.Eligible(snap, target, session.ClaimedArmyIds).ToList();
+                var freeEligible = ReconAssignmentPlanner.EligibleMovers(snap, target, session.ClaimedArmyIds).ToList();
                 if (freeEligible.Count > 0 && ctx?.Map != null)
                 {
                     bool anyReachable = freeEligible.Any(mv =>
@@ -435,13 +435,13 @@ namespace Game.Ai.V2
                     "a capable solo Recce exists but is spent / activated / taken this cycle"));
             }
 
-            bool anyStructuralVantage = ScoutMoverSelector.StructuralCandidates(snap, target)
+            bool anyStructuralVantage = ReconAssignmentPlanner.StructuralCandidates(snap, target)
                 .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
             if (!anyStructuralVantage)
                 return ProvisioningResult.Fail(ProvisionFailure.NoObservationVantage(
                     $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})"));
 
-            bool anyEligibleHasVantage = ScoutMoverSelector.Eligible(snap, target, session.ClaimedArmyIds)
+            bool anyEligibleHasVantage = ReconAssignmentPlanner.EligibleMovers(snap, target, session.ClaimedArmyIds)
                 .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
             return anyEligibleHasVantage
                 ? ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(

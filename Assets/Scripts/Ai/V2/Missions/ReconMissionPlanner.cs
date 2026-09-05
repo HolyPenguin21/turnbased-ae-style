@@ -112,11 +112,14 @@ namespace Game.Ai.V2
 
             // §8 — Mission does not decide concrete actor availability; whether an actor exists to
             // execute this proposal is Assignment's question (ReconAssignmentPlanner /
-            // ProvisioningManager, which report NoMoverExists / MoverContended if none does).
+            // ProvisioningManager, which report NoMoverExists / MoverContended if none does). Mission
+            // pricing (ScoutCostModel.Estimate) is actor-agnostic by construction, so there is no
+            // actor-pair matching pass here any more (review finding 1) — ReconAssignmentPlanner
+            // binds the real actor at Assignment time, and ProvisioningManager's envelope check +
+            // ResourceAllocator's repack loop already reconcile any funded-vs-real-cost gap.
             foreach (ScoutCandidate c in picked)
                 proposals.Add(BuildProposal(snap, c));
 
-            ScoutPricingWitness.Apply(snap, proposals);
             return proposals;
         }
 

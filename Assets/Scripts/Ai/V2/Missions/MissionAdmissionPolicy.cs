@@ -49,15 +49,16 @@ namespace Game.Ai.V2
         // Recon:
         //   · same FocusHex
         //   · ground+ground (Explore/Refresh) closer than scoutTargetMinSeparation
-        //   · no distinct physical scout assignment for this pair
         // Raid:
         //   · same target army
         //   · no distinct ready combat-army assignment for the pair
         //
-        // Pairwise actor feasibility is an early rejection only. With ReconOnly K=3 it is necessary
-        // but not sufficient for the entire portfolio; ProvisioningManager.PrepareScoutAssignments
-        // is the authoritative N-way injective assignment and the bounded re-pack loop handles any
-        // residual contention without partial state.
+        // Recon deliberately carries NO actor-pair distinctness check here any more — Generic
+        // Funding must never know WHO (spec review finding 2). Scout/actor contention is resolved
+        // entirely in Provisioning/Assignment (ReconAssignmentPlanner.AssignFunded, one actor <= one
+        // job) with ResourceAllocator's existing repack loop reconciling any funded mission that
+        // Assignment could not actually staff. Raid keeps its own pairwise actor-distinctness
+        // rejection (RaidAdmissionRegistry) — that lane is untouched by this pass.
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
@@ -77,11 +78,8 @@ namespace Game.Ai.V2
                 return true;
 
             bool bothGround = ReconScoutKinds.IsGround(ta.Kind) && ReconScoutKinds.IsGround(tb.Kind);
-            if (bothGround
-                && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation)
-                return true;
-
-            return !ScoutAdmissionRegistry.PairHasDistinctAssignment(a, b);
+            return bothGround
+                && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
         }
 
         public static float AdmissionRank(MissionProposal m) =>
