@@ -28,40 +28,45 @@ namespace Game.Ai.V2
         public ProvisionedMission Mission;
     }
 
-    // The complete air-recon decision for a pass: actors to continue, ready aircraft to send, and
-    // concrete launches. No gameplay state is touched building this.
+    // The complete air-recon decision for a pass: ready aircraft to send, and concrete launches. No
+    // gameplay state is touched building this.
     internal sealed class AirReconPlan
     {
-        public readonly List<int> ContinueActorIds = new List<int>(); // airborne, has a ReconPatrolState
-        public readonly List<int> ReadyActorIds = new List<int>();    // on own airfield, no task
+        public readonly List<int> ReadyActorIds = new List<int>();    // funded this pass — airfield-idle OR airborne
         public readonly List<AirLaunchPlan> Launches = new List<AirLaunchPlan>();
         // RECON-AIR-05/06 — the ProvisionedMission a ReadyActorIds entry is bound to (AirExisting).
-        // ContinueActorIds carries none — a continuing sortie has no fresh ProvisionedMission this
-        // turn (Continuity, not fresh Assignment; see the class header) and its bound target already
-        // lives on the durable ReconPatrolState.StrategicAnchor instead.
         public readonly Dictionary<int, ProvisionedMission> ReadyMissionByActorId = new Dictionary<int, ProvisionedMission>();
         public string Summary;
 
-        public bool IsEmpty =>
-            ContinueActorIds.Count == 0 && ReadyActorIds.Count == 0 && Launches.Count == 0;
+        public bool IsEmpty => ReadyActorIds.Count == 0 && Launches.Count == 0;
     }
 
     // ===========================================================================================
-    //  ROUND 4 — AirReconPlanner is EXECUTION-INPUT ASSEMBLY ONLY. It no longer discovers or SELECTS
-    //  which actor/airfield/subset flies (that decision now belongs entirely to
+    //  ROUND 4/7 — AirReconPlanner is EXECUTION-INPUT ASSEMBLY ONLY. It no longer discovers or
+    //  SELECTS which actor/airfield/subset flies (that decision now belongs entirely to
     //  ReconAssignmentPlanner/ProvisioningManager, the SAME single owner Ground already has — see
-    //  ReconAssignmentPlanner.AppendAirCandidates / ProvisioningManager.ProvisionAir). This class:
+    //  ReconAssignmentPlanner.AppendAirCandidates / ProvisioningManager.ProvisionAir). This class
+    //  turns each air-executed ProvisionedMission (AirExisting / AirLaunch, already bound to a
+    //  concrete actor/airfield+subset by Assignment/Provisioning) into the local ReadyActorIds /
+    //  AirLaunchPlan shape ReconAirExecutor already consumes — calling ReconAirStepPlanner.
+    //  PickFromStorage/Pick here is legitimate LIVE execution-input assembly (re-deriving the
+    //  concrete first step fresh against current world state, exactly the same "replan the live
+    //  step at execution time" latitude ReconGroundExecutor/ReconAirStepDirector already have —
+    //  never a second SELECTION pass).
     //
-    //    1. Carries forward already-airborne wings with a live ReconPatrolState (ContinueActorIds) —
-    //       untouched by this pass's Assignment; an in-flight sortie is Mission Continuity's concern,
-    //       exactly like a ground scout mid-Explore is not re-Assigned every turn either.
-    //    2. Turns each air-executed ProvisionedMission (AirExisting / AirLaunch, already bound to a
-    //       concrete actor/airfield+subset by Assignment/Provisioning) into the local
-    //       ReadyActorIds / AirLaunchPlan shape ReconAirExecutor already consumes — calling
-    //       ReconAirStepPlanner.PickFromStorage/Pick here is legitimate LIVE execution-input
-    //       assembly (re-deriving the concrete first step fresh against current world state,
-    //       exactly the same "replan the live step at execution time" latitude
-    //       ReconGroundExecutor/ReconAirStepDirector already have — never a second SELECTION pass).
+    //  ROUND 7 (Problem 1) — the "already-airborne wing with a live ReconPatrolState -> keep flying
+    //  it" bypass (formerly ContinueActorIds, discovered directly off ArmyRegistry/
+    //  ReconPatrolStateRegistry with NO funding check) is REMOVED. An airborne wing is no longer
+    //  auto-entitled to continue strategic Recon progress next turn merely because durable state
+    //  exists for it: it must win a FRESH ProvisionedMission through the ordinary funded pipeline
+    //  (ReconMissionPlanner materialises its ScoutIntent as an incumbent MissionProposal with
+    //  PreferredMoverArmyId = this wing, exactly like a continuing ground scout; ReconAssignmentPlanner
+    //  gives the incumbent a continuity preference, not a hard entitlement) to appear here as an
+    //  ordinary `airProvisioned` entry (ExecutorKind.AirExisting) — it is then indistinguishable from
+    //  a freshly-assigned idle wing and takes the SAME ReadyActorIds path below. A wing that does NOT
+    //  win fresh funding this pass makes no forward/observation progress this turn — EXCEPT
+    //  Mandatory Flight Recovery, a lifecycle/safety obligation independent of Recon funding, which
+    //  ReconAirExecutor discovers and flies unconditionally (see Execute's recovery pass).
     // ===========================================================================================
     internal static class AirReconPlanner
     {
@@ -76,20 +81,9 @@ namespace Game.Ai.V2
             }
 
             var skips = new List<string>();
-
-            // 1. airborne aircraft that already own a ReconPatrolState — continue them. Untouched by
-            //    this pass's Assignment (Mission Continuity, not fresh selection).
-            foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
-                         .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                             && a.Controller != null && a.CurrentMovement > 0
-                             && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                             && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
-                         .OrderBy(a => a.Id))
-                plan.ContinueActorIds.Add(air.Id);
-
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
 
-            // 2/3. Every air-executed ProvisionedMission this pass — Assignment already picked WHICH
+            // Every air-executed ProvisionedMission this pass — Assignment already picked WHICH
             //      actor (AirExisting) or WHICH airfield+subset (AirLaunch); this is purely turning
             //      that binding into the executor's input shape.
             foreach (ProvisionedMission pm in airProvisioned ?? Array.Empty<ProvisionedMission>())
@@ -158,7 +152,7 @@ namespace Game.Ai.V2
                 });
             }
 
-            plan.Summary = $"continue={plan.ContinueActorIds.Count} ready={plan.ReadyActorIds.Count} "
+            plan.Summary = $"ready={plan.ReadyActorIds.Count} "
                 + $"launches={plan.Launches.Count} "
                 + $"skips=[{(skips.Count > 0 ? string.Join(",", skips) : "none")}]";
             return plan;

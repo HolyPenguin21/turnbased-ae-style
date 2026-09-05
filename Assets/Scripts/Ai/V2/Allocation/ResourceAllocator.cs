@@ -99,6 +99,46 @@ namespace Game.Ai.V2
             + $"T{Tech.ToString("0.#", CultureInfo.InvariantCulture)}";
     }
 
+    // Round 7 (Problem 3) — the GENERIC multi-resource envelope a provisioner reports as "what this
+    // mission's real, actor-specific cost actually needs" when the funded envelope was too small.
+    // Replaces the old bare-float RequiredAp: any provisioner (Recon ground/air today; Aggression /
+    // Defence / Economy / Development / equipment / abilities tomorrow) can report BOTH an AP floor
+    // and a physical (Human/Energy/Materials/Tech) floor through the SAME struct, and the allocator
+    // merges every report for one mission key as a component-wise MAXIMUM (a minimum envelope for
+    // that one mission, never an accumulator — see ResourceAllocator._repricedFloors).
+    public readonly struct ProvisionRequirement
+    {
+        public readonly float Ap;
+        public readonly ResourceVector Physical; // .Ap component is always 0 here — AP lives in Ap above
+
+        public ProvisionRequirement(float ap, ResourceVector physical)
+        {
+            Ap = Mathf.Max(0f, ap);
+            Physical = physical.ClampLow0();
+        }
+
+        public static readonly ProvisionRequirement Zero = new ProvisionRequirement(0f, ResourceVector.Zero);
+
+        public static ProvisionRequirement ApOnly(float ap) => new ProvisionRequirement(ap, ResourceVector.Zero);
+
+        // Component-wise MAXIMUM merge — a minimum envelope for one mission's outstanding repricing,
+        // NOT a sum. When both sides' Physical is all-zero (every existing AP-only axis — Aggression/
+        // Defence/Economy/Development, and Ground Scout/Raid) this reduces exactly to
+        // Mathf.Max(old.Ap, new.Ap) — today's pre-round-7 AP-only reprice-floor behaviour.
+        public static ProvisionRequirement Max(ProvisionRequirement a, ProvisionRequirement b) =>
+            new ProvisionRequirement(
+                Mathf.Max(a.Ap, b.Ap),
+                new ResourceVector(0f,
+                    Mathf.Max(a.Physical.Human, b.Physical.Human),
+                    Mathf.Max(a.Physical.Energy, b.Physical.Energy),
+                    Mathf.Max(a.Physical.Materials, b.Physical.Materials),
+                    Mathf.Max(a.Physical.Tech, b.Physical.Tech)));
+
+        public string Fmt() => Physical.AnyPhysical
+            ? $"{Ap.ToString("0.##", CultureInfo.InvariantCulture)}AP [{Physical.FmtPhysical()}]"
+            : $"{Ap.ToString("0.##", CultureInfo.InvariantCulture)}AP";
+    }
+
     // Declared in step 5; ProvisioningManager fills it in step 6. The concrete REASON a mission
     // could not be provisioned. Retry policy is a SEPARATE axis (ProvisionDisposition) so the
     // allocator branches on "what do I do about it" without a special-case per reason, and
@@ -406,8 +446,13 @@ namespace Game.Ai.V2
         // the session. Provisioning still refuses to claim above funded.Tentative, so the raised
         // floor can only ever move a mission from "funded too low to execute" to "funded at cost"
         // or "deferred — the axis slice genuinely can't afford this mover".
-        private readonly Dictionary<StableMissionKey, float> _repricedFloors =
-            new Dictionary<StableMissionKey, float>();
+        // Round 7 (Problem 3) — GENERIC multi-resource floor, one entry per mission key, merged via
+        // ProvisionRequirement.Max on every RepriceThisTurn report (component-wise maximum — a
+        // minimum envelope for THIS mission, never an accumulator). Ap-only callers (every axis
+        // other than air Recon today) simply never populate Physical, so this degrades exactly to
+        // the old float-floor behaviour for them.
+        private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
+            new Dictionary<StableMissionKey, ProvisionRequirement>();
         // Missions physically provisioned in an earlier pass THIS turn, with their FUNDING
         // PROVENANCE (which axis slices the strict part drew from + the fungible remainder part),
         // scaled to what provisioning actually claimed. A re-pack rebuilds the original radar
@@ -512,8 +557,9 @@ namespace Game.Ai.V2
             {
                 case ProvisionDisposition.RepriceThisTurn:
                 {
-                    float cur = _repricedFloors.TryGetValue(key, out float f) ? f : 0f;
-                    _repricedFloors[key] = Mathf.Max(cur, failure.RequiredAp);
+                    ProvisionRequirement cur = _repricedFloors.TryGetValue(key, out ProvisionRequirement f)
+                        ? f : ProvisionRequirement.Zero;
+                    _repricedFloors[key] = ProvisionRequirement.Max(cur, failure.Requirement);
                     // Deliberately NOT added to _rejectedThisTurn — it must return next pass at
                     // the raised floor.
                     break;
@@ -1168,8 +1214,8 @@ namespace Game.Ai.V2
         private float ApMinimum(MissionProposal m)
         {
             float baseMin = Mathf.Max(0f, m.Requirements?.ApMinimum ?? 0f);
-            return _repricedFloors.TryGetValue(StableMissionKey.For(m), out float floor)
-                ? Mathf.Max(baseMin, floor)
+            return _repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)
+                ? Mathf.Max(baseMin, floor.Ap)
                 : baseMin;
         }
         private float ApDesired(MissionProposal m) =>
@@ -1177,25 +1223,37 @@ namespace Game.Ai.V2
         private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
 
-        // Step 9 — the physical (H/E/M/T) side of a mission's requirements as one vector. Minimum
-        // gates admission; Desired is what a funded mission actually draws from the global pool.
-        // AP is deliberately 0 here — that dimension is the axis-slice path.
-        private static ResourceVector PhysicalMinimum(MissionProposal m)
+        // Step 9 / Round 7 (Problem 3) — the physical (H/E/M/T) side of a mission's requirements as
+        // one vector, folding in any repriced physical floor exactly the way ApMinimum folds in the
+        // AP floor. Minimum gates admission; Desired is what a funded mission actually draws from
+        // the global pool. AP is deliberately 0 here — that dimension is the axis-slice path above.
+        // For every existing AP-only caller (Aggression/Defence/Economy/Development, Ground Scout,
+        // Raid) `floor.Physical` is always Zero, so this is byte-for-byte the pre-round-7 computation.
+        private ResourceVector PhysicalMinimum(MissionProposal m)
         {
             MissionRequirements r = m?.Requirements;
-            return r == null ? ResourceVector.Zero
+            ResourceVector baseMin = r == null ? ResourceVector.Zero
                 : new ResourceVector(0f, Mathf.Max(0f, r.HumanMinimum), Mathf.Max(0f, r.EnergyMinimum),
                     Mathf.Max(0f, r.MaterialsMinimum), Mathf.Max(0f, r.TechMinimum));
+            if (!_repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)
+                || !floor.Physical.AnyPhysical)
+                return baseMin;
+            return new ResourceVector(0f,
+                Mathf.Max(baseMin.Human, floor.Physical.Human),
+                Mathf.Max(baseMin.Energy, floor.Physical.Energy),
+                Mathf.Max(baseMin.Materials, floor.Physical.Materials),
+                Mathf.Max(baseMin.Tech, floor.Physical.Tech));
         }
-        private static ResourceVector PhysicalDesired(MissionProposal m)
+        private ResourceVector PhysicalDesired(MissionProposal m)
         {
             MissionRequirements r = m?.Requirements;
-            if (r == null) return ResourceVector.Zero;
+            ResourceVector min = PhysicalMinimum(m);
+            if (r == null) return min;
             return new ResourceVector(0f,
-                Mathf.Max(r.HumanMinimum, r.HumanDesired),
-                Mathf.Max(r.EnergyMinimum, r.EnergyDesired),
-                Mathf.Max(r.MaterialsMinimum, r.MaterialsDesired),
-                Mathf.Max(r.TechMinimum, r.TechDesired)).ClampLow0();
+                Mathf.Max(min.Human, r.HumanDesired),
+                Mathf.Max(min.Energy, r.EnergyDesired),
+                Mathf.Max(min.Materials, r.MaterialsDesired),
+                Mathf.Max(min.Tech, r.TechDesired)).ClampLow0();
         }
 
         private sealed class MissionKeyComparer : IComparer<StableMissionKey>
@@ -1218,7 +1276,7 @@ namespace Game.Ai.V2
                 .Select(s => $"{DesireAxes.Abbrev(s.Axis)}={s.Remaining.Ap.ToString("0.00", CultureInfo.InvariantCulture)}"));
             string repriced = string.Join(",", _repricedFloors
                 .OrderBy(kv => kv.Key, MissionKeyComparer.Instance)
-                .Select(kv => $"{kv.Key}:{kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"));
+                .Select(kv => $"{kv.Key}:{kv.Value.Fmt()}"));
             return funded + "|" + deferred + "|" + slices
                 + "|unused=" + a.Unused.Ap.ToString("0.00", CultureInfo.InvariantCulture)
                 + "|repriced=" + repriced;

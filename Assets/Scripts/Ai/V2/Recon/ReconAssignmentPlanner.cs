@@ -391,10 +391,20 @@ namespace Game.Ai.V2
             if (root != null && player != null)
             {
                 ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
-                airActorCap = Mathf.Max(0, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn - detail.AirborneWings.Count);
+                // Round 7 (Problem 1) — an already-airborne wing (detail.AirborneWings) is no longer
+                // handled outside Assignment (AirReconPlanner's old ContinueActorIds bypass is gone):
+                // it must compete for a FRESH ProvisionedMission through this SAME pool, exactly like
+                // a ready idle wing or a hangar launch, to keep making strategic Recon progress. The
+                // per-pass actor cap is therefore the WHOLE MaxAirReconActorsPerTurn ceiling now
+                // (no longer pre-reserving slots for continuing wings outside this solve), and
+                // airborne wings are ordered FIRST so an incumbent continuing sortie is not truncated
+                // out of the pool by BuildFeasibleAirPool before ScoreScoutAssignment's
+                // actorDiscontinuity continuity preference even gets to consider it.
+                airActorCap = Mathf.Max(0, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn);
                 airEnergyBudget = detail.EnergyBudgetBase;
                 ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
-                airPool = BuildFeasibleAirPool(detail.SpareCandidatesInOrder, airActorCap,
+                IEnumerable<AirObservationSlot> ordered = detail.AirborneWings.Concat(detail.SpareCandidatesInOrder);
+                airPool = BuildFeasibleAirPool(ordered, airActorCap,
                     slot => ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, slot, 0, null, out _));
             }
 
@@ -815,19 +825,19 @@ namespace Game.Ai.V2
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
 
-            // ONE authoritative greedy, in the executor's own order, over a SINGLE cumulative AP /
-            // Energy budget (so several sorties never each pass against the full stockpile) with the
-            // AIR-01 route gate applied per candidate (so a route-invalid earlier aircraft cannot
-            // hide a valid later one).
-            int apLeft = detail.ApBudgetBase;
-            int energyLeft = detail.EnergyBudgetBase;
+            // Round 7 (Problem 2) — STRUCTURAL-ONLY greedy, in the executor's own order. CAPABILITY
+            // != FUNDING: this witness answers "does a usable actor structurally exist" alone —
+            // root.ActionPoints, EnergyBudgetBase, slot.Ap/Energy-vs-budget and
+            // AviationSortieReservationEvaluator.ShouldReserve are explicitly NOT consulted here any
+            // more (that whole activation-economics question now lives only in
+            // ReconAirReservationPrepass.EvaluateAirActivationEconomics, called from Provisioning as
+            // a live sanity check, never from this capability measurement).
             int slotsUsed = 0;
-            int reservedEnergyThisPass = 0;
             int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
             int airborneWitnessed = 0, spareLaunchWitnessed = 0;
 
             // Wedges (from our Citadel) reserved by an accepted STORAGE launch this pass. They have
-            // no live army yet, so the next SlotWouldFly probe would not see them; feeding them
+            // no live army yet, so the next structural probe would not see them; feeding them
             // forward stops two reserved launch sorties both claiming one wedge and producing a
             // capacity count that collapses in execution.
             HexCoord citadelHex = snap?.Self != null ? snap.Self.Citadel : default;
@@ -840,10 +850,10 @@ namespace Game.Ai.V2
                     break;
                 airborneProbed++;
                 slotsUsed++;
-                apLeft -= wing.Ap;
 
-                if (apLeft >= 0 && ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, wing,
-                        reservedEnergyThisPass, provisionalWedges, out _))
+                AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                    player, ctx, snap, mode, wing, provisionalWedges);
+                if (sf.Feasible)
                 {
                     airborneWitnessed++;
                     if (wing.ActorId.HasValue)
@@ -862,34 +872,28 @@ namespace Game.Ai.V2
                     || spareLaunchWitnessed >= launchNeed)
                     break;
                 launchProbed++;
-                if (slot.Ap > apLeft || slot.Energy > energyLeft)
-                {
-                    launchRejected++;
-                    continue;   // executor moves on to the next candidate in order
-                }
-                if (!ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, slot,
-                        reservedEnergyThisPass, provisionalWedges, out HexCoord slotChosenHex))
+
+                AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                    player, ctx, snap, mode, slot, provisionalWedges);
+                if (!sf.Feasible)
                 {
                     launchRejected++;
                     continue;
                 }
-                apLeft -= slot.Ap;
-                energyLeft -= slot.Energy;
-                reservedEnergyThisPass += slot.Energy;
                 spareLaunchWitnessed++;
                 slotsUsed++;
                 if (slot.ActorId.HasValue)
                     reservedActorIds.Add(slot.ActorId.Value);
                 if (ctx?.Map != null)
-                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, slotChosenHex));
+                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, sf.ChosenHex));
             }
 
             AiDebugLog.Write($"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
                 + $"(airborne {airborneWitnessed}/{airborneProbed} stuck {airborneStuck} + "
                 + $"launch {spareLaunchWitnessed}/{launchProbed} rejected {launchRejected}) "
                 + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
-                + $"apLeft={apLeft} energyLeft={energyLeft} mode={mode} (read-only sizing signal — "
-                + "no AP/Energy reserved; real actor pick happens fresh at terminal air-recon execution)");
+                + $"mode={mode} (structural-only capability witness — no AP/Energy/reservation read; "
+                + "activation economics happen only at Provisioning time)");
 
             return (airborneWitnessed, spareLaunchWitnessed);
         }

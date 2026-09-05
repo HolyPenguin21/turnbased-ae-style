@@ -53,33 +53,45 @@ namespace Game.Ai.V2
     {
         public readonly ProvisionFailureKind Kind;
         public readonly ProvisionDisposition Disposition;
-        public readonly float RequiredAp;
+        // Round 7 (Problem 3) — the GENERIC multi-resource envelope this failure reports as needed.
+        // Only meaningful for EnvelopeTooSmall/RepriceThisTurn; every other constructor leaves it at
+        // ProvisionRequirement.Zero. RequiredAp is kept as a read-only convenience projection for
+        // existing AP-only call sites/log lines — it is never the underlying storage any more.
+        public readonly ProvisionRequirement Requirement;
         public readonly string Detail;
 
-        public ProvisionFailure(ProvisionFailureKind kind, ProvisionDisposition disposition, float requiredAp, string detail)
+        public float RequiredAp => Requirement.Ap;
+
+        public ProvisionFailure(ProvisionFailureKind kind, ProvisionDisposition disposition, ProvisionRequirement requirement, string detail)
         {
             Kind = kind;
             Disposition = disposition;
-            RequiredAp = requiredAp;
+            Requirement = requirement;
             Detail = detail;
         }
 
         public static ProvisionFailure MoverContended(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.MoverContended, ProvisionDisposition.RetryNextTurn, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.MoverContended, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure NoMoverExists(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.NoMoverExists, ProvisionDisposition.RetryNextTurn, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.NoMoverExists, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure NoObservationVantage(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.NoObservationVantage, ProvisionDisposition.RejectWithCooldown, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.NoObservationVantage, ProvisionDisposition.RejectWithCooldown, ProvisionRequirement.Zero, d);
+        // AP-only convenience overload — every existing caller (Ground Scout, Raid, and any future
+        // Aggression/Defence/Economy/Development provisioner) that has no physical-resource shortfall
+        // keeps calling this exactly as before; Physical is Zero, so the allocator's component-wise
+        // max reduces to the pre-round-7 float-floor behaviour for them.
         public static ProvisionFailure EnvelopeTooSmall(float requiredAp, string d) =>
-            new ProvisionFailure(ProvisionFailureKind.EnvelopeTooSmall, ProvisionDisposition.RepriceThisTurn, requiredAp, d);
+            EnvelopeTooSmall(ProvisionRequirement.ApOnly(requiredAp), d);
+        public static ProvisionFailure EnvelopeTooSmall(ProvisionRequirement requirement, string d) =>
+            new ProvisionFailure(ProvisionFailureKind.EnvelopeTooSmall, ProvisionDisposition.RepriceThisTurn, requirement, d);
         public static ProvisionFailure NoExecutableStep(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.NoExecutableStep, ProvisionDisposition.RetryNextTurn, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.NoExecutableStep, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure TargetSatisfied(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.TargetSatisfied, ProvisionDisposition.DropThisTurn, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.TargetSatisfied, ProvisionDisposition.DropThisTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure TargetInvalidated(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.TargetInvalidated, ProvisionDisposition.RetryNextTurn, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.TargetInvalidated, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure AssemblyInfeasible(string d) =>
-            new ProvisionFailure(ProvisionFailureKind.AssemblyInfeasible, ProvisionDisposition.RejectWithCooldown, 0f, d);
+            new ProvisionFailure(ProvisionFailureKind.AssemblyInfeasible, ProvisionDisposition.RejectWithCooldown, ProvisionRequirement.Zero, d);
     }
 
     public sealed class ProvisioningResult
@@ -515,7 +527,12 @@ namespace Game.Ai.V2
             float apEnvelope = funded.Tentative.Ap;
             float energyEnvelope = funded.PhysicalDraw.Energy;
             if (realAp > apEnvelope + eps || realEnergy > energyEnvelope + eps)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
+                // Round 7 (Problem 3) — report BOTH the real AP and the real Energy this exact air
+                // actor needs, not AP alone: an air launch's Energy shortfall must raise an Energy
+                // floor too, so ResourceAllocator's next Pack() can actually fund it, instead of
+                // repricing only the AP dimension and looping on the same Energy-starved envelope.
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
+                    new ProvisionRequirement(realAp, new ResourceVector(0f, 0f, realEnergy, 0f, 0f)),
                     $"air actor #{moverArmyId} needs {N(realAp)} AP / {N(realEnergy)} Energy, "
                     + $"envelope is {N(apEnvelope)} AP / {N(energyEnvelope)} Energy"));
 

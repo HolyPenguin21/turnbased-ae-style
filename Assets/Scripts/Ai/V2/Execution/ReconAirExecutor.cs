@@ -76,20 +76,37 @@ namespace Game.Ai.V2
             int m0 = root.GetResource(Game.Economy.ResourceType.Materials);
             int t0 = root.GetResource(Game.Economy.ResourceType.Tech);
 
-            // Continuing wings have no fresh ProvisionedMission this pass (Continuity, not fresh
-            // Assignment — see AirReconPlanner's header) — anchor their live replanning at the
-            // durable target already recorded on their ReconPatrolState (RECON-AIR-05), but they
-            // produce no per-mission ExecutionResult (there is no ledger row for them this turn).
-            foreach (int id in plan.ContinueActorIds)
+            // Round 7 (Problem 1) — MANDATORY AIR RECOVERY is the one legitimate lifecycle/safety
+            // action allowed outside funded Recon progress: a sortie that MUST physically return to
+            // avoid being stranded/lost flies unconditionally, never gated on this pass's Mission ->
+            // Funding -> Assignment -> Provisioning pipeline. Everything else (still-outbound,
+            // still-observing continuation) is Strategic Recon Progress and MUST have won a fresh
+            // ProvisionedMission this pass (plan.ReadyActorIds, below) — AirReconPlanner no longer
+            // discovers/carries forward continuing actors on its own (see its header).
+            //
+            // Discover: airborne wings with a live ReconPatrolState that are NOT already bound to a
+            // fresh ProvisionedMission this pass, whose lifecycle projection (the SAME read-only
+            // projection ReconAirReservationPrepass/capacity sizing already uses — never a second
+            // must-recover rule) resolves to Phase.Return. A wing that projects to anything else
+            // (still Outbound/Turning/Hold) is NOT flown here — it makes no progress this turn unless
+            // it won fresh funding.
+            var fundedThisPass = new HashSet<int>(plan.ReadyActorIds);
+            foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
+                         .Where(a => a != null && AviationRules.IsValidAirArmy(a)
+                             && a.Controller != null && a.CurrentMovement > 0
+                             && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+                             && !fundedThisPass.Contains(a.Id)
+                             && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
+                         .OrderBy(a => a.Id))
             {
-                ArmyData air = Resolve(player, id);
-                if (air != null && AviationRules.IsValidAirArmy(air) && air.Controller != null
-                    && air.CurrentMovement > 0 && !AviationRules.IsOwnedAirfieldAt(air.Hex, player))
-                {
-                    HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, id, out ReconPatrolState st)
-                        ? st.StrategicAnchor : (HexCoord?)null;
-                    yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
-                }
+                ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, air);
+                if (projected == null || projected.Phase != ReconAirPhase.Return)
+                    continue; // not a mandatory recovery — unfunded continuing progress, skip this pass
+                HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, air.Id, out ReconPatrolState st)
+                    ? st.StrategicAnchor : (HexCoord?)null;
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} unfunded this pass but "
+                    + "must-recover — flying unconditionally (lifecycle safety, not Recon funding)");
+                yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
             }
 
             foreach (int id in plan.ReadyActorIds)

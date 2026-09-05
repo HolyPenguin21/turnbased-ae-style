@@ -32,29 +32,47 @@ namespace Game.Ai.V2
     //  (that is RECON-AIR-04 / AppendAirCandidates' own job, using the SAME Pick/PickFromStorage
     //  primitive but anchored at the mission's actual target).
     // ===========================================================================================
+    // Round 7 (Problem 2) — the STRUCTURAL half of "would this slot fly": actor/route/target-progress/
+    // mode feasibility ONLY. No AP, no Energy, no reservation-value judgement — this is what
+    // capability measurement (ReconAssignmentPlanner.MeasureAirCapacity, Demand-facing) is allowed to
+    // read. CAPABILITY != FUNDING: Demand's question is "does an executor exist that COULD satisfy
+    // this Recon class", never "does it have Energy today and is spending it worthwhile right now".
+    internal readonly struct AirStructuralFeasibility
+    {
+        public readonly bool Feasible;
+        public readonly HexCoord ChosenHex;
+        public readonly int LaunchEnergy;   // this candidate's own real launch/activation Energy cost
+        public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
+        public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
+
+        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore, int excludeArmyId)
+        {
+            Feasible = feasible;
+            ChosenHex = chosenHex;
+            LaunchEnergy = launchEnergy;
+            RouteScore = routeScore;
+            ExcludeArmyId = excludeArmyId;
+        }
+
+        internal static readonly AirStructuralFeasibility No = new AirStructuralFeasibility(false, default, 0, 0f, -1);
+    }
+
     internal static class ReconAirReservationPrepass
     {
-        // Would the AIR-01 route scorer actually launch this slot? Mirrors the executor's own gates
-        // for BOTH a ready standalone wing and a hangar launch: a route (`Pick` / `PickFromStorage`)
-        // whose score clears `MinimumUsefulScore`, AND the Energy opportunity policy — with the
-        // Energy already reserved by earlier slots this pass folded in so several candidates cannot
-        // each pass against the full stockpile.
-        //
-        // Round 4 — INTERNAL (was private) so ReconAssignmentPlanner's real air-candidate builder
-        // (BuildCandidates) can call the SAME feasibility check this read-only sizing pass uses,
-        // instead of re-deriving a second copy. Assignment calls it with committedEnergyThisPass=0
-        // and provisionalWedges=null (a single-mission candidate probe has no running per-pass
-        // budget/wedge state to fold in — Provisioning's later sequential AP/Energy claim against
-        // session.ApClaimed is what actually prevents double-spending across missions THIS pass,
-        // exactly mirroring how ground Assignment/BuildCandidates also ignores the aggregate AP
-        // budget and leaves it to Provisioning).
-        internal static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot, int committedEnergyThisPass,
-            IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
+        // Round 7 (Problem 2) — STRUCTURAL feasibility only: actor exists / belongs to AI / aircraft
+        // usable / correct Recon capability type / not destroyed / not conflicting-committed / a
+        // tactical route or progress is in-principle possible (the AIR-01 route scorer's own gates —
+        // it already encodes terrain/threat/mode-appropriateness, never AP or Energy). Explicitly
+        // does NOT check root.ActionPoints, EnergyBudgetBase, slot.Ap/Energy against any budget, or
+        // run AviationSortieReservationEvaluator — those are activation ECONOMICS
+        // (EvaluateAirActivationEconomics below), a strategic resource-spend decision that must
+        // happen later (Provisioning), never during capability measurement.
+        internal static AirStructuralFeasibility EvaluateAirStructuralFeasibility(PlayerSetupData player,
+            AiTurnContext ctx, WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot,
+            IReadOnlyList<ReconSector> provisionalWedges)
         {
-            chosenHex = default;
             if (ctx?.Map == null)
-                return true; // bare harness — leave the final gate to the executor
+                return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId ?? -1); // bare harness
 
             ReconAirStepPlanner.StepChoice? choice;
             int launchEnergy;
@@ -73,7 +91,7 @@ namespace Game.Ai.V2
             {
                 ArmyData wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
                 if (wing == null)
-                    return false;
+                    return AirStructuralFeasibility.No;
 
                 bool airborne = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real);
                 scoringCtx.ExcludeSortieId = airborne ? real.SortieId : -1;
@@ -83,11 +101,10 @@ namespace Game.Ai.V2
                 // (it flies PickReturnStep toward the airfield instead) or ends the turn aloft on a
                 // Hold — so a strategic forward hex clearing MinimumUsefulScore here would reserve
                 // ObservationDeficit relief the executor never delivers. The wing still consumes an
-                // air-actor slot and keeps its recovery AP/Energy reservation (done by the caller
-                // before this probe); it just does not count toward ReservedAirborneWings.
+                // air-actor slot; it just does not count toward ReservedAirborneWings.
                 if (projected != null
                     && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
-                    return false;
+                    return AirStructuralFeasibility.No;
 
                 ReconMode mode = airborne
                     && ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState asg)
@@ -100,10 +117,13 @@ namespace Game.Ai.V2
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
                 if (airfield == null || airfield.Members.Count < UnityEngine.Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
-                    return false;
+                    return AirStructuralFeasibility.No;
                 List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0 || !AiAirSortiePlanner.CanAffordLaunch(root, player, subset))
-                    return false;
+                // Structural only — "enough ready aircraft exist to form a legal Recon subset", NOT
+                // whether Energy exists today to launch it (that is CanAffordLaunch, an economics
+                // check — moved to EvaluateAirActivationEconomics's caller).
+                if (subset.Count == 0)
+                    return AirStructuralFeasibility.No;
                 var candidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
                 choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx);
                 launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
@@ -111,22 +131,50 @@ namespace Game.Ai.V2
             }
 
             if (!choice.HasValue)
+                return AirStructuralFeasibility.No;
+
+            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId);
+        }
+
+        // Round 7 (Problem 2) — ACTIVATION ECONOMICS: may use Energy/AP/resource-outlook/reservation
+        // value. Demand/capability-measurement must NEVER call this — its proper callers are (a) the
+        // real per-pass sizing loop that already owns its own cumulative AP/Energy budget
+        // (MeasureAirCapacity's greedy loop, which now calls this explicitly instead of getting it
+        // for free inside SlotWouldFly) and (b) Provisioning's live sanity check before actually
+        // claiming resources for an assigned actor.
+        internal static bool EvaluateAirActivationEconomics(PlayerSetupData player, PlayerRoot root, HexMap map,
+            int apCost, AirStructuralFeasibility structural, int committedApThisPass, int committedEnergyThisPass,
+            out AviationReservationDecision decision)
+        {
+            // AI-MGR — the reservation decision itself: Resource Outlook -> Hand/Deck Energy
+            // Pressure -> Sortie Value -> Reservation Decision. Having an aircraft + a legal route is
+            // not, on its own, an entitlement to protect AP/Energy.
+            decision = AviationSortieReservationEvaluator.EvaluateRecon(player, root, map, apCost,
+                structural.LaunchEnergy, structural.RouteScore, structural.ExcludeArmyId,
+                committedApThisPass, committedEnergyThisPass);
+            return decision.ShouldReserve;
+        }
+
+        // Composition of both stages — kept for Assignment-time REAL per-mission candidate building
+        // (ReconAssignmentPlanner.AppendAirCandidates / BuildFeasibleAirPool), which runs AFTER a
+        // mission is already funded and legitimately needs the full "would this slot actually fly"
+        // answer, economics included. Round 4 — INTERNAL (was private) so Assignment can call the
+        // SAME check this sizing pass uses, instead of re-deriving a second copy.
+        internal static bool SlotWouldFly(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot, int committedEnergyThisPass,
+            IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
+        {
+            AirStructuralFeasibility structural = EvaluateAirStructuralFeasibility(
+                player, ctx, snap, globalMode, slot, provisionalWedges);
+            chosenHex = structural.ChosenHex;
+            if (!structural.Feasible)
                 return false;
 
-            // AI-MGR — the reservation decision itself: Resource Outlook -> Hand/Deck Energy
-            // Pressure -> Sortie Value -> Reservation Decision. Replaces the old flat
-            // "route clears MinimumUsefulScore + ReconAirEnergyPolicy hard/soft gate" pair with one
-            // staged, diagnosable evaluator — having an aircraft + a legal route is no longer, on
-            // its own, an entitlement to protect AP/Energy.
-            AviationReservationDecision decision = AviationSortieReservationEvaluator.EvaluateRecon(
-                player, root, ctx.Map, slot.Ap, launchEnergy, choice.Value.Score,
-                excludeArmyId, 0, committedEnergyThisPass);
+            bool ok = EvaluateAirActivationEconomics(player, root, ctx?.Map, slot.Ap, structural,
+                0, committedEnergyThisPass, out AviationReservationDecision decision);
             AiDebugLog.Write(decision.ToLog(slot.ActorId.HasValue
                 ? $"actor=#{slot.ActorId.Value}" : $"airfield=({slot.AirfieldHex.Q},{slot.AirfieldHex.R})"));
-            if (!decision.ShouldReserve)
-                return false;
-            chosenHex = choice.Value.Hex;
-            return true;
+            return ok;
         }
 
         // Read-only projection of the ReconAirSortieState the executor will pass Pick for THIS wing
