@@ -216,29 +216,41 @@ namespace Game.Ai.V2
                     ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal));
             int missStealth = Mathf.Max(0, desiredStealthLanes - stealthFree);
 
-            // --- Generic (non-stealth) capacity deficits, persistence-gated.
-            bool obsPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
-                player, turn, ReconDeficitKind.Observation, capacity.ObservationDeficit, out int obsStreak);
-            bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
-                player, turn, ReconDeficitKind.GroundTraversal, capacity.GroundTraversalDeficit, out int groundStreak);
-
             // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
             //     unable to reach any runnable objective (blocked path, no reachable Surveil vantage),
             //     which only ReconActorReservationPlanner.CanExecute actually knows via
             //     SafeStepPathing / SurveilVantageSelector. An actor already on an active durable lane
-            //     counts as witnessed without re-probing (its path was validated when the lane
-            //     started); an idle, uncommitted actor is only witnessed if it can currently reach at
-            //     least one runnable objective of the class. This feeds BOTH the Rule-1 bootstrap
-            //     trigger and the Rule-2 ExistingUsableCapacityAtEmission gate below — a raw non-zero
-            //     count that turns out unreachable must behave exactly like zero usable capacity.
-            bool groundWitnessed = capacity.GenericGroundLaneActors.Count > 0
-                || HasFeasibleIdleWitness(ctx, player, snap, capacity.IdleGroundScouts, groundVisitRunnable);
-            bool obsWitnessed = capacity.GenericObservationLaneActors.Count > 0
-                || capacity.AirborneReconLanes > 0 || capacity.SpareAirObservationSorties > 0
-                || HasFeasibleIdleWitness(ctx, player, snap, capacity.IdleGroundScouts, observationRunnable);
-            int groundWitnessedUsable = groundWitnessed ? capacity.GroundTraversalSupply : 0;
-            int obsWitnessedUsable = obsWitnessed ? capacity.ObservationSupply : 0;
+            //     counts without re-probing (its path was validated when the lane started, and it is
+            //     assigned to an objective OUTSIDE this runnable/uncovered set, so it never competes
+            //     with the matching below). An idle, uncommitted actor only counts if a maximum
+            //     bipartite matching (CountFeasibleIdleActors) can assign it a DISTINCT reachable
+            //     runnable objective — two idle actors that can only both reach the SAME exclusive job
+            //     must count as ONE unit of usable capacity, not two.
+            //
+            //     This witnessed count — not the raw one — is what both the persistence-streak
+            //     registry and the Rule-1/Rule-2 math below are computed against: a raw non-zero
+            //     supply that is actually unreachable must produce the same EFFECTIVE deficit as if
+            //     the actor did not exist at all, or a scout that already exists on paper but can
+            //     never physically act would silently zero out the very deficit this gate exists to
+            //     detect (regression: 1 unreachable existing scout, desired=1 => raw deficit reads 0,
+            //     nothing would ever be created without this).
+            int groundWitnessedSupply = capacity.GenericGroundLaneActors.Count
+                + CountFeasibleIdleActors(ctx, player, snap, capacity.IdleGroundScouts, groundVisitRunnable);
+            int obsWitnessedSupply = capacity.GenericObservationLaneActors.Count
+                + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties
+                + CountFeasibleIdleActors(ctx, player, snap, capacity.IdleGroundScouts, observationRunnable);
+            int groundEffectiveDeficit =
+                Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundWitnessedSupply);
+            int obsEffectiveDeficit =
+                Mathf.Max(0, capacity.DesiredObservationConcurrency - obsWitnessedSupply);
+
+            // --- Generic (non-stealth) capacity deficits, persistence-gated. Fed the EFFECTIVE
+            //     (witnessed) deficit, not the raw one — see above.
+            bool obsPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
+                player, turn, ReconDeficitKind.Observation, obsEffectiveDeficit, out int obsStreak);
+            bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
+                player, turn, ReconDeficitKind.GroundTraversal, groundEffectiveDeficit, out int groundStreak);
 
             // --- Rule 1 (persistence-gate spec) — Zero-Capacity Bootstrap. A real runnable
             //     opportunity that NO usable actor of the required class can currently serve at all
@@ -247,23 +259,24 @@ namespace Game.Ai.V2
             //     has nothing usable whatsoever. Scoped per class: Observation counts air supply too
             //     (an idle helicopter means Observation is not zero-capacity even with 0 ground
             //     actors), GroundTraversal never does (aviation cannot substitute a physical visit).
-            int groundBootstrap = groundWitnessedUsable == 0 && groundVisitRunnable.Count > 0
-                ? Mathf.Min(1, capacity.GroundTraversalDeficit) : 0;
-            int obsBootstrap = obsWitnessedUsable == 0 && observationRunnable.Count > 0
-                ? Mathf.Min(1, capacity.ObservationDeficit) : 0;
+            int groundBootstrap = groundWitnessedSupply == 0 && groundVisitRunnable.Count > 0
+                ? Mathf.Min(1, groundEffectiveDeficit) : 0;
+            int obsBootstrap = obsWitnessedSupply == 0 && observationRunnable.Count > 0
+                ? Mathf.Min(1, obsEffectiveDeficit) : 0;
 
-            int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, capacity.ObservationDeficit - obsBootstrap) : 0);
-            int groundNew = groundBootstrap + (groundPersist ? Mathf.Max(0, capacity.GroundTraversalDeficit - groundBootstrap) : 0);
+            int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, obsEffectiveDeficit - obsBootstrap) : 0);
+            int groundNew = groundBootstrap + (groundPersist ? Mathf.Max(0, groundEffectiveDeficit - groundBootstrap) : 0);
             if (groundBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=GroundTraversal runnable={groundVisitRunnable.Count} "
-                    + $"usableCapacity={capacity.GroundTraversalSupply}(witnessed={groundWitnessedUsable}) "
-                    + $"deficit={capacity.GroundTraversalDeficit} bootstrapped={groundBootstrap}");
+                    + $"rawSupply={capacity.GroundTraversalSupply} witnessedSupply={groundWitnessedSupply} "
+                    + $"rawDeficit={capacity.GroundTraversalDeficit} effectiveDeficit={groundEffectiveDeficit} "
+                    + $"bootstrapped={groundBootstrap}");
             if (obsBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=Observation runnable={observationRunnable.Count} "
-                    + $"usableCapacity={capacity.ObservationSupply}(witnessed={obsWitnessedUsable}) "
-                    + $"deficit={capacity.ObservationDeficit} "
+                    + $"rawSupply={capacity.ObservationSupply} witnessedSupply={obsWitnessedSupply} "
+                    + $"rawDeficit={capacity.ObservationDeficit} effectiveDeficit={obsEffectiveDeficit} "
                     + $"bootstrapped={obsBootstrap}");
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
@@ -295,9 +308,9 @@ namespace Game.Ai.V2
             //     turns out there is no other actionable work worth preferring over it.
             int roomLeftForDeferred = Mathf.Max(0, roomForNew - stealthNew - genericNew);
             int groundResidualUnpersisted = groundPersist ? 0
-                : Mathf.Max(0, capacity.GroundTraversalDeficit - groundBootstrap);
+                : Mathf.Max(0, groundEffectiveDeficit - groundBootstrap);
             int obsResidualUnpersisted = obsPersist ? 0
-                : Mathf.Max(0, capacity.ObservationDeficit - obsBootstrap);
+                : Mathf.Max(0, obsEffectiveDeficit - obsBootstrap);
             int groundDeferred = Mathf.Min(groundResidualUnpersisted, roomLeftForDeferred);
             int obsDeferred = Mathf.Min(obsResidualUnpersisted, Mathf.Max(0, roomLeftForDeferred - groundDeferred));
 
@@ -306,14 +319,16 @@ namespace Game.Ai.V2
             if (stealthNew <= 0 && genericNew <= 0)
             {
                 string reason =
-                    missStealth > 0 || capacity.ObservationDeficit > 0 || capacity.GroundTraversalDeficit > 0
+                    missStealth > 0 || obsEffectiveDeficit > 0 || groundEffectiveDeficit > 0
                         ? (obsNew + groundNew == 0 && missStealth == 0
                             ? "capacity_deficit_not_yet_persistent"
                             : "concurrency_hard_cap_or_useful_ceiling_reached")
                         : "usable_capacity_covers_all_lanes";
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason={reason} "
-                    + $"obsDeficit={capacity.ObservationDeficit}(persist={(obsPersist ? 1 : 0)} streak={obsStreak}) "
-                    + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
+                    + $"obsDeficit(effective)={obsEffectiveDeficit}(raw={capacity.ObservationDeficit} "
+                    + $"persist={(obsPersist ? 1 : 0)} streak={obsStreak}) "
+                    + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(raw={capacity.GroundTraversalDeficit} "
+                    + $"persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
                     + $"missStealth={missStealth} stealthFree={stealthFree} active={activeReconExecutions} "
                     + $"hard={ReconConcurrencyPolicy.HardCap} combinedCeiling={capacity.CombinedDesiredConcurrency} "
                     + $"existingGroundUsable={capacity.ExistingGroundUsableCapacity} usefulGenericRoom={usefulGenericRoom} "
@@ -327,7 +342,7 @@ namespace Game.Ai.V2
                     ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
                     + $"class=GroundTraversal persistenceDeferredEmitted=true desired={groundDeferred} "
-                    + $"runnable={groundVisitRunnable.Count} usableCapacity={capacity.GroundTraversalSupply} "
+                    + $"runnable={groundVisitRunnable.Count} witnessedSupply={groundWitnessedSupply} "
                     + $"streak={groundStreak}");
                 yield return new AxisDemand
                 {
@@ -341,8 +356,8 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = groundWitnessedUsable,
-                    Explain = $"GroundTraversal deficit {capacity.GroundTraversalDeficit} not yet persistent "
+                    ExistingUsableCapacityAtEmission = groundWitnessedSupply,
+                    Explain = $"GroundTraversal effective deficit {groundEffectiveDeficit} not yet persistent "
                         + $"(streak {groundStreak}); {groundVisitRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
                 };
@@ -354,7 +369,7 @@ namespace Game.Ai.V2
                     ?? observationRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
                     + $"class=Observation persistenceDeferredEmitted=true desired={obsDeferred} "
-                    + $"runnable={observationRunnable.Count} usableCapacity={capacity.ObservationSupply} "
+                    + $"runnable={observationRunnable.Count} witnessedSupply={obsWitnessedSupply} "
                     + $"streak={obsStreak}");
                 yield return new AxisDemand
                 {
@@ -368,8 +383,8 @@ namespace Game.Ai.V2
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
-                    ExistingUsableCapacityAtEmission = obsWitnessedUsable,
-                    Explain = $"Observation deficit {capacity.ObservationDeficit} not yet persistent "
+                    ExistingUsableCapacityAtEmission = obsWitnessedSupply,
+                    Explain = $"Observation effective deficit {obsEffectiveDeficit} not yet persistent "
                         + $"(streak {obsStreak}); {observationRunnable.Count} runnable job(s); "
                         + "deferred pending no-alternative-work reconciliation",
                 };
@@ -403,7 +418,7 @@ namespace Game.Ai.V2
                     ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=generic-ground desired={matGround} reason=persistent_ground_traversal_deficit "
-                    + $"groundTraversalDeficit={capacity.GroundTraversalDeficit}(streak={groundStreak}) "
+                    + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(streak={groundStreak}) "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
                     + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
                     + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
@@ -418,7 +433,7 @@ namespace Game.Ai.V2
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"persistent GroundTraversal deficit {capacity.GroundTraversalDeficit} "
+                    Explain = $"persistent GroundTraversal effective deficit {groundEffectiveDeficit} "
                         + $"(aviation cannot substitute a physical visit); want {matGround}; blocked {blocked}",
                 };
             }
@@ -429,7 +444,7 @@ namespace Game.Ai.V2
                     ?? observationRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=generic-observation desired={matObs} reason=persistent_observation_deficit "
-                    + $"obsDeficit={capacity.ObservationDeficit}(streak={obsStreak}) "
+                    + $"obsDeficit(effective)={obsEffectiveDeficit}(streak={obsStreak}) "
                     + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
                     + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
@@ -445,7 +460,7 @@ namespace Game.Ai.V2
                     TargetHex = best.FocusHex,
                     Value = best.BaseValue,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"persistent Observation deficit {capacity.ObservationDeficit} "
+                    Explain = $"persistent Observation effective deficit {obsEffectiveDeficit} "
                         + $"(net of airborne {capacity.AirborneReconLanes} + spare air {capacity.SpareAirObservationSorties}); "
                         + $"want {matObs}; blocked {blocked}",
                 };
@@ -475,31 +490,72 @@ namespace Game.Ai.V2
                 o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
                 o.FocusHex.Q, o.FocusHex.R);
 
-        // Persistence-gate witness (Rule 1/Rule 2) — does at least one IDLE, uncommitted actor in
-        // `idleArmyIds` have a REAL feasible path/mission to at least one of the best runnable
-        // objectives, per ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing /
-        // SurveilVantageSelector primitive the real planner uses downstream)? A raw non-zero actor
-        // count is not proof of that — a blocked path or an unreachable Surveil vantage can leave an
-        // "idle" scout with genuinely nothing it can do this turn. Capped to a handful of the best
-        // objectives per actor: this only needs to prove "at least one", not rank every possibility.
-        private static bool HasFeasibleIdleWitness(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
+        // Persistence-gate witness (Rule 1/Rule 2). Returns how many IDLE, uncommitted actors in
+        // `idleArmyIds` can each be given a DISTINCT reachable runnable objective, per
+        // ReconActorReservationPlanner.CanExecute (the exact SafeStepPathing / SurveilVantageSelector
+        // primitive the real planner uses downstream). A raw non-zero actor count is not proof of
+        // real capacity — a blocked path or an unreachable Surveil vantage can leave an "idle" scout
+        // with genuinely nothing it can do — and neither is a bare existence check: two idle actors
+        // that can BOTH only reach the same single exclusive job represent ONE unit of real capacity,
+        // not two. This runs a small maximum bipartite matching (Kuhn's algorithm) over actors x
+        // runnable objectives, both tiny sets for a single demand pass, so the exact count is cheap.
+        private static int CountFeasibleIdleActors(AiTurnContext ctx, PlayerSetupData player, WorldSnapshot snap,
             IReadOnlyCollection<int> idleArmyIds, IReadOnlyList<ReconObjective> runnableForClass)
         {
             if (idleArmyIds == null || idleArmyIds.Count == 0
                 || runnableForClass == null || runnableForClass.Count == 0)
-                return false;
+                return 0;
             IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
             if (armies == null)
-                return false;
+                return 0;
 
-            int probe = Mathf.Min(runnableForClass.Count, AiConfigV2.persistenceWitnessProbeObjectives);
-            foreach (ArmySnapshot a in armies)
+            var idleActors = armies.Where(a => a != null && idleArmyIds.Contains(a.ArmyId)).ToList();
+            if (idleActors.Count == 0)
+                return 0;
+
+            int jobCount = Mathf.Min(runnableForClass.Count, AiConfigV2.persistenceWitnessProbeObjectives);
+            var reachableJobs = new List<List<int>>(idleActors.Count);
+            for (int i = 0; i < idleActors.Count; i++)
             {
-                if (a == null || !idleArmyIds.Contains(a.ArmyId))
+                var jobs = new List<int>();
+                for (int j = 0; j < jobCount; j++)
+                    if (ReconActorReservationPlanner.CanExecute(
+                        ctx, player, snap, idleActors[i], runnableForClass[j].ToTarget()))
+                        jobs.Add(j);
+                reachableJobs.Add(jobs);
+            }
+
+            var jobAssignedToActor = new int[jobCount];
+            for (int j = 0; j < jobAssignedToActor.Length; j++)
+                jobAssignedToActor[j] = -1;
+            int matched = 0;
+            for (int i = 0; i < idleActors.Count; i++)
+            {
+                var visitedJobs = new bool[jobCount];
+                if (TryAugmentMatch(i, reachableJobs, visitedJobs, jobAssignedToActor))
+                    matched++;
+            }
+            return matched;
+        }
+
+        // Standard augmenting-path step of Kuhn's algorithm: try to give actor `actor` one of its
+        // reachable jobs, bumping whichever actor currently holds a contested job to a different one
+        // of ITS reachable jobs if possible. Actor/job counts here are always small (a handful of
+        // idle scouts against a handful of runnable objectives), so this is cheap.
+        private static bool TryAugmentMatch(int actor, List<List<int>> reachableJobs, bool[] visitedJobs,
+            int[] jobAssignedToActor)
+        {
+            foreach (int job in reachableJobs[actor])
+            {
+                if (visitedJobs[job])
                     continue;
-                for (int i = 0; i < probe; i++)
-                    if (ReconActorReservationPlanner.CanExecute(ctx, player, snap, a, runnableForClass[i].ToTarget()))
-                        return true;
+                visitedJobs[job] = true;
+                if (jobAssignedToActor[job] < 0
+                    || TryAugmentMatch(jobAssignedToActor[job], reachableJobs, visitedJobs, jobAssignedToActor))
+                {
+                    jobAssignedToActor[job] = actor;
+                    return true;
+                }
             }
             return false;
         }
