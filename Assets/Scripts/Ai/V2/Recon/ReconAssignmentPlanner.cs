@@ -35,6 +35,30 @@ namespace Game.Ai.V2
         NoReachableVantage,
     }
 
+    // Round 3 (Problem 2) — the ONE structured "why did this funded mission get no actor"
+    // vocabulary. AssignFunded computes this for every mission left unassigned after the batch
+    // solve, using the SAME BuildCandidates output the solve itself used (never a second re-derived
+    // eligibility/route/vantage pass) — ProvisioningManager.ClassifyNoAssignment is now a pure
+    // translation of whichever of these it receives into a ProvisionFailure.
+    public enum ScoutAssignmentFailureReason
+    {
+        NoMoverExists,          // no structural candidate at all (stealth-filtered where relevant)
+        NoExecutableStep,       // an eligible mover exists but none has a safe first step / vantage
+        NoObservationVantage,   // Surveil only — no on-map vantage within any scout's vision
+        MoverContended,         // a capable candidate existed but lost this pass's batch solve
+    }
+
+    // Result of AssignFunded — the successful actor<->mission bindings, plus a rejection reason for
+    // every mission that got none. Both maps are keyed by the same StableMissionKey space as
+    // `open`; a mission present in neither was not part of this call.
+    public sealed class ReconAssignmentResult
+    {
+        public readonly Dictionary<StableMissionKey, ScoutExecutionCandidate> Assigned =
+            new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
+        public readonly Dictionary<StableMissionKey, ScoutAssignmentFailureReason> Rejected =
+            new Dictionary<StableMissionKey, ScoutAssignmentFailureReason>();
+    }
+
     public readonly struct ReconAssignmentCandidateResult
     {
         public readonly bool Feasible;
@@ -63,13 +87,23 @@ namespace Game.Ai.V2
         public readonly int ObsLaneWitnessed;
         public readonly int GroundIdleWitnessed;
         public readonly int ObsIdleWitnessed;
+        // Round 3 (Problem 3) — the stealth-lane equivalent of GroundIdleWitnessed/ObsIdleWitnessed:
+        // a JOINT actor<->job witness (one stealth-capable actor <= one stealth job) over the
+        // runnable stealth objectives, produced by the SAME SolveReconFlow pass as the generic
+        // numbers above. Replaces DemandLayer's old ReconAssignmentPlanner.CountEligibleMovers raw
+        // count (a second, unwitnessed capacity API) — see the facade section below.
+        public readonly int StealthGroundWitnessed;
+        public readonly int StealthObsWitnessed;
 
-        public ReconCapacityMeasurement(int groundLane, int obsLane, int groundIdle, int obsIdle)
+        public ReconCapacityMeasurement(int groundLane, int obsLane, int groundIdle, int obsIdle,
+            int stealthGroundWitnessed = 0, int stealthObsWitnessed = 0)
         {
             GroundLaneWitnessed = groundLane;
             ObsLaneWitnessed = obsLane;
             GroundIdleWitnessed = groundIdle;
             ObsIdleWitnessed = obsIdle;
+            StealthGroundWitnessed = stealthGroundWitnessed;
+            StealthObsWitnessed = stealthObsWitnessed;
         }
     }
 
@@ -115,24 +149,30 @@ namespace Game.Ai.V2
             EvaluateCandidate(ctx, player, snap, mover, target).Feasible;
 
         // =======================================================================================
-        //  ELIGIBILITY FACADE — every non-Assignment caller that needs to know "which/how-many
-        //  actors could structurally serve this class of job" goes through THESE, never straight to
-        //  ScoutMoverSelector. ScoutMoverSelector stays the low-level enumeration primitive
-        //  Assignment itself is built on (BuildCandidates/MeasureCapacity call it directly), but no
-        //  OTHER layer (Demand, Provisioning's diagnostic classifier, the capability-pool registry)
-        //  is allowed a second copy of "what counts as eligible" — this facade is the one seam.
+        //  ELIGIBILITY FACADE — round 3 (Problem 3): the raw eligible-actor enumeration primitives
+        //  (EligibleMovers/CountEligibleMovers/StructuralCandidates/HasStructuralCandidate) are now
+        //  PRIVATE — internal building blocks BuildCandidates/MeasureCapacity/the assignment
+        //  diagnosis below are built on, never a second "how much capacity" answer another layer
+        //  could reach for instead of MeasureCapacity. Every non-Assignment caller gets exactly TWO
+        //  narrow, purpose-built doors instead:
+        //    · MeasureCapacity — the ONE aggregate "how much capacity" witness (Demand).
+        //    · HasEligibleMover — a single boolean "does ANY usable actor exist at all right now"
+        //      (CapabilityPoolExhaustionRegistry's pool-empty check — a structurally different
+        //      question from a witnessed capacity SIZE, so it keeps its own name instead of
+        //      overloading MeasureCapacity's contract).
         // =======================================================================================
-        internal static List<ArmySnapshot> EligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
+        private static List<ArmySnapshot> EligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
             ISet<int> excludeArmyIds) => ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
 
-        internal static int CountEligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
-            ISet<int> excludeArmyIds) => EligibleMovers(snap, target, excludeArmyIds).Count;
-
-        internal static IEnumerable<ArmySnapshot> StructuralCandidates(WorldSnapshot snap,
+        private static IEnumerable<ArmySnapshot> StructuralCandidates(WorldSnapshot snap,
             ScoutMissionTarget target) => ScoutMoverSelector.StructuralCandidates(snap, target);
 
-        internal static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target) =>
+        private static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target) =>
             ScoutMoverSelector.HasStructuralCandidate(snap, target);
+
+        // The one sanctioned boolean "is this pool empty right now" door (CapabilityPoolExhaustionRegistry).
+        internal static bool HasEligibleMover(WorldSnapshot snap, ScoutMissionTarget target) =>
+            EligibleMovers(snap, target, null).Count > 0;
 
         // =======================================================================================
         //  E. ResolveExecutionHex — Explore/Refresh execute AT the target; Surveil executes from the
@@ -194,15 +234,16 @@ namespace Game.Ai.V2
         // AssignFunded — best one-to-one actor/execution-candidate assignment across every OPEN
         // funded Scout mission at once (bounded exhaustive search + lexicographic scoring; the
         // portfolio is always small — a handful of funded Recon missions per pass). Returns the
-        // chosen ScoutExecutionCandidate per mission key; a mission absent from the result got no
-        // actor this pass (Provisioning reports the generic failure).
-        public static Dictionary<StableMissionKey, ScoutExecutionCandidate> AssignFunded(
+        // chosen ScoutExecutionCandidate per mission key, PLUS (round 3 / Problem 2) a structured
+        // rejection reason for every mission that got none — computed from the SAME cands[i] list
+        // the batch solve itself used, so Provisioning's classifier never re-derives eligibility.
+        public static ReconAssignmentResult AssignFunded(
             WorldSnapshot snap, AiTurnContext ctx, PlayerSetupData player,
             List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds)
         {
-            var map = new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
+            var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
-                return map;
+                return result;
 
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
             foreach (FundedEntry fe in open)
@@ -218,14 +259,75 @@ namespace Game.Ai.V2
             RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best);
 
             for (int i = 0; i < open.Count; i++)
+            {
+                StableMissionKey key = StableMissionKey.For(open[i].Mission);
                 if (best[i] >= 0)
-                    map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
+                {
+                    result.Assigned[key] = cands[i][best[i]];
+                    continue;
+                }
+                // cands[i] is EXACTLY the candidate list the solver considered for this mission —
+                // empty means no structural/executable candidate existed at all this pass; non-empty
+                // means a real candidate existed but lost the batch's one-actor-per-job competition
+                // to a higher-priority mission (genuine contention, not absence).
+                var target = (ScoutMissionTarget)open[i].Mission.Target;
+                result.Rejected[key] = cands[i].Count > 0
+                    ? ScoutAssignmentFailureReason.MoverContended
+                    : DiagnoseEmpty(snap, ctx, player, target, alreadyClaimedArmyIds);
+            }
 
             if (open.Count > 0)
                 AiDebugLog.Write($"[AI][V2][Recon][Assignment] assignFunded — {open.Count} open, assigned ["
-                    + string.Join(" ", map.Select(kv =>
-                        $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]");
-            return map;
+                    + string.Join(" ", result.Assigned.Select(kv =>
+                        $"{kv.Key}->#{kv.Value.Army.ArmyId}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]"
+                    + (result.Rejected.Count > 0 ? $" rejected [{string.Join(" ", result.Rejected.Select(kv => $"{kv.Key}:{kv.Value}"))}]" : ""));
+            return result;
+        }
+
+        // Round 3 (Problem 2) — moved verbatim from ProvisioningManager.ClassifyNoAssignment: the
+        // ONE place that decides WHY a Scout job with zero executable candidates has none. Only
+        // called when BuildCandidates already came back empty for this exact (target, exclude) pair
+        // — never re-runs BuildCandidates itself, just narrates it with the structural/eligibility
+        // primitives this class already owns.
+        private static ScoutAssignmentFailureReason DiagnoseEmpty(WorldSnapshot snap, AiTurnContext ctx,
+            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+        {
+            bool surveil = target.Kind == ScoutTargetKind.Surveil;
+
+            if (!HasStructuralCandidate(snap, target))
+                return ScoutAssignmentFailureReason.NoMoverExists;
+
+            if (!surveil)
+            {
+                // An unassigned ground Explore/Refresh is only MoverContended if a capable UNCLAIMED
+                // scout that could actually take a safe first step toward the focus was preferred
+                // elsewhere. If unclaimed eligible scouts exist but NONE can reach the focus this
+                // turn, that is NoExecutableStep, not contention.
+                List<ArmySnapshot> freeEligible = EligibleMovers(snap, target, excludeArmyIds);
+                if (freeEligible.Count > 0 && ctx?.Map != null)
+                {
+                    bool anyReachable = freeEligible.Any(mv =>
+                    {
+                        ArmyData live = ResolveArmy(player, mv.ArmyId);
+                        return live != null
+                            && SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
+                    });
+                    if (!anyReachable)
+                        return ScoutAssignmentFailureReason.NoExecutableStep;
+                }
+                return ScoutAssignmentFailureReason.MoverContended;
+            }
+
+            bool anyStructuralVantage = StructuralCandidates(snap, target)
+                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+            if (!anyStructuralVantage)
+                return ScoutAssignmentFailureReason.NoObservationVantage;
+
+            bool anyEligibleHasVantage = EligibleMovers(snap, target, excludeArmyIds)
+                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+            return anyEligibleHasVantage
+                ? ScoutAssignmentFailureReason.NoExecutableStep
+                : ScoutAssignmentFailureReason.MoverContended;
         }
 
         private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
@@ -346,7 +448,9 @@ namespace Game.Ai.V2
         public static ReconCapacityMeasurement MeasureCapacity(AiTurnContext ctx, PlayerSetupData player,
             WorldSnapshot snap, ReconCapacitySnapshot capacity, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, IReadOnlyList<ReconObjective> groundVisitRunnable,
-            IReadOnlyList<ReconObjective> observationRunnable)
+            IReadOnlyList<ReconObjective> observationRunnable,
+            IReadOnlyList<ReconObjective> stealthGroundRunnable = null,
+            IReadOnlyList<ReconObjective> stealthObservationRunnable = null)
         {
             IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>();
             ArmySnapshot Resolve(int id) => armies.FirstOrDefault(a => a != null && a.ArmyId == id);
@@ -412,7 +516,25 @@ namespace Game.Ai.V2
             int groundIdleWitnessed = groundP1 + groundP2;
             int obsIdleWitnessed = obsP1 + obsP2;
 
-            return new ReconCapacityMeasurement(groundLaneWitnessed, obsLaneWitnessed, groundIdleWitnessed, obsIdleWitnessed);
+            // Round 3 (Problem 3) — the stealth-lane witness, produced by the SAME joint
+            // actor<->job matching as the generic numbers above (never a second raw eligibility
+            // count): stealth-capable, currently-unclaimed movers against the runnable stealth
+            // objectives, split ground/observation exactly like the generic classes.
+            int stealthGroundWitnessed = 0, stealthObsWitnessed = 0;
+            bool anyStealthJobs = (stealthGroundRunnable != null && stealthGroundRunnable.Count > 0)
+                || (stealthObservationRunnable != null && stealthObservationRunnable.Count > 0);
+            if (anyStealthJobs)
+            {
+                var stealthTarget = new ScoutMissionTarget { Stealth = StealthRequirement.Required };
+                ISet<int> claimed = commitments?.ClaimedArmyIdSet;
+                List<ArmySnapshot> stealthActors = EligibleMovers(snap, stealthTarget, claimed);
+                (stealthGroundWitnessed, stealthObsWitnessed, _, _, _) = SolveReconFlow(
+                    ctx, player, snap, stealthActors, stealthGroundRunnable, stealthObservationRunnable,
+                    stealthGroundRunnable?.Count ?? 0, stealthObservationRunnable?.Count ?? 0);
+            }
+
+            return new ReconCapacityMeasurement(groundLaneWitnessed, obsLaneWitnessed, groundIdleWitnessed,
+                obsIdleWitnessed, stealthGroundWitnessed, stealthObsWitnessed);
         }
 
         // One max-flow solve: source -> each actor (cap 1) -> each individual job it can reach

@@ -208,15 +208,14 @@ namespace Game.Ai.V2
             //     not stage flicker) and not reduced by aviation or generic scouts.
             // §5 — Demand knows only the aggregate ReconAssignmentPlanner reports, never
             // ScoutMoverSelector's own eligibility rule (that rule belongs to Assignment alone).
-            var claimed = commitments?.ClaimedArmyIdSet;
-            int stealthFree = ReconAssignmentPlanner.CountEligibleMovers(snap,
-                new ScoutMissionTarget { Stealth = StealthRequirement.Required }, claimed);
+            // Round 3 (Problem 3) — the stealth free-actor count is now the SAME joint witness
+            // MeasureCapacity produces for everything else (see `witness` below), not a second raw
+            // ReconAssignmentPlanner.CountEligibleMovers count with no job-matching behind it.
             int desiredStealthLanes = Mathf.Min(stealthRunnable.Count,
                 ReconConcurrencyPolicy.DesiredForClass(snap, stealthObsRunnable,
                     ReconConcurrencyPolicy.ReconCoverageClass.Observation)
                 + ReconConcurrencyPolicy.DesiredForClass(snap, stealthGroundRunnable,
                     ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal));
-            int missStealth = Mathf.Max(0, desiredStealthLanes - stealthFree);
 
             // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
@@ -250,7 +249,8 @@ namespace Game.Ai.V2
             // does not know (and must not know) HOW the actor<->job matching behind this number was
             // produced — see ReconAssignmentPlanner.MeasureCapacity.
             ReconCapacityMeasurement witness = ReconAssignmentPlanner.MeasureCapacity(ctx, player, snap, capacity,
-                activeIntents, commitments, groundVisitGeneric, observationGeneric);
+                activeIntents, commitments, groundVisitGeneric, observationGeneric,
+                stealthGroundRunnable, stealthObsRunnable);
             int groundWitnessedSupply = witness.GroundLaneWitnessed + witness.GroundIdleWitnessed;
             int obsWitnessedSupply = witness.ObsLaneWitnessed
                 + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties + witness.ObsIdleWitnessed;
@@ -258,6 +258,9 @@ namespace Game.Ai.V2
                 Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundWitnessedSupply);
             int obsEffectiveDeficit =
                 Mathf.Max(0, capacity.DesiredObservationConcurrency - obsWitnessedSupply);
+
+            int stealthFree = witness.StealthGroundWitnessed + witness.StealthObsWitnessed;
+            int missStealth = Mathf.Max(0, desiredStealthLanes - stealthFree);
 
             // --- Generic (non-stealth) capacity deficits, persistence-gated. Fed the EFFECTIVE
             //     (witnessed) deficit, not the raw one — see above.

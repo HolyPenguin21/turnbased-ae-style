@@ -101,10 +101,8 @@ namespace Game.Ai.V2
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx);
             result.Demands += demands.Count;
 
-            ReconAirReservationState airReservation =
-                ReconAirReservationRegistry.ForTurn(player, snapshot.TurnNumber);
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, (snapshot.Self?.ActionPoints ?? 0) - airReservation.ProtectedAp), radar);
+                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0), radar);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments);
             result.CardsPlayed += phaseA.CardsPlayed;
@@ -134,7 +132,7 @@ namespace Game.Ai.V2
             outcomeLedger.RegisterCommitments(commitments);
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
-                commitments, player, apLedger, airReservation.ProtectedEnergy, airReservation.ProtectedAp);
+                commitments, player, apLedger);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();
@@ -210,7 +208,7 @@ namespace Game.Ai.V2
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
 
             // ARCH-02 §35 — terminal air-recon as its own plan-then-execute stage (see Pipeline).
-            ReconAirReservationPrepass.ReleaseProtection(player);
+            // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
             AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
             var reactionAirResult = new AirReconExecutionResult();
             yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult);

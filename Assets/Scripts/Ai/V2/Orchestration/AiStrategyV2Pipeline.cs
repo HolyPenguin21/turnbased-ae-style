@@ -468,15 +468,12 @@ namespace Game.Ai.V2
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
 
-            // AI-RECON-01 — Recon Air Reservation / Capacity Prepass. BEFORE DemandLayer + Phase A:
-            //     pins which concrete air actor / launch subset counts as guaranteed Observation
-            //     capacity this turn and protects its AP/Energy (via AiResourceReservation's V2 hook
-            //     + the ledger debit below + the allocator's physical Energy pool) so Phase A can't
-            //     spend it out from under the capacity model. Ownership + resource protection only —
-            //     no route/target selection (AIR-01) or multi-turn sortie planning (AIR-02).
+            // AI-RECON-01 (round 3) — Recon Air STRUCTURAL Capacity Prepass. BEFORE DemandLayer: a
+            //     read-only sizing signal (how many air-observation lanes could plausibly fly) that
+            //     ReconCapacitySnapshot uses the same way it uses ground supply counts. No AP/Energy
+            //     is reserved here any more, and no concrete actor is claimed — see
+            //     ReconAirReservation.cs header for why the old pre-ledger protection was removed.
             ReconAirReservationPrepass.Run(snapshot, player, root, ctx, activeIntents, actorCommitments, reconObjectives);
-            ReconAirReservationState airReservation =
-                ReconAirReservationRegistry.ForTurn(player, snapshot.TurnNumber);
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
             //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
@@ -487,13 +484,11 @@ namespace Game.Ai.V2
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
             //     debits the requesting axis here; the mission allocator then seeds its slices from
-            //     this same ledger — NO second radar split.
-            // AI-RECON-01 — the reserved recon-air launch AP is protected off the top, exactly like
-            // the HousekeepingManager reserve, so Phase A's per-axis entitlement never includes it.
+            //     this same ledger — NO second radar split. Round 3 — no recon-air AP carve-out any
+            //     more: Recon Air no longer gets a pre-funding reservation Phase A can't touch.
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, (snapshot.Self?.ActionPoints ?? 0) - airReservation.ProtectedAp), radar);
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}"
-                + (airReservation.ProtectedAp > 0f ? $" (recon-air protAp {airReservation.ProtectedAp:0.#})" : ""));
+                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0), radar);
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
@@ -553,7 +548,7 @@ namespace Game.Ai.V2
             // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
             //    many packing -> ordered tentative allocation. No second radar split.
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
-                apLedger, airReservation.ProtectedEnergy, airReservation.ProtectedAp);
+                apLedger);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
 
@@ -651,10 +646,9 @@ namespace Game.Ai.V2
             var executed = new List<ExecutionResult>();
             yield return TaskExecutor.Execute(player, root, ctx, provisioned, executed, snapshot, exploreProposalFoci);
 
-            // ARCH-02 §35 — terminal air-recon is its OWN stage: lift the recon-air resource
-            // protection (so a sortie's own CanAffordLaunch sees the AP/Energy held FOR it), PLAN
-            // the pass, then EXECUTE the plan. TaskExecutor no longer touches air recon.
-            ReconAirReservationPrepass.ReleaseProtection(player);
+            // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
+            // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
+            // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
             AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot);
             var airReconResult = new AirReconExecutionResult();
             yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult);

@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Aviation;
-using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -11,30 +10,33 @@ using Game.Units;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AI-RECON-01 — RECON AIR RESERVATION / CAPACITY PREPASS
+    //  AI-RECON-01 — RECON AIR STRUCTURAL CAPACITY PREPASS  (round 3 rework)
     // ===========================================================================================
-    //  Runs BEFORE DemandLayer and StrategicManager Phase A. It answers ONE question:
+    //  Runs BEFORE DemandLayer. It answers ONE question, READ-ONLY:
     //
-    //     "Which concrete air actor / launch subset do we count as GUARANTEED Observation capacity
-    //      this turn, and how much AP / Energy must be protected so that capacity really exists?"
+    //     "If nothing else changes, how many air-observation lanes could plausibly fly this turn?"
     //
     //  It does NOT do strategic air targeting, route scoring or multi-turn sortie planning — that
-    //  is AIR-01 / AIR-02. Its only outputs are:
-    //    · the set of reserved air actor ids + a guaranteed-lane count that ReconCapacitySnapshot
-    //      (and therefore DemandLayer's "do I still need another ground Scout?" decision) trusts
-    //      INSTEAD of a fresh, unpinned ReconAirCapacityPolicy re-evaluation;
-    //    · ProtectedAp / ProtectedEnergy, exposed through AiResourceReservation.V2ExtraReservation
-    //      so every V2 spend path that already calls AiResourceReservation.Available()
-    //      (GenerationSource, MaterializationCandidateBuilder, StrategicMaintenancePolicy,
-    //      StrategicManager.ReservesOkAfterChain, ReconAirCapacityPolicy itself) nets it out —
-    //      Phase A can no longer spend the sortie's activation resources out from under the
-    //      capacity model. The pipeline also debits ProtectedAp off the AxisBudgetLedger and the
-    //      allocator's physical Energy pool.
+    //  is AIR-01 / AIR-02. Its only output is a structural signal ReconCapacitySnapshot uses for
+    //  SIZING (GuaranteedObservationLanes / ReservedAirborneWings / ReservedLaunchSorties) — the
+    //  same "how much of this is there ANY usable actor for" question ReconAssignmentPlanner.
+    //  MeasureCapacity answers for ground, generalised to air.
     //
-    //  The protection is CLEARED by the orchestrator right before the terminal air-recon stage
-    //  (AirReconPlanner.Plan -> ReconAirExecutor.Execute), so Strategic Manager Phase B sees the
-    //  real remaining pool (the sortie either launched — a real spend already reflected in
-    //  PlayerRoot — or it did not and there is no more air work this turn).
+    //  ROUND 3 CHANGE (Problem 1 — see AI-V2-RECON-CONSOLIDATION round 3 review): this prepass used
+    //  to ALSO reserve concrete AP/Energy for its picks — ProtectedAp/ProtectedEnergy, netted out of
+    //  AiResourceReservation.Available() and subtracted from AxisBudgetLedger/ResourceAllocator
+    //  BEFORE either existed for the turn. That was a second, pre-funding ledger living outside the
+    //  Generic Funding stage — exactly the "two vertical pipelines" problem this round removes.
+    //  There is no longer any resource protection here: Recon Air's AP/Energy is not reserved ahead
+    //  of Phase A. A structural read here that promised capacity Phase A later spent was accepted as
+    //  the correct trade — same failure mode a ground Scout has always had (funded, then the actor
+    //  or its resources are gone by Provisioning time) — see the round-3 report for the precise risk
+    //  this reopens.
+    //
+    //  Concrete air actor / launch-subset SELECTION for real execution remains the terminal stage's
+    //  job (AirReconPlanner.Plan -> ReconAirExecutor.Execute, unchanged by this round) — it re-picks
+    //  fresh at the end of the turn against the real, current world state, which is a stronger
+    //  guarantee than trusting a pre-Demand pick that could be hours-of-turn-logic stale by then.
     // ===========================================================================================
     internal sealed class ReconAirReservationState
     {
@@ -46,8 +48,6 @@ namespace Game.Ai.V2
         public int ReservedAirborneWings;
         public int ReservedLaunchSorties;
         public int GuaranteedObservationLanes;
-        public float ProtectedAp;
-        public float ProtectedEnergy;
         public string Explain = "no air reservation";
 
         public void Reset(int turn)
@@ -58,21 +58,8 @@ namespace Game.Ai.V2
             ReservedAirborneWings = 0;
             ReservedLaunchSorties = 0;
             GuaranteedObservationLanes = 0;
-            ProtectedAp = 0f;
-            ProtectedEnergy = 0f;
             Explain = "no air reservation";
         }
-
-        // Zero the resource protection but keep the reservation identity/counts for logging +
-        // capacity accounting for the rest of the turn.
-        public void ClearProtection()
-        {
-            ProtectedAp = 0f;
-            ProtectedEnergy = 0f;
-        }
-
-        public int ProtectedFor(ResourceType type) =>
-            type == ResourceType.Energy ? UnityEngine.Mathf.CeilToInt(ProtectedEnergy) : 0;
     }
 
     internal static class ReconAirReservationRegistry
@@ -110,13 +97,9 @@ namespace Game.Ai.V2
             int turn = snap?.TurnNumber ?? 0;
             state.Reset(turn);
 
-            // Install (or refresh) the shared spend-path hook every turn V2 owns.
-            AiResourceReservation.V2ExtraReservation = (p, t) =>
-                ReconAirReservationRegistry.ForTurn(p, turn).ProtectedFor(t);
-
             if (player == null || root == null)
             {
-                AiDebugLog.Write("[AI][V2][ReconAirRes] no player/root — nothing reserved");
+                AiDebugLog.Write("[AI][V2][ReconAirRes] no player/root — nothing structurally available");
                 return;
             }
 
@@ -181,8 +164,6 @@ namespace Game.Ai.V2
                     break;
                 airborneProbed++;
                 slotsUsed++;
-                state.ProtectedAp += wing.Ap;
-                state.ProtectedEnergy += wing.Energy;
                 apLeft -= wing.Ap;
 
                 if (apLeft >= 0 && SlotWouldFly(player, root, ctx, snap, mode, wing, reservedEnergyThisPass,
@@ -219,8 +200,6 @@ namespace Game.Ai.V2
                 apLeft -= slot.Ap;
                 energyLeft -= slot.Energy;
                 reservedEnergyThisPass += slot.Energy;
-                state.ProtectedAp += slot.Ap;
-                state.ProtectedEnergy += slot.Energy;
                 state.ReservedLaunchSorties++;
                 slotsUsed++;
                 if (slot.ActorId.HasValue)
@@ -237,12 +216,12 @@ namespace Game.Ai.V2
             }
 
             state.GuaranteedObservationLanes = state.ReservedAirborneWings + state.ReservedLaunchSorties;
-            state.Explain = $"guaranteedObsLanes={state.GuaranteedObservationLanes} "
+            state.Explain = $"structuralObsLanes={state.GuaranteedObservationLanes} "
                 + $"(airborne {state.ReservedAirborneWings}/{airborneProbed} stuck {airborneStuck} + "
                 + $"launch {state.ReservedLaunchSorties}/{launchProbed} rejected {launchRejected}) "
-                + $"protAp={state.ProtectedAp:0.#} protEnergy={state.ProtectedEnergy:0.#} "
                 + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
-                + $"apLeft={apLeft} energyLeft={energyLeft} mode={mode}";
+                + $"apLeft={apLeft} energyLeft={energyLeft} mode={mode} (read-only sizing signal — "
+                + "no AP/Energy reserved; real actor pick happens fresh at terminal air-recon execution)";
             AiDebugLog.Write($"[AI][V2][ReconAirRes] {state.Explain}");
         }
 
@@ -378,15 +357,5 @@ namespace Game.Ai.V2
             return proj;
         }
 
-        // Called after TaskExecutor's terminal air fallback — drop the resource protection so
-        // Phase B / telemetry see the real remaining pool.
-        public static void ReleaseProtection(PlayerSetupData player)
-        {
-            ReconAirReservationState s = ReconAirReservationRegistry.GetOrCreate(player);
-            if (s.ProtectedAp > 0f || s.ProtectedEnergy > 0f)
-                AiDebugLog.Write($"[AI][V2][ReconAirRes] release protection (protAp {s.ProtectedAp:0.#} "
-                    + $"protEnergy {s.ProtectedEnergy:0.#}) after terminal air fallback");
-            s.ClearProtection();
-        }
     }
 }

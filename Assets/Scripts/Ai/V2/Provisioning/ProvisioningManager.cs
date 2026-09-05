@@ -92,6 +92,11 @@ namespace Game.Ai.V2
             new Dictionary<StableMissionKey, ProvisionedMission>();
         private readonly Dictionary<StableMissionKey, ScoutExecutionCandidate> _assignment =
             new Dictionary<StableMissionKey, ScoutExecutionCandidate>();
+        // Round 3 (Problem 2) — the rejection reason ReconAssignmentPlanner.AssignFunded already
+        // computed for every Scout mission that got no actor this pass. ClassifyNoAssignment below
+        // is now a pure translation of this into a ProvisionFailure — it never re-derives it.
+        private readonly Dictionary<StableMissionKey, ScoutAssignmentFailureReason> _assignmentRejections =
+            new Dictionary<StableMissionKey, ScoutAssignmentFailureReason>();
         private readonly Dictionary<StableMissionKey, int> _raidAssignment =
             new Dictionary<StableMissionKey, int>();
 
@@ -106,15 +111,22 @@ namespace Game.Ai.V2
             ClaimedArmyIds.Add(m.MoverArmyId);
         }
 
-        internal void SetAssignment(Dictionary<StableMissionKey, ScoutExecutionCandidate> a)
+        internal void SetAssignment(ReconAssignmentResult result)
         {
             _assignment.Clear();
-            foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in a)
+            _assignmentRejections.Clear();
+            if (result == null) return;
+            foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in result.Assigned)
                 _assignment[kv.Key] = kv.Value;
+            foreach (KeyValuePair<StableMissionKey, ScoutAssignmentFailureReason> kv in result.Rejected)
+                _assignmentRejections[kv.Key] = kv.Value;
         }
 
         internal bool TryGetAssignedExecution(StableMissionKey k, out ScoutExecutionCandidate exec) =>
             _assignment.TryGetValue(k, out exec);
+
+        internal bool TryGetAssignmentRejection(StableMissionKey k, out ScoutAssignmentFailureReason reason) =>
+            _assignmentRejections.TryGetValue(k, out reason);
 
         internal void SetRaidAssignment(Dictionary<StableMissionKey, int> a)
         {
@@ -157,9 +169,9 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
-            Dictionary<StableMissionKey, ScoutExecutionCandidate> map = ReconAssignmentPlanner.AssignFunded(
+            ReconAssignmentResult result = ReconAssignmentPlanner.AssignFunded(
                 session.Snapshot, ctx, player, open, session.ClaimedArmyIds);
-            session.SetAssignment(map);
+            session.SetAssignment(result);
         }
 
         private static void PrepareRaidAssignments(ProvisioningSession session, TentativeAllocation allocation)
@@ -307,7 +319,7 @@ namespace Game.Ai.V2
             bool refresh = ReconScoutKinds.IsRefresh(target.Kind);
 
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
-                return ClassifyNoAssignment(session, player, ctx, target, surveil);
+                return ClassifyNoAssignment(session, key, target);
 
             int moverArmyId = exec.Army.ArmyId;
             ArmyData army = ResolveArmy(player, moverArmyId);
@@ -400,54 +412,36 @@ namespace Game.Ai.V2
             });
         }
 
+        // Round 3 (Problem 2) — PURE translation of ReconAssignmentPlanner.AssignFunded's already-
+        // computed rejection reason into a ProvisionFailure. No eligibility / route / vantage
+        // re-derivation happens here any more — "why couldn't this job be assigned" has exactly ONE
+        // owner, ReconAssignmentPlanner, and this is just its vocabulary mapped onto Provisioning's.
         private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
-            PlayerSetupData player, AiTurnContext ctx, ScoutMissionTarget target, bool surveil)
+            StableMissionKey key, ScoutMissionTarget target)
         {
-            WorldSnapshot snap = session.Snapshot;
             bool needStealth = target.Stealth == StealthRequirement.Required;
-
-            if (!ReconAssignmentPlanner.HasStructuralCandidate(snap, target))
-                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                    "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
-
-            if (!surveil)
-            {
-                // Spec §3/§10 — an unassigned ground Explore/Refresh is only MoverContended if a
-                // capable UNCLAIMED scout that could actually take a safe first step toward the
-                // focus was preferred elsewhere. If unclaimed eligible scouts exist but NONE can
-                // reach the focus this turn, that is NoExecutableStep, not contention — so a stuck
-                // impossible Refresh never reads as if it stole an executable Explore's mover.
-                var freeEligible = ReconAssignmentPlanner.EligibleMovers(snap, target, session.ClaimedArmyIds).ToList();
-                if (freeEligible.Count > 0 && ctx?.Map != null)
-                {
-                    bool anyReachable = freeEligible.Any(mv =>
-                    {
-                        ArmyData live = ResolveArmy(player, mv.ArmyId);
-                        return live != null
-                            && SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
-                    });
-                    if (!anyReachable)
-                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                            $"eligible scout(s) exist but none can take a safe first step toward "
-                            + $"({target.FocusHex.Q},{target.FocusHex.R}) this turn"));
-                }
+            if (!session.TryGetAssignmentRejection(key, out ScoutAssignmentFailureReason reason))
+                // Should not happen — AssignFunded rejects or accepts every mission it is handed.
+                // Fail safe rather than re-deriving anything ourselves.
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    "a capable solo Recce exists but is spent / activated / taken this cycle"));
+                    $"{key} had no assignment result this pass (assignment/provisioning desync)"));
+
+            switch (reason)
+            {
+                case ScoutAssignmentFailureReason.NoMoverExists:
+                    return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                        "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
+                case ScoutAssignmentFailureReason.NoObservationVantage:
+                    return ProvisioningResult.Fail(ProvisionFailure.NoObservationVantage(
+                        $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})"));
+                case ScoutAssignmentFailureReason.NoExecutableStep:
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"eligible scout(s)/vantage exist but none reachable this turn toward "
+                        + $"({target.FocusHex.Q},{target.FocusHex.R})"));
+                default:
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        "a capable solo Recce exists but is spent / activated / claimed this cycle"));
             }
-
-            bool anyStructuralVantage = ReconAssignmentPlanner.StructuralCandidates(snap, target)
-                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
-            if (!anyStructuralVantage)
-                return ProvisioningResult.Fail(ProvisionFailure.NoObservationVantage(
-                    $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})"));
-
-            bool anyEligibleHasVantage = ReconAssignmentPlanner.EligibleMovers(snap, target, session.ClaimedArmyIds)
-                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
-            return anyEligibleHasVantage
-                ? ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    "a vantage exists but no safe first step to it this turn"))
-                : ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    "mover+vantage exist but every such scout is spent / claimed this cycle"));
         }
 
         private static bool HasFresherSighting(PlayerSetupData player, int trackedArmyId, int baselineTurn)
