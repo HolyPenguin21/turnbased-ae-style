@@ -507,30 +507,42 @@ namespace Game.Ai.V2
                 // ReconAssignmentPlanner.AssignFunded now offers (detail.AirborneWings first, then
                 // ready spares); the old code accepted only the first and rejected every continuing
                 // wing an incumbent ScoutIntent had just re-won a FRESH funded mission for, so the
-                // continuation architecture was wired end to end but never executable:
-                //   · ReadyAirExisting      — on an owned airfield, no live sortie: about to start one.
-                //   · ContinuingAirExisting — already airborne with a durable ReconPatrolState (the
-                //     exact predicate ReconAirCapacityPolicy.EvaluateDetailed admits to AirborneWings).
-                //     It is mid-sortie by definition, so the ready-idle-wing shape (IsOwnedAirfieldAt /
-                //     no live AirSortieRegistry entry) must NOT be demanded of it. It is rejected only
-                //     when forced Return/Hold-only this turn — that lifecycle is Mandatory Flight
-                //     Recovery's (ReconAirExecutor flies recovery unconditionally, outside funding),
-                //     never strategic Recon progress.
+                // continuation architecture was wired end to end but never executable. The two states
+                // are EXPLICITLY MUTUALLY EXCLUSIVE — computed once from one live-sortie lookup, not
+                // an airfield check in one branch and a registry check in the other:
+                //   · ReadyAirExisting      = own airfield  + NO live sortie: about to start one.
+                //   · ContinuingAirExisting = airborne + a LIVE Recon sortie + a durable
+                //     ReconPatrolState + a non-null projected sortie state whose phase is not
+                //     Return/Hold. It is mid-sortie by definition, so the ready-idle-wing shape is not
+                //     demanded of it; it is rejected only when forced into recovery this turn (that
+                //     lifecycle is Mandatory Flight Recovery's — ReconAirExecutor flies it
+                //     unconditionally, outside funding — never strategic Recon progress). A null
+                //     projected state is NOT a silent pass: no valid live Recon sortie => reject.
                 bool onOwnAirfield = AviationRules.IsOwnedAirfieldAt(wing.Hex, player);
-                bool continuing = !onOwnAirfield && wing.Controller != null
-                    && ReconPatrolStateRegistry.TryGet(player, wing.Id, out _);
+                AirSortie liveSortie = AirSortieRegistry.ForArmy(player, wing);
+                bool hasPatrolState = ReconPatrolStateRegistry.TryGet(player, wing.Id, out _);
+
+                bool ready = onOwnAirfield && liveSortie == null;
+                bool continuing = !onOwnAirfield
+                    && wing.Controller != null
+                    && liveSortie != null
+                    && liveSortie.Kind == AirSortieKind.Recon
+                    && hasPatrolState;
+
                 if (continuing)
                 {
                     ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, wing);
-                    if (projected != null
-                        && (projected.Phase == ReconAirPhase.Return || projected.Phase == ReconAirPhase.Hold))
+                    if (projected == null)
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"continuing air actor #{wing.Id} has no valid live Recon sortie state"));
+                    if (projected.Phase == ReconAirPhase.Return || projected.Phase == ReconAirPhase.Hold)
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"continuing air actor #{wing.Id} is Return/Hold-bound this turn (recovery, not fresh Recon progress)"));
                 }
-                else if (!onOwnAirfield || AirSortieRegistry.ForArmy(player, wing) != null)
+                else if (!ready)
                 {
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"assigned air actor #{exec.Army.ArmyId} is neither a ready standalone wing nor a valid continuing sortie"));
+                        $"assigned air actor #{wing.Id} is neither a ready standalone wing nor a valid continuing Recon sortie"));
                 }
                 moverArmyId = wing.Id;
             }
