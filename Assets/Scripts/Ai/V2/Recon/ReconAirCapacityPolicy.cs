@@ -24,12 +24,11 @@ namespace Game.Ai.V2
     //    · AiAirSortiePlanner.CanAffordLaunch semantics — AP + reservation-net Energy;
     //    · a ready standalone wing is on an owned airfield with NO AiTask and MP left.
     //
-    //  Evaluate() runs ONE greedy budget pass: the post-reservation AP/Energy budget, minus the
-    //  first-activation Energy airborne recon/strike wings still owe, is spent slot by slot across
-    //  (ready standalone wings, then storage launch subsets). Each accepted slot consumes its own
-    //  AP + Energy from the local budget, so the same AP/Energy is never counted for two aircraft,
-    //  and the number of slots is bounded by MaxAirReconActorsPerTurn minus the slots already
-    //  consumed by in-flight air work.
+    //  EvaluateDetailed() enumerates the concrete air slots (airborne wings, then ready standalone
+    //  wings, then storage launch subsets) plus a loose WorldAnalysis-only fallback count from a
+    //  raw-stockpile greedy. It is STRUCTURAL throughout: no hand/deck/income reserve, no
+    //  "is spending it worthwhile" judgement. That strategic decision has exactly one owner —
+    //  ProvisioningManager.AirSortieReservationAdmission -> AviationSortieReservationEvaluator.
     // ===========================================================================================
     internal readonly struct ReconAirObservationCapacity
     {
@@ -75,8 +74,8 @@ namespace Game.Ai.V2
         // runs the ONE authoritative greedy (cumulative AP/Energy + AIR-01 route + energy policy)
         // so a route-invalid earlier candidate cannot hide a valid later aircraft.
         public readonly List<AirObservationSlot> SpareCandidatesInOrder = new List<AirObservationSlot>();
-        public int ApBudgetBase;                              // root.ActionPoints
-        public int EnergyBudgetBase;                          // root Energy − ReconAirEnergyPolicy hard reserve
+        public int ApBudgetBase;                              // root.ActionPoints (structural — no strategic reserve)
+        public int EnergyBudgetBase;                          // root Energy stockpile (structural — no strategic reserve)
         public int AirborneReconWings => AirborneWings.Count;
         // Loose upper bound for the WorldAnalysis fallback only (real capacity is what the prepass pins).
         public int SpareSorties;
@@ -136,15 +135,13 @@ namespace Game.Ai.V2
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
-            // Budget bases the prepass runs its ONE greedy against. Energy base nets out the
-            // ReconAirEnergyPolicy hard reserve (committed air + playable high-value hand card +
-            // near-term draw). Read the stockpile directly (like ReconAirEnergyPolicy) — NOT
-            // AiResourceReservation.Available, whose V2 hook is the recon-air reservation itself.
+            // Budget bases for the loose WorldAnalysis fallback greedy below. STRUCTURAL only —
+            // raw physical stockpile, NO strategic hand/deck/income reserve. Whether spending Energy
+            // on a sortie is worthwhile this turn is decided exclusively at Provisioning time
+            // (ProvisioningManager.AirSortieReservationAdmission -> AviationSortieReservationEvaluator);
+            // capacity measurement must not pre-judge it or the two authorities drift.
             detail.ApBudgetBase = Mathf.Max(0, root.ActionPoints);
-            ReconAirEnergyDecision reserveProbe = ReconAirEnergyPolicy.Evaluate(player, root, null, 0, 999f, -1);
-            int energyReserve = reserveProbe.Committed + reserveProbe.ProtectedHand + reserveProbe.ProtectedDeck;
-            detail.EnergyBudgetBase = Mathf.Max(0,
-                Mathf.Max(0, root.GetResource(ResourceType.Energy)) - energyReserve);
+            detail.EnergyBudgetBase = Mathf.Max(0, root.GetResource(ResourceType.Energy));
 
             // Spare candidates in the EXACT order ReconAirExecutor tries them: ready standalone
             // wings first (executor sort), then one hangar launch subset per owned airfield in
@@ -176,12 +173,13 @@ namespace Game.Ai.V2
                     subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
             }
 
-            // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route.
-            // EnergyBudgetBase already nets the airborne wings' owed Energy via the policy's
-            // `committed` term — do NOT subtract it again. AP is not pre-committed, so it is.
+            // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route,
+            // no strategic reserve — just "how many more sorties do the raw stockpile + slot cap
+            // physically allow". Subtract the airborne wings' still-owed first-activation AP/Energy
+            // so the same resources are not counted twice.
             int spareSlots = Mathf.Max(0, MaxAirReconActorsPerTurn - detail.AirborneWings.Count);
             int apLeft = detail.ApBudgetBase - detail.AirborneWings.Sum(w => w.Ap);
-            int energyLeft = detail.EnergyBudgetBase;
+            int energyLeft = detail.EnergyBudgetBase - detail.AirborneWings.Sum(w => w.Energy);
             foreach (AirObservationSlot slot in detail.SpareCandidatesInOrder)
             {
                 if (detail.SpareSorties >= spareSlots) break;

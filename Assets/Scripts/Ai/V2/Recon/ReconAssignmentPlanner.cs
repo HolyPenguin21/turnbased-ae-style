@@ -318,7 +318,7 @@ namespace Game.Ai.V2
 
                     list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.Value.ActivationAp),
                         1, 0, 0f, 0, false, choice.Value.ActivationAp, ScoutExecutorKind.AirExisting,
-                        requiredEnergy: choice.Value.ActivationEnergy));
+                        requiredEnergy: choice.Value.ActivationEnergy, routeScore: choice.Value.Score));
                 }
                 else
                 {
@@ -344,7 +344,8 @@ namespace Game.Ai.V2
 
                     list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.Value.ActivationAp),
                         1, 0, 0f, 0, false, choice.Value.ActivationAp, ScoutExecutorKind.AirLaunch,
-                        slot.AirfieldHex, subset, requiredEnergy: choice.Value.ActivationEnergy));
+                        slot.AirfieldHex, subset, requiredEnergy: choice.Value.ActivationEnergy,
+                        routeScore: choice.Value.Score));
                 }
             }
         }
@@ -380,8 +381,8 @@ namespace Game.Ai.V2
             // AppendAirCandidates). Computed once so the MaxAirReconActorsPerTurn ceiling is a
             // property of the WHOLE batch, not silently re-granted per mission.
             //
-            // RECON-AIR-03 (Problem: filter-before-take) — feasibility (SlotWouldFly) MUST run
-            // BEFORE `.Take(remaining)`, never after: taking first and filtering second lets an
+            // RECON-AIR-03 (Problem: filter-before-take) — feasibility (EvaluateAirStructuralFeasibility)
+            // MUST run BEFORE `.Take(remaining)`, never after: taking first and filtering second lets an
             // early infeasible candidate silently consume one of the `remaining` slots that a later,
             // genuinely valid candidate needed — the later candidate is truncated off the list
             // before its feasibility is ever checked. `BuildFeasibleAirPool` is `.Where(...).Take(...)`.
@@ -843,8 +844,8 @@ namespace Game.Ai.V2
             // Round 7 (Problem 2) — STRUCTURAL greedy, in the executor's own order. CAPABILITY
             // != FUNDING: this witness never consults root.ActionPoints, EnergyBudgetBase,
             // slot.Ap/Energy-vs-budget or AviationSortieReservationEvaluator.ShouldReserve — that
-            // activation-economics question lives only in ReconAirReservationPrepass.
-            // EvaluateAirActivationEconomics, at Provisioning time.
+            // activation-economics question lives only in ProvisioningManager.
+            // AirSortieReservationAdmission, at Provisioning time.
             //
             // Round 8 (Problem 2) — "structural" is NOT "structural somewhere". A structurally
             // flyable wing counts as Observation capacity only if it makes GENUINE progress toward

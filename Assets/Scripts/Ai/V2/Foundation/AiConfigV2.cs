@@ -876,18 +876,16 @@ namespace Game.Ai.V2
         public const float airReconSectorCoveredNoveltyFloor = 1.0f;
 
         // =======================================================================================
-        //  AIR RECON ENERGY OPPORTUNITY COST  (ReconAirEnergyPolicy, spec §40–§44)
-        //  Splits the Energy stock into committed (other in-flight AirRecon activations) +
-        //  protected (a playable high-value hand card's need) + spendable, so a routine refresh
-        //  sortie can no longer eat Energy a card / research needs just because it is individually
-        //  affordable. First-pass; tune against real AiDebug.log [Recon][Air][Energy] lines.
+        //  AIR RECON ENERGY-PRESSURE MEASUREMENTS  (ReconAirEnergyPolicy helpers, spec §41–§44)
+        //  Tunables for the generic hand/deck Energy-pressure reads consumed by the ONE canonical
+        //  sortie-reservation decision (AviationSortieReservationEvaluator). ReconAirEnergyPolicy no
+        //  longer makes an admission decision of its own, so the retired soft-opportunity-term
+        //  tunables (income horizon / opp weight / min utility) are gone — see the
+        //  AVIATION SORTIE RESERVATION EVALUATOR block below for that decision's tunables.
         // =======================================================================================
-        public const float reconAirEnergyExtraHandFraction = 0.35f; // weight on playable hand cards beyond the single largest when computing ProtectedEnergy
+        public const float reconAirEnergyExtraHandFraction = 0.35f; // weight on playable hand cards beyond the single largest when computing ProtectedHandEnergy
         public const int reconAirEnergyHighValueMinCost = 2;        // a playable hand card's Energy cost must be at least this to count as "high value" worth protecting (spec §41.2)
         public const float reconAirEnergyDeckDrawFraction = 0.10f;  // low weight on the Energy the turn's likely next draw would need (spec §44 — never the whole remaining deck)
-        public const float reconAirEnergyIncomeHorizon = 3f;        // turns of Energy income folded into the effective spendable pool for the soft opportunity term
-        public const float reconAirEnergyOppWeight = 0.5f;          // how hard the soft opportunity term pulls final utility down
-        public const float reconAirEnergyMinUtility = 0f;           // launch only when informationValue - oppWeight*oppCost clears this (hard reserve already handled separately)
 
         // =======================================================================================
         //  AVIATION SORTIE RESERVATION EVALUATOR  (AviationSortieReservationEvaluator)

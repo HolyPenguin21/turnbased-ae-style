@@ -174,16 +174,10 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
-                lp.LaunchEnergy, lp.Score, excludeArmyId: -1);
-            AiDebugLog.Write(energy.ToLog($"airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R})"));
-            if (!energy.Allowed)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
-                    + "— energy reserve now rejects the planned launch; skip, no replan");
-                ReportNoLaunch(ExecutionStopReason.MoverLost);
-                yield break;
-            }
+            // No strategic Energy re-evaluation here. ProvisioningManager.AirSortieReservationAdmission
+            // already decided (once, this turn) that this sortie is worth its Energy. Execution only
+            // enforces LIVE HARD gates — CanAffordLaunch (above), and CanIssueMoveNow / AA / safe
+            // return downstream in AirReconStepDirector.
 
             bool firstVisitedBefore = VisionSystem.IsVisited(player, lp.FirstStepHex);
             var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)

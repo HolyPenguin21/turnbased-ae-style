@@ -58,6 +58,13 @@ namespace Game.Ai.V2
         // figure for AirExisting (the wing's own ActivationEnergyCost) / AirLaunch (Σ the launch
         // subset's LaunchEnergyCost), the SAME role RequiredAp already plays for AP.
         public readonly float RequiredEnergy;
+        // The mission-specific AIR-01 route score Assignment already resolved for THIS candidate
+        // against the bound mission target (AppendAirCandidates: Pick/PickFromStorage anchored at
+        // the mission's FocusHex/vantage, then MakesGenuineProgress). 0 for Ground. This is the
+        // ReconInformationValue the single strategic admission owner (ProvisioningManager.
+        // AirSortieReservationAdmission -> AviationSortieReservationEvaluator) consumes — no layer
+        // below Provisioning re-probes a route to re-derive it.
+        public readonly float RouteScore;
 
         // Round 4 — executor identity. Ground candidates (and AirExisting) carry Army != null and
         // ExecutorKind defaults to Ground for every pre-round-4 call site (optional params). An
@@ -70,7 +77,7 @@ namespace Game.Ai.V2
         public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
             ScoutExecutorKind executorKind = ScoutExecutorKind.Ground, HexCoord airfieldHex = default,
-            IReadOnlyList<UnitData> launchSubset = null, float requiredEnergy = 0f)
+            IReadOnlyList<UnitData> launchSubset = null, float requiredEnergy = 0f, float routeScore = 0f)
         {
             Army = army;
             ExecutionHex = executionHex;
@@ -85,6 +92,7 @@ namespace Game.Ai.V2
             AirfieldHex = airfieldHex;
             LaunchSubset = launchSubset;
             RequiredEnergy = requiredEnergy;
+            RouteScore = routeScore;
         }
 
         public bool IsStealthCapableMover => Army != null && (Army.IsHidden || Army.CanEnterStealth);

@@ -463,10 +463,11 @@ namespace Game.Ai.V2
         // real — ClaimedAp/ClaimedEnergy are no longer hard-coded 0. If it does not fit, this returns
         // the ordinary EnvelopeTooSmall failure and lets the existing repack/reprice loop
         // (ResourceAllocator.RegisterProvisionFailure) handle it exactly like ground already does —
-        // no separate air ledger. The terminal air execution stage (ReconAirEnergyPolicy /
-        // AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow) still re-checks against the live
-        // post-ground-movement world state before actually spending anything — this claim is the
-        // FUNDING-side accounting, not a bypass of that final live gate.
+        // no separate air ledger. The terminal air execution stage still re-checks LIVE HARD gates
+        // (AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow / AA / safe return) against the
+        // post-ground-movement world state before actually spending anything — but it no longer
+        // re-runs any strategic hand/deck/income economics: that decision is made once, here, by
+        // AirSortieReservationAdmission.
         private static ProvisioningResult ProvisionAir(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, ScoutExecutionCandidate exec,
             ScoutMissionTarget target, StableMissionKey key)
@@ -599,17 +600,17 @@ namespace Game.Ai.V2
                     $"turn Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
                     + $"{N(liveEnergyLeft)} left after earlier claims this pass"));
 
-            // AI-MGR — strategic sortie-reservation admission. Everything above (CanAffordLaunch, the
-            // funded-envelope comparison, the cumulative live AP/Energy checks) is HARD feasibility:
-            // "enough resources exist right now". This is the separate strategic question the air-recon
-            // design defers to Provisioning time (ReconAirReservation.cs — "Provisioning's live sanity
-            // check before actually claiming resources"): even when Energy is technically sufficient, is
-            // a recon sortie the right thing to spend it on THIS turn versus keeping it for hand/deck
-            // card pressure? The one canonical staged decision (Resource Outlook -> Hand/Deck Energy
-            // Pressure -> Recon Value -> Reserve) lives in AviationSortieReservationEvaluator, reached
-            // here through ReconAirReservationPrepass.EvaluateAirActivationEconomics — no second
-            // evaluator, no resurrected prepass. Recomputed every turn: an idle aircraft never yields a
-            // standing reservation.
+            // AI-MGR — the SINGLE strategic sortie-reservation admission. Everything above
+            // (CanAffordLaunch, the funded-envelope comparison, the cumulative live AP/Energy checks)
+            // is HARD feasibility: "enough resources exist right now". This is the one strategic
+            // question — "is THIS exact sortie worth paying for this turn versus keeping the Energy
+            // for hand/deck card pressure?" — and it is answered HERE and nowhere else. The canonical
+            // staged decision (Resource Outlook -> Hand/Deck Energy Pressure -> Recon Value ->
+            // Reserve) is AviationSortieReservationEvaluator, fed the exact per-actor AP/Energy and
+            // the mission-specific route score Assignment already resolved (ScoutExecutionCandidate),
+            // never a fresh air-route re-probe. Recomputed every turn: an idle aircraft never yields
+            // a standing reservation. Tactical layers below MUST NOT re-run this economics — they are
+            // limited to live hard/safety gates (CanAffordLaunch / CanIssueMoveNow / AA / safe return).
             ProvisionFailure? sortieDeclined = AirSortieReservationAdmission(
                 player, root, ctx, session, exec, moverArmyId, airfieldHex, realAp, realEnergy);
             if (sortieDeclined.HasValue)
@@ -637,14 +638,18 @@ namespace Game.Ai.V2
             });
         }
 
-        // Strategic (not physical) admission for an air-recon sortie whose HARD feasibility already
-        // passed inside ProvisionAir. Returns null to proceed with the reservation, or a
-        // SortieNotWorthwhile failure (RetryNextTurn, no cooldown) when the staged reservation
-        // decision declines this turn. The staged decision itself is the single canonical
-        // AviationSortieReservationEvaluator (Resource Outlook -> Hand/Deck Energy Pressure ->
-        // Recon Value -> Reserve), reached through ReconAirReservationPrepass.EvaluateAirActivation-
-        // Economics; this method only assembles its inputs from the already-resolved actor/cost and
-        // logs the outcome. No new evaluator, no per-turn reservation registry — recomputed every turn.
+        // The ONE strategic admission for an air-recon sortie whose HARD feasibility already passed
+        // inside ProvisionAir. Returns null to proceed with the reservation, or a SortieNotWorthwhile
+        // failure (RetryNextTurn, no cooldown) when the canonical evaluator declines this turn.
+        //
+        // No generic air-route re-probe happens here: Assignment (ReconAssignmentPlanner.
+        // AppendAirCandidates) already picked this exact actor/airfield AND proved a mission-specific
+        // route — the resulting AIR-01 route score and the exact per-actor AP/Energy ride in on the
+        // ScoutExecutionCandidate. This method feeds those figures, plus what earlier missions this
+        // pass have already claimed (session.ApClaimed/EnergyClaimed), straight into the canonical
+        // AviationSortieReservationEvaluator (Resource Outlook -> Hand/Deck Energy Pressure -> Recon
+        // Value -> Reserve), which reads live hand/deck/income Energy pressure itself. No new
+        // evaluator, no per-turn reservation registry — recomputed every turn.
         private static ProvisionFailure? AirSortieReservationAdmission(
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
             ScoutExecutionCandidate exec, int moverArmyId, HexCoord airfieldHex, float realAp, float realEnergy)
@@ -654,32 +659,19 @@ namespace Game.Ai.V2
                 return null;
 
             bool existing = exec.ExecutorKind == ScoutExecutorKind.AirExisting;
-            var slot = new AirObservationSlot(
-                existing ? moverArmyId : (int?)null,
-                existing ? default : airfieldHex,
-                Mathf.CeilToInt(Mathf.Max(0f, realAp)),
-                Mathf.CeilToInt(Mathf.Max(0f, realEnergy)));
-
-            ReconMode mode = AirReconModePolicy.RequestedMode(player, session.Snapshot);
-            AirStructuralFeasibility structural = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                player, ctx, session.Snapshot, mode, slot, System.Array.Empty<ReconSector>());
-
             string label = existing ? $"actor=#{moverArmyId}" : $"airfield=({airfieldHex.Q},{airfieldHex.R})";
-            if (!structural.Feasible)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][AviationReserveEval] {label} decision=SKIP "
-                    + "reason=no_worthwhile_route_this_turn");
-                return ProvisionFailure.SortieNotWorthwhile(
-                    $"air actor #{moverArmyId}: no worthwhile recon route this turn");
-            }
 
-            bool reserve = ReconAirReservationPrepass.EvaluateAirActivationEconomics(
-                player, root, ctx.Map, slot.Ap, structural,
+            AviationReservationDecision decision = AviationSortieReservationEvaluator.EvaluateRecon(
+                player, root, ctx.Map,
+                Mathf.CeilToInt(Mathf.Max(0f, realAp)),
+                Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
+                exec.RouteScore,
+                existing ? moverArmyId : -1,
                 Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
-                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)),
-                out AviationReservationDecision decision);
+                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)));
             AiDebugLog.Write(decision.ToLog(label));
-            return reserve
+
+            return decision.ShouldReserve
                 ? (ProvisionFailure?)null
                 : ProvisionFailure.SortieNotWorthwhile(
                     $"air actor #{moverArmyId}: sortie not worth reserving this turn ({decision.Reason})");

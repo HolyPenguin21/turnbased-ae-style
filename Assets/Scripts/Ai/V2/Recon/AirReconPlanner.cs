@@ -20,7 +20,6 @@ namespace Game.Ai.V2
         public HexCoord LandingHex;
         public float Score;
         public string Reason;
-        public int LaunchEnergy;
         // RECON-AIR-05/06 — the ProvisionedMission Assignment bound this launch to. Threaded down so
         // the executor can (a) anchor the tactical planner's live replanning at the bound target
         // (RECON-AIR-05) and (b) produce a per-mission ExecutionResult once the real ArmyId exists
@@ -129,15 +128,9 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                int launchEnergy = pm.LaunchSubset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
-                ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
-                    launchEnergy, first.Value.Score, excludeArmyId: -1);
-                if (!energy.Allowed)
-                {
-                    skips.Add("energyReserveRejectedLaunch");
-                    continue;
-                }
-
+                // No strategic Energy re-evaluation here — Provisioning's AirSortieReservationAdmission
+                // already decided this exact sortie is worth reserving. This layer only re-derives the
+                // live first step (above) and re-checks hard affordability (CanAffordLaunch, above).
                 plan.Launches.Add(new AirLaunchPlan
                 {
                     AirfieldHex = pm.AirfieldHex,
@@ -148,7 +141,6 @@ namespace Game.Ai.V2
                     Score = first.Value.Score,
                     Reason = first.Value.Reason,
                     Mission = pm,
-                    LaunchEnergy = launchEnergy,
                 });
             }
 

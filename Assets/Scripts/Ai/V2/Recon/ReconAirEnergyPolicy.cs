@@ -12,67 +12,21 @@ using Game.Cards;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AIR RECON ENERGY OPPORTUNITY COST  (spec §40–44)
+    //  AIR RECON ENERGY-PRESSURE MEASUREMENTS  (spec §40–44)
     // ===========================================================================================
-    //  V1's air recon only ever asked "is this one sortie affordable right now" — so a routine
-    //  refresh flight could chew through the whole Energy stock one individually-cheap launch at a
-    //  time, starving high-value hand cards / research of the Energy they needed.
+    //  A library of generic, name-free reads of "how much Energy is spoken for" that the single
+    //  canonical sortie-reservation decision (AviationSortieReservationEvaluator, reached from
+    //  ProvisioningManager.AirSortieReservationAdmission) consumes:
+    //    · CommittedAirActivationEnergy   — Energy other in-flight air wings still owe this turn
+    //    · ProtectedHandEnergy            — Energy a currently-PLAYABLE high-value hand card needs
+    //                                       (§41.2: largest such card in full + a fraction of the rest)
+    //    · ProtectedNearTermDrawEnergy    — low-weight allowance for the turn's likely next draw (§44)
     //
-    //  This policy splits the stock into:
-    //    committed      — Energy other in-flight AirRecon activations still owe this turn
-    //    protectedHand  — Energy a currently-PLAYABLE high-value hand card would need (§41.2, §44):
-    //                     the single largest such card in full, plus a fraction of the rest. The
-    //                     whole remaining deck is deliberately NOT summed (§44).
-    //    spendable      — max(0, stock − committed − protectedHand)
-    //
-    //  First pass (§42): protected Energy is a HARD reserve — a launch that would dip below it is
-    //  refused outright. A soft opportunity term then trims marginal launches when spendable Energy
-    //  is thin relative to income (§41.5 / §43).
-    //
-    //  It reads Energy the same way every other V2 resource read does (PlayerRoot.GetResource — see
-    //  AiResourceReservation.Available's own comment on why V2 treats the physical stockpile as
-    //  authoritative) and card costs through AiCardCost, never a parallel model.
+    //  This type no longer makes an admission decision of its own — the retired `Evaluate()` used to,
+    //  and that was a second strategic authority parallel to the evaluator. It reads Energy the same
+    //  way every other V2 resource read does (PlayerRoot.GetResource) and card costs through
+    //  CardCostRules, never a parallel model.
     // ===========================================================================================
-    internal readonly struct ReconAirEnergyDecision
-    {
-        public readonly bool Allowed;
-        public readonly int Stock;
-        public readonly int LaunchCost;
-        public readonly int Committed;
-        public readonly int ProtectedHand;
-        public readonly int ProtectedDeck;
-        public readonly int Spendable;
-        public readonly float InformationValue;
-        public readonly float OpportunityCost;
-        public readonly float FinalUtility;
-        public readonly string Reason;
-
-        public ReconAirEnergyDecision(bool allowed, int stock, int launchCost, int committed,
-            int protectedHand, int protectedDeck, int spendable, float informationValue,
-            float opportunityCost, float finalUtility, string reason)
-        {
-            Allowed = allowed;
-            Stock = stock;
-            LaunchCost = launchCost;
-            Committed = committed;
-            ProtectedHand = protectedHand;
-            ProtectedDeck = protectedDeck;
-            Spendable = spendable;
-            InformationValue = informationValue;
-            OpportunityCost = opportunityCost;
-            FinalUtility = finalUtility;
-            Reason = reason ?? string.Empty;
-        }
-
-        // Spec §60 — one line per launch/no-launch decision so a playtester can see exactly why
-        // the aircraft did or did not fly.
-        public string ToLog(string actorLabel) =>
-            $"[AI][V2][Recon][Air][Energy] {actorLabel} stock={Stock} cost={LaunchCost} "
-            + $"committed={Committed} protectedHand={ProtectedHand} protectedDeck={ProtectedDeck} spendable={Spendable} "
-            + $"informationValue={InformationValue:0.00} oppCost={OpportunityCost:0.00} "
-            + $"finalUtility={FinalUtility:0.00} decision={(Allowed ? "LAUNCH" : "NO_LAUNCH")} reason={Reason}";
-    }
-
     internal static class ReconAirEnergyPolicy
     {
         private static readonly ResourceType[] NonEnergyTypes =
@@ -80,51 +34,11 @@ namespace Game.Ai.V2
             ResourceType.Human, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // launchEnergyCost — this sortie's own first-activation Energy (ArmyData.ActivationEnergyCost
-        // for an already-formed wing, Σ UnitData.LaunchEnergyCost for a still-stored group).
-        // excludeArmyId — the actor being evaluated, so an airborne wing re-checking its own first
-        // step does not count itself in `committed`; pass a negative value for a storage launch that
-        // has no ArmyData yet.
-        // extraCommittedEnergy — Energy already committed by EARLIER sorties reserved in the same
-        // planning pass this turn (AI-RECON-01 ReconAirReservationPrepass evaluates several
-        // candidate launches against the ONE stockpile; without this each would see the full stock
-        // and the prepass would over-promise guaranteed lanes the executor cannot all fly).
-        public static ReconAirEnergyDecision Evaluate(PlayerSetupData player, PlayerRoot root, HexMap map,
-            int launchEnergyCost, float informationValue, int excludeArmyId, int extraCommittedEnergy = 0)
-        {
-            if (player == null || root == null)
-                return new ReconAirEnergyDecision(false, 0, launchEnergyCost, 0, 0, 0, 0,
-                    informationValue, 0f, 0f, "missing player/root");
-
-            int stock = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            int committed = CommittedAirActivationEnergy(player, excludeArmyId) + Mathf.Max(0, extraCommittedEnergy);
-            int protectedHand = ProtectedHandEnergy(root, player);
-            int protectedDeck = ProtectedNearTermDrawEnergy(player);
-            int spendable = Mathf.Max(0, stock - committed - protectedHand - protectedDeck);
-
-            // §42 first pass: hard reserve. A launch may never dip into committed or protected Energy.
-            if (launchEnergyCost > spendable)
-                return new ReconAirEnergyDecision(false, stock, launchEnergyCost, committed, protectedHand,
-                    protectedDeck, spendable, informationValue, 0f, 0f,
-                    "energy_reserved_for_playable_high_value_card");
-
-            // §41.5 / §43 soft term — a marginal sortie is trimmed when spendable Energy is thin
-            // relative to near-term income; a healthy runway makes the same sortie cheap.
-            float income = map != null
-                ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map))
-                : 0f;
-            float effectiveSpendable = spendable + income * AiConfigV2.reconAirEnergyIncomeHorizon;
-            float opportunityCost = launchEnergyCost / Mathf.Max(1f, effectiveSpendable);
-            float finalUtility = informationValue - AiConfigV2.reconAirEnergyOppWeight * opportunityCost;
-
-            if (finalUtility < AiConfigV2.reconAirEnergyMinUtility)
-                return new ReconAirEnergyDecision(false, stock, launchEnergyCost, committed, protectedHand,
-                    protectedDeck, spendable, informationValue, opportunityCost, finalUtility,
-                    "energy_opportunity_cost_exceeds_information_value");
-
-            return new ReconAirEnergyDecision(true, stock, launchEnergyCost, committed, protectedHand,
-                protectedDeck, spendable, informationValue, opportunityCost, finalUtility, "ok");
-        }
+        // NOTE — this policy no longer owns an admission decision (`Evaluate()` is retired). It is a
+        // library of generic, name-free Energy-pressure MEASUREMENTS only; the single strategic
+        // "is this sortie worth its Energy" decision lives in AviationSortieReservationEvaluator
+        // (reached from ProvisioningManager.AirSortieReservationAdmission), which calls the three
+        // helpers below.
 
         // Energy that OTHER already-airborne air wings still owe on their own first activation this
         // turn — both AirRecon and AirStrike sorties. V2 pays activation for real on the wing's

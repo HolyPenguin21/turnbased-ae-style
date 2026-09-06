@@ -319,19 +319,10 @@ namespace Game.Ai.V2
             if (!forwardStepUseful)
                 return StepDecision.Stop("no useful forward step");
 
-            // §40–44 — Energy opportunity cost is charged once, at the launching activation. A wing
-            // still on its own airfield about to take its first step this turn must clear the same
-            // reserve a storage launch does.
-            if (atAirfield && !air.HasActivatedThisTurn)
-            {
-                ReconAirEnergyDecision energy = ReconAirEnergyPolicy.Evaluate(player, root, ctx.Map,
-                    air.ActivationEnergyCost, choice.Value.Score, air.Id);
-                AiDebugLog.Write(energy.ToLog($"actor=#{armyId}"));
-                if (!energy.Allowed)
-                    return StepDecision.Stop("air recon energy opportunity cost",
-                        retireAssignment: true, removeReservation: true);
-            }
-
+            // No strategic Energy opportunity-cost gate here any more. Whether this sortie is worth
+            // its AP/Energy was decided once this turn by ProvisioningManager.AirSortieReservation-
+            // Admission (-> AviationSortieReservationEvaluator). This layer only enforces the LIVE
+            // HARD affordability gate (CanIssueMoveNow) plus the route/AA/endurance checks above.
             if (!AiTurnController.CanIssueMoveNow(root, player, air, ctx.Map, choice.Value.Hex))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} cannot afford/issue first step "
