@@ -401,11 +401,22 @@ namespace Game.Ai.V2
                 // out of the pool by BuildFeasibleAirPool before ScoreScoutAssignment's
                 // actorDiscontinuity continuity preference even gets to consider it.
                 airActorCap = Mathf.Max(0, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn);
-                airEnergyBudget = detail.EnergyBudgetBase;
+                // Round 8 (Problem 3) — Assignment answers WHO executes a funded mission, it is NOT a
+                // second resource-admission authority. The air-actor pool is now filtered by
+                // STRUCTURAL feasibility only (EvaluateAirStructuralFeasibility: actor / route / mode /
+                // target-progress, no AP, no Energy, no AviationSortieReservationEvaluator.ShouldReserve)
+                // — SlotWouldFly's activation-economics half is gone from here. EnergyBudgetBase is
+                // likewise no longer an admission ceiling in the batch solve (airEnergyBudget is left
+                // at int.MaxValue so RecurseScout's guard can never fire): the exact per-actor AP/Energy
+                // is resolved after binding (AppendAirCandidates) and reconciled by
+                // ProvisioningManager.ProvisionAir -> EnvelopeTooSmall -> ResourceAllocator.Repack, the
+                // ONE funding authority.
+                airEnergyBudget = int.MaxValue;
                 ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
                 IEnumerable<AirObservationSlot> ordered = detail.AirborneWings.Concat(detail.SpareCandidatesInOrder);
                 airPool = BuildFeasibleAirPool(ordered, airActorCap,
-                    slot => ReconAirReservationPrepass.SlotWouldFly(player, root, ctx, snap, mode, slot, 0, null, out _));
+                    slot => ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                        player, ctx, snap, mode, slot, null).Feasible);
             }
 
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
@@ -537,6 +548,10 @@ namespace Game.Ai.V2
                     continue;
                 bool isAirLaunch = cand.ExecutorKind == ScoutExecutorKind.AirLaunch;
                 float nextAirLaunchEnergy = usedAirLaunchEnergy + (isAirLaunch ? cand.RequiredEnergy : 0f);
+                // Round 8 (Problem 3) — AssignFunded now passes airEnergyBudget = int.MaxValue: Energy
+                // affordability is ProvisioningManager + ResourceAllocator's job alone, never a second
+                // Recon-scoped admission decision here. Guard kept (not deleted) so AssignFromCandidates'
+                // signature and its focused test stay stable; it simply never fires in production.
                 if (isAirLaunch && nextAirLaunchEnergy > airEnergyBudget + AiConfigV2.allocatorSliceEpsilon)
                     continue;
 
@@ -825,13 +840,19 @@ namespace Game.Ai.V2
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
 
-            // Round 7 (Problem 2) — STRUCTURAL-ONLY greedy, in the executor's own order. CAPABILITY
-            // != FUNDING: this witness answers "does a usable actor structurally exist" alone —
-            // root.ActionPoints, EnergyBudgetBase, slot.Ap/Energy-vs-budget and
-            // AviationSortieReservationEvaluator.ShouldReserve are explicitly NOT consulted here any
-            // more (that whole activation-economics question now lives only in
-            // ReconAirReservationPrepass.EvaluateAirActivationEconomics, called from Provisioning as
-            // a live sanity check, never from this capability measurement).
+            // Round 7 (Problem 2) — STRUCTURAL greedy, in the executor's own order. CAPABILITY
+            // != FUNDING: this witness never consults root.ActionPoints, EnergyBudgetBase,
+            // slot.Ap/Energy-vs-budget or AviationSortieReservationEvaluator.ShouldReserve — that
+            // activation-economics question lives only in ReconAirReservationPrepass.
+            // EvaluateAirActivationEconomics, at Provisioning time.
+            //
+            // Round 8 (Problem 2) — "structural" is NOT "structural somewhere". A structurally
+            // flyable wing counts as Observation capacity only if it makes GENUINE progress toward
+            // one of the concrete runnable Observation objectives, tested with the SAME
+            // Pick(missionFocusHex:) + MakesGenuineProgress rule AppendAirCandidates binds a real
+            // funded mission with (AirActorProgressesAnObjective below). Capacity candidate rules ==
+            // Assignment candidate rules; a wing whose only useful step is toward somewhere OTHER
+            // than any runnable objective is phantom capacity and no longer witnessed here.
             int slotsUsed = 0;
             int airborneProbed = 0, airborneStuck = 0, launchProbed = 0, launchRejected = 0;
             int airborneWitnessed = 0, spareLaunchWitnessed = 0;
@@ -843,6 +864,10 @@ namespace Game.Ai.V2
             HexCoord citadelHex = snap?.Self != null ? snap.Self.Citadel : default;
             var provisionalWedges = new List<ReconSector>();
             var reservedActorIds = new HashSet<int>();
+            // Round 8 (Problem 2) — an Observation objective already witnessed by one air actor is
+            // struck off so a second wing cannot witness the SAME job (mirrors the one-actor <= one-
+            // job constraint the real batch solve enforces).
+            var consumedObjectiveKeys = new HashSet<MissionIntentKey>();
 
             foreach (AirObservationSlot wing in detail.AirborneWings)
             {
@@ -853,7 +878,8 @@ namespace Game.Ai.V2
 
                 AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                     player, ctx, snap, mode, wing, provisionalWedges);
-                if (sf.Feasible)
+                if (sf.Feasible
+                    && AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable, consumedObjectiveKeys))
                 {
                     airborneWitnessed++;
                     if (wing.ActorId.HasValue)
@@ -861,7 +887,7 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    airborneStuck++;   // recovery protected, but not observation capacity
+                    airborneStuck++;   // recovery protected / flyable elsewhere, but not observation capacity
                 }
             }
 
@@ -875,7 +901,8 @@ namespace Game.Ai.V2
 
                 AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                     player, ctx, snap, mode, slot, provisionalWedges);
-                if (!sf.Feasible)
+                if (!sf.Feasible
+                    || !AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable, consumedObjectiveKeys))
                 {
                     launchRejected++;
                     continue;
@@ -896,6 +923,90 @@ namespace Game.Ai.V2
                 + "activation economics happen only at Provisioning time)");
 
             return (airborneWitnessed, spareLaunchWitnessed);
+        }
+
+        // Round 8 (Problem 2) — the target-anchored half of the air Observation-capacity witness.
+        // A structurally flyable air actor is Observation capacity only if it makes GENUINE progress
+        // toward at least one still-unmatched runnable Observation objective, tested with the EXACT
+        // primitives AppendAirCandidates binds a real funded mission with:
+        //   · Refresh objective -> anchor = its FocusHex.
+        //   · Surveil objective -> anchor = best reachable vantage (needs a live wing position/vision,
+        //     so a not-yet-launched hangar subset is Refresh-only, mirroring AppendAirCandidates'
+        //     round-4 scope note).
+        //   · ReconAirStepPlanner.Pick / PickFromStorage with missionFocusHex = anchor, score must
+        //     clear MinimumUsefulScore, and the resulting step must MakesGenuineProgress toward the
+        //     anchor (strictly closer, or the anchor already falls inside the resulting vision).
+        // Objectives already witnessed by an earlier actor this call are struck off (one actor <=
+        // one job), so N wings can never all witness the same job.
+        private static bool AirActorProgressesAnObjective(AiTurnContext ctx, PlayerSetupData player,
+            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot,
+            IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys)
+        {
+            if (ctx?.Map == null)
+                return true; // bare test harness — mirror EvaluateAirStructuralFeasibility's own fallback
+            if (obsRunnable == null || obsRunnable.Count == 0)
+                return false;
+
+            ArmyData live = slot.ActorId.HasValue ? ResolveArmy(player, slot.ActorId.Value) : null;
+            ArmySnapshot mover = slot.ActorId.HasValue
+                ? snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value)
+                : null;
+            if (slot.ActorId.HasValue && (live == null || mover == null))
+                return false;
+
+            List<UnitData> subset = null;
+            if (!slot.ActorId.HasValue)
+            {
+                ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
+                if (airfield == null)
+                    return false;
+                subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
+                if (subset.Count == 0)
+                    return false;
+            }
+
+            int baseVision = ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;
+            int vision = live != null
+                ? baseVision + AbilityParams.GetBestRecceRadius(live)
+                : baseVision + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            HexCoord from = live != null ? live.Hex : slot.AirfieldHex;
+
+            foreach (ReconObjective o in obsRunnable)
+            {
+                if (o == null || consumedObjectiveKeys.Contains(o.IntentKey))
+                    continue;
+
+                HexCoord anchor;
+                if (o.Kind == ReconObjectiveKind.Surveil)
+                {
+                    if (mover == null)
+                        continue; // launch subset — Refresh-only (round-4 scope)
+                    SurveilVantageCandidate? v = SurveilVantageSelector.Rank(snap, mover, o.ToTarget())
+                        .Select(x => (SurveilVantageCandidate?)x).FirstOrDefault();
+                    if (!v.HasValue)
+                        continue;
+                    anchor = v.Value.ExecutionHex;
+                }
+                else
+                {
+                    anchor = o.FocusHex;
+                }
+
+                ReconAirStepPlanner.StepChoice? choice = live != null
+                    ? ReconAirStepPlanner.Pick(player, ctx, live, snap, mode, ctx.TurnNumber,
+                        sortieState: null, scoringCtx: null, missionFocusHex: anchor)
+                    : ReconAirStepPlanner.PickFromStorage(player, ctx,
+                        new AirLaunchCandidate(slot.AirfieldHex, null, subset), snap, mode, ctx.TurnNumber,
+                        scoringCtx: null, missionFocusHex: anchor);
+                if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                    continue;
+                if (!MakesGenuineProgress(from, choice.Value.Hex, anchor, vision))
+                    continue;
+
+                consumedObjectiveKeys.Add(o.IntentKey);
+                return true;
+            }
+            return false;
         }
 
         // One max-flow solve: source -> each actor (cap 1) -> each individual job it can reach

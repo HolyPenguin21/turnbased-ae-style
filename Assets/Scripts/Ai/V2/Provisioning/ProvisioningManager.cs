@@ -499,10 +499,39 @@ namespace Game.Ai.V2
             {
                 ArmyData wing = ResolveArmy(player, exec.Army.ArmyId);
                 if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
-                    || wing.CurrentMovement <= 0 || !AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
-                    || AirSortieRegistry.ForArmy(player, wing) != null)
+                    || wing.CurrentMovement <= 0)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"assigned air actor #{exec.Army.ArmyId} is no longer a usable ready standalone wing"));
+                        $"assigned air actor #{exec.Army.ArmyId} is no longer a usable air wing"));
+
+                // Round 8 (Problem 1) — ProvisionAir validates the SAME two air-actor states the pool
+                // ReconAssignmentPlanner.AssignFunded now offers (detail.AirborneWings first, then
+                // ready spares); the old code accepted only the first and rejected every continuing
+                // wing an incumbent ScoutIntent had just re-won a FRESH funded mission for, so the
+                // continuation architecture was wired end to end but never executable:
+                //   · ReadyAirExisting      — on an owned airfield, no live sortie: about to start one.
+                //   · ContinuingAirExisting — already airborne with a durable ReconPatrolState (the
+                //     exact predicate ReconAirCapacityPolicy.EvaluateDetailed admits to AirborneWings).
+                //     It is mid-sortie by definition, so the ready-idle-wing shape (IsOwnedAirfieldAt /
+                //     no live AirSortieRegistry entry) must NOT be demanded of it. It is rejected only
+                //     when forced Return/Hold-only this turn — that lifecycle is Mandatory Flight
+                //     Recovery's (ReconAirExecutor flies recovery unconditionally, outside funding),
+                //     never strategic Recon progress.
+                bool onOwnAirfield = AviationRules.IsOwnedAirfieldAt(wing.Hex, player);
+                bool continuing = !onOwnAirfield && wing.Controller != null
+                    && ReconPatrolStateRegistry.TryGet(player, wing.Id, out _);
+                if (continuing)
+                {
+                    ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, wing);
+                    if (projected != null
+                        && (projected.Phase == ReconAirPhase.Return || projected.Phase == ReconAirPhase.Hold))
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            $"continuing air actor #{wing.Id} is Return/Hold-bound this turn (recovery, not fresh Recon progress)"));
+                }
+                else if (!onOwnAirfield || AirSortieRegistry.ForArmy(player, wing) != null)
+                {
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"assigned air actor #{exec.Army.ArmyId} is neither a ready standalone wing nor a valid continuing sortie"));
+                }
                 moverArmyId = wing.Id;
             }
             else // AirLaunch
