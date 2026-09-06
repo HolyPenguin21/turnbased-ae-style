@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Ai;
 using Game.Economy;
 using Game.Map;
@@ -113,16 +114,21 @@ namespace Game.Ai.V2
         // extraCommittedAp / extraCommittedEnergy — AP/Energy already claimed by earlier candidates
         // reserved in the SAME planning pass this turn (several sorties must not each evaluate
         // against the full stockpile).
+        // alreadyAccountedArmyIds — actors whose Energy is ALREADY in extraCommittedEnergy (the
+        // pass-local claim ledger). Passed straight to CommittedAirActivationEnergy so its live scan
+        // does not add their first-activation Energy a second time.
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            int excludeArmyId, int extraCommittedAp, int extraCommittedEnergy)
+            int excludeArmyId, int extraCommittedAp, int extraCommittedEnergy,
+            ISet<int> alreadyAccountedArmyIds = null)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
 
             // ---- Stage 1: Resource Outlook ----
             int energyStock = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            int committedEnergy = ReconAirEnergyPolicy.CommittedAirActivationEnergy(player, excludeArmyId)
+            int committedEnergy = ReconAirEnergyPolicy.CommittedAirActivationEnergy(
+                    player, excludeArmyId, alreadyAccountedArmyIds)
                 + Mathf.Max(0, extraCommittedEnergy);
             int availableEnergy = Mathf.Max(0, energyStock - committedEnergy);
 

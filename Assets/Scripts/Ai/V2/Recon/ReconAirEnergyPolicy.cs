@@ -47,12 +47,21 @@ namespace Game.Ai.V2
         // "already committed/funded actions").
         // Exposed (AviationSortieReservationEvaluator) — no hardcoded card names live here or in the
         // caller; this stays the single source of "Energy other in-flight air wings still owe".
-        internal static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId)
+        //
+        // alreadyAccountedArmyIds — actors whose Energy is ALREADY represented in a pass-local claim
+        // ledger (ProvisioningSession.EnergyClaimed). A continuing air wing provisioned earlier this
+        // pass sits in that ledger AND still shows up in this live scan (it has a live
+        // ReconPatrolState / AirSortie), so without this exclusion its first-activation Energy is
+        // counted twice — once here, once in the caller's extraCommittedEnergy/session claim.
+        internal static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId,
+            ISet<int> alreadyAccountedArmyIds = null)
         {
             int total = 0;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army == null || army.Id == excludeArmyId || army.HasActivatedThisTurn)
+                    continue;
+                if (alreadyAccountedArmyIds != null && alreadyAccountedArmyIds.Contains(army.Id))
                     continue;
                 if (!AviationRules.IsValidAirArmy(army))
                     continue;

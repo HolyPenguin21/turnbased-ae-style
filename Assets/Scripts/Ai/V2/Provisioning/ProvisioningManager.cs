@@ -668,7 +668,10 @@ namespace Game.Ai.V2
                 exec.RouteScore,
                 existing ? moverArmyId : -1,
                 Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
-                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)));
+                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)),
+                // Actors already in session.EnergyClaimed (a continuing wing provisioned earlier
+                // this pass) — the evaluator's live scan must not re-count their owed Energy.
+                session.ClaimedArmyIds);
             AiDebugLog.Write(decision.ToLog(label));
 
             return decision.ShouldReserve

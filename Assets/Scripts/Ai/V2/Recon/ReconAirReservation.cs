@@ -83,9 +83,9 @@ namespace Game.Ai.V2
                 if (wing == null)
                     return AirStructuralFeasibility.No;
 
-                bool airborne = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real);
-                scoringCtx.ExcludeSortieId = airborne ? real.SortieId : -1;
-                ReconAirSortieState projected = ProjectScoringSortie(player, ctx, wing);
+                (ReconAirSortieState projected, int excludeSortieId) = BuildScoringStateForWing(player, ctx, wing);
+                bool airborne = excludeSortieId >= 0;
+                scoringCtx.ExcludeSortieId = excludeSortieId;
                 // R5 review fix — a Hold- or Return-phase wing is NOT Observation capacity. The
                 // executor ignores the AIR-01 forward `Pick` result once the sortie is Return-bound
                 // (it flies PickReturnStep toward the airfield instead) or ends the turn aloft on a
@@ -121,10 +121,32 @@ namespace Game.Ai.V2
                 excludeArmyId = -1;
             }
 
-            if (!choice.HasValue)
+            // Structural capacity is not "the scorer returned SOME non-hard-rejected route" — it is
+            // "a route the real Assignment/Execution layer would call actionable". Pick() itself does
+            // not apply MinimumUsefulScore (it just returns the best survivor), and
+            // AppendAirCandidates / MeasureAirCapacity both require score >= MinimumUsefulScore — so
+            // gate here too, or capacity witnesses a lane Assignment then refuses (phantom capacity).
+            if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 return AirStructuralFeasibility.No;
 
             return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId);
+        }
+
+        // Shared projected-scoring inputs for one wing, used by BOTH EvaluateAirStructuralFeasibility
+        // (capacity) and ReconAssignmentPlanner.AppendAirCandidates (real per-mission RouteScore) so
+        // the two can never score the same continuing sortie differently again:
+        //   · Projected       — the read-only turn-start ReconAirSortieState the executor will hand
+        //                       Pick (phase / trail / claim), so Outbound/Turning shaping, trail
+        //                       overlap and lateral novelty all match the executor.
+        //   · ExcludeSortieId — this wing's own live sortie id, so its OWN coverage is not counted
+        //                       as "recently covered by another sortie". -1 for a wing with no live
+        //                       Recon sortie (a ready idle wing).
+        internal static (ReconAirSortieState Projected, int ExcludeSortieId) BuildScoringStateForWing(
+            PlayerSetupData player, AiTurnContext ctx, ArmyData wing)
+        {
+            int excludeSortieId = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real)
+                ? real.SortieId : -1;
+            return (ProjectScoringSortie(player, ctx, wing), excludeSortieId);
         }
 
         // ACTIVATION ECONOMICS — "is THIS sortie strategically worth its AP/Energy this turn?" — is

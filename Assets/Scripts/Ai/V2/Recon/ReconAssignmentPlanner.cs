@@ -306,9 +306,18 @@ namespace Game.Ai.V2
                         anchorTarget = target.FocusHex;
                     }
 
+                    // Score against the SAME projected turn-start sortie state + self-sortie
+                    // exclusion the structural capacity probe uses (ReconAirReservationPrepass.
+                    // BuildScoringStateForWing). A continuing wing scored with sortieState:null here
+                    // gets a different (usually higher) RouteScore than capacity promised Demand and
+                    // than the executor will actually fly — Outbound/Turning shaping, trail overlap
+                    // and lateral novelty all depend on the projected phase/trail.
+                    (ReconAirSortieState projectedSortie, int excludeSortieId) =
+                        ReconAirReservationPrepass.BuildScoringStateForWing(player, ctx, live);
+                    var airScoringCtx = new AirReconScoringContext { ExcludeSortieId = excludeSortieId };
                     ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.Pick(
-                        player, ctx, live, snap, mode, ctx.TurnNumber, sortieState: null,
-                        scoringCtx: null, missionFocusHex: anchorTarget);
+                        player, ctx, live, snap, mode, ctx.TurnNumber, sortieState: projectedSortie,
+                        scoringCtx: airScoringCtx, missionFocusHex: anchorTarget);
                     if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                         continue;
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
@@ -377,9 +386,11 @@ namespace Game.Ai.V2
                 return result;
 
             // Round 4/5 — the SAME ordered, per-pass-capped air-actor pool for every mission in this
-            // batch (continuing wings excluded — they are Continuity's, not fresh Assignment's; see
-            // AppendAirCandidates). Computed once so the MaxAirReconActorsPerTurn ceiling is a
-            // property of the WHOLE batch, not silently re-granted per mission.
+            // batch. Continuing airborne Recon wings participate in the same funded Assignment pool
+            // as ready wings (they are ordered FIRST, and ScoreScoutAssignment gives the incumbent a
+            // continuity PREFERENCE) — not an execution entitlement outside this solve. Computed once
+            // so the MaxAirReconActorsPerTurn ceiling is a property of the WHOLE batch, not silently
+            // re-granted per mission.
             //
             // RECON-AIR-03 (Problem: filter-before-take) — feasibility (EvaluateAirStructuralFeasibility)
             // MUST run BEFORE `.Take(remaining)`, never after: taking first and filtering second lets an
