@@ -445,11 +445,12 @@ namespace Game.Ai.V2
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
             // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
-            //     and AggressionMissionLayer (build-order step 9). ReconOnly deliberately keeps the
-            //     layer present but does not enumerate or execute it.
-            List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.IsReconOnly
-                ? new List<AggressionObjective>()
-                : AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
+            //     and AggressionMissionLayer (build-order step 9). A focus scope that drops the
+            //     Aggression axis (ReconOnly, ReconDevelopment) deliberately keeps the layer present
+            //     but does not enumerate or execute it.
+            List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                ? AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport)
+                : new List<AggressionObjective>();
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
@@ -506,7 +507,7 @@ namespace Game.Ai.V2
             //    them. Also materialises every active intent and applies the retarget margin.
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
-            if (!AiStrategyV2Scope.IsReconOnly)
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                 missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                     activeIntents, aggressionObjectives));
             missions = AiStrategyV2Scope.ApplyMissionScope(missions);

@@ -137,7 +137,7 @@ namespace Game.Ai.V2
         //                 honest sightings of it. Magnitude only; a with-error direction is the
         //                 step-4 planner's job.
         public const float reconExploreRampLo = 0.03f;
-        public const float reconExploreRampHi = 0.60f;
+        public const float reconExploreRampHi = 1.00f;
         public const float reconSurveillanceBaseline = 0.18f;
         public const float reconStaleShareWeight = 0.50f;
 

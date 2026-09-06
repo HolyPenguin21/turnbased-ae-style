@@ -75,7 +75,7 @@ namespace Game.Ai.V2
         public static void RecordThreeScoutBatch(PlayerSetupData player, int turn,
             IReadOnlyList<ProvisionedMission> queue)
         {
-            if (player == null || queue == null || !AiStrategyV2Scope.IsReconOnly)
+            if (player == null || queue == null || !AiStrategyV2Scope.IsFocusScoped)
                 return;
 
             List<ProvisionedMission> scouts = queue

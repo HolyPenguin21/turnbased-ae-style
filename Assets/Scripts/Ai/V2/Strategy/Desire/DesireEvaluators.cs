@@ -267,8 +267,8 @@ namespace Game.Ai.V2
         }
 
         // Spec §4 — RefreshPressure is a composite, not max(surveillance, avg IntelAge). It sums a
-        // baseline, whole-map strategic IntelAge, stale honest enemy contacts (via `surveillance`,
-        // which already folds in the baseline + stale-share), own-asset perimeter staleness, an
+        // baseline, whole-map strategic IntelAge, the honest-contact stale share (extracted from
+        // `surveillance`, which itself carries the baseline), own-asset perimeter staleness, an
         // enemy-facing corridor staleness sample, and coarse enemy-concentration direction pressure.
         private static float ReconRefreshPressure(WorldSnapshot snap, float surveillance)
         {
@@ -295,9 +295,17 @@ namespace Game.Ai.V2
                 ? Mathf.Clamp01(dir.EnemyPresenceWeight / Mathf.Max(1f, AiConfigV2.reconRefreshConcentrationNorm))
                 : 0f;
 
+            // `surveillance` already folds in reconSurveillanceBaseline; strip it back out so the
+            // stale-contact term carries only the honest-contact stale share, not the baseline a
+            // second time (spec §4 — the baseline is added once, explicitly, below).
+            float staleContacts = AiConfigV2.reconStaleShareWeight > 0f
+                ? Mathf.Clamp01((surveillance - AiConfigV2.reconSurveillanceBaseline)
+                    / AiConfigV2.reconStaleShareWeight)
+                : 0f;
+
             float sum = AiConfigV2.reconSurveillanceBaseline
                 + AiConfigV2.reconRefreshWeightIntelAge * intelAge
-                + AiConfigV2.reconRefreshWeightStaleContacts * Mathf.Clamp01(surveillance)
+                + AiConfigV2.reconRefreshWeightStaleContacts * staleContacts
                 + AiConfigV2.reconRefreshWeightPerimeter * perimeter
                 + AiConfigV2.reconRefreshWeightCorridor * corridor
                 + AiConfigV2.reconRefreshWeightConcentration * concentration;

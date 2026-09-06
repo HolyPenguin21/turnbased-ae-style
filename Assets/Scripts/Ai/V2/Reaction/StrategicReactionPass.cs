@@ -136,8 +136,8 @@ namespace Game.Ai.V2
         {
             if (player == null || ctx == null || ctx.Map == null)
                 return false;
-            // ExecuteIfPending consumes-and-suppresses the whole pass in ReconOnly scope.
-            return !AiStrategyV2Scope.IsReconOnly;
+            // ExecuteIfPending consumes-and-suppresses the whole pass in any focus scope.
+            return !AiStrategyV2Scope.IsFocusScoped;
         }
 
         // AI-MGR-02 §7 (round 5) — reserve a bounded reaction budget ONLY when a real feasibility
@@ -219,17 +219,17 @@ namespace Game.Ai.V2
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
         {
-            // ReconOnly isolates the current deep-rework from the legacy strategic reaction loop.
+            // A focus scope isolates the current deep-rework from the legacy strategic reaction loop.
             // The live Recon executor will own ordinary step->refresh->reaction; until that lands,
             // do not let a contact discovery reopen Aggression/Defence/Economy/Development through
             // this second orchestration path. Consume the turn-scoped invalidation so it cannot
             // leak into the next turn.
-            if (AiStrategyV2Scope.IsReconOnly)
+            if (AiStrategyV2Scope.IsFocusScoped)
             {
                 if (player != null && ctx != null && StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 {
                     StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
-                    AiDebugLog.Write("[AI][V2][Scope] strategic reaction pass suppressed reason=ReconOnly");
+                    AiDebugLog.Write($"[AI][V2][Scope] strategic reaction pass suppressed reason={AiStrategyV2Scope.Mode}");
                 }
                 // AI-MGR-02 §4 — a scope-suppressed pass deliberately leaves any AP reservation in
                 // place: HousekeepingManager releases it and re-runs end-of-turn tempo spending with

@@ -5,52 +5,103 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // Central execution scope for focused Strategy V2 development/testing.
-    // ReconOnly is intentionally enforced at orchestration boundaries rather than by scattered
+    // A focus scope is intentionally enforced at orchestration boundaries rather than by scattered
     // feature flags: radar allocation, durable intents, capability demand, mission admission and
     // surplus preparation all consult the same switch.
+    //
+    //   Full             — all five desire axes (Recon / Aggression / Defence / Economy / Development).
+    //   ReconOnly        — Recon only. Radar is pinned to RCN:1.
+    //   ReconDevelopment — Recon + Development. Aggression / Defence / Economy demand is dropped, so
+    //                      BaselineForceReadiness (RequestingAxis = Defence -> FieldCombatPower) can
+    //                      no longer materialize an ordinary combat body while an isolated
+    //                      Recon+Development run is active. StrategicManager Phase A/B, Development
+    //                      generation, attach and draw all stay.
     public enum AiStrategyV2Mode
     {
         Full,
         ReconOnly,
+        ReconDevelopment,
     }
 
     public static class AiStrategyV2Scope
     {
         // AI-MGR-02 — switched to Full: the end-of-turn tempo arbiter must be exercised against the
-        // real competing set (AGG / DEF / ECO / DEV spend + reaction reservation), not the narrow
-        // ReconOnly slice. Change this one value to isolate a slice again; do not add local
-        // "disable aggression" booleans elsewhere.
+        // real competing set (AGG / DEF / ECO / DEV spend + reaction reservation), not a narrow
+        // slice. Change this one value to isolate a slice again; do not add local "disable
+        // aggression" booleans elsewhere. This is a test/runtime selection, not a production
+        // default — e.g. AiStrategyV2Scope.Mode = AiStrategyV2Mode.ReconDevelopment; for a run.
         public static AiStrategyV2Mode Mode = AiStrategyV2Mode.Full;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 
+        // Any non-Full mode is a focus scope: it restricts which desire axes may reach Phase A /
+        // mission planning and suppresses the legacy strategic reaction path.
+        public static bool IsFocusScoped => Mode != AiStrategyV2Mode.Full;
+
+        private static readonly DesireAxis[] AllAxes =
+        {
+            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Defence,
+            DesireAxis.Economy, DesireAxis.Development,
+        };
+
+        private static readonly DesireAxis[] ReconOnlyAxes = { DesireAxis.Recon };
+
+        private static readonly DesireAxis[] ReconDevelopmentAxes =
+        {
+            DesireAxis.Recon, DesireAxis.Development,
+        };
+
+        // The desire axes the current mode keeps live. Full keeps all five.
+        public static IReadOnlyList<DesireAxis> AxesInScope
+        {
+            get
+            {
+                switch (Mode)
+                {
+                    case AiStrategyV2Mode.ReconOnly: return ReconOnlyAxes;
+                    case AiStrategyV2Mode.ReconDevelopment: return ReconDevelopmentAxes;
+                    default: return AllAxes;
+                }
+            }
+        }
+
+        public static bool AxisInScope(DesireAxis axis) => !IsFocusScoped || AxesInScope.Contains(axis);
+
         public static RadarAssessment ApplyRadarScope(RadarAssessment assessment)
         {
-            if (!IsReconOnly || assessment == null || assessment.Desires == null)
+            if (!IsFocusScoped || assessment == null || assessment.Desires == null)
                 return assessment;
 
             DesireVector desires = assessment.Desires;
             foreach (DesireAxis axis in DesireAxes.All)
-                desires.Raw[axis] = axis == DesireAxis.Recon ? 1f : 0f;
+                if (!AxisInScope(axis))
+                    desires.Raw[axis] = 0f;
 
-            // Deliberately normalize a non-empty vector. This prevents Radar.Normalize's generic
-            // all-zero fallback from turning ReconOnly back into the even five-axis distribution.
+            // ReconOnly pins Recon to a full unit so the radar is unambiguously RCN:1. Every focus
+            // scope still guarantees a non-empty vector: this prevents Radar.Normalize's generic
+            // all-zero fallback from restoring the even five-axis distribution. Recon is in scope
+            // for every focus mode.
+            if (IsReconOnly || DesireAxes.All.All(a => desires.Raw[a] <= 0f))
+                desires.Raw[DesireAxis.Recon] = 1f;
+
             assessment.Radar = Radar.Normalize(desires);
-            AiDebugLog.Write("[AI][V2][Scope] mode=ReconOnly radar=RCN:1 AGG:0 DEF:0 ECO:0 DEV:0");
+            AiDebugLog.Write($"[AI][V2][Scope] mode={Mode} radar={assessment.Radar.DebugLine()}");
             return assessment;
         }
 
         public static List<MissionIntent> ApplyIntentScope(PlayerSetupData player,
             IReadOnlyList<MissionIntent> activeIntents)
         {
-            if (!IsReconOnly)
+            if (!IsFocusScoped)
                 return activeIntents?.Where(i => i != null).ToList() ?? new List<MissionIntent>();
 
+            // Development produces no operational missions or durable intents, so every focus scope
+            // keeps the intent set Scout-only.
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             foreach (MissionIntent stale in state.All.Where(i => i != null && i.Kind != MissionKind.Scout).ToList())
             {
                 state.Remove(stale.IntentKey);
-                AiDebugLog.Write($"[AI][V2][Scope] retire {stale.IntentKey} reason=ReconOnly");
+                AiDebugLog.Write($"[AI][V2][Scope] retire {stale.IntentKey} reason={Mode}");
             }
 
             return (activeIntents ?? new List<MissionIntent>())
@@ -61,31 +112,31 @@ namespace Game.Ai.V2
         public static List<AxisDemand> ApplyDemandScope(IEnumerable<AxisDemand> demands)
         {
             List<AxisDemand> all = demands?.Where(d => d != null).ToList() ?? new List<AxisDemand>();
-            if (!IsReconOnly)
+            if (!IsFocusScoped)
                 return all;
 
-            int suppressed = all.Count(d => d.RequestingAxis != DesireAxis.Recon);
+            int suppressed = all.Count(d => !AxisInScope(d.RequestingAxis));
             if (suppressed > 0)
-                AiDebugLog.Write($"[AI][V2][Scope] suppressedDemands={suppressed} reason=ReconOnly");
-            return all.Where(d => d.RequestingAxis == DesireAxis.Recon).ToList();
+                AiDebugLog.Write($"[AI][V2][Scope] suppressedDemands={suppressed} reason={Mode}");
+            return all.Where(d => AxisInScope(d.RequestingAxis)).ToList();
         }
 
         public static List<MissionProposal> ApplyMissionScope(IEnumerable<MissionProposal> missions)
         {
             List<MissionProposal> all = missions?.Where(m => m != null).ToList() ?? new List<MissionProposal>();
-            if (!IsReconOnly)
+            if (!IsFocusScoped)
                 return all;
 
             int suppressed = all.Count(m => m.Kind != MissionKind.Scout);
             if (suppressed > 0)
-                AiDebugLog.Write($"[AI][V2][Scope] suppressedMissions={suppressed} reason=ReconOnly");
+                AiDebugLog.Write($"[AI][V2][Scope] suppressedMissions={suppressed} reason={Mode}");
             return all.Where(m => m.Kind == MissionKind.Scout).ToList();
         }
 
-        // Spec §5/§13 — ReconOnly isolates which operational MISSIONS execute (Recon only). It is
+        // Spec §5/§13 — a focus scope isolates which operational MISSIONS execute (Recon only). It is
         // NOT a hand-management scope: StrategicManager Phase B (UseSurplus) must keep running so
         // every legally playable card is still deployed or drawn regardless of its card type. Card
-        // type alone is never a reason a legal card is left in hand in ReconOnly.
+        // type alone is never a reason a legal card is left in hand.
         public static bool AllowSurplusPreparation => true;
     }
 }

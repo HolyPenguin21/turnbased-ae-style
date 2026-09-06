@@ -11,9 +11,10 @@ namespace Game.Ai.V2
     // from becoming an unconditional production target late in exploration.
     internal static class ReconConcurrencyPolicy
     {
-        // ReconOnly is the isolated Ground-Recon acceptance environment. It deliberately permits a
-        // three-scout portfolio so deconfliction/spread can be exercised without changing the Full
-        // strategy's historical K=2 tuning before the Ground Recon acceptance suite passes.
+        // A focus scope (ReconOnly / ReconDevelopment) is the isolated Ground-Recon acceptance
+        // environment. It deliberately permits a three-scout portfolio so deconfliction/spread can
+        // be exercised without changing the Full strategy's historical K=2 tuning before the Ground
+        // Recon acceptance suite passes.
         internal const int ReconOnlyHardCap = AiConfigV2.reconConcurrencyReconOnlyHardCap;
 
         internal const float SecondLaneMinBaseValue = AiConfigV2.reconConcurrencySecondLaneMinBaseValue;
@@ -27,7 +28,7 @@ namespace Game.Ai.V2
         internal const float ThirdLaneMinRelativeValue = AiConfigV2.reconConcurrencyThirdLaneMinRelValue;
         internal const float ThirdLaneMinExplorableUnknownFrac = AiConfigV2.reconConcurrencyThirdLaneMinDarkFrac;
 
-        public static int HardCap => AiStrategyV2Scope.IsReconOnly
+        public static int HardCap => AiStrategyV2Scope.IsFocusScoped
             ? ReconOnlyHardCap
             : Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
 
