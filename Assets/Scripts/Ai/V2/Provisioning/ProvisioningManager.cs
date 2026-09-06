@@ -92,6 +92,11 @@ namespace Game.Ai.V2
             new ProvisionFailure(ProvisionFailureKind.TargetInvalidated, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure AssemblyInfeasible(string d) =>
             new ProvisionFailure(ProvisionFailureKind.AssemblyInfeasible, ProvisionDisposition.RejectWithCooldown, ProvisionRequirement.Zero, d);
+        // Air recon only — hard feasibility passed (CanAffordLaunch + funded envelope + live AP/Energy),
+        // but the staged strategic reservation decision declined to protect Energy/AP for the sortie
+        // this turn. No cooldown: it is re-evaluated from a fresh snapshot every turn.
+        public static ProvisionFailure SortieNotWorthwhile(string d) =>
+            new ProvisionFailure(ProvisionFailureKind.SortieNotWorthwhile, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
     }
 
     public sealed class ProvisioningResult
@@ -594,6 +599,22 @@ namespace Game.Ai.V2
                     $"turn Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
                     + $"{N(liveEnergyLeft)} left after earlier claims this pass"));
 
+            // AI-MGR — strategic sortie-reservation admission. Everything above (CanAffordLaunch, the
+            // funded-envelope comparison, the cumulative live AP/Energy checks) is HARD feasibility:
+            // "enough resources exist right now". This is the separate strategic question the air-recon
+            // design defers to Provisioning time (ReconAirReservation.cs — "Provisioning's live sanity
+            // check before actually claiming resources"): even when Energy is technically sufficient, is
+            // a recon sortie the right thing to spend it on THIS turn versus keeping it for hand/deck
+            // card pressure? The one canonical staged decision (Resource Outlook -> Hand/Deck Energy
+            // Pressure -> Recon Value -> Reserve) lives in AviationSortieReservationEvaluator, reached
+            // here through ReconAirReservationPrepass.EvaluateAirActivationEconomics — no second
+            // evaluator, no resurrected prepass. Recomputed every turn: an idle aircraft never yields a
+            // standing reservation.
+            ProvisionFailure? sortieDeclined = AirSortieReservationAdmission(
+                player, root, ctx, session, exec, moverArmyId, airfieldHex, realAp, realEnergy);
+            if (sortieDeclined.HasValue)
+                return ProvisioningResult.Fail(sortieDeclined.Value);
+
             return ProvisioningResult.Ok(new ProvisionedMission
             {
                 Mission = m,
@@ -614,6 +635,54 @@ namespace Game.Ai.V2
                 AirfieldHex = airfieldHex,
                 LaunchSubset = launchSubset,
             });
+        }
+
+        // Strategic (not physical) admission for an air-recon sortie whose HARD feasibility already
+        // passed inside ProvisionAir. Returns null to proceed with the reservation, or a
+        // SortieNotWorthwhile failure (RetryNextTurn, no cooldown) when the staged reservation
+        // decision declines this turn. The staged decision itself is the single canonical
+        // AviationSortieReservationEvaluator (Resource Outlook -> Hand/Deck Energy Pressure ->
+        // Recon Value -> Reserve), reached through ReconAirReservationPrepass.EvaluateAirActivation-
+        // Economics; this method only assembles its inputs from the already-resolved actor/cost and
+        // logs the outcome. No new evaluator, no per-turn reservation registry — recomputed every turn.
+        private static ProvisionFailure? AirSortieReservationAdmission(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
+            ScoutExecutionCandidate exec, int moverArmyId, HexCoord airfieldHex, float realAp, float realEnergy)
+        {
+            // Bare harness / no world to reason about — hard gates already passed, leave behaviour unchanged.
+            if (ctx?.Map == null || session?.Snapshot == null)
+                return null;
+
+            bool existing = exec.ExecutorKind == ScoutExecutorKind.AirExisting;
+            var slot = new AirObservationSlot(
+                existing ? moverArmyId : (int?)null,
+                existing ? default : airfieldHex,
+                Mathf.CeilToInt(Mathf.Max(0f, realAp)),
+                Mathf.CeilToInt(Mathf.Max(0f, realEnergy)));
+
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, session.Snapshot);
+            AirStructuralFeasibility structural = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                player, ctx, session.Snapshot, mode, slot, System.Array.Empty<ReconSector>());
+
+            string label = existing ? $"actor=#{moverArmyId}" : $"airfield=({airfieldHex.Q},{airfieldHex.R})";
+            if (!structural.Feasible)
+            {
+                AiDebugLog.Write($"[AI][V2][Recon][Air][AviationReserveEval] {label} decision=SKIP "
+                    + "reason=no_worthwhile_route_this_turn");
+                return ProvisionFailure.SortieNotWorthwhile(
+                    $"air actor #{moverArmyId}: no worthwhile recon route this turn");
+            }
+
+            bool reserve = ReconAirReservationPrepass.EvaluateAirActivationEconomics(
+                player, root, ctx.Map, slot.Ap, structural,
+                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
+                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)),
+                out AviationReservationDecision decision);
+            AiDebugLog.Write(decision.ToLog(label));
+            return reserve
+                ? (ProvisionFailure?)null
+                : ProvisionFailure.SortieNotWorthwhile(
+                    $"air actor #{moverArmyId}: sortie not worth reserving this turn ({decision.Reason})");
         }
 
         // Round 3 (Problem 2) — PURE translation of ReconAssignmentPlanner.AssignFunded's already-

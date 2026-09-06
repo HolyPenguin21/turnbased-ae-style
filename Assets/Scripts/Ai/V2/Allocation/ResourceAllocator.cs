@@ -156,6 +156,9 @@ namespace Game.Ai.V2
         TargetInvalidated,   // the world changed under the mission (focus hex now holds a known army)
         NoObservationVantage,// Surveil: a capable scout exists, but NO on-map hex within any scout's vision can observe the focus
         AssemblyInfeasible,  // structural: the mission cannot be made executable by any assemblable means
+        SortieNotWorthwhile, // air recon: resources are technically sufficient, but the staged reservation
+                             // decision (Energy runway -> hand/deck Energy pressure -> recon value) says this
+                             // sortie is not worth reserving Energy/AP for THIS turn. Recomputed every turn.
     }
 
     // The retry semantics the allocator applies to a ProvisionFailure, kept orthogonal to Kind.
