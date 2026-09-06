@@ -83,8 +83,8 @@ namespace Game.Ai.V2
                 if (wing == null)
                     return AirStructuralFeasibility.No;
 
-                (ReconAirSortieState projected, int excludeSortieId) = BuildScoringStateForWing(player, ctx, wing);
-                bool airborne = excludeSortieId >= 0;
+                (ReconAirSortieState projected, int excludeSortieId, ReconMode mode) =
+                    BuildScoringContextForWing(player, ctx, wing, globalMode);
                 scoringCtx.ExcludeSortieId = excludeSortieId;
                 // R5 review fix — a Hold- or Return-phase wing is NOT Observation capacity. The
                 // executor ignores the AIR-01 forward `Pick` result once the sortie is Return-bound
@@ -96,9 +96,6 @@ namespace Game.Ai.V2
                     && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
                     return AirStructuralFeasibility.No;
 
-                ReconMode mode = airborne
-                    && ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState asg)
-                    ? asg.Mode : globalMode;
                 choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
                 excludeArmyId = wing.Id;
@@ -132,21 +129,28 @@ namespace Game.Ai.V2
             return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId);
         }
 
-        // Shared projected-scoring inputs for one wing, used by BOTH EvaluateAirStructuralFeasibility
-        // (capacity) and ReconAssignmentPlanner.AppendAirCandidates (real per-mission RouteScore) so
-        // the two can never score the same continuing sortie differently again:
+        // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)
+        // and ReconAssignmentPlanner.AppendAirCandidates (real per-mission RouteScore) so the two —
+        // and the executor — can never score the same continuing sortie differently again. Every
+        // input the AIR-01 route scorer actually reads is resolved here, once:
         //   · Projected       — the read-only turn-start ReconAirSortieState the executor will hand
         //                       Pick (phase / trail / claim), so Outbound/Turning shaping, trail
         //                       overlap and lateral novelty all match the executor.
         //   · ExcludeSortieId — this wing's own live sortie id, so its OWN coverage is not counted
         //                       as "recently covered by another sortie". -1 for a wing with no live
         //                       Recon sortie (a ready idle wing).
-        internal static (ReconAirSortieState Projected, int ExcludeSortieId) BuildScoringStateForWing(
-            PlayerSetupData player, AiTurnContext ctx, ArmyData wing)
+        //   · EffectiveMode   — a durable per-actor ReconPatrolState.Mode wins over `globalMode`
+        //                       (the same precedence AirReconStepDirector applies at execution).
+        //                       `globalMode` is the caller's AirReconModePolicy.RequestedMode.
+        internal static (ReconAirSortieState Projected, int ExcludeSortieId, ReconMode EffectiveMode)
+            BuildScoringContextForWing(PlayerSetupData player, AiTurnContext ctx, ArmyData wing, ReconMode globalMode)
         {
             int excludeSortieId = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real)
                 ? real.SortieId : -1;
-            return (ProjectScoringSortie(player, ctx, wing), excludeSortieId);
+            ReconMode effectiveMode = excludeSortieId >= 0
+                && ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState patrol)
+                ? patrol.Mode : globalMode;
+            return (ProjectScoringSortie(player, ctx, wing), excludeSortieId, effectiveMode);
         }
 
         // ACTIVATION ECONOMICS — "is THIS sortie strategically worth its AP/Energy this turn?" — is
