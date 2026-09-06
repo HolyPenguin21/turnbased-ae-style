@@ -139,16 +139,16 @@ namespace Game.Ai.V2
         //   · ExcludeSortieId — this wing's own live sortie id, so its OWN coverage is not counted
         //                       as "recently covered by another sortie". -1 for a wing with no live
         //                       Recon sortie (a ready idle wing).
-        //   · EffectiveMode   — a durable per-actor ReconPatrolState.Mode wins over `globalMode`
-        //                       (the same precedence AirReconStepDirector applies at execution).
+        //   · EffectiveMode   — a durable per-actor ReconPatrolState.Mode wins over `globalMode`,
+        //                       the SAME precedence AirReconStepDirector applies at execution (a
+        //                       plain TryGet, independent of whether a live sortie state exists).
         //                       `globalMode` is the caller's AirReconModePolicy.RequestedMode.
         internal static (ReconAirSortieState Projected, int ExcludeSortieId, ReconMode EffectiveMode)
             BuildScoringContextForWing(PlayerSetupData player, AiTurnContext ctx, ArmyData wing, ReconMode globalMode)
         {
             int excludeSortieId = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real)
                 ? real.SortieId : -1;
-            ReconMode effectiveMode = excludeSortieId >= 0
-                && ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState patrol)
+            ReconMode effectiveMode = ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState patrol)
                 ? patrol.Mode : globalMode;
             return (ProjectScoringSortie(player, ctx, wing), excludeSortieId, effectiveMode);
         }
