@@ -36,6 +36,11 @@ namespace Game.Ai.V2
     {
         Flat,               // BaseFit as-is
         RecurringResource,  // BaseFit scaled by economy insecurity (recurring AP income, …)
+        GlobalRecurringResource, // AI-MGR — a PlayerGlobal per-turn resource yield (ApBonus today).
+                                 // Value is fully DYNAMIC (yield x horizon x futureOpportunity x
+                                 // marginalResourceUtility x expectedRealisation x saturation) — see
+                                 // GlobalRecurringValue. BaseFit is IGNORED; GlobalYieldPerTurn +
+                                 // GlobalResource carry the semantics.
         EnemyThreatScaled,  // BaseFit scaled by the matching enemy-threat magnitude (AA<->air, AT<->armour)
         TargetDensity,      // AoE   — BaseFit scaled by EXPECTED AFFECTED ENEMY BODIES near the deploy
         ExpectedSustain,    // regen — BaseFit scaled by expected combat DURATION × projected survivability
@@ -52,6 +57,19 @@ namespace Game.Ai.V2
         SelfBody,           // affects only the deployed body
         DestArmy,           // affects the army the body joins (auras)
         EnemiesNearDeploy,  // affects enemy bodies around the deploy hex (AoE / splash)
+        PlayerGlobal,       // AI-MGR — affects the WHOLE player (a global per-turn economy / tempo
+                            // effect). Not a role/placement contribution: priced ONCE per card,
+                            // independent of the IntendedRole being scored, exactly like an
+                            // incoming aura synergy.
+    }
+
+    // AI-MGR — which global per-turn resource a PlayerGlobal recurring effect yields. `None` for
+    // every non-global row. A future "+Energy/turn" / "+draw every N turns" / "+movement budget"
+    // effect adds a member here and a branch in GlobalRecurringValue — NOT a card-specific evaluator.
+    internal enum GlobalResourceKind
+    {
+        None,
+        ActionPoints,
     }
 
     internal enum EffectTiming
@@ -122,6 +140,11 @@ namespace Game.Ai.V2
         public readonly int CapacityRequirement;
         public readonly EffectStacking Stacking;
         public readonly string StackingKey;
+        // AI-MGR — PlayerGlobal recurring-resource semantics (GlobalRecurringResource context).
+        //   GlobalResource       which per-turn resource this yields (None for every other row)
+        //   GlobalYieldPerTurn   how much of it per turn, per source (canonical gameplay number)
+        public readonly GlobalResourceKind GlobalResource;
+        public readonly float GlobalYieldPerTurn;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
             EffectField field, bool coverage,
@@ -129,7 +152,8 @@ namespace Game.Ai.V2
             EffectScope scope = EffectScope.SelfBody, float magnitude = 1f, float probability = 1f,
             EffectTiming timing = EffectTiming.Persistent, int durationRounds = 0,
             int capacityRequirement = 1, EffectStacking stacking = EffectStacking.Stack,
-            string stackingKey = null)
+            string stackingKey = null,
+            GlobalResourceKind globalResource = GlobalResourceKind.None, float globalYieldPerTurn = 0f)
         {
             Role = role;
             BaseFit = baseFit;
@@ -147,6 +171,8 @@ namespace Game.Ai.V2
             CapacityRequirement = capacityRequirement < 1 ? 1 : capacityRequirement;
             Stacking = stacking;
             StackingKey = string.IsNullOrEmpty(stackingKey) ? null : stackingKey;
+            GlobalResource = globalResource;
+            GlobalYieldPerTurn = Mathf.Max(0f, globalYieldPerTurn);
         }
     }
 
@@ -236,18 +262,33 @@ namespace Game.Ai.V2
         // it is folded into EffectContribution.Synergy once, for every role.
         public readonly float IncomingAuraSynergy;
 
+        // AI-MGR — snapshot-pure inputs for a PlayerGlobal recurring-resource effect (GlobalRecurringResource
+        // context). ApEconomy may be null on a bare/partial snapshot; RecurringFutureOpportunity is
+        // in [effectRecurringOpportunityFloor .. 1] and is state-driven (NOT rising with TurnNumber —
+        // an early persistent source keeps at least as much future value as a late one).
+        public readonly ApActionEconomySnapshot ApEconomy;
+        public readonly float RecurringFutureOpportunity;
+        public readonly int TurnNumber;
+
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
+
+        // Plan-less overload — the non-combat lane (Base / Facility / Aviation / Equipment) has no
+        // MaterializationPlan but still needs the PlayerGlobal effect priced identically.
+        public EffectEvaluationContext(WorldSnapshot snap) : this(snap, null) { }
 
         public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan)
         {
             Snap = snap;
             Plan = plan;
+            TurnNumber = snap?.TurnNumber ?? 0;
+            ApEconomy = snap?.Self?.ApEconomy;
             RecurringIncomeWeight = snap?.Economy != null
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
+            RecurringFutureOpportunity = ComputeRecurringFutureOpportunity(snap);
 
             // The projected END RESULT — base def + already-attached equipment + plan equipment.
-            ProjectedLine = AiPower.ProjectMaterialization(plan);
+            ProjectedLine = plan != null ? AiPower.ProjectMaterialization(plan) : default;
 
             // FOG-RESPECTING enemy density / strength near the deploy — KNOWN sightings only.
             LocalEnemyArmies = 0;
@@ -284,6 +325,38 @@ namespace Game.Ai.V2
 
             IncomingAuraSynergy = ComputeIncomingAuraSynergy(
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);
+        }
+
+        // AI-MGR §5 — how much of the bounded recurring horizon a persistent source deployed NOW can
+        // still realistically pay back. Driven by WORLD STATE (room to grow force, map left to
+        // discover, whether AP is usable at all) with only a WEAK turn-number fallback — it must NOT
+        // rise with TurnNumber, so an early persistent AP source is worth at least as much future
+        // opportunity as the same source deployed late. Result in [floor .. 1].
+        private static float ComputeRecurringFutureOpportunity(WorldSnapshot snap)
+        {
+            float floor = AiConfigV2.effectRecurringOpportunityFloor;
+            if (snap?.Self == null)
+                return Mathf.Lerp(floor, 1f, 0.5f);
+
+            float potential = Mathf.Max(1f, snap.Self.TotalMilitaryPotential);
+            float forceRoom = Mathf.Clamp01(1f - snap.Self.TotalPower / potential);
+            float mapRoom = snap.MapKnowledge != null
+                ? Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac)
+                : 0.5f;
+            float actionRoom = snap.Self.ApEconomy != null
+                ? Mathf.Clamp01(snap.Self.ApEconomy.MarginalApUtility)
+                : 0.5f;
+            float lateFallback = 1f - AiConfigV2.effectRecurringLateStageWeakWeight
+                * Curves.Ramp(snap.TurnNumber,
+                    AiConfigV2.effectRecurringStageRampLo, AiConfigV2.effectRecurringStageRampHi);
+
+            float blended =
+                AiConfigV2.effectRecurringOppForceRoomWeight * forceRoom
+                + AiConfigV2.effectRecurringOppMapRoomWeight * mapRoom
+                + AiConfigV2.effectRecurringOppActionRoomWeight * actionRoom
+                + AiConfigV2.effectRecurringOppLateFallbackWeight * lateFallback;
+
+            return Mathf.Clamp(Mathf.Lerp(floor, 1f, Mathf.Clamp01(blended)), floor, 1f);
         }
 
         // §3.3 army -> candidate — each aura standing in the dest army that the incoming candidate's
@@ -469,13 +542,23 @@ namespace Game.Ai.V2
                 },
                 [UnitAbilities.ApBonus] = new[]
                 {
-                    // final closure §4 + follow-up P2 — a recurring-AP effect is ONE contribution.
-                    // The old ScoreSurplusRole `HasContext(RecurringResource) -> recurringAp` flat add
-                    // is gone; its value is not re-added under another field. Recurring AP "pays back
-                    // every following turn" — a SUSTAINED Support-capability value, RecurringResource-
-                    // scaled (worth more when the economy is insecure), NOT a present-turn tempo term.
-                    new StrategicEffect(IntendedRole.Support, AiConfigV2.surplusRecurringApIncomeBonus,
-                        StrategicEffectContext.RecurringResource, EffectField.RoleFit, coverage: true),
+                    // AI-MGR — Dynamic Strategic Effect Utility. ApBonus is a PlayerGlobal /
+                    // Persistent / RecurringResource effect: it raises the AP available every
+                    // following turn, so its value is the DYNAMIC extra strategic opportunity that
+                    // creates in the CURRENT game state (yield x horizon x futureOpportunity x
+                    // marginalApUtility x expectedRealisation x saturation — see GlobalRecurringValue),
+                    // never a flat "+0.75 because the ability is present". Descriptor-driven and
+                    // carrier-agnostic: the SAME row prices it on a Hero, Unit, Base, Facility or a
+                    // generated card. ONE authoritative contribution (RoleFit); nothing re-adds it
+                    // under another field. Role Support + coverage:true keep it in DeriveRoles /
+                    // BaselineForceReadiness exactly as before. Diminishing stacking guards the
+                    // (unrealistic) double-ApBonus card; multi-SOURCE diminishing is in the scaler.
+                    new StrategicEffect(IntendedRole.Support, 0f,
+                        StrategicEffectContext.GlobalRecurringResource, EffectField.RoleFit, coverage: true,
+                        scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Diminishing, stackingKey: "ApBonusGlobal",
+                        globalResource: GlobalResourceKind.ActionPoints,
+                        globalYieldPerTurn: UnitAbilities.ApBonusActionPointsPerSource),
                 },
                 [UnitAbilities.Researcher] = new[]
                 {
@@ -546,7 +629,13 @@ namespace Game.Ai.V2
         // adds each field to the matching bd.* term exactly once.
         public static EffectContribution Contributions(IntendedRole role,
             IEnumerable<string> effectiveAbilities, int effectiveMoveMax, in EffectEvaluationContext ctx)
+            => Contributions(role, effectiveAbilities, effectiveMoveMax, ctx, out _);
+
+        public static EffectContribution Contributions(IntendedRole role,
+            IEnumerable<string> effectiveAbilities, int effectiveMoveMax, in EffectEvaluationContext ctx,
+            out string effectDetail)
         {
+            effectDetail = null;
             float roleFit = 0f, tempo = 0f, threat = 0f, gap = 0f, grow = 0f, syn = 0f;
 
             void Add(EffectField field, float v)
@@ -562,8 +651,25 @@ namespace Game.Ai.V2
                 }
             }
 
-            List<StrategicEffect> forRole = Resolve(effectiveAbilities, effectiveMoveMax)
-                .Where(e => e.Role == role).ToList();
+            List<StrategicEffect> all = Resolve(effectiveAbilities, effectiveMoveMax);
+
+            // AI-MGR — PlayerGlobal effects are NOT role/placement contributions: they are priced
+            // ONCE per card, independent of the IntendedRole being scored (like IncomingAuraSynergy
+            // below), so they are handled here and EXCLUDED from the role-filtered pass. Copies that
+            // share a StackingKey are reduced together.
+            List<StrategicEffect> global = all.Where(e => e.Scope == EffectScope.PlayerGlobal).ToList();
+            foreach (StrategicEffect e in global.Where(e => e.StackingKey == null))
+                Add(e.Field, GlobalRecurringValue(e, ctx, ref effectDetail));
+            foreach (IGrouping<string, StrategicEffect> g in global
+                         .Where(e => e.StackingKey != null).GroupBy(e => e.StackingKey))
+            {
+                StrategicEffect e = g.First();
+                Add(e.Field, EffectEvaluationContext.StackedTotal(
+                    e.Stacking, GlobalRecurringValue(e, ctx, ref effectDetail), g.Count()));
+            }
+
+            List<StrategicEffect> forRole = all
+                .Where(e => e.Role == role && e.Scope != EffectScope.PlayerGlobal).ToList();
 
             // An effect with NO StackingKey stands alone — evaluated individually with its OWN
             // context (predicate / scope / duration), never merged with anything (every existing
@@ -613,6 +719,88 @@ namespace Game.Ai.V2
             => e.Timing == EffectTiming.DuringCombat && ctx.ExpectedCombatRounds <= 1f
                 ? AiConfigV2.effectNoCombatTimingFloor
                 : 1f;
+
+        // ===================================================================================
+        //  AI-MGR — DYNAMIC GLOBAL RECURRING-RESOURCE VALUE  (the ApBonus production case)
+        // ===================================================================================
+        //  Answers "how much ADDITIONAL strategic opportunity does +yield of this global resource
+        //  every turn create in the CURRENT game state?", not "the ability is present, +X".
+        //
+        //      value = perUnitTurnValue x yield x (horizon x futureOpportunity)
+        //              x marginalResourceUtility        (can the AI actually spend it?  §6)
+        //              x expectedRealisation             (gen chance x carrier durability)
+        //              x saturationFactor                (base + existing + candidate vs usable  §8)
+        //
+        //  Carrier-agnostic: identical on Hero / Unit / Base / Facility / generated card. ONE
+        //  contribution — the caller adds it to exactly one EffectField. `detail` is the AiDebug
+        //  decomposition (§15). A future +Energy/turn or +draw/N-turns effect is another
+        //  GlobalResourceKind branch here, never a new evaluator.
+        private static float GlobalRecurringValue(in StrategicEffect e, in EffectEvaluationContext ctx,
+            ref string detail)
+        {
+            if (e.GlobalResource != GlobalResourceKind.ActionPoints || e.GlobalYieldPerTurn <= 0f)
+                return 0f;
+
+            ApActionEconomySnapshot ape = ctx.ApEconomy;
+            float yield = e.GlobalYieldPerTurn;
+            float future = ctx.RecurringFutureOpportunity;                          // [floor .. 1]
+            float horizonTurns = AiConfigV2.effectRecurringHorizonTurns * future;   // effective pay-back turns
+
+            float marginal = ape != null
+                ? Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f, Mathf.Clamp01(ape.MarginalApUtility))
+                : 0.5f;
+
+            float realisation = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
+                Mathf.Clamp01(GenChanceOf(ctx) * CarrierDurabilityOf(ctx)));
+
+            float saturation = SaturationFactor(ape, yield);
+
+            float raw = AiConfigV2.effectGlobalRecurringApPerTurnValue * yield * horizonTurns;
+            float value = Mathf.Min(AiConfigV2.effectGlobalRecurringValueCap,
+                raw * marginal * realisation * saturation);
+
+            string line =
+                $"effect=ApBonus scope=PlayerGlobal yield=+{yield:0.#}AP/turn "
+                + $"horizon={AiConfigV2.effectRecurringHorizonTurns}x future={future:0.00} "
+                + $"apMarginalUtility={marginal:0.00} existingRecurringSources={(ape?.RecurringApSources ?? 0)} "
+                + $"saturation={saturation:0.00} realisation={realisation:0.00} effectValue={value:0.00}";
+            detail = string.IsNullOrEmpty(detail) ? line : detail + " ; " + line;
+            return value;
+        }
+
+        // Probability the source actually materialises this turn — a generation chain can fail.
+        private static float GenChanceOf(in EffectEvaluationContext ctx)
+            => ctx.Plan?.Generation != null
+                ? Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
+                    Mathf.Clamp01(ctx.Plan.Generation.SuccessChance))
+                : 1f;
+
+        // How durably a recurring source stays in play once fielded: infrastructure (Base /
+        // Facility / plan-less non-combat) is the most certain, a Hero less so, a Unit body least.
+        private static float CarrierDurabilityOf(in EffectEvaluationContext ctx)
+        {
+            CardDefinition def = ctx.Plan?.BaseCardInHand?.Definition ?? ctx.Plan?.GeneratedBaseDef;
+            if (def == null) return 1f;
+            if (def.cardType == CardType.Unit) return AiConfigV2.effectRecurringCarrierDurabilityUnit;
+            if (def.cardType == CardType.Hero) return AiConfigV2.effectRecurringCarrierDurabilityHero;
+            return 1f;
+        }
+
+        // §8 — diminishing marginal utility. Adding this source's yield on top of the AP the AI
+        // ALREADY has: if that leaves idle AP (headroom above what it can usefully spend) the extra
+        // yield is worth progressively less; and each recurring source ALREADY in play discounts the
+        // next one geometrically. 1 (no discount) when there is no ApEconomy read.
+        private static float SaturationFactor(ApActionEconomySnapshot ape, float yield)
+        {
+            if (ape == null) return 1f;
+            float projectedAvail = ape.BaseActionPoints + yield;
+            float headroom = projectedAvail - ape.EstimatedUsefulApDemand;
+            float f = headroom <= 0f
+                ? 1f
+                : Mathf.Clamp01(1f - headroom / Mathf.Max(1f, yield * 2f));
+            f *= Mathf.Pow(AiConfigV2.effectRecurringSourceDiminish, Mathf.Max(0, ape.RecurringApSources));
+            return Mathf.Clamp01(f);
+        }
 
         public static float ContextualValue(in StrategicEffect e, in EffectEvaluationContext ctx)
         {

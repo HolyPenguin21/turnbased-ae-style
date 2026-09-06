@@ -90,6 +90,12 @@ namespace Game.Cards
         // GrantApBonusActionPoints/ApBonusPerSource.
         public const string ApBonus = "ApBonus";
 
+        // The AP each in-play ApBonus carrier grants on its owner's turn. CANONICAL gameplay value:
+        // GameTurnController.GrantApBonusActionPoints applies it, and the V2 AI's
+        // StrategicEffectRegistry prices the recurring effect from THIS same number, so the two can
+        // never drift. Change the number here, both systems follow.
+        public const int ApBonusActionPointsPerSource = 2;
+
         // --- Base-card/building abilities (formerly Game.Map.BuildingAbilities) --------------
         // Open-ended, same as every tag above — still only one real building (the citadel) plus
         // hero-built Facilities, and new abilities will keep getting added as buildings do.

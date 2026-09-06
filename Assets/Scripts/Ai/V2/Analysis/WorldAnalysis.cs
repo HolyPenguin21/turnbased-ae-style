@@ -214,6 +214,8 @@ namespace Game.Ai.V2
                 .Any(m => m != null && m.IsHero
                     && (m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)));
 
+            BuildApActionEconomy(self, player, ownArmies);
+
             var nowPool = new List<AiPower.PowerUnit>();
             int nowCap = NoHeroStackCapacity;
             foreach (ArmyData a in ownArmies)
@@ -248,6 +250,75 @@ namespace Game.Ai.V2
 
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
+
+        // AI-MGR — Dynamic Strategic Effect Utility. Snapshot-pure AP action-economy read: how many
+        // recurring-AP sources are in play, how much AP the AI could still usefully spend this turn,
+        // and from those the marginal value of one more AP/turn. ACTION economy only — never a
+        // H/E/M/T security read. Also counts the non-hero bodies a hero's Command could realistically
+        // put to use.
+        private static void BuildApActionEconomy(SelfSnapshot self, PlayerSetupData player,
+            List<ArmyData> ownArmies)
+        {
+            int recurringApSources = 0;
+            foreach (ArmyData a in ownArmies)
+            {
+                if (a.IsPrison) continue;
+                foreach (UnitData m in a.Members)
+                    if (m != null && m.HasAbility(UnitAbilities.ApBonus))
+                        recurringApSources++;
+            }
+            foreach (BuildingData b in BuildingRegistry.AllBuildings())
+            {
+                if (b == null || b.Owner != player) continue;
+                if (b.HasAbility(UnitAbilities.ApBonus))
+                    recurringApSources++;
+                if (b.FacilitySlots != null)
+                    foreach (FacilityData f in b.FacilitySlots)
+                        if (f != null && f.HasAbility(UnitAbilities.ApBonus))
+                            recurringApSources++;
+            }
+
+            int unactivatedArmies = 0;
+            float armyApDemand = 0f;
+            int nonHeroBodies = 0;
+            foreach (ArmyData a in ownArmies)
+            {
+                foreach (UnitData m in a.Members)
+                    if (m != null && !m.IsHero) nonHeroBodies++;
+                if (a.IsGarrison || a.IsPrison || a.IsAirArmy || a.Members.Count == 0) continue;
+                if (a.HasActivatedThisTurn) continue;
+                unactivatedArmies++;
+                armyApDemand += Mathf.Max(1, a.ActivationApCost);
+            }
+
+            int apCards = 0;
+            float cardApDemand = 0f;
+            foreach (CardData c in self.Hand)
+            {
+                float ap = c != null ? c.EffectivePlayApCost : 0f;
+                if (ap > 0f) { apCards++; cardApDemand += ap; }
+                if (c?.Definition != null && c.Definition.cardType == CardType.Unit) nonHeroBodies++;
+            }
+
+            float devDemand = self.HasDevFacility && self.HasDevOperator ? AiConfigV2.apDevActionApProxy : 0f;
+            float airDemand = (self.AirborneReconWings + self.SpareAirObservationSorties) * AiConfigV2.apAirSortieApProxy;
+            float usefulDemand = armyApDemand + cardApDemand + devDemand + airDemand;
+            float avail = Mathf.Max(1f, self.ActionPoints);
+            float marginal = Curves.Ramp(usefulDemand / avail,
+                AiConfigV2.apMarginalUtilRampLo, AiConfigV2.apMarginalUtilRampHi);
+
+            self.ApEconomy = new ApActionEconomySnapshot
+            {
+                BaseActionPoints = self.ActionPoints,
+                RecurringApSources = recurringApSources,
+                RecurringApPerTurn = recurringApSources * UnitAbilities.ApBonusActionPointsPerSource,
+                UnactivatedActionableArmies = unactivatedArmies,
+                ApCostingHandActions = apCards,
+                EstimatedUsefulApDemand = usefulDemand,
+                MarginalApUtility = marginal,
+            };
+            self.DeployableCombatBodies = nonHeroBodies;
+        }
 
         private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {

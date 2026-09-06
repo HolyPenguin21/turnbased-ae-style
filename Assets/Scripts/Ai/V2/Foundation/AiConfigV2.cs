@@ -913,6 +913,9 @@ namespace Game.Ai.V2
         public const float surplusUnitVersatility = 0.25f;
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
         // a generic low-value garrison body in Phase B, without bypassing required Phase-A demands.
+        // DEPRECATED (AI-MGR — Dynamic Strategic Effect Utility): the flat "+0.75 because ApBonus is
+        // present" is gone. Recurring-AP value is now the dynamic model above (effectGlobal* /
+        // effectRecurring* / apMarginalUtil*). Kept only so any stale reference still compiles.
         public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
         public const float surplusScarcityHigh = 1.0f;
@@ -1020,6 +1023,51 @@ namespace Game.Ai.V2
         public const float effectNoCombatTimingFloor = 0.25f;// value multiplier for a DuringCombat effect when no fight is expected at the deploy
         public const float effectSummonDurationNorm = 3f;  // DurationRounds for a temporary Summon's duration factor to reach full value (0 DurationRounds = permanent = full)
         public const float effectStackingDiminishFactor = 0.5f;// EffectStacking.Diminishing: each extra identical copy is worth this fraction of the previous
+
+        // === AI-MGR — DYNAMIC STRATEGIC EFFECT UTILITY ======================================
+        //  A PlayerGlobal / Persistent / RecurringResource effect (ApBonus is the first) is NO
+        //  LONGER a flat "+0.75 because the ability is present". Its value is
+        //     perTurnValue x yield x (horizon x futureOpportunity) x marginalApUtility
+        //         x expectedRealisation x saturation
+        //  computed from snapshot-pure state (SelfSnapshot.ApEconomy). All descriptor-driven — a
+        //  new global recurring effect (Energy/turn, draw/N turns, movement budget) is one more
+        //  StrategicEffect row, no evaluator edit. Meant to be tuned against real AiDebug runs.
+        //  effectRecurringHorizonTurns is DEDICATED — never reuse tempoHoldOverstockRunwayHorizon
+        //  (that constant owns persistent-resource STOCK retention; coupling the two would make an
+        //  economy tweak silently move Hank / Base ApBonus valuation and vice-versa).
+        public const int   effectRecurringHorizonTurns         = 8;    // bounded pay-back horizon for a persistent/recurring effect (no authoritative game end)
+        public const float effectRecurringOpportunityFloor     = 0.35f;// futureOpportunity never drops below this — an EARLY source is worth at least this share of the horizon
+        public const float effectGlobalRecurringApPerTurnValue  = 0.06f;// strategic RoleFit units earned per +1 usable AP/turn, per horizon turn
+        public const float effectGlobalRecurringValueCap        = 1.6f; // hard cap on ONE global recurring effect's contribution
+        public const float effectRecurringSourceDiminish        = 0.72f;// each ApBonus source ALREADY in play multiplies the next one's value by this (diminishing multi-source)
+        public const float effectRecurringRealisationFloor      = 0.30f;// expectedRealisation = Lerp(floor, 1, genChance x carrierDurability)
+        public const float effectRecurringCarrierDurabilityUnit = 0.80f;// a recurring source riding a Unit body is less certain to persist than one on a Base/Facility
+        public const float effectRecurringCarrierDurabilityHero = 0.90f;// ...a Hero is between a Unit and infrastructure
+        public const float effectRecurringLateStageWeakWeight   = 0.25f;// how much the WEAK turn-number fallback is allowed to pull futureOpportunity down late
+        public const int   effectRecurringStageRampLo           = 6;   // turn at/under which the weak late-stage fallback contributes 0
+        public const int   effectRecurringStageRampHi           = 40;  // turn at/over which it is fully applied
+        // futureOpportunity blend weights (state-driven, deliberately NOT monotonically rising with turn number)
+        public const float effectRecurringOppForceRoomWeight    = 0.35f;// room left to grow standing force (1 - power/potential)
+        public const float effectRecurringOppMapRoomWeight      = 0.25f;// explorable unknown map fraction still to be discovered by walking
+        public const float effectRecurringOppActionRoomWeight   = 0.25f;// current marginal AP utility (if AP sits idle now it likely will later too)
+        public const float effectRecurringOppLateFallbackWeight = 0.15f;// the weak turn-number fallback
+
+        // SelfSnapshot.ApEconomy — marginal AP utility (how valuable ONE more AP/turn is RIGHT NOW).
+        // action-economy driven, NOT H/E/M/T EconomicSecurity: an AI with a perfect economy but 4
+        // armies, live recon, Development and a full hand still binds on AP.
+        public const float apMarginalUtilRampLo = 0.60f;   // usefulApDemand / apAvailable at/under this -> one more AP is worth ~nothing (AP regularly idle)
+        public const float apMarginalUtilRampHi = 1.20f;   // ...and at/over this -> fully valuable (AP is the binding constraint)
+        public const float apMarginalUtilFloor  = 0.10f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
+        public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
+        public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
+
+        // Hero Command marginal-capacity valuation — REPLACES commandRating * heroRoleCommandWeight
+        // inside HeroLeadershipFit. Extra Command is only worth something when the AI actually has
+        // bodies to fill the slots it unlocks (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy).
+        public const float heroCommandMarginalSlotValue = 0.9f;// value of ONE extra battle slot this hero's Command unlocks AND the AI can fill
+        public const int   heroCommandMarginalMaxSlots  = 4;   // cap on counted extra slots
+        public const int   heroCommandDemandBodiesCap   = 12;  // cap on "bodies the AI could realistically field under this hero"
+
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card

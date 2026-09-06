@@ -177,6 +177,28 @@ namespace Game.Ai.V2
     }
 
     // =======================================================================================
+    //  AP ACTION ECONOMY  (AI-MGR — Dynamic Strategic Effect Utility)
+    // =======================================================================================
+    //  Snapshot-pure facts the StrategicEffectRegistry needs to price a PlayerGlobal recurring-
+    //  resource effect (ApBonus today) by its DYNAMIC marginal value instead of a flat bonus.
+    //  Built once in WorldAnalysis.BuildSelf from live state; never re-read downstream.
+    //  Deliberately NOT sourced from Initiative's InitiativeAnalyticsHistory ring buffer — that is
+    //  walled off from WorldAnalysis by design; this is a fresh structural read of THIS turn.
+    //  MarginalApUtility is ACTION-economy driven (armies to activate, playable cards, Development,
+    //  recon sorties) — NOT H/E/M/T EconomicSecurity: a perfect economy does not make another AP
+    //  useless when the AI still has actions competing for it.
+    public sealed class ApActionEconomySnapshot
+    {
+        public int BaseActionPoints;            // AP available this turn (post initiative roll + already-granted ApBonus)
+        public int RecurringApSources;          // in-play own carriers of UnitAbilities.ApBonus (army members + bases + facilities)
+        public int RecurringApPerTurn;          // RecurringApSources * UnitAbilities.ApBonusActionPointsPerSource
+        public int UnactivatedActionableArmies; // own non-garrison/prison/air armies with members that have not acted yet
+        public int ApCostingHandActions;        // hand cards whose play has a real AP cost
+        public float EstimatedUsefulApDemand;   // AP the AI could still usefully spend this turn (armies + cards + Development + air)
+        public float MarginalApUtility;         // [0..1] — 1 = AP is the binding constraint, 0 = AP regularly sits idle with nothing useful to do
+    }
+
+    // =======================================================================================
     //  SELF
     // =======================================================================================
     public sealed class SelfSnapshot
@@ -210,6 +232,13 @@ namespace Game.Ai.V2
 
         public bool HasDevFacility;
         public bool HasDevOperator;
+
+        // AI-MGR — Dynamic Strategic Effect Utility. Snapshot-pure AP action-economy facts + the
+        // count of non-hero bodies the AI could realistically field under a hero's Command (own
+        // on-map non-hero units + hand Unit cards). Consumed by StrategicEffectRegistry (recurring
+        // effect value) and StrategicCardEvaluator.HeroLeadershipFit (Command marginal capacity).
+        public ApActionEconomySnapshot ApEconomy;
+        public int DeployableCombatBodies;
 
         // AI-RECON-02 — air OBSERVATION capacity, from the shared ReconAirCapacityPolicy (the same
         // slot cap + launch-subset + AP/Energy gate ReconAirExecutor launches against):

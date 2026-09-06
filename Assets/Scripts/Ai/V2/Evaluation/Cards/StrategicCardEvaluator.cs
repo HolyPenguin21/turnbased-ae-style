@@ -80,6 +80,11 @@ namespace Game.Ai.V2
 
         public float Total;
 
+        // AI-MGR — human-readable decomposition of any DYNAMIC effect that fed this score
+        // (PlayerGlobal recurring-resource value, hero Command marginal-capacity value). Null when
+        // the card carries none. Surfaced in every AiDebug line that logs ToCompact().
+        public string EffectDetail;
+
         public string ToCompact()
         {
             string F(float v) => v.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
@@ -88,7 +93,8 @@ namespace Game.Ai.V2
                  + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(Deployability)} "
                  + $"scarce {F(ScarcityValue)} redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} hold {F(HoldValue)} "
-                 + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}";
+                 + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
+                 + (string.IsNullOrEmpty(EffectDetail) ? "" : $"  || {EffectDetail}");
         }
     }
 
@@ -267,14 +273,15 @@ namespace Game.Ai.V2
             float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
                 pabil, snap, 0f, equipUpgrade,
                 demand, referenceMoveMax, hasCompetingHeroDemand,
-                out MaterializationQualityBreakdown qbd);
+                out MaterializationQualityBreakdown qbd, out string heroCmdDetail);
 
             // P1 ARCH — ALL ability-derived value (AntiAir/AntiArmor/Support today; AoE/regen/aura/
             // summon later) comes from the registry as a per-axis EffectContribution, added to the
             // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core.
             var ectx = new EffectEvaluationContext(snap, plan);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
-                role, pabil, EffectiveMoveMax(plan), ectx);
+                role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
+            bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
             bd.RoleFit = fit * (roleFitCore + ec.RoleFit);
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind) + ec.ImmediateTempo;
@@ -376,12 +383,13 @@ namespace Game.Ai.V2
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
-                equipmentUpgrade, null, 0, false, out _);
+                equipmentUpgrade, null, 0, false, out _, out string heroCmdDetail);
             // P1 ARCH — every ability-derived value comes from the registry as a per-axis
             // EffectContribution (see ScoreForDemand).
             var ectx = new EffectEvaluationContext(snap, plan);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
-                role, projected, EffectiveMoveMax(plan), ectx);
+                role, projected, EffectiveMoveMax(plan), ectx, out string effDetail);
+            bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
             bd.RoleFit = roleFitCore + ec.RoleFit;
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
@@ -423,9 +431,10 @@ namespace Game.Ai.V2
         private static float RoleFitCore(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
             float equipmentUpgrade, AxisDemand demand, int referenceMoveMax, bool hasCompetingHeroDemand,
-            out MaterializationQualityBreakdown qbd)
+            out MaterializationQualityBreakdown qbd, out string heroCmdDetail)
         {
             qbd = MaterializationQualityBreakdown.Neutral();
+            heroCmdDetail = null;
             switch (role)
             {
                 case IntendedRole.Scout:
@@ -448,7 +457,8 @@ namespace Game.Ai.V2
                 case IntendedRole.MobileCombat:
                 case IntendedRole.AntiArmor:
                 case IntendedRole.AntiAir:
-                    return SurplusCombatReadinessUtility(plan) + HeroLeadershipFit(plan, hero);
+                    return SurplusCombatReadinessUtility(plan)
+                        + HeroLeadershipFit(plan, hero, snap, out heroCmdDetail);
                 case IntendedRole.Hold:
                     return 0f;
                 default:
@@ -512,6 +522,22 @@ namespace Game.Ai.V2
                     bd.RoleFit = Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade);
                     break;
             }
+
+            // AI-MGR §1 — close the Unit/Hero <-> Base/Facility gap: a non-combat card's abilities go
+            // through the SAME StrategicEffectRegistry as a Unit/Hero chain. Today this carries the
+            // PlayerGlobal ApBonus value (Ashen / Concord Base, an ApBonus Facility, a generated
+            // Base) via the identical dynamic model — no FacilityApBonusScore / BaseAbilityEvaluator.
+            IReadOnlyList<string> ncAbilities = def?.grantedAbilities;
+            var ncCtx = new EffectEvaluationContext(snap);
+            EffectContribution ncEc = StrategicEffectRegistry.Contributions(
+                role, ncAbilities, def != null ? def.moveMax : 0, ncCtx, out string ncEffDetail);
+            bd.RoleFit += ncEc.RoleFit;
+            bd.ImmediateTempo += ncEc.ImmediateTempo;
+            bd.CapabilityGapValue += ncEc.CapabilityGap;
+            bd.ForceGrowthValue += ncEc.ForceGrowth;
+            bd.ThreatResponseValue += ncEc.ThreatResponse;
+            bd.SynergyValue += ncEc.Synergy;
+            bd.EffectDetail = ncEffDetail;
 
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
@@ -843,12 +869,89 @@ namespace Game.Ai.V2
             && (def.grantedAbilities.Contains(UnitAbilities.Researcher)
                 || def.grantedAbilities.Contains(UnitAbilities.Assembler));
 
-        private static float HeroLeadershipFit(MaterializationPlan plan, bool hero)
+        // AI-MGR §11 — CommandRating is no longer an unconditional absolute bonus. The command part
+        // of a hero's leadership fit is the MARGINAL usable capacity it unlocks: how many extra
+        // battle slots its Command opens (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy
+        // over the projected deployment destination) that the AI actually has bodies to fill. The
+        // combat-contribution part is unchanged. `detail` is the AiDebug decomposition (§15).
+        private static float HeroLeadershipFit(MaterializationPlan plan, bool hero, WorldSnapshot snap,
+            out string detail)
         {
+            detail = null;
             if (!hero) return 0f;
+            CardDefinition def = PlanBaseDef(plan);
+            if (def == null) return 0f;
+
+            float combatPart = AiPower.ToPowerUnit(def).BasePower * AiConfigV2.heroRoleCombatContributionWeight;
+            float commandPart = HeroCommandMarginalValue(def, plan, snap, out detail);
+
             return Mathf.Clamp(
-                HeroLeadershipScore(PlanBaseDef(plan)) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
+                (combatPart + commandPart) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
                 0f, AiConfigV2.heroLeadershipFitCap);
+        }
+
+        // §11 — the marginal value of THIS hero's Command in the projected deployment context. A
+        // rival hero with +1 Command scores higher ONLY when demandBodies actually exceeds the lower
+        // Command — i.e. the extra slot is real AND fillable now.
+        private static float HeroCommandMarginalValue(CardDefinition def, MaterializationPlan plan,
+            WorldSnapshot snap, out string detail)
+        {
+            detail = null;
+            if (def == null || def.cardType != CardType.Hero)
+                return 0f;
+
+            int nominalCap = DestinationNominalCapacity(plan, snap, out bool destHasHero);
+            int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, destHasHero, def);
+            int demandBodies = Mathf.Clamp(1 + (snap?.Self?.DeployableCombatBodies ?? 0),
+                1, AiConfigV2.heroCommandDemandBodiesCap);
+            int fillable = Mathf.Min(projectedCap, demandBodies);
+            int usableExtraSlots = Mathf.Clamp(fillable - nominalCap, 0, AiConfigV2.heroCommandMarginalMaxSlots);
+            float value = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
+
+            detail = $"command={def.commandRating} nominalCap={nominalCap} "
+                   + $"projectedRequiredCapacity={demandBodies} projectedCap={projectedCap} "
+                   + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
+            return value;
+        }
+
+        // Nominal (heroless) battle-slot capacity of a plan's projected deployment destination —
+        // mirrors StrategicEffectRegistry.ResolveDestination so planning and this valuation cannot
+        // drift. `destHasHero` true => the destination already has a commander, so an incoming hero
+        // does NOT raise capacity (no auto TryReorderCommander).
+        private static int DestinationNominalCapacity(MaterializationPlan plan, WorldSnapshot snap,
+            out bool destHasHero)
+        {
+            destHasHero = false;
+            int heroless = ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), isGarrison: false);
+            if (plan == null)
+                return heroless;
+
+            switch (plan.Deploy.Kind)
+            {
+                case DeploymentKind.ExistingArmy:
+                case DeploymentKind.Garrison:
+                {
+                    int wantId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
+                    if (snap?.Self?.Armies != null)
+                        foreach (ArmySnapshot a in snap.Self.Armies)
+                            if (a != null && a.ArmyId == wantId)
+                            {
+                                destHasHero = a.HasHero;
+                                return a.Capacity;
+                            }
+                    return heroless;
+                }
+                case DeploymentKind.ReusableShell:
+                {
+                    if (plan.Deploy.Army != null && snap?.Self?.Armies != null)
+                        foreach (ArmySnapshot a in snap.Self.Armies)
+                            if (a != null && a.ArmyId == plan.Deploy.Army.Id)
+                                return a.Capacity;
+                    return heroless;
+                }
+                default: // NewArmy
+                    return heroless;
+            }
         }
 
         private static bool PlanHeroIsSupport(MaterializationPlan plan)
@@ -1120,5 +1223,13 @@ namespace Game.Ai.V2
 
         private static CardDefinition PlanBaseDef(MaterializationPlan p) =>
             p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
+
+        // AI-MGR — merge the dynamic-effect and hero-Command decomposition strings for the breakdown.
+        private static string JoinDetail(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a)) return b;
+            if (string.IsNullOrEmpty(b)) return a;
+            return a + " ; " + b;
+        }
     }
 }

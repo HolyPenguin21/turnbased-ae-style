@@ -839,7 +839,9 @@ namespace Game.Turns
         // Prison army, not free to act for them — it already earns the captor a separate,
         // ability-independent prison bonus, it shouldn't also earn them this skill's bonus just
         // for having originally carried it.
-        private const int ApBonusPerSource = 2;
+        // Canonical value lives on UnitAbilities so the V2 AI (StrategicEffectRegistry) prices the
+        // recurring ApBonus effect from the same number this grant uses.
+        private const int ApBonusPerSource = UnitAbilities.ApBonusActionPointsPerSource;
 
         private static void GrantApBonusActionPoints(List<PlayerSetupData> order)
         {

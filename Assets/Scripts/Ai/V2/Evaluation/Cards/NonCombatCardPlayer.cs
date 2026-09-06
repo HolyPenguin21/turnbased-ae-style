@@ -63,8 +63,15 @@ namespace Game.Ai.V2
             AiHandData hand, float bestEquipmentUpgrade, GenerationStep generation = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            return StrategicCardEvaluator.ScoreNonCombat(
-                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation).NetScore;
+            StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
+                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation);
+            // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
+            // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
+            if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
+                AiDebugLog.Write($"[AI][V2]   strat.nonCombat — {card?.Definition?.displayName} "
+                    + $"role={cand.IntendedRole} net {cand.NetScore.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"[{cand.Breakdown.ToCompact()}]");
+            return cand.NetScore;
         }
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
