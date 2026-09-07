@@ -136,7 +136,8 @@ namespace Game.Ai.V2
                 ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
                 if (plan.IsEmpty)
                 {
-                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — analysed, no legal improvement.");
+                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — {plan.DebugSummary()}, "
+                        + "current local formation profile already optimal.");
                     continue;
                 }
 
