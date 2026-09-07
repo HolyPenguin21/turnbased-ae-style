@@ -30,6 +30,12 @@ namespace Game.Ai.V2
         EconomicInfrastructure,    // an extraction facility / economy building at a resource site
         DevelopmentInfrastructure, // a Research/Production-capable base or facility
 
+        // A qualifying Research/Production Hero placed onto an existing but UNSTAFFED facility hex —
+        // the prerequisite for any CardUpgrade demand. Fulfilled by InfrastructureFulfillment (a
+        // hand Hero card deposited into the base garrison through the authoritative CardPlayExecutor),
+        // NOT the Unit/Hero materialization chain — parallel to DevelopmentInfrastructure.
+        DevelopmentOperator,
+
         // A Research/Production Challenge run to strengthen an existing card (hand / on-map unit).
         // Carries a DevelopmentOpportunity in AxisDemand.DevOpportunity — Phase A executes THAT,
         // never re-picks the card. Radar-gated via EffectiveValue like any Development work.

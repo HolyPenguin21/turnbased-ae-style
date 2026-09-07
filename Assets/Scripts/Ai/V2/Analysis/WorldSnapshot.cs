@@ -82,10 +82,19 @@ namespace Game.Ai.V2
         public IReadOnlyList<DevelopmentFacility> Facilities = System.Array.Empty<DevelopmentFacility>();
         public IReadOnlyList<DevelopmentOffering> Offerings = System.Array.Empty<DevelopmentOffering>();
 
-        public bool AnyFacilityWithHero;   // gateFacility AND gateHero, the radar's hard prerequisite
+        public bool AnyFacilityWithHero;   // a facility exists AND carries a qualifying hero (execution-ready)
         public float BestSuccessChance;    // max p over Offerings (0 if none)
         public float SurplusFraction;      // [0..1] resource headroom above the reservation floors
         public int UpgradeTargetCount;     // rough count of own units / hand Unit cards worth improving
+
+        // --- staging signals (radar is no longer gated on facility+hero; DemandLayer stages them) --
+        public bool AnyOperatorlessFacility; // a built facility with no qualifying hero and no enemy on the hex
+        public bool ResearcherCardInHand;    // hand holds a Hero card granting the Researcher role ability
+        public bool AssemblerCardInHand;     // hand holds a Hero card granting the Assembler role ability
+        // "there is a plausible path to doing Development": a staffed facility, any built facility (a
+        // hero can still arrive), or a Research/Production Facility card in hand to build one. Damps
+        // the LATENT desire term to zero in the pure opening when none of that is true.
+        public bool DevPathViable;
     }
 
     // --- Four stockpiled resources as one value. Index order matches ResourceType.

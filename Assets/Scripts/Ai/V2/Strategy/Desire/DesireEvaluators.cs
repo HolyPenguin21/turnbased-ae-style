@@ -90,12 +90,13 @@ namespace Game.Ai.V2
         public float RequiredDefensiveReserve;
         public float OffensiveFreePower;
 
-        // Development — the multiplicative gate's factors, kept for the "why" log.
-        public float DevFacilityReady;      // 0/1 — a facility with a qualifying hero exists
+        // Development — the desire factors, kept for the "why" log.
+        public float DevFacilityReady;      // 0/1 — a facility with a qualifying hero exists (hint only, NOT a gate)
         public float DevSurplusFraction;    // [0..1] resource headroom above the reservation floors
-        public float DevOfferingQuality;    // [0..1] blend of best success chance + upgrade-target count
+        public float DevOfferingQuality;    // [0..1] max(ready-offering quality, latent target pressure)
         public float DevBestSuccessChance;  // raw p of the best affordable offering
         public int   DevUpgradeTargets;
+        public bool  DevPathViable;         // a facility exists / can be built — else latent appetite is 0
     }
 
     public sealed class RadarAssessment
@@ -261,32 +262,46 @@ namespace Game.Ai.V2
             return Curves.Ramp(explorable, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
         }
 
-        // Development desire is a MULTIPLICATIVE gate over snapshot.Development (built once in the
-        // scan, shared with DevelopmentOpportunityEvaluator): no facility+hero -> 0, no spare
-        // resources -> ~0, nothing worth upgrading -> ~0. Only with every prerequisite met does it
-        // produce a real appetite, scaled by surplus depth and offering quality. Reads ONLY the
-        // shared readiness object — no live game-state read.
+        // Development desire over snapshot.Development (built once in the scan, shared with
+        // DevelopmentOpportunityEvaluator). NO hard facility+hero gate — that made the axis a pure
+        // execution-readiness signal and the vector went permanently dormant whenever the operator
+        // hero never showed up on its own. Instead, like Recon's explore pressure:
+        //   rawDev = surplus * quality * gain,  quality = max(readyQuality, latentQuality)
+        //     readyQuality  — a facility + qualifying hero + affordable offered cards exist, so a
+        //                     Challenge can run THIS turn (best success chance + target count).
+        //     latentQuality — no live offering yet, but there is something worth developing and a
+        //                     path to a facility exists. Keeps the axis warm so DemandLayer can
+        //                     STAGE the prerequisite (build the facility / move an operator hero
+        //                     onto it), capped at devLatentPotential.
+        //   surplus stays a hard multiplier — a Challenge stakes real H/E/M/T with a random return.
+        // Reads ONLY the shared readiness object — no live game-state read.
         private static float DevelopmentDesire(WorldSnapshot snap, DesireBreakdown b)
         {
             DevelopmentReadiness rd = snap?.Development;
             if (rd == null)
                 return 0f;
 
-            float facilityGate = rd.AnyFacilityWithHero ? 1f : 0f;
             float surplus = Curves.Ramp(rd.SurplusFraction,
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
-            float offeringQuality = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(
-                AiConfigV2.devWeightSuccessChance * rd.BestSuccessChance
-                + AiConfigV2.devWeightTargets * Curves.Ramp(rd.UpgradeTargetCount,
-                    AiConfigV2.devTargetRampLo, AiConfigV2.devTargetRampHi));
+            float targetPressure = Curves.Ramp(rd.UpgradeTargetCount,
+                AiConfigV2.devTargetRampLo, AiConfigV2.devTargetRampHi);
 
-            b.DevFacilityReady = facilityGate;
+            float readyQuality = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(
+                AiConfigV2.devWeightSuccessChance * rd.BestSuccessChance
+                + AiConfigV2.devWeightTargets * targetPressure);
+            float latentQuality = rd.DevPathViable
+                ? AiConfigV2.devLatentPotential * targetPressure
+                : 0f;
+            float quality = Mathf.Max(readyQuality, latentQuality);
+
+            b.DevFacilityReady = rd.AnyFacilityWithHero ? 1f : 0f;
             b.DevSurplusFraction = rd.SurplusFraction;
             b.DevBestSuccessChance = rd.BestSuccessChance;
-            b.DevOfferingQuality = offeringQuality;
+            b.DevOfferingQuality = quality;
             b.DevUpgradeTargets = rd.UpgradeTargetCount;
+            b.DevPathViable = rd.DevPathViable;
 
-            return Mathf.Clamp01(facilityGate * surplus * offeringQuality * AiConfigV2.devDesireGain);
+            return Mathf.Clamp01(surplus * quality * AiConfigV2.devDesireGain);
         }
 
         private static float ReconSurveillance(WorldSnapshot snap)
@@ -518,8 +533,8 @@ namespace Game.Ai.V2
                 + $"| lossPulse enemy {F(state.EnemyLossPulse)} (drop {F(enemyDropFrac)}) "
                 + $"own {F(state.OwnLossPulse)} (drop {F(ownDropFrac)})");
             AiDebugLog.Write($"[AI][V2]   desires — DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
-                + $"= facReady {F(b.DevFacilityReady)} * surplus {F(b.DevSurplusFraction)} * offerQual {F(b.DevOfferingQuality)} "
-                + $"(bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");
+                + $"= surplus {F(b.DevSurplusFraction)} x quality {F(b.DevOfferingQuality)} "
+                + $"(facReady {F(b.DevFacilityReady)} pathViable {(b.DevPathViable ? 1 : 0)} bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");
             string bestOpp = b.BestOpportunity.HasTarget
                 ? $"@{b.BestOpportunity.TargetHex.Q},{b.BestOpportunity.TargetHex.R} "
                   + $"asmWin {F(b.BestOpportunity.AssemblableWinChance)} readyWin {F(b.BestOpportunity.ReadyWinChance)} "

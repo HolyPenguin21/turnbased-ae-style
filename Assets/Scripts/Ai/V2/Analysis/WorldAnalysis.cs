@@ -342,7 +342,29 @@ namespace Game.Ai.V2
                 }
             }
 
+            bool facilityCardInHand = false, researcherCardInHand = false, assemblerCardInHand = false;
+            if (hand?.Hand != null)
+                foreach (CardData c in hand.Hand)
+                {
+                    CardDefinition d = c?.Definition;
+                    if (d == null || d.grantedAbilities == null)
+                        continue;
+                    if (d.cardType == CardType.Facility
+                        && (d.grantedAbilities.Contains(UnitAbilities.Research)
+                            || d.grantedAbilities.Contains(UnitAbilities.Production)))
+                        facilityCardInHand = true;
+                    if (d.cardType == CardType.Hero)
+                    {
+                        if (d.grantedAbilities.Contains(UnitAbilities.Researcher)) researcherCardInHand = true;
+                        if (d.grantedAbilities.Contains(UnitAbilities.Assembler)) assemblerCardInHand = true;
+                    }
+                }
+
             rd.AnyFacilityWithHero = facilities.Any(f => f.HasHero);
+            rd.AnyOperatorlessFacility = facilities.Any(f => !f.HasHero && !f.Contested);
+            rd.ResearcherCardInHand = researcherCardInHand;
+            rd.AssemblerCardInHand = assemblerCardInHand;
+            rd.DevPathViable = rd.AnyFacilityWithHero || facilities.Count > 0 || facilityCardInHand;
             rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
             rd.SurplusFraction = SurplusFraction(player, root, ctx);
             return rd;

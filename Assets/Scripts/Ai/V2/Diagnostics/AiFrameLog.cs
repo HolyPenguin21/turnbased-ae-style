@@ -99,7 +99,10 @@ namespace Game.Ai.V2
             if (rd != null)
                 AiDebugLog.Write($"{P}   development: facilities {rd.Facilities.Count} "
                     + $"(with-hero {(rd.AnyFacilityWithHero ? "yes" : "no")}"
+                    + $"{(rd.AnyOperatorlessFacility ? ", UNSTAFFED" : "")}"
                     + $"{(rd.Facilities.Any(f => f.Contested) ? ", CONTESTED" : "")})  "
+                    + $"operator-card {(rd.ResearcherCardInHand ? "R" : "-")}{(rd.AssemblerCardInHand ? "A" : "-")}  "
+                    + $"path-viable {(rd.DevPathViable ? "yes" : "no")}  "
                     + $"offerings {rd.Offerings.Count}  best-success {N2(rd.BestSuccessChance)}  "
                     + $"surplus {N2(rd.SurplusFraction)}  upgrade-targets {rd.UpgradeTargetCount}");
         }
@@ -130,8 +133,8 @@ namespace Game.Ai.V2
                 // surplus/free-power driver. home-guard = power kept back to defend bases (floored at
                 // AiConfigV2.aggHomeGuardFloor); free = TotalPower - home-guard, available to attack.
                 AiDebugLog.Write($"{P}   force balance:  home-guard {N2(b.RequiredDefensiveReserve)}  offensive-free {N2(b.OffensiveFreePower)}");
-                AiDebugLog.Write($"{P}   dev drivers:    facility-ready {N2(b.DevFacilityReady)}  surplus {N2(b.DevSurplusFraction)}  "
-                    + $"offering-quality {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}");
+                AiDebugLog.Write($"{P}   dev drivers:    facility-ready {N2(b.DevFacilityReady)} (hint)  path-viable {(b.DevPathViable ? "yes" : "no")}  "
+                    + $"surplus {N2(b.DevSurplusFraction)}  quality {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}");
                 AiDebugLog.Write($"{P}   NOTE: Defence / Economy have no evaluator yet (raw desire = 0); "
                     + $"no driver breakdown exists for them.");
             }

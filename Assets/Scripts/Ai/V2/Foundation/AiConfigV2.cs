@@ -216,8 +216,12 @@ namespace Game.Ai.V2
         // (weight >= 1/axisCount) scales at 1.0. First-pass value — tune against real AiDebug.log.
         public const float radarScaleFloor = 0.35f;
 
-        // Development desire (radar). rawDev = facilityGate * surplusRamp * offeringQuality * gain,
-        // a multiplicative gate — any missing prerequisite zeroes the axis. First-pass, tune vs log.
+        // Development desire (radar). rawDev = surplusRamp * quality * gain, where
+        //   quality = max(readyOfferingQuality, latentTargetPressure).
+        // The facility+hero prerequisite is NO LONGER a desire gate — a latent appetite keeps the
+        // axis warm so DemandLayer can STAGE the missing prerequisite (build the facility, move a
+        // Research/Production hero onto it) the way Recon bootstraps a scout. `surplus` still gates
+        // hard: a Challenge stakes real H/E/M/T with a probabilistic return. First-pass, tune vs log.
         public const float devDesireGain = 1.0f;
         public const float devSurplusRampLo = 0.15f;  // below this SurplusFraction -> ~no appetite
         public const float devSurplusRampHi = 0.60f;  // at/above -> full surplus term
@@ -225,6 +229,10 @@ namespace Game.Ai.V2
         public const float devWeightTargets = 0.4f;
         public const float devTargetRampLo = 0f;
         public const float devTargetRampHi = 4f;       // 4+ upgradeable targets -> full targets term
+        // Ceiling on the LATENT appetite (no live offering yet — facility unbuilt or unstaffed).
+        // Held below a fully execution-ready setup so a facility+hero+offerings state still outranks
+        // a bare "I have units worth improving" appetite. Only applies when DevPathViable.
+        public const float devLatentPotential = 0.5f;
 
         // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). All first-pass — the
         // "how R/P picks a card" review tunes these next.

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -709,10 +710,13 @@ namespace Game.Ai.V2
         }
 
         // ---------------------------------------------------------------------------------------
-        //  DEV — two shapes:
-        //    · no Research/Production facility yet -> ONE DevelopmentInfrastructure gap demand
-        //      (build/assign an operator base) — the prerequisite for everything below.
-        //    · facility ready -> ONE CardUpgrade demand PER scored DevelopmentOpportunity, each
+        //  DEV — three staged shapes (the radar no longer gates on facility+hero; the demand layer
+        //  bootstraps each missing prerequisite the way Recon bootstraps a scout):
+        //    · no Research/Production facility yet -> ONE DevelopmentInfrastructure gap demand.
+        //    · facility built but UNSTAFFED -> ONE DevelopmentOperator demand @the facility hex
+        //      (play a Research/Production hero card onto it). No offerings exist without an
+        //      operator, so CardUpgrade is not emitted this turn.
+        //    · facility staffed -> ONE CardUpgrade demand PER scored DevelopmentOpportunity, each
         //      carrying its opportunity handle. Phase A runs the carried opportunity verbatim.
         // ---------------------------------------------------------------------------------------
         private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b,
@@ -747,6 +751,50 @@ namespace Game.Ai.V2
                     Explain = "no Research/Production facility — Development axis has no operator base",
                 };
                 yield break;
+            }
+
+            // Facility built but no qualifying operator hero on any facility hex -> stage the hero.
+            DevelopmentReadiness rd = s.Development;
+            if (rd != null && rd.AnyOperatorlessFacility && !rd.AnyFacilityWithHero)
+            {
+                DevelopmentFacility? pick = null;
+                bool pickHasCard = false;
+                foreach (DevelopmentFacility f in rd.Facilities)
+                {
+                    if (f.HasHero || f.Contested)
+                        continue;
+                    bool haveCard = f.Mode == ResearchProductionMode.Research
+                        ? rd.ResearcherCardInHand
+                        : rd.AssemblerCardInHand;
+                    if (pick == null || (haveCard && !pickHasCard))
+                    {
+                        pick = f;
+                        pickHasCard = haveCard;
+                    }
+                    if (haveCard)
+                        break;
+                }
+
+                if (pick != null)
+                {
+                    HexCoord at = pick.Value.Hex;
+                    AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({at.Q},{at.R}) "
+                        + $"capability=DevelopmentOperator mode={pick.Value.Mode} desired=1 "
+                        + $"reason={(pickHasCard ? "unstaffed_facility_operator_card_in_hand" : "unstaffed_facility_no_operator_card_yet")}");
+                    yield return new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Development,
+                        Capability = CapabilityKind.DevelopmentOperator,
+                        DesiredAmount = 1,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = at,
+                        Value = 45f * devScale,
+                        Explain = $"facility @({at.Q},{at.R}) has no {pick.Value.Mode} operator — "
+                            + "Development axis cannot run a Challenge until a qualifying hero stands on it",
+                    };
+                    yield break;
+                }
             }
 
             int emitted = 0;
