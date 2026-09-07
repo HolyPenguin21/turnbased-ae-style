@@ -753,34 +753,38 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // Facility built but no qualifying operator hero on any facility hex -> stage the hero.
+            // Facility built but no qualifying operator hero -> stage the hero. PER MODE: Research and
+            // Production need DIFFERENT hero abilities (Researcher vs Assembler), so a staffed b_Lab
+            // must NOT suppress the b_Factory operator demand — each unstaffed mode gets its own.
             DevelopmentReadiness rd = s.Development;
-            if (rd != null && rd.AnyOperatorlessFacility && !rd.AnyFacilityWithHero)
+            bool stagedOperator = false;
+            if (rd != null && rd.Facilities != null)
             {
-                DevelopmentFacility? pick = null;
-                bool pickHasCard = false;
-                foreach (DevelopmentFacility f in rd.Facilities)
+                foreach (ResearchProductionMode mode in new[]
+                    { ResearchProductionMode.Research, ResearchProductionMode.Production })
                 {
-                    if (f.HasHero || f.Contested)
+                    bool modeStaffed = false, modeHasOpenFacility = false;
+                    HexCoord at = default;
+                    foreach (DevelopmentFacility f in rd.Facilities)
+                    {
+                        if (f.Mode != mode) continue;
+                        if (f.HasHero) { modeStaffed = true; break; }
+                        if (!f.Contested && !modeHasOpenFacility)
+                        {
+                            modeHasOpenFacility = true;
+                            at = f.Hex;
+                        }
+                    }
+                    if (modeStaffed || !modeHasOpenFacility)
                         continue;
-                    bool haveCard = f.Mode == ResearchProductionMode.Research
+
+                    bool haveCard = mode == ResearchProductionMode.Research
                         ? rd.ResearcherCardInHand
                         : rd.AssemblerCardInHand;
-                    if (pick == null || (haveCard && !pickHasCard))
-                    {
-                        pick = f;
-                        pickHasCard = haveCard;
-                    }
-                    if (haveCard)
-                        break;
-                }
-
-                if (pick != null)
-                {
-                    HexCoord at = pick.Value.Hex;
+                    stagedOperator = true;
                     AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({at.Q},{at.R}) "
-                        + $"capability=DevelopmentOperator mode={pick.Value.Mode} desired=1 "
-                        + $"reason={(pickHasCard ? "unstaffed_facility_operator_card_in_hand" : "unstaffed_facility_no_operator_card_yet")}");
+                        + $"capability=DevelopmentOperator mode={mode} desired=1 "
+                        + $"reason={(haveCard ? "unstaffed_facility_operator_card_in_hand" : "unstaffed_facility_no_operator_card_yet")}");
                     yield return new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Development,
@@ -790,12 +794,13 @@ namespace Game.Ai.V2
                         MinimumFollowupAp = 0f,
                         TargetHex = at,
                         Value = 45f * devScale,
-                        Explain = $"facility @({at.Q},{at.R}) has no {pick.Value.Mode} operator — "
+                        Explain = $"facility @({at.Q},{at.R}) has no {mode} operator — "
                             + "Development axis cannot run a Challenge until a qualifying hero stands on it",
                     };
-                    yield break;
                 }
             }
+            if (stagedOperator)
+                yield break;
 
             int emitted = 0;
             if (devOpportunities != null)
