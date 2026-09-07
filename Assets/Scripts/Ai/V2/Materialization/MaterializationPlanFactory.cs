@@ -83,15 +83,21 @@ namespace Game.Ai.V2
                     Accumulate(equipInstance.EffectivePlayResourceCost, ref human, ref energy, ref materials, ref tech);
                 }
             }
-            if (p.Generation != null && p.Generation.CardDef?.resourceCost != null)
+            if (p.Generation != null)
             {
-                ResourceCost rc = p.Generation.CardDef.resourceCost;
-                human += rc.human; energy += rc.energy; materials += rc.materials; tech += rc.tech;
+                ap += ResearchProductionSystem.AttemptApCost(p.Generation.CardDef);
+                if (p.Generation.CardDef?.resourceCost != null)
+                {
+                    ResourceCost rc = p.Generation.CardDef.resourceCost;
+                    human += rc.human; energy += rc.energy; materials += rc.materials; tech += rc.tech;
+                }
             }
             p.ApCost = ap;
             p.ResCost = (human | energy | materials | tech) == 0
                 ? null : new ResourceCost { human = human, energy = energy, materials = materials, tech = tech };
-            p.HandSlotsNeededAtPeak = p.Generation != null ? 1 : 0;
+            // Research/Production output may enter an already-full hand. Draws and ordinary
+            // rewards remain capped at their own hand boundaries.
+            p.HandSlotsNeededAtPeak = 0;
 
             string baseKey = p.GeneratedBaseDef != null
                 ? "gen:" + p.GeneratedBaseDef.displayName
