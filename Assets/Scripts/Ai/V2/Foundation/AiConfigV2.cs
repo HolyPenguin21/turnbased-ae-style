@@ -1066,10 +1066,11 @@ namespace Game.Ai.V2
         // demand is an UPPER BOUND, never proof every action is useful, so the fallback demand is
         // scaled down. See StrategicEffectRegistry.StructuralFallbackApDemand.
         public const float apStructuralDemandConfidence = 0.60f;
-        // Flat (Phase B / surplus) EstimateLegalApWorkload subset search: only the N cheapest
-        // signature-deduped feasible plans are searched (2^N leaf calls). The AP pool already caps
-        // the sum; this just bounds the branch factor.
-        public const int   apWorkloadFlatSearchCap = 12;
+        // Flat (Phase B / surplus) EstimateLegalApWorkload subset search: a signature-deduped pool at
+        // or under this size gets an exact 2^N sweep; a larger (pathological) pool falls back to an
+        // AP-descending greedy admission. Never a "cheapest N" pre-prune — that would drop exactly
+        // the expensive AP opportunities the measurement exists to surface.
+        public const int   apWorkloadExactSearchMax = 18;
 
         // Hero Command marginal-capacity valuation — REPLACES commandRating * heroRoleCommandWeight
         // inside HeroLeadershipFit. Extra Command is only worth something when the AI actually has

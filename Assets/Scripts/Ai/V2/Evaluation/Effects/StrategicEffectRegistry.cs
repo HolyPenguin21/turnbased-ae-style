@@ -805,6 +805,23 @@ namespace Game.Ai.V2
         public static bool HasContext(IEnumerable<string> abilities, int moveMax, StrategicEffectContext context)
             => Resolve(abilities, moveMax).Any(e => e.Context == context);
 
+        // AI-MGR — does this ability set carry ANY PlayerGlobal recurring-resource effect (ApBonus
+        // today; a future +Energy/turn, +draw/N-turns, +movement-budget row the same). GENERIC — it
+        // never names a concrete ability, so a new such mechanic is picked up with zero edits here.
+        // The owner-witnessed AP-workload measurement pass is only worth running when this is true
+        // for some reachable carrier; otherwise nothing reads the number and the discounted
+        // structural fallback stands.
+        public static bool HasGlobalRecurringEffect(IEnumerable<string> effectiveAbilities)
+            => Resolve(effectiveAbilities, 0).Any(e =>
+                e.Scope == EffectScope.PlayerGlobal
+                && e.Context == StrategicEffectContext.GlobalRecurringResource);
+
+        // Any card among `defs` whose granted abilities carry a PlayerGlobal recurring-resource
+        // effect — the cheap "is a witnessed AP-workload pass worth it this turn" gate over a
+        // hand + deck (deck covers a card a Challenge could still mint).
+        public static bool AnyGlobalRecurringCarrier(IEnumerable<CardDefinition> defs)
+            => defs != null && defs.Any(d => d != null && HasGlobalRecurringEffect(d.grantedAbilities));
+
         // Timing discount: a DuringCombat effect (regen, combat aura) is worth its full value only
         // where a fight is actually expected at the deploy; a OneShot / Persistent effect is not
         // combat-gated. Neutral (1) for every existing row (all Persistent).

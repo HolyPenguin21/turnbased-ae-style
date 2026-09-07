@@ -55,11 +55,20 @@ namespace Game.Ai.V2
             private readonly Dictionary<ResourceType, int> _resPool = new Dictionary<ResourceType, int>();
             private readonly float _apPool;
             private readonly int _genAttemptsRemaining;
+            // AI-MGR — AP is the variable whose marginal utility the workload measurement measures, so
+            // it must NOT double as a ceiling on the measured demand: an 8-AP player with 12 AP of
+            // real work should read workload 12, not 8. Authoritative selection (BestInjectiveAssignment)
+            // keeps AP enforced; the EstimateLegalApWorkload measurement passes turn it OFF. Every
+            // OTHER constraint (H/E/M/T, the one generation attempt, card-disjointness, physical
+            // recipient capacity) stays enforced in both modes.
+            private readonly bool _enforceApPool;
 
             public JointFeasibility(PlayerRoot root, PlayerSetupData player, AiTurnContext ctx,
-                AiHandData hand, int genAttemptsRemaining, IEnumerable<MaterializationPlan> recipientSeedPlans)
+                AiHandData hand, int genAttemptsRemaining, IEnumerable<MaterializationPlan> recipientSeedPlans,
+                bool enforceApPool)
             {
                 _genAttemptsRemaining = genAttemptsRemaining;
+                _enforceApPool = enforceApPool;
                 _physical.SeedHandSlots(hand != null ? Mathf.Max(0, hand.Capacity - hand.Hand.Count) : int.MaxValue);
                 if (recipientSeedPlans != null)
                     foreach (MaterializationPlan p in recipientSeedPlans)
@@ -88,7 +97,7 @@ namespace Game.Ai.V2
             public bool Fits(MaterializationPlan plan, float followupAp)
             {
                 float ap = (plan?.ApCost ?? 0f) + followupAp;
-                if (_consumed.ApUsed + ap > _apPool + AiConfigV2.allocatorSliceEpsilon)
+                if (_enforceApPool && _consumed.ApUsed + ap > _apPool + AiConfigV2.allocatorSliceEpsilon)
                     return false;
                 if (plan?.Generation != null && _consumed.GenerationAttempts + 1 > _genAttemptsRemaining)
                     return false;
@@ -156,7 +165,7 @@ namespace Game.Ai.V2
             // slot side, so two individually-legal chains into ONE recipient with one free slot can
             // no longer both land in a "jointly feasible" assignment.
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
-                options.Values.SelectMany(v => v).Select(c => c.Plan));
+                options.Values.SelectMany(v => v).Select(c => c.Plan), enforceApPool: true);
 
             void Rec(int i, float sum)
             {
@@ -202,8 +211,12 @@ namespace Game.Ai.V2
         //  MEASUREMENT-ONLY. It ranks on ACTUAL AP cost (plan.ApCost + follow-up), NOT DecisionScore
         //  / Worthwhile: feeding a score-derived figure back into the AP-utility that scores those
         //  same cards would be circular (AP utility -> card score -> workload -> AP utility). It
-        //  reuses the SAME JointFeasibility machinery BestInjectiveAssignment runs on, so a phantom
-        //  "both chains want the last Tech / the one Challenge" pair can never inflate it.
+        //  reuses the SAME JointFeasibility machinery BestInjectiveAssignment runs on — with the AP
+        //  pool admission DISABLED (enforceApPool:false). AP is the quantity whose marginal utility
+        //  is being measured, so it cannot also cap the measured demand: an 8-AP player with 12 AP of
+        //  jointly-feasible work must read 12, not 8. Every other constraint (H/E/M/T, the one
+        //  generation attempt, card-disjointness, physical recipient capacity) still applies, so a
+        //  phantom "both chains want the last Tech / the one Challenge" pair can never inflate it.
         //
         //  `options` MUST be every FEASIBLE plan for each demand (one representative per physical
         //  consumption signature — MaterializationCandidateBuilder.AllFeasiblePlansForDemand),
@@ -219,7 +232,7 @@ namespace Game.Ai.V2
 
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
-                options.Values.SelectMany(v => v).Select(c => c.plan));
+                options.Values.SelectMany(v => v).Select(c => c.plan), enforceApPool: false);
 
             float best = 0f;
 
@@ -250,11 +263,14 @@ namespace Game.Ai.V2
         }
 
         // FLAT overload — Phase B (surplus) / any lane that has ONE undivided pool of feasible plans
-        // rather than a per-demand partition. Bounded subset search: each plan is independently
-        // take-or-skip, joint feasibility (AP / H-E-M-T / generation / physical / recipient capacity
-        // + card-disjointness) enforced by the SAME JointFeasibility. `plans` must already be
-        // deduped to one representative per physical consumption signature and kept small
-        // (apWorkloadFlatSearchCap cheapest are searched); the AP pool caps Σ AP regardless.
+        // rather than a per-demand partition. Take-or-skip subset search, joint feasibility (H/E/M/T /
+        // the one generation / card-disjointness / physical recipient capacity) enforced by the SAME
+        // JointFeasibility with AP admission DISABLED — AP is the measured quantity, never a ceiling.
+        // `plans` MUST already be deduped to one representative per physical consumption signature (so
+        // the pool is small — bounded by hand size). Iteration is AP-DESCENDING so the search sees
+        // the expensive AP opportunities that PROVE AP pressure first, and a hand pathological enough
+        // to exceed apWorkloadExactSearchMax falls back to an AP-descending greedy admission rather
+        // than dropping the costly plans.
         internal static float EstimateLegalApWorkload(
             IReadOnlyList<(MaterializationPlan plan, float followupAp)> plans,
             PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
@@ -265,15 +281,31 @@ namespace Game.Ai.V2
 
             var pool = plans
                 .Where(p => p.plan != null)
-                .OrderBy(p => p.plan.ApCost + p.followupAp)
+                .OrderByDescending(p => p.plan.ApCost + p.followupAp)
                 .ThenBy(p => p.plan.StableKey, System.StringComparer.Ordinal)
-                .Take(AiConfigV2.apWorkloadFlatSearchCap)
                 .ToList();
             if (pool.Count == 0)
                 return 0f;
 
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
-                pool.Select(p => p.plan));
+                pool.Select(p => p.plan), enforceApPool: false);
+
+            float ApOf((MaterializationPlan plan, float followupAp) c)
+                => Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp);
+
+            // Pool too large for an exact 2^N sweep — AP-descending greedy admission (each accepted
+            // plan consumes its real H/E/M/T / generation / slot, so the next Fits sees the truth).
+            if (pool.Count > AiConfigV2.apWorkloadExactSearchMax)
+            {
+                float greedy = 0f;
+                foreach ((MaterializationPlan plan, float followupAp) c in pool)
+                    if (jf.CardsDisjoint(c.plan) && jf.Fits(c.plan, c.followupAp))
+                    {
+                        jf.Push(c.plan, c.followupAp);
+                        greedy += ApOf(c);
+                    }
+                return greedy;
+            }
 
             float best = 0f;
 
@@ -282,14 +314,14 @@ namespace Game.Ai.V2
                 if (apSum > best) best = apSum;
                 if (i == pool.Count)
                     return;
-                Rec(i + 1, apSum); // skip plan i
                 (MaterializationPlan plan, float followupAp) c = pool[i];
                 if (jf.CardsDisjoint(c.plan) && jf.Fits(c.plan, c.followupAp))
                 {
                     JointFeasibility.Token token = jf.Push(c.plan, c.followupAp);
-                    Rec(i + 1, apSum + Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp));
+                    Rec(i + 1, apSum + ApOf(c));
                     jf.Pop(token);
                 }
+                Rec(i + 1, apSum); // skip plan i
             }
             Rec(0, 0f);
             return best;
@@ -304,10 +336,10 @@ namespace Game.Ai.V2
         //  H-E-M-T / generation / physical / recipient capacity), seeded with the hero plan already
         //  pushed, so two individually-legal Unit plans can never both claim the last free slot.
         //
-        //  `candidateFillers` is the surrounding demand's feasible plan set (plan + follow-up AP).
-        //  Only Unit plans into the SAME recipient are considered; Hero plans and plans reusing a
-        //  card/source the hero plan already consumes are excluded. Result is capped at
-        //  heroCommandMarginalMaxSlots by the caller.
+        //  `candidateFillers` is the CROSS-demand feasible plan universe (Phase A's measurement pass)
+        //  — the Unit fillers live in OTHER demands' sets, not this Hero demand's. Only Unit plans
+        //  into the SAME recipient are considered; Hero plans and plans reusing a card/source the
+        //  hero plan already consumes are excluded. Result is capped at heroCommandMarginalMaxSlots.
         internal static int CountJointlyLegalFillersForRecipient(
             MaterializationPlan heroPlan,
             IEnumerable<(MaterializationPlan plan, float followupAp)> candidateFillers,
@@ -337,29 +369,43 @@ namespace Game.Ai.V2
 
             var seedPlans = new List<MaterializationPlan> { heroPlan };
             seedPlans.AddRange(fillers.Select(f => f.plan));
-            var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining, seedPlans);
+            var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining, seedPlans,
+                enforceApPool: true);
 
             // The hero body is already committed to the recipient.
             if (!jf.Fits(heroPlan, 0f))
                 return 0;
             jf.Push(heroPlan, 0f);
 
-            // Greedy cheapest-first admission — each accepted filler consumes its own AP / resources
-            // / slot, so the next Fits() sees a truthful remaining pool. A maximal count, not a
-            // maximal value: this answers "is there anything to put there", not "what is best".
-            int count = 0;
-            foreach ((MaterializationPlan plan, float followupAp) f in fillers
-                         .OrderBy(f => f.plan.ApCost + f.followupAp)
-                         .ThenBy(f => f.plan.StableKey, System.StringComparer.Ordinal))
+            fillers = fillers
+                .OrderBy(f => f.plan.ApCost + f.followupAp)
+                .ThenBy(f => f.plan.StableKey, System.StringComparer.Ordinal)
+                .ToList();
+
+            // TRUE maximum joint-feasible filler count, not a greedy one: with multi-dimensional
+            // resources (AP + H/E/M/T + the one generation + slots) a cheapest-first greedy can pick
+            // one plan that blocks two others (A=1AP/2H beats B,C=2AP/1H each when only 2H is free —
+            // greedy takes A for count 1, B+C would be count 2). Bounded DFS, each branch pushes the
+            // plan's real consumption; early-out the moment the cap is reached or can't be beaten.
+            int cap = Mathf.Max(0, AiConfigV2.heroCommandMarginalMaxSlots);
+            int best = 0;
+
+            void Rec(int i, int count)
             {
-                if (!jf.CardsDisjoint(f.plan))
-                    continue;
-                if (!jf.Fits(f.plan, f.followupAp))
-                    continue;
-                jf.Push(f.plan, f.followupAp);
-                count++;
+                if (count > best) best = count;
+                if (best >= cap || i == fillers.Count || count + (fillers.Count - i) <= best)
+                    return;
+                (MaterializationPlan plan, float followupAp) f = fillers[i];
+                if (jf.CardsDisjoint(f.plan) && jf.Fits(f.plan, f.followupAp))
+                {
+                    JointFeasibility.Token token = jf.Push(f.plan, f.followupAp);
+                    Rec(i + 1, count + 1);
+                    jf.Pop(token);
+                }
+                Rec(i + 1, count);
             }
-            return count;
+            Rec(0, 0);
+            return Mathf.Min(best, cap);
         }
     }
 }

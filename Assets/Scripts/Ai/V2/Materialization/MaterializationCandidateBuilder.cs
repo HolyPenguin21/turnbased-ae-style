@@ -308,7 +308,8 @@ namespace Game.Ai.V2
 
         public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation)
+            CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation,
+            float? witnessedUsefulApDemand = null)
         {
             List<MaterializationPlan> raw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
@@ -316,28 +317,10 @@ namespace Game.Ai.V2
                 raw, player, root, hand, ctx, reservation);
             if (candidates.Count == 0) return null;
 
-            // AI-MGR — Phase B's own owner-witnessed legal card-AP workload, from THIS real feasible
-            // surplus set (spec §4: "Phase B may use its own actually-built surplus candidate set the
-            // same way"). Only assembled when a recurring-AP carrier is actually among the candidates
-            // — otherwise nothing reads it and the evaluator's discounted structural fallback stands.
-            // Feasibility-based only, never .Score.
-            float? witnessedUsefulApDemand = null;
-            if (candidates.Any(p => p.ProjectedAbilities != null
-                    && p.ProjectedAbilities.Contains(UnitAbilities.ApBonus)))
-            {
-                var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
-                foreach (MaterializationPlan p in candidates)
-                {
-                    if (p == null) continue;
-                    string sig = ConsumptionSignature(p);
-                    if (!bySig.TryGetValue(sig, out var cur) || p.ApCost < cur.plan.ApCost)
-                        bySig[sig] = (p, 0f);
-                }
-                int genRemaining = Mathf.Max(0,
-                    AiConfigV2.maxGenerationActionsPerTurn - (reservation?.GenerationAttemptsUsed ?? 0));
-                witnessedUsefulApDemand = MaterializationPortfolioSolver.EstimateLegalApWorkload(
-                    bySig.Values.ToList(), root, player, ctx, hand, genRemaining);
-            }
+            // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
+            // (PhaseBWitnessedApWorkload) — the SAME scalar the non-combat lane gets, so a Unit/Hero
+            // ApBonus carrier and a Base/Facility ApBonus carrier are priced off one number. Null =>
+            // the evaluator falls back to the discounted structural estimate.
 
             // Scoring is SEPARATE from enumeration (DoD): the enumerator returns score-free plans;
             // here every surviving plan gets the canonical StrategicCardEvaluator NetScore. The
@@ -471,6 +454,57 @@ namespace Game.Ai.V2
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.NetScore;
+        }
+
+        // AI-MGR — the SHARED Phase-B owner-witnessed AP workload: how much AP the AI could still
+        // spend this end-of-turn on a jointly-feasible set of card plays, across BOTH Phase-B lanes
+        // (Unit/Hero surplus + non-combat Base/Facility/Aviation/Equipment). One scalar, computed
+        // once per tempo iteration from the REAL feasible candidate universe, handed to both
+        // BestSurplus/ScoreSurplus and NonCombatCardPlayer/ScoreNonCombat so an ApBonus Unit and an
+        // ApBonus Base are priced off the same number (spec §4). AP is NOT a ceiling here
+        // (EstimateLegalApWorkload runs with AP admission off) — it is the measured quantity. No
+        // committed-mover term: by end of turn the missions have run, the surplus universe IS the
+        // workload. Returns null (=> evaluators keep the discounted structural fallback) unless a
+        // PlayerGlobal recurring-resource carrier is reachable through hand or deck.
+        internal static float? PhaseBWitnessedApWorkload(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, CapabilityInventory inv,
+            ActorCommitments commitments, MaterializationReservation reservation)
+        {
+            System.Collections.Generic.IEnumerable<CardDefinition> handDeckDefs =
+                (snap?.Self?.Hand ?? System.Array.Empty<CardData>()).Select(c => c?.Definition)
+                    .Concat(snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>());
+            if (!StrategicEffectRegistry.AnyGlobalRecurringCarrier(handDeckDefs))
+                return null;
+
+            int genRemaining = Mathf.Max(0,
+                AiConfigV2.maxGenerationActionsPerTurn - (reservation?.GenerationAttemptsUsed ?? 0));
+
+            // Unit/Hero surplus lane — jointly-feasible, one representative per consumption signature.
+            List<MaterializationPlan> surplusRaw = MaterializationChainEnumerator.EnumerateSurplusPlans(
+                snap, player, root, hand, ctx, inv, commitments, reservation);
+            List<MaterializationPlan> surplus = MaterializationFeasibility.FilterSurplus(
+                surplusRaw, player, root, hand, ctx, reservation);
+            var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
+            foreach (MaterializationPlan p in surplus)
+            {
+                if (p == null) continue;
+                string sig = ConsumptionSignature(p);
+                if (!bySig.TryGetValue(sig, out var cur) || p.ApCost < cur.plan.ApCost)
+                    bySig[sig] = (p, 0f);
+            }
+            float total = MaterializationPortfolioSolver.EstimateLegalApWorkload(
+                bySig.Values.ToList(), root, player, ctx, hand, genRemaining);
+
+            // Non-combat lane — one feasible play per card; its AP is added straight (AP is the
+            // measured quantity, not a ceiling). A mild over-count on a rare double-generated hand is
+            // harmless; the failure mode this whole rework fixes is UNDER-counting.
+            var seenNc = new HashSet<CardData>();
+            foreach (NonCombatCardPlayer.NonCombatPlay ncp in NonCombatCardPlayer.EnumeratePlays(
+                         snap, player, root, hand, ctx, new List<string>(), reservation))
+                if (ncp?.Card != null && seenNc.Add(ncp.Card))
+                    total += Mathf.Max(0f, ncp.Card.EffectivePlayApCost);
+
+            return total;
         }
 
 

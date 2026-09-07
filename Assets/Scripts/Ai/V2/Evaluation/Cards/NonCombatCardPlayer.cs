@@ -60,11 +60,12 @@ namespace Game.Ai.V2
         };
 
         private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayKind k, CardData card,
-            AiHandData hand, float bestEquipmentUpgrade, GenerationStep generation = null)
+            AiHandData hand, float bestEquipmentUpgrade, GenerationStep generation = null,
+            float? witnessedUsefulApDemand = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
-                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation);
+                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation, witnessedUsefulApDemand);
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
@@ -98,11 +99,12 @@ namespace Game.Ai.V2
 
         public static NonCombatPlay BestPlay(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, out List<string> blocked, PlayKind? onlyKind = null,
-            MaterializationReservation reservation = null)
+            MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null)
         {
             blocked = new List<string>();
             NonCombatPlay best = null;
-            foreach (NonCombatPlay p in EnumeratePlays(snap, player, root, hand, ctx, blocked, reservation))
+            foreach (NonCombatPlay p in EnumeratePlays(snap, player, root, hand, ctx, blocked, reservation,
+                         witnessedUsefulApDemand))
                 if ((onlyKind == null || p.Kind == onlyKind.Value) && (best == null || p.Score > best.Score))
                     best = p;
             return best;
@@ -114,7 +116,7 @@ namespace Game.Ai.V2
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
-            MaterializationReservation reservation = null)
+            MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null)
         {
             if (player == null || root == null || hand?.Hand == null || ctx == null)
                 yield break;
@@ -133,7 +135,7 @@ namespace Game.Ai.V2
                         || AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities)))
                     continue;
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
-                    ownBaseHexes, blocked);
+                    ownBaseHexes, blocked, witnessedUsefulApDemand);
                 if (p != null)
                     yield return p;
             }
@@ -155,7 +157,7 @@ namespace Game.Ai.V2
                         continue;
                     var stand = new CardData(gd) { ResearchProductionCreated = true };
                     NonCombatPlay p = BuildPlayFor(stand, g, snap, player, root, hand, ctx,
-                        ownBaseHexes, blocked);
+                        ownBaseHexes, blocked, witnessedUsefulApDemand);
                     if (p == null)
                         continue;
                     p.Explain = $"generate:{gd.displayName} -> " + p.Explain;
@@ -169,7 +171,8 @@ namespace Game.Ai.V2
         // the generated path reuses the exact same placement resolution + scoring.
         private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked)
+            AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked,
+            float? witnessedUsefulApDemand = null)
         {
             CardDefinition def = card?.Definition;
             if (def == null)
@@ -187,7 +190,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Aviation, TargetHex = hx, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f, generation),
+                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f, generation, witnessedUsefulApDemand),
                     Explain = $"{def.displayName} -> airfield ({hx.Q},{hx.R})",
                 };
             }
@@ -210,7 +213,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f, generation),
+                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f, generation, witnessedUsefulApDemand),
                     Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
                 };
             }
@@ -233,7 +236,7 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f, generation),
+                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f, generation, witnessedUsefulApDemand),
                     Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
                 };
             }
@@ -253,7 +256,7 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                     TargetHex = host.Value.hex, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade, generation),
+                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade, generation, witnessedUsefulApDemand),
                     Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
                 };
             }

@@ -60,9 +60,19 @@ namespace Game.Ai.V2
         {
             var list = new List<TempoCandidate>();
 
+            // AI-MGR — the ONE shared Phase-B owner-witnessed AP workload for this tempo iteration,
+            // from the REAL feasible candidate universe across BOTH lanes. The same scalar goes to
+            // the materialization lane (BestSurplus/ScoreSurplus) and the non-combat lane
+            // (NonCombatCardPlayer/ScoreNonCombat), so an ApBonus Unit/Hero and an ApBonus
+            // Base/Facility are priced off one number. null unless a recurring-resource carrier is
+            // reachable this turn (=> both lanes keep the discounted structural fallback).
+            float? phaseBWitnessedApDemand = MaterializationCandidateBuilder.PhaseBWitnessedApWorkload(
+                snap, player, root, hand, ctx,
+                CapabilityInventory.Build(snap, player, commitments), commitments, result.Reservation);
+
             // PlayCard — materialization lane. Utility = StrategicCardEvaluator decision score, verbatim.
             MatSurplusDecision mat = ComputeMatDecision(snap, player, root, hand, ctx, commitments,
-                result, reconObjectives);
+                result, reconObjectives, phaseBWitnessedApDemand);
             if (mat.Admissible && mat.Plan != null)
                 list.Add(new TempoCandidate
                 {
@@ -80,7 +90,7 @@ namespace Game.Ai.V2
             // PlayCard — non-combat lane (Aviation / Base / Facility / standalone Equipment).
             // Utility = StrategicCardEvaluator.ScoreNonCombat NetScore, verbatim (via BestPlay.Score).
             NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
-                snap, player, root, hand, ctx, out _, null, result.Reservation);
+                snap, player, root, hand, ctx, out _, null, result.Reservation, phaseBWitnessedApDemand);
             TempoCandidate ncCand = null;
             if (nc != null)
             {
@@ -317,14 +327,16 @@ namespace Game.Ai.V2
 
         private static MatSurplusDecision ComputeMatDecision(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
-            StrategicPhaseResult result, IReadOnlyList<ReconObjective> reconObjectives)
+            StrategicPhaseResult result, IReadOnlyList<ReconObjective> reconObjectives,
+            float? witnessedUsefulApDemand = null)
         {
             var dec = new MatSurplusDecision
             {
                 Inv = CapabilityInventory.Build(snap, player, commitments),
             };
             (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
-                snap, player, root, hand, ctx, dec.Inv, commitments, result.Reservation);
+                snap, player, root, hand, ctx, dec.Inv, commitments, result.Reservation,
+                witnessedUsefulApDemand);
             if (pick == null)
                 return dec;
 

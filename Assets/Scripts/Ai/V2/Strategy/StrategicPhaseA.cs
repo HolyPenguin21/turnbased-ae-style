@@ -78,6 +78,16 @@ namespace Game.Ai.V2
                 snap, player, root, ctx, activeIntents, reconObjectives, commitments);
             float? witnessedUsefulApDemand = null;
 
+            // AI-MGR — the witnessed AP-workload measurement pass only matters when a PlayerGlobal
+            // recurring-resource effect (ApBonus today) could actually be SCORED this turn: a carrier
+            // reachable through hand OR deck (a Challenge could still mint it). Descriptor-driven via
+            // the registry — NOT a hardcoded UnitAbilities.ApBonus scan — so a generated / future
+            // recurring mechanic is covered with no edit here. Recomputed nowhere; carrier set is
+            // turn-stable.
+            bool reachableGlobalRecurringCarrier = StrategicEffectRegistry.AnyGlobalRecurringCarrier(
+                (snap?.Self?.Hand ?? System.Array.Empty<CardData>()).Select(c => c?.Definition)
+                    .Concat(snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>()));
+
             // AI-MGR-02 §P0 — one shared per-turn generation budget: a reaction-round Phase A must
             // not reset the Challenge count a main-pass generation already spent.
             if (ctx != null)
@@ -182,13 +192,11 @@ namespace Game.Ai.V2
                 // utility). Recomputed every round because an executed chain changes hand / AP /
                 // generation / physical state.
                 //
-                // Only worth doing when something this round actually READS it: a recurring-AP
-                // carrier in hand (GlobalRecurringValue) or a Hero demand (Command 6-vs-7 filler
-                // count). Otherwise leave witnessedUsefulApDemand null -> the evaluator uses the
-                // discounted structural fallback, exactly as before.
-                bool needsWitnessedWorkload =
-                    (hand?.Hand != null && hand.Hand.Any(cd => cd?.Definition?.grantedAbilities != null
-                        && cd.Definition.grantedAbilities.Contains(UnitAbilities.ApBonus)))
+                // Only worth doing when something this round actually READS it: a reachable
+                // PlayerGlobal recurring-resource carrier (GlobalRecurringValue) or a Hero demand
+                // (Command 6-vs-7 filler count). Otherwise leave witnessedUsefulApDemand null -> the
+                // evaluator uses the discounted structural fallback, exactly as before.
+                bool needsWitnessedWorkload = reachableGlobalRecurringCarrier
                     || active.Any(s => s.Demand.Capability == CapabilityKind.Hero);
 
                 List<(MaterializationPlan plan, float followupAp)> fillerUniverse = null;
