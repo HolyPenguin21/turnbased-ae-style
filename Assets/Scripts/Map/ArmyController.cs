@@ -21,6 +21,10 @@ namespace Game.Map
         // the instant the coroutine that callback returned actually finishes.
         public sealed class StepResolutionOutcome
         {
+            // Input supplied by MoveRoutine: true when this is the final path step or the next
+            // step cannot be paid from the mover's remaining shared movement. Aviation uses this
+            // to keep entry AA per-step while delaying its own strike until the actual endpoint.
+            public bool IsTerminalStep;
             public bool StopMovement;
         }
 
@@ -216,7 +220,10 @@ namespace Game.Map
 
                 if (resolveStepAsync != null)
                 {
-                    var outcome = new StepResolutionOutcome();
+                    var outcome = new StepResolutionOutcome
+                    {
+                        IsTerminalStep = IsTerminalMovementStep(map, path, i, members)
+                    };
                     yield return resolveStepAsync(previous, next, outcome);
                     // Data.Members is the SAME list `members` already points at — a reaction that
                     // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it
@@ -237,6 +244,24 @@ namespace Game.Map
             // (no yield in between), so deferring the flip costs nothing.
             onComplete?.Invoke();
             IsMoving = false;
+        }
+
+        // Computes the endpoint from the same path, terrain and shared movement rules the next
+        // loop iteration would use. Kept here, at the movement owner, so aviation does not
+        // duplicate terrain/fuel-penalty accounting merely to decide whether it may strike.
+        private static bool IsTerminalMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
+            List<UnitData> members)
+        {
+            if (path == null || currentIndex >= path.Count - 1 || members == null || members.Count == 0)
+                return true;
+
+            HexCoord next = path[currentIndex + 1];
+            map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
+            int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+            int nextCost = AviationRules.MovementCost(members[0]?.Owner != null ? members[0] : null, terrainCost);
+            // MovementCost is army-composition-aware, not unit-aware; use the live ArmyData below.
+            nextCost = AviationRules.MovementCost(members.Count > 0 ? members[0] : null, terrainCost);
+            return false;
         }
 
         private IEnumerator StepTo(Vector3 targetPosition)
