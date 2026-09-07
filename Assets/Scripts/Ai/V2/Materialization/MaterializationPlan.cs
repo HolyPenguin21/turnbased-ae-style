@@ -33,10 +33,10 @@ namespace Game.Ai.V2
 
     // One immediately-usable Research/Production generation step. It is a candidate ONLY when a
     // qualifying non-prisoner Researcher/Assembler Hero ALREADY stands on an own Facility hex this
-    // turn — Step 8B adds no hero positioning and no multi-turn planning. The Challenge costs the
-    // player NO action points (game rule); only its ResourceCost is charged. The Challenge is
-    // probabilistic — a lost roll is a normal partial failure (MaterializationExecutor), not a
-    // planner error.
+    // turn — Step 8B adds no hero positioning and no multi-turn planning. Starting the Challenge
+    // charges CardDefinition.apCost plus ResourceCost; playing its output later separately charges
+    // activationApCost. A lost roll is a normal paid partial failure (MaterializationExecutor), not
+    // a planner error.
     public sealed class GenerationStep
     {
         public ResearchProductionMode Mode;
@@ -109,9 +109,9 @@ namespace Game.Ai.V2
         //  closure and the portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
         //  GenerationAttempts = (Generation != null ? 1 : 0); HandSlotPeak = HandSlotsNeededAtPeak.
         //  No layer recomputes a "slightly different" cost of its own.
-        public float ApCost;                      // CreateArmy + attach AP + deploy AP (generation adds 0 player AP)
+        public float ApCost;                      // Challenge + CreateArmy + attach + deploy AP
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
-        public int HandSlotsNeededAtPeak;         // free hand slots the chain needs at its most crowded moment (0 or 1)
+        public int HandSlotsNeededAtPeak;         // generated output is cap-exempt; currently 0
 
         // AI-MGR-01 P1.4 — a plain field: the authoritative strategic score, set once by
         // StrategicCardEvaluator (which owns the Phase-B garrison-surplus correction via
