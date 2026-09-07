@@ -1,3 +1,4 @@
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 
@@ -19,30 +20,16 @@ namespace Game.Ai.V2
 
     public enum CapabilityKind
     {
-        ScoutCapability,       // a solo Recce able to run a Scout mission
-        GarrisonCombatPower,   // defensive body at a specific base
-        FieldCombatPower,      // offensive body for a field force
-        Hero,                  // a hero to lead / research / build
-
-        // Infrastructure. Fulfilled by BuildingPlayExecutor through the authoritative gameplay
-        // APIs (HexSelectionController.SpawnBuilding / TryBuildExtractionFacility), NOT by the
-        // Unit/Hero MaterializationCandidateBuilder path — see InfrastructureFulfillment.
-        EconomicInfrastructure,    // an extraction facility / economy building at a resource site
-        DevelopmentInfrastructure, // a Research/Production-capable base or facility
-
-        // A qualifying Research/Production Hero placed onto an existing but UNSTAFFED facility hex —
-        // the prerequisite for any CardUpgrade demand. Fulfilled by InfrastructureFulfillment (a
-        // hand Hero card deposited into the base garrison through the authoritative CardPlayExecutor),
-        // NOT the Unit/Hero materialization chain — parallel to DevelopmentInfrastructure.
+        ScoutCapability,
+        GarrisonCombatPower,
+        FieldCombatPower,
+        Hero,
+        EconomicInfrastructure,
+        DevelopmentInfrastructure,
         DevelopmentOperator,
-
-        // A Research/Production Challenge run to strengthen an existing card (hand / on-map unit).
-        // Carries a DevelopmentOpportunity in AxisDemand.DevOpportunity — Phase A executes THAT,
-        // never re-picks the card. Radar-gated via EffectiveValue like any Development work.
         CardUpgrade,
     }
 
-    // Optional preferred characteristics of the capability. Flags so a demand can want several.
     [System.Flags]
     public enum TraitPreference
     {
@@ -55,82 +42,33 @@ namespace Game.Ai.V2
 
     public sealed class AxisDemand
     {
-        // Turn-scoped correlation id (AiV2Trace — "{scope}-D01"). Assigned by DemandLayer.Generate
-        // once the full demand list for the pass exists; carried into StrategicManager Phase A and
-        // every [CHECK] line raised for this demand. Null only in a bare unit test / sim.
         public string TraceId;
-
         public DesireAxis RequestingAxis;
-
-        // Strategic merit of the UNMET opportunity behind this demand, on the same 0..100 scale
-        // as MissionProposal.BaseValue (for Recon: the BaseValue of the best uncovered objective).
         public float Value;
-
-        // Where the capability is wanted, when that is meaningful (biases placement / card fit).
         public HexCoord? TargetHex;
-
         public CapabilityKind Capability;
-
-        // How many units of the capability are still MISSING (already-available supply subtracted).
         public float DesiredAmount;
-
-        // HARD constraint — a card that does not satisfy every RequiredTraits flag cannot fulfil
-        // this demand at all (e.g. a Surveil objective needs a stealth-capable scout; a plain
-        // Recce played for it would still fail provisioning — NoMoverExists). The available-supply
-        // count that produced DesiredAmount must be computed against the SAME constraint.
         public TraitPreference RequiredTraits;
-
-        // SOFT preference — only a scoring tie-break between cards that already satisfy
-        // RequiredTraits. Never a filter.
         public TraitPreference PreferredTraits;
-
-        // FIXED mission overhead AP that does NOT depend on which actor / card fulfils the demand
-        // (0 for Recon today; e.g. a raid's fixed assembly overhead later). StrategicManager adds
-        // the ACTOR-dependent part per candidate — the deployed unit's own activation AP plus any
-        // action surcharge the demand's RequiredTraits imply — on top of this. The full follow-up
-        // total is RESERVED, never spent: Phase A must not spend the requesting axis's entitlement
-        // (or real AP) down past it, or it creates a capability the mission allocator can no
-        // longer fund the same turn.
         public float MinimumFollowupAp;
-
         public string Explain;
-
-        // OPTIONAL capability-specific mission context, so StrategicManager can judge the QUALITY
-        // of a materialization in the setting the demand was raised for — not just capability +
-        // trait match. Never a card choice / card name / pre-scored card. Populated per axis:
-        // Recon fills ScoutContext; other capabilities add their own typed context as they land.
         public ScoutCapabilityContext ScoutContext;
-
-        // DEVELOPMENT (CapabilityKind.CardUpgrade): the fully-scored upgrade Phase A must execute —
-        // which offering, which recipient, EV, stake. Set by DevelopmentDemands. Phase A runs this
-        // verbatim (Challenge -> mint -> attach), it does NOT re-pick.
         public DevelopmentOpportunity DevOpportunity;
-
-        // --- Identity extensions (2026-08-31 review follow-up) --------------------------------
-        // ECONOMY: the resource type this EconomicInfrastructure demand is about. Fulfillment must
-        // create an income source for THIS type (an extraction facility on a same-type site) — a
-        // generic Base elsewhere is NOT a valid fulfillment (spec §4).
         public ResourceType? EconomyResourceType;
 
-        // Target capability POWER the demand needs met, on the same power scale as
-        // ArmySnapshot.EffectiveArmyPower. Set by DefenceDemands (= required garrison power at the
-        // asset). MaterializationCandidateBuilder.ScorePlanA reads it for the garrison-saturation
-        // penalty: a destination that already reaches this figure should not keep attracting cards.
-        public float RequiredCapabilityPower;
+        // DEV OPERATOR: preserves the exact Research/Production lane that raised the prerequisite.
+        // Null for every unrelated demand and for legacy/test demands that intentionally do not
+        // constrain a mode. InfrastructureFulfillment consumes this identity; it must not re-pick
+        // a different facility mode merely because that facility happens to share the target hex.
+        public ResearchProductionMode? DevelopmentOperatorMode;
 
-        // Persistence-gate escape (spec: "Persistence Gate: Bootstrap & No-Alternative-Work
-        // Escape"). True for a demand an axis raised for a REAL runnable opportunity + deliverable
-        // capability gap, but whose capacity deficit has not yet persisted long enough to auto-play.
-        // Not axis-specific — any axis's persistence gate can use it. StrategicPhaseA excludes it
-        // from the normal per-turn arbitration pool and only reconsiders it once every currently
-        // active (non-deferred) demand this pass is satisfied, blocked, or infeasible — i.e. once
-        // there is no other actionable work left to prefer over it — and only if a legal/affordable
-        // deliverable candidate exists for it right now (never a phantom fulfillment).
+        public float RequiredCapabilityPower;
         public bool IsPersistenceDeferred;
 
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
             + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
+            + (DevelopmentOperatorMode.HasValue ? $" ({DevelopmentOperatorMode.Value})" : "")
             + (RequiredTraits != TraitPreference.None ? $" !{RequiredTraits}" : "")
             + (PreferredTraits != TraitPreference.None ? $" ~{PreferredTraits}" : "")
             + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")
