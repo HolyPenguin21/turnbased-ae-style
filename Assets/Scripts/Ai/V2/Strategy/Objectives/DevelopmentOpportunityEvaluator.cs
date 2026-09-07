@@ -76,15 +76,34 @@ namespace Game.Ai.V2
                 foreach (AggressionObjective o in aggObjectives)
                     if (o != null) raidHexes.Add(o.LastKnownHex);
 
+            int skippedNonEquip = 0;
             foreach (DevelopmentOffering off in rd.Offerings)
             {
+                string card = off.Card != null ? off.Card.displayName : "?";
                 if (!off.ProducesEquipment)
-                    continue;   // scope: equipment upgrades only
-                DevelopmentOpportunity best = BestEquipmentOpportunity(off, player, root, hand, raidHexes);
-                if (best == null)
+                {
+                    skippedNonEquip++;
+                    AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} — SKIP not-equipment "
+                        + $"(cardType {(off.Card != null ? off.Card.cardType.ToString() : "?")}); "
+                        + "non-equipment R/P mints go through the materialization path, not this axis");
                     continue;
+                }
+
+                DevelopmentOpportunity best = BestEquipmentOpportunity(off, player, root, hand, raidHexes,
+                    out string recipDiag);
+                if (best == null)
+                {
+                    AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} p={off.SuccessChance:0.00} "
+                        + $"— NO recipient: {recipDiag}");
+                    continue;
+                }
 
                 Score(best, snap, root, hand);
+                string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
+                AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
+                    + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
+                    + $"apCost={AiConfigV2.devRpApCost * AiConfigV2.devApValue:0.0} EV={best.Ev:0.00} "
+                    + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
                 if (best.Ev <= AiConfigV2.devEvMargin)
                     continue;
                 best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
@@ -94,7 +113,8 @@ namespace Game.Ai.V2
             }
 
             result.Sort((a, b) => b.BaseValue.CompareTo(a.BaseValue));
-            AiDebugLog.Write($"[AI][V2][Dev] objectives {result.Count}");
+            AiDebugLog.Write($"[AI][V2][Dev] objectives {result.Count} "
+                + $"(offerings {rd.Offerings.Count}, non-equip skipped {skippedNonEquip})");
             foreach (DevelopmentOpportunity op in result)
                 AiDebugLog.Write($"[AI][V2][Dev]   {op.Explain} base {op.BaseValue:0.0}");
             return result;
@@ -114,7 +134,8 @@ namespace Game.Ai.V2
         {
             float surplusRetain = 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
-            float aTotal = surplusRetain * BestAffordableHandUnitPower(hand, root);
+            float aTotal = AiConfigV2.devAlternativeWeight * surplusRetain
+                * BestAffordableHandUnitPower(hand, root);
             float apCostValue = AiConfigV2.devRpApCost * AiConfigV2.devApValue;
 
             op.AlternativeValue = aTotal;
@@ -125,16 +146,22 @@ namespace Game.Ai.V2
         // Best legal recipient for an Equipment offering. Hand Unit/Hero cards + own on-map units,
         // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand, HashSet<HexCoord> raidHexes)
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, HashSet<HexCoord> raidHexes,
+            out string diag)
         {
+            diag = "no equipment grant on the card";
             EquipmentGrant grant = off.Card.equipment;
             if (grant == null)
                 return null;
 
+            int handChecked = 0, mapChecked = 0, gainZero = 0;
+            string lastReject = null;
             DevelopmentOpportunity best = null;
             void Consider(DevelopmentOpportunity cand)
             {
-                if (cand != null && (best == null || cand.ExpectedGain > best.ExpectedGain))
+                if (cand == null) return;
+                if (cand.ExpectedGain <= 0f) { gainZero++; return; }
+                if (best == null || cand.ExpectedGain > best.ExpectedGain)
                     best = cand;
             }
 
@@ -145,7 +172,8 @@ namespace Game.Ai.V2
                 {
                     if (c?.Definition == null) continue;
                     if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
-                    if (!EquipmentSystem.CanAttach(off.Card, c, root, out _)) continue;
+                    handChecked++;
+                    if (!EquipmentSystem.CanAttach(off.Card, c, root, out string why)) { lastReject = why; continue; }
                     float delta = Mathf.Max(0f,
                         AiPower.EffectiveLine(c.Definition, c.Equipment != null ? c.Equipment.equipment : null, grant).BasePower
                         - AiPower.EffectiveLine(c.Definition, c.Equipment != null ? c.Equipment.equipment : null).BasePower);
@@ -162,7 +190,8 @@ namespace Game.Ai.V2
                 foreach (UnitData u in army.Members)
                 {
                     if (u == null || u.IsPrisoner) continue;
-                    if (!EquipmentSystem.CanAttach(off.Card, u, root, out _)) continue;
+                    mapChecked++;
+                    if (!EquipmentSystem.CanAttach(off.Card, u, root, out string whyU)) { lastReject = whyU; continue; }
                     float importance = army.IsGarrison
                         ? AiConfigV2.devImportanceGarrison
                         : raidHexes.Contains(army.Hex) ? AiConfigV2.devImportanceRaidMatch
@@ -172,6 +201,11 @@ namespace Game.Ai.V2
                         null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain));
                 }
             }
+
+            if (best == null)
+                diag = $"hand checked {handChecked}, on-map checked {mapChecked}, "
+                    + $"positive-gain 0 (zero-gain {gainZero})"
+                    + (lastReject != null ? $"; last CanAttach reject: \"{lastReject}\"" : "; all attachable but gain <= 0");
             return best;
         }
 

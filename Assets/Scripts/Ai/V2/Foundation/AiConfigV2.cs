@@ -234,12 +234,17 @@ namespace Game.Ai.V2
         // a bare "I have units worth improving" appetite. Only applies when DevPathViable.
         public const float devLatentPotential = 0.5f;
 
-        // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). All first-pass — the
-        // "how R/P picks a card" review tunes these next.
+        // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). Tuned against
+        // AiDebug.log 2026-09-07: with the old values (apValue 3, margin 0.5, full alt-cost) a
+        // p=0.77 offering scored EV = 0.77*G - ~8 - 3, so equipment upgrades (single-item G ~2..10)
+        // could never clear the margin and Enumerate returned 0 objectives every turn.
         public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
-        public const float devEvMargin = 0.5f;         // keep an opportunity only if EV exceeds this
+        public const float devEvMargin = 0.05f;        // keep an opportunity only if EV exceeds this
         public const float devRpApCost = 1f;           // AP a Research/Production action costs
-        public const float devApValue = 3f;            // value of 1 AP, for the EV apCost term
+        public const float devApValue = 1f;            // value of 1 AP, for the EV apCost term
+        // The "I could play a fresh Unit with the same resources" alternative is a SOFT opportunity
+        // cost, not a 1:1 trade (the unit is usually still played a later turn) — weight it down.
+        public const float devAlternativeWeight = 0.5f;
         public const float devEquipGainFraction = 0.25f; // on-map unit FALLBACK when OriginatingCard is null: equipment adds ~this * UnitPower
         public const float devImportanceRaidMatch = 1.5f; // recipient sits on a hex an Aggression objective targets
         public const float devImportanceField = 1.0f;
