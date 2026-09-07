@@ -127,6 +127,9 @@ namespace Game.Ai.V2
                 state.Roster[c.ArmyId] = new List<ReorgUnit>(c.Units);
             }
 
+            Outcome initial = Evaluate(state);
+            plan.BeforeFormationStrengths.AddRange(initial.FormationStrengths);
+
             int iterations = 0;
             while (iterations++ < AiConfigV2.housekeepingMaxPlanIterationsPerHex)
             {
@@ -157,6 +160,8 @@ namespace Game.Ai.V2
                 state.MovedUnitKeys.UnionWith(best.MovedUnitKeys);
             }
 
+            Outcome final = Evaluate(state);
+            plan.AfterFormationStrengths.AddRange(final.FormationStrengths);
             plan.Transfers.AddRange(state.Transfers);
             foreach (var kv in state.Roster)
                 plan.ExpectedMembership[kv.Key] = kv.Value.Select(u => u.Key).ToList();
