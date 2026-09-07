@@ -170,8 +170,8 @@ namespace Game.Ai.V2
             }
 
             // --- CardUpgrade pre-pass. Development R/P upgrades run the carried DevelopmentOpportunity
-            //     verbatim (Challenge -> mint -> attach). Challenge costs no AP; the attach costs the
-            //     equipment grant's activation AP, charged to Development. Blocked from the generic
+            //     verbatim (Challenge -> mint -> attach). Challenge AP and successful attach AP are
+            //     both measured and charged to Development. Blocked from the generic
             //     loop like infra. GREEDY: re-score every remaining opportunity against the fresh
             //     snapshot each round (surplus / best-alternative shift as resources are spent), drop
             //     those below the EV margin, take the best, execute, refresh, repeat — bounded by

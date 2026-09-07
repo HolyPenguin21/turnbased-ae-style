@@ -462,10 +462,20 @@ namespace Game.UI
             return AddCardToHand(new CardData(definition));
         }
 
-        // Read-only capacity probe — does NOT touch the hand. Used by the Research/Production
-        // transaction (see HexSelectionController) to refuse a Create BEFORE any ResourceCost is
-        // spent, so a won Challenge can never lose its produced card to a full hand. Same cap
-        // AddCardToHand enforces.
+        // Research/Production output is the one intentional hand-cap exception. The explicit
+        // instance flag prevents rewards, draws or returned aircraft from accidentally using this
+        // boundary to bypass the normal cap. Being over capacity naturally keeps ordinary draws
+        // blocked until enough cards have left the hand.
+        public bool AddProducedCardToHand(CardData data)
+        {
+            if (data?.Definition == null || !data.ResearchProductionCreated)
+                return false;
+            AddCard(data);
+            return true;
+        }
+
+        // Read-only ordinary-hand capacity probe. Research/Production output deliberately uses
+        // AddProducedCardToHand instead and may exceed this cap.
         public bool HasFreeHandSlot => _cards.Count < maxHandSize;
 
         // The shared hand capacity (spec P0 §10 — one hand cap for human and AI). Read once into
@@ -874,36 +884,25 @@ namespace Game.UI
 
             BuildingData targetBuilding = baseViewerModal.CurrentBuilding;
             PlayerSetupData human = FindHumanPlayer();
-            if (targetBuilding == null || human == null || targetBuilding.Owner != human)
+            if (targetBuilding == null || human == null || targetBuilding.Owner != human
+                || !baseViewerModal.CanManageCurrentBuilding)
                 return false;
 
-            PlayerRoot root = PlayerRootRegistry.FindFor(human);
-            if (root == null)
-                return false;
-
-            // Effective instance cost — see TryBuildBase. Produced cards skip the (already paid)
-            // ResourceCost and use activationApCost.
-            int apCost = card.Data.EffectivePlayApCost;
-            ResourceCost resourceCost = card.Data.EffectivePlayResourceCost;
-            if (!root.CanSpendActionPoints(apCost))
+            // The modal is only a drop surface. Slot selection, legality, affordability, spend
+            // and mutation all go through the same authoritative transaction as direct hex drops
+            // and AI execution. InfrastructureActions deterministically selects the first free
+            // unlocked slot, so any point inside the owned Base modal is a valid drop surface.
+            InfrastructureBuildOutcome outcome = InfrastructureActions.TryPlaceFacility(
+                definition, targetBuilding.Hex, human,
+                card.Data.EffectivePlayApCost, card.Data.EffectivePlayResourceCost);
+            if (!outcome.Ok)
             {
-                turnController.ShowSpawnHint($"Not enough action points to deploy {definition.displayName}.");
-                return false;
-            }
-            if (resourceCost != null && !resourceCost.CanAfford(root))
-            {
-                turnController.ShowSpawnHint($"Not enough resources to deploy {definition.displayName}.");
+                turnController?.ShowSpawnHint($"Can't deploy {definition.displayName} here — {outcome.FailReason}.");
                 return false;
             }
 
-            if (!baseViewerModal.TryPlaceFacility(definition, screenPosition))
-                return false;
-
-            root.SpendActionPoints(apCost);
-            resourceCost?.PayFrom(root);
-            // A Lab/Factory Facility placed here can enable Research/Production on the selected
-            // hex behind the still-open Base Viewer.
-            if (hexSelection != null && targetBuilding != null)
+            baseViewerModal.RefreshAfterExternalFacilityPlacement();
+            if (hexSelection != null)
                 hexSelection.RefreshSelectedHexIf(targetBuilding.Hex);
             RemoveCard(card);
             return true;

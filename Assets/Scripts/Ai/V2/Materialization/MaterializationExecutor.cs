@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     //  reserved before this call. Each real action is then taken against the LIVE state: after a
     //  step, its actual result is used and the next step is re-checked. There is NO rollback of a
     //  gameplay action that already succeeded:
-    //    · Challenge lost            -> resources stay spent, chain stops, StateChanged if the
+    //    · Challenge lost            -> AP/resources stay spent, chain stops, StateChanged if the
     //                                   world actually moved, generator use is reported as
     //                                   attempted so the pass never retries it.
     //    · attach fails after a win  -> the generated card stays in hand, chain stops.
@@ -31,8 +31,8 @@ namespace Game.Ai.V2
         // AI-MGR-01 review-r4 finding 9b — the Research/Production mint step, factored out so the
         // Phase-B non-combat lane can generate → deploy an Aviation / Base / Facility card too
         // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
-        // chains). Same rules: eligibility re-check, hand slot, affordability, Research reveal,
-        // ResourceCost-only (no AP), probabilistic Challenge, mint into hand on a win.
+        // chains). Same rules: eligibility re-check, full AP/resource affordability, Research
+        // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.
         public readonly struct GenerationOutcome
         {
             public readonly bool Success;
@@ -59,22 +59,22 @@ namespace Game.Ai.V2
                 || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
                 return new GenerationOutcome(false, null, false,
                     $"generation no longer valid ({why ?? "hero moved"})");
-            if (!hand.HasFreeSlot)
-                return new GenerationOutcome(false, null, false, "no hand slot for the generated card");
             if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                return new GenerationOutcome(false, null, false, "generation resources unaffordable");
+                return new GenerationOutcome(false, null, false, "generation AP/resources unaffordable");
 
             bool wasHidden = g.Hero != null && g.Hero.IsHidden;
+            int ap0 = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
 
             // Research reveals the Researcher whether or not the roll wins (parity with
             // AiDevelopmentPlanner). Production never reveals.
             ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-            // ResourceCost only — the Challenge costs the player no AP. Never refunded.
+            // Challenge AP + resources are consumed by the attempt and never refunded on loss.
             ResearchProductionSystem.PayCardCost(root, g.CardDef);
 
-            bool resMoved = h0 != root.GetResource(ResourceType.Human)
+            bool costMoved = ap0 != root.ActionPoints
+                || h0 != root.GetResource(ResourceType.Human)
                 || e0 != root.GetResource(ResourceType.Energy)
                 || m0 != root.GetResource(ResourceType.Materials)
                 || t0 != root.GetResource(ResourceType.Tech);
@@ -83,7 +83,7 @@ namespace Game.Ai.V2
                 ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
             if (!outcome.Success)
                 return new GenerationOutcome(false, null,
-                    resMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
+                    costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
 
             CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
@@ -124,7 +124,7 @@ namespace Game.Ai.V2
                 if (!go.Success)
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                    StampResources();
                     res.FailReason = go.FailReason;
                     return res;
                 }
@@ -157,7 +157,7 @@ namespace Game.Ai.V2
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                    StampResources();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
                 }
@@ -187,9 +187,12 @@ namespace Game.Ai.V2
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
             res.ApSpent = apStart - root.ActionPoints;
-            StampResources();
             if (play.StateChanged)
                 res.StateChanged = true;
+            // Stamp only after the deploy outcome has contributed to StateChanged. The old order
+            // missed the V2 state-version bump for a successful direct deploy with no preceding
+            // generation or attachment.
+            StampResources();
             res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)

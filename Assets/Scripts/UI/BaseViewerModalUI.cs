@@ -27,9 +27,6 @@ namespace Game.UI
         [SerializeField] private TMP_Text titleText;
         [SerializeField] private Button closeButton;
         [SerializeField] private Transform gridContainer;
-        // Same GameObject as gridContainer — see ArmyViewerModalUI's identical field for why
-        // this is kept separately typed instead of duplicating cell metrics as tunables.
-        [SerializeField] private GridLayoutGroup grid;
         [SerializeField] private Image detailArt;
         // Split in two: detailText1 is the fixed identity/stat block (name, level, HP, defense,
         // resistance, fate — same for a Base cell or a Facility cell, minus whichever of those
@@ -76,9 +73,19 @@ namespace Game.UI
         public event Action VisibilityChanged;
 
         // Read by CardHandUI to know which building a dropped Facility card should join (see
-        // TryDeployIntoBaseModal) — mirrors ArmyViewerModalUI.CurrentArmy. The actual drop path
-        // must still pass TryPlaceFacility, which enforces CanManageCurrentBuilding.
+        // TryDeployIntoBaseModal) — mirrors ArmyViewerModalUI.CurrentArmy. CardHandUI routes the
+        // actual mutation through InfrastructureActions.
         public BuildingData CurrentBuilding => _currentBuilding;
+
+        // Called after the authoritative infrastructure transaction succeeds. This modal owns
+        // presentation only: it never writes BuildingData.FacilitySlots itself.
+        public void RefreshAfterExternalFacilityPlacement()
+        {
+            if (!IsShowing || _currentBuilding == null)
+                return;
+            RefreshGrid();
+            ShowBaseSummary();
+        }
 
         public bool ContainsScreenPoint(Vector2 screenPosition)
         {
@@ -244,65 +251,6 @@ namespace Game.UI
         private string FormatAbilities(IEnumerable<string> abilities)
         {
             return gameConfig != null ? gameConfig.FormatAbilitiesDetailed(abilities) : string.Join(" ", abilities);
-        }
-
-        // Called by CardHandUI when a Facility card is dropped onto this open modal (see
-        // TryDeployIntoBaseModal). A read-only/foreign viewer rejects before resolving a slot,
-        // so merely inspecting an enemy Base can never become a back door into its FacilitySlots.
-        public bool TryPlaceFacility(CardDefinition definition, Vector2 screenPosition)
-        {
-            if (!CanManageCurrentBuilding || _currentBuilding == null || definition == null)
-                return false;
-
-            // Only a Base/Citadel takes Facility cards — matches the direct hex-drop path's own
-            // IsValidFacilityHexDropTarget check (see CardHandUI). A hero-built resource site can
-            // be shown in this viewer too, and without this its FacilitySlots could be filled
-            // through the modal even though the hex-drop path forbids it.
-            if (!_currentBuilding.IsBase)
-                return false;
-
-            int? cellIndex = ResolveGridSlotIndex(screenPosition);
-            if (!cellIndex.HasValue)
-                return false;
-
-            bool hasBaseCell = _currentBuilding.HasTieredUnlock;
-            if (hasBaseCell && cellIndex.Value == 0)
-                return false;
-
-            int facilityIndex = hasBaseCell ? cellIndex.Value - 1 : cellIndex.Value;
-            if (facilityIndex < 0 || facilityIndex >= _currentBuilding.TotalFacilitySlots)
-                return false;
-            if (facilityIndex >= _currentBuilding.UnlockedFacilitySlots)
-                return false;
-            if (_currentBuilding.FacilitySlots[facilityIndex] != null)
-                return false;
-
-            _currentBuilding.FacilitySlots[facilityIndex] = FacilityData.FromDefinition(definition);
-            RefreshGrid();
-            return true;
-        }
-
-        // Same row-major top-left math as ArmyViewerModalUI.ResolveGridSlotIndex, reading this
-        // grid's own cellSize/spacing/constraintCount directly instead of duplicating them.
-        private int? ResolveGridSlotIndex(Vector2 screenPosition)
-        {
-            if (grid == null)
-                return null;
-
-            var gridRect = (RectTransform)grid.transform;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(gridRect, screenPosition, ResolveEventCamera(), out Vector2 local))
-                return null;
-
-            Rect rect = gridRect.rect;
-            float x = local.x - rect.xMin;
-            float y = rect.yMax - local.y;
-            if (x < 0f || y < 0f || x >= rect.width)
-                return null;
-
-            int columns = Mathf.Max(1, grid.constraintCount);
-            int col = Mathf.Clamp(Mathf.FloorToInt(x / (grid.cellSize.x + grid.spacing.x)), 0, columns - 1);
-            int row = Mathf.Max(0, Mathf.FloorToInt(y / (grid.cellSize.y + grid.spacing.y)));
-            return row * columns + col;
         }
 
         // Read by BaseSlotCardUI while hovering cell 0's Improve button, to preview the cost of

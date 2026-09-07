@@ -160,16 +160,25 @@ namespace Game.Cards
         public static bool Offers(ResearchProductionCatalog catalog, ResearchProductionMode mode, Faction faction, CardDefinition card)
             => card != null && OfferedCards(catalog, mode, faction).Contains(card);
 
-        // ResourceCost is the ONLY cost of the attempt (spec §4/§32: no Player AP for the roll
-        // itself). A card with no resourceCost is always affordable.
-        public static bool CanAffordCard(PlayerRoot root, CardDefinition card)
-            => root != null && card != null && (card.resourceCost == null || card.resourceCost.CanAfford(root));
+        // Starting a Challenge pays the card's authored play cost: apCost plus ResourceCost.
+        // This is separate from playing a successfully minted card later, which still pays that
+        // instance's activationApCost and never pays ResourceCost twice (see CardData).
+        public static int AttemptApCost(CardDefinition card)
+            => card != null ? Mathf.Max(0, card.apCost) : 0;
 
-        // Spent immediately before the Challenge and NEVER refunded on a loss (spec §4).
+        public static bool CanAffordCard(PlayerRoot root, CardDefinition card)
+            => root != null && card != null
+                && root.CanSpendActionPoints(AttemptApCost(card))
+                && (card.resourceCost == null || card.resourceCost.CanAfford(root));
+
+        // AP and resources are spent immediately before the Challenge and NEVER refunded on a
+        // loss: the attempt itself consumed them regardless of its result.
         public static void PayCardCost(PlayerRoot root, CardDefinition card)
         {
-            if (root != null && card != null)
-                card.resourceCost?.PayFrom(root);
+            if (root == null || card == null)
+                return;
+            root.SpendActionPoints(AttemptApCost(card));
+            card.resourceCost?.PayFrom(root);
         }
 
         // ---- consequences -----------------------------------------------------------------

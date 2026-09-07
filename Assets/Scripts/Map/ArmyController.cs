@@ -21,6 +21,11 @@ namespace Game.Map
         // the instant the coroutine that callback returned actually finishes.
         public sealed class StepResolutionOutcome
         {
+            // Supplied by MoveRoutine and evaluated by the resolver after any entry reaction has
+            // mutated the roster. This keeps terminality based on the actual surviving formation:
+            // losing the previous slowest aircraft to AA can change whether the next step is legal.
+            public System.Func<bool> CanContinueMovement;
+            public bool IsTerminalStep => CanContinueMovement == null || !CanContinueMovement();
             public bool StopMovement;
         }
 
@@ -216,7 +221,12 @@ namespace Game.Map
 
                 if (resolveStepAsync != null)
                 {
-                    var outcome = new StepResolutionOutcome();
+                    int resolvedStepIndex = i;
+                    var outcome = new StepResolutionOutcome
+                    {
+                        CanContinueMovement = () => CanAffordNextMovementStep(
+                            map, path, resolvedStepIndex, Data, Data.Members)
+                    };
                     yield return resolveStepAsync(previous, next, outcome);
                     // Data.Members is the SAME list `members` already points at — a reaction that
                     // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it
@@ -237,6 +247,28 @@ namespace Game.Map
             // (no yield in between), so deferring the flip costs nothing.
             onComplete?.Invoke();
             IsMoving = false;
+        }
+
+        // Computes the endpoint from the same path, terrain and shared movement rules the next
+        // loop iteration would use. Kept here, at the movement owner, so aviation does not
+        // duplicate terrain/fuel-penalty accounting merely to decide whether it may strike.
+        private static bool CanAffordNextMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
+            ArmyData army, List<UnitData> members)
+        {
+            if (map == null || path == null || currentIndex >= path.Count - 1
+                || army == null || members == null || members.Count == 0)
+                return false;
+
+            HexCoord next = path[currentIndex + 1];
+            map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
+            int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
+            int nextCost = AviationRules.MovementCost(army, terrainCost);
+
+            int sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[0]);
+            for (int i = 1; i < members.Count; i++)
+                if (AviationRules.EffectiveMoveCurrent(members[i]) < sharedMoveCurrent)
+                    sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[i]);
+            return sharedMoveCurrent >= nextCost;
         }
 
         private IEnumerator StepTo(Vector3 targetPosition)
