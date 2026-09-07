@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -48,20 +49,30 @@ namespace Game.Ai.V2
         // either one-way transfers or direct swaps (PlannedTransfer.IsSwap).
         public readonly List<PlannedTransfer> Transfers = new List<PlannedTransfer>();
         public readonly Dictionary<int, List<int>> ExpectedMembership = new Dictionary<int, List<int>>();
+        // Diagnostic-only snapshots of the canonical strongest-first field profile. Empty reusable
+        // shells are intentionally absent; these values never participate in execution.
+        public readonly List<float> BeforeFormationStrengths = new List<float>();
+        public readonly List<float> AfterFormationStrengths = new List<float>();
 
         public bool IsEmpty => Transfers.Count == 0;
         public string HexKey => Q + "," + R;
 
         public string DebugSummary()
         {
+            string before = FormatProfile(BeforeFormationStrengths);
+            string after = FormatProfile(AfterFormationStrengths);
             if (IsEmpty)
-                return $"({Q},{R}) no-op";
+                return $"({Q},{R}) no-op profile {before}";
             IEnumerable<string> ops = Transfers.Select(t => t.IsReorder
                 ? $"commander u{t.UnitKey}:#{t.FromArmyId}"
                 : t.IsSwap
                     ? $"swap u{t.UnitKey}:#{t.FromArmyId}<->u{t.SwapUnitKey}:#{t.ToArmyId}"
                     : $"u{t.UnitKey}:#{t.FromArmyId}->#{t.ToArmyId}");
-            return $"({Q},{R}) {Transfers.Count} reorg operation(s): {string.Join(", ", ops)}";
+            return $"({Q},{R}) profile {before}->{after}; {Transfers.Count} reorg operation(s): {string.Join(", ", ops)}";
         }
+
+        private static string FormatProfile(IEnumerable<float> values) =>
+            "[" + string.Join(",", (values ?? Enumerable.Empty<float>())
+                .Select(v => v.ToString("0.##", CultureInfo.InvariantCulture))) + "]";
     }
 }
