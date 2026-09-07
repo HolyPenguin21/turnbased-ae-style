@@ -44,6 +44,7 @@ namespace Game.Ai.V2
         {
             var snap = new WorldSnapshot { TurnNumber = ctx.TurnNumber };
             snap.Self = BuildSelf(player, root, hand, ctx);
+            snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
@@ -68,6 +69,7 @@ namespace Game.Ai.V2
                 MapKnowledge = prev.MapKnowledge,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
+            snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Economy = BuildEconomy(player, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
@@ -87,6 +89,7 @@ namespace Game.Ai.V2
 
             var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber };
             snap.Self = BuildSelf(player, root, hand, ctx);
+            snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
@@ -117,6 +120,14 @@ namespace Game.Ai.V2
                 + $"| bestStack={F(self.BestStackPotential)} totalPotential={F(self.TotalMilitaryPotential)} "
                 + $"| AP={self.ActionPoints} hand={self.Hand.Count}/{self.HandCapacity} deck={self.Deck.Count} "
                 + $"| dev fac={(self.HasDevFacility ? 1 : 0)} op={(self.HasDevOperator ? 1 : 0)}");
+            if (s.Development != null)
+            {
+                DevelopmentReadiness rd = s.Development;
+                AiDebugLog.Write($"[AI][V2]   dev.readiness facilities={rd.Facilities.Count} "
+                    + $"withHero={(rd.AnyFacilityWithHero ? 1 : 0)} offerings={rd.Offerings.Count} "
+                    + $"bestP={P(rd.BestSuccessChance)} surplus={P(rd.SurplusFraction)} targets={rd.UpgradeTargetCount}"
+                    + $"{(rd.Facilities.Any(f => f.Contested) ? " [contested]" : "")}");
+            }
             AiDebugLog.Write($"[AI][V2]   self.stock H/E/M/T={F(self.Stockpile.Human)}/{F(self.Stockpile.Energy)}/"
                 + $"{F(self.Stockpile.Materials)}/{F(self.Stockpile.Tech)} "
                 + $"| income={F(self.PerTurnIncome.Human)}/{F(self.PerTurnIncome.Energy)}/"
@@ -250,6 +261,115 @@ namespace Game.Ai.V2
 
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
+
+        private static readonly ResearchProductionMode[] DevModes =
+            { ResearchProductionMode.Research, ResearchProductionMode.Production };
+
+        // The ONE Research/Production capability detect. Snapshot-pure: enumerates own facilities
+        // (+ the qualifying hero), then every catalog card that passes facility ability + hero +
+        // CanAffordCard + AiConfig.developmentMinSuccessChance. The enemy-on-hex rule is recorded
+        // as DevelopmentFacility.Contested but is NOT applied here — a contested facility still
+        // produces offerings for the analyzer/radar; Phase A alone skips execution while contested.
+        private static DevelopmentReadiness BuildDevelopment(PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx)
+        {
+            var rd = new DevelopmentReadiness();
+            var facilities = new List<DevelopmentFacility>();
+            var offerings = new List<DevelopmentOffering>();
+            rd.Facilities = facilities;
+            rd.Offerings = offerings;
+            if (player == null || root == null)
+                return rd;
+
+            int targets = 0;
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+            {
+                if (a == null || a.IsPrison) continue;
+                foreach (UnitData m in a.Members)
+                    if (m != null && !m.IsHero) targets++;
+            }
+            if (hand?.Hand != null)
+                foreach (CardData c in hand.Hand)
+                    if (c?.Definition != null && c.Definition.cardType == CardType.Unit) targets++;
+            rd.UpgradeTargetCount = targets;
+
+            ResearchProductionCatalog catalog = ctx?.ResearchProductionCatalog;
+
+            foreach (BuildingData b in BuildingRegistry.AllBuildings())
+            {
+                if (b == null || b.Owner != player) continue;
+                foreach (ResearchProductionMode mode in DevModes)
+                {
+                    if (!b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
+                        continue;
+                    UnitData hero = ResearchProductionSystem.FindActor(player, b.Hex, mode);
+                    facilities.Add(new DevelopmentFacility
+                    {
+                        Hex = b.Hex,
+                        Mode = mode,
+                        HasHero = hero != null,
+                        Contested = BattleInitiator.FindEnemyAt(b.Hex, player) != null,
+                        HeroFate = hero != null ? Mathf.Max(0, hero.Fate) : 0,
+                        HeroCommandRating = hero != null ? Mathf.Max(0, hero.CommandRating) : 0,
+                    });
+                    if (hero == null || catalog == null)
+                        continue;
+
+                    foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction))
+                    {
+                        if (card == null || !ResearchProductionSystem.CanAffordCard(root, card))
+                            continue;
+                        float p = ResearchProductionSystem.EstimateSuccessChance(hero, card);
+                        if (p < AiConfig.developmentMinSuccessChance)
+                            continue;
+
+                        var stake = new ResourceBundle();
+                        ResourceCost cost = card.resourceCost;
+                        if (cost != null)
+                            foreach (ResourceType t in ResourceBundle.All)
+                                stake.Add(t, cost.Get(t));
+
+                        offerings.Add(new DevelopmentOffering
+                        {
+                            FacilityHex = b.Hex,
+                            Mode = mode,
+                            Card = card,
+                            SuccessChance = p,
+                            ProducesEquipment = card.cardType == CardType.Equipment,
+                            StakeCost = stake,
+                        });
+                    }
+                }
+            }
+
+            rd.AnyFacilityWithHero = facilities.Any(f => f.HasHero);
+            rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
+            rd.SurplusFraction = SurplusFraction(player, root, ctx);
+            return rd;
+        }
+
+        // [0..1] proxy for "am I spending surplus, not resources I need". Per resource type:
+        // spendable(t) (the tighter of the legacy + strategic reservation floors) over two turns of
+        // income; the WORST type governs. First pass — the analyzer's A_total (opportunity cost vs
+        // playing a card) is the real gate; this is the radar's coarse appetite signal. Tune later.
+        private static float SurplusFraction(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            if (player == null || root == null)
+                return 0f;
+            float worst = 1f;
+            foreach (ResourceType t in ResourceBundle.All)
+            {
+                float legacy = AiResourceReservation.Available(root, player, t);
+                float strategic = ctx != null
+                    ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber,
+                        StrategicResourceReservationLedger.Map(t), root.GetResource(t))
+                    : float.MaxValue;
+                float spendable = Mathf.Max(0f, Mathf.Min(legacy, strategic));
+                float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
+                worst = Mathf.Min(worst, Mathf.Clamp01(spendable / (income * 2f)));
+            }
+            return worst;
+        }
 
         // AI-MGR — Dynamic Strategic Effect Utility. Snapshot-pure AP action-economy read: how many
         // recurring-AP sources are in play, how much AP the AI could still usefully spend this turn,

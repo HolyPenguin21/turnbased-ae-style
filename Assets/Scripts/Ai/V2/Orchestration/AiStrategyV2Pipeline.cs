@@ -240,6 +240,43 @@ namespace Game.Ai.V2
         }
     }
 
+    // --- Radar model #1a. The radar's ONLY effect on decisions: it scales objective / mission
+    //     VALUE. It does NOT slice AP (one shared pool) and is NOT part of within-lane ordering.
+    //       scale(axis) = floor + (1 - floor) * min(1, weight * axisCount)
+    //     weight == 1/axisCount (an even split) -> 1.0 ; weight -> 0 (a cold axis) -> floor ;
+    //     weight >= 1/axisCount -> 1.0 (a hot axis is NOT super-boosted — cold-side attenuation is
+    //     enough, and a hot axis already carries more/better objectives). floor is
+    //     AiConfigV2.radarScaleFloor.
+    public static class RadarValueScale
+    {
+        public static float For(Radar radar, DesireAxis axis)
+        {
+            float floor = UnityEngine.Mathf.Clamp01(AiConfigV2.radarScaleFloor);
+            float w = radar?.Weight != null && radar.Weight.TryGetValue(axis, out float ww)
+                ? UnityEngine.Mathf.Max(0f, ww) : 0f;
+            float norm = UnityEngine.Mathf.Clamp01(w * DesireAxes.All.Length);
+            return floor + (1f - floor) * norm;
+        }
+
+        // Contribution-weighted scale for a mission. Every real proposal today names exactly one
+        // axis at 1.0, so this collapses to For(radar, thatAxis); a future multi-axis mission gets
+        // the contribution-weighted blend.
+        public static float For(Radar radar, MissionProposal m)
+        {
+            var contrib = m?.Axes?.Value;
+            if (contrib == null || contrib.Count == 0)
+                return For(radar, DesireAxis.Recon);
+            float acc = 0f, wsum = 0f;
+            foreach (DesireAxis a in DesireAxes.All)
+                if (contrib.TryGetValue(a, out float c) && c > 0f)
+                {
+                    acc += c * For(radar, a);
+                    wsum += c;
+                }
+            return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);
+        }
+    }
+
     // --- How much each axis a single mission serves. MANY-TO-MANY (risk 1): never collapse to one
     //     category. Values are 0..1 "relevance", not required to sum to anything.
     public sealed class AxisContribution
@@ -298,6 +335,11 @@ namespace Game.Ai.V2
         public MissionKind Kind;
         public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
+        // Radar model #1a — BaseValue scaled by the radar weight of the axis/axes this mission
+        // serves (RadarValueScale). Set ONCE by the orchestrator right after the proposal list is
+        // built. This is the figure the ResourceAllocator ranks on CROSS-LANE; BaseValue stays the
+        // radar-blind intrinsic merit and still orders WITHIN a lane via LocalAdmissionScore.
+        public float EffectiveValue;
         public readonly AxisContribution Axes = new AxisContribution();
         public MissionRequirements Requirements;
 
@@ -427,6 +469,8 @@ namespace Game.Ai.V2
 
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+            AiFrameLog.GameState(snapshot, hand);
+            AiFrameLog.WorldAnalysis(snapshot);
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
@@ -438,6 +482,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
                 + $"| threat {desires.MilitaryThreat.ToString("0.00", CultureInfo.InvariantCulture)} "
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
+            AiFrameLog.Strategy(assessment);
 
             // 3c. The ONE Recon-opportunity enumeration for the turn — shared by DemandLayer and
             //     ReconMissionPlanner. FROZEN here (before StrategicManager touches own forces): Strategic
@@ -451,6 +496,12 @@ namespace Game.Ai.V2
             List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                 ? AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport)
                 : new List<AggressionObjective>();
+            // 3e. Development opportunities — EV-scored upgrade options from the shared
+            //     snapshot.Development readiness. Consumed by DemandLayer (step 4) + Phase A (step 5).
+            List<DevelopmentOpportunity> devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                ? DevelopmentOpportunityEvaluator.Enumerate(snapshot, player, root, hand, aggressionObjectives)
+                : new List<DevelopmentOpportunity>();
+
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
@@ -458,6 +509,7 @@ namespace Game.Ai.V2
                     + $"asmWin {ao.AssemblableWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"def {ao.DefenderCount} gate {(ao.GatePassed ? 1 : 0)}"
                     + $"{(ao.NeedsCombatPower ? " needsPower" : "")}{(ao.NeedsHero ? " needsHero" : "")}");
+            AiFrameLog.Objectives(reconObjectives, aggressionObjectives);
 
             // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, then apply the
             //     centralized execution scope. In ReconOnly this cleanly retires stale Raid intents
@@ -468,6 +520,7 @@ namespace Game.Ai.V2
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
+            AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
 
             // RECON-AIR-02 (round 5) — the old separate Recon Air Reservation Prepass stage is
             //     gone: DemandLayer now measures air capacity itself via
@@ -477,7 +530,8 @@ namespace Game.Ai.V2
             // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
             //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
+                devOpportunities, radar);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
@@ -486,7 +540,7 @@ namespace Game.Ai.V2
             //     this same ledger — NO second radar split. Round 3 — no recon-air AP carve-out any
             //     more: Recon Air no longer gets a pre-funding reservation Phase A can't touch.
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0), radar);
+                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
@@ -517,12 +571,17 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
+            // Radar model #1a — stamp EffectiveValue once here; the allocator ranks cross-lane on it.
+            foreach (MissionProposal m in missions)
+                if (m != null)
+                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
                 AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
                     + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
                     + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "

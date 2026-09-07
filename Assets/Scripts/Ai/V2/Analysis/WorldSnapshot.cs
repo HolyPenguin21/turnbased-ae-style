@@ -42,6 +42,50 @@ namespace Game.Ai.V2
         public MapKnowledgeSnapshot MapKnowledge;
         public EconomyStanding Economy;
         public ThreatModel Threat;
+        // Development capability — the ONE detect of "can I do Research/Production, and on what".
+        // Read by BOTH the radar DevelopmentEvaluator (summary -> desire) and the
+        // DevelopmentOpportunityEvaluator (per-offering EV). Refreshed with Self on every scan.
+        public DevelopmentReadiness Development;
+    }
+
+    // =======================================================================================
+    //  DEVELOPMENT READINESS  (Research / Production capability, snapshot-pure)
+    // =======================================================================================
+    //  A facility the player owns whose building carries the mode's Facility ability, plus the
+    //  qualifying Hero on that hex if any. `Contested` (an enemy on the hex) is recorded but is
+    //  NOT a scoring/desire gate — it only blocks EXECUTION for the turn (Phase A precondition).
+    public struct DevelopmentFacility
+    {
+        public HexCoord Hex;
+        public ResearchProductionMode Mode;
+        public bool HasHero;
+        public bool Contested;          // enemy on the hex — execution-blocked this turn only
+        public int HeroFate;
+        public int HeroCommandRating;
+    }
+
+    // One catalog card a facility could attempt this turn: already filtered by facility ability +
+    // qualifying hero + CanAffordCard + AiConfig.developmentMinSuccessChance. NOT filtered by the
+    // enemy-on-hex rule. SuccessChance is ResearchProductionSystem.EstimateSuccessChance.
+    public struct DevelopmentOffering
+    {
+        public HexCoord FacilityHex;
+        public ResearchProductionMode Mode;
+        public CardDefinition Card;
+        public float SuccessChance;
+        public bool ProducesEquipment;
+        public ResourceBundle StakeCost;   // card.resourceCost — spent whether the Challenge wins or loses
+    }
+
+    public sealed class DevelopmentReadiness
+    {
+        public IReadOnlyList<DevelopmentFacility> Facilities = System.Array.Empty<DevelopmentFacility>();
+        public IReadOnlyList<DevelopmentOffering> Offerings = System.Array.Empty<DevelopmentOffering>();
+
+        public bool AnyFacilityWithHero;   // gateFacility AND gateHero, the radar's hard prerequisite
+        public float BestSuccessChance;    // max p over Offerings (0 if none)
+        public float SurplusFraction;      // [0..1] resource headroom above the reservation floors
+        public int UpgradeTargetCount;     // rough count of own units / hand Unit cards worth improving
     }
 
     // --- Four stockpiled resources as one value. Index order matches ResourceType.

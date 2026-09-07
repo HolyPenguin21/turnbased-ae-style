@@ -96,11 +96,12 @@ namespace Game.Ai.V2
             // the now-current AP / Energy / movement every call — the reaction round gets a live
             // re-evaluation for free, with no stale registry to reset.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
+                devOpportunities: null, radar: radar);
             result.Demands += demands.Count;
 
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0), radar);
+                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives);
             result.CardsPlayed += phaseA.CardsPlayed;
@@ -118,10 +119,15 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
                     m.AttemptId = rtrace?.NextMissionAttemptId() ?? "?";
+            // Radar model #1a — stamp EffectiveValue once (same as the main pass).
+            foreach (MissionProposal m in missions)
+                if (m != null)
+                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             foreach (MissionProposal m in missions)
                 AiDebugLog.Write($"[AI][V2]   reaction mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} "
-                    + $"{m.Kind} base {m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
+                    + $"{m.Kind} base {m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
             result.Missions += missions.Count;
 
             List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);

@@ -108,7 +108,7 @@ namespace Game.Ai.V2
         // the end-of-turn tempo arbiter uses: the strategic reservation ledger AND the legacy
         // recon-air reservation, whichever is tighter — so planning affordability == execution
         // affordability. No arbitrary post-spend minimum is imposed here.
-        private static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player,
+        internal static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player,
             AiTurnContext ctx, CardDefinition card)
         {
             ResourceCost cost = card.resourceCost;

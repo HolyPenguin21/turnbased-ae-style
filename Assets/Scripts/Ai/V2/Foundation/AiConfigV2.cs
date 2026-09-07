@@ -11,6 +11,13 @@ namespace Game.Ai.V2
     public static class AiConfigV2
     {
         // =======================================================================================
+        //  DIAGNOSTICS
+        // =======================================================================================
+        // AiFrameLog — readable per-block dump of the frozen turn frame (GAME STATE .. MISSION
+        // CONTINUITY) into AiDebugLog. Mutable so it can be toggled from a console/inspector.
+        public static bool frameLogEnabled = true;
+
+        // =======================================================================================
         //  STRENGTH MODEL  (AiPower) — replaces V1's flat WorthIt.AttackSum + DefenseSum.
         //  UnitPower = weighted sum of the raw combat stats, times an ability multiplier. This is
         //  a cheap RANKING scalar for the radar and the potential estimates, deliberately NOT a
@@ -200,7 +207,41 @@ namespace Game.Ai.V2
 
         // ---- smoothing / placeholders / out-of-simplex scalars ---------------------------
         public const float desireSmoothing = 0.40f;          // weight on the previous smoothed value
-        public const float desirePlaceholderInactive = 0.30f; // DEF/ECO/DEV until their evaluators land
+        // (removed) desirePlaceholderInactive — DEF/ECO/DEV raw desire is now honestly 0 until each
+        // axis gets a real evaluator; a placeholder radar weight would mis-scale EffectiveValue.
+
+        // Radar model #1a — the radar's ONLY effect on decisions is scaling objective/mission VALUE:
+        //   EffectiveValue = BaseValue * (floor + (1-floor) * min(1, weight * axisCount))
+        // A cold axis (weight -> 0) scales down to this floor; an axis at or above the even split
+        // (weight >= 1/axisCount) scales at 1.0. First-pass value — tune against real AiDebug.log.
+        public const float radarScaleFloor = 0.35f;
+
+        // Development desire (radar). rawDev = facilityGate * surplusRamp * offeringQuality * gain,
+        // a multiplicative gate — any missing prerequisite zeroes the axis. First-pass, tune vs log.
+        public const float devDesireGain = 1.0f;
+        public const float devSurplusRampLo = 0.15f;  // below this SurplusFraction -> ~no appetite
+        public const float devSurplusRampHi = 0.60f;  // at/above -> full surplus term
+        public const float devWeightSuccessChance = 0.6f;
+        public const float devWeightTargets = 0.4f;
+        public const float devTargetRampLo = 0f;
+        public const float devTargetRampHi = 4f;       // 4+ upgradeable targets -> full targets term
+
+        // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). All first-pass — the
+        // "how R/P picks a card" review tunes these next.
+        public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
+        public const float devEvMargin = 0.5f;         // keep an opportunity only if EV exceeds this
+        public const float devRpApCost = 1f;           // AP a Research/Production action costs
+        public const float devApValue = 3f;            // value of 1 AP, for the EV apCost term
+        public const float devEquipGainFraction = 0.25f; // on-map unit FALLBACK when OriginatingCard is null: equipment adds ~this * UnitPower
+        public const float devImportanceRaidMatch = 1.5f; // recipient sits on a hex an Aggression objective targets
+        public const float devImportanceField = 1.0f;
+        public const float devImportanceGarrison = 0.5f;
+        public const float devImportanceHandCard = 0.9f;
+
+        // Development's OWN per-turn Challenge cap (confirmed separate from maxGenerationActionsPerTurn,
+        // the combat-capability generation cap — Development is a distinct resource budget). Each
+        // upgrade still records a StrategicTempoBudget generation attempt for telemetry.
+        public const int maxDevelopmentUpgradesPerTurn = 2;
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
 
         // =======================================================================================

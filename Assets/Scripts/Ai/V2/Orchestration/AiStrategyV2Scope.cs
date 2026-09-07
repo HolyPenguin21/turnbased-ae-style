@@ -25,12 +25,13 @@ namespace Game.Ai.V2
 
     public static class AiStrategyV2Scope
     {
-        // AI-MGR-02 — switched to Full: the end-of-turn tempo arbiter must be exercised against the
-        // real competing set (AGG / DEF / ECO / DEV spend + reaction reservation), not a narrow
-        // slice. Change this one value to isolate a slice again; do not add local "disable
-        // aggression" booleans elsewhere. This is a test/runtime selection, not a production
-        // default — e.g. AiStrategyV2Scope.Mode = AiStrategyV2Mode.ReconDevelopment; for a run.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.Full;
+        // Radar model #1a bring-up — isolated to Recon + Development (+ StrategicManager /
+        // HousekeepingManager, which run in every mode). DEF / ECO / AGG desire, demand, intents
+        // and missions are dropped so the one-AP-pool allocator and the EffectiveValue scaling can
+        // be validated without the full competing set. Change this one value to widen scope again;
+        // do not add local "disable aggression" booleans elsewhere. Test/runtime selection, not a
+        // production default.
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 

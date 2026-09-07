@@ -10,27 +10,32 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  RESOURCE ALLOCATOR  (Strategy V2 build-order step 5)  — implements the ResourceAllocator seam
     // ===========================================================================================
-    //  radar -> per-axis budget SLICES of the shared AP pool -> many-to-many packing -> an ORDERED
-    //  TentativeAllocation the ProvisioningManager consumes front-to-back.
+    //  ONE AP pool (AxisBudgetLedger.Balance(), already net of Phase-A spend) -> value-ordered
+    //  packing -> an ORDERED TentativeAllocation the ProvisioningManager consumes front-to-back.
+    //
+    //  RADAR MODEL #1a
+    //  --------------------------------------------------------------------------------------------
+    //  The radar NO LONGER slices AP per axis. There is one shared pool; a mission draws its AP
+    //  straight from it. The radar scales OBJECTIVE VALUE (EffectiveValue) upstream instead — a
+    //  golden low-axis opportunity survives on its BaseValue, routine low-axis work is scaled
+    //  down. AxisContribution is kept only as a >0 validity check + a telemetry tag; it no longer
+    //  sizes anything.
     //
     //  FOUR HARD RULES
     //  --------------------------------------------------------------------------------------------
-    //   1. Radar sizes the axis BUDGET. It is NOT a BaseValue multiplier and takes NO part in
-    //      mission ordering. Fresh ordering WITHIN one execution lane is
-    //      MissionAdmissionPolicy.AdmissionRank (the planner-local LocalAdmissionScore + the
-    //      step-7 retarget hysteresis) so the Recon Explore-vs-Surveil balance survives the N>K
-    //      beam. Radar weight is never in the key. Today there is exactly ONE fresh lane
-    //      (ExecutionLane.Recon), so the effective fresh order is AdmissionRank + stable key.
-    //      TODO step 9 (second lane / Raid): the loop below walks lanes group-at-a-time ordered
-    //      by each group's max BaseValue — that is NOT a true cross-lane interleave (a low
-    //      BaseValue Recon candidate would still be admitted before a high BaseValue Raid one).
-    //      Replace with a k-way merge: per-lane AdmissionRank-ordered queues, repeatedly admit the
-    //      queue head with the highest BaseValue.
-    //   2. A mission may be funded from SEVERAL axes at once: its AxisContribution is normalised to
-    //      shares, and funding it at AP C draws C*share[axis] from each slice.
-    //   3. Positive slice leftovers become one fungible REMAINDER pool. Missions deferred ONLY
-    //      for InsufficientBudget get one second admission pass from it (all non-budget gates are
-    //      rechecked); what remains then tops up funded missions toward Desired/Max.
+    //   1. Cross-lane ordering is by MissionProposal.EffectiveValue (BaseValue x radar-weight
+    //      scale, stamped once by the orchestrator). WITHIN one lane it is
+    //      MissionAdmissionPolicy.AdmissionRank (planner-local LocalAdmissionScore + step-7
+    //      retarget hysteresis) so the Recon Explore-vs-Surveil balance survives the N>K beam.
+    //      No double-count: EffectiveValue scales by the AXIS-level radar weight; LocalAdmissionScore
+    //      mixes in the finer TYPE-level recon sub-desires (Explore vs Surveil vs Refresh), a
+    //      separate signal that only orders inside the lane.
+    //   2. A mission still names >=1 axis it serves (AxisContribution > 0) or it is invalid; the
+    //      axis no longer draws a slice.
+    //   3. Whatever is left of the pool after strict funding is a fungible REMAINDER. Missions
+    //      deferred ONLY for InsufficientBudget get one second admission pass from it (all
+    //      non-budget gates rechecked); what remains then tops up funded missions toward
+    //      Desired/Max.
     //   4. The allocator NEVER assigns a concrete army / mover. MoverKnown is ignored here.
     //
     //  RE-ALLOCATE ON FAIL — BOUNDED (risk 2)
@@ -44,10 +49,10 @@ namespace Game.Ai.V2
     //
     //  RESOURCE DIMENSIONS  (step 9 closure — spec §19.1)
     //  --------------------------------------------------------------------------------------------
-    //  AP + Human + Energy + Materials + Tech. AP is still checked through the per-axis radar
-    //  SLICES (AxisBudgetLedger). Human/Energy/Materials/Tech are ONE global physical pool — never
-    //  axis-sliced (spec §18 / §19.3): a mission is funded only if all its AP axis draws AND the
-    //  whole global physical draw succeed together, atomically (spec §19.4 / AC #17). The physical
+    //  AP + Human + Energy + Materials + Tech. AP is one shared pool (AxisBudgetLedger).
+    //  Human/Energy/Materials/Tech are ONE global physical pool — never axis-sliced (spec §18 /
+    //  §19.3): a mission is funded only if its AP draw AND the whole global physical draw succeed
+    //  together, atomically (spec §19.4 / AC #17). The physical
     //  pool the allocator sees is already post-Initiative + post-Phase-A (spec §41 / §16 / AC
     //  #19/#20) — the real remaining stockpile, never a re-reservation of what is already spent.
     // ===========================================================================================
@@ -228,14 +233,6 @@ namespace Game.Ai.V2
         }
     }
 
-    public sealed class BudgetSlice
-    {
-        public DesireAxis Axis;
-        public float Weight;
-        public ResourceVector Initial;
-        public ResourceVector Remaining;
-    }
-
     public enum FundingStage { Strict, Remainder }
 
     public sealed class FundedEntry
@@ -244,10 +241,9 @@ namespace Game.Ai.V2
         public int Priority;
         public ResourceVector Tentative;
 
-        // Strict admission draw only. Remainder is fungible and must never be re-attributed to an
-        // axis after collection.
-        public readonly Dictionary<DesireAxis, ResourceVector> PerAxisDraw =
-            new Dictionary<DesireAxis, ResourceVector>();
+        // Radar model #1a — one AP pool, no per-axis attribution. StrictAp is the admission draw
+        // (Tentative minus the fungible remainder top-up).
+        public float StrictAp;
         public ResourceVector RemainderTopUp;
 
         // Step 9 — the global physical draw (Human/Energy/Materials/Tech) this mission was funded
@@ -279,6 +275,8 @@ namespace Game.Ai.V2
     {
         public MissionProposal Mission;
         public DeferReason Reason;
+        // Retained for wire compatibility with older log/telemetry readers; never set under the
+        // single-pool model.
         public DesireAxis? BottleneckAxis;
         public ResourceVector Required;
         public ResourceVector Available;
@@ -295,7 +293,6 @@ namespace Game.Ai.V2
     {
         public readonly List<FundedEntry> Funded = new List<FundedEntry>();
         public readonly List<DeferredEntry> Deferred = new List<DeferredEntry>();
-        public readonly List<BudgetSlice> Slices = new List<BudgetSlice>();
 
         public ResourceVector InitialPool;
         public ResourceVector ManagerReserve;
@@ -422,7 +419,6 @@ namespace Game.Ai.V2
     public sealed class AllocationSession
     {
         private readonly WorldSnapshot _snap;
-        private readonly Radar _radar;
         private readonly List<MissionProposal> _missions;
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
@@ -457,20 +453,17 @@ namespace Game.Ai.V2
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
             new Dictionary<StableMissionKey, ProvisionRequirement>();
         // Missions physically provisioned in an earlier pass THIS turn, with their FUNDING
-        // PROVENANCE (which axis slices the strict part drew from + the fungible remainder part),
-        // scaled to what provisioning actually claimed. A re-pack rebuilds the original radar
-        // slices, subtracts each locked mission's strict per-axis draw from the matching slice, and
-        // removes its remainder part from the fungible pool — so an axis can never re-slice a
-        // shrunken pool and drift past the radar budget it was given for the cycle. The mission
-        // itself is dropped from re-funding.
+        // PROVENANCE (strict AP part + the fungible remainder part), scaled to what provisioning
+        // actually claimed. A re-pack takes each locked mission's strict AP off the top of the one
+        // pool and removes its remainder part from the fungible pool; the mission itself is dropped
+        // from re-funding.
         private readonly Dictionary<StableMissionKey, LockedAllocation> _lockedClaims =
             new Dictionary<StableMissionKey, LockedAllocation>();
         private string _lastFingerprint;
 
         private readonly struct LockedAllocation
         {
-            public readonly Dictionary<DesireAxis, float> StrictDraw; // per-axis, as granted
-            public readonly float StrictAp;                           // Σ StrictDraw
+            public readonly float StrictAp;                           // strict admission draw, as granted
             public readonly float RemainderAp;                        // fungible top-up, as granted
             public readonly float GrantedAp;                          // StrictAp + RemainderAp (== FundedEntry.Tentative)
             public readonly float ClaimedAp;                          // what provisioning actually took
@@ -483,14 +476,11 @@ namespace Game.Ai.V2
             // and so a fresh candidate can be conflict-tested against work already under way.
             public readonly MissionProposal Mission;
 
-            public LockedAllocation(MissionProposal mission, Dictionary<DesireAxis, float> strictDraw, float remainderAp,
+            public LockedAllocation(MissionProposal mission, float strictAp, float remainderAp,
                 float grantedAp, float claimedAp, ResourceVector physicalClaim)
             {
                 Mission = mission;
-                StrictDraw = strictDraw;
-                StrictAp = 0f;
-                foreach (KeyValuePair<DesireAxis, float> kv in strictDraw)
-                    StrictAp += kv.Value;
+                StrictAp = Mathf.Max(0f, strictAp);
                 RemainderAp = remainderAp;
                 GrantedAp = grantedAp;
                 ClaimedAp = claimedAp;
@@ -527,12 +517,13 @@ namespace Game.Ai.V2
         public bool HasNewFailures { get; private set; }
         public bool Converged { get; private set; }
 
+        // `radar` is accepted for signature stability (radar model #1a stopped slicing AP; a
+        // future radar-aware cross-lane tie-break could use it again) but no longer read.
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
             List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null,
             float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
         {
             _snap = snap;
-            _radar = radar;
             _missions = missions;
             _commitments = commitments;
             _state = state;
@@ -593,12 +584,9 @@ namespace Game.Ai.V2
         {
             if (funded?.Mission == null)
                 return;
-            var strict = new Dictionary<DesireAxis, float>();
-            foreach (KeyValuePair<DesireAxis, ResourceVector> kv in funded.PerAxisDraw)
-                strict[kv.Key] = kv.Value.Ap;
             _lockedClaims[StableMissionKey.For(funded.Mission)] =
-                new LockedAllocation(funded.Mission, strict, funded.RemainderTopUp.Ap, funded.Tentative.Ap, claimedAp,
-                    claimedPhysical ?? funded.PhysicalDraw);
+                new LockedAllocation(funded.Mission, funded.StrictAp, funded.RemainderTopUp.Ap,
+                    funded.Tentative.Ap, claimedAp, claimedPhysical ?? funded.PhysicalDraw);
         }
 
         public TentativeAllocation Pack()
@@ -610,18 +598,15 @@ namespace Game.Ai.V2
 
             var alloc = new TentativeAllocation { PassNumber = PassCount };
 
-            // 1. Pool = the radar BUDGET BASE for this turn: snapshot AP minus the Manager reserve.
-            //    It is deliberately NOT reduced by AP already spent by locked missions — the radar
-            //    slice is an axis's budget for the cycle, not a figure that re-slices a shrinking
-            //    pool after every provisioning success. Locked spend is applied to the slices
-            //    (strict part) and to the fungible remainder (remainder part) below instead.
-            // Physical remaining AP this turn (post Strategic-Manager Phase A via the operational
-            // refresh) minus the protected HousekeepingManager reserve. The commitment / global
-            // overdraft checks below cap against THIS, never raw AP.
+            // 1. `pool` = the raw AP budget base for this turn: snapshot AP minus the Manager
+            //    reserve. Used only for the commitment / global-overdraft ceiling checks below; the
+            //    actual fundable AP is `budget` (the ledger pool, net of Phase-A spend), computed
+            //    in step 2. `pool` is deliberately NOT reduced by locked-mission spend — that is
+            //    applied to `budget` instead.
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
             float reserve = Mathf.Max(0f, AiConfigV2.housekeepingApReserve);
             // AI-RECON-01 — the recon-air launch AP the prepass reserved is off the top here too,
-            // not only in the radar ledger: commitments may overdraft an axis slice and are checked
+            // not only in the ledger pool: commitments may overdraft the pool and are checked
             // against THIS global pool, so without the debit a Hard raid could grab AP a guaranteed
             // sortie needs and the terminal air fallback would then fail to launch.
             var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve - _protectedAp));
@@ -630,9 +615,9 @@ namespace Game.Ai.V2
 
             // Locked funding provenance, resolved WATERFALL-style (remainder top-up disappears
             // first when the real claim < granted envelope; strict only shrinks below the strict
-            // level): per-axis strict consumption (removed from the matching slice) + fungible
-            // remainder consumption (removed from the remainder pool in step 5).
-            var lockedStrictByAxis = new Dictionary<DesireAxis, float>();
+            // level): strict consumption is taken off the top of the one pool, fungible remainder
+            // consumption is removed from the remainder pool in step 5.
+            float lockedStrict = 0f;
             float lockedRemainderConsumed = 0f;
             float lockedTotal = 0f;
             foreach (KeyValuePair<StableMissionKey, LockedAllocation> lc in _lockedClaims)
@@ -650,38 +635,15 @@ namespace Game.Ai.V2
                 }
                 lockedTotal += Mathf.Min(lc.Value.ClaimedAp, lc.Value.GrantedAp);
                 lockedRemainderConsumed += remainderConsumed;
-                foreach (KeyValuePair<DesireAxis, float> kv in lc.Value.StrictDraw)
-                {
-                    lockedStrictByAxis.TryGetValue(kv.Key, out float cur);
-                    lockedStrictByAxis[kv.Key] = cur + kv.Value * strictScale;
-                }
+                lockedStrict += lc.Value.StrictAp * strictScale;
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
-            // 2. Per-axis slices. WITH a shared AxisBudgetLedger (the normal V2 path) the slice
-            //    size IS ledger.Balance(axis) — the radar was already applied once when the ledger
-            //    was created, and Strategic Manager Phase A has since debited the requesting axis
-            //    for any demand-driven card play. NO second radar split. Without a ledger (bare
-            //    test / sim) fall back to radar * pool. Each slice then also loses the strict AP a
-            //    locked mission already drew from it (the re-pack mechanism, unchanged).
-            var slices = new Dictionary<DesireAxis, BudgetSlice>();
-            foreach (DesireAxis axis in DesireAxes.All)
-            {
-                float w = _radar.Weight.TryGetValue(axis, out float ww) ? Mathf.Max(0f, ww) : 0f;
-                ResourceVector budget = _ledger != null
-                    ? new ResourceVector(Mathf.Max(0f, _ledger.Balance(axis)))
-                    : pool * w;
-                lockedStrictByAxis.TryGetValue(axis, out float lockedHere);
-                var s = new BudgetSlice
-                {
-                    Axis = axis,
-                    Weight = w,
-                    Initial = budget,
-                    Remaining = budget - new ResourceVector(lockedHere),
-                };
-                slices[axis] = s;
-                alloc.Slices.Add(s);
-            }
+            // 2. ONE AP pool (radar model #1a — no per-axis slices). WITH a shared AxisBudgetLedger
+            //    (the normal V2 path) the pool size IS ledger.Balance() — already net of Phase-A
+            //    demand-fulfilment spend. Without a ledger (bare test / sim) fall back to the raw
+            //    Pack pool. Strict AP that a locked mission already drew is taken off the top.
+            float budget = Mathf.Max(0f, (_ledger != null ? _ledger.Balance() : pool.Ap) - lockedStrict);
 
             // 2b. Step 9 — the ONE global physical pool (Human/Energy/Materials/Tech). NOT
             //     axis-sliced (spec §18): it is the real post-Initiative + post-Phase-A stockpile,
@@ -700,7 +662,6 @@ namespace Game.Ai.V2
             alloc.PhysicalPool = physicalPool;
             alloc.PhysicalLocked = lockedPhysical;
 
-            var shareCache = new Dictionary<MissionProposal, Dictionary<DesireAxis, float>>();
             int priority = 0;
 
             // Step 7.1 — execution-capacity admission. K is a portfolio constraint, NOT a resource:
@@ -726,8 +687,8 @@ namespace Game.Ai.V2
                 laneUsed[lane] = u + 1;
             }
 
-            // 3. Commitments first. Sticky/pre-paid: they MAY drive an axis slice negative (that is
-            //    the point — a funding protection against Radar noise). Step-7 guards:
+            // 3. Commitments first. Sticky/pre-paid: they MAY drive the one AP pool negative (that
+            //    is the point — a funding protection against Radar noise). Step-7 guards:
             //      · skip a key already provisioned this turn (_lockedClaims — its provenance is
             //        already applied to the slices) or already failed this turn (_rejectedThisTurn),
             //        or defensively on structural cooldown (ReconcileAfterTurn should have retired
@@ -747,8 +708,7 @@ namespace Game.Ai.V2
                 if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;
 
-                Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
-                if (shares == null)
+                if (!HasValidContribution(m))
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
                     continue;
@@ -795,35 +755,33 @@ namespace Game.Ai.V2
                     Mission = m,
                     Priority = priority++,
                     Tentative = ask,
+                    StrictAp = askAp,
                     IsCommitment = true,
                     Stage = FundingStage.Strict,
                     PhysicalDraw = cPhys,
                 };
 
-                foreach (KeyValuePair<DesireAxis, float> kv in shares)
-                {
-                    ResourceVector draw = ask * kv.Value;
-                    fe.PerAxisDraw[kv.Key] = draw;
-                }
-                foreach (KeyValuePair<DesireAxis, ResourceVector> kv in fe.PerAxisDraw)
-                    slices[kv.Key].Remaining -= kv.Value;
+                // Sticky/pre-paid: a commitment MAY drive the pool negative — that is the point, a
+                // funding protection against Radar noise. The global-pool guard above already
+                // bounded Σ commitments to the real AP pool.
+                budget -= askAp;
 
                 alloc.Funded.Add(fe);
                 alloc.CommitmentDraw += ask;
                 alloc.PhysicalFunded += cPhys;
             }
 
-            // 4. Fresh missions — TRUE CROSS-LANE k-way MERGE (spec §21, closing rule-1's step-9
-            //    TODO). Per-lane queues are each ordered by MissionAdmissionPolicy.AdmissionRank
-            //    (the None lane by BaseValue) so the WITHIN-lane balance (Recon Explore-vs-Surveil,
-            //    Raid feasibility ordering) survives the N>K beam. Then, repeatedly, the queue HEAD
-            //    with the highest BaseValue is taken and admission-tested — so LocalAdmissionScore
-            //    orders inside a lane, BaseValue orders BETWEEN lanes, and the radar only ever sized
-            //    the AP budget (never a score multiplier). Tie-break: BaseValue DESC, then
-            //    StableMissionKey ASC — deterministic regardless of Dictionary iteration order.
-            //    Per candidate: conflict -> capacity -> AP budget (atomic axis draws) -> global
-            //    physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is funded
-            //    through the commitment loop above only.
+            // 4. Fresh missions — TRUE CROSS-LANE k-way MERGE (spec §21). Per-lane queues are each
+            //    ordered by MissionAdmissionPolicy.AdmissionRank (the None lane by EffectiveValue)
+            //    so the WITHIN-lane balance (Recon Explore-vs-Surveil, Raid feasibility ordering)
+            //    survives the N>K beam. Then, repeatedly, the queue HEAD with the highest
+            //    EffectiveValue is taken and admission-tested — LocalAdmissionScore orders inside a
+            //    lane, EffectiveValue (BaseValue x radar-weight scale) orders BETWEEN lanes. Radar
+            //    model #1a: the radar does not size an AP budget here at all (one shared pool). Tie-
+            //    break: EffectiveValue DESC, then StableMissionKey ASC — deterministic regardless of
+            //    Dictionary iteration order. Per candidate: conflict -> capacity -> AP budget ->
+            //    global physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is
+            //    funded through the commitment loop above only.
             var commitmentKeys = new HashSet<StableMissionKey>(_commitments
                 .Where(c => c?.Mission != null)
                 .Select(c => StableMissionKey.For(c.Mission)));
@@ -838,7 +796,7 @@ namespace Game.Ai.V2
                 .GroupBy(m => MissionAdmissionPolicy.LaneFor(m)))
             {
                 IEnumerable<MissionProposal> ordered = g.Key == ExecutionLane.None
-                    ? g.OrderByDescending(m => m.BaseValue)
+                    ? g.OrderByDescending(RankValue)
                         .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
                     : g.OrderByDescending(m => MissionAdmissionPolicy.AdmissionRank(m))
                         .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance);
@@ -854,9 +812,11 @@ namespace Game.Ai.V2
                     if (kv.Value.Count == 0)
                         continue;
                     MissionProposal head = kv.Value.Peek();
+                    // Radar model #1a — cross-lane ordering is by EffectiveValue (BaseValue scaled
+                    // by radar weight). Within-lane order is already baked into the queue above.
                     if (m == null
-                        || head.BaseValue > m.BaseValue + eps
-                        || (Mathf.Abs(head.BaseValue - m.BaseValue) <= eps
+                        || RankValue(head) > RankValue(m) + eps
+                        || (Mathf.Abs(RankValue(head) - RankValue(m)) <= eps
                             && StableMissionKey.For(head).CompareTo(StableMissionKey.For(m)) < 0))
                     {
                         m = head;
@@ -886,8 +846,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    Dictionary<DesireAxis, float> shares = Shares(m, shareCache);
-                    if (shares == null)
+                    if (!HasValidContribution(m))
                     {
                         alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.InvalidContribution });
                         continue;
@@ -922,23 +881,12 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    float affordable = float.PositiveInfinity;
-                    DesireAxis bottleneck = DesireAxis.Recon;
-                    foreach (KeyValuePair<DesireAxis, float> kv in shares)
-                    {
-                        float room = Mathf.Max(0f, slices[kv.Key].Remaining.Ap);
-                        float cap = room / kv.Value;
-                        if (cap < affordable)
-                        {
-                            affordable = cap;
-                            bottleneck = kv.Key;
-                        }
-                    }
+                    float affordable = Mathf.Max(0f, budget);
 
                     float min = ApMinimum(m);
                     if (affordable + eps < min)
                     {
-                        AddBudgetDeferred(alloc, m, shares, slices, bottleneck, min);
+                        AddBudgetDeferred(alloc, m, min, affordable);
                         continue;
                     }
 
@@ -965,42 +913,24 @@ namespace Game.Ai.V2
                         physDraw = physMin;
 
                     float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
-                    var v = new ResourceVector(fundAp);
-                    var draws = new Dictionary<DesireAxis, ResourceVector>();
-                    foreach (KeyValuePair<DesireAxis, float> kv in shares)
-                        draws[kv.Key] = v * kv.Value;
-
-                    DesireAxis failedAxis = bottleneck;
-                    bool allFit = true;
-                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
+                    if (budget + eps < fundAp)
                     {
-                        if (slices[kv.Key].Remaining.Ap + eps < kv.Value.Ap)
-                        {
-                            failedAxis = kv.Key;
-                            allFit = false;
-                            break;
-                        }
-                    }
-
-                    if (!allFit)
-                    {
-                        AddBudgetDeferred(alloc, m, shares, slices, failedAxis, min);
+                        AddBudgetDeferred(alloc, m, min, Mathf.Max(0f, budget));
                         continue;
                     }
+                    var v = new ResourceVector(fundAp);
 
                     var funded = new FundedEntry
                     {
                         Mission = m,
                         Priority = priority++,
                         Tentative = v,
+                        StrictAp = fundAp,
                         IsCommitment = false,
                         Stage = FundingStage.Strict,
                         PhysicalDraw = physDraw,
                     };
-                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
-                        funded.PerAxisDraw[kv.Key] = kv.Value;
-                    foreach (KeyValuePair<DesireAxis, ResourceVector> kv in draws)
-                        slices[kv.Key].Remaining -= kv.Value;
+                    budget -= fundAp;
                     physicalRemaining = (physicalRemaining - physDraw).ClampLow0();
 
                     alloc.Funded.Add(funded);
@@ -1017,9 +947,9 @@ namespace Game.Ai.V2
             //     "commitments starve fresh" signal the future pre-emption pass wants.
             if (!alloc.CommitmentsStarveFreshDecisions && alloc.Funded.Any(f => f.IsCommitment))
             {
-                float minCommitBase = alloc.Funded.Where(f => f.IsCommitment).Min(f => f.Mission.BaseValue);
+                float minCommitVal = alloc.Funded.Where(f => f.IsCommitment).Min(f => RankValue(f.Mission));
                 bool starvedOnBudget = alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
-                    && d.Mission != null && d.Mission.BaseValue > minCommitBase);
+                    && d.Mission != null && RankValue(d.Mission) > minCommitVal);
                 bool starvedOnCapacity = alloc.Deferred.Any(d => d.Reason == DeferReason.ExecutionCapacity)
                     && alloc.Funded.Any(f => f.IsCommitment
                         && MissionAdmissionPolicy.LaneFor(f.Mission) != ExecutionLane.None);
@@ -1027,26 +957,16 @@ namespace Game.Ai.V2
                     alloc.CommitmentsStarveFreshDecisions = true;
             }
 
-            // 5. Positive leftovers lose axis identity and become one fungible remainder pool. AP a
-            //    locked mission already spent as a remainder top-up in an earlier pass still shows
-            //    up as slice leftover here (its strict draw was removed from the slice, its
-            //    remainder part was not) — take it back out before redistributing.
-            float remainder = 0f;
-            foreach (BudgetSlice s in alloc.Slices)
-            {
-                if (s.Remaining.Ap <= 0f)
-                    continue;
-                remainder += s.Remaining.Ap;
-                s.Remaining = ResourceVector.Zero;
-            }
-            remainder = Mathf.Max(0f, remainder - lockedRemainderConsumed);
+            // 5. Whatever is left of the one pool after strict funding is the fungible remainder.
+            //    AP a locked mission already spent as a remainder top-up in an earlier pass was
+            //    never taken off `budget` (only its strict part was) — take it out now.
+            float remainder = Mathf.Max(0f, budget - lockedRemainderConsumed);
             alloc.RemainderGenerated = new ResourceVector(remainder);
 
-            // 5b. Spillover admission: strict radar slices remain the first pass, but once their
-            // positive leftovers have explicitly lost axis identity, a mission deferred ONLY on
-            // InsufficientBudget gets one more admission attempt from the common remainder. This
-            // is not general overdraft: conflict/capacity/physical gates are rechecked and the
-            // mission receives only its executable AP minimum; ordinary top-up happens afterwards.
+            // 5b. Spillover admission: strict funding is the first pass; a mission deferred ONLY on
+            // InsufficientBudget gets one more admission attempt from the remainder. This is not
+            // general overdraft: conflict/capacity/physical gates are rechecked and the mission
+            // receives only its executable AP minimum; ordinary top-up happens afterwards.
             List<DeferredEntry> spillover = alloc.Deferred
                 .Where(d => d != null && d.Reason == DeferReason.InsufficientBudget && d.Mission != null)
                 .ToList();
@@ -1101,9 +1021,9 @@ namespace Game.Ai.V2
             // starved fresh decision was just recovered, do not leave a stale starvation flag.
             if (alloc.CommitmentsStarveFreshDecisions && alloc.Funded.Any(f => f.IsCommitment))
             {
-                float minCommitBase = alloc.Funded.Where(f => f.IsCommitment).Min(f => f.Mission.BaseValue);
+                float minCommitVal = alloc.Funded.Where(f => f.IsCommitment).Min(f => RankValue(f.Mission));
                 bool stillStarvedOnBudget = alloc.Deferred.Any(d => d.Reason == DeferReason.InsufficientBudget
-                    && d.Mission != null && d.Mission.BaseValue > minCommitBase);
+                    && d.Mission != null && RankValue(d.Mission) > minCommitVal);
                 bool stillStarvedOnCapacity = alloc.Deferred.Any(d => d.Reason == DeferReason.ExecutionCapacity)
                     && alloc.Funded.Any(f => f.IsCommitment
                         && MissionAdmissionPolicy.LaneFor(f.Mission) != ExecutionLane.None);
@@ -1112,7 +1032,7 @@ namespace Game.Ai.V2
 
             List<FundedEntry> topUpOrder = alloc.Funded
                 .Where(fe => !fe.IsCommitment)
-                .OrderByDescending(fe => fe.Mission.BaseValue)
+                .OrderByDescending(fe => RankValue(fe.Mission))
                 .ThenBy(fe => StableMissionKey.For(fe.Mission), MissionKeyComparer.Instance)
                 .ToList();
 
@@ -1138,18 +1058,12 @@ namespace Game.Ai.V2
             }
             alloc.Unused = new ResourceVector(Mathf.Max(0f, remainder));
 
-            // 6. Overdraft diagnostics — two distinct measures.
-            //    AxisOverdraft: positive slices have already moved to remainder, so any negative
-            //    slice is one axis's budget overrun — a commitment or a locked mission's strict
-            //    draw exceeding that axis's radar budget. Expected under many-to-many, benign.
-            //    GlobalOverdraft: total AP actually committed this turn (fresh Tentative + locked
-            //    claims) beyond the whole sliceable pool — the real alarm; ~0 unless commitments
-            //    outright exceed the pool.
-            float axisOverdraft = 0f;
-            foreach (BudgetSlice s in alloc.Slices)
-                if (s.Remaining.Ap < 0f)
-                    axisOverdraft += -s.Remaining.Ap;
-            alloc.AxisOverdraft = new ResourceVector(axisOverdraft);
+            // 6. Overdraft diagnostics.
+            //    AxisOverdraft: retained field, always 0 under the single pool (no per-axis slice
+            //    to drive negative). GlobalOverdraft: total AP actually committed this turn (fresh
+            //    Tentative + locked claims) beyond the whole pool — the real alarm; ~0 unless
+            //    commitments outright exceed the pool.
+            alloc.AxisOverdraft = ResourceVector.Zero;
 
             float committed = alloc.Funded.Sum(fe => fe.Tentative.Ap) + lockedTotal;
             alloc.GlobalOverdraft = new ResourceVector(Mathf.Max(0f, committed - pool.Ap));
@@ -1166,49 +1080,31 @@ namespace Game.Ai.V2
             return alloc;
         }
 
-        private static Dictionary<DesireAxis, float> Shares(MissionProposal m,
-            Dictionary<MissionProposal, Dictionary<DesireAxis, float>> cache)
+        // Radar model #1a — a mission still has to name at least one axis it serves (>0), but the
+        // axis no longer sizes an AP slice. It only tags the spend for telemetry and drives the
+        // EffectiveValue scaling upstream. No positive contribution => invalid mission allocation.
+        private static bool HasValidContribution(MissionProposal m)
         {
-            if (cache.TryGetValue(m, out Dictionary<DesireAxis, float> cached))
-                return cached;
-
-            Dictionary<DesireAxis, float> result = null;
-            if (m?.Requirements != null && m.Axes?.Value != null)
-            {
-                float sum = 0f;
-                foreach (DesireAxis a in DesireAxes.All)
-                    if (m.Axes.Value.TryGetValue(a, out float v) && v > 0f)
-                        sum += v;
-
-                // Exact semantic guard: no positive contribution => invalid mission allocation.
-                if (sum > 0f)
-                {
-                    result = new Dictionary<DesireAxis, float>();
-                    foreach (DesireAxis a in DesireAxes.All)
-                        if (m.Axes.Value.TryGetValue(a, out float v) && v > 0f)
-                            result[a] = v / sum;
-                }
-            }
-
-            cache[m] = result;
-            return result;
+            if (m?.Requirements == null || m.Axes?.Value == null)
+                return false;
+            foreach (DesireAxis a in DesireAxes.All)
+                if (m.Axes.Value.TryGetValue(a, out float v) && v > 0f)
+                    return true;
+            return false;
         }
 
         private static void AddBudgetDeferred(TentativeAllocation alloc, MissionProposal m,
-            Dictionary<DesireAxis, float> shares, Dictionary<DesireAxis, BudgetSlice> slices,
-            DesireAxis bottleneck, float min)
+            float min, float available)
         {
-            float requiredAp = min * shares[bottleneck];
-            var required = new ResourceVector(requiredAp);
-            var available = new ResourceVector(Mathf.Max(0f, slices[bottleneck].Remaining.Ap));
+            var required = new ResourceVector(Mathf.Max(0f, min));
+            var have = new ResourceVector(Mathf.Max(0f, available));
             alloc.Deferred.Add(new DeferredEntry
             {
                 Mission = m,
                 Reason = DeferReason.InsufficientBudget,
-                BottleneckAxis = bottleneck,
                 Required = required,
-                Available = available,
-                Missing = (required - available).ClampLow0(),
+                Available = have,
+                Missing = (required - have).ClampLow0(),
             });
         }
 
@@ -1225,6 +1121,12 @@ namespace Game.Ai.V2
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
         private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
+
+        // Radar model #1a — the cross-lane ranking key. EffectiveValue is stamped by the
+        // orchestrator (BaseValue x radar-weight scale); a bare unit test / sim that builds
+        // proposals directly and never stamps it falls back to the radar-blind BaseValue.
+        private static float RankValue(MissionProposal m) =>
+            m == null ? 0f : (m.EffectiveValue > 0f ? m.EffectiveValue : m.BaseValue);
 
         // Step 9 / Round 7 (Problem 3) — the physical (H/E/M/T) side of a mission's requirements as
         // one vector, folding in any repriced physical floor exactly the way ApMinimum folds in the
@@ -1275,12 +1177,10 @@ namespace Game.Ai.V2
             string deferred = string.Join(",", a.Deferred
                 .Select(d => $"{StableMissionKey.For(d.Mission)}:{d.Reason}")
                 .OrderBy(x => x, StringComparer.Ordinal));
-            string slices = string.Join(",", a.Slices
-                .Select(s => $"{DesireAxes.Abbrev(s.Axis)}={s.Remaining.Ap.ToString("0.00", CultureInfo.InvariantCulture)}"));
             string repriced = string.Join(",", _repricedFloors
                 .OrderBy(kv => kv.Key, MissionKeyComparer.Instance)
                 .Select(kv => $"{kv.Key}:{kv.Value.Fmt()}"));
-            return funded + "|" + deferred + "|" + slices
+            return funded + "|" + deferred
                 + "|unused=" + a.Unused.Ap.ToString("0.00", CultureInfo.InvariantCulture)
                 + "|repriced=" + repriced;
         }
@@ -1289,32 +1189,29 @@ namespace Game.Ai.V2
 
         private static void LogDump(TentativeAllocation a, int turn)
         {
-            string slices = string.Join(" ", a.Slices.Select(s =>
-                $"{DesireAxes.Abbrev(s.Axis)} {s.Weight.ToString("0.00", CultureInfo.InvariantCulture)}"
-                + $"→{LogNum(s.Initial.Ap)} left {LogNum(s.Remaining.Ap)}"));
             AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)} "
                 + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap)} − mgr {LogNum(a.ManagerReserve.Ap)}) "
-                + $"| locked {LogNum(a.LockedClaim.Ap)} (applied to slices) | {slices}");
+                + $"| locked {LogNum(a.LockedClaim.Ap)} (off the top)");
             if (a.PhysicalPool.AnyPhysical || a.PhysicalFunded.AnyPhysical)
                 AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — physical pool [{a.PhysicalPool.FmtPhysical()}] "
                     + $"− locked [{a.PhysicalLocked.FmtPhysical()}] − funded [{a.PhysicalFunded.FmtPhysical()}]");
 
             foreach (FundedEntry fe in a.Funded)
             {
-                string draw = string.Join(" ", fe.PerAxisDraw
-                    .Where(kv => kv.Value.Ap > AiConfigV2.allocatorSliceEpsilon)
-                    .Select(kv => $"{DesireAxes.Abbrev(kv.Key)} {LogNum(kv.Value.Ap)}"));
+                string axes = fe.Mission?.Axes?.Value == null ? "" : string.Join(",", DesireAxes.All
+                    .Where(ax => fe.Mission.Axes.Value.TryGetValue(ax, out float v) && v > 0f)
+                    .Select(DesireAxes.Abbrev));
                 AiDebugLog.Write($"[AI][V2]   {(fe.IsCommitment ? "commit" : "fund  ")} "
-                    + $"[{fe.Mission.AttemptId}] {StableMissionKey.For(fe.Mission)} base {LogNum(fe.Mission.BaseValue)} "
-                    + $"ap {LogNum(fe.Tentative.Ap)} draw[{draw}] rem+ {LogNum(fe.RemainderTopUp.Ap)} "
-                    + $"{fe.Stage.ToString().ToLowerInvariant()}");
+                    + $"[{fe.Mission.AttemptId}] {StableMissionKey.For(fe.Mission)} "
+                    + $"base {LogNum(fe.Mission.BaseValue)} eff {LogNum(fe.Mission.EffectiveValue)} "
+                    + $"ap {LogNum(fe.Tentative.Ap)} (strict {LogNum(fe.StrictAp)}) axes[{axes}] "
+                    + $"rem+ {LogNum(fe.RemainderTopUp.Ap)} {fe.Stage.ToString().ToLowerInvariant()}");
             }
 
             foreach (DeferredEntry d in a.Deferred)
             {
-                string why = d.Reason == DeferReason.InsufficientBudget && d.BottleneckAxis.HasValue
-                    ? $"@{DesireAxes.Abbrev(d.BottleneckAxis.Value)} need {LogNum(d.Required.Ap)} "
-                      + $"have {LogNum(d.Available.Ap)} miss {LogNum(d.Missing.Ap)}"
+                string why = d.Reason == DeferReason.InsufficientBudget
+                    ? $"need {LogNum(d.Required.Ap)} have {LogNum(d.Available.Ap)} miss {LogNum(d.Missing.Ap)}"
                     : d.Reason == DeferReason.InsufficientPhysical
                         ? $"need [{d.Required.FmtPhysical()}] have [{d.Available.FmtPhysical()}]"
                         : d.Reason == DeferReason.OnCooldown
@@ -1322,7 +1219,7 @@ namespace Game.Ai.V2
                               + $"until=t{d.CooldownUntilTurn} remaining={Mathf.Max(0, d.CooldownUntilTurn - turn + 1)}"
                             : "";
                 AiDebugLog.Write($"[AI][V2]   defer [{d.Mission?.AttemptId}] {StableMissionKey.For(d.Mission)} "
-                    + $"base {LogNum(d.Mission.BaseValue)} — {d.Reason} {why}");
+                    + $"base {LogNum(d.Mission.BaseValue)} eff {LogNum(d.Mission.EffectiveValue)} — {d.Reason} {why}");
             }
 
             AiDebugLog.Write($"[AI][V2]   remainder {LogNum(a.RemainderGenerated.Ap)} gen "

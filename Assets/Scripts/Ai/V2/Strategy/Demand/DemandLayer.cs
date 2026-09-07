@@ -14,7 +14,8 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
-            PlayerRoot root = null)
+            PlayerRoot root = null, IReadOnlyList<DevelopmentOpportunity> devOpportunities = null,
+            Radar radar = null)
         {
             var demands = new List<AxisDemand>();
             // §17 — decay the resource-starvation feedback once per turn before it is read.
@@ -24,7 +25,7 @@ namespace Game.Ai.V2
             demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             demands.AddRange(DefenceDemands(snap, breakdown));
             demands.AddRange(EconomyDemands(snap, breakdown, player));
-            demands.AddRange(DevelopmentDemands(snap, breakdown));
+            demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar));
             // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
             // an Aggression / Defence combat demand already covers the same ground this pass.
             demands.AddRange(BaselineForceReadinessDemands(snap, player, commitments, demands));
@@ -708,41 +709,69 @@ namespace Game.Ai.V2
         }
 
         // ---------------------------------------------------------------------------------------
-        //  DEV — no Research/Production facility yet. A capability gap that blocks the whole
-        //  Development axis downstream. One demand at a time.
+        //  DEV — two shapes:
+        //    · no Research/Production facility yet -> ONE DevelopmentInfrastructure gap demand
+        //      (build/assign an operator base) — the prerequisite for everything below.
+        //    · facility ready -> ONE CardUpgrade demand PER scored DevelopmentOpportunity, each
+        //      carrying its opportunity handle. Phase A runs the carried opportunity verbatim.
         // ---------------------------------------------------------------------------------------
-        private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b)
+        private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b,
+            IReadOnlyList<DevelopmentOpportunity> devOpportunities, Radar radar)
         {
+            float devScale = radar != null ? RadarValueScale.For(radar, DesireAxis.Development) : 1f;
             if (s?.Self == null)
             {
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_self_snapshot");
                 yield break;
             }
-            if (s.Self.HasDevFacility)
+
+            if (!s.Self.HasDevFacility)
             {
-                AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED reason=development_facility_exists");
-                yield break;
-            }
-            if (s.Self.BaseHexes == null || s.Self.BaseHexes.Count == 0)
-            {
-                AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_base_to_expand");
+                if (s.Self.BaseHexes == null || s.Self.BaseHexes.Count == 0)
+                {
+                    AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_base_to_expand");
+                    yield break;
+                }
+                HexCoord anchor = s.Self.BaseHexes[0];
+                AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({anchor.Q},{anchor.R}) "
+                    + "capability=DevelopmentInfrastructure desired=1 reason=no_research_production_facility");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Development,
+                    Capability = CapabilityKind.DevelopmentInfrastructure,
+                    DesiredAmount = 1,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = anchor,
+                    Value = 45f,
+                    Explain = "no Research/Production facility — Development axis has no operator base",
+                };
                 yield break;
             }
 
-            HexCoord anchor = s.Self.BaseHexes[0];
-            AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({anchor.Q},{anchor.R}) "
-                + "capability=DevelopmentInfrastructure desired=1 reason=no_research_production_facility");
-            yield return new AxisDemand
-            {
-                RequestingAxis = DesireAxis.Development,
-                Capability = CapabilityKind.DevelopmentInfrastructure,
-                DesiredAmount = 1,
-                RequiredTraits = TraitPreference.None,
-                MinimumFollowupAp = 0f,
-                TargetHex = anchor,
-                Value = 45f,
-                Explain = "no Research/Production facility — Development axis has no operator base",
-            };
+            int emitted = 0;
+            if (devOpportunities != null)
+                foreach (DevelopmentOpportunity op in devOpportunities)
+                {
+                    if (op == null || op.BaseValue <= 0f) continue;
+                    emitted++;
+                    yield return new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Development,
+                        Capability = CapabilityKind.CardUpgrade,
+                        DesiredAmount = 1,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = op.FacilityHex,
+                        Value = op.BaseValue * devScale,   // radar model #1a — Development weight scales merit
+                        DevOpportunity = op,
+                        Explain = op.Explain,
+                    };
+                }
+
+            AiDebugLog.Write(emitted > 0
+                ? $"[AI][V2][Demand][Development] decision=UPGRADE count={emitted} reason=facility_ready_scored_opportunities"
+                : "[AI][V2][Demand][Development] decision=SATISFIED reason=facility_ready_no_worthwhile_upgrade");
         }
 
         private static bool HasIncomeFor(WorldSnapshot s, ResourceType type)

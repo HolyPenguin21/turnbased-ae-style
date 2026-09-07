@@ -89,6 +89,13 @@ namespace Game.Ai.V2
         public CombatOpportunityReport OpportunityReport = new CombatOpportunityReport();
         public float RequiredDefensiveReserve;
         public float OffensiveFreePower;
+
+        // Development — the multiplicative gate's factors, kept for the "why" log.
+        public float DevFacilityReady;      // 0/1 — a facility with a qualifying hero exists
+        public float DevSurplusFraction;    // [0..1] resource headroom above the reservation floors
+        public float DevOfferingQuality;    // [0..1] blend of best success chance + upgrade-target count
+        public float DevBestSuccessChance;  // raw p of the best affordable offering
+        public int   DevUpgradeTargets;
     }
 
     public sealed class RadarAssessment
@@ -223,11 +230,16 @@ namespace Game.Ai.V2
             float recon = Smooth(state, DesireAxis.Recon, rawRecon);
             float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);
 
+            float rawDev = DevelopmentDesire(snapshot, breakdown);
+
             desires.Raw[DesireAxis.Recon] = recon;
             desires.Raw[DesireAxis.Aggression] = aggression;
-            desires.Raw[DesireAxis.Defence] = AiConfigV2.desirePlaceholderInactive;
-            desires.Raw[DesireAxis.Economy] = AiConfigV2.desirePlaceholderInactive;
-            desires.Raw[DesireAxis.Development] = AiConfigV2.desirePlaceholderInactive;
+            // Defence / Economy have no evaluator yet — raw desire is honestly 0 until one lands
+            // (was a 0.30 placeholder). Radar model #1a scales objective value by radar weight, so
+            // a placeholder weight would silently mis-scale any objective those axes produce.
+            desires.Raw[DesireAxis.Defence] = 0f;
+            desires.Raw[DesireAxis.Economy] = 0f;
+            desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
 
             desires.MilitaryThreat = MilitaryThreat(snapshot, underSiege);
             desires.EconomicRunway = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ecoSecurity));
@@ -237,7 +249,7 @@ namespace Game.Ai.V2
             state.LastTurn = snapshot.TurnNumber;
 
             Radar radar = Radar.Normalize(desires);
-            LogDesires(desires, breakdown, radar, rawRecon, rawAggression, enemyDropFrac, ownDropFrac,
+            LogDesires(desires, breakdown, radar, rawRecon, rawAggression, rawDev, enemyDropFrac, ownDropFrac,
                 state, opp);
 
             return new RadarAssessment { Desires = desires, Breakdown = breakdown, Radar = radar };
@@ -247,6 +259,34 @@ namespace Game.Ai.V2
         {
             float explorable = snap.MapKnowledge != null ? snap.MapKnowledge.ExplorableUnknownFrac : 0f;
             return Curves.Ramp(explorable, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
+        }
+
+        // Development desire is a MULTIPLICATIVE gate over snapshot.Development (built once in the
+        // scan, shared with DevelopmentOpportunityEvaluator): no facility+hero -> 0, no spare
+        // resources -> ~0, nothing worth upgrading -> ~0. Only with every prerequisite met does it
+        // produce a real appetite, scaled by surplus depth and offering quality. Reads ONLY the
+        // shared readiness object — no live game-state read.
+        private static float DevelopmentDesire(WorldSnapshot snap, DesireBreakdown b)
+        {
+            DevelopmentReadiness rd = snap?.Development;
+            if (rd == null)
+                return 0f;
+
+            float facilityGate = rd.AnyFacilityWithHero ? 1f : 0f;
+            float surplus = Curves.Ramp(rd.SurplusFraction,
+                AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
+            float offeringQuality = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(
+                AiConfigV2.devWeightSuccessChance * rd.BestSuccessChance
+                + AiConfigV2.devWeightTargets * Curves.Ramp(rd.UpgradeTargetCount,
+                    AiConfigV2.devTargetRampLo, AiConfigV2.devTargetRampHi));
+
+            b.DevFacilityReady = facilityGate;
+            b.DevSurplusFraction = rd.SurplusFraction;
+            b.DevBestSuccessChance = rd.BestSuccessChance;
+            b.DevOfferingQuality = offeringQuality;
+            b.DevUpgradeTargets = rd.UpgradeTargetCount;
+
+            return Mathf.Clamp01(facilityGate * surplus * offeringQuality * AiConfigV2.devDesireGain);
         }
 
         private static float ReconSurveillance(WorldSnapshot snap)
@@ -463,7 +503,7 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
         private static void LogDesires(DesireVector d, DesireBreakdown b, Radar radar,
-            float rawRecon, float rawAggression, float enemyDropFrac, float ownDropFrac,
+            float rawRecon, float rawAggression, float rawDev, float enemyDropFrac, float ownDropFrac,
             AiRadarState state, CombatOpportunityReport opp)
         {
             AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
@@ -477,6 +517,9 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)} "
                 + $"| lossPulse enemy {F(state.EnemyLossPulse)} (drop {F(enemyDropFrac)}) "
                 + $"own {F(state.OwnLossPulse)} (drop {F(ownDropFrac)})");
+            AiDebugLog.Write($"[AI][V2]   desires — DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
+                + $"= facReady {F(b.DevFacilityReady)} * surplus {F(b.DevSurplusFraction)} * offerQual {F(b.DevOfferingQuality)} "
+                + $"(bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");
             string bestOpp = b.BestOpportunity.HasTarget
                 ? $"@{b.BestOpportunity.TargetHex.Q},{b.BestOpportunity.TargetHex.R} "
                   + $"asmWin {F(b.BestOpportunity.AssemblableWinChance)} readyWin {F(b.BestOpportunity.ReadyWinChance)} "

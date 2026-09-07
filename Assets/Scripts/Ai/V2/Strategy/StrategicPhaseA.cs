@@ -169,6 +169,69 @@ namespace Game.Ai.V2
                 }
             }
 
+            // --- CardUpgrade pre-pass. Development R/P upgrades run the carried DevelopmentOpportunity
+            //     verbatim (Challenge -> mint -> attach). Challenge costs no AP; the attach costs the
+            //     equipment grant's activation AP, charged to Development. Blocked from the generic
+            //     loop like infra. GREEDY: re-score every remaining opportunity against the fresh
+            //     snapshot each round (surplus / best-alternative shift as resources are spent), drop
+            //     those below the EV margin, take the best, execute, refresh, repeat — bounded by
+            //     AiConfigV2.maxDevelopmentUpgradesPerTurn (Development's OWN cap, separate from the
+            //     combat-generation cap; each still records a StrategicTempoBudget attempt).
+            var devPending = states
+                .Where(s => DevelopmentUpgradeFulfillment.Handles(s.Demand.Capability))
+                .ToList();
+            foreach (DemandState s in devPending)
+                s.Blocked = true;
+
+            int devDone = 0;
+            while (devPending.Count > 0 && devDone < AiConfigV2.maxDevelopmentUpgradesPerTurn)
+            {
+                foreach (DemandState s in devPending)
+                    DevelopmentOpportunityEvaluator.Rescore(s.Demand.DevOpportunity, snap, root, hand);
+                devPending = devPending
+                    .Where(s => s.Demand.DevOpportunity != null && s.Demand.DevOpportunity.Ev > AiConfigV2.devEvMargin)
+                    .OrderByDescending(s => s.Demand.DevOpportunity.BaseValue)
+                    .ThenBy(s => s.Ordinal)
+                    .ToList();
+                if (devPending.Count == 0)
+                    break;
+
+                DemandState ustate = devPending[0];
+                devPending.RemoveAt(0);
+                result.MaterializationAttempts++;
+                DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
+                    snap, player, root, hand, ctx, ustate.Demand, ledger);
+                if (up.StateChanged)
+                    result.StateChanged = true;
+                if (!up.Executed)
+                {
+                    AiDebugLog.Write($"[AI][V2][Dev] SKIP — {ustate.Demand.Explain} :: {up.Detail}");
+                    continue;
+                }
+
+                if (up.ApSpent > 0f)
+                {
+                    ledger.Debit(ustate.Demand.RequestingAxis, up.ApSpent);
+                    result.AddDebit(ustate.Demand.RequestingAxis, up.ApSpent);
+                }
+                ustate.Remaining = 0f;
+                result.GeneratedCardAttempts++;
+                if (up.ChallengeWon)
+                {
+                    result.MaterializationsSucceeded++;
+                    result.GeneratedCardsSucceeded++;
+                    result.CapabilityDeliveries++;
+                    if (up.Attached)
+                        result.EquipmentAssignmentsSucceeded++;
+                }
+                StrategicTempoBudget.RecordGenerationAttempt(player, ctx?.TurnNumber ?? 0);
+                devDone++;
+                AiDebugLog.Write($"[AI][V2][Dev] {(up.ChallengeWon ? "CHALLENGE win" : "CHALLENGE loss")} — "
+                    + $"{ustate.Demand.Explain} :: {up.Detail} "
+                    + $"(ap {F(up.ApSpent)} -> DEV, {devDone}/{AiConfigV2.maxDevelopmentUpgradesPerTurn})");
+                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+            }
+
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {

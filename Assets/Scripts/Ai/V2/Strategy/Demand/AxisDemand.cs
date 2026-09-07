@@ -29,6 +29,11 @@ namespace Game.Ai.V2
         // Unit/Hero MaterializationCandidateBuilder path — see InfrastructureFulfillment.
         EconomicInfrastructure,    // an extraction facility / economy building at a resource site
         DevelopmentInfrastructure, // a Research/Production-capable base or facility
+
+        // A Research/Production Challenge run to strengthen an existing card (hand / on-map unit).
+        // Carries a DevelopmentOpportunity in AxisDemand.DevOpportunity — Phase A executes THAT,
+        // never re-picks the card. Radar-gated via EffectiveValue like any Development work.
+        CardUpgrade,
     }
 
     // Optional preferred characteristics of the capability. Flags so a demand can want several.
@@ -89,6 +94,11 @@ namespace Game.Ai.V2
         // trait match. Never a card choice / card name / pre-scored card. Populated per axis:
         // Recon fills ScoutContext; other capabilities add their own typed context as they land.
         public ScoutCapabilityContext ScoutContext;
+
+        // DEVELOPMENT (CapabilityKind.CardUpgrade): the fully-scored upgrade Phase A must execute —
+        // which offering, which recipient, EV, stake. Set by DevelopmentDemands. Phase A runs this
+        // verbatim (Challenge -> mint -> attach), it does NOT re-pick.
+        public DevelopmentOpportunity DevOpportunity;
 
         // --- Identity extensions (2026-08-31 review follow-up) --------------------------------
         // ECONOMY: the resource type this EconomicInfrastructure demand is about. Fulfillment must
