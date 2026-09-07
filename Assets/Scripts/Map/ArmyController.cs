@@ -222,7 +222,7 @@ namespace Game.Map
                 {
                     var outcome = new StepResolutionOutcome
                     {
-                        IsTerminalStep = IsTerminalMovementStep(map, path, i, members)
+                        IsTerminalStep = IsTerminalMovementStep(map, path, i, Data, members)
                     };
                     yield return resolveStepAsync(previous, next, outcome);
                     // Data.Members is the SAME list `members` already points at — a reaction that
@@ -250,18 +250,22 @@ namespace Game.Map
         // loop iteration would use. Kept here, at the movement owner, so aviation does not
         // duplicate terrain/fuel-penalty accounting merely to decide whether it may strike.
         private static bool IsTerminalMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
-            List<UnitData> members)
+            ArmyData army, List<UnitData> members)
         {
-            if (path == null || currentIndex >= path.Count - 1 || members == null || members.Count == 0)
+            if (map == null || path == null || currentIndex >= path.Count - 1
+                || army == null || members == null || members.Count == 0)
                 return true;
 
             HexCoord next = path[currentIndex + 1];
             map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
             int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
-            int nextCost = AviationRules.MovementCost(members[0]?.Owner != null ? members[0] : null, terrainCost);
-            // MovementCost is army-composition-aware, not unit-aware; use the live ArmyData below.
-            nextCost = AviationRules.MovementCost(members.Count > 0 ? members[0] : null, terrainCost);
-            return false;
+            int nextCost = AviationRules.MovementCost(army, terrainCost);
+
+            int sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[0]);
+            for (int i = 1; i < members.Count; i++)
+                if (AviationRules.EffectiveMoveCurrent(members[i]) < sharedMoveCurrent)
+                    sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[i]);
+            return sharedMoveCurrent < nextCost;
         }
 
         private IEnumerator StepTo(Vector3 targetPosition)
