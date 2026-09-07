@@ -927,9 +927,8 @@ namespace Game.Map
         // Create pressed in the modal (spec §13). Everything here is re-validated against the
         // live world — the hex contents can change between opening the modal and clicking Create,
         // and the Challenge MUST be run by the exact Hero the modal is showing, not merely "some
-        // Researcher/Assembler now on the hex". ResourceCost is the only cost (spec §32: no
-        // Player AP for the attempt itself); it is paid immediately before the Challenge starts
-        // and is NOT refunded on a loss.
+        // Researcher/Assembler now on the hex". The card's AP + ResourceCost are paid immediately
+        // before the Challenge starts and are NOT refunded on a loss.
         private void OnResearchProductionCreateRequested(CardDefinition card)
         {
             // 1. Anti-double-click.
@@ -957,17 +956,11 @@ namespace Game.Map
             if (root == null)
                 return;
 
-            // 4. Hand capacity — before any ResourceCost is spent (spec §6).
-            if (!cardHandUI.HasFreeHandSlot)
-            {
-                turnController?.ShowSpawnHint($"Your hand is full — can't create {card.displayName}.");
-                return;
-            }
-
-            // 5. Resources.
+            // 4/5. Full attempt affordability. Produced cards may intentionally overflow the
+            // hand cap, so capacity is not part of this preflight.
             if (!ResearchProductionSystem.CanAffordCard(root, card))
             {
-                turnController?.ShowSpawnHint($"Not enough resources to create {card.displayName}.");
+                turnController?.ShowSpawnHint($"Not enough AP or resources to create {card.displayName}.");
                 return;
             }
 
@@ -976,7 +969,7 @@ namespace Game.Map
             _rpPendingCard = card;
             researchProductionModal.SetBusy(true);
 
-            // 7. Spend resources — irreversible; not returned on a loss (spec §4).
+            // 7. Spend AP + resources — irreversible; not returned on a loss.
             ResearchProductionSystem.PayCardCost(root, card);
 
             // 8. Start the Challenge through its own dedicated entry point.
@@ -987,7 +980,7 @@ namespace Game.Map
         }
 
         // 9/10. Challenge finished (Fate was already restored inside the popup). On success mint
-        // a produced CardData and hand it over; on failure do nothing (resources stay spent).
+        // a produced CardData and hand it over; on failure do nothing (AP/resources stay spent).
         // Either way the modal reopens for interaction and stays open — the player closes it.
         private void OnResearchProductionResolved(bool success)
         {
@@ -996,7 +989,7 @@ namespace Game.Map
             _rpTransactionActive = false;
 
             if (success && card != null)
-                cardHandUI?.AddCardToHand(ResearchProductionSystem.MintCard(card));
+                cardHandUI?.AddProducedCardToHand(ResearchProductionSystem.MintCard(card));
 
             researchProductionModal?.SetBusy(false);
         }
