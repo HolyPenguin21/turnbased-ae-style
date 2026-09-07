@@ -60,9 +60,10 @@ namespace Game.Ai.V2
                 return new GenerationOutcome(false, null, false,
                     $"generation no longer valid ({why ?? "hero moved"})");
             if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                return new GenerationOutcome(false, null, false, "generation resources unaffordable");
+                return new GenerationOutcome(false, null, false, "generation AP/resources unaffordable");
 
             bool wasHidden = g.Hero != null && g.Hero.IsHidden;
+            int ap0 = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
 
@@ -72,7 +73,8 @@ namespace Game.Ai.V2
             // Challenge AP + resources are consumed by the attempt and never refunded on loss.
             ResearchProductionSystem.PayCardCost(root, g.CardDef);
 
-            bool resMoved = h0 != root.GetResource(ResourceType.Human)
+            bool costMoved = ap0 != root.ActionPoints
+                || h0 != root.GetResource(ResourceType.Human)
                 || e0 != root.GetResource(ResourceType.Energy)
                 || m0 != root.GetResource(ResourceType.Materials)
                 || t0 != root.GetResource(ResourceType.Tech);
@@ -81,7 +83,7 @@ namespace Game.Ai.V2
                 ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
             if (!outcome.Success)
                 return new GenerationOutcome(false, null,
-                    resMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
+                    costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
 
             CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
