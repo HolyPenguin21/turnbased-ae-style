@@ -65,6 +65,9 @@ namespace Game.Ai.V2
         {
             public float ApCost;
             public ResourceCost ResCost;
+            public float DecisionScore;
+            public int HandOrdinal;
+            public HexCoord TargetHex;
             public string Explain;
             public System.Func<BuildingPlayResult> Execute;
         }
@@ -79,7 +82,7 @@ namespace Game.Ai.V2
                 demand.Capability == CapabilityKind.EconomicInfrastructure
                     ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
-                        ? BuildDevelopmentCandidate(player, root, hand, ctx)
+                        ? BuildDevelopmentCandidate(snap, player, root, hand, ctx)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
                             ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx, demand)
                             : null;
@@ -169,50 +172,66 @@ namespace Game.Ai.V2
         }
 
         // DEV — a CardType.Facility with Research/Production, into an owned Base slot.
-        private static InfraCandidate BuildDevelopmentCandidate(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
+        private static InfraCandidate BuildDevelopmentCandidate(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             if (hand?.Hand == null)
                 return null;
-            CardData card = hand.Hand
-                .Where(c => c?.Definition != null && c.Definition.cardType == CardType.Facility
-                    && c.Definition.grantedAbilities != null
-                    && (c.Definition.grantedAbilities.Contains(UnitAbilities.Research)
-                        || c.Definition.grantedAbilities.Contains(UnitAbilities.Production)))
-                .OrderBy(c => c.Definition.displayName, System.StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (card == null)
-                return null;
-
-            HexCoord? baseHex = BuildingRegistry.AllBuildings()
+            List<(CardData Card, int Ordinal)> cards = hand.Hand
+                .Select((card, ordinal) => (Card: card, Ordinal: ordinal))
+                .Where(x => x.Card?.Definition != null && x.Card.Definition.cardType == CardType.Facility
+                    && x.Card.Definition.grantedAbilities != null
+                    && (x.Card.Definition.grantedAbilities.Contains(UnitAbilities.Research)
+                        || x.Card.Definition.grantedAbilities.Contains(UnitAbilities.Production)))
+                .ToList();
+            List<HexCoord> bases = BuildingRegistry.AllBuildings()
                 .Where(b => b != null && b.Owner == player && b.IsBase)
-                .Select(b => (HexCoord?)b.Hex)
-                .OrderBy(h => h.Value.Q).ThenBy(h => h.Value.R)
-                .FirstOrDefault(h => BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h.Value, out _));
-            if (baseHex == null)
-                return null;
-
-            HexCoord at = baseHex.Value;
-            return new InfraCandidate
+                .Select(b => b.Hex)
+                .OrderBy(h => h.Q).ThenBy(h => h.R)
+                .ToList();
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            var legal = new List<InfraCandidate>();
+            foreach ((CardData card, int ordinal) in cards)
             {
-                ApCost = card.EffectivePlayApCost,
-                ResCost = card.EffectivePlayResourceCost,
-                Explain = $"Facility {card.Definition.displayName} into Base @({at.Q},{at.R})",
-                Execute = () => BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, at),
-            };
+                StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
+                    NonCombatRole.Facility, card, snap, inv, hand, bestEquipmentUpgrade: 0f);
+                foreach (HexCoord baseHex in bases)
+                {
+                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out _))
+                        continue;
+                    CardData selectedCard = card;
+                    HexCoord selectedHex = baseHex;
+                    legal.Add(new InfraCandidate
+                    {
+                        ApCost = selectedCard.EffectivePlayApCost,
+                        ResCost = selectedCard.EffectivePlayResourceCost,
+                        DecisionScore = use.NetScore,
+                        HandOrdinal = ordinal,
+                        TargetHex = selectedHex,
+                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
+                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
+                            player, root, hand, ctx, selectedCard, selectedHex),
+                    });
+                }
+            }
+            return BestDevelopmentCandidate(legal);
         }
 
-        // DEV OPERATOR — a hand Hero card carrying the mode's role ability (Researcher / Assembler),
+        // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),
         // deposited into the garrison on an existing but unstaffed facility hex through the
         // authoritative CardPlayExecutor. Parallel to BuildDevelopmentCandidate (a hand card onto a
         // known hex), NOT the materialization chain. Returns null (demand stays open, retried next
-        // turn) when no matching hero card is in hand or the garrison cannot take it.
+        // turn) when no matching legal card is in hand or the garrison cannot take it. Card category
+        // is deliberately not an AI criterion; CardPlayExecutor remains the authoritative owner of
+        // which deployable categories the current game rules support.
         private static InfraCandidate BuildDevelopmentOperatorCandidate(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
         {
             if (hand?.Hand == null || snap?.Development?.Facilities == null)
                 return null;
 
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            var legal = new List<InfraCandidate>();
             foreach (DevelopmentFacility fac in snap.Development.Facilities)
             {
                 if (fac.HasHero || fac.Contested)
@@ -221,59 +240,76 @@ namespace Game.Ai.V2
                     continue;
 
                 string role = ResearchProductionSystem.RoleAbility(fac.Mode);
-                CardData heroCard = hand.Hand
-                    .Where(c => c?.Definition != null && c.Definition.cardType == CardType.Hero
-                        && c.Definition.grantedAbilities != null
-                        && c.Definition.grantedAbilities.Contains(role))
-                    .OrderBy(c => c.Definition.displayName, System.StringComparer.Ordinal)
-                    .FirstOrDefault();
-                if (heroCard == null)
-                    continue;
-
                 ArmyData garrison = ArmyRegistry.AllAt(fac.Hex)
                     .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
-                if (garrison == null
-                    || !PlacementRules.CanDepositIntoGarrison(garrison)
-                    || !CardPlayExecutor.CanFitAfterDeploy(garrison, heroCard.Definition))
+                if (garrison == null || !PlacementRules.CanDepositIntoGarrison(garrison))
                     continue;
 
-                CardPlayPlan plan = CardPlayPlan.Into(heroCard, fac.Hex, DeploymentKind.Garrison, garrison);
-                if (!CardPlayExecutor.Preflight(player, root, hand, ctx, plan, out string why))
+                foreach ((CardData card, int ordinal) in hand.Hand.Select((card, ordinal) => (card, ordinal)))
                 {
-                    AiDebugLog.Write($"[AI][V2]   infra — DevelopmentOperator preflight fail "
-                        + $"@({fac.Hex.Q},{fac.Hex.R}) {heroCard.Definition.displayName}: {why}");
-                    continue;
-                }
+                    IReadOnlyList<string> abilities = card?.Definition != null
+                        ? MaterializationChainMatching.EffectiveAbilities(card.Definition, card.Equipment)
+                        : null;
+                    if (abilities == null || !abilities.Contains(role))
+                        continue;
 
-                HexCoord at = fac.Hex;
-                CardData card = heroCard;
-                ResearchProductionMode mode = fac.Mode;
-                return new InfraCandidate
-                {
-                    ApCost = card.EffectivePlayApCost,
-                    ResCost = card.EffectivePlayResourceCost,
-                    Explain = $"operator {card.Definition.displayName} ({mode}) into facility garrison @({at.Q},{at.R})",
-                    Execute = () =>
+                    var placement = new PlacementOption(fac.Hex, DeploymentKind.Garrison, garrison);
+                    CardPlayPlan preflight = placement.Bind(card);
+                    if (!CardPlayExecutor.Preflight(player, root, hand, ctx, preflight, out string why))
                     {
-                        ArmyData g = ArmyRegistry.AllAt(at)
-                            .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
-                        CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
-                            CardPlayPlan.Into(card, at, DeploymentKind.Garrison, g));
-                        return new BuildingPlayResult
+                        AiDebugLog.Write($"[AI][V2]   infra — DevelopmentOperator preflight fail "
+                            + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: {why}");
+                        continue;
+                    }
+
+                    MaterializationPlan valuationPlan = MaterializationPlanFactory.MakeExistingPlan(
+                        MaterializationChainKind.Direct, demand, card, ordinal, null, -1, placement,
+                        abilities);
+                    StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreForDemand(
+                        valuationPlan, demand, valuationPlan.ExpectedTraits, inv,
+                        card.Definition.moveMax, hasCompetingHeroDemand: false, snap);
+
+                    HexCoord at = fac.Hex;
+                    CardData selectedCard = card;
+                    ResearchProductionMode mode = fac.Mode;
+                    legal.Add(new InfraCandidate
+                    {
+                        ApCost = selectedCard.EffectivePlayApCost,
+                        ResCost = selectedCard.EffectivePlayResourceCost,
+                        DecisionScore = use.NetScore,
+                        HandOrdinal = ordinal,
+                        TargetHex = at,
+                        Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into facility garrison @({at.Q},{at.R})",
+                        Execute = () =>
                         {
-                            Built = r.Deployed,
-                            ApSpent = r.ApSpent,
-                            ResourcesSpent = r.ResourcesSpent,
-                            StateChanged = r.StateChanged,
-                            CardConsumed = r.Deployed,
-                            StateVersionAfter = r.StateVersionAfter,
-                            FailReason = r.FailReason,
-                        };
-                    },
-                };
+                            ArmyData g = ArmyRegistry.AllAt(at)
+                                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+                            CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
+                                CardPlayPlan.Into(selectedCard, at, DeploymentKind.Garrison, g));
+                            return new BuildingPlayResult
+                            {
+                                Built = r.Deployed,
+                                ApSpent = r.ApSpent,
+                                ResourcesSpent = r.ResourcesSpent,
+                                StateChanged = r.StateChanged,
+                                CardConsumed = r.Deployed,
+                                StateVersionAfter = r.StateVersionAfter,
+                                FailReason = r.FailReason,
+                            };
+                        },
+                    });
+                }
             }
-            return null;
+            return BestDevelopmentCandidate(legal);
         }
+
+        private static InfraCandidate BestDevelopmentCandidate(IEnumerable<InfraCandidate> candidates) =>
+            candidates
+                .OrderByDescending(c => c.DecisionScore)
+                .ThenBy(c => c.TargetHex.Q)
+                .ThenBy(c => c.TargetHex.R)
+                .ThenBy(c => c.HandOrdinal)
+                .FirstOrDefault();
 
         private static ResourceType? ResourceTypeAt(WorldSnapshot snap, HexCoord? hex)
         {
