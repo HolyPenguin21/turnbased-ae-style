@@ -474,10 +474,8 @@ namespace Game.UI
             return true;
         }
 
-        // Read-only capacity probe — does NOT touch the hand. Used by the Research/Production
-        // transaction (see HexSelectionController) to refuse a Create BEFORE any ResourceCost is
-        // spent, so a won Challenge can never lose its produced card to a full hand. Same cap
-        // AddCardToHand enforces.
+        // Read-only ordinary-hand capacity probe. Research/Production output deliberately uses
+        // AddProducedCardToHand instead and may exceed this cap.
         public bool HasFreeHandSlot => _cards.Count < maxHandSize;
 
         // The shared hand capacity (spec P0 §10 — one hand cap for human and AI). Read once into
