@@ -290,10 +290,13 @@ namespace Game.Ai.V2
         // in [effectRecurringOpportunityFloor .. 1] and is state-driven (NOT rising with TurnNumber —
         // an early persistent source keeps at least as much future value as a late one).
         public readonly ApActionEconomySnapshot ApEconomy;
-        // AI-MGR — owner-aggregated AP action-economy read (WorldSnapshot.ApWorkload), resolved once
-        // here so every consumer prices the recurring-AP effect off the SAME number. Falls back to a
-        // deliberately-discounted structural estimate when no owner aggregation ran (sim / bare
-        // snapshot) — see ResolveMarginalApUtility / ResolveUsefulApDemand.
+        // AI-MGR — the AP action-economy read every consumer prices the recurring-AP effect off.
+        // `witnessedUsefulApDemand` (constructor arg) is the owner-witnessed workload assembled at
+        // evaluation time by StrategicManager Phase A/B from the REAL candidate set
+        // (MaterializationPortfolioSolver.EstimateLegalApWorkload + committed movers + witnessed
+        // air). When it is absent (sims, bare snapshots, a call site that has no witnessed set) the
+        // resolver falls back to the deliberately-discounted structural estimate
+        // (StructuralFallbackApDemand) — never dressed up as authoritative.
         public readonly float EffectiveMarginalApUtility;   // [0..1] raw ramp — consumers apply their own floor
         public readonly float EffectiveUsefulApDemand;      // AP the AI could still usefully spend this turn
         public readonly float RecurringFutureOpportunity;
@@ -301,22 +304,25 @@ namespace Game.Ai.V2
 
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
 
-        // Plan-less overload — the non-combat lane (Base / Facility / Aviation / Equipment) has no
+        // Plan-less overloads — the non-combat lane (Base / Facility / Aviation / Equipment) has no
         // MaterializationPlan but still needs the PlayerGlobal effect priced identically.
-        public EffectEvaluationContext(WorldSnapshot snap) : this(snap, null) { }
+        public EffectEvaluationContext(WorldSnapshot snap) : this(snap, null, null) { }
+        public EffectEvaluationContext(WorldSnapshot snap, float? witnessedUsefulApDemand)
+            : this(snap, null, witnessedUsefulApDemand) { }
 
-        public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan)
+        public EffectEvaluationContext(WorldSnapshot snap, MaterializationPlan plan,
+            float? witnessedUsefulApDemand = null)
         {
             Snap = snap;
             Plan = plan;
             TurnNumber = snap?.TurnNumber ?? 0;
             ApEconomy = snap?.Self?.ApEconomy;
-            EffectiveMarginalApUtility = ResolveMarginalApUtility(snap);
-            EffectiveUsefulApDemand = ResolveUsefulApDemand(snap);
+            EffectiveUsefulApDemand = ResolveUsefulApDemand(snap, witnessedUsefulApDemand);
+            EffectiveMarginalApUtility = ResolveMarginalApUtility(snap, witnessedUsefulApDemand);
             RecurringIncomeWeight = snap?.Economy != null
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
-            RecurringFutureOpportunity = ComputeRecurringFutureOpportunity(snap);
+            RecurringFutureOpportunity = ComputeRecurringFutureOpportunity(snap, witnessedUsefulApDemand);
 
             // The projected END RESULT — base def + already-attached equipment + plan equipment.
             ProjectedLine = plan != null ? AiPower.ProjectMaterialization(plan) : default;
@@ -358,45 +364,52 @@ namespace Game.Ai.V2
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);
         }
 
-        // AI-MGR — the ONE resolution point for "how valuable is one more AP/turn RIGHT NOW".
-        // Prefers the owner-aggregated WorldSnapshot.ApWorkload (ApWorkloadAggregator); when that is
-        // absent (a snapshot that never went through the pipeline stage — sims, bare tests) it falls
-        // back to the raw STRUCTURAL demand components, scaled by apStructuralDemandConfidence because
+        // AI-MGR — the ONE resolution point for "how much AP could the AI still USEFULLY spend this
+        // turn". `witnessed` is the owner-witnessed workload the evaluation-time caller assembled
+        // from the real candidate set (StrategicManager Phase A/B). When it is absent the fallback is
+        // the raw STRUCTURAL demand components, scaled by apStructuralDemandConfidence because
         // structural workload is only an upper bound, never proof every action is useful.
-        internal static float ResolveMarginalApUtility(WorldSnapshot snap)
+        internal static float ResolveUsefulApDemand(WorldSnapshot snap, float? witnessed)
         {
-            ApWorkloadAssessment apw = snap?.ApWorkload;
-            if (apw != null)
-                return Mathf.Clamp01(apw.MarginalApUtility);
+            if (witnessed.HasValue)
+                return Mathf.Max(0f, witnessed.Value);
 
             ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
-            if (ape == null)
+            return ape == null ? 0f : StructuralFallbackApDemand(ape);
+        }
+
+        // Marginal value of one more AP/turn RIGHT NOW — the same ramp for the witnessed and the
+        // fallback path; only the demand feeding it differs (the confidence discount lives in
+        // StructuralFallbackApDemand, so a witnessed figure is never re-discounted).
+        internal static float ResolveMarginalApUtility(WorldSnapshot snap, float? witnessed)
+        {
+            ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
+            if (ape == null && !witnessed.HasValue)
                 return 0.5f;
-            float ramp = Curves.Ramp(StructuralApDemand(ape) / Mathf.Max(1f, ape.BaseActionPoints),
+            float baseAp = Mathf.Max(1f, ape != null ? ape.BaseActionPoints : 1);
+            float ramp = Curves.Ramp(ResolveUsefulApDemand(snap, witnessed) / baseAp,
                 AiConfigV2.apMarginalUtilRampLo, AiConfigV2.apMarginalUtilRampHi);
-            return Mathf.Clamp01(ramp * AiConfigV2.apStructuralDemandConfidence);
+            return Mathf.Clamp01(ramp);
         }
 
-        internal static float ResolveUsefulApDemand(WorldSnapshot snap)
+        // Discounted structural fallback — the deliberately-conservative estimate used only when no
+        // owner-witnessed workload was assembled for the call. Structural data is NEVER named
+        // authoritative/useful workload anywhere else.
+        private static float StructuralFallbackApDemand(ApActionEconomySnapshot ape)
         {
-            ApWorkloadAssessment apw = snap?.ApWorkload;
-            if (apw != null)
-                return Mathf.Max(0f, apw.UsefulApDemand);
-
-            ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
-            return ape == null ? 0f : StructuralApDemand(ape) * AiConfigV2.apStructuralDemandConfidence;
+            if (ape == null)
+                return 0f;
+            return (ape.EstimatedArmyApDemand + ape.EstimatedCardApDemand
+                    + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand)
+                   * AiConfigV2.apStructuralDemandConfidence;
         }
-
-        private static float StructuralApDemand(ApActionEconomySnapshot ape) =>
-            ape.EstimatedArmyApDemand + ape.EstimatedCardApDemand
-            + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand;
 
         // AI-MGR §5 — how much of the bounded recurring horizon a persistent source deployed NOW can
         // still realistically pay back. Driven by WORLD STATE (room to grow force, map left to
         // discover, whether AP is usable at all) with only a WEAK turn-number fallback — it must NOT
         // rise with TurnNumber, so an early persistent AP source is worth at least as much future
         // opportunity as the same source deployed late. Result in [floor .. 1].
-        private static float ComputeRecurringFutureOpportunity(WorldSnapshot snap)
+        private static float ComputeRecurringFutureOpportunity(WorldSnapshot snap, float? witnessed)
         {
             float floor = AiConfigV2.effectRecurringOpportunityFloor;
             if (snap?.Self == null)
@@ -407,7 +420,7 @@ namespace Game.Ai.V2
             float mapRoom = snap.MapKnowledge != null
                 ? Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac)
                 : 0.5f;
-            float actionRoom = ResolveMarginalApUtility(snap);
+            float actionRoom = ResolveMarginalApUtility(snap, witnessed);
             float lateFallback = 1f - AiConfigV2.effectRecurringLateStageWeakWeight
                 * Curves.Ramp(snap.TurnNumber,
                     AiConfigV2.effectRecurringStageRampLo, AiConfigV2.effectRecurringStageRampHi);

@@ -22,8 +22,11 @@ namespace Game.Ai.V2
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
-            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments)
-            => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, ledger, demands, commitments);
+            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
+            IReadOnlyList<MissionIntent> activeIntents = null,
+            IReadOnlyList<ReconObjective> reconObjectives = null)
+            => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, ledger, demands, commitments,
+                activeIntents, reconObjectives);
 
         public static IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,

@@ -99,16 +99,10 @@ namespace Game.Ai.V2
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             result.Demands += demands.Count;
 
-            // AI-MGR — same owner-aggregated AP workload the main pass computes, so the reaction
-            // round's effect scoring prices recurring-AP effects off the real number, not a null
-            // fallback.
-            snapshot.ApWorkload = ApWorkloadAggregator.Assess(snapshot, demands, player, ctx, root,
-                reconObjectives, activeIntents, actorCommitments);
-
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0), radar);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments);
+                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             if (phaseA.StateChanged)

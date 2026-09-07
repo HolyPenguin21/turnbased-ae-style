@@ -169,7 +169,9 @@ namespace Game.Ai.V2
             MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand,
             int k = 3,
             System.Collections.Generic.ISet<CardData> excludeCards = null,
-            System.Collections.Generic.ISet<string> excludeGenKeys = null)
+            System.Collections.Generic.ISet<string> excludeGenKeys = null,
+            float? witnessedUsefulApDemand = null,
+            IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerUniverse = null)
         {
             var raw = MaterializationChainEnumerator.EnumerateForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
@@ -190,8 +192,29 @@ namespace Game.Ai.V2
                 referenceMoveMax = CapabilityQualityEvaluator.ProjectedMoveMax(reference.plan);
             }
 
+            // AI-MGR §11 / Command 6-vs-7 — for a HERO plan, the marginal value of its Command must
+            // be measured against how many extra bodies could ALSO legally land in the same recipient
+            // this turn (a slot the hero's Command unlocks but nothing can fill is worth nothing).
+            // The fillers live in OTHER demands' candidate sets (a FieldCombatPower demand's Unit
+            // plans, not this Hero demand's), so the count is taken over `fillerUniverse` — the
+            // cross-demand feasible set Phase A assembled in its measurement pass — through the
+            // shared portfolio solver's joint-feasibility. Null (persistence reconcile, isolated
+            // callers) falls back to this demand's own set: safe, just usually degenerate.
+            int genRemaining = Mathf.Max(0,
+                AiConfigV2.maxGenerationActionsPerTurn - (reservation?.GenerationAttemptsUsed ?? 0));
+            IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerPlans =
+                fillerUniverse ?? candidates.Select(x => (x.plan, x.followupAp)).ToList();
+
             foreach (var c in candidates)
-                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
+            {
+                CardDefinition cdef = c.plan.BaseCardInHand?.Definition ?? c.plan.GeneratedBaseDef;
+                int projectedLegalFillers = cdef != null && cdef.cardType == CardType.Hero
+                    ? MaterializationPortfolioSolver.CountJointlyLegalFillersForRecipient(
+                        c.plan, fillerPlans, root, player, ctx, hand, genRemaining)
+                    : 0;
+                c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax,
+                    hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers);
+            }
 
             // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
             // Urgency (a function of demand.Value) is folded in so a real threat lifts every net
@@ -293,6 +316,29 @@ namespace Game.Ai.V2
                 raw, player, root, hand, ctx, reservation);
             if (candidates.Count == 0) return null;
 
+            // AI-MGR — Phase B's own owner-witnessed legal card-AP workload, from THIS real feasible
+            // surplus set (spec §4: "Phase B may use its own actually-built surplus candidate set the
+            // same way"). Only assembled when a recurring-AP carrier is actually among the candidates
+            // — otherwise nothing reads it and the evaluator's discounted structural fallback stands.
+            // Feasibility-based only, never .Score.
+            float? witnessedUsefulApDemand = null;
+            if (candidates.Any(p => p.ProjectedAbilities != null
+                    && p.ProjectedAbilities.Contains(UnitAbilities.ApBonus)))
+            {
+                var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
+                foreach (MaterializationPlan p in candidates)
+                {
+                    if (p == null) continue;
+                    string sig = ConsumptionSignature(p);
+                    if (!bySig.TryGetValue(sig, out var cur) || p.ApCost < cur.plan.ApCost)
+                        bySig[sig] = (p, 0f);
+                }
+                int genRemaining = Mathf.Max(0,
+                    AiConfigV2.maxGenerationActionsPerTurn - (reservation?.GenerationAttemptsUsed ?? 0));
+                witnessedUsefulApDemand = MaterializationPortfolioSolver.EstimateLegalApWorkload(
+                    bySig.Values.ToList(), root, player, ctx, hand, genRemaining);
+            }
+
             // Scoring is SEPARATE from enumeration (DoD): the enumerator returns score-free plans;
             // here every surviving plan gets the canonical StrategicCardEvaluator NetScore. The
             // reaction feasibility probe consumes the same enumerator output and never reads .Score.
@@ -301,7 +347,8 @@ namespace Game.Ai.V2
                 bool recce = AbilityParams.AbilitiesHaveAnyRecce(p.ProjectedAbilities);
                 CardDefinition bd = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                 bool hero = bd != null && bd.cardType == CardType.Hero;
-                p.Score = SurplusUtility(snap, p, inv, recce, hero, hand, p.ProjectedAbilities);
+                p.Score = SurplusUtility(snap, p, inv, recce, hero, hand, p.ProjectedAbilities,
+                    witnessedUsefulApDemand);
             }
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
@@ -354,14 +401,45 @@ namespace Game.Ai.V2
         // BaselineForceReadiness, no flat Hero bonus). This wrapper keeps the call signature and
         // still carries the Scout capability-quality breakdown + the new use breakdown for logging.
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
-            CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap)
+            CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap,
+            float? witnessedUsefulApDemand, int projectedLegalFillers)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
-                p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap);
+                p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap,
+                witnessedUsefulApDemand, projectedLegalFillers);
             p.QualityBreakdown = cand.QualityBreakdown;
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.TotalUseScore;
+        }
+
+        // AI-MGR — MEASUREMENT-ONLY feasible set for a demand: every chain that passed enumeration +
+        // resource feasibility, ONE representative (cheapest AP) per physical consumption signature,
+        // with NO scoring / DecisionScore / Worthwhile filter. StrategicManager Phase A sums these
+        // across the active demands (MaterializationPortfolioSolver.EstimateLegalApWorkload) to get
+        // the owner-witnessed legal card-AP workload BEFORE the AP-dependent scoring pass — so a good
+        // ApBonus carrier is never dropped by fallback-scored Top-K pruning before it is priced
+        // against the real workload.
+        public static List<(MaterializationPlan plan, float followupAp)> AllFeasiblePlansForDemand(
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            AxisDemand demand, AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
+            MaterializationReservation reservation)
+        {
+            var raw = MaterializationChainEnumerator.EnumerateForDemand(
+                snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
+            var candidates = MaterializationFeasibility.FilterForDemand(
+                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);
+
+            var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
+            foreach (var c in candidates)
+            {
+                if (c.plan == null) continue;
+                string sig = ConsumptionSignature(c.plan);
+                float ap = c.plan.ApCost + c.followupAp;
+                if (!bySig.TryGetValue(sig, out var cur) || ap < cur.plan.ApCost + cur.followupAp)
+                    bySig[sig] = (c.plan, c.followupAp);
+            }
+            return bySig.Values.ToList();
         }
 
         private static float ResourceCostSum(ResourceCost c) => c == null
@@ -385,10 +463,11 @@ namespace Game.Ai.V2
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the
         // separately scored HoldValue).
         private static float SurplusUtility(WorldSnapshot snap, MaterializationPlan p, CapabilityInventory inv,
-            bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected)
+            bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
+            float? witnessedUsefulApDemand = null)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreSurplus(
-                p, inv, recce, hero, hand, projected, snap);
+                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand);
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.NetScore;

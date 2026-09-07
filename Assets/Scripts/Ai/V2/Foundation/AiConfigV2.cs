@@ -1061,11 +1061,15 @@ namespace Game.Ai.V2
         public const float apMarginalUtilFloor  = 0.10f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
         public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
         public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
-        public const float apStrategicCardApProxy = 1f;    // AP per still-unmet card-materialised AxisDemand folded into useful AP demand
-        // ApWorkloadAggregator degraded path only (a snapshot that never went through the pipeline's
-        // owner-aggregation stage — sims, bare tests): structural workload is an UPPER BOUND, never
-        // proof every action is useful, so the fallback marginal/useful demand is scaled down.
+        // Structural-fallback path only (a call with no owner-witnessed workload — sims, bare tests,
+        // a plan-less non-combat lane with no surplus set): the ApActionEconomySnapshot structural
+        // demand is an UPPER BOUND, never proof every action is useful, so the fallback demand is
+        // scaled down. See StrategicEffectRegistry.StructuralFallbackApDemand.
         public const float apStructuralDemandConfidence = 0.60f;
+        // Flat (Phase B / surplus) EstimateLegalApWorkload subset search: only the N cheapest
+        // signature-deduped feasible plans are searched (2^N leaf calls). The AP pool already caps
+        // the sum; this just bounds the branch factor.
+        public const int   apWorkloadFlatSearchCap = 12;
 
         // Hero Command marginal-capacity valuation — REPLACES commandRating * heroRoleCommandWeight
         // inside HeroLeadershipFit. Extra Command is only worth something when the AI actually has

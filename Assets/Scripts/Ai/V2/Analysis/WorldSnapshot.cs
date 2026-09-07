@@ -42,15 +42,6 @@ namespace Game.Ai.V2
         public MapKnowledgeSnapshot MapKnowledge;
         public EconomyStanding Economy;
         public ThreatModel Threat;
-
-        // AI-MGR — owner-witnessed AP action-economy read (marginal value of one more AP/turn +
-        // the AP the AI could still USEFULLY spend). NOT filled by WorldAnalysis.Scan — WorldAnalysis
-        // only holds the structural facts (Self.ApEconomy). This is set once by the pipeline's
-        // ApWorkloadAggregator stage AFTER the owners (StrategicManager demands, actionable armies,
-        // Development, Recon-air) have been consulted, and carried forward across every Refresh*.
-        // Null on a bare snapshot that never went through that stage (sims / unit tests) — consumers
-        // fall back to a deliberately-discounted structural estimate.
-        public ApWorkloadAssessment ApWorkload;
     }
 
     // --- Four stockpiled resources as one value. Index order matches ResourceType.
@@ -193,11 +184,15 @@ namespace Game.Ai.V2
     //  Built once in WorldAnalysis.BuildSelf from live state; never re-read downstream.
     //  Deliberately NOT sourced from Initiative's InitiativeAnalyticsHistory ring buffer — that is
     //  walled off from WorldAnalysis by design; this is a fresh structural read of THIS turn.
-    //  These are STRUCTURAL FACTS only. WorldAnalysis does NOT know which of the estimated demand
-    //  components are legal/useful this turn (an unaffordable card, an "actionable" army with
-    //  nothing worth doing, Development with no runnable opportunity, an air slot that yields no
-    //  route). The authoritative MarginalApUtility / UsefulApDemand is computed later by
-    //  ApWorkloadAggregator from owner-witnessed workload and lives on WorldSnapshot.ApWorkload.
+    //  These are STRUCTURAL FACTS only — an UPPER BOUND on what could cost AP this turn. WorldAnalysis
+    //  does NOT know which of the estimated demand components are legal/useful this turn (an
+    //  unaffordable card, an "actionable" army with nothing worth doing, Development with no runnable
+    //  opportunity, an air slot that yields no route). The authoritative owner-witnessed AP workload
+    //  is assembled at evaluation time inside StrategicManager Phase A/B from the real candidate set
+    //  (MaterializationPortfolioSolver.EstimateLegalApWorkload + committed movers + witnessed air);
+    //  these facts are only the deliberately-discounted fallback (apStructuralDemandConfidence) used
+    //  when no witnessed set exists (sims / bare snapshots) — see
+    //  StrategicEffectRegistry.StructuralFallbackApDemand.
     public sealed class ApActionEconomySnapshot
     {
         public int BaseActionPoints;            // AP available this turn (post initiative roll + already-granted ApBonus)
@@ -207,33 +202,12 @@ namespace Game.Ai.V2
         public int ApCostingHandActions;        // hand cards whose play has a real AP cost
 
         // Raw structural demand components — an UPPER BOUND on what could cost AP this turn, never
-        // proof any of it is useful. Aggregated (with owner legality applied) by ApWorkloadAggregator.
+        // proof any of it is useful. Only consumed by StructuralFallbackApDemand when no owner-
+        // witnessed workload was assembled for the call.
         public float EstimatedArmyApDemand;        // Σ activation AP over own unactivated field armies
         public float EstimatedCardApDemand;        // Σ EffectivePlayApCost over AP-costing hand cards
         public float EstimatedDevelopmentApDemand; // apDevActionApProxy if a dev facility + operator are both present
         public float EstimatedAirApDemand;         // apAirSortieApProxy per structurally-available recon-air sortie/wing
-    }
-
-    // =======================================================================================
-    //  AP WORKLOAD ASSESSMENT  (AI-MGR — owner-aggregated, produced by ApWorkloadAggregator)
-    // =======================================================================================
-    //  The authoritative "how valuable is one more AP/turn RIGHT NOW" read. Unlike
-    //  ApActionEconomySnapshot (structural facts), every component here is the workload an
-    //  existing OWNER witnessed as legal/actionable this turn: actionable armies
-    //  (PreTurnCapacityAnalysis), still-unmet card-materialised AxisDemands (StrategicManager),
-    //  a real Development opportunity, and the witnessed spare recon-air launch count
-    //  (ReconAssignmentPlanner.MeasureAirCapacity). Built once per pass by the pipeline, never by
-    //  WorldAnalysis.
-    public sealed class ApWorkloadAssessment
-    {
-        public float UsefulApDemand;    // AP the AI could still USEFULLY spend this turn (owner-witnessed)
-        public float MarginalApUtility; // [0..1] — 1 = AP is the binding constraint, 0 = AP sits idle with nothing useful to do
-
-        // Per-owner breakdown, for the pipeline's one ap-workload diag line.
-        public float ArmyActionableAp;
-        public float StrategicCardAp;
-        public float DevelopmentAp;
-        public float AirSortieAp;
     }
 
     // =======================================================================================

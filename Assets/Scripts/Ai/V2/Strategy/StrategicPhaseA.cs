@@ -57,7 +57,9 @@ namespace Game.Ai.V2
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
-            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments)
+            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
+            IReadOnlyList<MissionIntent> activeIntents = null,
+            IReadOnlyList<ReconObjective> reconObjectives = null)
         {
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
@@ -65,6 +67,16 @@ namespace Game.Ai.V2
             var result = new StrategicPhaseResult { Reservation = new MaterializationReservation() };
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
+
+            // AI-MGR — the NON-card half of the owner-witnessed AP workload the recurring-AP effect
+            // (ApBonus) is priced against: AP that COMMITTED work will consume this turn — a durable
+            // mission's claimed mover that has not activated yet, plus WITNESSED recon-air sorties
+            // (ReconAssignmentPlanner.MeasureAirCapacity, the canonical air-capacity owner). Idle
+            // unattached armies are deliberately NOT counted — a formation is not proof of a useful
+            // operation. The card half is added per scoring pass below from the real candidate set.
+            float committedNonCardAp = CommittedNonCardApDemand(
+                snap, player, root, ctx, activeIntents, reconObjectives, commitments);
+            float? witnessedUsefulApDemand = null;
 
             // AI-MGR-02 §P0 — one shared per-turn generation budget: a reaction-round Phase A must
             // not reset the Challenge count a main-pass generation already spent.
@@ -154,12 +166,59 @@ namespace Game.Ai.V2
                 if (active.Count == 0)
                 {
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        ledger, commitments, result.Reservation))
+                        ledger, commitments, result.Reservation, witnessedUsefulApDemand))
                         continue;
                     break;
                 }
 
                 CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+
+                // AI-MGR — MEASUREMENT PASS (two-pass within the round). Assemble the owner-witnessed
+                // AP workload the recurring-AP effect is priced against from the SAME feasible
+                // candidate set the scoring pass below uses, BEFORE any AP-dependent scoring — so a
+                // good ApBonus carrier is never dropped by fallback-scored Top-K pruning before it is
+                // priced against the real workload. Feasibility-based ONLY, never DecisionScore /
+                // Worthwhile (that would be circular: AP utility -> card score -> workload -> AP
+                // utility). Recomputed every round because an executed chain changes hand / AP /
+                // generation / physical state.
+                //
+                // Only worth doing when something this round actually READS it: a recurring-AP
+                // carrier in hand (GlobalRecurringValue) or a Hero demand (Command 6-vs-7 filler
+                // count). Otherwise leave witnessedUsefulApDemand null -> the evaluator uses the
+                // discounted structural fallback, exactly as before.
+                bool needsWitnessedWorkload =
+                    (hand?.Hand != null && hand.Hand.Any(cd => cd?.Definition?.grantedAbilities != null
+                        && cd.Definition.grantedAbilities.Contains(UnitAbilities.ApBonus)))
+                    || active.Any(s => s.Demand.Capability == CapabilityKind.Hero);
+
+                List<(MaterializationPlan plan, float followupAp)> fillerUniverse = null;
+                if (needsWitnessedWorkload)
+                {
+                    var measOptions = new Dictionary<DemandState, List<(MaterializationPlan plan, float followupAp)>>();
+                    foreach (DemandState state in active)
+                    {
+                        var feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
+                            ctx, state.Demand, ledger, commitments,
+                            ledger.ReservedFollowup(state.Demand.RequestingAxis), result.Reservation);
+                        if (feas.Count > 0)
+                            measOptions[state] = feas;
+                    }
+                    int genRemaining = Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
+                        - result.Reservation.GenerationAttemptsUsed);
+                    float legalCardApWorkload = MaterializationPortfolioSolver.EstimateLegalApWorkload(
+                        measOptions, root, player, ctx, hand, genRemaining);
+                    witnessedUsefulApDemand = committedNonCardAp + legalCardApWorkload;
+
+                    // Cross-demand filler universe for the hero Command 6-vs-7 valuation: every
+                    // feasible body across ALL active demands this round (one per physical consumption
+                    // signature), so a Hero demand's candidate can see the Unit plans a
+                    // FieldCombatPower demand would put in the same recipient.
+                    fillerUniverse = measOptions.Values.SelectMany(v => v).ToList();
+                }
+                else
+                {
+                    witnessedUsefulApDemand = null;
+                }
 
                 // AI-MGR-01 review-r3 — TOP-K worthwhile chains per active demand (each carries its
                 // own opportunity-adjusted DecisionScore), then a bounded max-total injective
@@ -176,7 +235,9 @@ namespace Game.Ai.V2
                     List<DemandCandidate> top =
                         MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
                             ledger, commitments, ledger.ReservedFollowup(state.Demand.RequestingAxis),
-                            result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK);
+                            result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
+                            witnessedUsefulApDemand: witnessedUsefulApDemand,
+                            fillerUniverse: fillerUniverse);
                     if (top.Count > 0)
                         options[state] = top;
                 }
@@ -222,7 +283,7 @@ namespace Game.Ai.V2
                     // to give up on real strategic work for this pass. Before it does, give any
                     // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        ledger, commitments, result.Reservation))
+                        ledger, commitments, result.Reservation, witnessedUsefulApDemand))
                         continue;
                     break;
                 }
@@ -374,6 +435,41 @@ namespace Game.Ai.V2
             };
         }
 
+        // AI-MGR — the NON-card half of the owner-witnessed AP workload (see FulfillDemands). Only
+        // DEMONSTRATED obligations count: a durable mission's claimed mover that has not activated
+        // this turn (activation AP, floored at 1), plus the WITNESSED recon-air sortie count from the
+        // canonical air-capacity owner (ReconAssignmentPlanner.MeasureAirCapacity). Idle unattached
+        // armies and "actionable formation" heuristics are deliberately excluded — a formation is not
+        // proof of a useful AP operation. Development is 0 here: DemandLayer emits its axis demand
+        // precisely when there is NO operator base, so it is not a runnable AP action.
+        private static float CommittedNonCardApDemand(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<ReconObjective> reconObjectives, ActorCommitments commitments)
+        {
+            float ap = 0f;
+            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
+            if (activeIntents != null && armies != null)
+            {
+                var countedMovers = new HashSet<int>();
+                foreach (MissionIntent intent in activeIntents)
+                {
+                    if (intent?.PreferredMoverArmyId == null) continue;
+                    int moverId = intent.PreferredMoverArmyId.Value;
+                    if (!countedMovers.Add(moverId)) continue;
+                    ArmySnapshot army = null;
+                    foreach (ArmySnapshot a in armies)
+                        if (a != null && a.ArmyId == moverId) { army = a; break; }
+                    if (army == null || army.HasActivatedThisTurn) continue;
+                    ap += Mathf.Max(1f, army.ActivationApCost);
+                }
+            }
+
+            (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
+                ctx, player, root, snap, reconObjectives, activeIntents, commitments);
+            ap += (Mathf.Max(0, airborne) + Mathf.Max(0, spare)) * AiConfigV2.apAirSortieApProxy;
+            return ap;
+        }
+
         // Persistence-gate reconciliation (spec "Bootstrap & No-Alternative-Work Escape", Rule 2).
         // Called only at a point where the normal per-turn arbitration loop is about to give up —
         // every currently active (non-deferred) demand is satisfied, blocked, or has no feasible
@@ -389,7 +485,7 @@ namespace Game.Ai.V2
         private static bool TryPromotePersistenceDeferred(List<DemandState> states,
             List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger, ActorCommitments commitments,
-            MaterializationReservation reservation)
+            MaterializationReservation reservation, float? witnessedUsefulApDemand)
         {
             if (deferredStates.Count == 0)
                 return false;
@@ -408,7 +504,8 @@ namespace Game.Ai.V2
                 // deliverable candidate for it RIGHT NOW (AC7) — never a phantom fulfillment.
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
                     ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
-                    reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK);
+                    reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK,
+                    witnessedUsefulApDemand: witnessedUsefulApDemand);
                 if (top.Count == 0)
                 {
                     // Stays a VALID, UNRESOLVED, temporarily-unfulfillable demand — must remain in

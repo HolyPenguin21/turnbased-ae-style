@@ -245,9 +245,16 @@ namespace Game.Ai.V2
         // -----------------------------------------------------------------------------------------
         //  PHASE A — a chain closing an explicit AxisDemand. The demand pins the primary role.
         // -----------------------------------------------------------------------------------------
+        // `witnessedUsefulApDemand` — the owner-witnessed AP workload StrategicManager Phase A
+        // assembled for this scoring pass (legal card-AP workload + committed movers + witnessed
+        // air). Null => the EffectEvaluationContext falls back to the discounted structural estimate.
+        // `projectedLegalFillers` — for a HERO plan, the extra non-hero bodies that could ALSO
+        // legally land in the same recipient this turn (Command 6-vs-7). 0 for a non-hero plan or a
+        // call site with no candidate set.
         public static StrategicCardUseCandidate ScoreForDemand(MaterializationPlan plan, AxisDemand demand,
             TraitPreference projected, CapabilityInventory inv, int referenceMoveMax,
-            bool hasCompetingHeroDemand, WorldSnapshot snap)
+            bool hasCompetingHeroDemand, WorldSnapshot snap,
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
         {
             var bd = new StrategicUseScoreBreakdown();
             IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));
@@ -272,14 +279,14 @@ namespace Game.Ai.V2
             float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
             float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
                 pabil, snap, 0f, equipUpgrade,
-                demand, referenceMoveMax, hasCompetingHeroDemand,
+                demand, referenceMoveMax, hasCompetingHeroDemand, projectedLegalFillers,
                 out MaterializationQualityBreakdown qbd, out string heroCmdDetail);
 
             // P1 ARCH — ALL ability-derived value (AntiAir/AntiArmor/Support today; AoE/regen/aura/
             // summon later) comes from the registry as a per-axis EffectContribution, added to the
             // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core; the
             // PlayerGlobal terms (ec.Global*) are target-INDEPENDENT — added AFTER the fit multiplier.
-            var ectx = new EffectEvaluationContext(snap, plan);
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
                 role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
@@ -336,7 +343,8 @@ namespace Game.Ai.V2
         //  it for its next-best role / Hold (P1.6).
         // -----------------------------------------------------------------------------------------
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
-            bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap)
+            bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap,
+            float? witnessedUsefulApDemand = null)
         {
             CardDefinition def = PlanBaseDef(plan);
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
@@ -346,7 +354,7 @@ namespace Game.Ai.V2
             var scored = new List<StrategicCardUseCandidate>(roles.Count);
             foreach (IntendedRole role in roles)
                 scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
-                    baseline, versatility));
+                    baseline, versatility, witnessedUsefulApDemand));
 
             scored.Sort((a, b) =>
             {
@@ -374,7 +382,8 @@ namespace Game.Ai.V2
 
         private static StrategicCardUseCandidate ScoreSurplusRole(MaterializationPlan plan, IntendedRole role,
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
-            WorldSnapshot snap, BaselineForceReadiness baseline, float versatility)
+            WorldSnapshot snap, BaselineForceReadiness baseline, float versatility,
+            float? witnessedUsefulApDemand = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             float scarcity = SurplusScarcity(inv, recce, hero);
@@ -387,10 +396,10 @@ namespace Game.Ai.V2
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
-                equipmentUpgrade, null, 0, false, out _, out string heroCmdDetail);
+                equipmentUpgrade, null, 0, false, 0, out _, out string heroCmdDetail);
             // P1 ARCH — every ability-derived value comes from the registry as a per-axis
             // EffectContribution (see ScoreForDemand).
-            var ectx = new EffectEvaluationContext(snap, plan);
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
                 role, projected, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
@@ -438,6 +447,7 @@ namespace Game.Ai.V2
         private static float RoleFitCore(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
             float equipmentUpgrade, AxisDemand demand, int referenceMoveMax, bool hasCompetingHeroDemand,
+            int projectedLegalFillers,
             out MaterializationQualityBreakdown qbd, out string heroCmdDetail)
         {
             qbd = MaterializationQualityBreakdown.Neutral();
@@ -465,7 +475,7 @@ namespace Game.Ai.V2
                 case IntendedRole.AntiArmor:
                 case IntendedRole.AntiAir:
                     return SurplusCombatReadinessUtility(plan)
-                        + HeroLeadershipFit(plan, hero, snap, out heroCmdDetail);
+                        + HeroLeadershipFit(plan, hero, snap, projectedLegalFillers, out heroCmdDetail);
                 case IntendedRole.Hold:
                     return 0f;
                 default:
@@ -489,7 +499,7 @@ namespace Game.Ai.V2
         // penalty are all folded into the returned NetScore here. Callers do NOT post-multiply.
         public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade,
-            GenerationStep generation = null)
+            GenerationStep generation = null, float? witnessedUsefulApDemand = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             CardDefinition def = card?.Definition;
@@ -535,7 +545,7 @@ namespace Game.Ai.V2
             // PlayerGlobal ApBonus value (Ashen / Concord Base, an ApBonus Facility, a generated
             // Base) via the identical dynamic model — no FacilityApBonusScore / BaseAbilityEvaluator.
             IReadOnlyList<string> ncAbilities = def?.grantedAbilities;
-            var ncCtx = new EffectEvaluationContext(snap);
+            var ncCtx = new EffectEvaluationContext(snap, witnessedUsefulApDemand);
             EffectContribution ncEc = StrategicEffectRegistry.Contributions(
                 role, ncAbilities, def != null ? def.moveMax : 0, ncCtx, out string ncEffDetail);
             // No target-fit multiplier in the non-combat lane — local and PlayerGlobal (ncEc.Global*)
@@ -888,7 +898,7 @@ namespace Game.Ai.V2
         // over the projected deployment destination) that the AI actually has bodies to fill. The
         // combat-contribution part is unchanged. `detail` is the AiDebug decomposition (§15).
         private static float HeroLeadershipFit(MaterializationPlan plan, bool hero, WorldSnapshot snap,
-            out string detail)
+            int projectedLegalFillers, out string detail)
         {
             detail = null;
             if (!hero) return 0f;
@@ -896,7 +906,7 @@ namespace Game.Ai.V2
             if (def == null) return 0f;
 
             float combatPart = AiPower.ToPowerUnit(def).BasePower * AiConfigV2.heroRoleCombatContributionWeight;
-            float commandPart = HeroCommandMarginalValue(def, plan, snap, out detail);
+            float commandPart = HeroCommandMarginalValue(def, plan, snap, projectedLegalFillers, out detail);
 
             return Mathf.Clamp(
                 (combatPart + commandPart) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
@@ -907,11 +917,16 @@ namespace Game.Ai.V2
         // deployment context, measured against DESTINATION-LOCAL fillable capacity only. Global body
         // counts (armies elsewhere, hand) are NOT fillers: a rival hero with +1 Command scores
         // higher ONLY when THIS destination army already sits at its heroless capacity and the
-        // hero's Command genuinely lifts the bottleneck. Until an authoritative near-term legal
-        // filler projection exists it is safer to slightly under-value Command than to re-introduce
-        // phantom capacity.
+        // hero's Command genuinely lifts the bottleneck.
+        //
+        // AI-MGR — Command 6-vs-7: `projectedLegalFillers` is how many extra non-hero bodies could
+        // ALSO legally land in this recipient THIS turn (a JOINTLY-feasible count from the shared
+        // portfolio solver — AP / H-E-M-T / generation / physical / recipient capacity), so a slot
+        // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 (the
+        // Phase-B path and any call with no candidate set) keeps the old conservative "hero itself
+        // only" behaviour.
         private static float HeroCommandMarginalValue(CardDefinition def, MaterializationPlan plan,
-            WorldSnapshot snap, out string detail)
+            WorldSnapshot snap, int projectedLegalFillers, out string detail)
         {
             detail = null;
             if (def == null || def.cardType != CardType.Hero)
@@ -921,17 +936,19 @@ namespace Game.Ai.V2
             int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, destHasHero, def);
 
             int occupiedBefore = DestinationOccupiedSlots(plan, snap);
-            // The hero itself consumes one battle slot; no speculative future fillers.
-            int requiredWithoutFutureFillers = occupiedBefore + 1;
+            // The hero itself consumes one battle slot; plus the bodies that could jointly-legally
+            // fill the slots its Command opens this turn.
+            int requiredCapacity = occupiedBefore + 1 + Mathf.Max(0, projectedLegalFillers);
 
-            int usableBefore = Mathf.Min(nominalCap, requiredWithoutFutureFillers);
-            int usableAfter = Mathf.Min(projectedCap, requiredWithoutFutureFillers);
+            int usableBefore = Mathf.Min(nominalCap, requiredCapacity);
+            int usableAfter = Mathf.Min(projectedCap, requiredCapacity);
             int usableExtraSlots = Mathf.Clamp(
                 usableAfter - usableBefore, 0, AiConfigV2.heroCommandMarginalMaxSlots);
             float value = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
 
             detail = $"command={def.commandRating} nominalCap={nominalCap} projectedCap={projectedCap} "
-                   + $"occupiedBefore={occupiedBefore} requiredCapacity={requiredWithoutFutureFillers} "
+                   + $"occupiedBefore={occupiedBefore} legalFillers={Mathf.Max(0, projectedLegalFillers)} "
+                   + $"requiredCapacity={requiredCapacity} "
                    + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
             return value;
         }

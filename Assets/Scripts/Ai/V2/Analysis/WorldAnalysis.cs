@@ -66,9 +66,6 @@ namespace Game.Ai.V2
                 Known = prev.Known,
                 TrueWorld = prev.TrueWorld,
                 MapKnowledge = prev.MapKnowledge,
-                // Turn-level owner-aggregated read — carried forward, not recomputed on a mid-turn
-                // operational refresh (its owner inputs, e.g. the demand set, are not available here).
-                ApWorkload = prev.ApWorkload,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Economy = BuildEconomy(player, ctx, snap);
@@ -88,7 +85,7 @@ namespace Game.Ai.V2
             if (prev == null)
                 return Scan(player, root, hand, ctx);
 
-            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber, ApWorkload = prev.ApWorkload };
+            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
@@ -306,8 +303,10 @@ namespace Game.Ai.V2
             float devDemand = self.HasDevFacility && self.HasDevOperator ? AiConfigV2.apDevActionApProxy : 0f;
             float airDemand = (self.AirborneReconWings + self.SpareAirObservationSorties) * AiConfigV2.apAirSortieApProxy;
 
-            // STRUCTURAL FACTS ONLY. WorldAnalysis does not decide which of these are useful/legal
-            // — that is ApWorkloadAggregator's job (owner-witnessed workload). No ramp here.
+            // STRUCTURAL FACTS ONLY — an upper bound. WorldAnalysis does not decide which of these
+            // are useful/legal this turn; the owner-witnessed AP workload is assembled at evaluation
+            // time in StrategicManager Phase A/B. These feed only the discounted structural fallback
+            // (StrategicEffectRegistry.StructuralFallbackApDemand). No ramp here.
             self.ApEconomy = new ApActionEconomySnapshot
             {
                 BaseActionPoints = self.ActionPoints,
