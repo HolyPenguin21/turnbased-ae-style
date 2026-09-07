@@ -136,12 +136,11 @@ namespace Game.Ai.V2
                 }
             }
 
-            // 1. Absorb/combine only a STRUCTURALLY DEGRADED occupied mutable field container.
-            // WorthPlanning also admits healthy groups now so the composition pass below can run;
-            // therefore it can no longer serve as the implicit guard that kept viable armies out
-            // of whole-fold consolidation. Without this local guard, two healthy armies can be
-            // collapsed into one merely because the survivor has a higher minStrength, which is
-            // not a structural Housekeeping improvement (and regresses the healthy-hex no-op).
+            // 1. Whole-fold any occupied mutable field container when the transfer is physically
+            // legal. Candidate generation owns legality only; policy belongs to Evaluate(). A
+            // healthy viable source is therefore allowed to collapse into a stronger local field
+            // formation when the strongest-first profile improves. The source ArmyData remains as
+            // an empty reusable field shell — Housekeeping never destroys containers.
             foreach (int srcId in armyIds)
             {
                 ReorgContainer src = state.Meta[srcId];
@@ -151,9 +150,6 @@ namespace Game.Ai.V2
                 if (srcUnits.Count == 0 || srcUnits.Any(u =>
                     u.IsCommitted || u.IsAviation || state.MovedUnitKeys.Contains(u.Key)))
                     continue;
-                if (ReorgViability.IsViable(srcUnits)
-                    && !ReorgViability.IsSingletonShape(srcUnits))
-                    continue; // healthy source: composition pass may rebalance/swap it, never erase it wholesale
 
                 foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                 {
@@ -188,7 +184,9 @@ namespace Game.Ai.V2
                 }
             }
 
-            // 3. Seed a weak field container from a viable field donor or safe garrison surplus.
+            // 3. Seed an occupied weak field container from a viable field donor. Empty reusable
+            // shells are deliberately excluded: they are useful future containers, not defects to
+            // be filled merely for housekeeping symmetry.
             foreach (int weakId in armyIds)
             {
                 ReorgContainer weak = state.Meta[weakId];
@@ -205,8 +203,8 @@ namespace Game.Ai.V2
                     ReorgContainer donor = state.Meta[donorId];
                     // §P1 — the garrison is a defensive stack, not a spare-parts bin. Housekeeping
                     // never lends garrison bodies to make a purposeless weak/shell field army
-                    // structurally viable; that force is folded/absorbed instead (steps 1-2), or
-                    // left for a deliberate AP-owning path (SecureBase / RaidAssembly / Defence).
+                    // structurally viable; that force is folded/absorbed instead, or left for a
+                    // deliberate AP-owning operational path.
                     if (!IsFieldContainer(donor) || !donor.CanDonate)
                         continue;
                     if (!ReorgViability.IsViable(state.Roster[donorId]))
@@ -217,7 +215,11 @@ namespace Game.Ai.V2
                 }
             }
 
-            // 4a. One-way composition/strength redistribution between viable field armies.
+            // 4a. One-way concentration/composition redistribution between viable field armies.
+            // Do not require both projected rosters to remain viable here: generation owns legal
+            // moves only. Evaluate() will reject an occupied singleton/non-viable intermediate via
+            // the higher-priority structural tuple, while a legal path that leaves an empty shell
+            // can win through the strongest-first formation profile.
             foreach (int srcId in armyIds)
             {
                 ReorgContainer src = state.Meta[srcId];
@@ -237,9 +239,8 @@ namespace Game.Ai.V2
                     foreach (ReorgUnit u in state.Roster[srcId].OrderBy(x => x.Key))
                     {
                         VState c = TryMoveOne(state, srcId, dstId, u,
-                            "composition/strength redistribution");
-                        if (c != null && ReorgViability.IsViable(c.Roster[srcId])
-                            && ReorgViability.IsViable(c.Roster[dstId]))
+                            "combat concentration/composition redistribution");
+                        if (c != null)
                             yield return c;
                     }
                 }
@@ -275,7 +276,7 @@ namespace Game.Ai.V2
         }
 
         // §8/§9 — the best benched hero to lead a field formation: never a SupportOperator
-        // (Housekeeping keeps those for base/research/production; an urgent raid takes its own
+        // (Housekeeping keeps those for base/research/production; an urgent operation takes its own
         // support-fallback path). CombatLeader before Flexible, then combat leadership, then key.
         private static ReorgUnit BestBenchedHeroForField(List<ReorgUnit> roster)
         {
