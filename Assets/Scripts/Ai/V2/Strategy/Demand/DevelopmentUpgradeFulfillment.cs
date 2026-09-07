@@ -105,6 +105,7 @@ namespace Game.Ai.V2
                 return new DevUpgradeResult
                 {
                     Executed = true, ChallengeWon = false, StateChanged = true,
+                    ApSpent = apBefore - root.ActionPoints,
                     Detail = $"Challenge lost {outcome.Successes}/{outcome.Required}",
                 };
 
