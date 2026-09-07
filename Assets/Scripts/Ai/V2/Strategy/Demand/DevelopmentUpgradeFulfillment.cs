@@ -14,20 +14,20 @@ namespace Game.Ai.V2
     //  DevelopmentOpportunity the demand carries VERBATIM (it does not re-pick a card):
     //      live gates -> ApplyResearchReveal -> PayCardCost -> RollChallenge -> MintCard -> attach.
     //
-    //  The Research/Production Challenge costs NO AP (only its ResourceCost, never refunded — a
-    //  lost Challenge still spends). The ATTACH costs the equipment grant's activation AP, charged
-    //  to the Development axis by the caller.
+    //  Starting the Research/Production Challenge costs card.apCost plus its ResourceCost and is
+    //  never refunded on loss. A win then pays the minted equipment's activation AP to attach it.
+    //  The caller debits the actual combined AP delta to the Development axis.
     //
     //  Enemy-on-hex is enforced here (via ResearchProductionSystem.IsEligible) as the ONLY place
     //  it gates — a contested facility skips execution this turn but the opportunity stays scored.
     // ===========================================================================================
     internal sealed class DevUpgradeResult
     {
-        public bool Executed;        // the Challenge was rolled (resources spent)
+        public bool Executed;        // the Challenge was rolled (AP/resources spent)
         public bool ChallengeWon;
         public bool Attached;        // a won Challenge's card reached its recipient
         public bool StateChanged;
-        public float ApSpent;        // attach AP — charge this to Development
+        public float ApSpent;        // actual Challenge + successful attach AP
         public string Detail = "";
 
         public static DevUpgradeResult Skip(string why) => new DevUpgradeResult { Detail = why };
@@ -78,21 +78,26 @@ namespace Game.Ai.V2
                     return DevUpgradeResult.Skip("unsupported_recipient_kind");
             }
 
-            float attachAp = Mathf.Max(0f, op.Card.activationApCost);
+            int challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
+            int attachAp = Mathf.Max(0, op.Card.activationApCost);
+            int completeAp = challengeAp + attachAp;
             if (ledger != null)
             {
                 float axisRoom = ledger.Balance(demand.RequestingAxis) - ledger.ReservedFollowup(demand.RequestingAxis);
-                if (attachAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
+                if (completeAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return DevUpgradeResult.Skip(
-                        $"axis_budget {axisRoom:0.##} < attach {attachAp:0.##}");
+                        $"axis_budget {axisRoom:0.##} < challenge+attach {completeAp}");
             }
-            if (attachAp > 0f && !root.CanSpendActionPoints(Mathf.CeilToInt(attachAp)))
-                return DevUpgradeResult.Skip("no_ap_for_attach");
+            // Admission must cover the success path as one operation. Two independent checks would
+            // both pass against the same starting pool even when their combined cost cannot.
+            if (!root.CanSpendActionPoints(completeAp))
+                return DevUpgradeResult.Skip("no_ap_for_challenge_and_attach");
 
             // --- execute (canonical primitives) -----------------------------------------------
+            int apBefore = root.ActionPoints;
             bool wasHiddenHero = op.Mode == ResearchProductionMode.Research && hero.IsHidden;
             ResearchProductionSystem.ApplyResearchReveal(op.Mode, hero);
-            ResearchProductionSystem.PayCardCost(root, op.Card);   // resources, never refunded
+            ResearchProductionSystem.PayCardCost(root, op.Card);   // AP/resources, never refunded
 
             ResearchProductionSystem.ChallengeOutcome outcome =
                 ResearchProductionSystem.RollChallenge(hero, op.Card, int.MaxValue);
@@ -111,7 +116,7 @@ namespace Game.Ai.V2
             else
                 attached = EquipmentSystem.TryAttach(minted, op.RecipientUnit, root, out attachDetail);
 
-            float apSpent = attached ? attachAp : 0f;   // EquipmentSystem.TryAttach already spent it on root
+            float apSpent = apBefore - root.ActionPoints;
 
             return new DevUpgradeResult
             {
