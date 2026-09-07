@@ -344,7 +344,7 @@ namespace Game.Ai.V2
         // -----------------------------------------------------------------------------------------
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
         {
             CardDefinition def = PlanBaseDef(plan);
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
@@ -354,7 +354,7 @@ namespace Game.Ai.V2
             var scored = new List<StrategicCardUseCandidate>(roles.Count);
             foreach (IntendedRole role in roles)
                 scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
-                    baseline, versatility, witnessedUsefulApDemand));
+                    baseline, versatility, witnessedUsefulApDemand, projectedLegalFillers));
 
             scored.Sort((a, b) =>
             {
@@ -383,7 +383,7 @@ namespace Game.Ai.V2
         private static StrategicCardUseCandidate ScoreSurplusRole(MaterializationPlan plan, IntendedRole role,
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
             WorldSnapshot snap, BaselineForceReadiness baseline, float versatility,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
         {
             var bd = new StrategicUseScoreBreakdown();
             float scarcity = SurplusScarcity(inv, recce, hero);
@@ -396,7 +396,7 @@ namespace Game.Ai.V2
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
 
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
-                equipmentUpgrade, null, 0, false, 0, out _, out string heroCmdDetail);
+                equipmentUpgrade, null, 0, false, projectedLegalFillers, out _, out string heroCmdDetail);
             // P1 ARCH — every ability-derived value comes from the registry as a per-axis
             // EffectContribution (see ScoreForDemand).
             var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
@@ -922,9 +922,8 @@ namespace Game.Ai.V2
         // AI-MGR — Command 6-vs-7: `projectedLegalFillers` is how many extra non-hero bodies could
         // ALSO legally land in this recipient THIS turn (a JOINTLY-feasible count from the shared
         // portfolio solver — AP / H-E-M-T / generation / physical / recipient capacity), so a slot
-        // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 (the
-        // Phase-B path and any call with no candidate set) keeps the old conservative "hero itself
-        // only" behaviour.
+        // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 for
+        // any call with no candidate set keeps the conservative "hero itself only" behaviour.
         private static float HeroCommandMarginalValue(CardDefinition def, MaterializationPlan plan,
             WorldSnapshot snap, int projectedLegalFillers, out string detail)
         {
@@ -1257,7 +1256,6 @@ namespace Game.Ai.V2
 
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
-
         private static float ChainStepPenalty(MaterializationChainKind k)
         {
             switch (k)
