@@ -334,14 +334,15 @@ namespace Game.Ai.V2
         //  turn, on top of the hero itself — the count that decides whether a hero's higher Command
         //  actually unlocks a usable slot or an empty one. Uses the SAME JointFeasibility (AP /
         //  H-E-M-T / generation / physical / recipient capacity), seeded with the hero plan already
-        //  pushed, so two individually-legal Unit plans can never both claim the last free slot.
+        //  pushed WITH its real follow-up AP, so two individually-legal Unit plans can never claim
+        //  capacity/AP that the hero's own activation/mission follow-up already reserves.
         //
         //  `candidateFillers` is the CROSS-demand feasible plan universe (Phase A's measurement pass)
         //  — the Unit fillers live in OTHER demands' sets, not this Hero demand's. Only Unit plans
         //  into the SAME recipient are considered; Hero plans and plans reusing a card/source the
         //  hero plan already consumes are excluded. Result is capped at heroCommandMarginalMaxSlots.
         internal static int CountJointlyLegalFillersForRecipient(
-            MaterializationPlan heroPlan,
+            MaterializationPlan heroPlan, float heroFollowupAp,
             IEnumerable<(MaterializationPlan plan, float followupAp)> candidateFillers,
             PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
             int genAttemptsRemaining)
@@ -372,10 +373,11 @@ namespace Game.Ai.V2
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining, seedPlans,
                 enforceApPool: true);
 
-            // The hero body is already committed to the recipient.
-            if (!jf.Fits(heroPlan, 0f))
+            // The hero body is already committed to the recipient. Reserve the SAME follow-up AP
+            // the Phase-A feasibility tuple carries; otherwise Command can gain phantom filler value.
+            if (!jf.Fits(heroPlan, heroFollowupAp))
                 return 0;
-            jf.Push(heroPlan, 0f);
+            jf.Push(heroPlan, heroFollowupAp);
 
             fillers = fillers
                 .OrderBy(f => f.plan.ApCost + f.followupAp)

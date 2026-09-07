@@ -210,7 +210,7 @@ namespace Game.Ai.V2
                 CardDefinition cdef = c.plan.BaseCardInHand?.Definition ?? c.plan.GeneratedBaseDef;
                 int projectedLegalFillers = cdef != null && cdef.cardType == CardType.Hero
                     ? MaterializationPortfolioSolver.CountJointlyLegalFillersForRecipient(
-                        c.plan, fillerPlans, root, player, ctx, hand, genRemaining)
+                        c.plan, c.followupAp, fillerPlans, root, player, ctx, hand, genRemaining)
                     : 0;
                 c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax,
                     hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers);
@@ -322,6 +322,15 @@ namespace Game.Ai.V2
             // ApBonus carrier and a Base/Facility ApBonus carrier are priced off one number. Null =>
             // the evaluator falls back to the discounted structural estimate.
 
+            // Command 6-vs-7 in Phase B uses the SAME jointly-legal recipient-filler owner as Phase A.
+            // Surplus has no follow-up AP tuple, so the hero seed consumes its real materialization
+            // cost with follow-up=0; candidate Unit bodies are taken from this exact feasible surplus
+            // universe. No second capacity model is introduced.
+            int genRemaining = Mathf.Max(0,
+                AiConfigV2.maxGenerationActionsPerTurn - (reservation?.GenerationAttemptsUsed ?? 0));
+            IReadOnlyList<(MaterializationPlan plan, float followupAp)> surplusFillerUniverse =
+                candidates.Select(p => (p, 0f)).ToList();
+
             // Scoring is SEPARATE from enumeration (DoD): the enumerator returns score-free plans;
             // here every surviving plan gets the canonical StrategicCardEvaluator NetScore. The
             // reaction feasibility probe consumes the same enumerator output and never reads .Score.
@@ -330,8 +339,12 @@ namespace Game.Ai.V2
                 bool recce = AbilityParams.AbilitiesHaveAnyRecce(p.ProjectedAbilities);
                 CardDefinition bd = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                 bool hero = bd != null && bd.cardType == CardType.Hero;
+                int projectedLegalFillers = hero
+                    ? MaterializationPortfolioSolver.CountJointlyLegalFillersForRecipient(
+                        p, 0f, surplusFillerUniverse, root, player, ctx, hand, genRemaining)
+                    : 0;
                 p.Score = SurplusUtility(snap, p, inv, recce, hero, hand, p.ProjectedAbilities,
-                    witnessedUsefulApDemand);
+                    witnessedUsefulApDemand, projectedLegalFillers);
             }
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
@@ -447,10 +460,10 @@ namespace Game.Ai.V2
         // separately scored HoldValue).
         private static float SurplusUtility(WorldSnapshot snap, MaterializationPlan p, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreSurplus(
-                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand);
+                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand, projectedLegalFillers);
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.NetScore;
