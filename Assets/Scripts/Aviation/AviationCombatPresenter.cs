@@ -38,9 +38,9 @@ namespace Game.Aviation
                 yield return ResolveGroundAaStep(mover, hex);
         }
 
-        // 1. Every enemy AA unit in range reacts, in order, to the air army that just landed here.
-        // 2. If it survives, whatever enemy content now shares this hex gets struck once each by
-        //    every aircraft that hasn't already attacked this turn.
+        // 1. Every enemy AA unit in range reacts on every entered hex.
+        // 2. If this is the actual terminal movement step and the air army survives, enemy content
+        //    on that endpoint is struck once by every aircraft that can still attack.
         private IEnumerator ResolveAirArmyStep(ArmyData airArmy, HexCoord hex, ArmyController.StepResolutionOutcome outcome)
         {
             foreach (AaReaction reaction in AntiAirRules.CollectEntryReactions(airArmy, hex))
@@ -56,6 +56,12 @@ namespace Game.Aviation
                 hexSelection?.DeleteArmyIfEmptied(airArmy);
                 yield break;
             }
+
+            // Passing through an occupied hex only exposes the air army to entry AA. Its own
+            // strike is an endpoint action, not an automatic attack against every army along the
+            // route. MoveRoutine computes terminality from its authoritative remaining-MP rules.
+            if (outcome == null || !outcome.IsTerminalStep)
+                yield break;
 
             // hex here is the just-entered hex (from ArmyController.MoveRoutine's own per-step
             // loop) — airArmy.Hex/Data.Hex is NOT updated until the whole move finishes (see
