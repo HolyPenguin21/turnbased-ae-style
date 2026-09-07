@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     //  reserved before this call. Each real action is then taken against the LIVE state: after a
     //  step, its actual result is used and the next step is re-checked. There is NO rollback of a
     //  gameplay action that already succeeded:
-    //    · Challenge lost            -> resources stay spent, chain stops, StateChanged if the
+    //    · Challenge lost            -> AP/resources stay spent, chain stops, StateChanged if the
     //                                   world actually moved, generator use is reported as
     //                                   attempted so the pass never retries it.
     //    · attach fails after a win  -> the generated card stays in hand, chain stops.
@@ -31,8 +31,8 @@ namespace Game.Ai.V2
         // AI-MGR-01 review-r4 finding 9b — the Research/Production mint step, factored out so the
         // Phase-B non-combat lane can generate → deploy an Aviation / Base / Facility card too
         // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
-        // chains). Same rules: eligibility re-check, hand slot, affordability, Research reveal,
-        // ResourceCost-only (no AP), probabilistic Challenge, mint into hand on a win.
+        // chains). Same rules: eligibility re-check, full AP/resource affordability, Research
+        // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.
         public readonly struct GenerationOutcome
         {
             public readonly bool Success;
@@ -59,8 +59,6 @@ namespace Game.Ai.V2
                 || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
                 return new GenerationOutcome(false, null, false,
                     $"generation no longer valid ({why ?? "hero moved"})");
-            if (!hand.HasFreeSlot)
-                return new GenerationOutcome(false, null, false, "no hand slot for the generated card");
             if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
                 return new GenerationOutcome(false, null, false, "generation resources unaffordable");
 
@@ -71,7 +69,7 @@ namespace Game.Ai.V2
             // Research reveals the Researcher whether or not the roll wins (parity with
             // AiDevelopmentPlanner). Production never reveals.
             ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-            // ResourceCost only — the Challenge costs the player no AP. Never refunded.
+            // Challenge AP + resources are consumed by the attempt and never refunded on loss.
             ResearchProductionSystem.PayCardCost(root, g.CardDef);
 
             bool resMoved = h0 != root.GetResource(ResourceType.Human)
