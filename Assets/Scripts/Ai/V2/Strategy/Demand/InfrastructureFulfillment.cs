@@ -101,6 +101,11 @@ namespace Game.Ai.V2
                     return InfraFulfillResult.No(
                         $"{DesireAxes.Abbrev(demand.RequestingAxis)} axis entitlement {axisRoom:0.##} < cost {cand.ApCost:0.##}");
             }
+            // Respect the same strategic + legacy persistent-resource reservations as every
+            // materialization path. Raw gameplay affordability is still rechecked below.
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost))
+                return InfraFulfillResult.No($"{demand.Capability}: reserved resources cannot cover {cand.Explain}");
+
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open
             //     cleanly rather than letting a doomed transaction run) ---
             if (!root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
@@ -199,6 +204,9 @@ namespace Game.Ai.V2
                 {
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out _))
                         continue;
+                    if (!StrategicSpendability.FitsSpendableResources(
+                            player, root, ctx, card.EffectivePlayResourceCost))
+                        continue;
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
                     legal.Add(new InfraCandidate
@@ -236,6 +244,9 @@ namespace Game.Ai.V2
             {
                 if (fac.HasHero || fac.Contested)
                     continue;
+                if (demand.DevelopmentOperatorMode.HasValue
+                    && demand.DevelopmentOperatorMode.Value != fac.Mode)
+                    continue;
                 if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(fac.Hex))
                     continue;
 
@@ -261,6 +272,9 @@ namespace Game.Ai.V2
                             + $"@({fac.Hex.Q},{fac.Hex.R}) {card.Definition.displayName}: {why}");
                         continue;
                     }
+                    if (!StrategicSpendability.FitsSpendableResources(
+                            player, root, ctx, card.EffectivePlayResourceCost))
+                        continue;
 
                     MaterializationPlan valuationPlan = MaterializationPlanFactory.MakeExistingPlan(
                         MaterializationChainKind.Direct, demand, card, ordinal, null, -1, placement,

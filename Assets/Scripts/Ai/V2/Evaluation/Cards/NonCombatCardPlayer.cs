@@ -145,7 +145,7 @@ namespace Game.Ai.V2
             // NetScore band (throwaway pre-mint stand-in), discounted by the Challenge success
             // chance + the generation step penalty; Execute mints then deploys via the canonical
             // API. Generated Equipment stays with the materialization GenerateAttachDeploy chain.
-            if (reservation != null && reservation.CanGenerateMore && hand.HasFreeSlot)
+            if (reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
                     reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards))
@@ -291,8 +291,8 @@ namespace Game.Ai.V2
 
             int apBefore = root.ActionPoints;
 
-            // finding 9b — a generated non-combat play mints its card first (ResourceCost only, no
-            // AP; probabilistic), then deploys the REAL minted instance. finding P1 — every real
+            // finding 9b — a generated non-combat play pays Challenge AP + ResourceCost,
+            // then probabilistically mints and deploys the REAL instance. finding P1 — every real
             // mutation of this non-atomic chain is reported even when a later step fails.
             if (play.Generation != null)
             {

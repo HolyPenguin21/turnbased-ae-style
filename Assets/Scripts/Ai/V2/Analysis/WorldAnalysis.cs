@@ -319,6 +319,8 @@ namespace Game.Ai.V2
                     {
                         if (card == null || !ResearchProductionSystem.CanAffordCard(root, card))
                             continue;
+                        if (!GenerationSource.FitsReservedAffordability(root, player, ctx, card))
+                            continue;
                         float p = ResearchProductionSystem.EstimateSuccessChance(hero, card);
                         if (p < AiConfig.developmentMinSuccessChance)
                             continue;

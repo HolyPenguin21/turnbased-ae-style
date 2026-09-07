@@ -103,7 +103,9 @@ namespace Game.Ai.V2
                 ncCand = new TempoCandidate
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
-                    ApCost = nc.Card != null ? nc.Card.EffectivePlayApCost : 0f,
+                    ApCost = (nc.Card != null ? nc.Card.EffectivePlayApCost : 0f)
+                             + (nc.Generation != null
+                                 ? ResearchProductionSystem.AttemptApCost(nc.Generation.CardDef) : 0f),
                     ResCost = ncResCost,
                     ConsumesGeneration = nc.Generation != null,
                     CountsAsSurplusCardPlay = true,

@@ -184,7 +184,9 @@ namespace Game.Ai.V2
                 s.Blocked = true;
 
             int devDone = 0;
-            while (devPending.Count > 0 && devDone < AiConfigV2.maxDevelopmentUpgradesPerTurn)
+            while (devPending.Count > 0
+                   && devDone < AiConfigV2.maxDevelopmentUpgradesPerTurn
+                   && !StrategicTempoBudget.For(player, ctx.TurnNumber).GenerationCapHit)
             {
                 foreach (DemandState s in devPending)
                     DevelopmentOpportunityEvaluator.Rescore(s.Demand.DevOpportunity, snap, root, hand);
@@ -199,6 +201,7 @@ namespace Game.Ai.V2
                 DemandState ustate = devPending[0];
                 devPending.RemoveAt(0);
                 result.MaterializationAttempts++;
+                result.EquipmentAssignmentAttempts++;
                 DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
                     snap, player, root, hand, ctx, ustate.Demand, ledger);
                 if (up.StateChanged)
@@ -225,6 +228,8 @@ namespace Game.Ai.V2
                         result.EquipmentAssignmentsSucceeded++;
                 }
                 StrategicTempoBudget.RecordGenerationAttempt(player, ctx?.TurnNumber ?? 0);
+                result.Reservation.GenerationAttemptsUsed =
+                    StrategicTempoBudget.GenerationUsed(player, ctx?.TurnNumber ?? 0);
                 devDone++;
                 AiDebugLog.Write($"[AI][V2][Dev] {(up.ChallengeWon ? "CHALLENGE win" : "CHALLENGE loss")} — "
                     + $"{ustate.Demand.Explain} :: {up.Detail} "
@@ -499,6 +504,8 @@ namespace Game.Ai.V2
                 PreferredTraits = d.PreferredTraits,
                 MinimumFollowupAp = d.MinimumFollowupAp,
                 ScoutContext = d.ScoutContext,
+                DevOpportunity = d.DevOpportunity,
+                DevelopmentOperatorMode = d.DevelopmentOperatorMode,
                 EconomyResourceType = d.EconomyResourceType,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,

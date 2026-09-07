@@ -250,9 +250,8 @@ namespace Game.Ai.V2
         public const float devImportanceGarrison = 0.5f;
         public const float devImportanceHandCard = 0.9f;
 
-        // Development's OWN per-turn Challenge cap (confirmed separate from maxGenerationActionsPerTurn,
-        // the combat-capability generation cap — Development is a distinct resource budget). Each
-        // upgrade still records a StrategicTempoBudget generation attempt for telemetry.
+        // Development's local sub-cap. Every upgrade also consumes the shared
+        // maxGenerationActionsPerTurn budget; the effective limit is the tighter remaining cap.
         public const int maxDevelopmentUpgradesPerTurn = 2;
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
 
