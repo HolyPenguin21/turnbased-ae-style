@@ -629,7 +629,7 @@ MonoBehaviour:
   - id: 14
     displayName: LI Ash Runner
     art: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
-    detailArt: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
+    detailArt: {fileID: 21300000, guid: 90ab0daf85ccba5458429b9c63be44a2, type: 3}
     faction: 4
     cardType: 1
     apCost: 1
