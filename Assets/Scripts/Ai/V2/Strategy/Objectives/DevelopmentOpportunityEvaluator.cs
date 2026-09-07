@@ -58,6 +58,7 @@ namespace Game.Ai.V2
         public float AlternativeValue;       // A_total — re-scored each Phase-A round
         public float Ev;
         public float ExpectedApCost;
+        public float ResourceCostValue;
         public float BaseValue;
         public string Explain = "";
     }
@@ -99,11 +100,20 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                int completeAp = ResearchProductionSystem.AttemptApCost(best.Card)
+                                 + Mathf.Max(0, best.Card.activationApCost);
+                if (!root.CanSpendActionPoints(completeAp))
+                {
+                    AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} — REJECT "
+                        + $"need {completeAp} AP for Challenge + attach");
+                    continue;
+                }
+
                 Score(best, snap, root, hand);
                 string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
                 AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
-                    + $"apCost={best.ExpectedApCost:0.##} EV={best.Ev:0.00} "
+                    + $"resCost={best.ResourceCostValue:0.##} apCost={best.ExpectedApCost:0.##} EV={best.Ev:0.00} "
                     + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
                 if (best.Ev <= AiConfigV2.devEvMargin)
                     continue;
@@ -143,7 +153,8 @@ namespace Game.Ai.V2
             op.ExpectedApCost = challengeAp + expectedAttachAp;
 
             op.AlternativeValue = aTotal;
-            op.Ev = op.SuccessChance * op.ExpectedGain - aTotal
+            op.ResourceCostValue = StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost);
+            op.Ev = op.SuccessChance * op.ExpectedGain - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }
@@ -250,6 +261,7 @@ namespace Game.Ai.V2
             foreach (CardData c in hand.Hand)
             {
                 if (c?.Definition == null || c.Definition.cardType != CardType.Unit) continue;
+                if (!root.CanSpendActionPoints(c.EffectivePlayApCost)) continue;
                 ResourceCost cost = c.EffectivePlayResourceCost;
                 if (cost != null && !cost.CanAfford(root)) continue;
                 best = Mathf.Max(best, AiPower.ToPowerUnit(c.Definition).BasePower);

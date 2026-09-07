@@ -30,10 +30,9 @@ namespace Game.Ai
         // (AiHandRegistry can't reach the scene, so the value is pushed in on construction — see
         // AiHandRegistry.GetOrCreate / AiTurnController.RunTurn). Defaults to CardHandUI's own
         // default of 10 so a hand created before that push still caps somewhere sane. This is a
-        // real data invariant now (2026-08-28 P1, project owner's own report — Vashti twice ended a
-        // turn with hand=11): DrawOne itself physically refuses to overflow it, so Hand.Count >
-        // Capacity is unreachable through any AI draw/deploy path, not just the Development planner's
-        // own HasFreeSlot pre-check. Private setter — pushed in only via the constructor or
+        // real draw invariant now: DrawOne itself physically refuses to overflow it. Produced
+        // Research/Production cards are the intentional exception and enter through AddCard, so
+        // Hand.Count may remain above Capacity until enough cards are played. Private setter — pushed in only via the constructor or
         // SetCapacity, never assigned field-style from outside.
         public int Capacity { get; private set; } = 10;
 

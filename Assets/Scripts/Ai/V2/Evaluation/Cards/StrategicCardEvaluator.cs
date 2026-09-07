@@ -505,6 +505,8 @@ namespace Game.Ai.V2
             CardDefinition def = card?.Definition;
             IntendedRole role;
             float apCost = card != null ? card.EffectivePlayApCost : 0f;
+            if (generation != null)
+                apCost += ResearchProductionSystem.AttemptApCost(generation.CardDef);
             float resSum = card != null ? ResourceCostSum(card.EffectivePlayResourceCost) : 0f;
             if (generation?.CardDef?.resourceCost != null)
                 resSum += ResourceCostSum(generation.CardDef.resourceCost);
@@ -607,7 +609,7 @@ namespace Game.Ai.V2
         {
             if (plan == null) return 0f;
             return AiConfigV2.stratCardApCostWeight * plan.ApCost
-                   + AiConfigV2.stratChainResCostWeight * ResourceCostSum(plan.ResCost)
+                   + StrategicResourceCostValue(plan.ResCost)
                    + ChainStepPenalty(plan.Kind);
         }
 
@@ -1257,6 +1259,9 @@ namespace Game.Ai.V2
             if (attachedEquipment?.equipment == null) return baseList;
             return EquipmentSystem.EffectiveAbilities(baseList, attachedEquipment.equipment);
         }
+
+        internal static float StrategicResourceCostValue(ResourceCost c) =>
+            AiConfigV2.stratChainResCostWeight * ResourceCostSum(c);
 
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;

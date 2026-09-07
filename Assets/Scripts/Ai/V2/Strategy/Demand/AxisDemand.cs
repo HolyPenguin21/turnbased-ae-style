@@ -1,3 +1,4 @@
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 
@@ -105,6 +106,10 @@ namespace Game.Ai.V2
         // which offering, which recipient, EV, stake. Set by DevelopmentDemands. Phase A runs this
         // verbatim (Challenge -> mint -> attach), it does NOT re-pick.
         public DevelopmentOpportunity DevOpportunity;
+
+        // DEVELOPMENT OPERATOR: exact facility mode whose role capability is missing.
+        // TargetHex alone is ambiguous when one Base carries both Research and Production.
+        public ResearchProductionMode? DevelopmentOperatorMode;
 
         // --- Identity extensions (2026-08-31 review follow-up) --------------------------------
         // ECONOMY: the resource type this EconomicInfrastructure demand is about. Fulfillment must

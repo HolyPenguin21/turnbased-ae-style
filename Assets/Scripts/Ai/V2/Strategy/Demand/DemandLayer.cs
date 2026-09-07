@@ -757,7 +757,6 @@ namespace Game.Ai.V2
             // Production need DIFFERENT hero abilities (Researcher vs Assembler), so a staffed b_Lab
             // must NOT suppress the b_Factory operator demand — each unstaffed mode gets its own.
             DevelopmentReadiness rd = s.Development;
-            bool stagedOperator = false;
             if (rd != null && rd.Facilities != null)
             {
                 foreach (ResearchProductionMode mode in new[]
@@ -781,7 +780,6 @@ namespace Game.Ai.V2
                     bool haveCard = mode == ResearchProductionMode.Research
                         ? rd.ResearcherCardInHand
                         : rd.AssemblerCardInHand;
-                    stagedOperator = true;
                     AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({at.Q},{at.R}) "
                         + $"capability=DevelopmentOperator mode={mode} desired=1 "
                         + $"reason={(haveCard ? "unstaffed_facility_operator_card_in_hand" : "unstaffed_facility_no_operator_card_yet")}");
@@ -793,15 +791,14 @@ namespace Game.Ai.V2
                         RequiredTraits = TraitPreference.None,
                         MinimumFollowupAp = 0f,
                         TargetHex = at,
+                        DevelopmentOperatorMode = mode,
                         Value = 45f * devScale,
                         Explain = $"facility @({at.Q},{at.R}) has no {mode} operator — "
                             + "Development axis cannot run a Challenge until a qualifying hero stands on it",
                     };
                 }
             }
-            if (stagedOperator)
-                yield break;
-
+            // An unstaffed mode must not suppress real opportunities from another ready mode.
             int emitted = 0;
             if (devOpportunities != null)
                 foreach (DevelopmentOpportunity op in devOpportunities)

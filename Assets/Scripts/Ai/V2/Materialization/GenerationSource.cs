@@ -70,7 +70,8 @@ namespace Game.Ai.V2
                         .Where(c => c != null)
                         .OrderBy(c => c.displayName, System.StringComparer.Ordinal))
                     {
-                        string cardKey = useKey + "|" + card.displayName;
+                        string cardKey = useKey + "|"
+                            + $"{(int)card.faction}:{card.id}:{card.displayName}";
                         if (triedCardKeys != null && triedCardKeys.Contains(cardKey))
                             continue;
                         if (!ResearchProductionSystem.CanAffordCard(root, card))
@@ -98,10 +99,20 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Stable within a turn — a hero object is identity-stable, and hero names are unique in
-        // practice. The hash fallback keeps the key well-formed for an unnamed unit.
-        public static string StableHeroKey(UnitData hero) =>
-            hero == null ? "?" : (!string.IsNullOrEmpty(hero.Name) ? hero.Name : hero.GetHashCode().ToString());
+        // Stable, collision-free identity for an eligible on-map hero. Names are display data and
+        // may repeat across copies, so use the owning army id plus authoritative member ordinal.
+        public static string StableHeroKey(UnitData hero)
+        {
+            if (hero == null)
+                return "?";
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(hero.Owner).OrderBy(a => a.Id))
+            {
+                int memberIndex = army.Members.IndexOf(hero);
+                if (memberIndex >= 0)
+                    return $"{army.Id}:{memberIndex}:{hero.Name ?? "?"}";
+            }
+            return $"unplaced:{hero.Name ?? "?"}";
+        }
 
         // Source-level resource gate: do not offer a card whose cost would consume resources
         // already reserved elsewhere. AI-MGR-02 §P1.5 — the canonical "spendable" is the SAME one
