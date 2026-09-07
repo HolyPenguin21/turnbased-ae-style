@@ -907,8 +907,9 @@ namespace Game.Map
             // -> open modal. Only THIS hero loses Stealth (other hidden Researchers on the hex
             // stay hidden); a hidden hero still passes eligibility and still shows the Research
             // button (FindActor never filtered on IsHidden). Never rolled back: closing the modal
-            // without Create, insufficient resources, a full hand, a lost or cancelled Challenge
-            // all leave the hero revealed. Production is intentionally not included in this rule.
+            // without Create, insufficient AP/resources, or a lost/cancelled Challenge all leave
+            // the hero revealed. Hand capacity does not block produced output. Production is
+            // intentionally not included in this rule.
             ResearchProductionSystem.ApplyResearchReveal(mode, hero);
 
             _rpTransactionActive = false;
