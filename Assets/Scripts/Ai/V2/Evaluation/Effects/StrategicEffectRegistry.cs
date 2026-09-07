@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         RecurringResource,  // BaseFit scaled by economy insecurity (recurring AP income, …)
         GlobalRecurringResource, // AI-MGR — a PlayerGlobal per-turn resource yield (ApBonus today).
                                  // Value is fully DYNAMIC (yield x horizon x futureOpportunity x
-                                 // marginalResourceUtility x expectedRealisation x saturation) — see
+                                 // marginalResourceUtility x carrierPersistence x saturation) — see
                                  // GlobalRecurringValue. BaseFit is IGNORED; GlobalYieldPerTurn +
                                  // GlobalResource carry the semantics.
         EnemyThreatScaled,  // BaseFit scaled by the matching enemy-threat magnitude (AA<->air, AT<->armour)
@@ -180,6 +180,8 @@ namespace Game.Ai.V2
     // StrategicUseScoreBreakdown axis, so nothing is double-counted and every axis is reachable.
     internal readonly struct EffectContribution
     {
+        // TARGET / ROLE-DEPENDENT contributions — the evaluator scales these by placement / target-
+        // hex fit where it does that (RoleFit in Phase A today).
         public readonly float RoleFit;
         public readonly float ImmediateTempo;
         public readonly float ThreatResponse;
@@ -187,7 +189,22 @@ namespace Game.Ai.V2
         public readonly float ForceGrowth;
         public readonly float Synergy;
 
-        public EffectContribution(float roleFit, float tempo, float threat, float gap, float grow, float syn)
+        // AI-MGR — PlayerGlobal (target-INDEPENDENT) contributions, one term per breakdown axis so a
+        // PlayerGlobal effect still honours its descriptor's EffectField: ApBonus -> GlobalRoleFit
+        // today; a future +draw/turn / global force-growth / global tempo effect lands in its own
+        // axis with ZERO evaluator edits. Priced ONCE per card and added to the matching bd.* term
+        // AFTER any target multiplier — PlayerGlobal means "target-independent", not "is RoleFit".
+        public readonly float GlobalRoleFit;
+        public readonly float GlobalImmediateTempo;
+        public readonly float GlobalThreatResponse;
+        public readonly float GlobalCapabilityGap;
+        public readonly float GlobalForceGrowth;
+        public readonly float GlobalSynergy;
+
+        public EffectContribution(
+            float roleFit, float tempo, float threat, float gap, float grow, float syn,
+            float globalRoleFit, float globalTempo, float globalThreat, float globalGap,
+            float globalGrow, float globalSyn)
         {
             RoleFit = roleFit;
             ImmediateTempo = tempo;
@@ -195,6 +212,12 @@ namespace Game.Ai.V2
             CapabilityGap = gap;
             ForceGrowth = grow;
             Synergy = syn;
+            GlobalRoleFit = globalRoleFit;
+            GlobalImmediateTempo = globalTempo;
+            GlobalThreatResponse = globalThreat;
+            GlobalCapabilityGap = globalGap;
+            GlobalForceGrowth = globalGrow;
+            GlobalSynergy = globalSyn;
         }
     }
 
@@ -267,6 +290,12 @@ namespace Game.Ai.V2
         // in [effectRecurringOpportunityFloor .. 1] and is state-driven (NOT rising with TurnNumber —
         // an early persistent source keeps at least as much future value as a late one).
         public readonly ApActionEconomySnapshot ApEconomy;
+        // AI-MGR — owner-aggregated AP action-economy read (WorldSnapshot.ApWorkload), resolved once
+        // here so every consumer prices the recurring-AP effect off the SAME number. Falls back to a
+        // deliberately-discounted structural estimate when no owner aggregation ran (sim / bare
+        // snapshot) — see ResolveMarginalApUtility / ResolveUsefulApDemand.
+        public readonly float EffectiveMarginalApUtility;   // [0..1] raw ramp — consumers apply their own floor
+        public readonly float EffectiveUsefulApDemand;      // AP the AI could still usefully spend this turn
         public readonly float RecurringFutureOpportunity;
         public readonly int TurnNumber;
 
@@ -282,6 +311,8 @@ namespace Game.Ai.V2
             Plan = plan;
             TurnNumber = snap?.TurnNumber ?? 0;
             ApEconomy = snap?.Self?.ApEconomy;
+            EffectiveMarginalApUtility = ResolveMarginalApUtility(snap);
+            EffectiveUsefulApDemand = ResolveUsefulApDemand(snap);
             RecurringIncomeWeight = snap?.Economy != null
                 ? 1f - Mathf.Clamp01(snap.Economy.EconomicSecurity)
                 : 0.5f;
@@ -327,6 +358,39 @@ namespace Game.Ai.V2
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);
         }
 
+        // AI-MGR — the ONE resolution point for "how valuable is one more AP/turn RIGHT NOW".
+        // Prefers the owner-aggregated WorldSnapshot.ApWorkload (ApWorkloadAggregator); when that is
+        // absent (a snapshot that never went through the pipeline stage — sims, bare tests) it falls
+        // back to the raw STRUCTURAL demand components, scaled by apStructuralDemandConfidence because
+        // structural workload is only an upper bound, never proof every action is useful.
+        internal static float ResolveMarginalApUtility(WorldSnapshot snap)
+        {
+            ApWorkloadAssessment apw = snap?.ApWorkload;
+            if (apw != null)
+                return Mathf.Clamp01(apw.MarginalApUtility);
+
+            ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
+            if (ape == null)
+                return 0.5f;
+            float ramp = Curves.Ramp(StructuralApDemand(ape) / Mathf.Max(1f, ape.BaseActionPoints),
+                AiConfigV2.apMarginalUtilRampLo, AiConfigV2.apMarginalUtilRampHi);
+            return Mathf.Clamp01(ramp * AiConfigV2.apStructuralDemandConfidence);
+        }
+
+        internal static float ResolveUsefulApDemand(WorldSnapshot snap)
+        {
+            ApWorkloadAssessment apw = snap?.ApWorkload;
+            if (apw != null)
+                return Mathf.Max(0f, apw.UsefulApDemand);
+
+            ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
+            return ape == null ? 0f : StructuralApDemand(ape) * AiConfigV2.apStructuralDemandConfidence;
+        }
+
+        private static float StructuralApDemand(ApActionEconomySnapshot ape) =>
+            ape.EstimatedArmyApDemand + ape.EstimatedCardApDemand
+            + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand;
+
         // AI-MGR §5 — how much of the bounded recurring horizon a persistent source deployed NOW can
         // still realistically pay back. Driven by WORLD STATE (room to grow force, map left to
         // discover, whether AP is usable at all) with only a WEAK turn-number fallback — it must NOT
@@ -343,9 +407,7 @@ namespace Game.Ai.V2
             float mapRoom = snap.MapKnowledge != null
                 ? Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac)
                 : 0.5f;
-            float actionRoom = snap.Self.ApEconomy != null
-                ? Mathf.Clamp01(snap.Self.ApEconomy.MarginalApUtility)
-                : 0.5f;
+            float actionRoom = ResolveMarginalApUtility(snap);
             float lateFallback = 1f - AiConfigV2.effectRecurringLateStageWeakWeight
                 * Curves.Ramp(snap.TurnNumber,
                     AiConfigV2.effectRecurringStageRampLo, AiConfigV2.effectRecurringStageRampHi);
@@ -546,7 +608,7 @@ namespace Game.Ai.V2
                     // Persistent / RecurringResource effect: it raises the AP available every
                     // following turn, so its value is the DYNAMIC extra strategic opportunity that
                     // creates in the CURRENT game state (yield x horizon x futureOpportunity x
-                    // marginalApUtility x expectedRealisation x saturation — see GlobalRecurringValue),
+                    // marginalApUtility x carrierPersistence x saturation — see GlobalRecurringValue),
                     // never a flat "+0.75 because the ability is present". Descriptor-driven and
                     // carrier-agnostic: the SAME row prices it on a Hero, Unit, Base, Facility or a
                     // generated card. ONE authoritative contribution (RoleFit); nothing re-adds it
@@ -637,6 +699,10 @@ namespace Game.Ai.V2
         {
             effectDetail = null;
             float roleFit = 0f, tempo = 0f, threat = 0f, gap = 0f, grow = 0f, syn = 0f;
+            // AI-MGR — PlayerGlobal (target-independent) value, kept SEPARATE per axis so the
+            // descriptor's EffectField still decides where it lands. The evaluator adds these AFTER
+            // any target multiplier.
+            float gRoleFit = 0f, gTempo = 0f, gThreat = 0f, gGap = 0f, gGrow = 0f, gSyn = 0f;
 
             void Add(EffectField field, float v)
             {
@@ -651,6 +717,19 @@ namespace Game.Ai.V2
                 }
             }
 
+            void AddGlobal(EffectField field, float v)
+            {
+                switch (field)
+                {
+                    case EffectField.RoleFit: gRoleFit += v; break;
+                    case EffectField.ImmediateTempo: gTempo += v; break;
+                    case EffectField.ThreatResponse: gThreat += v; break;
+                    case EffectField.CapabilityGap: gGap += v; break;
+                    case EffectField.ForceGrowth: gGrow += v; break;
+                    case EffectField.Synergy: gSyn += v; break;
+                }
+            }
+
             List<StrategicEffect> all = Resolve(effectiveAbilities, effectiveMoveMax);
 
             // AI-MGR — PlayerGlobal effects are NOT role/placement contributions: they are priced
@@ -659,12 +738,12 @@ namespace Game.Ai.V2
             // share a StackingKey are reduced together.
             List<StrategicEffect> global = all.Where(e => e.Scope == EffectScope.PlayerGlobal).ToList();
             foreach (StrategicEffect e in global.Where(e => e.StackingKey == null))
-                Add(e.Field, GlobalRecurringValue(e, ctx, ref effectDetail));
+                AddGlobal(e.Field, GlobalRecurringValue(e, ctx, ref effectDetail));
             foreach (IGrouping<string, StrategicEffect> g in global
                          .Where(e => e.StackingKey != null).GroupBy(e => e.StackingKey))
             {
                 StrategicEffect e = g.First();
-                Add(e.Field, EffectEvaluationContext.StackedTotal(
+                AddGlobal(e.Field, EffectEvaluationContext.StackedTotal(
                     e.Stacking, GlobalRecurringValue(e, ctx, ref effectDetail), g.Count()));
             }
 
@@ -694,7 +773,8 @@ namespace Game.Ai.V2
             // — the same value on every competing role candidate; only one is ever executed.
             syn += ctx.IncomingAuraSynergy;
 
-            return new EffectContribution(roleFit, tempo, threat, gap, grow, syn);
+            return new EffectContribution(roleFit, tempo, threat, gap, grow, syn,
+                gRoleFit, gTempo, gThreat, gGap, gGrow, gSyn);
         }
 
         // The roles this ability/stat set already COVERS for standing-force readiness.
@@ -728,8 +808,12 @@ namespace Game.Ai.V2
         //
         //      value = perUnitTurnValue x yield x (horizon x futureOpportunity)
         //              x marginalResourceUtility        (can the AI actually spend it?  §6)
-        //              x expectedRealisation             (gen chance x carrier durability)
+        //              x carrierPersistence              (how durably the source stays in play)
         //              x saturationFactor                (base + existing + candidate vs usable  §8)
+        //
+        //  Generation risk (will the carrier card ever materialise?) is NOT owned here — it lives
+        //  once in StrategicCardEvaluator.Deployability. This registry answers "how good is the
+        //  effect IF the card is materialised".
         //
         //  Carrier-agnostic: identical on Hero / Unit / Base / Facility / generated card. ONE
         //  contribution — the caller adds it to exactly one EffectField. `detail` is the AiDebug
@@ -746,34 +830,25 @@ namespace Game.Ai.V2
             float future = ctx.RecurringFutureOpportunity;                          // [floor .. 1]
             float horizonTurns = AiConfigV2.effectRecurringHorizonTurns * future;   // effective pay-back turns
 
-            float marginal = ape != null
-                ? Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f, Mathf.Clamp01(ape.MarginalApUtility))
-                : 0.5f;
+            float marginal = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f, ctx.EffectiveMarginalApUtility);
 
-            float realisation = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
-                Mathf.Clamp01(GenChanceOf(ctx) * CarrierDurabilityOf(ctx)));
+            float persistence = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
+                Mathf.Clamp01(CarrierDurabilityOf(ctx)));
 
-            float saturation = SaturationFactor(ape, yield);
+            float saturation = SaturationFactor(ape, ctx.EffectiveUsefulApDemand, yield);
 
             float raw = AiConfigV2.effectGlobalRecurringApPerTurnValue * yield * horizonTurns;
             float value = Mathf.Min(AiConfigV2.effectGlobalRecurringValueCap,
-                raw * marginal * realisation * saturation);
+                raw * marginal * persistence * saturation);
 
             string line =
                 $"effect=ApBonus scope=PlayerGlobal yield=+{yield:0.#}AP/turn "
                 + $"horizon={AiConfigV2.effectRecurringHorizonTurns}x future={future:0.00} "
                 + $"apMarginalUtility={marginal:0.00} existingRecurringSources={(ape?.RecurringApSources ?? 0)} "
-                + $"saturation={saturation:0.00} realisation={realisation:0.00} effectValue={value:0.00}";
+                + $"saturation={saturation:0.00} persistence={persistence:0.00} effectValue={value:0.00}";
             detail = string.IsNullOrEmpty(detail) ? line : detail + " ; " + line;
             return value;
         }
-
-        // Probability the source actually materialises this turn — a generation chain can fail.
-        private static float GenChanceOf(in EffectEvaluationContext ctx)
-            => ctx.Plan?.Generation != null
-                ? Mathf.Lerp(AiConfigV2.stratChainGenerationChanceFloor, 1f,
-                    Mathf.Clamp01(ctx.Plan.Generation.SuccessChance))
-                : 1f;
 
         // How durably a recurring source stays in play once fielded: infrastructure (Base /
         // Facility / plan-less non-combat) is the most certain, a Hero less so, a Unit body least.
@@ -789,12 +864,13 @@ namespace Game.Ai.V2
         // §8 — diminishing marginal utility. Adding this source's yield on top of the AP the AI
         // ALREADY has: if that leaves idle AP (headroom above what it can usefully spend) the extra
         // yield is worth progressively less; and each recurring source ALREADY in play discounts the
-        // next one geometrically. 1 (no discount) when there is no ApEconomy read.
-        private static float SaturationFactor(ApActionEconomySnapshot ape, float yield)
+        // next one geometrically. 1 (no discount) when there is no ApEconomy read. `usefulApDemand`
+        // is the owner-aggregated figure resolved once on EffectEvaluationContext.
+        private static float SaturationFactor(ApActionEconomySnapshot ape, float usefulApDemand, float yield)
         {
             if (ape == null) return 1f;
             float projectedAvail = ape.BaseActionPoints + yield;
-            float headroom = projectedAvail - ape.EstimatedUsefulApDemand;
+            float headroom = projectedAvail - usefulApDemand;
             float f = headroom <= 0f
                 ? 1f
                 : Mathf.Clamp01(1f - headroom / Mathf.Max(1f, yield * 2f));

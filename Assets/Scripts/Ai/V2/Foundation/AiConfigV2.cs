@@ -1028,7 +1028,8 @@ namespace Game.Ai.V2
         //  A PlayerGlobal / Persistent / RecurringResource effect (ApBonus is the first) is NO
         //  LONGER a flat "+0.75 because the ability is present". Its value is
         //     perTurnValue x yield x (horizon x futureOpportunity) x marginalApUtility
-        //         x expectedRealisation x saturation
+        //         x carrierPersistence x saturation
+        //  (generation risk is owned once by StrategicCardEvaluator.Deployability, never here)
         //  computed from snapshot-pure state (SelfSnapshot.ApEconomy). All descriptor-driven — a
         //  new global recurring effect (Energy/turn, draw/N turns, movement budget) is one more
         //  StrategicEffect row, no evaluator edit. Meant to be tuned against real AiDebug runs.
@@ -1040,7 +1041,7 @@ namespace Game.Ai.V2
         public const float effectGlobalRecurringApPerTurnValue  = 0.06f;// strategic RoleFit units earned per +1 usable AP/turn, per horizon turn
         public const float effectGlobalRecurringValueCap        = 1.6f; // hard cap on ONE global recurring effect's contribution
         public const float effectRecurringSourceDiminish        = 0.72f;// each ApBonus source ALREADY in play multiplies the next one's value by this (diminishing multi-source)
-        public const float effectRecurringRealisationFloor      = 0.30f;// expectedRealisation = Lerp(floor, 1, genChance x carrierDurability)
+        public const float effectRecurringRealisationFloor      = 0.30f;// carrierPersistence = Lerp(floor, 1, carrierDurability) — generation risk lives in StrategicCardEvaluator.Deployability
         public const float effectRecurringCarrierDurabilityUnit = 0.80f;// a recurring source riding a Unit body is less certain to persist than one on a Base/Facility
         public const float effectRecurringCarrierDurabilityHero = 0.90f;// ...a Hero is between a Unit and infrastructure
         public const float effectRecurringLateStageWeakWeight   = 0.25f;// how much the WEAK turn-number fallback is allowed to pull futureOpportunity down late
@@ -1060,13 +1061,17 @@ namespace Game.Ai.V2
         public const float apMarginalUtilFloor  = 0.10f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
         public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
         public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
+        public const float apStrategicCardApProxy = 1f;    // AP per still-unmet card-materialised AxisDemand folded into useful AP demand
+        // ApWorkloadAggregator degraded path only (a snapshot that never went through the pipeline's
+        // owner-aggregation stage — sims, bare tests): structural workload is an UPPER BOUND, never
+        // proof every action is useful, so the fallback marginal/useful demand is scaled down.
+        public const float apStructuralDemandConfidence = 0.60f;
 
         // Hero Command marginal-capacity valuation — REPLACES commandRating * heroRoleCommandWeight
         // inside HeroLeadershipFit. Extra Command is only worth something when the AI actually has
         // bodies to fill the slots it unlocks (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy).
         public const float heroCommandMarginalSlotValue = 0.9f;// value of ONE extra battle slot this hero's Command unlocks AND the AI can fill
         public const int   heroCommandMarginalMaxSlots  = 4;   // cap on counted extra slots
-        public const int   heroCommandDemandBodiesCap   = 12;  // cap on "bodies the AI could realistically field under this hero"
 
         // review-r4 finding 6 — the two Hold terms spec §3 lists but the impl was still missing.
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play

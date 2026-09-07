@@ -277,19 +277,23 @@ namespace Game.Ai.V2
 
             // P1 ARCH — ALL ability-derived value (AntiAir/AntiArmor/Support today; AoE/regen/aura/
             // summon later) comes from the registry as a per-axis EffectContribution, added to the
-            // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core.
+            // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core; the
+            // PlayerGlobal terms (ec.Global*) are target-INDEPENDENT — added AFTER the fit multiplier.
             var ectx = new EffectEvaluationContext(snap, plan);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
                 role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
-            bd.RoleFit = fit * (roleFitCore + ec.RoleFit);
-            bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind) + ec.ImmediateTempo;
+            bd.RoleFit = fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
+            bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
+                + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan) + ec.Synergy;
-            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline) + ec.ForceGrowth;
-            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline) + ec.CapabilityGap;
-            bd.ThreatResponseValue = ec.ThreatResponse;
+            bd.SynergyValue = SynergyValue(plan) + ec.Synergy + ec.GlobalSynergy;
+            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline)
+                + ec.ForceGrowth + ec.GlobalForceGrowth;
+            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline)
+                + ec.CapabilityGap + ec.GlobalCapabilityGap;
+            bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
 
             float genChance = GenerationChance(plan);
             bd.Deployability = -(1f - genChance);
@@ -391,18 +395,21 @@ namespace Game.Ai.V2
                 role, projected, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
-            bd.RoleFit = roleFitCore + ec.RoleFit;
+            // Phase B has no target-fit multiplier, so local + PlayerGlobal (ec.Global*) simply add
+            // into the same breakdown axis; the descriptor's EffectField still routes each.
+            bd.RoleFit = roleFitCore + ec.RoleFit + ec.GlobalRoleFit;
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
             // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
             bd.ImmediateTempo = traits + SurplusPlacementBonus(plan.Deploy.Kind, role)
-                + ec.ImmediateTempo;
+                + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
-                : SurplusCapabilityGap(role, inv, baseline, snap)) + ec.CapabilityGap;
+                : SurplusCapabilityGap(role, inv, baseline, snap)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
-                ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline)) + ec.ForceGrowth;
-            bd.ThreatResponseValue = ec.ThreatResponse;
-            bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy;
+                ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
+                + ec.ForceGrowth + ec.GlobalForceGrowth;
+            bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
+            bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy + ec.GlobalSynergy;
             bd.Deployability = -(1f - GenerationChance(plan));
             bd.ResourceEfficiency = -ResourceCost(plan);
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
@@ -531,12 +538,14 @@ namespace Game.Ai.V2
             var ncCtx = new EffectEvaluationContext(snap);
             EffectContribution ncEc = StrategicEffectRegistry.Contributions(
                 role, ncAbilities, def != null ? def.moveMax : 0, ncCtx, out string ncEffDetail);
-            bd.RoleFit += ncEc.RoleFit;
-            bd.ImmediateTempo += ncEc.ImmediateTempo;
-            bd.CapabilityGapValue += ncEc.CapabilityGap;
-            bd.ForceGrowthValue += ncEc.ForceGrowth;
-            bd.ThreatResponseValue += ncEc.ThreatResponse;
-            bd.SynergyValue += ncEc.Synergy;
+            // No target-fit multiplier in the non-combat lane — local and PlayerGlobal (ncEc.Global*)
+            // add into the same axis, each routed by its descriptor's EffectField.
+            bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit;
+            bd.ImmediateTempo += ncEc.ImmediateTempo + ncEc.GlobalImmediateTempo;
+            bd.CapabilityGapValue += ncEc.CapabilityGap + ncEc.GlobalCapabilityGap;
+            bd.ForceGrowthValue += ncEc.ForceGrowth + ncEc.GlobalForceGrowth;
+            bd.ThreatResponseValue += ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
+            bd.SynergyValue += ncEc.Synergy + ncEc.GlobalSynergy;
             bd.EffectDetail = ncEffDetail;
 
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
@@ -856,7 +865,11 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  HERO FITNESS  — real characteristics only, no flat class bonus/penalty (P1.5)
         // =======================================================================================
-        private static float HeroLeadershipScore(CardDefinition def)
+        // Classification-only heuristic.
+        // Never contributes directly to strategic card utility.
+        // Command utility itself is evaluated exclusively through
+        // HeroCommandMarginalValue().
+        private static float HeroRoleClassificationScore(CardDefinition def)
         {
             if (def == null || def.cardType != CardType.Hero)
                 return 0f;
@@ -890,9 +903,13 @@ namespace Game.Ai.V2
                 0f, AiConfigV2.heroLeadershipFitCap);
         }
 
-        // §11 — the marginal value of THIS hero's Command in the projected deployment context. A
-        // rival hero with +1 Command scores higher ONLY when demandBodies actually exceeds the lower
-        // Command — i.e. the extra slot is real AND fillable now.
+        // §11 / review-r3 P1.4 — the marginal value of THIS hero's Command in the projected
+        // deployment context, measured against DESTINATION-LOCAL fillable capacity only. Global body
+        // counts (armies elsewhere, hand) are NOT fillers: a rival hero with +1 Command scores
+        // higher ONLY when THIS destination army already sits at its heroless capacity and the
+        // hero's Command genuinely lifts the bottleneck. Until an authoritative near-term legal
+        // filler projection exists it is safer to slightly under-value Command than to re-introduce
+        // phantom capacity.
         private static float HeroCommandMarginalValue(CardDefinition def, MaterializationPlan plan,
             WorldSnapshot snap, out string detail)
         {
@@ -902,16 +919,49 @@ namespace Game.Ai.V2
 
             int nominalCap = DestinationNominalCapacity(plan, snap, out bool destHasHero);
             int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, destHasHero, def);
-            int demandBodies = Mathf.Clamp(1 + (snap?.Self?.DeployableCombatBodies ?? 0),
-                1, AiConfigV2.heroCommandDemandBodiesCap);
-            int fillable = Mathf.Min(projectedCap, demandBodies);
-            int usableExtraSlots = Mathf.Clamp(fillable - nominalCap, 0, AiConfigV2.heroCommandMarginalMaxSlots);
+
+            int occupiedBefore = DestinationOccupiedSlots(plan, snap);
+            // The hero itself consumes one battle slot; no speculative future fillers.
+            int requiredWithoutFutureFillers = occupiedBefore + 1;
+
+            int usableBefore = Mathf.Min(nominalCap, requiredWithoutFutureFillers);
+            int usableAfter = Mathf.Min(projectedCap, requiredWithoutFutureFillers);
+            int usableExtraSlots = Mathf.Clamp(
+                usableAfter - usableBefore, 0, AiConfigV2.heroCommandMarginalMaxSlots);
             float value = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
 
-            detail = $"command={def.commandRating} nominalCap={nominalCap} "
-                   + $"projectedRequiredCapacity={demandBodies} projectedCap={projectedCap} "
+            detail = $"command={def.commandRating} nominalCap={nominalCap} projectedCap={projectedCap} "
+                   + $"occupiedBefore={occupiedBefore} requiredCapacity={requiredWithoutFutureFillers} "
                    + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
             return value;
+        }
+
+        // Battle-slot occupancy of the plan's projected deployment DESTINATION army only — a pure
+        // snapshot read, NOT a second capacity rule (CardPlayExecutor.ProjectedCapacityAfterDeploy
+        // stays the single authoritative capacity calculator). A NewArmy destination is empty.
+        private static int DestinationOccupiedSlots(MaterializationPlan plan, WorldSnapshot snap)
+        {
+            if (plan == null)
+                return 0;
+
+            switch (plan.Deploy.Kind)
+            {
+                case DeploymentKind.ExistingArmy:
+                case DeploymentKind.Garrison:
+                case DeploymentKind.ReusableShell:
+                {
+                    int armyId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
+                    if (snap?.Self?.Armies != null)
+                        foreach (ArmySnapshot a in snap.Self.Armies)
+                            if (a != null && a.ArmyId == armyId)
+                                return a.OccupiedBattleSlots;
+                    return 0;
+                }
+
+                case DeploymentKind.NewArmy:
+                default:
+                    return 0;
+            }
         }
 
         // Nominal (heroless) battle-slot capacity of a plan's projected deployment destination —
@@ -958,7 +1008,7 @@ namespace Game.Ai.V2
         {
             CardDefinition def = PlanBaseDef(plan);
             return HeroHasSupportVocation(def)
-                && HeroLeadershipScore(def) < AiConfigV2.heroRoleFlexibleCombatFloor;
+                && HeroRoleClassificationScore(def) < AiConfigV2.heroRoleFlexibleCombatFloor;
         }
 
         // =======================================================================================

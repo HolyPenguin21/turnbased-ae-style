@@ -66,6 +66,9 @@ namespace Game.Ai.V2
                 Known = prev.Known,
                 TrueWorld = prev.TrueWorld,
                 MapKnowledge = prev.MapKnowledge,
+                // Turn-level owner-aggregated read — carried forward, not recomputed on a mid-turn
+                // operational refresh (its owner inputs, e.g. the demand set, are not available here).
+                ApWorkload = prev.ApWorkload,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Economy = BuildEconomy(player, ctx, snap);
@@ -85,7 +88,7 @@ namespace Game.Ai.V2
             if (prev == null)
                 return Scan(player, root, hand, ctx);
 
-            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber };
+            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber, ApWorkload = prev.ApWorkload };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
@@ -302,11 +305,9 @@ namespace Game.Ai.V2
 
             float devDemand = self.HasDevFacility && self.HasDevOperator ? AiConfigV2.apDevActionApProxy : 0f;
             float airDemand = (self.AirborneReconWings + self.SpareAirObservationSorties) * AiConfigV2.apAirSortieApProxy;
-            float usefulDemand = armyApDemand + cardApDemand + devDemand + airDemand;
-            float avail = Mathf.Max(1f, self.ActionPoints);
-            float marginal = Curves.Ramp(usefulDemand / avail,
-                AiConfigV2.apMarginalUtilRampLo, AiConfigV2.apMarginalUtilRampHi);
 
+            // STRUCTURAL FACTS ONLY. WorldAnalysis does not decide which of these are useful/legal
+            // — that is ApWorkloadAggregator's job (owner-witnessed workload). No ramp here.
             self.ApEconomy = new ApActionEconomySnapshot
             {
                 BaseActionPoints = self.ActionPoints,
@@ -314,8 +315,10 @@ namespace Game.Ai.V2
                 RecurringApPerTurn = recurringApSources * UnitAbilities.ApBonusActionPointsPerSource,
                 UnactivatedActionableArmies = unactivatedArmies,
                 ApCostingHandActions = apCards,
-                EstimatedUsefulApDemand = usefulDemand,
-                MarginalApUtility = marginal,
+                EstimatedArmyApDemand = armyApDemand,
+                EstimatedCardApDemand = cardApDemand,
+                EstimatedDevelopmentApDemand = devDemand,
+                EstimatedAirApDemand = airDemand,
             };
             self.DeployableCombatBodies = nonHeroBodies;
         }

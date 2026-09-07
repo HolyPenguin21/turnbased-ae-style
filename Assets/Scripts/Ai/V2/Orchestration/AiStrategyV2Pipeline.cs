@@ -480,6 +480,23 @@ namespace Game.Ai.V2
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
+            // S1b. AI-MGR — owner-aggregated AP workload. WorldAnalysis only holds the structural
+            //      AP facts; the authoritative "how valuable is one more AP/turn" read is computed
+            //      here, once the owners (actionable armies, the demand set, Development, recon-air)
+            //      have spoken. Carried forward across every later WorldAnalysis.Refresh*.
+            snapshot.ApWorkload = ApWorkloadAggregator.Assess(snapshot, demands, player, ctx, root,
+                reconObjectives, activeIntents, actorCommitments);
+            {
+                ApWorkloadAssessment apw = snapshot.ApWorkload;
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: ap-workload — "
+                    + $"useful {apw.UsefulApDemand.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"marginal {apw.MarginalApUtility.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"(army {apw.ArmyActionableAp.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"card {apw.StrategicCardAp.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"dev {apw.DevelopmentAp.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"air {apw.AirSortieAp.ToString("0.0", CultureInfo.InvariantCulture)})");
+            }
+
             // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
             //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
             //     debits the requesting axis here; the mission allocator then seeds its slices from
