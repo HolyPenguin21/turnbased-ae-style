@@ -13,9 +13,8 @@ namespace Game.Ai.V2
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
-            float minStrength = float.MaxValue;
             float composition = 0f;
-            bool anyViable = false;
+            var formationStrengths = new List<float>();
 
             // §9 — formation-leadership bookkeeping. A "benched" hero sits in a garrison or a lone
             // hero container; a heroless viable field formation is only a fixable defect when such
@@ -50,8 +49,9 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // EmptyReusableArmy is a physical STARTING role. If the virtual plan fills that
-                // shell, it must immediately be evaluated like every other mutable field army.
+                // EmptyReusableArmy is neutral: once filled it is evaluated as a normal field
+                // formation, but while empty it contributes neither a defect nor a zero-strength
+                // entry that would pressure the planner to seed it.
                 if (!IsFieldContainer(meta) || !meta.CanChangeComposition || units.Count == 0)
                     continue;
 
@@ -64,10 +64,8 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.IsViable(units))
                 {
-                    anyViable = true;
                     float p = ReorgViability.EffectivePower(units);
-                    if (p < minStrength)
-                        minStrength = p;
+                    formationStrengths.Add(p);
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
@@ -88,9 +86,12 @@ namespace Game.Ai.V2
                 ? Math.Min(unledViableFields + supportLedWhileCombatBenched, benchedCombatCapable)
                 : 0;
 
-            float negMin = anyViable ? -minStrength : 0f;
+            // Threat-agnostic concentration objective: strongest legal formation first, then the
+            // next strongest from the remainder. The canonical AiPower model remains the only
+            // strength/composition source; Housekeeping introduces no enemy-aware tactical scalar.
+            formationStrengths.Sort((a, b) => b.CompareTo(a));
             return new Outcome(garrisonDeficit, legality, singles, nonViable, commandWaste,
-                formationDefect, negMin, -composition, s.Transfers.Count);
+                formationDefect, formationStrengths, -composition, s.Transfers.Count);
         }
 
         // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster
