@@ -124,7 +124,7 @@ namespace Game.Ai.V2
                 if (!go.Success)
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                    StampResources();
                     res.FailReason = go.FailReason;
                     return res;
                 }
@@ -157,7 +157,7 @@ namespace Game.Ai.V2
                 if (!EquipmentSystem.TryAttach(equipmentCard, baseCard, root, out string attachFail))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                    StampResources();
                     res.FailReason = $"attach failed ({attachFail})";
                     return res;
                 }
@@ -187,9 +187,12 @@ namespace Game.Ai.V2
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
             res.ApSpent = apStart - root.ActionPoints;
-            StampResources();
             if (play.StateChanged)
                 res.StateChanged = true;
+            // Stamp only after the deploy outcome has contributed to StateChanged. The old order
+            // missed the V2 state-version bump for a successful direct deploy with no preceding
+            // generation or attachment.
+            StampResources();
             res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)
