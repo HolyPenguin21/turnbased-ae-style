@@ -823,6 +823,7 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability: return IntendedRole.Scout;
                 case CapabilityKind.EconomicInfrastructure: return IntendedRole.Economy;
                 case CapabilityKind.DevelopmentInfrastructure: return IntendedRole.Development;
+                case CapabilityKind.DevelopmentOperator: return IntendedRole.Development;
                 default: return IntendedRole.CombatBody;
             }
         }
@@ -838,6 +839,9 @@ namespace Game.Ai.V2
                 roles.Add(IntendedRole.CombatBody);
                 roles.Add(IntendedRole.ForceGrowth);
             }
+            if (abilities != null && (abilities.Contains(UnitAbilities.Researcher)
+                                      || abilities.Contains(UnitAbilities.Assembler)))
+                roles.Add(IntendedRole.Development);
             // P1 ARCH — every ability/stat-derived role (AntiAir / AntiArmor / Support / MobileCombat
             // today) comes from the registry, off the SAME effective moveMax role-fit / readiness use
             // (a +MoveMax trinket that crosses the mobile threshold is now seen here too).
