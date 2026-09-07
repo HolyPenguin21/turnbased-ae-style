@@ -21,10 +21,11 @@ namespace Game.Map
         // the instant the coroutine that callback returned actually finishes.
         public sealed class StepResolutionOutcome
         {
-            // Input supplied by MoveRoutine: true when this is the final path step or the next
-            // step cannot be paid from the mover's remaining shared movement. Aviation uses this
-            // to keep entry AA per-step while delaying its own strike until the actual endpoint.
-            public bool IsTerminalStep;
+            // Supplied by MoveRoutine and evaluated by the resolver after any entry reaction has
+            // mutated the roster. This keeps terminality based on the actual surviving formation:
+            // losing the previous slowest aircraft to AA can change whether the next step is legal.
+            public System.Func<bool> CanContinueMovement;
+            public bool IsTerminalStep => CanContinueMovement == null || !CanContinueMovement();
             public bool StopMovement;
         }
 
@@ -220,9 +221,11 @@ namespace Game.Map
 
                 if (resolveStepAsync != null)
                 {
+                    int resolvedStepIndex = i;
                     var outcome = new StepResolutionOutcome
                     {
-                        IsTerminalStep = IsTerminalMovementStep(map, path, i, Data, members)
+                        CanContinueMovement = () => CanAffordNextMovementStep(
+                            map, path, resolvedStepIndex, Data, Data.Members)
                     };
                     yield return resolveStepAsync(previous, next, outcome);
                     // Data.Members is the SAME list `members` already points at — a reaction that
@@ -249,12 +252,12 @@ namespace Game.Map
         // Computes the endpoint from the same path, terrain and shared movement rules the next
         // loop iteration would use. Kept here, at the movement owner, so aviation does not
         // duplicate terrain/fuel-penalty accounting merely to decide whether it may strike.
-        private static bool IsTerminalMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
+        private static bool CanAffordNextMovementStep(HexMap map, List<HexCoord> path, int currentIndex,
             ArmyData army, List<UnitData> members)
         {
             if (map == null || path == null || currentIndex >= path.Count - 1
                 || army == null || members == null || members.Count == 0)
-                return true;
+                return false;
 
             HexCoord next = path[currentIndex + 1];
             map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
@@ -265,7 +268,7 @@ namespace Game.Map
             for (int i = 1; i < members.Count; i++)
                 if (AviationRules.EffectiveMoveCurrent(members[i]) < sharedMoveCurrent)
                     sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[i]);
-            return sharedMoveCurrent < nextCost;
+            return sharedMoveCurrent >= nextCost;
         }
 
         private IEnumerator StepTo(Vector3 targetPosition)
