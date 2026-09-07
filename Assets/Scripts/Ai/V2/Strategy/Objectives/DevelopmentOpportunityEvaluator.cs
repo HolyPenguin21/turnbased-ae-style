@@ -57,6 +57,7 @@ namespace Game.Ai.V2
         public float ExpectedGain;           // G — frozen once (recipient is structural)
         public float AlternativeValue;       // A_total — re-scored each Phase-A round
         public float Ev;
+        public float ExpectedApCost;
         public float BaseValue;
         public string Explain = "";
     }
@@ -102,7 +103,7 @@ namespace Game.Ai.V2
                 string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
                 AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
-                    + $"apCost={AiConfigV2.devRpApCost * AiConfigV2.devApValue:0.0} EV={best.Ev:0.00} "
+                    + $"apCost={best.ExpectedApCost:0.##} EV={best.Ev:0.00} "
                     + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
                 if (best.Ev <= AiConfigV2.devEvMargin)
                     continue;
@@ -136,10 +137,14 @@ namespace Game.Ai.V2
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
             float aTotal = AiConfigV2.devAlternativeWeight * surplusRetain
                 * BestAffordableHandUnitPower(hand, root);
-            float apCostValue = AiConfigV2.devRpApCost * AiConfigV2.devApValue;
+            // Challenge AP is certain; attach AP is paid only after a successful roll.
+            float challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
+            float expectedAttachAp = op.SuccessChance * Mathf.Max(0, op.Card.activationApCost);
+            op.ExpectedApCost = challengeAp + expectedAttachAp;
 
             op.AlternativeValue = aTotal;
-            op.Ev = op.SuccessChance * op.ExpectedGain - aTotal - apCostValue;
+            op.Ev = op.SuccessChance * op.ExpectedGain - aTotal
+                - op.ExpectedApCost * AiConfigV2.devApValue;
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }
 
