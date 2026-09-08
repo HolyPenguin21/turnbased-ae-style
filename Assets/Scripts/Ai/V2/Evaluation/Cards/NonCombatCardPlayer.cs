@@ -12,16 +12,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  NON-COMBAT SURPLUS CARD PLAY  (Strategy V2 — Strategic Manager Phase B, spec §5/§13)
     // ===========================================================================================
-    //  MaterializationCandidateBuilder.BestSurplus only ever bodies a Unit / Hero / solo-Recce
-    //  card (and its Equipment attachment). Aviation, Base, Facility and standalone Equipment
-    //  cards never produced a surplus candidate, so — even with Phase B running in every mode —
-    //  they sat in hand forever whenever no matching non-Recon demand reached Phase A. That made
-    //  "card type" the de-facto reason a legal card went unplayed, which §5/§13 forbids.
+    //  RankedSurplus owns Unit / Hero / solo-Recce materialization (and chained Equipment).
+    //  This peer lane owns Aviation, Base, Facility and standalone Equipment. Both enumerate their
+    //  complete legal alternatives before the common Phase-B arbiter ranks them.
     //
-    //  This is the missing lane. It enumerates every hand card the materialization chain cannot
-    //  body, checks it against the SAME canonical gameplay APIs the human UI / V1 AI use
-    //  (BuildingPlayExecutor -> InfrastructureActions, AviationActions.TryDeployFromCard,
-    //  EquipmentSystem), and hands StrategicManager.UseSurplus a fully-preflighted best play.
+    //  It enumerates every hand/generated card through a pure type router and checks it against
+    //  the SAME canonical gameplay APIs the human UI / V1 AI use (BuildingPlayExecutor ->
+    //  InfrastructureActions, AviationActions.TryDeployFromCard, EquipmentSystem), then hands
+    //  StrategicPhaseB the complete preflighted candidate set.
     //  Every rejection carries a real gameplay reason (no AP, no resources, no legal destination,
     //  no capacity, no host) — never "wrong card type" and never "ReconOnly".
     // ===========================================================================================
@@ -36,6 +34,9 @@ namespace Game.Ai.V2
             public HexCoord TargetHex;
             public UnitData EquipHost;   // Equipment only
             public float Score;
+            public float ApCost;
+            public ResourceCost ResCost;
+            public string StableKey;
             public string Explain;
             // AI-MGR-01 review-r4 finding 9b — set when this play must first MINT its card through a
             // Research/Production Challenge (Card is then a throwaway pre-mint stand-in; Execute
@@ -59,13 +60,16 @@ namespace Game.Ai.V2
             _ => NonCombatRole.Equipment,
         };
 
-        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayKind k, CardData card,
-            AiHandData hand, float bestEquipmentUpgrade, GenerationStep generation = null,
+        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
+            float apCost, ResourceCost resCost, GenerationStep generation = null,
             float? witnessedUsefulApDemand = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
-                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation, witnessedUsefulApDemand);
+                RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation,
+                witnessedUsefulApDemand, apCost, resCost,
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type));
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
@@ -105,14 +109,17 @@ namespace Game.Ai.V2
             NonCombatPlay best = null;
             foreach (NonCombatPlay p in EnumeratePlays(snap, player, root, hand, ctx, blocked, reservation,
                          witnessedUsefulApDemand))
-                if ((onlyKind == null || p.Kind == onlyKind.Value) && (best == null || p.Score > best.Score))
+                if ((onlyKind == null || p.Kind == onlyKind.Value)
+                    && (best == null || p.Score > best.Score
+                        || (System.Math.Abs(p.Score - best.Score) <= 0.0001f
+                            && string.CompareOrdinal(p.StableKey, best.StableKey) < 0)))
                     best = p;
             return best;
         }
 
         // AI-MGR-02 round 6 — every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
-        // BestPlay picks the highest-Score one; the reaction feasibility probe needs the whole set
+        // BestPlay is a convenience caller; Phase-B arbitration and reaction probes consume the whole set
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
@@ -178,6 +185,16 @@ namespace Game.Ai.V2
             if (def == null)
                 return null;
 
+            float playAp = def.isAviation ? CardCostRules.PlayAp(card) : card.EffectivePlayApCost;
+            float totalAp = playAp + (generation != null
+                ? ResearchProductionSystem.AttemptApCost(generation.CardDef) : 0f);
+            ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
+                generation?.CardDef?.resourceCost);
+            int handOrdinal = hand.Hand.IndexOf(card);
+            string sourceKey = generation != null
+                ? "gen:" + generation.CardKey
+                : $"hand:{handOrdinal}:{def.authoredKey ?? "?"}";
+
             if (def.isAviation)
             {
                 // §1 final closure — V2-owned feasibility query, no V1 AiManagementPlanner.
@@ -190,7 +207,10 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Aviation, TargetHex = hx, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f, generation, witnessedUsefulApDemand),
+                    ApCost = totalAp, ResCost = totalRes,
+                    Score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
+                        totalAp, totalRes, generation, witnessedUsefulApDemand),
+                    StableKey = $"{sourceKey}:aviation:{hx.Q},{hx.R}",
                     Explain = $"{def.displayName} -> airfield ({hx.Q},{hx.R})",
                 };
             }
@@ -198,12 +218,26 @@ namespace Game.Ai.V2
             if (def.cardType == CardType.Facility)
             {
                 HexCoord? at = null;
+                int bestReadiness = -1;
                 string why = "noOwnedBase";
                 foreach (HexCoord h in ownBaseHexes)
                 {
-                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r))
-                    { at = h; break; }
-                    if (r != null) why = r;
+                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r,
+                            requireCardInHand: generation == null))
+                    {
+                        if (r != null) why = r;
+                        continue;
+                    }
+
+                    // Prefer the base where this Facility's matching Research/Production actor
+                    // already stands: placement then unlocks utility immediately. Coordinates are
+                    // only the deterministic final tie-break through ownBaseHexes ordering.
+                    int readiness = FacilityImmediateReadiness(def, player, h);
+                    if (at == null || readiness > bestReadiness)
+                    {
+                        at = h;
+                        bestReadiness = readiness;
+                    }
                 }
                 if (at == null)
                 {
@@ -213,7 +247,10 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f, generation, witnessedUsefulApDemand),
+                    ApCost = totalAp, ResCost = totalRes,
+                    Score = Score(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
+                        totalAp, totalRes, generation, witnessedUsefulApDemand),
+                    StableKey = $"{sourceKey}:facility:{at.Value.Q},{at.Value.R}",
                     Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
                 };
             }
@@ -224,7 +261,8 @@ namespace Game.Ai.V2
                 string why = "noLegalFoundHex";
                 foreach (HexCoord h in BaseFoundCandidates(snap, player, ownBaseHexes))
                 {
-                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, h, out string r))
+                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, h, out string r,
+                            requireCardInHand: generation == null))
                     { at = h; break; }
                     if (r != null) why = r;
                 }
@@ -236,14 +274,18 @@ namespace Game.Ai.V2
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f, generation, witnessedUsefulApDemand),
+                    ApCost = totalAp, ResCost = totalRes,
+                    Score = Score(snap, player, root, ctx, PlayKind.Base, card, hand, 0f,
+                        totalAp, totalRes, generation, witnessedUsefulApDemand),
+                    StableKey = $"{sourceKey}:base:{at.Value.Q},{at.Value.R}",
                     Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
                 };
             }
 
             if (def.cardType == CardType.Equipment && def.equipment != null)
             {
-                (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card, snap);
+                (UnitData unit, HexCoord hex, float upgrade, string stableKey)? host =
+                    BestEquipmentHost(player, root, card, snap);
                 if (host == null)
                 {
                     blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
@@ -256,7 +298,10 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                     TargetHex = host.Value.hex, Generation = generation,
-                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade, generation, witnessedUsefulApDemand),
+                    ApCost = totalAp, ResCost = totalRes,
+                    Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, host.Value.upgrade,
+                        totalAp, totalRes, generation, witnessedUsefulApDemand),
+                    StableKey = $"{sourceKey}:equipment:{host.Value.stableKey}",
                     Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
                 };
             }
@@ -290,6 +335,7 @@ namespace Game.Ai.V2
             }
 
             int apBefore = root.ActionPoints;
+            int stateVersionBefore = V2StateVersion.Current;
 
             // finding 9b — a generated non-combat play pays Challenge AP + ResourceCost,
             // then probabilistically mints and deploys the REAL instance. finding P1 — every real
@@ -304,6 +350,7 @@ namespace Game.Ai.V2
                 {
                     res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
                     res.FailReason = go.FailReason ?? "generation failed";
+                    StampVersion(ref res, stateVersionBefore);
                     return res;
                 }
                 res.Generated = true;
@@ -318,6 +365,7 @@ namespace Game.Ai.V2
                 {
                     res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
                     res.FailReason = "no legal placement for the generated non-combat card";
+                    StampVersion(ref res, stateVersionBefore);
                     return res;
                 }
                 play = fresh;
@@ -327,6 +375,7 @@ namespace Game.Ai.V2
             {
                 res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
                 res.FailReason = "card no longer in hand";
+                StampVersion(ref res, stateVersionBefore);
                 return res;
             }
 
@@ -379,10 +428,29 @@ namespace Game.Ai.V2
             if (ok) res.StateChanged = true;
             res.ApSpent = System.Math.Max(0, apBefore - root.ActionPoints);
             if (!ok) res.FailReason = failReason ?? "non-combat play failed";
+            StampVersion(ref res, stateVersionBefore);
             return res;
         }
 
         // ------------------------------------------------------------------ helpers ----
+
+        private static int FacilityImmediateReadiness(
+            CardDefinition def, PlayerSetupData player, HexCoord hex)
+        {
+            if (def?.grantedAbilities == null || player == null)
+                return 0;
+
+            int actors = 0;
+            if (def.grantedAbilities.Contains(
+                    ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research)))
+                actors += ResearchProductionSystem.FindActors(
+                    player, hex, ResearchProductionMode.Research).Count;
+            if (def.grantedAbilities.Contains(
+                    ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)))
+                actors += ResearchProductionSystem.FindActors(
+                    player, hex, ResearchProductionMode.Production).Count;
+            return actors;
+        }
 
         private static List<HexCoord> OwnedBaseHexes(WorldSnapshot snap, PlayerSetupData player)
         {
@@ -412,11 +480,11 @@ namespace Game.Ai.V2
         // review-r2 — the legal (host) that maximises the REAL predicted equipment delta on that
         // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor via EquipmentSystem.Predict),
         // name only as the final deterministic tie-break.
-        private static (UnitData unit, HexCoord hex, float upgrade)? BestEquipmentHost(
+        private static (UnitData unit, HexCoord hex, float upgrade, string stableKey)? BestEquipmentHost(
             PlayerSetupData player, PlayerRoot root, CardData equipCard, WorldSnapshot snap)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            (UnitData unit, HexCoord hex, float upgrade)? best = null;
+            (UnitData unit, HexCoord hex, float upgrade, string stableKey)? best = null;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army?.Members == null)
@@ -428,14 +496,32 @@ namespace Game.Ai.V2
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
                     float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        equipCard.Definition, u, snap, inv);
+                        equipCard.Definition, u, snap, inv)
+                        * (army.IsGarrison ? AiConfigV2.devImportanceGarrison : AiConfigV2.devImportanceField);
+                    string stableKey = $"{army.Id}:{army.Members.IndexOf(u)}";
                     if (best == null || delta > best.Value.upgrade + 0.0001f
                         || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f
-                            && string.CompareOrdinal(u.Name ?? "", best.Value.unit.Name ?? "") < 0))
-                        best = (u, army.Hex, delta);
+                            && string.CompareOrdinal(stableKey, best.Value.stableKey) < 0))
+                        best = (u, army.Hex, delta, stableKey);
                 }
             }
             return best;
+        }
+
+        private static ResourceCost CombinedCost(ResourceCost a, ResourceCost b)
+        {
+            int h = (a?.human ?? 0) + (b?.human ?? 0);
+            int e = (a?.energy ?? 0) + (b?.energy ?? 0);
+            int m = (a?.materials ?? 0) + (b?.materials ?? 0);
+            int t = (a?.tech ?? 0) + (b?.tech ?? 0);
+            return (h | e | m | t) == 0
+                ? null : new ResourceCost { human = h, energy = e, materials = m, tech = t };
+        }
+
+        private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
+        {
+            if (result.StateChanged && V2StateVersion.Current == versionBefore)
+                V2StateVersion.Bump();
         }
     }
 }

@@ -135,6 +135,33 @@ namespace Game.Ai.V2
                 _physical.Remove(t.Physical);
                 _consumed.Pop(t.Consumed);
             }
+
+            public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
+                string conflictKey) =>
+                _consumed.ExternalDisjoint(physicalCard, generationCardKey, conflictKey);
+
+            public bool FitsExternal(float ap, ResourceCost resources, bool generation)
+            {
+                if (_enforceApPool
+                    && _consumed.ApUsed + Mathf.Max(0f, ap) > _apPool + AiConfigV2.allocatorSliceEpsilon)
+                    return false;
+                if (generation && _consumed.GenerationAttempts + 1 > _genAttemptsRemaining)
+                    return false;
+                if (resources != null)
+                    foreach (ResourceType t in ResourceBundle.All)
+                        if (_consumed.ResourceUsed(t) + resources.Get(t) > _resPool[t])
+                            return false;
+                return true;
+            }
+
+            public MaterializationConsumptionState.ExternalToken PushExternal(
+                CardData physicalCard, string generationCardKey, string conflictKey,
+                bool generation, float ap, ResourceCost resources) =>
+                _consumed.PushExternal(physicalCard, generationCardKey, conflictKey,
+                    generation, ap, resources);
+
+            public void PopExternal(in MaterializationConsumptionState.ExternalToken token) =>
+                _consumed.PopExternal(token);
         }
 
         // Bounded max-total injective assignment over the active demands (<= maxDemandFulfillment
@@ -324,6 +351,104 @@ namespace Game.Ai.V2
                 Rec(i + 1, apSum); // skip plan i
             }
             Rec(0, 0f);
+            return best;
+        }
+
+        // Phase-B overload: materialization and non-combat plays share one subset search and
+        // one consumption state. This prevents the AP workload from counting the same card,
+        // Challenge, H/E/M/T pool or exclusive placement twice across lanes.
+        internal static float EstimatePhaseBWorkload(
+            IReadOnlyList<(MaterializationPlan plan, float followupAp)> plans,
+            IReadOnlyList<NonCombatCardPlayer.NonCombatPlay> nonCombat,
+            PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
+            int genAttemptsRemaining)
+        {
+            var pool = new List<(MaterializationPlan mat, NonCombatCardPlayer.NonCombatPlay nc,
+                float ap, string stable)>();
+            if (plans != null)
+                foreach ((MaterializationPlan plan, float followupAp) p in plans)
+                    if (p.plan != null)
+                        pool.Add((p.plan, null,
+                            Mathf.Max(0f, p.plan.ApCost) + Mathf.Max(0f, p.followupAp),
+                            "m:" + p.plan.StableKey));
+            if (nonCombat != null)
+                foreach (NonCombatCardPlayer.NonCombatPlay p in nonCombat)
+                    if (p != null)
+                        pool.Add((null, p, Mathf.Max(0f, p.ApCost), "n:" + p.StableKey));
+            pool = pool.OrderByDescending(p => p.ap)
+                .ThenBy(p => p.stable, System.StringComparer.Ordinal).ToList();
+            if (pool.Count == 0)
+                return 0f;
+
+            var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
+                pool.Where(p => p.mat != null).Select(p => p.mat), enforceApPool: false);
+
+            string ConflictKey(NonCombatCardPlayer.NonCombatPlay p)
+            {
+                if (p.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+                    return $"equipment:{GenerationSource.StableHeroKey(p.EquipHost)}";
+                return $"{p.Kind}:{p.TargetHex.Q},{p.TargetHex.R}";
+            }
+
+            bool CanTake(NonCombatCardPlayer.NonCombatPlay p)
+            {
+                CardData physical = p.Generation == null ? p.Card : null;
+                string genKey = p.Generation?.CardKey;
+                return jf.ExternalDisjoint(physical, genKey, ConflictKey(p))
+                    && jf.FitsExternal(p.ApCost, p.ResCost, p.Generation != null);
+            }
+
+            float best = 0f;
+            void Rec(int i, float apSum)
+            {
+                if (apSum > best) best = apSum;
+                if (i == pool.Count) return;
+                var item = pool[i];
+                if (item.mat != null)
+                {
+                    if (jf.CardsDisjoint(item.mat) && jf.Fits(item.mat, 0f))
+                    {
+                        JointFeasibility.Token token = jf.Push(item.mat, 0f);
+                        Rec(i + 1, apSum + item.ap);
+                        jf.Pop(token);
+                    }
+                }
+                else if (CanTake(item.nc))
+                {
+                    CardData physical = item.nc.Generation == null ? item.nc.Card : null;
+                    MaterializationConsumptionState.ExternalToken token = jf.PushExternal(
+                        physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
+                        item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost);
+                    Rec(i + 1, apSum + item.ap);
+                    jf.PopExternal(token);
+                }
+                Rec(i + 1, apSum);
+            }
+
+            // Exact for normal hands; the same AP-descending ordering bounds pathological pools.
+            if (pool.Count <= AiConfigV2.apWorkloadExactSearchMax)
+                Rec(0, 0f);
+            else
+            {
+                float greedy = 0f;
+                foreach (var item in pool)
+                {
+                    if (item.mat != null)
+                    {
+                        if (!jf.CardsDisjoint(item.mat) || !jf.Fits(item.mat, 0f)) continue;
+                        jf.Push(item.mat, 0f);
+                        greedy += item.ap;
+                    }
+                    else if (CanTake(item.nc))
+                    {
+                        CardData physical = item.nc.Generation == null ? item.nc.Card : null;
+                        jf.PushExternal(physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
+                            item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost);
+                        greedy += item.ap;
+                    }
+                }
+                best = greedy;
+            }
             return best;
         }
 

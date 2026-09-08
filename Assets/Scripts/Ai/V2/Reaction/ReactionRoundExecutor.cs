@@ -19,7 +19,8 @@ namespace Game.Ai.V2
     internal static class ReactionRoundExecutor
     {
         internal static IEnumerator ExecuteRound(WorldSnapshot priorSnapshot, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result, int round)
+            PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result, int round,
+            MaterializationReservation carriedReservation)
         {
             if (player == null || root == null || ctx == null || ctx.Map == null)
                 yield break;
@@ -103,7 +104,7 @@ namespace Game.Ai.V2
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives);
+                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             if (phaseA.StateChanged)
@@ -307,7 +308,7 @@ namespace Game.Ai.V2
                 if (round == 0)
                 {
                     AiDebugLog.Write("[AI][V2] reaction — operational hand/capability changed inside round 1; run one bounded follow-up round");
-                    yield return ExecuteRound(snapshot, player, root, ctx, result, 1);
+                    yield return ExecuteRound(snapshot, player, root, ctx, result, 1, phaseB.Reservation);
                 }
                 else
                 {

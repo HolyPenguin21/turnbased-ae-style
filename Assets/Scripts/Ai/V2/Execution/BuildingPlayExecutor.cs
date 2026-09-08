@@ -42,24 +42,24 @@ namespace Game.Ai.V2
         // Non-mutating "could this Base card be founded here right now" — the SAME rule
         // InfrastructureActions.TryFoundBase enforces. Used by InfrastructureFulfillment's hex scan.
         public static bool CanFoundBaseAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
-            CardData card, HexCoord hex, out string reason)
+            CardData card, HexCoord hex, out string reason, bool requireCardInHand = true)
         {
             reason = null;
             if (player == null || hand == null || ctx?.HexSelection == null || card?.Definition == null)
             { reason = "missing args"; return false; }
-            if (!hand.Hand.Contains(card))
+            if (requireCardInHand && !hand.Hand.Contains(card))
             { reason = "card not in hand"; return false; }
             return InfrastructureActions.CanFoundBase(card.Definition, hex, player,
                 card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);
         }
 
         public static bool CanPlaceFacilityAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
-            CardData card, HexCoord baseHex, out string reason)
+            CardData card, HexCoord baseHex, out string reason, bool requireCardInHand = true)
         {
             reason = null;
             if (player == null || hand == null || card?.Definition == null)
             { reason = "missing args"; return false; }
-            if (!hand.Hand.Contains(card))
+            if (requireCardInHand && !hand.Hand.Contains(card))
             { reason = "card not in hand"; return false; }
             return InfrastructureActions.CanPlaceFacility(card.Definition, baseHex, player,
                 card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);

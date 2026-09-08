@@ -20,7 +20,6 @@ namespace Game.Ai.V2
         public float ApCost;              // spec §6 — must fit SPENDABLE (not raw) AP
         public ResourceCost ResCost;      // spec §6 — full persistent-resource cost vector (null = none)
         public bool ConsumesGeneration;   // spec §P0 — shared maxGenerationActionsPerTurn budget
-        public bool CountsAsSurplusCardPlay; // spec §P0 — MGR-01 maxSurplusActionsPerTurn sub-cap
         public bool CountsAsTerminalDraw;    // spec §P0 — maxTerminalDrawsPerTurn sub-cap
         public string Label;
         public string DrawDiag;   // Draw only — preformatted valuation breakdown for the log
@@ -38,8 +37,7 @@ namespace Game.Ai.V2
         public float Utility;
         public AxisDemand Residual;      // non-null => operational strategic residual
         public CapabilityInventory Inv;
-        public string DeferLog;
-    }
+     }
 
     // ARCH-02 §8/§39/§42 — the Phase-B tempo candidate provider. Builds the ONE comparable
     // candidate space (PlayCard mat / PlayCard non-combat / Draw / non-card strategic spend /
@@ -62,7 +60,7 @@ namespace Game.Ai.V2
 
             // AI-MGR — the ONE shared Phase-B owner-witnessed AP workload for this tempo iteration,
             // from the REAL feasible candidate universe across BOTH lanes. The same scalar goes to
-            // the materialization lane (BestSurplus/ScoreSurplus) and the non-combat lane
+            // the materialization lane (RankedSurplus/ScoreSurplus) and the non-combat lane
             // (NonCombatCardPlayer/ScoreNonCombat), so an ApBonus Unit/Hero and an ApBonus
             // Base/Facility are priced off one number. null unless a recurring-resource carrier is
             // reachable this turn (=> both lanes keep the discounted structural fallback).
@@ -71,60 +69,44 @@ namespace Game.Ai.V2
                 CapabilityInventory.Build(snap, player, commitments), commitments, result.Reservation);
 
             // PlayCard — materialization lane. Utility = StrategicCardEvaluator decision score, verbatim.
-            MatSurplusDecision mat = ComputeMatDecision(snap, player, root, hand, ctx, commitments,
-                result, reconObjectives, phaseBWitnessedApDemand);
-            if (mat.Admissible && mat.Plan != null)
+            foreach (MatSurplusDecision mat in ComputeMatDecisions(snap, player, root, hand, ctx,
+                         commitments, result, reconObjectives, phaseBWitnessedApDemand, verbose))
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
                     ApCost = mat.Plan.ApCost, ResCost = mat.Plan.ResCost,
                     ConsumesGeneration = mat.Plan.Generation != null,
-                    CountsAsSurplusCardPlay = true,
                     ActionKey = "mat:" + mat.Plan.StableKey,
                     Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
                         + (mat.Residual != null ? $" (residual {mat.Residual.Capability})" : ""),
                 });
-            else if (mat.DeferLog != null && verbose)
-                AiDebugLog.Write(mat.DeferLog + " [tempo: not a candidate]");
 
-            // PlayCard — non-combat lane (Aviation / Base / Facility / standalone Equipment).
-            // Utility = StrategicCardEvaluator.ScoreNonCombat NetScore, verbatim (via BestPlay.Score).
-            NonCombatCardPlayer.NonCombatPlay nc = NonCombatCardPlayer.BestPlay(
-                snap, player, root, hand, ctx, out _, null, result.Reservation, phaseBWitnessedApDemand);
-            TempoCandidate ncCand = null;
-            if (nc != null)
-            {
-                // §P1.4 — a GENERATED non-combat candidate still owes the Challenge's ResourceCost
-                // pre-mint. EffectivePlayResourceCost of the temporary stand-in is null after a
-                // successful mint, which is wrong at arbitration time. Use the generation cost.
-                ResourceCost ncResCost = nc.Generation != null
-                    ? nc.Generation.GenerationResourceCost
-                    : (nc.Card != null ? nc.Card.EffectivePlayResourceCost : null);
-                ncCand = new TempoCandidate
+            // Every legal non-combat play enters the same arbitration set. Selecting a lane winner
+            // before reservation/cap/parking checks used to hide a cheaper legal fallback.
+            foreach (NonCombatCardPlayer.NonCombatPlay nc in NonCombatCardPlayer.EnumeratePlays(
+                         snap, player, root, hand, ctx, new List<string>(), result.Reservation,
+                         phaseBWitnessedApDemand))
+                list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
-                    ApCost = (nc.Card != null ? nc.Card.EffectivePlayApCost : 0f)
-                             + (nc.Generation != null
-                                 ? ResearchProductionSystem.AttemptApCost(nc.Generation.CardDef) : 0f),
-                    ResCost = ncResCost,
+                    ApCost = nc.ApCost, ResCost = nc.ResCost,
                     ConsumesGeneration = nc.Generation != null,
-                    CountsAsSurplusCardPlay = true,
-                    ActionKey = $"nc:{nc.Kind}:{nc.Explain}",
+                    ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
-                };
-                list.Add(ncCand);
-            }
+                });
 
-            // §P0.1 — the only card alternatives that suppress Draw are ones actually SELECTABLE
-            // right now: not over the surplus card-play budget, AP + resources spendable. A card
-            // blocked by the budget / affordability / placement must not make Draw look worthless.
-            TempoCandidate matCand = list.FirstOrDefault(c => c.Kind == TempoKind.PlayMat);
-            bool CardSelectableNow(TempoCandidate c) => c != null && !budget.CardCapHit
+            // §P0.1 — only card alternatives actually selectable under the shared generation
+            // budget and live spendable pools suppress Draw. Structurally blocked cards do not.
+            bool CardSelectableNow(TempoCandidate c) => c != null
+                && (!c.ConsumesGeneration || !budget.GenerationCapHit)
                 && c.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon
                 && StrategicSpendability.FitsSpendableResources(player, root, ctx, c.ResCost);
-            float bestSelectablePlay = Mathf.Max(
-                CardSelectableNow(matCand) ? matCand.Utility : 0f,
-                CardSelectableNow(ncCand) ? ncCand.Utility : 0f);
+            float bestSelectablePlay = list
+                .Where(c => (c.Kind == TempoKind.PlayMat || c.Kind == TempoKind.PlayNonCombat)
+                    && CardSelectableNow(c))
+                .Select(c => c.Utility)
+                .DefaultIfEmpty(0f)
+                .Max();
 
             // DrawCard — a real scored peer (spec §1), NOT penalised for holding H/E/M/T (costs AP only).
             if (AiConfigV2.surplusAllowDraw && CardDrawExecutor.CanCycle(root, hand, ctx)
@@ -262,49 +244,22 @@ namespace Game.Ai.V2
         // §P1 — multiplier on the surplus-admission threshold for a generic garrison deposit when
         // the garrison is already a strong defensive stack (>= a fraction of BestStackPotential)
         // and no asset is threatened. 1f otherwise.
-        private static float GarrisonSaturationThresholdMult(WorldSnapshot snap, MaterializationPlan plan,
+        private static bool GarrisonSaturated(WorldSnapshot snap, MaterializationPlan plan,
             AxisDemand residual)
         {
             if (residual != null || plan == null || plan.Deploy.Kind != DeploymentKind.Garrison
                 || snap?.Self == null)
-                return 1f;
+                return false;
             bool assetThreat = snap.Threat?.Threats != null && snap.Threat.Threats.Count > 0;
             if (assetThreat)
-                return 1f;
+                return false;
             float reserve = AiConfigV2.garrisonSaturatedReserveFractionOfBestStack
                 * Mathf.Max(0f, snap.Self.BestStackPotential);
-            return reserve > 0f && snap.Self.GarrisonPower >= reserve
-                ? AiConfigV2.garrisonSaturatedSurplusThresholdMult : 1f;
-        }
-
-        // §P1 — a generic (no-residual) surplus chain of ANY kind (Direct / Attach / Generate*)
-        // that founds a fresh lone-member army (NewArmy / ReusableShell) on a hex where a garrison
-        // OR an already-viable friendly field army sits: Housekeeping folds/absorbs that
-        // lone-member army the same turn (create -> fold). A genuine forward outpost — no base and
-        // no viable force of ours on the hex — is still allowed.
-        private static bool GenericSurplusWouldChurn(PlayerSetupData player, MaterializationPlan plan)
-        {
-            if (plan == null)
-                return false;
-            if (plan.Deploy.Kind != DeploymentKind.NewArmy && plan.Deploy.Kind != DeploymentKind.ReusableShell)
-                return false;
-            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
-            {
-                if (a == null || !a.Hex.Equals(plan.Deploy.Hex))
-                    continue;
-                if (a.IsGarrison)
-                    return true;
-                if (a.IsPrison || a.IsAirArmy || a.IsAirfield || AiArmyRoles.IsSoloRecce(a))
-                    continue;
-                if (a.Members.Count >= 2
-                    && AiPower.EffectiveArmyPower(a.Members) >= AiConfigV2.housekeepingViabilityPowerFloor)
-                    return true;
-            }
-            return false;
+            return reserve > 0f && snap.Self.GarrisonPower >= reserve;
         }
 
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
-        // cap, across EVERY chain kind (BestSurplus treats a recce card as ScoutCapability and
+        // cap, across EVERY chain kind (RankedSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
         // DemandLayer portfolio cap never sees those). Primary bound is the CURRENT desired
         // concurrency + a warm spare; ReconConcurrencyPolicy.HardCap is the absolute ceiling.
@@ -327,75 +282,62 @@ namespace Game.Ai.V2
             return solo >= desired + AiConfigV2.scoutSurplusWarmSpare;
         }
 
-        private static MatSurplusDecision ComputeMatDecision(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
-            StrategicPhaseResult result, IReadOnlyList<ReconObjective> reconObjectives,
-            float? witnessedUsefulApDemand = null)
+        private static List<MatSurplusDecision> ComputeMatDecisions(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            ActorCommitments commitments, StrategicPhaseResult result,
+            IReadOnlyList<ReconObjective> reconObjectives, float? witnessedUsefulApDemand,
+            bool verbose)
         {
-            var dec = new MatSurplusDecision
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+            List<(MaterializationPlan plan, float utility)> ranked =
+                MaterializationCandidateBuilder.RankedSurplus(
+                    snap, player, root, hand, ctx, inv, commitments, result.Reservation,
+                    witnessedUsefulApDemand);
+            var admitted = new List<MatSurplusDecision>();
+            foreach ((MaterializationPlan plan, float utility) in ranked)
             {
-                Inv = CapabilityInventory.Build(snap, player, commitments),
-            };
-            (MaterializationPlan plan, float utility)? pick = MaterializationCandidateBuilder.BestSurplus(
-                snap, player, root, hand, ctx, dec.Inv, commitments, result.Reservation,
-                witnessedUsefulApDemand);
-            if (pick == null)
-                return dec;
+                AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
+                AxisDemand residual = matchedResidual != null
+                    && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual)
+                        ? matchedResidual : null;
 
-            MaterializationPlan plan = pick.Value.plan;
-            AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
-            AxisDemand residual = matchedResidual != null && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual)
-                ? matchedResidual : null;
-            SurplusAdmission admission = SurplusAdmissionPolicy.Evaluate(root, player, plan);
+                if (matchedResidual != null && residual == null
+                    && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
+                            + $"unresolved {matchedResidual} but no placement delivers it");
+                    continue;
+                }
 
-            if (matchedResidual != null && residual == null)
-                AiDebugLog.Write($"[AI][V2]   strat.B — residual bypass denied for {plan.StableKey}: "
-                    + $"{plan.Deploy.Kind} cannot operationally deliver {matchedResidual.Capability}; "
-                    + "evaluate as generic surplus");
+                if (GarrisonSaturated(snap, plan, residual)
+                    && plan.Score < AiConfigV2.garrisonSaturatedMinUtility)
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
+                            + $"score {F(plan.Score)} < garrison-saturated bar "
+                            + $"{F(AiConfigV2.garrisonSaturatedMinUtility)}");
+                    continue;
+                }
+                if (residual == null
+                    && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
+                            + "generic surplus would add a scout beyond the physical portfolio");
+                    continue;
+                }
 
-            if (matchedResidual != null && residual == null
-                && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
-            {
-                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey}: hero card matches "
-                    + $"unresolved {matchedResidual} but no placement delivers it; keep in hand";
-                return dec;
+                admitted.Add(new MatSurplusDecision
+                {
+                    Admissible = true,
+                    Plan = plan,
+                    Utility = utility,
+                    Residual = residual,
+                    Inv = inv,
+                });
             }
-
-            // §P1 anti-grind — a strong-garrison generic deposit with nothing threatened must clear
-            // a much higher bar (satMult). This is STRUCTURAL, not the ordinary utility floor: it
-            // still gates the candidate even under stranded-AP tempo pressure so the garrison is not
-            // ground from 6 to 40+ power with threats=0.
-            float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
-            float effThreshold = admission.EffectiveThreshold * satMult;
-
-            if (residual == null && GenericSurplusWouldChurn(player, plan))
-            {
-                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                    + "generic surplus would found a lone-member army housekeeping folds the same turn";
-                return dec;
-            }
-            if (residual == null && ScoutSurplusPortfolioSaturated(player, plan, snap, reconObjectives))
-            {
-                dec.DeferLog = $"[AI][V2]   strat.B — hold {plan.StableKey} {AiCardLog.Plan(plan)}: "
-                    + "generic surplus would add a scout beyond the physical portfolio "
-                    + $"(desired concurrency + warm spare, hard cap {ReconConcurrencyPolicy.HardCap})";
-                return dec;
-            }
-            if (residual == null && satMult > 1f && plan.Score < effThreshold)
-            {
-                dec.DeferLog = $"[AI][V2]   strat.B — defer {plan.StableKey} {AiCardLog.Plan(plan)} "
-                    + $"score {F(plan.Score)} < garrison-saturated bar {F(effThreshold)} (x{F(satMult)})";
-                return dec;
-            }
-
-            dec.Admissible = true;
-            dec.Plan = plan;
-            // pick.Value.utility is ALREADY the global decision score (NetScore + operational-residual
-            // urgency), computed once in MaterializationCandidateBuilder.BestSurplus. Not re-adjusted
-            // here — the arbiter compares it against Hold/EndTurn as-is (spec §5).
-            dec.Utility = pick.Value.utility;
-            dec.Residual = residual;
-            return dec;
+            return admitted;
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);

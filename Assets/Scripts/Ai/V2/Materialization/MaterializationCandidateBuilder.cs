@@ -258,7 +258,8 @@ namespace Game.Ai.V2
             // and never re-applies demand.Value or re-reads the raw play score.
             float urgency = UrgencyBonus(demand.Value);
             float Decide(MaterializationPlan p) =>
-                p.Score - (p.UseBreakdown?.HoldValue ?? 0f) + urgency;
+                p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
+                + urgency * GenerationChanceForDecision(p);
 
             var ranked = candidates
                 .OrderByDescending(c => Decide(c.plan))
@@ -338,11 +339,11 @@ namespace Game.Ai.V2
         }
 
         // AI-MGR-02 round 6 — the full set of PREFLIGHTED surplus materialization plans (each one
-        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). BestSurplus picks the
-        // highest-DecisionScore among these; the reaction feasibility probe needs the WHOLE set so
+        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). RankedSurplus returns the complete ordered set; the common arbiter picks the
+        // highest actionable DecisionScore; the reaction feasibility probe needs the WHOLE set so
         // it can find the genuinely CHEAPEST feasible plan, not just the best-scored one.
 
-        public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
+        public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation,
             float? witnessedUsefulApDemand = null)
@@ -351,7 +352,7 @@ namespace Game.Ai.V2
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
                 raw, player, root, hand, ctx, reservation);
-            if (candidates.Count == 0) return null;
+            if (candidates.Count == 0) return new List<(MaterializationPlan plan, float utility)>();
 
             // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
             // (PhaseBWitnessedApWorkload) — the SAME scalar the non-combat lane gets, so a Unit/Hero
@@ -380,7 +381,8 @@ namespace Game.Ai.V2
                         p, 0f, surplusFillerUniverse, root, player, ctx, hand, genRemaining)
                     : 0;
                 p.Score = SurplusUtility(snap, p, inv, recce, hero, hand, p.ProjectedAbilities,
-                    witnessedUsefulApDemand, projectedLegalFillers);
+                    witnessedUsefulApDemand, projectedLegalFillers,
+                    type => StrategicSpendability.SpendableAmount(player, root, ctx, type));
             }
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
@@ -395,21 +397,22 @@ namespace Game.Ai.V2
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
                 float urgency = d != null && CanDeliverDemandOperationally(p, d)
                     ? UrgencyBonus(d.Value) : 0f;
-                return p.Score + urgency;
+                return p.Score + urgency * GenerationChanceForDecision(p);
             }
 
-            MaterializationPlan bestPlan = candidates
-                .OrderByDescending(DecisionScore)
-                .ThenByDescending(p => p.Score)
-                .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
-                .First();
-            float bestDecision = DecisionScore(bestPlan);
+            List<(MaterializationPlan plan, float utility)> ranked = candidates
+                .Select(p => (plan: p, utility: DecisionScore(p)))
+                .OrderByDescending(x => x.utility)
+                .ThenByDescending(x => x.plan.Score)
+                .ThenBy(x => x.plan.StableKey, System.StringComparer.Ordinal)
+                .ToList();
+            MaterializationPlan bestPlan = ranked[0].plan;
             if (bestPlan.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval B — {bestPlan.StableKey} role={bestPlan.UseRole} "
                     + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"decision {bestDecision.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"decision {ranked[0].utility.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{bestPlan.UseBreakdown.ToCompact()}]");
-            return (bestPlan, bestDecision);
+            return ranked;
         }
 
 
@@ -482,8 +485,11 @@ namespace Game.Ai.V2
         // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
         // soft baseline demand adds ~nothing and can genuinely lose to Hold.
         // Shared Play-vs-Hold / Phase-B urgency ramp off a demand's Value. Used by Phase A's
-        // DecisionScore and (final closure follow-up §P1) by BestSurplus's global decision score so
+        // DecisionScore and (final closure follow-up §P1) by RankedSurplus's global decision score so
         // an operational residual competes on score instead of a hard boolean priority.
+        private static float GenerationChanceForDecision(MaterializationPlan p) =>
+            p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
+
         private static float UrgencyBonus(float demandValue)
         {
             float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
@@ -496,10 +502,12 @@ namespace Game.Ai.V2
         // separately scored HoldValue).
         private static float SurplusUtility(WorldSnapshot snap, MaterializationPlan p, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
-            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
+            System.Func<Game.Economy.ResourceType, float> spendableResource = null)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreSurplus(
-                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand, projectedLegalFillers);
+                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand,
+                projectedLegalFillers, spendableResource);
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.NetScore;
@@ -509,9 +517,9 @@ namespace Game.Ai.V2
         // spend this end-of-turn on a jointly-feasible set of card plays, across BOTH Phase-B lanes
         // (Unit/Hero surplus + non-combat Base/Facility/Aviation/Equipment). One scalar, computed
         // once per tempo iteration from the REAL feasible candidate universe, handed to both
-        // BestSurplus/ScoreSurplus and NonCombatCardPlayer/ScoreNonCombat so an ApBonus Unit and an
+        // RankedSurplus/ScoreSurplus and NonCombatCardPlayer/ScoreNonCombat so an ApBonus Unit and an
         // ApBonus Base are priced off the same number (spec §4). AP is NOT a ceiling here
-        // (EstimateLegalApWorkload runs with AP admission off) — it is the measured quantity. No
+        // (EstimatePhaseBWorkload runs with AP admission off) — it is the measured quantity. No
         // committed-mover term: by end of turn the missions have run, the surplus universe IS the
         // workload. Returns null (=> evaluators keep the discounted structural fallback) unless a
         // PlayerGlobal recurring-resource carrier is reachable through hand or deck.
@@ -541,19 +549,12 @@ namespace Game.Ai.V2
                 if (!bySig.TryGetValue(sig, out var cur) || p.ApCost < cur.plan.ApCost)
                     bySig[sig] = (p, 0f);
             }
-            float total = MaterializationPortfolioSolver.EstimateLegalApWorkload(
-                bySig.Values.ToList(), root, player, ctx, hand, genRemaining);
+            List<NonCombatCardPlayer.NonCombatPlay> nonCombat =
+                NonCombatCardPlayer.EnumeratePlays(
+                    snap, player, root, hand, ctx, new List<string>(), reservation).ToList();
 
-            // Non-combat lane — one feasible play per card; its AP is added straight (AP is the
-            // measured quantity, not a ceiling). A mild over-count on a rare double-generated hand is
-            // harmless; the failure mode this whole rework fixes is UNDER-counting.
-            var seenNc = new HashSet<CardData>();
-            foreach (NonCombatCardPlayer.NonCombatPlay ncp in NonCombatCardPlayer.EnumeratePlays(
-                         snap, player, root, hand, ctx, new List<string>(), reservation))
-                if (ncp?.Card != null && seenNc.Add(ncp.Card))
-                    total += Mathf.Max(0f, ncp.Card.EffectivePlayApCost);
-
-            return total;
+            return MaterializationPortfolioSolver.EstimatePhaseBWorkload(
+                bySig.Values.ToList(), nonCombat, root, player, ctx, hand, genRemaining);
         }
 
 

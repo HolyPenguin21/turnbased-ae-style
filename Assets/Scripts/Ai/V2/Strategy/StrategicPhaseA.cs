@@ -59,12 +59,18 @@ namespace Game.Ai.V2
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
-            IReadOnlyList<ReconObjective> reconObjectives = null)
+            IReadOnlyList<ReconObjective> reconObjectives = null,
+            MaterializationReservation carriedReservation = null)
         {
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
 
-            var result = new StrategicPhaseResult { Reservation = new MaterializationReservation() };
+            // One turn-scoped identity set must survive main, reaction and housekeeping entries:
+            // a failed generator/card pair is not a fresh candidate merely because Phase A re-entered.
+            var result = new StrategicPhaseResult
+            {
+                Reservation = carriedReservation ?? new MaterializationReservation()
+            };
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 

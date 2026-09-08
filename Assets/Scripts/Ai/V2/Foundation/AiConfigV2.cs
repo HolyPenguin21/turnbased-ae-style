@@ -544,13 +544,13 @@ namespace Game.Ai.V2
         //  able to win against a generation / equipment chain (spec §30 / AC #36).
         //   costFactor += stratChainResCostWeight * Σ(chain R/H/M/T)
         //   score      -= per-extra-step penalty (attach / generation)
-        //   score      *= Lerp(stratChainGenerationChanceFloor, 1, SuccessChance)   when a chain generates
+        //   generated contingent benefit is multiplied by the real Challenge success chance;
+        //   certain resource-efficiency terms stay certain.
         //   score      -= stratChainScarcityPenalty   when a chain would spend a unique Stealth item
         //                                              on a Demand that does not require Stealth
         public const float stratChainResCostWeight = 0.05f;
         public const float stratChainAttachStepPenalty = 0.08f;
         public const float stratChainGenerationStepPenalty = 0.15f;
-        public const float stratChainGenerationChanceFloor = 0.35f;
         public const int stratChainStealthScarceAt = 1;   // StealthScouts <= this -> preserve a unique Stealth item
         public const float stratChainScarcityPenalty = 0.40f;
         // Generalized scarcity (spec §5): a Hero body spent on a non-Hero, non-Scout demand while
@@ -606,24 +606,15 @@ namespace Game.Ai.V2
         public const bool surplusAllowAttach = true;
         public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
-        // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *card plays* (surplus
-        // materialization + non-combat) the arbiter may make per turn. This is the MGR-01 surplus
-        // bound; the unified tempo loop must not be able to make more card plays than this by
-        // routing them through a different candidate kind. maxEndOfTurnTempoActionsPerTurn stays a
-        // wider global safety bound over ALL candidate kinds (card plays + draws + non-card
-        // strategic spends), it does NOT replace this sub-cap.
-        public const int maxSurplusActionsPerTurn = 2;
         public const bool surplusAllowDraw = true;
-        public const float surplusUtilityThreshold = 0.60f; // a candidate below this FutureUtility is not worth playing
         // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. The
         // unified loop honours this exactly like the old terminal-draw stage did; a draw beyond it
         // is not offered as a candidate.
         public const int maxTerminalDrawsPerTurn = 4;
-        // Generic (no-residual) combat surplus into the garrison is capped once the garrison is
-        // already a strong defensive stack and nothing threatens an asset: the surplus-admission
-        // threshold is multiplied by this so the loop stops (and converts stranded AP to draws)
-        // instead of grinding the garrison from 6 to 40+ power with threats=0.
-        public const float garrisonSaturatedSurplusThresholdMult = 6f;
+        // Generic (no-residual) combat surplus into an already-saturated garrison must clear
+        // this absolute shared-score floor. It is a local garrison-cap policy, not a second global
+        // Phase-B admission threshold; all alternatives still reach the common arbiter.
+        public const float garrisonSaturatedMinUtility = 3.60f;
         // The garrison counts as "already strong enough" for the cap above once its EffectivePower
         // is at least this fraction of the player's best assemblable stack (BestStackPotential).
         public const float garrisonSaturatedReserveFractionOfBestStack = 0.60f;
@@ -960,9 +951,8 @@ namespace Game.Ai.V2
         public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
         public const float starvationEconomyTrigger = 0.5f;    // below this -> no extra Economy demand
         public const float starvationEconomyValueBonus = 35f;  // max added to the site's Value
-        // FutureUtility term weights / values.
-        public const float surplusApCostWeight = 0.20f;
-        public const float surplusResourceCostWeight = 0.05f;
+        // FutureUtility term values. AP/resource costs use the shared stratCard /
+        // stratChain dynamic cost model; Phase B has no parallel cost weights.
         public const float surplusHeroVersatility = 0.35f;
         public const float surplusUnitVersatility = 0.25f;
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
