@@ -339,8 +339,8 @@ namespace Game.Ai.V2
         }
 
         // AI-MGR-02 round 6 — the full set of PREFLIGHTED surplus materialization plans (each one
-        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). BestSurplus picks the
-        // highest-DecisionScore among these; the reaction feasibility probe needs the WHOLE set so
+        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). RankedSurplus returns the complete ordered set; the common arbiter picks the
+        // highest actionable DecisionScore; the reaction feasibility probe needs the WHOLE set so
         // it can find the genuinely CHEAPEST feasible plan, not just the best-scored one.
 
         public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
@@ -485,7 +485,7 @@ namespace Game.Ai.V2
         // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
         // soft baseline demand adds ~nothing and can genuinely lose to Hold.
         // Shared Play-vs-Hold / Phase-B urgency ramp off a demand's Value. Used by Phase A's
-        // DecisionScore and (final closure follow-up §P1) by BestSurplus's global decision score so
+        // DecisionScore and (final closure follow-up §P1) by RankedSurplus's global decision score so
         // an operational residual competes on score instead of a hard boolean priority.
         private static float GenerationChanceForDecision(MaterializationPlan p) =>
             p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
@@ -517,9 +517,9 @@ namespace Game.Ai.V2
         // spend this end-of-turn on a jointly-feasible set of card plays, across BOTH Phase-B lanes
         // (Unit/Hero surplus + non-combat Base/Facility/Aviation/Equipment). One scalar, computed
         // once per tempo iteration from the REAL feasible candidate universe, handed to both
-        // BestSurplus/ScoreSurplus and NonCombatCardPlayer/ScoreNonCombat so an ApBonus Unit and an
+        // RankedSurplus/ScoreSurplus and NonCombatCardPlayer/ScoreNonCombat so an ApBonus Unit and an
         // ApBonus Base are priced off the same number (spec §4). AP is NOT a ceiling here
-        // (EstimateLegalApWorkload runs with AP admission off) — it is the measured quantity. No
+        // (EstimatePhaseBWorkload runs with AP admission off) — it is the measured quantity. No
         // committed-mover term: by end of turn the missions have run, the surplus universe IS the
         // workload. Returns null (=> evaluators keep the discounted structural fallback) unless a
         // PlayerGlobal recurring-resource carrier is reachable through hand or deck.
