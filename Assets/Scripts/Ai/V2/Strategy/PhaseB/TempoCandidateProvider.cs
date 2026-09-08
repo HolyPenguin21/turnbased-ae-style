@@ -101,24 +101,49 @@ namespace Game.Ai.V2
                 && (!c.ConsumesGeneration || !budget.GenerationCapHit)
                 && c.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon
                 && StrategicSpendability.FitsSpendableResources(player, root, ctx, c.ResCost);
-            float bestSelectablePlay = list
+            TempoCandidate bestSelectablePlayCandidate = list
                 .Where(c => (c.Kind == TempoKind.PlayMat || c.Kind == TempoKind.PlayNonCombat)
                     && CardSelectableNow(c))
-                .Select(c => c.Utility)
-                .DefaultIfEmpty(0f)
-                .Max();
+                .OrderByDescending(c => c.Utility)
+                .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal)
+                .FirstOrDefault();
+            float bestSelectablePlay = bestSelectablePlayCandidate?.Utility ?? 0f;
+
+            // T5 regression: with one card and exactly DrawCost AP, the one-step arbiter preferred
+            // a modest 1-AP play, emptied the hand and stranded the final AP. Preserve that option
+            // value only when the winning card play actually consumes the last hand card AND would
+            // make a follow-up draw unaffordable. With enough AP to play then draw, no bonus applies.
+            bool lastCardPlayWouldStrandDraw = hand.Hand.Count == 1
+                && bestSelectablePlayCandidate != null
+                && ConsumesHandCard(bestSelectablePlayCandidate)
+                && spendableAp - bestSelectablePlayCandidate.ApCost
+                    + AiConfigV2.allocatorSliceEpsilon < ctx.DrawApCost;
 
             // DrawCard — a real scored peer (spec §1), NOT penalised for holding H/E/M/T (costs AP only).
-            if (AiConfigV2.surplusAllowDraw && CardDrawExecutor.CanCycle(root, hand, ctx)
-                && spendableAp + AiConfigV2.allocatorSliceEpsilon >= ctx.DrawApCost)
+            bool canCycle = CardDrawExecutor.CanCycle(root, hand, ctx);
+            bool fitsSpendableDrawAp =
+                spendableAp + AiConfigV2.allocatorSliceEpsilon >= ctx.DrawApCost;
+            if (AiConfigV2.surplusAllowDraw && canCycle && fitsSpendableDrawAp)
             {
-                float drawU = DrawCandidateUtility(snap, hand, ctx, bestSelectablePlay, out string drawDiag);
+                float drawU = DrawCandidateUtility(snap, hand, ctx, bestSelectablePlay,
+                    lastCardPlayWouldStrandDraw, out string drawDiag);
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.Draw, Utility = drawU, ApCost = ctx.DrawApCost, ActionKey = "draw",
                     CountsAsTerminalDraw = true, DrawDiag = drawDiag,
                     Label = $"cycle 1 card ({ctx.DrawApCost} AP), hand {hand.Hand.Count}/{ctx.HandCapacity}",
                 });
+            }
+            else if (AiConfigV2.surplusAllowDraw && hand.HasFreeSlot && hand.HasCardsLeftToDraw)
+            {
+                // A structurally absent candidate used to vanish from the shortlist. Log only the
+                // dynamic AP refusal (full hand / empty deck are already explicit in the FRAME and
+                // tempo headers), including whether raw AP or a reservation caused it.
+                string reason = !root.CanSpendActionPoints(ctx.DrawApCost)
+                    ? $"raw AP {root.ActionPoints} < cost {ctx.DrawApCost}"
+                    : $"spendable AP {F(spendableAp)} < cost {ctx.DrawApCost}";
+                AiDebugLog.Write($"[AI][V2]     cand Draw BLOCKED: {reason}; hand "
+                    + $"{hand.Hand.Count}/{ctx.HandCapacity} deck {hand.RemainingDeckCount}");
             }
 
             // ExistingStrategicSpendAction — genuinely NON-CARD strategic actions only (Base/Citadel
@@ -172,7 +197,7 @@ namespace Game.Ai.V2
         //   · handQualityPenalty  = weight * the best play SELECTABLE RIGHT NOW (0 if every card
         //                          alternative is blocked by budget / affordability / placement).
         private static float DrawCandidateUtility(WorldSnapshot snap, AiHandData hand, AiTurnContext ctx,
-            float bestSelectablePlay, out string diag)
+            float bestSelectablePlay, bool lastCardPlayWouldStrandDraw, out string diag)
         {
             int freeSlots = Mathf.Max(0, ctx.HandCapacity - hand.Hand.Count);
             float fill = Mathf.Clamp(AiConfigV2.tempoDrawFillFloor
@@ -196,11 +221,14 @@ namespace Game.Ai.V2
             float blockRisk = freeSlots <= 1 ? AiConfigV2.tempoDrawFutureBlockPenalty : 0f;
             float apOpp = AiConfigV2.tempoDrawApOpportunityWeight * ctx.DrawApCost;
             float handQualityPenalty = AiConfigV2.tempoDrawHandActionableWeight * Mathf.Max(0f, bestSelectablePlay);
+            float continuityBonus = lastCardPlayWouldStrandDraw
+                ? AiConfigV2.tempoDrawLastCardContinuityBonus : 0f;
 
-            float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty;
+            float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty
+                + continuityBonus;
             diag = $"expDeckVal {F(expectedDeckValue)} (mean {F(deckMean)} taper {F(thinTaper)}) freeSlots {freeSlots} "
                 + $"fill {F(fill)} blockRisk {F(blockRisk)} apOpp {F(apOpp)} handQualPen {F(handQualityPenalty)} "
-                + $"(selectablePlay {F(bestSelectablePlay)}) => draw {F(u)}";
+                + $"continuity +{F(continuityBonus)} (selectablePlay {F(bestSelectablePlay)}) => draw {F(u)}";
             return u;
         }
 
@@ -233,6 +261,16 @@ namespace Game.Ai.V2
                     return v;
                 }
             }
+        }
+
+        private static bool ConsumesHandCard(TempoCandidate c)
+        {
+            if (c == null) return false;
+            if (c.Kind == TempoKind.PlayNonCombat)
+                return c.Nc?.Card != null;
+            if (c.Kind == TempoKind.PlayMat)
+                return c.Mat.Plan?.BaseCardInHand != null || c.Mat.Plan?.EquipmentInHand != null;
+            return false;
         }
 
         private static bool PlanBaseIsHeroCard(MaterializationPlan plan)
