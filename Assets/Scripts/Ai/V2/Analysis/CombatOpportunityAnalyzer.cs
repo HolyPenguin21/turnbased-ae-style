@@ -185,7 +185,7 @@ namespace Game.Ai.V2
 
                 float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
                 float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                bool cover = ProfilesCoverAll(assemblableRoster, defenders, 0f);
+                bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
 
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = CeilDiv(minDist, moverBudget);
@@ -242,24 +242,6 @@ namespace Game.Ai.V2
             + p.Defense * AiConfigV2.powerDefenseWeight
             + p.HitPoints * AiConfigV2.powerHitPointsWeight
             + p.Initiative * AiConfigV2.powerInitiativeWeight);
-
-        // Profile-vs-profile coverage — WorthIt.CanDamageAll only accepts UnitData/ArmyData, and a
-        // projected roster has neither. Same rule (every defender needs one attacker that can dent
-        // it), same WorthIt.CanDamage primitive. Mirrors WorldAnalysis.ProfilesCanDamageAll.
-        private static bool ProfilesCoverAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float extraDefense)
-        {
-            if (defenders == null || defenders.Count == 0) return true;
-            if (attackers == null || attackers.Count == 0) return false;
-            foreach (WorthIt.DefenderProfile def in defenders)
-            {
-                bool covered = false;
-                foreach (WorthIt.DefenderProfile atk in attackers)
-                    if (WorthIt.CanDamage(atk.Attack, def, extraDefense)) { covered = true; break; }
-                if (!covered) return false;
-            }
-            return true;
-        }
 
         private static float ConfidenceFor(WorldSnapshot snap, HexCoord hex)
         {

@@ -1017,7 +1017,7 @@ namespace Game.Ai.V2
             {
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
-                    bool canDamage = ProfilesCanDamageAll(c.Army.Members, asset.Defenders, asset.HexDefenseBonus);
+                    bool canDamage = WorthIt.CanDamageAll(c.Army.Members, asset.Defenders, asset.HexDefenseBonus);
                     float winChance = WorthIt.WinChance(
                         (IReadOnlyCollection<WorthIt.DefenderProfile>)c.Army.Members,
                         (IReadOnlyCollection<WorthIt.DefenderProfile>)asset.Defenders,
@@ -1159,25 +1159,6 @@ namespace Game.Ai.V2
                     }
                     return v;
             }
-        }
-
-        private static bool ProfilesCanDamageAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float extraDefense)
-        {
-            if (defenders == null || defenders.Count == 0) return true;
-            if (attackers == null || attackers.Count == 0) return false;
-            foreach (WorthIt.DefenderProfile def in defenders)
-            {
-                bool covered = false;
-                foreach (WorthIt.DefenderProfile atk in attackers)
-                    if (WorthIt.CanDamage(atk.Attack, def, extraDefense))
-                    {
-                        covered = true;
-                        break;
-                    }
-                if (!covered) return false;
-            }
-            return true;
         }
 
         private static float Severity(float winChance, float potentialDamage, int? enemyEta, int? responseEta,

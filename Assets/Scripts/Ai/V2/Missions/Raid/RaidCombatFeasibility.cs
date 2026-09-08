@@ -16,7 +16,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders, float minWinChance,
             out float win, out bool cover)
         {
-            cover = ProfilesCoverAll(attackers, defenders);
+            cover = WorthIt.CanDamageAll(attackers, defenders);
             win = defenders.Count == 0
                 ? 1f
                 : WorthIt.WinChance((IReadOnlyCollection<WorthIt.DefenderProfile>)attackers,
@@ -24,19 +24,5 @@ namespace Game.Ai.V2
             return cover && win >= minWinChance;
         }
 
-        private static bool ProfilesCoverAll(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders)
-        {
-            if (defenders == null || defenders.Count == 0) return true;
-            if (attackers == null || attackers.Count == 0) return false;
-            foreach (WorthIt.DefenderProfile def in defenders)
-            {
-                bool covered = false;
-                foreach (WorthIt.DefenderProfile atk in attackers)
-                    if (WorthIt.CanDamage(atk.Attack, def, 0f)) { covered = true; break; }
-                if (!covered) return false;
-            }
-            return true;
-        }
     }
 }

@@ -913,10 +913,10 @@ namespace Game.Ai.V2
         private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win)
         {
-            foreach (WorthIt.DefenderProfile def in defenders)
+            if (!WorthIt.CanDamageAll(attackers, defenders, 0f))
             {
-                bool covered = attackers.Any(atk => WorthIt.CanDamage(atk.Attack, def, 0f));
-                if (!covered) { win = 0f; return false; }
+                win = 0f;
+                return false;
             }
             win = defenders.Count == 0
                 ? 1f
