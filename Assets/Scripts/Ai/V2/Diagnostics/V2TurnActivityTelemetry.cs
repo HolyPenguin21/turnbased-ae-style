@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -24,6 +25,8 @@ namespace Game.Ai.V2
         public int MissionsConsidered;
         public int MissionsFunded;
         public int Provisioned;
+        public readonly Dictionary<ProvisionFailureKind, int> ProvisionFailures =
+            new Dictionary<ProvisionFailureKind, int>();
         public int ExecutionAttempts;
         public int ExecutionsSucceeded;
         public int ExecutionsStaleOrSkipped;   // revalidated-away / 0 AP & 0 steps
@@ -50,6 +53,11 @@ namespace Game.Ai.V2
             MissionsConsidered += o.MissionsConsidered;
             MissionsFunded += o.MissionsFunded;
             Provisioned += o.Provisioned;
+            foreach (KeyValuePair<ProvisionFailureKind, int> failure in o.ProvisionFailures)
+            {
+                ProvisionFailures.TryGetValue(failure.Key, out int current);
+                ProvisionFailures[failure.Key] = current + failure.Value;
+            }
             ExecutionAttempts += o.ExecutionAttempts;
             ExecutionsSucceeded += o.ExecutionsSucceeded;
             ExecutionsStaleOrSkipped += o.ExecutionsStaleOrSkipped;
@@ -68,9 +76,22 @@ namespace Game.Ai.V2
             InfrastructureBuilt += o.InfrastructureBuilt;
         }
 
+        public void RecordProvisionFailure(ProvisionFailureKind kind)
+        {
+            if (kind == ProvisionFailureKind.None)
+                return;
+            ProvisionFailures.TryGetValue(kind, out int current);
+            ProvisionFailures[kind] = current + 1;
+        }
+
+        private string ProvisionFailureLine() =>
+            ProvisionFailures.Count == 0 ? "none" : string.Join(",",
+                ProvisionFailures.OrderBy(kv => (int)kv.Key).Select(kv => $"{kv.Key}={kv.Value}"));
+
         public string Line() =>
             $"demands {DemandsRaised}, missions {MissionsConsidered}, funded {MissionsFunded}, "
-            + $"provisioned {Provisioned}, execAttempts {ExecutionAttempts}, execOk {ExecutionsSucceeded}, "
+            + $"provisioned {Provisioned}, provFail {ProvisionFailures.Values.Sum()} [{ProvisionFailureLine()}], "
+            + $"execAttempts {ExecutionAttempts}, execOk {ExecutionsSucceeded}, "
             + $"execStale {ExecutionsStaleOrSkipped}, "
             + $"cards {CardsPlayed}, draws {CardsDrawn}, capDeliveries {CapabilityDeliveries}, "
             + $"exhaustion {ExhaustionEvents}, poolRecov {PoolRecoveries}, "
