@@ -951,6 +951,10 @@ namespace Game.Ai.V2
         public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
         public const float starvationEconomyTrigger = 0.5f;    // below this -> no extra Economy demand
         public const float starvationEconomyValueBonus = 35f;  // max added to the site's Value
+        // Phase-B card-resource opportunity cost for a CURRENT, exactly witnessed AGG/RCN
+        // capability block. This is a soft marginal term: urgency, affordability horizon and the
+        // fraction of required stock the candidate would consume all scale it below this ceiling.
+        public const float starvationResidualPreservationMax = 3.0f;
         // FutureUtility term values. AP/resource costs use the shared stratCard /
         // stratChain dynamic cost model; Phase B has no parallel cost weights.
         public const float surplusHeroVersatility = 0.35f;
