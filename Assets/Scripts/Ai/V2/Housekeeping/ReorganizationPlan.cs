@@ -13,6 +13,7 @@ namespace Game.Ai.V2
         public readonly int FromArmyId;
         public readonly int ToArmyId;
         public readonly int SwapUnitKey;
+        public readonly bool IsWholeFold;
         public readonly string Reason;
 
         // -2 = a zero-AP commander reorder inside one container (FromArmyId == ToArmyId, UnitKey
@@ -23,22 +24,28 @@ namespace Game.Ai.V2
         public bool IsReorder => SwapUnitKey == ReorderSentinel;
 
         public PlannedTransfer(int unitKey, int fromArmyId, int toArmyId, string reason)
-            : this(unitKey, fromArmyId, toArmyId, -1, reason) { }
+            : this(unitKey, fromArmyId, toArmyId, -1, false, reason) { }
 
-        private PlannedTransfer(int unitKey, int fromArmyId, int toArmyId, int swapUnitKey, string reason)
+        private PlannedTransfer(int unitKey, int fromArmyId, int toArmyId, int swapUnitKey,
+            bool isWholeFold, string reason)
         {
             UnitKey = unitKey;
             FromArmyId = fromArmyId;
             ToArmyId = toArmyId;
             SwapUnitKey = swapUnitKey;
+            IsWholeFold = isWholeFold;
             Reason = reason;
         }
 
         public static PlannedTransfer Swap(int unitAKey, int armyAId, int unitBKey, int armyBId, string reason) =>
-            new PlannedTransfer(unitAKey, armyAId, armyBId, unitBKey, reason);
+            new PlannedTransfer(unitAKey, armyAId, armyBId, unitBKey, false, reason);
 
         public static PlannedTransfer Reorder(int heroKey, int armyId, string reason) =>
-            new PlannedTransfer(heroKey, armyId, armyId, ReorderSentinel, reason);
+            new PlannedTransfer(heroKey, armyId, armyId, ReorderSentinel, false, reason);
+
+        public static PlannedTransfer WholeFold(int unitKey, int fromArmyId, int toArmyId,
+            string reason) =>
+            new PlannedTransfer(unitKey, fromArmyId, toArmyId, -1, true, reason);
     }
 
     public sealed class ReorganizationPlan

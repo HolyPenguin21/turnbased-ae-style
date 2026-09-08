@@ -64,8 +64,8 @@ namespace Game.Ai.V2
 
                 from.Remove(u);
                 ReorgViability.AddMemberSorted(to, u);
-                c.Transfers.Add(new PlannedTransfer(u.Key, srcId, dstId,
-                    "fold weak/singleton army into destination"));
+                c.Transfers.Add(PlannedTransfer.WholeFold(u.Key, srcId, dstId,
+                    "fold army into destination atomically"));
                 c.MovedUnitKeys.Add(u.Key);
             }
             return c;

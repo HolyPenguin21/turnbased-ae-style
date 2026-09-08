@@ -15,8 +15,9 @@ namespace Game.Ai.V2
     //  against current ownership, same-hex scope, mission claims, capacity, aviation boundaries,
     //  garrison safety and the 0-AP Housekeeping invariant. No direct roster/registry mutation.
     //
-    //  Partial failure is intentionally non-transactional: successful earlier operations stay;
-    //  an unexpected failure aborts the stale remainder of THIS hex only.
+    //  Separate successful operations stay applied if a later operation fails. A whole-fold is
+    //  one explicit atomic batch: all of its members pass final-roster preflight and move together,
+    //  or none move. Any unexpected failure still aborts the stale remainder of THIS hex.
     // ===========================================================================================
     public sealed class HousekeepingExecResult
     {
@@ -37,8 +38,9 @@ namespace Game.Ai.V2
 
             var movedUnits = new HashSet<UnitData>();
 
-            foreach (PlannedTransfer t in plan.Transfers)
+            for (int operationIndex = 0; operationIndex < plan.Transfers.Count; operationIndex++)
             {
+                PlannedTransfer t = plan.Transfers[operationIndex];
                 if (!analysis.ArmyById.TryGetValue(t.FromArmyId, out ArmyData from)
                     || !analysis.ArmyById.TryGetValue(t.ToArmyId, out ArmyData to)
                     || !analysis.UnitByKey.TryGetValue(t.UnitKey, out UnitData unit)
@@ -46,6 +48,60 @@ namespace Game.Ai.V2
                 {
                     Fail(res, plan, $"stale plan reference (u{t.UnitKey} #{t.FromArmyId}->#{t.ToArmyId})");
                     break;
+                }
+
+                if (t.IsWholeFold)
+                {
+                    var batchTransfers = new List<PlannedTransfer> { t };
+                    while (operationIndex + batchTransfers.Count < plan.Transfers.Count)
+                    {
+                        PlannedTransfer next = plan.Transfers[operationIndex + batchTransfers.Count];
+                        if (!next.IsWholeFold || next.FromArmyId != t.FromArmyId
+                            || next.ToArmyId != t.ToArmyId)
+                            break;
+                        batchTransfers.Add(next);
+                    }
+
+                    var batchUnits = new List<UnitData>();
+                    bool staleBatch = false;
+                    foreach (PlannedTransfer bt in batchTransfers)
+                    {
+                        if (!analysis.UnitByKey.TryGetValue(bt.UnitKey, out UnitData member)
+                            || member == null)
+                        {
+                            Fail(res, plan, $"stale whole-fold member u{bt.UnitKey}");
+                            staleBatch = true;
+                            break;
+                        }
+                        batchUnits.Add(member);
+                    }
+                    if (staleBatch)
+                        break;
+
+                    if (!PreflightWholeFold(player, from, to, batchUnits, commitments,
+                            movedUnits, out string foldWhy))
+                    {
+                        Fail(res, plan, $"preflight rejected whole-fold #{from.Id}->#{to.Id} ({foldWhy})");
+                        break;
+                    }
+                    if (!ArmyActions.TransferMembersAtomic(
+                            batchUnits, from, to, ctx.HexSelection, out string foldFail))
+                    {
+                        Fail(res, plan, $"whole-fold failed #{from.Id}->#{to.Id} ({foldFail})");
+                        break;
+                    }
+
+                    foreach (UnitData member in batchUnits)
+                    {
+                        movedUnits.Add(member);
+                        ctx.RecordArmyVisit(member, from, to);
+                    }
+                    res.Applied += batchUnits.Count;
+                    res.StateChanged = true;
+                    AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — whole-folded "
+                        + $"{batchUnits.Count} member(s) #{from.Id}->#{to.Id} atomically ({t.Reason})");
+                    operationIndex += batchTransfers.Count - 1;
+                    continue;
                 }
 
                 if (t.IsReorder)
@@ -153,6 +209,27 @@ namespace Game.Ai.V2
             { why = "aviation container"; return false; }
             if (commitments != null && (commitments.IsArmyClaimed(a.Id) || commitments.IsArmyClaimed(b.Id)))
             { why = "a container became mission-claimed"; return false; }
+            return true;
+        }
+
+        private static bool PreflightWholeFold(PlayerSetupData player, ArmyData from, ArmyData to,
+            IReadOnlyList<UnitData> units, ActorCommitments commitments,
+            HashSet<UnitData> movedUnits, out string why)
+        {
+            if (!CommonPreflight(player, from, to, commitments, out why))
+                return false;
+            if (from.IsGarrison)
+            { why = "whole-fold cannot consume a garrison"; return false; }
+            if (units == null || units.Count == 0)
+            { why = "empty whole-fold"; return false; }
+            if (units.Any(u => u == null || movedUnits.Contains(u)))
+            { why = "whole-fold member already moved or missing"; return false; }
+            if (units.Any(u => u.IsAviation))
+            { why = "aviation unit"; return false; }
+            if (to.HasActivatedThisTurn && units.Any(u => u.ActivationApCost > 0))
+            { why = "whole-fold would spend AP on activated destination"; return false; }
+            if (!ArmyActions.CanTransferMembers(units, from, to, out why))
+                return false;
             return true;
         }
 

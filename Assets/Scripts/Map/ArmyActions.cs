@@ -269,6 +269,108 @@ namespace Game.Map
             return true;
         }
 
+        // Side-effect-free preflight for an all-or-nothing multi-member transfer. This is the
+        // canonical batch counterpart of TransferMember: validate both FINAL rosters and the
+        // combined activated-destination AP charge before any member is removed.
+        public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
+            ArmyData target, out string failReason)
+            => CanTransferMembers(units, source, target, out _, out _, out failReason);
+
+        private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
+            ArmyData target, out PlayerRoot targetRoot, out int totalApCost, out string failReason)
+        {
+            failReason = null;
+            targetRoot = null;
+            totalApCost = 0;
+            if (units == null || units.Count == 0 || source == null || target == null
+                || source == target || source.IsPrison || target.IsPrison)
+            {
+                failReason = "Invalid batch transfer request.";
+                return false;
+            }
+
+            var distinct = units.Where(u => u != null).Distinct().ToList();
+            if (distinct.Count != units.Count)
+            {
+                failReason = "Batch contains a null or duplicate member.";
+                return false;
+            }
+            foreach (UnitData unit in distinct)
+            {
+                if (!source.Members.Contains(unit))
+                {
+                    failReason = $"{unit.Name} is not a member of {source.Name}.";
+                    return false;
+                }
+                if (!AviationRules.CanContain(target, unit))
+                {
+                    failReason = "A batch transfer cannot mix incompatible aviation/ground containers.";
+                    return false;
+                }
+            }
+
+            var projectedSource = source.Members.Where(u => !distinct.Contains(u)).ToList();
+            if (ArmyData.ComputeCapacity(projectedSource, source.IsGarrison) < projectedSource.Count)
+            {
+                failReason = $"The batch would leave {source.Name} without room for everyone else.";
+                return false;
+            }
+
+            var projectedTarget = new List<UnitData>(target.Members);
+            foreach (UnitData unit in distinct)
+            {
+                int index = unit.IsHero ? projectedTarget.Count(u => u.IsHero) : projectedTarget.Count;
+                projectedTarget.Insert(index, unit);
+            }
+            if (!target.IsAirfield
+                && ArmyData.ComputeCapacity(projectedTarget, target.IsGarrison) < projectedTarget.Count)
+            {
+                failReason = $"The batch wouldn't fit in {target.Name}.";
+                return false;
+            }
+            if (target.IsAirfield
+                && projectedTarget.Count > AviationRules.AirfieldCapacityAt(target.Hex, target.Owner))
+            {
+                failReason = $"The airfield at {target.Hex} is full.";
+                return false;
+            }
+
+            if (target.HasActivatedThisTurn)
+            {
+                totalApCost = distinct.Sum(u => u.ActivationApCost);
+                targetRoot = PlayerRootRegistry.FindFor(target.Owner);
+                if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
+                {
+                    failReason = $"Not enough action points to add the batch to {target.Name} "
+                        + $"({totalApCost} AP needed — it already moved this turn).";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Applies only after the complete batch preflight succeeds. No callback or fallible action
+        // occurs between removals, so callers observe either the original two rosters or the final
+        // two rosters — never a partially folded source army.
+        public static bool TransferMembersAtomic(IReadOnlyList<UnitData> units, ArmyData source,
+            ArmyData target, HexSelectionController hexSelectionController, out string failReason)
+        {
+            if (!CanTransferMembers(units, source, target,
+                    out PlayerRoot targetRoot, out int totalApCost, out failReason))
+                return false;
+
+            foreach (UnitData unit in units)
+                source.Members.Remove(unit);
+            foreach (UnitData unit in units)
+                target.AddMemberSorted(unit);
+            targetRoot?.SpendActionPoints(totalApCost);
+
+            hexSelectionController?.RestackArmiesOn(source.Hex, null);
+            if (!target.Hex.Equals(source.Hex))
+                hexSelectionController?.RestackArmiesOn(target.Hex, null);
+            return true;
+        }
+
         // A direct 1-for-1 exchange between two armies — the same net effect as two TransferMember
         // calls but without either one ever needing a free slot, since a straight swap never
         // changes either army's headcount. TransferMember alone can't express this: it always
