@@ -255,7 +255,8 @@ namespace Game.Ai.V2
         public static StrategicCardUseCandidate ScoreForDemand(MaterializationPlan plan, AxisDemand demand,
             TraitPreference projected, CapabilityInventory inv, int referenceMoveMax,
             bool hasCompetingHeroDemand, WorldSnapshot snap,
-            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));
@@ -303,7 +304,7 @@ namespace Game.Ai.V2
                 + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
 
-            bd.ResourceEfficiency = -ResourceCost(plan, snap);
+            bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource);
 
             bd.RedundancyPenalty = -(GarrisonSaturationPenalty(plan, demand, snap)
                                      + ScoutOversupplyPenalty(role, inv));
@@ -354,7 +355,8 @@ namespace Game.Ai.V2
             var scored = new List<StrategicCardUseCandidate>(roles.Count);
             foreach (IntendedRole role in roles)
                 scored.Add(ScoreSurplusRole(plan, role, inv, recce, hero, hand, projected, snap,
-                    baseline, versatility, witnessedUsefulApDemand, projectedLegalFillers));
+                    baseline, versatility, witnessedUsefulApDemand, projectedLegalFillers,
+                    spendableResource));
 
             scored.Sort((a, b) =>
             {
@@ -383,7 +385,8 @@ namespace Game.Ai.V2
         private static StrategicCardUseCandidate ScoreSurplusRole(MaterializationPlan plan, IntendedRole role,
             CapabilityInventory inv, bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
             WorldSnapshot snap, BaselineForceReadiness baseline, float versatility,
-            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             float scarcity = SurplusScarcity(inv, recce, hero);
@@ -423,7 +426,7 @@ namespace Game.Ai.V2
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
-            bd.ResourcePressureBenefit = 0f;   // SurplusAdmissionPolicy owns the stranded-AP relaxation (single layer)
+            bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
@@ -500,7 +503,8 @@ namespace Game.Ai.V2
         public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade,
             GenerationStep generation = null, float? witnessedUsefulApDemand = null,
-            float? actualApCost = null, ResourceCost actualResourceCost = null)
+            float? actualApCost = null, ResourceCost actualResourceCost = null,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             CardDefinition def = card?.Definition;
@@ -564,7 +568,7 @@ namespace Game.Ai.V2
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
-                                      + StrategicResourceCostValue(pricedResources, snap)
+                                      + StrategicResourceCostValue(pricedResources, snap, spendableResource)
                                       + genStepPenalty);
             // Challenge cost is certain; every benefit of the minted card is success-contingent.
             bd.Deployability = generation != null
@@ -605,11 +609,12 @@ namespace Game.Ai.V2
             + b.ResourcePressureBenefit + b.HandPressureBenefit;
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
-        private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap)
+        private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             if (plan == null) return 0f;
             return AiConfigV2.stratCardApCostWeight * plan.ApCost
-                   + StrategicResourceCostValue(plan.ResCost, snap)
+                   + StrategicResourceCostValue(plan.ResCost, snap, spendableResource)
                    + ChainStepPenalty(plan.Kind);
         }
 
@@ -1351,7 +1356,8 @@ namespace Game.Ai.V2
 
         // Dynamic opportunity cost from all unplayed hand/deck costs versus current stock and
         // income over the existing economy horizon. No other spend demand => cheap resources.
-        internal static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap)
+        internal static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             if (c == null)
                 return 0f;
@@ -1365,9 +1371,11 @@ namespace Game.Ai.V2
                 if (snap?.Self != null)
                 {
                     float demand = PendingCardResourceDemand(snap, type);
-                    float supply = snap.Self.Stockpile.Get(type)
-                        + snap.Self.PerTurnIncome.Get(type)
-                            * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+                    float availableNow = spendableResource != null
+                        ? Mathf.Max(0f, spendableResource(type))
+                        : snap.Self.Stockpile.Get(type);
+                    float supply = availableNow + snap.Self.PerTurnIncome.Get(type)
+                        * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
                     float pressure = demand <= 0.0001f ? 0f
                         : demand / Mathf.Max(0.0001f, demand + supply);
                     factor = Mathf.Lerp(0.2f, 1.8f, Mathf.Clamp01(pressure));
@@ -1389,8 +1397,6 @@ namespace Game.Ai.V2
             return demand;
         }
 
-        private static float ResourceCostSum(ResourceCost c) => c == null
-            ? 0f : c.human + c.energy + c.materials + c.tech;
         private static float ChainStepPenalty(MaterializationChainKind k)
         {
             switch (k)
