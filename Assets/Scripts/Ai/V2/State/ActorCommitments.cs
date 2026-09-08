@@ -171,9 +171,9 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Is the intent's committed mover a live own army STRUCTURALLY able to run it — a solo
-        // Recce, and (when the objective requires stealth) hidden or able to enter stealth? Read
-        // from the snapshot's own-army list; no live game-system call.
+        // Is the intent's committed mover structurally able to continue the role? Ground uses the
+        // canonical solo-Recce shape. Air may continue observation (Refresh/Surveil) outside the
+        // ground concurrency cap, but can never satisfy Explore's physical-visit or stealth lane.
         public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement)
         {
             if (intent?.PreferredMoverArmyId == null || snap?.Self?.Armies == null)
@@ -183,7 +183,15 @@ namespace Game.Ai.V2
             ArmySnapshot a = null;
             foreach (ArmySnapshot s in snap.Self.Armies)
                 if (s != null && s.ArmyId == id) { a = s; break; }
-            if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+            if (a == null || a.IsPrison || a.MemberCount <= 0)
+                return false;
+
+            if (a.IsAir)
+                return intent.Scout != null
+                    && intent.Scout.Kind != ScoutTargetKind.Explore
+                    && requirement != StealthRequirement.Required;
+
+            if (!a.IsSoloRecce)
                 return false;
 
             if (requirement == StealthRequirement.Required

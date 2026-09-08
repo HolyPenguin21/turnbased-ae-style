@@ -135,6 +135,9 @@ namespace Game.Ai.V2
             // surfaced as a [CHECK][ERROR] by MissionContinuityLayer.ResolveActive.
             var coveredKeys = new HashSet<MissionIntentKey>();
             var activeReconActors = new HashSet<int>();
+            var activeGroundReconActors = new HashSet<int>();
+            var ownById = (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId, a => a);
             if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                 {
@@ -143,8 +146,12 @@ namespace Game.Ai.V2
                         continue;
                     coveredKeys.Add(i.IntentKey);
                     activeReconActors.Add(i.PreferredMoverArmyId.Value);
+                    if (ownById.TryGetValue(i.PreferredMoverArmyId.Value, out ArmySnapshot actor)
+                        && !actor.IsAir)
+                        activeGroundReconActors.Add(actor.ArmyId);
                 }
             int activeReconExecutions = activeReconActors.Count;
+            int activeGroundReconExecutions = activeGroundReconActors.Count;
 
             var uncovered = objectives
                 .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey))
@@ -308,7 +315,7 @@ namespace Game.Ai.V2
 
             // --- Shared room. HardCap bounds concurrent GROUND scouts; the scarcer stealth need is
             //     served first.
-            int roomForNew = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - activeReconExecutions);
+            int roomForNew = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - activeGroundReconExecutions);
             int stealthNew = Mathf.Min(missStealth, roomForNew);
 
             // A persisted GroundTraversal deficit is a HARD FLOOR: aviation can never substitute for
@@ -357,6 +364,7 @@ namespace Game.Ai.V2
                     + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(raw={capacity.GroundTraversalDeficit} "
                     + $"persist={(groundPersist ? 1 : 0)} streak={groundStreak}) "
                     + $"missStealth={missStealth} stealthFree={stealthFree} active={activeReconExecutions} "
+                    + $"activeGround={activeGroundReconExecutions} "
                     + $"hard={ReconConcurrencyPolicy.HardCap} combinedCeiling={capacity.CombinedDesiredConcurrency} "
                     + $"existingGroundUsable={capacity.ExistingGroundUsableCapacity} usefulGenericRoom={usefulGenericRoom} "
                     + $"groundFloor={groundNew} roomForNew={roomForNew} blocked={blocked} "

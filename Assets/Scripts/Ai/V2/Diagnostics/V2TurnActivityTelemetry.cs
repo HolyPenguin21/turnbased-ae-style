@@ -24,10 +24,9 @@ namespace Game.Ai.V2
         public int MissionsConsidered;
         public int MissionsFunded;
         public int Provisioned;
-        public int ExecutionAttempts;          // missions actually run (superseded stale ones excluded)
+        public int ExecutionAttempts;
         public int ExecutionsSucceeded;
-        public int ExecutionsStaleOrSkipped;   // revalidated-away / superseded / 0 AP & 0 steps
-        public int ReplacementMissions;        // synthesised replacements (own fresh key)
+        public int ExecutionsStaleOrSkipped;   // revalidated-away / 0 AP & 0 steps
         public int CardsPlayed;
         public int CardsDrawn;
         public int CapabilityDeliveries;
@@ -54,7 +53,6 @@ namespace Game.Ai.V2
             ExecutionAttempts += o.ExecutionAttempts;
             ExecutionsSucceeded += o.ExecutionsSucceeded;
             ExecutionsStaleOrSkipped += o.ExecutionsStaleOrSkipped;
-            ReplacementMissions += o.ReplacementMissions;
             CardsPlayed += o.CardsPlayed;
             CardsDrawn += o.CardsDrawn;
             CapabilityDeliveries += o.CapabilityDeliveries;
@@ -73,7 +71,7 @@ namespace Game.Ai.V2
         public string Line() =>
             $"demands {DemandsRaised}, missions {MissionsConsidered}, funded {MissionsFunded}, "
             + $"provisioned {Provisioned}, execAttempts {ExecutionAttempts}, execOk {ExecutionsSucceeded}, "
-            + $"execStale {ExecutionsStaleOrSkipped}, replacements {ReplacementMissions}, "
+            + $"execStale {ExecutionsStaleOrSkipped}, "
             + $"cards {CardsPlayed}, draws {CardsDrawn}, capDeliveries {CapabilityDeliveries}, "
             + $"exhaustion {ExhaustionEvents}, poolRecov {PoolRecoveries}, "
             + $"mat {MaterializationsSucceeded}/{MaterializationAttempts}, "

@@ -111,6 +111,8 @@ namespace Game.Ai.V2
             };
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
+            var ownById = (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId, a => a);
 
             // --- Active durable GENERIC lanes, split by requirement. A claimed mover only; a
             //     RequiresStealth lane is NOT generic capacity and is skipped here.
@@ -122,6 +124,10 @@ namespace Game.Ai.V2
                         || i.Scout.RequiresStealth)
                         continue;
                     int id = i.PreferredMoverArmyId.Value;
+                    // Air observation is measured exactly once by MeasureAirCapacity below. It is
+                    // not a generic ground lane and must not inflate ExistingGroundUsableCapacity.
+                    if (!ownById.TryGetValue(id, out ArmySnapshot actor) || actor.IsAir)
+                        continue;
                     if (i.Scout.Kind == ScoutTargetKind.Explore)
                         cap.GenericGroundLaneActors.Add(id);
                     else

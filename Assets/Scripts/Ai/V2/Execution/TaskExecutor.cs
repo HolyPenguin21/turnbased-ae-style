@@ -40,19 +40,7 @@ namespace Game.Ai.V2
         public ExecutionStopReason StopReason;
         public bool EnteredStealth;
 
-        // Lifecycle distinction for continuity + telemetry (2026-08-31 review follow-up).
-        //  Replaced      — this result is the SUPERSEDED stale mission; a live replacement was
-        //                  synthesised for its mover. 0 AP, not a success.
-        //  IsReplacement — this result belongs to the synthesised replacement mission (its own
-        //                  fresh StableMissionKey). Counted once as a replacement, and normally
-        //                  as an execution attempt / success on its own merits.
-        //  Source        — the ProvisionedMission that produced this result. The caller uses it to
-        //                  register a REPLACEMENT (whose proposal was never in the pre-execution
-        //                  RegisterProposals set) into the MissionOutcomeLedger before recording
-        //                  its execution, so continuity/reconciliation sees it too — not only
-        //                  telemetry.
-        public bool Replaced;
-        public bool IsReplacement;
+        // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
 
         // RECON-AIR-06 — the REAL ArmyId this mission's actor resolved to, when it can differ from
@@ -113,7 +101,7 @@ namespace Game.Ai.V2
         // runs it (ReconAirExecutor.Execute) as its own stage after this returns.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null, IReadOnlyCollection<HexCoord> reservedExploreFoci = null)
+            WorldSnapshot snapshot = null)
         {
             if (ctx?.Map == null)
                 yield break;
@@ -143,7 +131,6 @@ namespace Game.Ai.V2
                 var result = new ExecutionResult
                 {
                     Key = pm.Key,
-                    IsReplacement = pm.IsReplacement,
                     Source = pm,
                 };
 
@@ -176,6 +163,10 @@ namespace Game.Ai.V2
                     result.ApSpent = 0f;
                     result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
                     result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
+                    result.DurableRoleContinues = result.ReachedGoal
+                        && pm.Mission?.FromDurableIntent == true
+                        && pm.Kind == MissionKind.Scout
+                        && pm.ScoutKind != ScoutTargetKind.Surveil;
                     result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
                     result.StopReason = validity == MissionValidity.StaleMoverLost
                         ? ExecutionStopReason.MoverLost

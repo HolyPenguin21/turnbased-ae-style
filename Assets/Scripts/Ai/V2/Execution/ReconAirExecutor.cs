@@ -76,6 +76,20 @@ namespace Game.Ai.V2
             int m0 = root.GetResource(Game.Economy.ResourceType.Materials);
             int t0 = root.GetResource(Game.Economy.ResourceType.Tech);
 
+            foreach (AirReconSkippedMission skipped in plan.SkippedMissions)
+            {
+                ProvisionedMission pm = skipped?.Mission;
+                if (pm == null || perMissionResults == null)
+                    continue;
+                ExecutionResult er = NewPerMissionResult(pm, pm.AirfieldHex, -1);
+                if (skipped.Reason != ExecutionStopReason.MoverLost && ObjectiveSatisfied(player, pm))
+                    MarkSatisfiedNoOp(pm, er);
+                else
+                    er.StopReason = skipped.Reason;
+                er.StateVersionAfter = V2StateVersion.Current;
+                perMissionResults.Add(er);
+            }
+
             // Round 7 (Problem 1) — MANDATORY AIR RECOVERY is the one legitimate lifecycle/safety
             // action allowed outside funded Recon progress: a sortie that MUST physically return to
             // avoid being stranded/lost flies unconditionally, never gated on this pass's Mission ->
@@ -90,7 +104,11 @@ namespace Game.Ai.V2
             // must-recover rule) resolves to Phase.Return. A wing that projects to anything else
             // (still Outbound/Turning/Hold) is NOT flown here — it makes no progress this turn unless
             // it won fresh funding.
-            var fundedThisPass = new HashSet<int>(plan.ReadyActorIds);
+            // A provisioned objective that became stale after Ground execution no longer grants
+            // strategic progress, but it also must not suppress the independent recovery pass.
+            var fundedThisPass = new HashSet<int>(plan.ReadyActorIds.Where(id =>
+                !plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission mission)
+                || !ObjectiveSatisfied(player, mission)));
             foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
                          .Where(a => a != null && AviationRules.IsValidAirArmy(a)
                              && a.Controller != null && a.CurrentMovement > 0
@@ -104,19 +122,37 @@ namespace Game.Ai.V2
                     continue; // not a mandatory recovery — unfunded continuing progress, skip this pass
                 HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, air.Id, out ReconPatrolState st)
                     ? st.StrategicAnchor : (HexCoord?)null;
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} unfunded this pass but "
-                    + "must-recover — flying unconditionally (lifecycle safety, not Recon funding)");
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} has no strategic "
+                    + "progress entitlement but must-recover — flying unconditionally (lifecycle safety)");
                 yield return RunActor(player, root, ctx, snapshot, air, result, missionFocusHex: focus);
             }
 
             foreach (int id in plan.ReadyActorIds)
             {
                 ArmyData air = Resolve(player, id);
+                plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
+                if (pm != null && air != null && ObjectiveSatisfied(player, pm))
+                {
+                    ExecutionResult stale = NewPerMissionResult(pm, air?.Hex ?? pm.ExecutionHex,
+                        air != null ? air.Id : -1);
+                    MarkSatisfiedNoOp(pm, stale);
+                    stale.StateVersionAfter = V2StateVersion.Current;
+                    perMissionResults?.Add(stale);
+                    continue;
+                }
                 if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null
                     || air.CurrentMovement <= 0)
+                {
+                    if (pm != null && perMissionResults != null)
+                    {
+                        ExecutionResult missing = NewPerMissionResult(pm, pm.ExecutionHex, -1);
+                        missing.StopReason = ExecutionStopReason.MoverLost;
+                        missing.StateVersionAfter = V2StateVersion.Current;
+                        perMissionResults.Add(missing);
+                    }
                     continue;
+                }
 
-                plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
                 ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, air.Hex, air.Id) : null;
                 int apBeforeActor = root.ActionPoints;
                 yield return RunActor(player, root, ctx, snapshot, air, result,
@@ -161,11 +197,28 @@ namespace Game.Ai.V2
                 if (pm == null || perMissionResults == null) return;
                 ExecutionResult er = NewPerMissionResult(pm, lp.AirfieldHex, -1);
                 er.StopReason = why;
+                er.StateVersionAfter = V2StateVersion.Current;
                 perMissionResults.Add(er);
             }
 
             if (lp?.Subset == null || lp.Subset.Count == 0)
+            {
+                ReportNoLaunch(ExecutionStopReason.TargetInvalidated);
                 yield break;
+            }
+            // Ground execution earlier in this batch may already have refreshed this objective.
+            // Revalidate before spending launch AP/Energy, matching TaskExecutor's live stale gate.
+            if (pm != null && ObjectiveSatisfied(player, pm))
+            {
+                if (perMissionResults != null)
+                {
+                    ExecutionResult stale = NewPerMissionResult(pm, lp.AirfieldHex, -1);
+                    MarkSatisfiedNoOp(pm, stale);
+                    stale.StateVersionAfter = V2StateVersion.Current;
+                    perMissionResults.Add(stale);
+                }
+                yield break;
+            }
             if (!AiAirSortiePlanner.CanAffordLaunch(root, player, lp.Subset))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
@@ -180,6 +233,8 @@ namespace Game.Ai.V2
             // return downstream in AirReconStepDirector.
 
             bool firstVisitedBefore = VisionSystem.IsVisited(player, lp.FirstStepHex);
+            HashSet<int> enemyBeforeLaunch = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralBeforeLaunch = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
             var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
                 .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
             var launchDecision = new AiDecision
@@ -247,6 +302,7 @@ namespace Game.Ai.V2
             launchSortie.RecordStep(launched.Hex);
             launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, lp.Score);
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+            RecordDiscoveries(player, ctx.TurnNumber, launched.Id, enemyBeforeLaunch, neutralBeforeLaunch);
             StampObservedFootprint(player, ctx, launched, launched.Hex);
             LogVisitedInvariant(player, lp.FirstStepHex, firstVisitedBefore, "storage-launch-first-step");
             AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
@@ -297,13 +353,35 @@ namespace Game.Ai.V2
         // the SAME ReachedGoal/ObjectiveSatisfied semantics Ground's does.
         private static void FinalizePerMissionResult(PlayerSetupData player, ProvisionedMission pm, ExecutionResult er)
         {
-            if (player == null || pm == null || er == null || er.ReachedGoal)
+            if (er == null)
+                return;
+            er.StateVersionAfter = V2StateVersion.Current;
+            if (player == null || pm == null || er.ReachedGoal)
                 return;
             bool satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
                 ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
                 : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
             if (satisfied)
+            {
                 er.ReachedGoal = true;
+                er.DurableRoleContinues = pm.Mission?.FromDurableIntent == true
+                    && pm.ScoutKind != ScoutTargetKind.Surveil;
+            }
+        }
+
+        private static bool ObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
+            pm != null && (pm.ScoutKind == ScoutTargetKind.Surveil
+                ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(
+                    player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
+                : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex));
+
+        private static void MarkSatisfiedNoOp(ProvisionedMission pm, ExecutionResult er)
+        {
+            er.ReachedGoal = true;
+            er.StaleNoOp = true;
+            er.StopReason = ExecutionStopReason.ReachedGoal;
+            er.DurableRoleContinues = pm?.Mission?.FromDurableIntent == true
+                && pm.ScoutKind != ScoutTargetKind.Surveil;
         }
 
         // Thin execute loop. Every decision comes from AirReconStepDirector; the executor only
@@ -519,6 +597,8 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
                 + $"decision=STRIKE dmgFrac={assess.DamageFraction:0.00} killP={assess.KillProbability:0.00}");
+            HashSet<int> enemyBefore = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralBefore = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
             var strike = new AviationCombatPresenter.AirStrikeResult();
             yield return AviationActions.ResolveStationaryStrike(presenter, air, strike);
 
@@ -530,6 +610,7 @@ namespace Game.Ai.V2
 
             ArmyData afterStrike = Resolve(player, air.Id);
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+            RecordDiscoveries(player, ctx.TurnNumber, air.Id, enemyBefore, neutralBefore);
             AirReconStepDirector.ResolveAfterStrike(player, ctx, afterStrike, sortie, strike.Attacked);
         }
 
@@ -538,6 +619,8 @@ namespace Game.Ai.V2
         {
             HexCoord before = air.Hex;
             bool visitedBefore = VisionSystem.IsVisited(player, next);
+            HashSet<int> enemyBefore = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralBefore = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
             var decision = AiDecision.Move(air, next, reason, 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
@@ -548,6 +631,7 @@ namespace Game.Ai.V2
                 onMoved?.Invoke();
 
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+            RecordDiscoveries(player, ctx.TurnNumber, air.Id, enemyBefore, neutralBefore);
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
             if (!after.Equals(before))
                 StampObservedFootprint(player, ctx, air, after);
@@ -605,5 +689,34 @@ namespace Game.Ai.V2
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
+
+        private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            var ids = new HashSet<int>();
+            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
+                ids.Add(sighting.ArmyId);
+            return ids;
+        }
+
+        private static void RecordDiscoveries(PlayerSetupData player, int turn, int actorId,
+            HashSet<int> enemyBefore, HashSet<int> neutralBefore)
+        {
+            int[] enemies = KnownIds(AiMapMemory.AllKnownEnemySightings(player))
+                .Where(id => enemyBefore == null || !enemyBefore.Contains(id)).ToArray();
+            int[] neutrals = KnownIds(AiMapMemory.AllKnownNeutralSightings(player))
+                .Where(id => neutralBefore == null || !neutralBefore.Contains(id)).ToArray();
+            if (enemies.Length > 0)
+            {
+                StrategicInterruptRegistry.MarkDiscovery(player, turn, enemies);
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Discovery] actor=#{actorId} "
+                    + $"enemy=[{string.Join(",", enemies)}]");
+            }
+            if (neutrals.Length > 0)
+            {
+                StrategicInterruptRegistry.MarkDiscovery(player, turn, neutrals);
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Discovery] actor=#{actorId} "
+                    + $"neutral=[{string.Join(",", neutrals)}]");
+            }
+        }
     }
 }

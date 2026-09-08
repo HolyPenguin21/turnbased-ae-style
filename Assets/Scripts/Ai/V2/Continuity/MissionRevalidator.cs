@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Linq;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using UnityEngine;
@@ -86,102 +84,12 @@ namespace Game.Ai.V2
                 return MissionValidity.StaleTargetInvalidated;
             return MissionValidity.Valid;
         }
-
-        public static HashSet<HexCoord> CollectExploreProposalFoci(IEnumerable<MissionProposal> missions)
-        {
-            var foci = new HashSet<HexCoord>();
-            if (missions == null)
-                return foci;
-            foreach (MissionProposal m in missions)
-                if (m?.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget smt
-                    && ReconScoutKinds.IsExplore(smt.Kind))
-                    foci.Add(smt.FocusHex);
-            return foci;
-        }
-
-        public static bool TryPickReplacementExploreFocus(WorldSnapshot snapshot, PlayerSetupData player,
-            ProvisionedMission pm, HexCoord from, ISet<HexCoord> takenFoci, out HexCoord focus)
-        {
-            focus = default;
-            if (snapshot?.MapKnowledge?.Frontier == null || pm == null || pm.IsReplacement
-                || pm.Kind != MissionKind.Scout || !ReconScoutKinds.IsExplore(pm.ScoutKind))
-                return false;
-
-            FrontierHexSnapshot? best = null;
-            foreach (FrontierHexSnapshot f in snapshot.MapKnowledge.Frontier)
-            {
-                if (VisionSystem.IsVisited(player, f.Hex) || f.Hex.Equals(pm.ExecutionHex))
-                    continue;
-                if (takenFoci != null && takenFoci.Contains(f.Hex))
-                    continue;
-                if (AiMapMemory.KnownEnemySightingAt(player, f.Hex).HasValue)
-                    continue;
-                if (best == null || Better(f, best.Value, from))
-                    best = f;
-            }
-            if (best == null)
-                return false;
-            focus = best.Value.Hex;
-            return true;
-        }
-
-        public static ProvisionedMission BuildExploreReplacement(ProvisionedMission stale, HexCoord newFocus,
-            PlayerSetupData player = null)
-        {
-            var target = new ScoutMissionTarget
-            {
-                FocusHex = newFocus,
-                Kind = ScoutTargetKind.Explore,
-                Stealth = StealthRequirement.None,
-                DetectionRisk = 0f,
-            };
-            var proposal = new MissionProposal
-            {
-                Kind = MissionKind.Scout,
-                Target = target,
-                BaseValue = stale?.Mission?.BaseValue ?? 0f,
-                Explain = "live replacement for a stale Explore focus",
-                PreferredMoverArmyId = stale?.MoverArmyId,
-                AttemptId = AiV2Trace.CurrentScope(player)?.NextMissionAttemptId(),
-                ReplacementOfAttemptId = stale?.Mission?.AttemptId,
-            };
-            return new ProvisionedMission
-            {
-                Mission = proposal,
-                Key = new StableMissionKey(MissionKind.Scout, (int)ScoutTargetKind.Explore, 0,
-                    newFocus.Q, newFocus.R),
-                Kind = MissionKind.Scout,
-                ScoutKind = ScoutTargetKind.Explore,
-                MoverArmyId = stale?.MoverArmyId ?? 0,
-                FocusHex = newFocus,
-                ExecutionHex = newFocus,
-                TrackedArmyId = null,
-                BaselineObservedTurn = 0,
-                ClaimedPhysical = stale?.ClaimedPhysical ?? default,
-                ClaimedAp = stale?.ClaimedAp ?? 0f,
-                StealthApReserved = false,
-                IsReplacement = true,
-            };
-        }
-
-        private static bool Better(FrontierHexSnapshot a, FrontierHexSnapshot b, HexCoord from)
-        {
-            int da = HexGridMath.Distance(from, a.Hex);
-            int db = HexGridMath.Distance(from, b.Hex);
-            if (da != db) return da < db;
-            if (a.FreshNeighbors != b.FreshNeighbors) return a.FreshNeighbors > b.FreshNeighbors;
-            if (a.Hex.Q != b.Hex.Q) return a.Hex.Q < b.Hex.Q;
-            return a.Hex.R < b.Hex.R;
-        }
-
-        public static bool WasAttempt(ExecutionResult r) => r != null && !r.Replaced;
+        public static bool WasAttempt(ExecutionResult r) => r != null;
 
         public static bool WasGenuineExecution(ExecutionResult r) =>
-            r != null && !r.Replaced && r.ReachedGoal && (r.StepsMoved > 0 || r.ApSpent > Mathf.Epsilon);
+            r != null && r.ReachedGoal && (r.StepsMoved > 0 || r.ApSpent > Mathf.Epsilon);
 
         public static bool WasStaleOrSkipped(ExecutionResult r) =>
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;
-
-        public static bool WasReplacement(ExecutionResult r) => r != null && r.IsReplacement;
     }
 }

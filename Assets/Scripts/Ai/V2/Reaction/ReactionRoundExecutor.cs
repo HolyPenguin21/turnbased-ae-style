@@ -205,11 +205,6 @@ namespace Game.Ai.V2
 
             result.Provisioned += provisioned.Count;
             var executed = new List<ExecutionResult>();
-            // Same lifecycle as the main pipeline: outcomeLedger.RegisterProposals(missions) rowed
-            // every Explore proposal (incl. deferred), so the stale-Explore replacement picker must
-            // be told the whole focus set, not just what reached the queue. Shared helper keeps the
-            // two passes from drifting.
-            HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
             // Round 4 — split ground/raid from air-executed Scout missions before TaskExecutor, same
             // as the main pipeline (see AiStrategyV2Pipeline for the full rationale).
             var groundProvisioned = provisioned
@@ -218,7 +213,10 @@ namespace Game.Ai.V2
             var airProvisioned = provisioned
                 .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
                 .ToList();
-            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot, exploreProposalFoci);
+            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot);
+
+            if (executed.Any(e => e != null && e.Outcome.StateChanged))
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
 
             // ARCH-02 §35 — terminal air-recon as its own plan-then-execute stage (see Pipeline).
             // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
@@ -233,16 +231,10 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Recon][Air] exec — reaction outcome moved={reactionAirResult.AnyMoved} "
                     + $"launched={reactionAirResult.AnyLaunched} struck={reactionAirResult.AnyStruck} "
                     + $"stateVer={reactionAirResult.StateVersionAfter} perMission={reactionAirPerMissionResults.Count}");
-            result.Executed += executed.Count(MissionRevalidator.WasAttempt);
-            foreach (ExecutionResult er in executed.Concat(reactionAirPerMissionResults))
-            {
-                if (er.IsReplacement && er.Source?.Mission != null)
-                {
-                    outcomeLedger.RegisterProposals(new[] { er.Source.Mission });
-                    outcomeLedger.RecordProvisionSuccess(er.Source.Mission, er.Source);
-                }
+            var allExecuted = executed.Concat(reactionAirPerMissionResults).ToList();
+            result.Executed += allExecuted.Count(MissionRevalidator.WasAttempt);
+            foreach (ExecutionResult er in allExecuted)
                 outcomeLedger.RecordExecution(er);
-            }
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
             MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());
@@ -255,7 +247,7 @@ namespace Game.Ai.V2
                 StrategicInterruptRegistry.ClearDiscovery(player, ctx.TurnNumber);
             }
 
-            snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
             // AI-MGR-02 §7/§P0 — the reaction round is NOW executing its own spend. The AP that
@@ -269,7 +261,7 @@ namespace Game.Ai.V2
                 postCommitments, phaseA.Reservation, phaseB);
             result.CardsPlayed += phaseB.CardsPlayed;
             result.CardsDrawn += phaseB.CardsDrawn;
-            result.StateChanged |= phaseB.StateChanged || executed.Count > 0;
+            result.StateChanged |= phaseB.StateChanged || allExecuted.Any(e => e != null && e.Outcome.StateChanged);
 
             // Reaction-phase activity bucket (additive across the up-to-2 bounded rounds). Every
             // execution counter is DERIVED from `executed` exactly once — never incremented inside
@@ -280,10 +272,9 @@ namespace Game.Ai.V2
             ract.MissionsConsidered += missions.Count;
             ract.MissionsFunded += allocation.Funded.Count;
             ract.Provisioned += provisioned.Count;
-            ract.ExecutionAttempts += executed.Count(MissionRevalidator.WasAttempt);
-            ract.ExecutionsSucceeded += executed.Count(MissionRevalidator.WasGenuineExecution);
-            ract.ExecutionsStaleOrSkipped += executed.Count(MissionRevalidator.WasStaleOrSkipped);
-            ract.ReplacementMissions += executed.Count(MissionRevalidator.WasReplacement);
+            ract.ExecutionAttempts += allExecuted.Count(MissionRevalidator.WasAttempt);
+            ract.ExecutionsSucceeded += allExecuted.Count(MissionRevalidator.WasGenuineExecution);
+            ract.ExecutionsStaleOrSkipped += allExecuted.Count(MissionRevalidator.WasStaleOrSkipped);
             ract.CardsPlayed += phaseA.CardsPlayed + phaseB.CardsPlayed;
             ract.CardsDrawn += phaseB.CardsDrawn;
             ract.CapabilityDeliveries += phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries;
@@ -298,7 +289,7 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2] reaction — END round {round + 1}/2 ap {apAtStart}->{root.ActionPoints}, "
                 + $"demands {demands.Count}, missions {missions.Count}, provisioned {provisioned.Count}, "
-                + $"executed {executed.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
+                + $"executed {allExecuted.Count}, cardsPlayed {phaseA.CardsPlayed + phaseB.CardsPlayed}, "
                 + $"draws {phaseB.CardsDrawn}");
             // End-of-round physical resource control totals (spec §2.7).
             AiV2Trace.LogState(rtrace.Id, rStart, AiV2Trace.Stamp(root));

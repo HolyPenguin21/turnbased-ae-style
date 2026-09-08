@@ -27,17 +27,25 @@ namespace Game.Ai.V2
         public ProvisionedMission Mission;
     }
 
+    internal sealed class AirReconSkippedMission
+    {
+        public ProvisionedMission Mission;
+        public ExecutionStopReason Reason;
+    }
+
     // The complete air-recon decision for a pass: ready aircraft to send, and concrete launches. No
     // gameplay state is touched building this.
     internal sealed class AirReconPlan
     {
         public readonly List<int> ReadyActorIds = new List<int>();    // funded this pass — airfield-idle OR airborne
         public readonly List<AirLaunchPlan> Launches = new List<AirLaunchPlan>();
+        // A provisioned air mission must always reach the outcome ledger, even when live plan
+        // assembly rejects it before an actor can execute.
+        public readonly List<AirReconSkippedMission> SkippedMissions = new List<AirReconSkippedMission>();
         // RECON-AIR-05/06 — the ProvisionedMission a ReadyActorIds entry is bound to (AirExisting).
         public readonly Dictionary<int, ProvisionedMission> ReadyMissionByActorId = new Dictionary<int, ProvisionedMission>();
         public string Summary;
 
-        public bool IsEmpty => ReadyActorIds.Count == 0 && Launches.Count == 0;
     }
 
     // ===========================================================================================
@@ -98,6 +106,11 @@ namespace Game.Ai.V2
                         || wing.CurrentMovement <= 0)
                     {
                         skips.Add($"readyGone#{pm.MoverArmyId}");
+                        plan.SkippedMissions.Add(new AirReconSkippedMission
+                        {
+                            Mission = pm,
+                            Reason = ExecutionStopReason.MoverLost,
+                        });
                         continue;
                     }
                     plan.ReadyActorIds.Add(wing.Id);
@@ -109,10 +122,24 @@ namespace Game.Ai.V2
                     continue;
 
                 ArmyData stored = AviationRules.FindAirfieldAt(pm.AirfieldHex, player);
-                if (stored == null || pm.LaunchSubset == null || pm.LaunchSubset.Count == 0
-                    || !AiAirSortiePlanner.CanAffordLaunch(root, player, pm.LaunchSubset))
+                if (stored == null || pm.LaunchSubset == null || pm.LaunchSubset.Count == 0)
+                {
+                    skips.Add("launchSourceGone");
+                    plan.SkippedMissions.Add(new AirReconSkippedMission
+                    {
+                        Mission = pm,
+                        Reason = ExecutionStopReason.MoverLost,
+                    });
+                    continue;
+                }
+                if (!AiAirSortiePlanner.CanAffordLaunch(root, player, pm.LaunchSubset))
                 {
                     skips.Add("launchNoLongerAffordable");
+                    plan.SkippedMissions.Add(new AirReconSkippedMission
+                    {
+                        Mission = pm,
+                        Reason = ExecutionStopReason.NoSafeStep,
+                    });
                     continue;
                 }
 
@@ -125,6 +152,11 @@ namespace Game.Ai.V2
                 if (!first.HasValue || first.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 {
                     skips.Add("noUsefulRefreshStep");
+                    plan.SkippedMissions.Add(new AirReconSkippedMission
+                    {
+                        Mission = pm,
+                        Reason = ExecutionStopReason.NoSafeStep,
+                    });
                     continue;
                 }
 

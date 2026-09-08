@@ -380,7 +380,8 @@ namespace Game.Ai.V2
         // the batch solve itself used, so Provisioning's classifier never re-derives eligibility.
         public static ReconAssignmentResult AssignFunded(
             WorldSnapshot snap, AiTurnContext ctx, PlayerSetupData player,
-            List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds, PlayerRoot root = null)
+            List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds, PlayerRoot root = null,
+            IReadOnlyCollection<ProvisionedMission> alreadyProvisioned = null)
         {
             var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
@@ -401,6 +402,19 @@ namespace Game.Ai.V2
             List<AirObservationSlot> airPool = null;
             int airEnergyBudget = 0;
             int airActorCap = 0;
+            int claimedGroundActors = 0;
+            int claimedAirActors = 0;
+            if (alreadyClaimedArmyIds != null)
+            {
+                foreach (int claimedId in alreadyClaimedArmyIds)
+                {
+                    ArmySnapshot claimed = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == claimedId);
+                    if (claimedId < 0 || claimed?.IsAir == true)
+                        claimedAirActors++;
+                    else if (claimed?.IsSoloRecce == true)
+                        claimedGroundActors++;
+                }
+            }
             if (root != null && player != null)
             {
                 ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
@@ -413,7 +427,8 @@ namespace Game.Ai.V2
                 // airborne wings are ordered FIRST so an incumbent continuing sortie is not truncated
                 // out of the pool by BuildFeasibleAirPool before ScoreScoutAssignment's
                 // actorDiscontinuity continuity preference even gets to consider it.
-                airActorCap = Mathf.Max(0, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn);
+                airActorCap = Mathf.Max(0,
+                    ReconAirCapacityPolicy.MaxAirReconActorsPerTurn - claimedAirActors);
                 // Round 8 (Problem 3) — Assignment answers WHO executes a funded mission, it is NOT a
                 // second resource-admission authority. The air-actor pool is now filtered by
                 // STRUCTURAL feasibility only (EvaluateAirStructuralFeasibility: actor / route / mode /
@@ -439,7 +454,13 @@ namespace Game.Ai.V2
                 cands.Add(BuildCandidates(snap, ctx, player, target, alreadyClaimedArmyIds, root, airPool));
             }
 
-            ReconAssignmentResult solved = AssignFromCandidates(open, cands, airEnergyBudget, airActorCap);
+            int groundActorCap = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - claimedGroundActors);
+            List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())
+                .Where(pm => pm != null && pm.Kind == MissionKind.Scout
+                    && pm.ExecutorKind == ScoutExecutorKind.Ground)
+                .Select(pm => pm.FocusHex).ToList();
+            ReconAssignmentResult solved = AssignFromCandidates(
+                open, cands, airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
             foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in solved.Assigned)
                 result.Assigned[kv.Key] = kv.Value;
 
@@ -534,7 +555,9 @@ namespace Game.Ai.V2
         //     from greedily proposing a combination Provisioning is certain to reject.
         private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best,
-            float airEnergyBudget, int airActorCap, float usedAirLaunchEnergy = 0f, int usedAirActors = 0)
+            float airEnergyBudget, int airActorCap, int groundActorCap,
+            IReadOnlyList<HexCoord> fixedGroundFoci,
+            float usedAirLaunchEnergy = 0f, int usedAirActors = 0, int usedGroundActors = 0)
         {
             if (i == open.Count)
             {
@@ -549,7 +572,9 @@ namespace Game.Ai.V2
 
             chosen[i] = -1;
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                airEnergyBudget, airActorCap, usedAirLaunchEnergy, usedAirActors);
+                airEnergyBudget, airActorCap, groundActorCap,
+                fixedGroundFoci,
+                usedAirLaunchEnergy, usedAirActors, usedGroundActors);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 ScoutExecutionCandidate cand = cands[i][c];
@@ -559,6 +584,33 @@ namespace Game.Ai.V2
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
                 if (isAir && usedAirActors + 1 > airActorCap)
                     continue;
+                if (!isAir && usedGroundActors + 1 > groundActorCap)
+                    continue;
+                if (!isAir)
+                {
+                    bool tooCloseToChosenGround = false;
+                    ScoutMissionTarget target = (ScoutMissionTarget)open[i].Mission.Target;
+                    if (fixedGroundFoci != null && fixedGroundFoci.Any(focus =>
+                        HexGridMath.Distance(target.FocusHex, focus) < AiConfigV2.scoutTargetMinSeparation))
+                        tooCloseToChosenGround = true;
+                    for (int j = 0; j < i; j++)
+                    {
+                        if (chosen[j] < 0)
+                            continue;
+                        ScoutExecutionCandidate other = cands[j][chosen[j]];
+                        if (other.ExecutorKind != ScoutExecutorKind.Ground)
+                            continue;
+                        ScoutMissionTarget otherTarget = (ScoutMissionTarget)open[j].Mission.Target;
+                        if (HexGridMath.Distance(target.FocusHex, otherTarget.FocusHex)
+                            < AiConfigV2.scoutTargetMinSeparation)
+                        {
+                            tooCloseToChosenGround = true;
+                            break;
+                        }
+                    }
+                    if (tooCloseToChosenGround)
+                        continue;
+                }
                 bool isAirLaunch = cand.ExecutorKind == ScoutExecutorKind.AirLaunch;
                 float nextAirLaunchEnergy = usedAirLaunchEnergy + (isAirLaunch ? cand.RequiredEnergy : 0f);
                 // Round 8 (Problem 3) — AssignFunded now passes airEnergyBudget = int.MaxValue: Energy
@@ -571,7 +623,9 @@ namespace Game.Ai.V2
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                    airEnergyBudget, airActorCap, nextAirLaunchEnergy, usedAirActors + (isAir ? 1 : 0));
+                    airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci,
+                    nextAirLaunchEnergy,
+                    usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
             }
             chosen[i] = -1;
@@ -584,6 +638,14 @@ namespace Game.Ai.V2
         internal static ReconAssignmentResult AssignFromCandidates(List<FundedEntry> open,
             List<List<ScoutExecutionCandidate>> cands, float airEnergyBudget, int airActorCap)
         {
+            return AssignFromCandidates(open, cands, airEnergyBudget, airActorCap,
+                ReconConcurrencyPolicy.HardCap, null);
+        }
+
+        private static ReconAssignmentResult AssignFromCandidates(List<FundedEntry> open,
+            List<List<ScoutExecutionCandidate>> cands, float airEnergyBudget, int airActorCap,
+            int groundActorCap, IReadOnlyList<HexCoord> fixedGroundFoci)
+        {
             var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
                 return result;
@@ -592,7 +654,8 @@ namespace Game.Ai.V2
             var best = new int[open.Count];
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
-            RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best, airEnergyBudget, airActorCap);
+            RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best,
+                airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
 
             for (int i = 0; i < open.Count; i++)
                 if (best[i] >= 0)
@@ -624,6 +687,8 @@ namespace Game.Ai.V2
             int n = open.Count;
             int covered = 0;
             long priorityCoverage = 0;
+            int envelopeViolations = 0;
+            long envelopeOverflow = 0;
             int actorDiscontinuity = 0;
             int wastedStealth = 0;
             long risk = 0, standOff = 0, requiredAp = 0, eta = 0, dist = 0;
@@ -634,6 +699,15 @@ namespace Game.Ai.V2
                 ScoutExecutionCandidate cand = cands[i][chosen[i]];
                 covered++;
                 priorityCoverage += n - i;
+
+                float apOverflow = Mathf.Max(0f, cand.RequiredAp - open[i].Tentative.Ap);
+                float energyOverflow = Mathf.Max(0f, cand.RequiredEnergy - open[i].PhysicalDraw.Energy);
+                if (apOverflow > AiConfigV2.allocatorSliceEpsilon
+                    || energyOverflow > AiConfigV2.allocatorSliceEpsilon)
+                {
+                    envelopeViolations++;
+                    envelopeOverflow += Mathf.RoundToInt((apOverflow + energyOverflow) * 1000f);
+                }
 
                 int? preferred = open[i].Mission.PreferredMoverArmyId;
                 if (preferred.HasValue && cand.ActorKey != preferred.Value
@@ -653,19 +727,24 @@ namespace Game.Ai.V2
                 dist += cand.Distance;
             }
 
-            var key = new long[9 + 3 * n];
+            var key = new long[11 + 3 * n];
             key[0] = -covered;
             key[1] = -priorityCoverage;
-            key[2] = actorDiscontinuity;
-            key[3] = wastedStealth;
-            key[4] = risk;
-            key[5] = -standOff;
-            key[6] = requiredAp;
-            key[7] = eta;
-            key[8] = dist;
+            // Prefer an actor that fits the envelope already funded for this mission. This keeps a
+            // feasible ground candidate from being displaced by an air candidate that Provisioning
+            // must immediately reject/repack, without making Assignment a second funding authority.
+            key[2] = envelopeViolations;
+            key[3] = envelopeOverflow;
+            key[4] = actorDiscontinuity;
+            key[5] = wastedStealth;
+            key[6] = risk;
+            key[7] = -standOff;
+            key[8] = requiredAp;
+            key[9] = eta;
+            key[10] = dist;
             for (int i = 0; i < n; i++)
             {
-                int b = 9 + 3 * i;
+                int b = 11 + 3 * i;
                 if (chosen[i] < 0)
                     key[b] = key[b + 1] = key[b + 2] = long.MaxValue;
                 else
@@ -837,12 +916,15 @@ namespace Game.Ai.V2
                 .ToList();
 
             var activeObsLaneActors = new HashSet<int>();
+            var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
             if (activeIntents != null && commitments != null)
                 foreach (MissionIntent i in activeIntents)
                     if (i?.Scout != null && !i.Scout.RequiresStealth
                         && i.Scout.Kind != ScoutTargetKind.Explore
                         && i.PreferredMoverArmyId.HasValue
-                        && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
+                        && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value)
+                        && !airActorIds.Contains(i.PreferredMoverArmyId.Value))
                         activeObsLaneActors.Add(i.PreferredMoverArmyId.Value);
 
             int desiredObs = ReconConcurrencyPolicy.DesiredForClass(
@@ -892,7 +974,8 @@ namespace Game.Ai.V2
                 AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                     player, ctx, snap, mode, wing, provisionalWedges);
                 if (sf.Feasible
-                    && AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable, consumedObjectiveKeys))
+                    && AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable,
+                        consumedObjectiveKeys, provisionalWedges))
                 {
                     airborneWitnessed++;
                     if (wing.ActorId.HasValue)
@@ -915,7 +998,8 @@ namespace Game.Ai.V2
                 AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                     player, ctx, snap, mode, slot, provisionalWedges);
                 if (!sf.Feasible
-                    || !AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable, consumedObjectiveKeys))
+                    || !AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable,
+                        consumedObjectiveKeys, provisionalWedges))
                 {
                     launchRejected++;
                     continue;
@@ -953,7 +1037,8 @@ namespace Game.Ai.V2
         // one job), so N wings can never all witness the same job.
         private static bool AirActorProgressesAnObjective(AiTurnContext ctx, PlayerSetupData player,
             WorldSnapshot snap, ReconMode mode, AirObservationSlot slot,
-            IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys)
+            IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys,
+            IReadOnlyList<ReconSector> provisionalWedges)
         {
             if (ctx?.Map == null)
                 return true; // bare test harness — mirror EvaluateAirStructuralFeasibility's own fallback
@@ -1005,12 +1090,26 @@ namespace Game.Ai.V2
                     anchor = o.FocusHex;
                 }
 
-                ReconAirStepPlanner.StepChoice? choice = live != null
-                    ? ReconAirStepPlanner.Pick(player, ctx, live, snap, mode, ctx.TurnNumber,
-                        sortieState: null, scoringCtx: null, missionFocusHex: anchor)
-                    : ReconAirStepPlanner.PickFromStorage(player, ctx,
+                ReconAirStepPlanner.StepChoice? choice;
+                if (live != null)
+                {
+                    (ReconAirSortieState projected, int excludeSortieId, ReconMode actorMode) =
+                        ReconAirReservationPrepass.BuildScoringContextForWing(player, ctx, live, mode);
+                    var scoring = new AirReconScoringContext
+                    {
+                        ExcludeSortieId = excludeSortieId,
+                        ProvisionalWedgeClaims = provisionalWedges,
+                    };
+                    choice = ReconAirStepPlanner.Pick(player, ctx, live, snap, actorMode, ctx.TurnNumber,
+                        sortieState: projected, scoringCtx: scoring, missionFocusHex: anchor);
+                }
+                else
+                {
+                    var scoring = new AirReconScoringContext { ProvisionalWedgeClaims = provisionalWedges };
+                    choice = ReconAirStepPlanner.PickFromStorage(player, ctx,
                         new AirLaunchCandidate(slot.AirfieldHex, null, subset), snap, mode, ctx.TurnNumber,
-                        scoringCtx: null, missionFocusHex: anchor);
+                        scoringCtx: scoring, missionFocusHex: anchor);
+                }
                 if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                     continue;
                 if (!MakesGenuineProgress(from, choice.Value.Hex, anchor, vision))

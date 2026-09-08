@@ -108,6 +108,10 @@ canonical game actions; it never selects objectives or invents alternative actio
   a `ProvisionedMission` tagged with `ExecutorKind`/`AirfieldHex`/`LaunchSubset`. Air never satisfies
   Explore/GroundTraversal and never a stealth-Required / positive-DetectionRisk mission — both hard
   invariants are enforced in `AppendAirCandidates` before any candidate is built.
+  The shared allocator deliberately does not apply Recon's ground `HardCap`, because executor kind
+  is unknown there. `ReconAssignmentPlanner` applies that cap only to ground-bound candidates and
+  preserves the independent `MaxAirReconActorsPerTurn` ceiling for aviation, including across
+  provisioning re-packs. Thus air observation may run in addition to the allowed ground lanes.
   Air recon stays plan-then-execute for the *tactical* half. `Recon/AirReconPlanner.Plan` no longer
   selects; it turns this pass's air-bound `ProvisionedMission`s (plus wings already continuing a
   prior sortie, which are Mission Continuity's concern, not fresh Assignment's) into an `AirReconPlan`

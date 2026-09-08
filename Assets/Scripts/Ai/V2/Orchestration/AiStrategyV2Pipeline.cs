@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -328,10 +327,6 @@ namespace Game.Ai.V2
             new System.Collections.Generic.List<string>();
         public string CauseDemandTrace =>
             CauseDemandTraceIds.Count == 0 ? "none" : "[" + string.Join(",", CauseDemandTraceIds) + "]";
-        // Set ONLY on a bounded live stale-Explore replacement (MissionRevalidator): the AttemptId
-        // of the superseded attempt. The replacement carries its own fresh AttemptId + identity.
-        public string ReplacementOfAttemptId;
-
         public MissionKind Kind;
         public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
@@ -695,12 +690,6 @@ namespace Game.Ai.V2
             }
 
             // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
-            //     Hand the executor every Explore proposal's focus from this pass (RegisterProposals
-            //     above rowed all of them) so the bounded stale-Explore replacement can't synthesise
-            //     a key that collides with a deferred proposal's ledger row. StrategicReactionPass
-            //     uses the SAME helper for its identical lifecycle.
-            HashSet<HexCoord> exploreProposalFoci = MissionRevalidator.CollectExploreProposalFoci(missions);
-
             // Round 4 — a Scout ProvisionedMission bound to an air actor by ReconAssignmentPlanner/
             // ProvisioningManager.ProvisionAir must NOT go through TaskExecutor/ReconGroundExecutor
             // (which expects a live ground solo-Recce mover); it is execution-input for the terminal
@@ -713,7 +702,10 @@ namespace Game.Ai.V2
                 .ToList();
 
             var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot, exploreProposalFoci);
+            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot);
+
+            if (executed.Any(e => e != null && e.Outcome.StateChanged))
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
 
             // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
             // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
@@ -734,19 +726,9 @@ namespace Game.Ai.V2
                 + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
                 + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter} "
                 + $"perMission={airPerMissionResults.Count}");
-            foreach (ExecutionResult er in executed.Concat(airPerMissionResults))
-            {
-                // A synthesised replacement's proposal was never in the pre-execution
-                // RegisterProposals set — register it here so continuity/reconciliation sees the
-                // new Explore too (not only telemetry). Its fresh StableMissionKey keeps it
-                // distinct from the superseded mission.
-                if (er.IsReplacement && er.Source?.Mission != null)
-                {
-                    ledger.RegisterProposals(new[] { er.Source.Mission });
-                    ledger.RecordProvisionSuccess(er.Source.Mission, er.Source);
-                }
+            var allExecuted = executed.Concat(airPerMissionResults).ToList();
+            foreach (ExecutionResult er in allExecuted)
                 ledger.RecordExecution(er);
-            }
             ledger.RecordDeferrals(allocation.Deferred);
             // Post-execution LIVE pass — a mission run later this turn may have met an earlier
             // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the
@@ -763,7 +745,11 @@ namespace Game.Ai.V2
             //     mission family. A combat Unit/Hero/Aviation it places may sit on the map while
             //     Aggression/Defence missions stay disabled; that is expected in the isolated test.
             //     Card type is never on its own a reason a legal card is left unplayed.
-            snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            // Execution can reveal contacts and alter map knowledge (especially aviation). Phase B
+            // must consume a coherent strategic snapshot, not operational resources paired with
+            // the pre-execution Known/MapKnowledge layers.
+            snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
             ActorCommitments postCommitments =
                 ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
             // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
@@ -817,10 +803,9 @@ namespace Game.Ai.V2
             // count, not just the last pack's.
             main.MissionsFunded = fundedKeysThisTurn.Count;
             main.Provisioned = provisioned.Count;
-            main.ExecutionAttempts = executed.Count(MissionRevalidator.WasAttempt);
-            main.ExecutionsSucceeded = executed.Count(MissionRevalidator.WasGenuineExecution);
-            main.ExecutionsStaleOrSkipped = executed.Count(MissionRevalidator.WasStaleOrSkipped);
-            main.ReplacementMissions = executed.Count(MissionRevalidator.WasReplacement);
+            main.ExecutionAttempts = allExecuted.Count(MissionRevalidator.WasAttempt);
+            main.ExecutionsSucceeded = allExecuted.Count(MissionRevalidator.WasGenuineExecution);
+            main.ExecutionsStaleOrSkipped = allExecuted.Count(MissionRevalidator.WasStaleOrSkipped);
             main.CardsPlayed = phaseA.CardsPlayed + phaseB.CardsPlayed;
             main.CardsDrawn = phaseA.CardsDrawn + phaseB.CardsDrawn;
             main.InfrastructureAttempts = phaseA.InfrastructureAttempts + phaseB.InfrastructureAttempts;
@@ -836,7 +821,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
                 + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
                 + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
-                + $"provisioned {provisioned.Count}, executed {executed.Count}, stratB {phaseB.CardsPlayed}) ===");
+                + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
 
             // AI-MGR-02 §8 — no strategic resource reservation may survive turn end. Anything still

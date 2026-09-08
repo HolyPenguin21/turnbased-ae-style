@@ -121,6 +121,9 @@ namespace Game.Ai.V2
         public object Objective;
         public int CreatedTurn;
         public int TurnsActive;
+        // Reconciliation can run in the main pass and in up to two reaction rounds during one
+        // game turn. Age/stall clocks are turn-based and advance at most once for that turn.
+        public int LastReconciledTurn = -1;
         public int LastProgressTurn;
         public int StallTurns;
         public float CumulativeApSpent;
@@ -649,7 +652,13 @@ namespace Game.Ai.V2
         private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
             MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
-            var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null).ToList();
+            var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
+            // DesiredTotal/HardCap govern physical ground scout lanes. Air intents use the
+            // independent aviation capacity policy and must survive this contraction pass.
+            var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
+                && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
+                .ToList();
             if (scoutLanes.Count <= 1)
                 return;
 
@@ -886,6 +895,10 @@ namespace Game.Ai.V2
                         || intent.Suspended == SuspendReason.CapabilityUnavailable))
                     continue;
 
+                if (intent.LastReconciledTurn == turn)
+                    continue;
+
+                intent.LastReconciledTurn = turn;
                 intent.TurnsActive++;
                 if (intent.Suspended != SuspendReason.PoolExhausted)
                     intent.StallTurns++;
@@ -904,7 +917,12 @@ namespace Game.Ai.V2
         private static void AdvanceIntent(MissionIntent intent, MissionTurnOutcome o, int turn,
             MissionIntentState state, AiAllocatorState allocState)
         {
-            intent.TurnsActive++;
+            bool firstReconcileThisTurn = intent.LastReconciledTurn != turn;
+            if (firstReconcileThisTurn)
+            {
+                intent.LastReconciledTurn = turn;
+                intent.TurnsActive++;
+            }
             intent.LastAttemptKey = o.AttemptKey;
             intent.CumulativeApSpent += o.ApSpent;
             intent.StepsMovedTotal += o.StepsMoved;
@@ -944,7 +962,7 @@ namespace Game.Ai.V2
                 intent.LastProgressTurn = turn;
                 intent.StallTurns = 0;
             }
-            else if (!poolExhausted && !capabilityUnavailable)
+            else if (firstReconcileThisTurn && !poolExhausted && !capabilityUnavailable)
             {
                 intent.StallTurns++;
             }
@@ -1045,6 +1063,7 @@ namespace Game.Ai.V2
                 Objective = si,
                 CreatedTurn = turn,
                 TurnsActive = 1,
+                LastReconciledTurn = turn,
                 LastProgressTurn = turn,
                 StallTurns = 0,
                 CumulativeApSpent = o.ApSpent,
@@ -1076,6 +1095,7 @@ namespace Game.Ai.V2
                 Objective = ri,
                 CreatedTurn = turn,
                 TurnsActive = 1,
+                LastReconciledTurn = turn,
                 LastProgressTurn = turn,
                 StallTurns = 0,
                 CumulativeApSpent = o.ApSpent,

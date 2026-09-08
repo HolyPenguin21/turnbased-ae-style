@@ -1,6 +1,3 @@
-using Game.HexGrid;
-using UnityEngine;
-
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -35,7 +32,11 @@ namespace Game.Ai.V2
             switch (lane)
             {
                 case ExecutionLane.Recon:
-                    return ReconConcurrencyPolicy.HardCap;
+                    // Generic funding cannot know whether Assignment will bind a Scout mission to
+                    // a ground actor or to aviation. The hard concurrency limit applies only to
+                    // GROUND scouts and is therefore enforced by ReconAssignmentPlanner, where the
+                    // executor kind is known. Air keeps its independent aviation actor cap.
+                    return int.MaxValue;
                 case ExecutionLane.Aggression:
                     // No arbitrary Raid K. Real ready actors, AP/physical resources, target
                     // conflicts and commitments bound Aggression throughput.
@@ -48,7 +49,6 @@ namespace Game.Ai.V2
         // Pairwise execution conflicts:
         // Recon:
         //   · same FocusHex
-        //   · ground+ground (Explore/Refresh) closer than scoutTargetMinSeparation
         // Raid:
         //   · same target army
         //   · no distinct ready combat-army assignment for the pair
@@ -77,9 +77,9 @@ namespace Game.Ai.V2
             if (ta.FocusHex.Equals(tb.FocusHex))
                 return true;
 
-            bool bothGround = ReconScoutKinds.IsGround(ta.Kind) && ReconScoutKinds.IsGround(tb.Kind);
-            return bothGround
-                && HexGridMath.Distance(ta.FocusHex, tb.FocusHex) < AiConfigV2.scoutTargetMinSeparation;
+            // Actor-specific spacing belongs to Assignment, alongside the one-actor/one-job and
+            // ground-vs-air constraints. At this layer only the objective identity is knowable.
+            return false;
         }
 
         public static float AdmissionRank(MissionProposal m) =>

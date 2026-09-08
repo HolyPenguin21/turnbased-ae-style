@@ -38,8 +38,6 @@ namespace Game.Ai.V2
         // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
         // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
         public bool RequiresStealth;
-        public bool IsReplacement;
-
         // Round 4 — which executor this Scout mission is bound to. Ground (default) is executed by
         // ReconGroundExecutor through TaskExecutor, exactly as before. AirExisting/AirLaunch are
         // executed by ReconAirExecutor (the orchestrator routes provisioned Scout missions to the
@@ -209,7 +207,8 @@ namespace Game.Ai.V2
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
             ReconAssignmentResult result = ReconAssignmentPlanner.AssignFunded(
-                session.Snapshot, ctx, player, open, session.ClaimedArmyIds, root);
+                session.Snapshot, ctx, player, open, session.ClaimedArmyIds, root,
+                session.Successful.Values.ToList());
             session.SetAssignment(result);
         }
 

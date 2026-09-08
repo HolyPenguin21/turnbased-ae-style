@@ -281,11 +281,6 @@ namespace Game.Ai.V2
         public const float garrisonCrowdingPenaltyPerMember = 0.35f; // grows with the destination's current member count
         public const float garrisonDuplicateTypePenalty = 0.6f;    // the card's primary type already dominates the destination
 
-        // Bounded live replacement for stale Explore missions (TaskExecutor). One replacement per
-        // stale mission (a replacement can never spawn another), plus this hard cap on the whole
-        // execution pass. Deterministic frontier pick, no pipeline re-run.
-        public const int maxReplacementMissionsPerPass = 2;
-
         // =======================================================================================
         //  COMBAT OPPORTUNITY ANALYZER  (shared estimator — ONE ESTIMATOR, MANY STAGES)
         //  Snapshot-fidelity tier: ranks known enemy/neutral ARMY sightings (the target set that
@@ -322,20 +317,20 @@ namespace Game.Ai.V2
         //  Recon's strategic pull would be counted twice (once in the radar, once here).
         //
         //  STEP 7.1 — N (how many sensible alternatives the planner hands downstream) is separated
-        //  from K (how many Recon operations may actually execute per AI turn). MissionLayer emits
-        //  the beam; ResourceAllocator applies K + mission conflicts and selects the executable
-        //  portfolio; ProvisioningManager proves it can be delivered.
+        //  from K (how many GROUND Recon operations may actually execute per AI turn). MissionLayer
+        //  emits the beam; ReconAssignmentPlanner applies K once executor kind is known, while air
+        //  retains its own actor cap; ProvisioningManager proves the selection can be delivered.
         // =======================================================================================
-        // K — the absolute cap on concurrently EXECUTING Recon missions per AI turn. Owned by the
-        // allocator (MissionAdmissionPolicy.Capacity). Parity with V1 AiConfig.maxConcurrentVisitHex.
+        // K — the absolute cap on concurrently executing GROUND Recon missions per AI turn.
+        // Owned by ReconAssignmentPlanner. Parity with V1 AiConfig.maxConcurrentVisitHex.
         public const int maxConcurrentReconExecutions = 2;
         // N — how many ordinary Recon alternatives MissionLayer passes downstream. Tuning baseline,
         // NOT a gameplay invariant. Must remain >= maxConcurrentReconExecutions (a wider beam only
-        // gives the allocator / re-pack more backups to fall through to).
+        // gives Assignment / re-pack more backups to fall through to).
         public const int scoutCandidateBeamWidth = 6;
         // Two Scout focus hexes must be at least this far apart to be two missions worth funding
-        // separately — adjacent hexes are the same frontier. Enforced by the allocator (via
-        // MissionAdmissionPolicy.Conflicts) when building the funded portfolio, NOT in the beam.
+        // separately — adjacent hexes are the same frontier. Enforced for ground-bound pairs by
+        // ReconAssignmentPlanner once executor kind is known, NOT in the beam.
         public const int scoutTargetMinSeparation = 2;
 
         // Frontier shape (WorldAnalysis.BuildMapKnowledge).
