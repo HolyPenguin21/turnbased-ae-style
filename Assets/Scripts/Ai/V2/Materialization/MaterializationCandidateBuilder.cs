@@ -381,7 +381,8 @@ namespace Game.Ai.V2
                         p, 0f, surplusFillerUniverse, root, player, ctx, hand, genRemaining)
                     : 0;
                 p.Score = SurplusUtility(snap, p, inv, recce, hero, hand, p.ProjectedAbilities,
-                    witnessedUsefulApDemand, projectedLegalFillers);
+                    witnessedUsefulApDemand, projectedLegalFillers,
+                    type => StrategicSpendability.SpendableAmount(player, root, ctx, type));
             }
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
@@ -501,10 +502,12 @@ namespace Game.Ai.V2
         // separately scored HoldValue).
         private static float SurplusUtility(WorldSnapshot snap, MaterializationPlan p, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected,
-            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
+            System.Func<Game.Economy.ResourceType, float> spendableResource = null)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreSurplus(
-                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand, projectedLegalFillers);
+                p, inv, recce, hero, hand, projected, snap, witnessedUsefulApDemand,
+                projectedLegalFillers, spendableResource);
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;
             return cand.NetScore;
