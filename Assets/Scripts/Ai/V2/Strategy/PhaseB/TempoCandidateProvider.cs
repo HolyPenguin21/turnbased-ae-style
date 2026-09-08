@@ -95,10 +95,9 @@ namespace Game.Ai.V2
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
 
-            // §P0.1 — the only card alternatives that suppress Draw are ones actually SELECTABLE
-            // right now: not over the surplus card-play budget, AP + resources spendable. A card
-            // blocked by the budget / affordability / placement must not make Draw look worthless.
-            bool CardSelectableNow(TempoCandidate c) => c != null && !budget.CardCapHit
+            // §P0.1 — only card alternatives actually selectable under the shared generation
+            // budget and live spendable pools suppress Draw. Structurally blocked cards do not.
+            bool CardSelectableNow(TempoCandidate c) => c != null
                 && (!c.ConsumesGeneration || !budget.GenerationCapHit)
                 && c.ApCost <= spendableAp + AiConfigV2.allocatorSliceEpsilon
                 && StrategicSpendability.FitsSpendableResources(player, root, ctx, c.ResCost);
