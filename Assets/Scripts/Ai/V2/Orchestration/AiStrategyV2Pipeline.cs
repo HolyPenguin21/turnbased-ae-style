@@ -801,7 +801,8 @@ namespace Game.Ai.V2
             //    ReconOnly keeps this safety/cleanup layer; it does not buy cards or create new
             //    capability and remains the authoritative same-hex reorganisation path.
             var housekeeping = new HousekeepingResult();
-            yield return HousekeepingManager.RunHousekeeping(snapshot, player, root, ctx, postCommitments, housekeeping);
+            yield return HousekeepingManager.RunHousekeeping(
+                snapshot, player, root, ctx, postCommitments, housekeeping, phaseB.Reservation);
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
