@@ -799,20 +799,9 @@ namespace Game.Ai.V2
             IReadOnlyList<CardData> hand = snap?.Self?.Hand;
             if (hand == null || hostDef == null)
                 return false;
-            EquipmentHostKind kind = hostDef.cardType == CardType.Hero
-                ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
             foreach (CardData c in hand)
-            {
-                EquipmentGrant grant = c?.Definition != null
-                    && c.Definition.cardType == CardType.Equipment ? c.Definition.equipment : null;
-                if (grant?.hostKinds == null || !grant.hostKinds.Contains(kind))
-                    continue;
-                if (grant.hostTypeTags != null && grant.hostTypeTags.Count > 0
-                    && (hostDef.unitTypeTags == null
-                        || !grant.hostTypeTags.Any(t => hostDef.unitTypeTags.Contains(t))))
-                    continue;
-                return true;
-            }
+                if (EquipmentSystem.FitsHost(c?.Definition, hostDef, out _))
+                    return true;
             return false;
         }
 

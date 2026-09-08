@@ -99,23 +99,47 @@ namespace Game.Cards
         private static bool CanAttach(CardDefinition equipment, int apCost, ResourceCost resourceCost,
             CardData targetCard, PlayerRoot owner, out string reason)
         {
-            CardDefinition def = targetCard?.Definition;
-            if (def == null)
+            if (!TryGetHostProfile(targetCard?.Definition, out EquipmentHostKind kind,
+                    out ICollection<UnitTypeTag> hostTags, out reason))
+                return false;
+            return CanAttachCore(equipment, apCost, resourceCost, kind, hostTags,
+                targetCard.Equipment != null, owner, out reason);
+        }
+
+        // Pure definition-level compatibility for planners and previews. Slot occupancy, AP and
+        // resources are deliberately excluded; the live CanAttach overloads layer those checks on
+        // top of the same FitsHostCore rule below.
+        public static bool FitsHost(CardDefinition equipment, CardDefinition host, out string reason)
+        {
+            if (!TryGetHostProfile(host, out EquipmentHostKind kind,
+                    out ICollection<UnitTypeTag> hostTags, out reason))
+                return false;
+            return FitsHostCore(equipment, kind, hostTags, out reason);
+        }
+
+        private static bool TryGetHostProfile(CardDefinition host, out EquipmentHostKind kind,
+            out ICollection<UnitTypeTag> hostTags, out string reason)
+        {
+            kind = EquipmentHostKind.Unit;
+            hostTags = null;
+            if (host == null)
             {
                 reason = "No target.";
                 return false;
             }
-            if (def.cardType != CardType.Unit && def.cardType != CardType.Hero)
+            if (host.cardType != CardType.Unit && host.cardType != CardType.Hero)
             {
                 reason = "Equipment can only go on a unit or hero card.";
                 return false;
             }
-            EquipmentHostKind kind = def.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            return CanAttachCore(equipment, apCost, resourceCost, kind, def.unitTypeTags, targetCard.Equipment != null, owner, out reason);
+            kind = host.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
+            hostTags = host.unitTypeTags;
+            reason = null;
+            return true;
         }
 
-        private static bool CanAttachCore(CardDefinition equipment, int apCost, ResourceCost resourceCost,
-            EquipmentHostKind kind, ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason)
+        private static bool FitsHostCore(CardDefinition equipment, EquipmentHostKind kind,
+            ICollection<UnitTypeTag> hostTags, out string reason)
         {
             reason = null;
             if (equipment == null || equipment.cardType != CardType.Equipment || equipment.equipment == null)
@@ -144,6 +168,14 @@ namespace Game.Cards
                     return false;
                 }
             }
+            return true;
+        }
+
+        private static bool CanAttachCore(CardDefinition equipment, int apCost, ResourceCost resourceCost,
+            EquipmentHostKind kind, ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason)
+        {
+            if (!FitsHostCore(equipment, kind, hostTags, out reason))
+                return false;
 
             if (slotTaken)
             {

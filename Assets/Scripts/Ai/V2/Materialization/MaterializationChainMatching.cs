@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using Game.Cards;
 
 namespace Game.Ai.V2
@@ -62,18 +61,6 @@ namespace Game.Ai.V2
         }
 
         internal static bool EquipmentDefFitsHostDef(CardDefinition eq, CardDefinition host)
-        {
-            if (eq == null || eq.cardType != CardType.Equipment || eq.equipment == null) return false;
-            if (host == null || (host.cardType != CardType.Unit && host.cardType != CardType.Hero)) return false;
-            EquipmentHostKind kind = host.cardType == CardType.Hero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            EquipmentGrant grant = eq.equipment;
-            if (grant.hostKinds == null || !grant.hostKinds.Contains(kind)) return false;
-            if (grant.hostTypeTags != null && grant.hostTypeTags.Count > 0)
-            {
-                if (host.unitTypeTags == null || !grant.hostTypeTags.Any(need => host.unitTypeTags.Contains(need)))
-                    return false;
-            }
-            return true;
-        }
+            => EquipmentSystem.FitsHost(eq, host, out _);
     }
 }
