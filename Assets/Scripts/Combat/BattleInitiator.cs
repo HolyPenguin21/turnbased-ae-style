@@ -1,3 +1,4 @@
+using System.Linq;
 using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
@@ -79,43 +80,61 @@ namespace Game.Combat
             return false;
         }
 
-        // The STRONGEST enemy CONTACTABLE army at `hex`, if any — null if the hex is clear or
-        // only holds friendly/empty armies. See IsEngageable for what counts. Ranked by raw
-        // Defense+Attack (WorthIt.DefenseSum/AttackSum, non-hero members only, no hex bonus —
-        // same flat power read GarrisonReorgTask.TotalNonHeroPower/AiDefencePlanner.
-        // CheatEstimateRaiderThreat already use elsewhere) rather than whichever army the
-        // registry happens to enumerate first. Individual stealth (2026-08-27): the power read
-        // sums only the members TARGETABLE by `mover` — a member hidden from them isn't on the
-        // hex as far as they know, so an invisible heavy unit inside a mixed army must not
-        // decide which army the mover ends up fighting. Once a battle actually starts,
-        // StealthSystem.RevealArmy drops stealth on every member, so the in-battle roster is the
-        // full one again — no separate post-start rule needed here (2026-08-21 fix, project
-        // owner's own report: an
-        // attacking army moving onto a multi-army hex — e.g. a citadel with the garrison PLUS a
-        // still-forming raid/patrol force sitting beside it — used to fight whatever ArmyRegistry
-        // returned first, which could easily be the weakest, freshly-recruited force instead of
-        // the garrison or the hex's real main body). Still only ever picks ONE defending army, not
-        // a merged stack — see this class's own comment on why a real "stack defends together"
-        // mechanic isn't built yet; this only fixes WHICH single army gets offered up.
-        public static ArmyData FindEnemyAt(HexCoord hex, PlayerSetupData mover)
+        // Contact selection has two forms because many callers only ask the occupancy question
+        // ("does any enemy stand here?"), while a committed encounter also knows the concrete
+        // mover. Only the latter can answer "which defender is hardest for THIS attacker" without
+        // inventing a context-free power scalar.
+        public static ArmyData FindEnemyAt(HexCoord hex, PlayerSetupData observer) =>
+            FindEnemyAt(hex, observer, null);
+
+        public static ArmyData FindEnemyAt(HexCoord hex, ArmyData mover) =>
+            FindEnemyAt(hex, mover?.Owner, mover);
+
+        private static ArmyData FindEnemyAt(HexCoord hex, PlayerSetupData observer, ArmyData mover)
         {
-            ArmyData strongest = null;
-            float strongestPower = float.NegativeInfinity;
+            ArmyData best = null;
+            WorthIt.BattleEstimate bestEstimate = default;
+
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
-                // IsEngageable(army, mover) — a defender every member of which is hidden from
-                // the mover is not a contact target (see this method's own stealth note).
-                if (army.Owner == mover || !IsEngageable(army, mover))
+                if (army.Owner == observer || !IsEngageable(army, observer))
                     continue;
-                var visibleMembers = Game.Map.StealthSystem.TargetableMembersFor(army, mover);
-                float power = WorthIt.DefenseSum(visibleMembers) + WorthIt.AttackSum(visibleMembers);
-                if (strongest == null || power > strongestPower)
+
+                // An occupancy-only caller never consumes combat ranking. Keep its result stable
+                // without paying for a Monte Carlo estimate or reviving Attack+Defense.
+                if (mover == null)
                 {
-                    strongest = army;
-                    strongestPower = power;
+                    if (best == null || army.Id < best.Id)
+                        best = army;
+                    continue;
+                }
+
+                var visibleRoster = Game.Map.StealthSystem.TargetableMembersFor(army, observer)
+                    .Where(member => member != null && !member.IsHero)
+                    .Select(WorthIt.FromLiveUnit)
+                    .ToList();
+                WorthIt.BattleEstimate estimate = WorthIt.Estimate(mover, visibleRoster, 0f);
+
+                if (best == null || IsHarderDefender(estimate, army.Id, bestEstimate, best.Id))
+                {
+                    best = army;
+                    bestEstimate = estimate;
                 }
             }
-            return strongest;
+            return best;
+        }
+
+        private static bool IsHarderDefender(in WorthIt.BattleEstimate candidate, int candidateId,
+            in WorthIt.BattleEstimate incumbent, int incumbentId)
+        {
+            const float eps = 0.0001f;
+            if (candidate.WinChance < incumbent.WinChance - eps) return true;
+            if (candidate.WinChance > incumbent.WinChance + eps) return false;
+            if (candidate.ExpectedSurvivingHpRatioOnWin < incumbent.ExpectedSurvivingHpRatioOnWin - eps) return true;
+            if (candidate.ExpectedSurvivingHpRatioOnWin > incumbent.ExpectedSurvivingHpRatioOnWin + eps) return false;
+            if (candidate.CriticalAfterBattleChance > incumbent.CriticalAfterBattleChance + eps) return true;
+            if (candidate.CriticalAfterBattleChance < incumbent.CriticalAfterBattleChance - eps) return false;
+            return candidateId < incumbentId;
         }
     }
 }

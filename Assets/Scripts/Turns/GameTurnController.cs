@@ -593,7 +593,7 @@ namespace Game.Turns
                 if (mover == null)
                     continue;
 
-                ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover.Owner);
+                ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover);
                 if (other == null)
                     continue;
 

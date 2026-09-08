@@ -248,7 +248,7 @@ namespace Game.Ai.V2
                     ExitArmyStealth(army);
                     VisionSystem.RecomputeFor(player);
                     AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                    ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, player);
+                    ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, army);
                     if (targetNow == null || !reaction.TargetArmyId.HasValue
                         || targetNow.Id != reaction.TargetArmyId.Value)
                     {

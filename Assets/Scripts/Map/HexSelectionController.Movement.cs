@@ -228,7 +228,7 @@ namespace Game.Map
             {
                 if (!VisionSystem.IsVisible(mover.Owner, path.Hexes[i]))
                     continue;
-                enemyArmy = BattleInitiator.FindEnemyAt(path.Hexes[i], mover.Owner);
+                enemyArmy = BattleInitiator.FindEnemyAt(path.Hexes[i], mover);
                 if (enemyArmy != null)
                     return new HexPath(path.Hexes.GetRange(0, i + 1), path.TotalCost);
             }
@@ -247,7 +247,7 @@ namespace Game.Map
         // around; a fog-hidden one is never avoided, only discovered on arrival.
         private static System.Func<HexCoord, bool> AvoidEnemyHex(ArmyData mover)
         {
-            return hex => VisionSystem.IsVisible(mover.Owner, hex) && BattleInitiator.FindEnemyAt(hex, mover.Owner) != null;
+            return hex => VisionSystem.IsVisible(mover.Owner, hex) && BattleInitiator.FindEnemyAt(hex, mover) != null;
         }
 
         // Per-step callback for ArmyController.MoveRoutine's shouldStopEarly — called once per
@@ -271,7 +271,7 @@ namespace Game.Map
             if (wasKnown)
                 return false;
 
-            if (BattleInitiator.FindEnemyAt(hex, mover.Owner) != null)
+            if (BattleInitiator.FindEnemyAt(hex, mover) != null)
                 return true;
 
             BuildingData building = BuildingRegistry.FindAt(hex);
@@ -321,7 +321,7 @@ namespace Game.Map
                 return BattleStartResult.MoverCannotFight;
             if (DelayedBattleRegistry.IsHexPending(hex))
                 return BattleStartResult.Pending;
-            ArmyData enemy = BattleInitiator.FindEnemyAt(hex, mover.Owner);
+            ArmyData enemy = BattleInitiator.FindEnemyAt(hex, mover);
             if (enemy == null)
                 return BattleStartResult.NoContact;
 
@@ -450,7 +450,7 @@ namespace Game.Map
             // army doesn't have. A hero-only army was never a real combat participant on this hex
             // to begin with, so it stays free to just walk off).
             if (!AviationRules.IsAirArmy(army) && BattleInitiator.CanInitiateContact(army)
-                && BattleInitiator.FindEnemyAt(army.Hex, army.Owner) != null)
+                && BattleInitiator.FindEnemyAt(army.Hex, army) != null)
             {
                 NotifyMoveBlocked(army, $"{army.Name} is locked in combat and can't move away.");
                 return MoveOrderResult.LockedInCombat;

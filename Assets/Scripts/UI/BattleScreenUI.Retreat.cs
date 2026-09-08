@@ -189,7 +189,7 @@ namespace Game.UI
                 // army (see HexSelectionController.Movement.cs's own identical case).
                 ArmyData contactedEnemy = DelayedBattleRegistry.IsHexPending(destination)
                     ? null
-                    : BattleInitiator.FindEnemyAt(destination, army.Owner);
+                    : BattleInitiator.FindEnemyAt(destination, army);
                 if (contactedEnemy != null)
                 {
                     bool armyCanFight = BattleInitiator.IsCombatCapable(army);

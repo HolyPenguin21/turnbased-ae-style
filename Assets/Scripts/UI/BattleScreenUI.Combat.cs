@@ -576,7 +576,7 @@ namespace Game.UI
         {
             bool hasNext = survivor?.Owner != null
                 && !DelayedBattleRegistry.IsHexPending(_battleHex)
-                && BattleInitiator.FindEnemyAt(_battleHex, survivor.Owner) != null;
+                && BattleInitiator.FindEnemyAt(_battleHex, survivor) != null;
             return hasNext ? "Proceeding to the next battle." : "Returning to the map.";
         }
 
@@ -689,7 +689,7 @@ namespace Game.UI
         {
             bool hexPending = DelayedBattleRegistry.IsHexPending(hex);
             ArmyData nextEnemy = survivor?.Owner != null && !hexPending
-                ? BattleInitiator.FindEnemyAt(hex, survivor.Owner)
+                ? BattleInitiator.FindEnemyAt(hex, survivor)
                 : null;
 
             // Diagnostics for the project owner's own report (2026-08-26): a hex left with

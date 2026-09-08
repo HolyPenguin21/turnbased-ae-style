@@ -188,7 +188,7 @@ namespace Game.Ai.V2
             {
                 if (!VisionSystem.IsVisible(player, h))
                     continue;
-                ArmyData target = BattleInitiator.FindEnemyAt(h, player);
+                ArmyData target = BattleInitiator.FindEnemyAt(h, army);
                 if (target == null || target.Owner == null || target.Owner.IsNeutral
                     || !AiArmyRoles.IsSoloRecce(target))
                     continue;
@@ -280,7 +280,7 @@ namespace Game.Ai.V2
                     continue;
                 if (AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
                     continue;
-                if (VisionSystem.IsVisible(player, h) && BattleInitiator.FindEnemyAt(h, player) != null)
+                if (VisionSystem.IsVisible(player, h) && BattleInitiator.FindEnemyAt(h, army) != null)
                     continue;
 
                 float risk = CurrentDetectorRisk(player, h);
