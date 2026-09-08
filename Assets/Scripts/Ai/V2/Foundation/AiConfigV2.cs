@@ -606,13 +606,6 @@ namespace Game.Ai.V2
         public const bool surplusAllowAttach = true;
         public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
-        // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *card plays* (surplus
-        // materialization + non-combat) the arbiter may make per turn. This is the MGR-01 surplus
-        // bound; the unified tempo loop must not be able to make more card plays than this by
-        // routing them through a different candidate kind. maxEndOfTurnTempoActionsPerTurn stays a
-        // wider global safety bound over ALL candidate kinds (card plays + draws + non-card
-        // strategic spends), it does NOT replace this sub-cap.
-        public const int maxSurplusActionsPerTurn = 2;
         public const bool surplusAllowDraw = true;
         // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. The
         // unified loop honours this exactly like the old terminal-draw stage did; a draw beyond it
