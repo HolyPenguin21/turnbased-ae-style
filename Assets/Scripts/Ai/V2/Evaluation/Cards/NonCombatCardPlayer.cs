@@ -12,13 +12,11 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  NON-COMBAT SURPLUS CARD PLAY  (Strategy V2 — Strategic Manager Phase B, spec §5/§13)
     // ===========================================================================================
-    //  MaterializationCandidateBuilder.BestSurplus only ever bodies a Unit / Hero / solo-Recce
-    //  card (and its Equipment attachment). Aviation, Base, Facility and standalone Equipment
-    //  cards never produced a surplus candidate, so — even with Phase B running in every mode —
-    //  they sat in hand forever whenever no matching non-Recon demand reached Phase A. That made
-    //  "card type" the de-facto reason a legal card went unplayed, which §5/§13 forbids.
+    //  RankedSurplus owns Unit / Hero / solo-Recce materialization (and chained Equipment).
+    //  This peer lane owns Aviation, Base, Facility and standalone Equipment. Both enumerate their
+    //  complete legal alternatives before the common Phase-B arbiter ranks them.
     //
-    //  This is the missing lane. It enumerates every hand card the materialization chain cannot
+    //  It enumerates every hand/generated card through a pure type router, performs the canonical
     //  body, checks it against the SAME canonical gameplay APIs the human UI / V1 AI use
     //  (BuildingPlayExecutor -> InfrastructureActions, AviationActions.TryDeployFromCard,
     //  EquipmentSystem), and hands StrategicManager.UseSurplus a fully-preflighted best play.
@@ -121,7 +119,7 @@ namespace Game.Ai.V2
 
         // AI-MGR-02 round 6 — every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
-        // BestPlay picks the highest-Score one; the reaction feasibility probe needs the whole set
+        // BestPlay is a convenience caller; Phase-B arbitration and reaction probes consume the whole set
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
