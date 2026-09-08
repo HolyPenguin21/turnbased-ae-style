@@ -345,7 +345,8 @@ namespace Game.Ai.V2
         // -----------------------------------------------------------------------------------------
         public static StrategicCardUseCandidate ScoreSurplus(MaterializationPlan plan, CapabilityInventory inv,
             bool recce, bool hero, AiHandData hand, IReadOnlyList<string> projected, WorldSnapshot snap,
-            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0)
+            float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
+            System.Func<ResourceType, float> spendableResource = null)
         {
             CardDefinition def = PlanBaseDef(plan);
             BaselineForceReadiness baseline = BaselineForceReadiness.Evaluate(snap, inv, hand?.Hand);
