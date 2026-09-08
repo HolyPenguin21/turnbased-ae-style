@@ -51,10 +51,18 @@ namespace Game.Ai.V2
         // Army-level: is this already-existing army an operational instance of `demand`'s capability
         // (used to lease armies that satisfied a live strategic demand to Housekeeping).
         internal static bool IsArmyOperationalForDemand(ArmySnapshot army, AxisDemand demand)
+            => demand != null && IsArmyOperationalForCapability(
+                army, demand.Capability, demand.RequiredTraits);
+
+        // Capability-level form used when Phase B deliberately creates useful surplus without an
+        // AxisDemand object. Keeping it here prevents lease bookkeeping from growing a second
+        // definition of what an operational Scout is.
+        internal static bool IsArmyOperationalForCapability(ArmySnapshot army,
+            CapabilityKind capability, TraitPreference requiredTraits)
         {
-            if (army == null || demand == null)
+            if (army == null)
                 return false;
-            switch (demand.Capability)
+            switch (capability)
             {
                 case CapabilityKind.FieldCombatPower:
                     return army.IsStructuralRaidActor;
@@ -65,7 +73,7 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability:
                     if (!army.IsSoloRecce || army.CurrentMovement <= 0)
                         return false;
-                    return (demand.RequiredTraits & TraitPreference.Stealth) == 0
+                    return (requiredTraits & TraitPreference.Stealth) == 0
                         || army.IsHidden || army.CanEnterStealth;
                 default:
                     return false;

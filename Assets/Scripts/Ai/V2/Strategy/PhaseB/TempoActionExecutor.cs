@@ -86,6 +86,11 @@ namespace Game.Ai.V2
                     result.Reservation.UnresolvedDemands.Remove(residual);
                 result.CapabilityDeliveries++;
             }
+            else
+            {
+                CapabilityDeliveryEvaluator.LeaseSurplusScoutDelivery(
+                    player, ctx, snap, plan, inv, afterInv, armyIdsBefore, out delivered);
+            }
             AiDebugLog.Write($"[AI][V2]   strat.B — {plan.Kind} {AiCardLog.Plan(plan)} "
                 + $"util {F(mat.Utility)} (ap {F(play.ApSpent)}, {plan.Deploy.Kind}, delivered {F(delivered)}, {plan.StableKey})");
 

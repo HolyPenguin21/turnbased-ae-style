@@ -14,22 +14,28 @@ namespace Game.Ai.V2
     {
         internal static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
             WorldSnapshot after, MaterializationPlan plan, AxisDemand demand)
+            => demand == null
+                ? new List<int>()
+                : OperationalLeaseArmyIds(armyIdsBefore, after, plan,
+                    demand.Capability, demand.RequiredTraits);
+
+        private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
+            WorldSnapshot after, MaterializationPlan plan, CapabilityKind capability,
+            TraitPreference requiredTraits)
         {
             var ids = new HashSet<int>();
-            if (after?.Self?.Armies == null || demand == null)
+            if (after?.Self?.Armies == null || armyIdsBefore == null)
                 return ids.ToList();
 
             int existingRecipient = plan?.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
             foreach (ArmySnapshot army in after.Self.Armies)
             {
-                if (army == null || (!armyIdsBefore.Contains(army.ArmyId) && !IsOperationalForDemand(army, demand)))
+                if (army == null || !MaterializationDeliveryPolicy.IsArmyOperationalForCapability(
+                        army, capability, requiredTraits))
                     continue;
-                if (army.ArmyId == existingRecipient && IsOperationalForDemand(army, demand))
+                if (army.ArmyId == existingRecipient || !armyIdsBefore.Contains(army.ArmyId))
                     ids.Add(army.ArmyId);
             }
-            foreach (ArmySnapshot army in after.Self.Armies)
-                if (army != null && !armyIdsBefore.Contains(army.ArmyId) && IsOperationalForDemand(army, demand))
-                    ids.Add(army.ArmyId);
             return ids.OrderBy(id => id).ToList();
         }
 
@@ -40,10 +46,16 @@ namespace Game.Ai.V2
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)
+            => demand == null
+                ? 0f
+                : DeliveredCapabilityAmount(demand.Capability, demand.RequiredTraits, before, after);
+
+        private static float DeliveredCapabilityAmount(CapabilityKind capability,
+            TraitPreference requiredTraits, CapabilityInventory before, CapabilityInventory after)
         {
-            if (demand == null || before == null || after == null)
+            if (before == null || after == null)
                 return 0f;
-            switch (demand.Capability)
+            switch (capability)
             {
                 case CapabilityKind.FieldCombatPower:
                     return Mathf.Max(0f, after.RaidAvailableFieldPower - before.RaidAvailableFieldPower);
@@ -52,7 +64,7 @@ namespace Game.Ai.V2
                 case CapabilityKind.Hero:
                     return Mathf.Max(0, after.AvailableHeroes - before.AvailableHeroes);
                 case CapabilityKind.ScoutCapability:
-                    if ((demand.RequiredTraits & TraitPreference.Stealth) != 0)
+                    if ((requiredTraits & TraitPreference.Stealth) != 0)
                         return Mathf.Max(0, after.StealthScouts - before.StealthScouts);
                     return Mathf.Max(0, after.ReadyScouts - before.ReadyScouts);
                 default:
@@ -76,6 +88,31 @@ namespace Game.Ai.V2
                 return false;
             IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
             StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, demand.Capability, leased);
+            return true;
+        }
+
+        // Phase B may create a Scout as useful surplus, with no residual AxisDemand. It is still
+        // an operational result of the just-executed plan and needs the same turn-local lease so
+        // the immediately following housekeeping pass cannot fold it before it gets a turn.
+        internal static bool LeaseSurplusScoutDelivery(PlayerSetupData player, AiTurnContext ctx,
+            WorldSnapshot afterSnap, MaterializationPlan plan, CapabilityInventory before,
+            CapabilityInventory after, HashSet<int> armyIdsBefore, out float delivered)
+        {
+            delivered = 0f;
+            if (plan == null || plan.FinalCapability != CapabilityKind.ScoutCapability)
+                return false;
+
+            delivered = DeliveredCapabilityAmount(
+                CapabilityKind.ScoutCapability, plan.ExpectedTraits, before, after);
+            if (delivered <= AiConfigV2.allocatorSliceEpsilon)
+                return false;
+
+            IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan,
+                CapabilityKind.ScoutCapability, plan.ExpectedTraits);
+            if (leased.Count == 0)
+                return false;
+            StrategicCapabilityLeaseRegistry.Mark(
+                player, ctx.TurnNumber, CapabilityKind.ScoutCapability, leased);
             return true;
         }
     }
