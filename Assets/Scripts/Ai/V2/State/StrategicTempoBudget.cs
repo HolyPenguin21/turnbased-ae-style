@@ -12,7 +12,6 @@ namespace Game.Ai.V2
     //  Housekeeping tempo re-run) can never buy more actions than the per-turn limit.
     //
     //    maxEndOfTurnTempoActionsPerTurn  <- TotalTempoActionsUsed   (every executed tempo action)
-    //    maxSurplusActionsPerTurn         <- SurplusCardActionsUsed   (materialization + non-combat plays)
     //    maxTerminalDrawsPerTurn          <- DrawActionsUsed
     //    maxGenerationActionsPerTurn      <- GenerationAttemptsUsed   (Research/Production Challenges)
     //
@@ -23,7 +22,6 @@ namespace Game.Ai.V2
     {
         public int Turn = -1;
         public int TotalTempoActionsUsed;
-        public int SurplusCardActionsUsed;
         public int DrawActionsUsed;
         public int GenerationAttemptsUsed;
 
@@ -41,14 +39,12 @@ namespace Game.Ai.V2
         }
 
         public bool TotalCapHit => TotalTempoActionsUsed >= AiConfigV2.maxEndOfTurnTempoActionsPerTurn;
-        public bool CardCapHit => SurplusCardActionsUsed >= AiConfigV2.maxSurplusActionsPerTurn;
         public bool DrawCapHit => DrawActionsUsed >= AiConfigV2.maxTerminalDrawsPerTurn;
         public bool GenerationCapHit => GenerationAttemptsUsed >= AiConfigV2.maxGenerationActionsPerTurn;
 
-        public void RecordAction(bool card, bool draw, bool generationAttempt)
+        public void RecordAction(bool draw, bool generationAttempt)
         {
             TotalTempoActionsUsed++;
-            if (card) SurplusCardActionsUsed++;
             if (draw) DrawActionsUsed++;
             if (generationAttempt) GenerationAttemptsUsed++;
         }
