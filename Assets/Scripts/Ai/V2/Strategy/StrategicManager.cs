@@ -24,9 +24,10 @@ namespace Game.Ai.V2
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
-            IReadOnlyList<ReconObjective> reconObjectives = null)
+            IReadOnlyList<ReconObjective> reconObjectives = null,
+            MaterializationReservation carriedReservation = null)
             => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, ledger, demands, commitments,
-                activeIntents, reconObjectives);
+                activeIntents, reconObjectives, carriedReservation);
 
         public static IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
