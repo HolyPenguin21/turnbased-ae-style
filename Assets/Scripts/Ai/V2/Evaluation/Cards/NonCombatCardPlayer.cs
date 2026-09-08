@@ -16,10 +16,10 @@ namespace Game.Ai.V2
     //  This peer lane owns Aviation, Base, Facility and standalone Equipment. Both enumerate their
     //  complete legal alternatives before the common Phase-B arbiter ranks them.
     //
-    //  It enumerates every hand/generated card through a pure type router, performs the canonical
-    //  body, checks it against the SAME canonical gameplay APIs the human UI / V1 AI use
-    //  (BuildingPlayExecutor -> InfrastructureActions, AviationActions.TryDeployFromCard,
-    //  EquipmentSystem), and hands StrategicManager.UseSurplus a fully-preflighted best play.
+    //  It enumerates every hand/generated card through a pure type router and checks it against
+    //  the SAME canonical gameplay APIs the human UI / V1 AI use (BuildingPlayExecutor ->
+    //  InfrastructureActions, AviationActions.TryDeployFromCard, EquipmentSystem), then hands
+    //  StrategicPhaseB the complete preflighted candidate set.
     //  Every rejection carries a real gameplay reason (no AP, no resources, no legal destination,
     //  no capacity, no host) — never "wrong card type" and never "ReconOnly".
     // ===========================================================================================
