@@ -112,13 +112,13 @@ namespace Game.Ai.V2
             // same comparable utility space as Play / Draw / Hold / EndTurn. Housekeeping past this
             // point is ONLY the zero-AP / zero-resource structural reorganisation pass.
 
-            Run(player, root, ctx, commitments, result);
+            Run(snapshot, player, root, ctx, commitments, result);
             StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
             TurnResourceTelemetry.LogEnd(player, root, ctx?.TurnNumber ?? 0);
             yield break;
         }
 
-        internal static void Run(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+        internal static void Run(WorldSnapshot snapshot, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ActorCommitments commitments, HousekeepingResult result)
         {
             if (player == null || ctx == null)
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
             }
 
             int apBefore = root != null ? root.ActionPoints : 0;
-            ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments);
+            ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(player, commitments, snapshot, ctx);
             if (analysis.Groups.Count == 0)
             {
                 AiDebugLog.Write("[AI][V2] housekeeping — no local force group worth reorganising.");

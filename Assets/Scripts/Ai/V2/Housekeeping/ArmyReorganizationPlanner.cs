@@ -32,10 +32,9 @@ namespace Game.Ai.V2
             // could take over. Ranked as a formation-quality term, below command-capacity waste
             // and above generic strength/composition.
             public readonly int FormationDefect;
-            // Threat-agnostic local combat readiness. Occupied viable mutable field formations are
-            // sorted strongest-first. We compare the first force, then the second, etc. This makes
-            // 110+40 beat 70+60+20 without consulting any enemy/raid state. Empty reusable shells
-            // are deliberately absent from the profile.
+            // Local defensive-readiness profile. With deployed enemy field compositions this is
+            // 1 - worst distance-weighted enemy success; without any benchmark it falls back to
+            // canonical AiPower. Higher is always better and no pass/fail threshold exists.
             public readonly IReadOnlyList<float> FormationStrengths;
             public readonly float NegComposition;
             public readonly int Operations;
@@ -97,10 +96,13 @@ namespace Game.Ai.V2
             public readonly List<PlannedTransfer> Transfers = new List<PlannedTransfer>();
             // Executor rejects a unit moved twice in one plan; planning owns the same invariant.
             public readonly HashSet<int> MovedUnitKeys = new HashSet<int>();
+            public readonly List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
+            public float HexDefenseBonus;
 
             public VState Clone()
             {
-                var v = new VState();
+                var v = new VState { HexDefenseBonus = HexDefenseBonus };
+                v.ThreatBenchmarks.AddRange(ThreatBenchmarks);
                 foreach (var kv in Meta) v.Meta[kv.Key] = kv.Value;
                 foreach (var kv in Roster) v.Roster[kv.Key] = new List<ReorgUnit>(kv.Value);
                 v.Transfers.AddRange(Transfers);
@@ -120,7 +122,8 @@ namespace Game.Ai.V2
                 return plan;
             }
 
-            var state = new VState();
+            var state = new VState { HexDefenseBonus = group.HexDefenseBonus };
+            state.ThreatBenchmarks.AddRange(group.ThreatBenchmarks);
             foreach (ReorgContainer c in group.Containers)
             {
                 state.Meta[c.ArmyId] = c;

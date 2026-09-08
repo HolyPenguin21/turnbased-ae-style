@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Combat;
 
 namespace Game.Ai.V2
 {
@@ -43,9 +44,16 @@ namespace Game.Ai.V2
                     if (units.Count == 0 && meta.GarrisonNonHeroFloor > 0)
                         garrisonDeficit++;
                     if (meta.CanChangeComposition)
+                    {
                         benchedCombatCapable += units.Count(u => u != null && u.IsHero
                             && u.HeroRole != HeroOperationalRole.SupportOperator
                             && GarrisonMayRelease(units, u, meta));
+                        if (nonHero > 0)
+                        {
+                            formationStrengths.Add(FormationReadiness(s, units));
+                            composition += ReorgViability.CompositionQuality(units);
+                        }
+                    }
                     continue;
                 }
 
@@ -64,8 +72,7 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.IsViable(units))
                 {
-                    float p = ReorgViability.EffectivePower(units);
-                    formationStrengths.Add(p);
+                    formationStrengths.Add(FormationReadiness(s, units));
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
@@ -86,12 +93,40 @@ namespace Game.Ai.V2
                 ? Math.Min(unledViableFields + supportLedWhileCombatBenched, benchedCombatCapable)
                 : 0;
 
-            // Threat-agnostic concentration objective: strongest legal formation first, then the
-            // next strongest from the remainder. The canonical AiPower model remains the only
-            // strength/composition source; Housekeeping introduces no enemy-aware tactical scalar.
+            // The first value represents the best defender the contact system can expose, then
+            // the next layer from the remainder. Every measurable reduction in enemy success can
+            // win; there is deliberately no artificial viability gate.
             formationStrengths.Sort((a, b) => b.CompareTo(a));
             return new Outcome(garrisonDeficit, legality, singles, nonViable, commandWaste,
                 formationDefect, formationStrengths, -composition, s.Transfers.Count);
+        }
+
+        private static float FormationReadiness(VState state, IReadOnlyList<ReorgUnit> units)
+        {
+            if (state.ThreatBenchmarks.Count == 0)
+                return ReorgViability.EffectivePower(units);
+
+            var defenders = units
+                .Where(u => u != null && !u.IsHero)
+                .Select(u => u.CombatProfile)
+                .ToList();
+            if (defenders.Count == 0)
+                return 0f;
+
+            float worstPressure = 0f;
+            foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
+            {
+                // A force that cannot penetrate every remaining defender cannot clear the army.
+                // WorthIt's draw=0.5 convention is useful for generic comparison but must not turn
+                // physical non-penetration into a fictitious 50% successful capture here.
+                float success = WorthIt.CanDamageAll(threat.Members, defenders, state.HexDefenseBonus)
+                    ? WorthIt.WinChance(threat.Members, defenders, state.HexDefenseBonus)
+                    : 0f;
+                float pressure = success / (1f + Math.Max(0, threat.EffectiveEta));
+                if (pressure > worstPressure)
+                    worstPressure = pressure;
+            }
+            return 1f - worstPressure;
         }
 
         // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster

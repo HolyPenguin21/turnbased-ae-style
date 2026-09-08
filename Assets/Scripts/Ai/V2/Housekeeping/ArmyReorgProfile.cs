@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Combat;
 using Game.Map;
 using Game.Units;
 
@@ -43,6 +44,9 @@ namespace Game.Ai.V2
         public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
+        // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
+        // diagnostics but are excluded from Ground Combat roster estimates.
+        public WorthIt.DefenderProfile CombatProfile;
     }
 
     public sealed class ReorgContainer
@@ -65,11 +69,24 @@ namespace Game.Ai.V2
         public int MemberCount => Units.Count;
     }
 
+    public sealed class ReorgThreatBenchmark
+    {
+        public int ArmyId;
+        public bool HiddenFromUs;
+        public int EtaToGroup;
+        public int EtaToNearestBase;
+        public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();
+
+        public int EffectiveEta => Math.Min(EtaToGroup, EtaToNearestBase);
+    }
+
     public sealed class LocalForceGroup
     {
         public int Q;
         public int R;
+        public float HexDefenseBonus;
         public List<ReorgContainer> Containers = new List<ReorgContainer>();
+        public List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
 
         public string HexKey => Q + "," + R;
         public ReorgContainer Garrison => Containers.FirstOrDefault(c => c.IsGarrison);

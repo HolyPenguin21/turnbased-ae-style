@@ -2,10 +2,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -73,7 +75,8 @@ namespace Game.Ai.V2
 
     public static class ArmyReorgAnalyzer
     {
-        public static ArmyReorgAnalysis Analyze(PlayerSetupData player, ActorCommitments commitments)
+        public static ArmyReorgAnalysis Analyze(PlayerSetupData player, ActorCommitments commitments,
+            WorldSnapshot snapshot, AiTurnContext ctx)
         {
             var unitByKey = new Dictionary<int, UnitData>();
             var armyById = new Dictionary<int, ArmyData>();
@@ -98,11 +101,14 @@ namespace Game.Ai.V2
                     containers.Add(BuildContainer(player, army, commitments, citadelHex, unitByKey, ref nextKey));
                 }
 
+                var groupHex = new HexCoord(hexGroup.Key.Q, hexGroup.Key.R);
                 var lfg = new LocalForceGroup
                 {
                     Q = hexGroup.Key.Q,
                     R = hexGroup.Key.R,
+                    HexDefenseBonus = WorthIt.HexDefenseBonus(groupHex, ctx?.Map),
                     Containers = containers,
+                    ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex),
                 };
                 if (lfg.WorthPlanning())
                     groups.Add(lfg);
@@ -143,6 +149,7 @@ namespace Game.Ai.V2
                     HasRecce = AbilityParams.UnitHasAnyRecce(u),
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
+                    CombatProfile = WorthIt.FromLiveUnit(u),
                 });
             }
 
@@ -174,6 +181,45 @@ namespace Game.Ai.V2
 
             return container;
         }
+
+        private static List<ReorgThreatBenchmark> BuildThreatBenchmarks(
+            WorldSnapshot snapshot, HexCoord groupHex)
+        {
+            var result = new List<ReorgThreatBenchmark>();
+            IReadOnlyList<ArmySnapshot> enemies = snapshot?.TrueWorld?.EnemyArmies;
+            if (enemies == null)
+                return result;
+
+            IReadOnlyList<HexCoord> bases = snapshot.Self?.BaseHexes
+                ?? (IReadOnlyList<HexCoord>)System.Array.Empty<HexCoord>();
+
+            foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
+            {
+                if (enemy == null || enemy.Owner == null || enemy.Owner.IsNeutral
+                    || enemy.IsGarrison || enemy.IsPrison || enemy.IsAir
+                    || enemy.Members == null || enemy.Members.Count == 0)
+                    continue;
+
+                int move = Mathf.Max(1, enemy.MaxMovement);
+                int groupEta = CeilDiv(HexGridMath.Distance(enemy.Hex, groupHex), move);
+                int baseEta = groupEta;
+                if (bases.Count > 0)
+                    baseEta = bases.Min(b => CeilDiv(HexGridMath.Distance(enemy.Hex, b), move));
+
+                result.Add(new ReorgThreatBenchmark
+                {
+                    ArmyId = enemy.ArmyId,
+                    HiddenFromUs = enemy.IsHiddenFromUs,
+                    EtaToGroup = groupEta,
+                    EtaToNearestBase = baseEta,
+                    Members = enemy.Members,
+                });
+            }
+            return result;
+        }
+
+        private static int CeilDiv(int value, int divisor) =>
+            divisor <= 0 ? value : (value + divisor - 1) / divisor;
 
         private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, ArmyData army, ActorCommitments commitments)
         {
