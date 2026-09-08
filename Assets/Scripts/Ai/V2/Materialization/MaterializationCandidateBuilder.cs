@@ -258,7 +258,8 @@ namespace Game.Ai.V2
             // and never re-applies demand.Value or re-reads the raw play score.
             float urgency = UrgencyBonus(demand.Value);
             float Decide(MaterializationPlan p) =>
-                p.Score - (p.UseBreakdown?.HoldValue ?? 0f) + urgency;
+                p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
+                + urgency * GenerationChanceForDecision(p);
 
             var ranked = candidates
                 .OrderByDescending(c => Decide(c.plan))
@@ -342,7 +343,7 @@ namespace Game.Ai.V2
         // highest-DecisionScore among these; the reaction feasibility probe needs the WHOLE set so
         // it can find the genuinely CHEAPEST feasible plan, not just the best-scored one.
 
-        public static (MaterializationPlan plan, float utility)? BestSurplus(WorldSnapshot snap,
+        public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             CapabilityInventory inv, ActorCommitments commitments, MaterializationReservation reservation,
             float? witnessedUsefulApDemand = null)
@@ -351,7 +352,7 @@ namespace Game.Ai.V2
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
                 raw, player, root, hand, ctx, reservation);
-            if (candidates.Count == 0) return null;
+            if (candidates.Count == 0) return new List<(MaterializationPlan plan, float utility)>();
 
             // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
             // (PhaseBWitnessedApWorkload) — the SAME scalar the non-combat lane gets, so a Unit/Hero
@@ -395,21 +396,22 @@ namespace Game.Ai.V2
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
                 float urgency = d != null && CanDeliverDemandOperationally(p, d)
                     ? UrgencyBonus(d.Value) : 0f;
-                return p.Score + urgency;
+                return p.Score + urgency * GenerationChanceForDecision(p);
             }
 
-            MaterializationPlan bestPlan = candidates
-                .OrderByDescending(DecisionScore)
-                .ThenByDescending(p => p.Score)
-                .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
-                .First();
-            float bestDecision = DecisionScore(bestPlan);
+            List<(MaterializationPlan plan, float utility)> ranked = candidates
+                .Select(p => (plan: p, utility: DecisionScore(p)))
+                .OrderByDescending(x => x.utility)
+                .ThenByDescending(x => x.plan.Score)
+                .ThenBy(x => x.plan.StableKey, System.StringComparer.Ordinal)
+                .ToList();
+            MaterializationPlan bestPlan = ranked[0].plan;
             if (bestPlan.UseBreakdown != null)
                 AiDebugLog.Write($"[AI][V2]   strat.eval B — {bestPlan.StableKey} role={bestPlan.UseRole} "
                     + $"net {bestPlan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
-                    + $"decision {bestDecision.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
+                    + $"decision {ranked[0].utility.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{bestPlan.UseBreakdown.ToCompact()}]");
-            return (bestPlan, bestDecision);
+            return ranked;
         }
 
 
@@ -484,6 +486,9 @@ namespace Game.Ai.V2
         // Shared Play-vs-Hold / Phase-B urgency ramp off a demand's Value. Used by Phase A's
         // DecisionScore and (final closure follow-up §P1) by BestSurplus's global decision score so
         // an operational residual competes on score instead of a hard boolean priority.
+        private static float GenerationChanceForDecision(MaterializationPlan p) =>
+            p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
+
         private static float UrgencyBonus(float demandValue)
         {
             float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
