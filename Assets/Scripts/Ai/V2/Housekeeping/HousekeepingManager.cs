@@ -192,8 +192,7 @@ namespace Game.Ai.V2
 
         private static string FormatProjectedContainer(ReorgContainer container,
             ArmyReorgAnalysis analysis) =>
-            $"#{container.ArmyId}/{container.Role}[{string.Join(",", container.Units
-                .Select(u => FormatProjectedUnit(u, analysis)))}]";
+            $"#{container.ArmyId}/{container.Role}[{string.Join(",", container.Units.Select(u => FormatProjectedUnit(u, analysis)))}]";
 
         private static string FormatProjectedUnit(ReorgUnit unit, ArmyReorgAnalysis analysis)
         {
@@ -220,8 +219,7 @@ namespace Game.Ai.V2
         {
             if (!analysis.ArmyById.TryGetValue(container.ArmyId, out ArmyData army) || army == null)
                 return $"#{container.ArmyId}/missing";
-            return $"#{army.Id}/{container.Role}[{string.Join(",", army.Members
-                .Select(u => FormatLiveUnit(u, operators)))}]";
+            return $"#{army.Id}/{container.Role}[{string.Join(",", army.Members.Select(u => FormatLiveUnit(u, operators)))}]";
         }
 
         private static string FormatLiveUnit(UnitData unit, HashSet<UnitData> operators)
