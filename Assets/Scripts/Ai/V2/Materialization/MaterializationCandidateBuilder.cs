@@ -163,6 +163,28 @@ namespace Game.Ai.V2
         // AI-MGR-01 P1.3 — excludeCards / excludeGenKeys let the Phase A instance assignment ask
         // for the chains that AVOID a hand card / generation source another demand has claimed, so
         // two demands never both count one physical card as available capacity.
+        private static List<MaterializationPlan> RawForDemand(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            ActorCommitments commitments, MaterializationReservation reservation,
+            System.Collections.Generic.ISet<CardData> excludeCards,
+            System.Collections.Generic.ISet<string> excludeGenKeys)
+        {
+            if (demand?.Capability != CapabilityKind.CardUpgrade)
+                return MaterializationChainEnumerator.EnumerateForDemand(
+                    snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
+
+            DevelopmentOpportunity op = demand.DevOpportunity;
+            GenerationStep g = op?.Generation;
+            if (g == null || reservation == null || !reservation.CanGenerateMore
+                || reservation.TriedGeneratorCards.Contains(g.CardKey)
+                || (excludeGenKeys != null && excludeGenKeys.Contains(g.CardKey))
+                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard)))
+                return new List<MaterializationPlan>();
+
+            MaterializationPlan p = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
+            return p != null ? new List<MaterializationPlan> { p } : new List<MaterializationPlan>();
+        }
+
         public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
@@ -173,12 +195,26 @@ namespace Game.Ai.V2
             float? witnessedUsefulApDemand = null,
             IReadOnlyList<(MaterializationPlan plan, float followupAp)> fillerUniverse = null)
         {
-            var raw = MaterializationChainEnumerator.EnumerateForDemand(
+            var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
             var candidates = MaterializationFeasibility.FilterForDemand(
                 raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);
 
             if (candidates.Count == 0) return new List<DemandCandidate>();
+
+            if (demand.Capability == CapabilityKind.CardUpgrade)
+            {
+                DevelopmentOpportunityEvaluator.Rescore(demand.DevOpportunity, snap, root, hand);
+                if (demand.DevOpportunity == null || demand.DevOpportunity.Ev <= AiConfigV2.devEvMargin)
+                    return new List<DemandCandidate>();
+                MaterializationPlan upgrade = candidates[0].plan;
+                upgrade.Score = demand.DevOpportunity.Ev;
+                float decision = upgrade.Score + UrgencyBonus(demand.Value);
+                return new List<DemandCandidate>
+                {
+                    new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision),
+                };
+            }
 
             int referenceMoveMax = 0;
             if (demand.Capability == CapabilityKind.ScoutCapability)
@@ -421,7 +457,7 @@ namespace Game.Ai.V2
             AxisDemand demand, AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation)
         {
-            var raw = MaterializationChainEnumerator.EnumerateForDemand(
+            var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
             var candidates = MaterializationFeasibility.FilterForDemand(
                 raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);

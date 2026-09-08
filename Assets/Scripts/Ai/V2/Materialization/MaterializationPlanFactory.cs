@@ -60,6 +60,38 @@ namespace Game.Ai.V2
             return p;
         }
 
+        internal static MaterializationPlan MakeDevelopmentUpgradePlan(AxisDemand demand)
+        {
+            DevelopmentOpportunity op = demand?.DevOpportunity;
+            GenerationStep g = op?.Generation;
+            if (g == null || g.CardDef == null)
+                return null;
+
+            ResourceCost rc = g.CardDef.resourceCost;
+            var p = new MaterializationPlan
+            {
+                Kind = MaterializationChainKind.GenerateAttachUpgrade,
+                OwnerAxis = demand.RequestingAxis,
+                FinalCapability = CapabilityKind.CardUpgrade,
+                ExpectedTraits = TraitPreference.None,
+                Generation = g,
+                GeneratedEquipmentDef = g.CardDef,
+                DevelopmentUpgrade = op,
+                UpgradeTargetCard = op.RecipientCard,
+                UpgradeTargetUnit = op.RecipientUnit,
+                ApCost = ResearchProductionSystem.AttemptApCost(g.CardDef)
+                    + System.Math.Max(0, g.CardDef.activationApCost),
+                ResCost = rc == null ? null : new ResourceCost
+                {
+                    human = rc.human, energy = rc.energy, materials = rc.materials, tech = rc.tech,
+                },
+                HandSlotsNeededAtPeak = 0,
+                StableKey = $"{(int)MaterializationChainKind.GenerateAttachUpgrade}|"
+                    + $"{(int)CapabilityKind.CardUpgrade}|{g.CardKey}|{op.RecipientKind}|{op.RecipientLabel}",
+            };
+            return p;
+        }
+
         internal static void FillCostsAndKey(MaterializationPlan p, CardDefinition baseDef, CardData baseInstance,
             CardData equipInstance, int baseIdx, int equipIdx, int genMark)
         {
@@ -100,11 +132,12 @@ namespace Game.Ai.V2
             p.HandSlotsNeededAtPeak = 0;
 
             string baseKey = p.GeneratedBaseDef != null
-                ? "gen:" + p.GeneratedBaseDef.displayName
-                : (baseDef != null ? baseDef.displayName : "?") + ":" + baseIdx;
+                ? "gen:" + (p.GeneratedBaseDef.authoredKey ?? "?")
+                : (baseDef != null ? baseDef.authoredKey ?? "?" : "?") + ":" + baseIdx;
             string eqKey = p.GeneratedEquipmentDef != null
-                ? "gen:" + p.GeneratedEquipmentDef.displayName
-                : (p.EquipmentInHand?.Definition != null ? p.EquipmentInHand.Definition.displayName + ":" + equipIdx : "-");
+                ? "gen:" + (p.GeneratedEquipmentDef.authoredKey ?? "?")
+                : (p.EquipmentInHand?.Definition != null
+                    ? (p.EquipmentInHand.Definition.authoredKey ?? "?") + ":" + equipIdx : "-");
             string genKey = p.Generation != null ? p.Generation.CardKey : "-";
             p.StableKey = $"{(int)p.Kind}|{(int)p.FinalCapability}|{baseKey}|{eqKey}|{genKey}|{p.Deploy.Key}";
         }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Cards;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -32,6 +33,8 @@ namespace Game.Ai.V2
         internal static string RecipientKey(MaterializationPlan p)
         {
             if (p == null) return "?";
+            if (p.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+                return "upgrade:" + p.StableKey;
             switch (p.Deploy.Kind)
             {
                 case DeploymentKind.ExistingArmy: return "existing:" + (p.Deploy.Army?.Id ?? -1);
@@ -68,6 +71,7 @@ namespace Game.Ai.V2
             new Dictionary<string, Recipient>();
         private int _handSlotsFree = int.MaxValue;
         private int _handSlotsUsed;
+        private readonly HashSet<UnitData> _upgradedUnits = new HashSet<UnitData>();
 
         internal void SeedHandSlots(int free) => _handSlotsFree = Mathf.Max(0, free);
 
@@ -105,13 +109,16 @@ namespace Game.Ai.V2
             public readonly bool IsHero;
             public readonly bool WasFirstAddedHero;
             public readonly int HandPeak;
+            public readonly UnitData UpgradedUnit;
 
-            public Token(string key, bool isHero, bool wasFirstAddedHero, int handPeak)
+            public Token(string key, bool isHero, bool wasFirstAddedHero, int handPeak,
+                UnitData upgradedUnit = null)
             {
                 Key = key;
                 IsHero = isHero;
                 WasFirstAddedHero = wasFirstAddedHero;
                 HandPeak = handPeak;
+                UpgradedUnit = upgradedUnit;
             }
         }
 
@@ -122,6 +129,8 @@ namespace Game.Ai.V2
             int peak = Mathf.Max(0, p.HandSlotsNeededAtPeak);
             if (_handSlotsUsed + peak > _handSlotsFree)
                 return false;
+            if (p.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+                return p.UpgradeTargetUnit == null || !_upgradedUnits.Contains(p.UpgradeTargetUnit);
 
             string key = RecipientKey(p);
             Recipient r = Get(key);
@@ -137,6 +146,15 @@ namespace Game.Ai.V2
 
         internal Token Add(MaterializationPlan p)
         {
+            if (p.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+            {
+                if (p.UpgradeTargetUnit != null)
+                    _upgradedUnits.Add(p.UpgradeTargetUnit);
+                int upgradePeak = Mathf.Max(0, p.HandSlotsNeededAtPeak);
+                _handSlotsUsed += upgradePeak;
+                return new Token(RecipientKey(p), false, false, upgradePeak, p.UpgradeTargetUnit);
+            }
+
             string key = RecipientKey(p);
             Recipient r = Get(key);
             bool hero = IsHeroPlan(p);
@@ -155,6 +173,8 @@ namespace Game.Ai.V2
 
         internal void Remove(in Token t)
         {
+            if (t.UpgradedUnit != null)
+                _upgradedUnits.Remove(t.UpgradedUnit);
             if (_recipients.TryGetValue(t.Key, out Recipient r))
             {
                 if (t.IsHero)

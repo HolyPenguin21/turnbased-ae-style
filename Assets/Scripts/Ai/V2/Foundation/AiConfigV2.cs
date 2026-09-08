@@ -254,9 +254,6 @@ namespace Game.Ai.V2
         public const float devImportanceGarrison = 0.5f;
         public const float devImportanceHandCard = 0.9f;
 
-        // Development's local sub-cap. Every upgrade also consumes the shared
-        // maxGenerationActionsPerTurn budget; the effective limit is the tighter remaining cap.
-        public const int maxDevelopmentUpgradesPerTurn = 2;
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
 
         // =======================================================================================
@@ -598,9 +595,10 @@ namespace Game.Ai.V2
         // (materialization surplus + non-combat surplus) — enforced through
         // MaterializationReservation.GenerationAttemptsUsed, which every generation path increments
         // via RecordGenerationAttempt. There is NO second per-turn generation budget anywhere.
-        // Generation is resource-expensive and probabilistic — one is a safe first pass; raise only
-        // against real AiDebug.log runs.
-        public const int maxGenerationActionsPerTurn = 1;
+        // This is a runaway-loop safety bound, not a policy gate. Phase-A/Phase-B portfolio
+        // feasibility consumes real AP and H/E/M/T for every attempt, so available resources decide
+        // whether one, two or three Challenges are actually selected.
+        public const int maxGenerationActionsPerTurn = 3;
 
         // Phase B may proactively generate / attach with GENUINELY remaining resources, behind
         // every existing reserve + the Phase-A generator claim. Bounded, never a production planner.

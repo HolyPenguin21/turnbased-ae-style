@@ -202,7 +202,9 @@ namespace Game.Ai.V2
 
                     if (g.ProducesEquipment)
                     {
-                        if (gd.equipment == null || !hand.HasFreeSlot)
+                        // Research/Production output is cap-exempt and may temporarily enter a
+                        // full hand; the generated Equipment is attached immediately by the chain.
+                        if (gd.equipment == null)
                             continue;
 
                         for (int i = 0; i < handList.Count; i++)

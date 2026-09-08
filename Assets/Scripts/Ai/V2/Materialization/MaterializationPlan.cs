@@ -10,8 +10,8 @@ namespace Game.Ai.V2
     //  ONE model of the COMPLETE action chain that produces a capability — never independent
     //  "is this generation good / is this equipment good / where do I put it" decisions. A chain
     //  is at most: one Research/Production generation step + one Equipment attachment + one final
-    //  deployment. The four shapes Step 8B supports and nothing deeper (no recursive crafting, no
-    //  multi-stage generation, no hero positioning):
+    //  deployment/upgrade. The existing shapes support no recursive crafting and no
+    //  multi-stage generation or hero positioning:
     //
     //    Direct                 existing card -> deploy
     //    AttachDeploy           existing card + existing equipment -> attach -> deploy
@@ -29,6 +29,7 @@ namespace Game.Ai.V2
         AttachDeploy,
         GenerateDeploy,
         GenerateAttachDeploy,
+        GenerateAttachUpgrade,
     }
 
     // One immediately-usable Research/Production generation step. It is a candidate ONLY when a
@@ -96,6 +97,13 @@ namespace Game.Ai.V2
         public CardData EquipmentInHand;
         public CardDefinition GeneratedEquipmentDef;
 
+        // GenerateAttachUpgrade stays in the same plan/portfolio contract but strengthens an
+        // existing host instead of deploying a body. The exact DevelopmentOpportunity is frozen
+        // by Objectives; execution consumes it verbatim.
+        public DevelopmentOpportunity DevelopmentUpgrade;
+        public CardData UpgradeTargetCard;
+        public UnitData UpgradeTargetUnit;
+
         // --- deploy placement -----------------------------------------------------------
         //  For an existing base card this is a fully validated option. For a generated base it is
         //  the best option from a pre-mint enumeration; MaterializationExecutor re-validates it
@@ -122,7 +130,8 @@ namespace Game.Ai.V2
 
         public bool UsesGenerator => Generation != null;
         public bool UsesEquipment => Kind == MaterializationChainKind.AttachDeploy
-                                     || Kind == MaterializationChainKind.GenerateAttachDeploy;
+                                     || Kind == MaterializationChainKind.GenerateAttachDeploy
+                                     || Kind == MaterializationChainKind.GenerateAttachUpgrade;
 
         public override string ToString() => $"{Kind} {StableKey}";
     }
@@ -132,6 +141,7 @@ namespace Game.Ai.V2
         public bool StateChanged;
         public bool Deployed;
         public bool Generated;
+        public bool GenerationAttempted;
         public bool Attached;
         public bool ArmyCreated;                  // a new army shell was founded by this chain
         public float ApSpent;                     // real PlayerRoot AP delta across the whole chain

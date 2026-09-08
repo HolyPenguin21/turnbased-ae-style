@@ -16,12 +16,15 @@ namespace Game.Cards
     [System.Serializable]
     public class CardDefinition
     {
-        // This card's index within the owning FactionCardCatalog's cards list — cosmetic/
-        // editor-facing only; a deck (see StartingDeckCatalog) references this card by its
-        // "<catalog.displayName>/<displayName>" key instead, since that stays unambiguous
-        // across catalogs. Auto-synced by FactionCardCatalog.OnValidate on every inspector
-        // change; not hand-edited.
+        // This card's index within the owning FactionCardCatalog's cards list — cosmetic and
+        // editor-facing only. Auto-synced by FactionCardCatalog.OnValidate; never use it as a
+        // persistent identity because reordering the list changes it.
         [ReadOnly] public int id;
+
+        // Immutable authored identity for cross-catalog references. Unlike displayName/id this
+        // survives localization, renaming and list reordering. Empty is allowed for cards that are
+        // never referenced externally; ResearchProductionCatalog exposes only non-empty keys.
+        public string authoredKey;
 
         public string displayName;
         public Sprite art;

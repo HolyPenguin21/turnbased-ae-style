@@ -169,73 +169,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            // --- CardUpgrade pre-pass. Development R/P upgrades run the carried DevelopmentOpportunity
-            //     verbatim (Challenge -> mint -> attach). Challenge AP and successful attach AP are
-            //     both measured and charged to Development. Blocked from the generic
-            //     loop like infra. GREEDY: re-score every remaining opportunity against the fresh
-            //     snapshot each round (surplus / best-alternative shift as resources are spent), drop
-            //     those below the EV margin, take the best, execute, refresh, repeat — bounded by
-            //     AiConfigV2.maxDevelopmentUpgradesPerTurn (Development's OWN cap, separate from the
-            //     combat-generation cap; each still records a StrategicTempoBudget attempt).
-            var devPending = states
-                .Where(s => DevelopmentUpgradeFulfillment.Handles(s.Demand.Capability))
-                .ToList();
-            foreach (DemandState s in devPending)
-                s.Blocked = true;
-
-            int devDone = 0;
-            while (devPending.Count > 0
-                   && devDone < AiConfigV2.maxDevelopmentUpgradesPerTurn
-                   && !StrategicTempoBudget.For(player, ctx.TurnNumber).GenerationCapHit)
-            {
-                foreach (DemandState s in devPending)
-                    DevelopmentOpportunityEvaluator.Rescore(s.Demand.DevOpportunity, snap, root, hand);
-                devPending = devPending
-                    .Where(s => s.Demand.DevOpportunity != null && s.Demand.DevOpportunity.Ev > AiConfigV2.devEvMargin)
-                    .OrderByDescending(s => s.Demand.DevOpportunity.BaseValue)
-                    .ThenBy(s => s.Ordinal)
-                    .ToList();
-                if (devPending.Count == 0)
-                    break;
-
-                DemandState ustate = devPending[0];
-                devPending.RemoveAt(0);
-                result.MaterializationAttempts++;
-                result.EquipmentAssignmentAttempts++;
-                DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
-                    snap, player, root, hand, ctx, ustate.Demand, ledger);
-                if (up.StateChanged)
-                    result.StateChanged = true;
-                if (!up.Executed)
-                {
-                    AiDebugLog.Write($"[AI][V2][Dev] SKIP — {ustate.Demand.Explain} :: {up.Detail}");
-                    continue;
-                }
-
-                if (up.ApSpent > 0f)
-                {
-                    ledger.Debit(ustate.Demand.RequestingAxis, up.ApSpent);
-                    result.AddDebit(ustate.Demand.RequestingAxis, up.ApSpent);
-                }
-                ustate.Remaining = 0f;
-                result.GeneratedCardAttempts++;
-                if (up.ChallengeWon)
-                {
-                    result.MaterializationsSucceeded++;
-                    result.GeneratedCardsSucceeded++;
-                    result.CapabilityDeliveries++;
-                    if (up.Attached)
-                        result.EquipmentAssignmentsSucceeded++;
-                }
-                StrategicTempoBudget.RecordGenerationAttempt(player, ctx?.TurnNumber ?? 0);
-                result.Reservation.GenerationAttemptsUsed =
-                    StrategicTempoBudget.GenerationUsed(player, ctx?.TurnNumber ?? 0);
-                devDone++;
-                AiDebugLog.Write($"[AI][V2][Dev] {(up.ChallengeWon ? "CHALLENGE win" : "CHALLENGE loss")} — "
-                    + $"{ustate.Demand.Explain} :: {up.Detail} "
-                    + $"(ap {F(up.ApSpent)} -> DEV, {devDone}/{AiConfigV2.maxDevelopmentUpgradesPerTurn})");
-                snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-            }
+            // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
+            // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
 
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
@@ -383,6 +318,65 @@ namespace Game.Ai.V2
                 var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
                     .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
                 int chainApBefore = root.ActionPoints;
+
+                if (plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+                {
+                    DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
+                        snap, player, root, hand, ctx, chosenDemand, plan, ledger);
+                    int upgradeApAfter = root.ActionPoints;
+                    chainAttempts++;
+                    result.MaterializationAttempts++;
+                    result.EquipmentAssignmentAttempts++;
+
+                    if (up.ApSpent > 0f)
+                    {
+                        float ledgerBefore = ledger.Balance(chosenDemand.RequestingAxis);
+                        ledger.Debit(chosenDemand.RequestingAxis, up.ApSpent);
+                        result.AddDebit(chosenDemand.RequestingAxis, up.ApSpent);
+                        float ledgerAfter = ledger.Balance(chosenDemand.RequestingAxis);
+                        AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
+                            chainApBefore - upgradeApAfter, up.ApSpent, ledgerBefore - ledgerAfter);
+                    }
+
+                    if (up.Executed)
+                    {
+                        result.GeneratedCardAttempts++;
+                        var attempted = new MaterializationResult
+                        {
+                            StateChanged = up.StateChanged,
+                            GenerationAttempted = true,
+                            Generated = up.ChallengeWon,
+                            Attached = up.Attached,
+                            ApSpent = up.ApSpent,
+                            AttemptedGenerationUseKey = plan.Generation?.UseKey,
+                        };
+                        result.Reservation.RecordGenerationAttempt(plan.Generation, attempted);
+                        StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
+                        if (up.ChallengeWon) result.GeneratedCardsSucceeded++;
+                        if (up.Attached)
+                        {
+                            result.MaterializationsSucceeded++;
+                            result.EquipmentAssignmentsSucceeded++;
+                            result.CapabilityDeliveries++;
+                            result.CardsPlayed++;
+                            selected.State.Remaining = 0f;
+                        }
+                        else
+                            selected.State.Blocked = true;
+                    }
+                    else
+                        selected.State.Blocked = true;
+
+                    if (up.StateChanged)
+                    {
+                        result.StateChanged = true;
+                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    }
+                    AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
+                        + $"{chosenDemand.Explain} :: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
+                    continue;
+                }
+
                 MaterializationResult play = MaterializationExecutor.Execute(
                     snap, player, root, hand, ctx, plan, commitments);
                 int chainApAfter = root.ActionPoints;
@@ -392,7 +386,7 @@ namespace Game.Ai.V2
                 // from the plan shape + MaterializationResult; no scoring change.
                 result.MaterializationAttempts++;
                 if (play.Deployed) result.MaterializationsSucceeded++;
-                if (plan.Generation != null)
+                if (play.GenerationAttempted)
                 {
                     result.GeneratedCardAttempts++;
                     if (play.Generated) result.GeneratedCardsSucceeded++;
@@ -403,7 +397,7 @@ namespace Game.Ai.V2
                     if (play.Attached) result.EquipmentAssignmentsSucceeded++;
                 }
 
-                if (plan.Generation != null)
+                if (play.GenerationAttempted)
                 {
                     result.Reservation.RecordGenerationAttempt(plan.Generation, play);
                     StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);

@@ -44,10 +44,17 @@ namespace Game.Cards
         // always shows the correct index even after cards are added/removed/reordered.
         private void OnValidate()
         {
+            var authoredKeys = new HashSet<string>();
             for (int i = 0; i < cards.Count; i++)
             {
-                if (cards[i] != null)
-                    cards[i].id = i;
+                CardDefinition card = cards[i];
+                if (card == null)
+                    continue;
+                card.id = i;
+                if (!string.IsNullOrWhiteSpace(card.authoredKey)
+                    && !authoredKeys.Add(card.authoredKey))
+                    Debug.LogError($"FactionCardCatalog '{name}' has duplicate authoredKey "
+                        + $"'{card.authoredKey}'. External catalog resolution will reject it.", this);
             }
         }
 

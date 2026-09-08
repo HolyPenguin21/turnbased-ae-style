@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using Game.Players;
 using UnityEngine;
 
@@ -16,9 +15,8 @@ namespace Game.Cards
     [System.Serializable]
     public class ResearchProductionEntry
     {
-        // "<catalog.displayName>/<card.displayName>" — same cardKey format as
-        // StartingDeckCatalog.DeckCardEntry.cardKey / EventCatalog.RewardEntry.cardKey, resolved
-        // against the owning ResearchProductionCatalog's own `cardCatalogs` list (see ResolveCard).
+        // CardDefinition.authoredKey. It is independent of displayName, list index/id and faction
+        // catalog ordering; those are mutable presentation/editor data.
         public string cardKey;
         public Faction factionRestriction = Faction.None;
     }
@@ -44,27 +42,33 @@ namespace Game.Cards
         // + a Production Facility).
         public List<ResearchProductionEntry> productionCards = new List<ResearchProductionEntry>();
 
-        // Scans `cardCatalogs` for the card named by cardKey ("<catalog.displayName>/<card.
-        // displayName>") — null if the catalog or the card inside it can no longer be found,
-        // same fallback EventCatalog.ResolveCard / StartingDeckCatalog.ResolveCard use.
+        // Resolves an immutable authored key across the configured catalogs. Duplicate keys are
+        // rejected instead of silently selecting the first card; displayName and numeric id never
+        // participate in identity.
         public CardDefinition ResolveCard(string cardKey)
         {
-            if (string.IsNullOrEmpty(cardKey) || cardCatalogs == null)
+            if (string.IsNullOrWhiteSpace(cardKey) || cardCatalogs == null)
                 return null;
 
+            CardDefinition match = null;
             foreach (FactionCardCatalog catalog in cardCatalogs)
             {
-                if (catalog == null)
+                if (catalog?.cards == null)
                     continue;
-                string prefix = catalog.displayName + "/";
-                if (!cardKey.StartsWith(prefix))
-                    continue;
-                string cardName = cardKey.Substring(prefix.Length);
-                CardDefinition match = catalog.cards.FirstOrDefault(c => c != null && c.displayName == cardName);
-                if (match != null)
-                    return match;
+                foreach (CardDefinition card in catalog.cards)
+                {
+                    if (card == null || card.authoredKey != cardKey)
+                        continue;
+                    if (match != null && !ReferenceEquals(match, card))
+                    {
+                        Debug.LogError($"ResearchProductionCatalog '{name}' cannot resolve duplicate "
+                            + $"authoredKey '{cardKey}'.", this);
+                        return null;
+                    }
+                    match = card;
+                }
             }
-            return null;
+            return match;
         }
 
         // Every resolvable CardDefinition for `mode`, in list order, after applying each entry's

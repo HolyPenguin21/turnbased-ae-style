@@ -296,9 +296,9 @@ namespace Game.Ai.V2
             // mutation of this non-atomic chain is reported even when a later step fails.
             if (play.Generation != null)
             {
-                res.GenerationAttempted = true;
                 MaterializationExecutor.GenerationOutcome go =
-                    MaterializationExecutor.TryGenerate(play.Generation, player, root, hand);
+                    MaterializationExecutor.TryGenerate(play.Generation, player, root, hand, ctx);
+                res.GenerationAttempted = go.Attempted;
                 if (go.StateChanged) res.StateChanged = true;
                 if (!go.Success)
                 {
@@ -426,7 +426,8 @@ namespace Game.Ai.V2
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
-                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(equipCard.Definition, u);
+                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
+                        equipCard.Definition, u, snap, inv);
                     if (best == null || delta > best.Value.upgrade + 0.0001f
                         || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f
                             && string.CompareOrdinal(u.Name ?? "", best.Value.unit.Name ?? "") < 0))

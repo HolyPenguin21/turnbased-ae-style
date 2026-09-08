@@ -267,7 +267,7 @@ namespace Game.Ai.V2
 
         // The ONE Research/Production capability detect. Snapshot-pure: enumerates own facilities
         // (+ the qualifying hero), then every catalog card that passes facility ability + hero +
-        // CanAffordCard + AiConfig.developmentMinSuccessChance. The enemy-on-hex rule is recorded
+        // CanAffordCard. Success chance remains a soft EV/ranking input. The enemy-on-hex rule is recorded
         // as DevelopmentFacility.Contested but is NOT applied here — a contested facility still
         // produces offerings for the analyzer/radar; Phase A alone skips execution while contested.
         private static DevelopmentReadiness BuildDevelopment(PlayerSetupData player, PlayerRoot root,
@@ -312,37 +312,32 @@ namespace Game.Ai.V2
                         HeroFate = hero != null ? Mathf.Max(0, hero.Fate) : 0,
                         HeroCommandRating = hero != null ? Mathf.Max(0, hero.CommandRating) : 0,
                     });
-                    if (hero == null || catalog == null)
-                        continue;
-
-                    foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction))
-                    {
-                        if (card == null || !ResearchProductionSystem.CanAffordCard(root, card))
-                            continue;
-                        if (!GenerationSource.FitsReservedAffordability(root, player, ctx, card))
-                            continue;
-                        float p = ResearchProductionSystem.EstimateSuccessChance(hero, card);
-                        if (p < AiConfig.developmentMinSuccessChance)
-                            continue;
-
-                        var stake = new ResourceBundle();
-                        ResourceCost cost = card.resourceCost;
-                        if (cost != null)
-                            foreach (ResourceType t in ResourceBundle.All)
-                                stake.Add(t, cost.Get(t));
-
-                        offerings.Add(new DevelopmentOffering
-                        {
-                            FacilityHex = b.Hex,
-                            Mode = mode,
-                            Card = card,
-                            SuccessChance = p,
-                            ProducesEquipment = card.cardType == CardType.Equipment,
-                            StakeCost = stake,
-                        });
-                    }
+                    // Offering enumeration is owned by GenerationSource below. This loop
+                    // records readiness only, so Analysis does not keep a second copy of source
+                    // eligibility/card/operator logic.
                 }
             }
+
+            if (catalog != null)
+                foreach (GenerationStep g in GenerationSource.Enumerate(
+                    player, root, ctx, hand, null, null, includeContested: true))
+                {
+                    var stake = new ResourceBundle();
+                    ResourceCost cost = g.CardDef?.resourceCost;
+                    if (cost != null)
+                        foreach (ResourceType t in ResourceBundle.All)
+                            stake.Add(t, cost.Get(t));
+                    offerings.Add(new DevelopmentOffering
+                    {
+                        FacilityHex = g.FacilityHex,
+                        Mode = g.Mode,
+                        Card = g.CardDef,
+                        SuccessChance = g.SuccessChance,
+                        ProducesEquipment = g.ProducesEquipment,
+                        StakeCost = stake,
+                        Generation = g,
+                    });
+                }
 
             bool facilityCardInHand = false, researcherCardInHand = false, assemblerCardInHand = false;
             if (hand?.Hand != null)

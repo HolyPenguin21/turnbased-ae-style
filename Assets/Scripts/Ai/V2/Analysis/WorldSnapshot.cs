@@ -64,9 +64,9 @@ namespace Game.Ai.V2
         public int HeroCommandRating;
     }
 
-    // One catalog card a facility could attempt this turn: already filtered by facility ability +
-    // qualifying hero + CanAffordCard + AiConfig.developmentMinSuccessChance. NOT filtered by the
-    // enemy-on-hex rule. SuccessChance is ResearchProductionSystem.EstimateSuccessChance.
+    // One catalog card + exact operator a facility could attempt this turn. Affordability and
+    // facility/operator structure are filtered; contested status is retained for execution-time
+    // revalidation. SuccessChance is a soft ranking input, never a hard threshold.
     public struct DevelopmentOffering
     {
         public HexCoord FacilityHex;
@@ -75,6 +75,7 @@ namespace Game.Ai.V2
         public float SuccessChance;
         public bool ProducesEquipment;
         public ResourceBundle StakeCost;   // card.resourceCost — spent whether the Challenge wins or loses
+        public GenerationStep Generation;  // exact facility/mode/operator/card candidate
     }
 
     public sealed class DevelopmentReadiness

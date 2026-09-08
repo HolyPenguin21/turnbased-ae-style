@@ -276,7 +276,7 @@ namespace Game.Ai.V2
             bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
             IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
             bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
-            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
+            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
             float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
                 pabil, snap, 0f, equipUpgrade,
                 demand, referenceMoveMax, hasCompetingHeroDemand, projectedLegalFillers,
@@ -295,7 +295,7 @@ namespace Game.Ai.V2
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan) + ec.Synergy + ec.GlobalSynergy;
+            bd.SynergyValue = SynergyValue(plan, snap, inv) + ec.Synergy + ec.GlobalSynergy;
             bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline)
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline)
@@ -304,7 +304,7 @@ namespace Game.Ai.V2
 
             float genChance = GenerationChance(plan);
             bd.Deployability = -(1f - genChance);
-            bd.ResourceEfficiency = -ResourceCost(plan);
+            bd.ResourceEfficiency = -ResourceCost(plan, snap);
 
             bd.RedundancyPenalty = -(GarrisonSaturationPenalty(plan, demand, snap)
                                      + ScoutOversupplyPenalty(role, inv));
@@ -393,7 +393,7 @@ namespace Game.Ai.V2
             // here. It is a second explicit descriptor contribution (EffectField.ImmediateTempo on
             // the ApBonus row) and arrives below via ec.ImmediateTempo, counted exactly once and
             // identically in Phase A. The evaluator no longer knows RecurringResource is special.
-            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan) : 0f;
+            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
 
             float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
                 equipmentUpgrade, null, 0, false, projectedLegalFillers, out _, out string heroCmdDetail);
@@ -420,7 +420,7 @@ namespace Game.Ai.V2
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
             bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy + ec.GlobalSynergy;
             bd.Deployability = -(1f - GenerationChance(plan));
-            bd.ResourceEfficiency = -ResourceCost(plan);
+            bd.ResourceEfficiency = -ResourceCost(plan, snap);
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
@@ -605,11 +605,11 @@ namespace Game.Ai.V2
             + b.ResourcePressureBenefit + b.HandPressureBenefit;
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
-        private static float ResourceCost(MaterializationPlan plan)
+        private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap)
         {
             if (plan == null) return 0f;
             return AiConfigV2.stratCardApCostWeight * plan.ApCost
-                   + StrategicResourceCostValue(plan.ResCost)
+                   + StrategicResourceCostValue(plan.ResCost, snap)
                    + ChainStepPenalty(plan.Kind);
         }
 
@@ -696,13 +696,14 @@ namespace Game.Ai.V2
             return v;
         }
 
-        private static float SynergyValue(MaterializationPlan plan)
+        private static float SynergyValue(MaterializationPlan plan, WorldSnapshot snap,
+            CapabilityInventory inv)
         {
             if (plan == null)
                 return 0f;
             float v = 0f;
             if (plan.UsesEquipment)
-                v += EquipmentUpgradeUtility(plan);
+                v += EquipmentUpgradeUtility(plan, snap, inv);
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0)
                 v += AiConfigV2.stratTraitMatchBonus * 0.5f;
             return v;
@@ -1061,14 +1062,44 @@ namespace Game.Ai.V2
             return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate), 0f, 2f);
         }
 
-        internal static float EquipmentUpgradeUtility(MaterializationPlan p)
+        internal static float EquipmentUpgradeUtility(MaterializationPlan p, WorldSnapshot snap = null,
+            CapabilityInventory inv = null)
         {
             CardDefinition host = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
             CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
-            EquipmentGrant grant = eq?.equipment;
-            if (host == null || grant == null)
+            if (host == null || eq?.equipment == null)
                 return 0f;
-            var before = new Dictionary<EquipmentStat, int>
+            return EquipmentUpgradeUtilityFor(eq, p?.BaseCardInHand, host, snap, inv);
+        }
+
+        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData host,
+            WorldSnapshot snap = null, CapabilityInventory inv = null)
+            => EquipmentUpgradeUtilityFor(equipDef, host, host?.Definition, snap, inv);
+
+        private static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData hostCard,
+            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
+        {
+            EquipmentGrant grant = equipDef?.equipment;
+            if (grant == null || host == null)
+                return 0f;
+            var before = DefinitionStats(host);
+            IReadOnlyList<string> abilities = host.grantedAbilities != null
+                ? new List<string>(host.grantedAbilities)
+                : (IReadOnlyList<string>)System.Array.Empty<string>();
+            EquipmentGrant existing = hostCard?.Equipment?.equipment;
+            if (existing != null)
+            {
+                PredictedEquipmentState current = EquipmentSystem.Predict(existing, before, abilities);
+                if (current.Stats != null)
+                    foreach (KeyValuePair<EquipmentStat, int> kv in current.Stats)
+                        before[kv.Key] = kv.Value;
+                abilities = current.Abilities;
+            }
+            return ScoreEquipmentDelta(grant, before, abilities, host.cardType == CardType.Hero, snap, inv);
+        }
+
+        private static Dictionary<EquipmentStat, int> DefinitionStats(CardDefinition host) =>
+            new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = host.attack,
                 [EquipmentStat.Defense] = host.defenseRating,
@@ -1081,13 +1112,12 @@ namespace Game.Ai.V2
                 [EquipmentStat.CommandRating] = host.commandRating,
                 [EquipmentStat.Fate] = host.fate,
             };
-            return ScoreEquipmentDelta(grant, before, host.grantedAbilities, host.cardType == CardType.Hero);
-        }
 
         // P1(review-r2) — standalone Equipment scored by the REAL predicted before/after delta on a
         // concrete live host, not by the host's raw power. NonCombatCardPlayer picks the (equipment,
         // host) pair that maximises this.
-        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, UnitData host)
+        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, UnitData host,
+            WorldSnapshot snap = null, CapabilityInventory inv = null)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
@@ -1107,41 +1137,88 @@ namespace Game.Ai.V2
             };
             IReadOnlyList<string> ab = host.Abilities != null
                 ? new List<string>(host.Abilities) : (IReadOnlyList<string>)System.Array.Empty<string>();
-            return ScoreEquipmentDelta(grant, before, ab, host.IsHero);
+            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv);
         }
 
         private static float ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
-            IReadOnlyList<string> hostAbilities, bool isHero)
+            IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv)
         {
             PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
                 predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value) ? value : before[stat];
 
+            // Signed deltas are essential: an override that gains Attack but destroys Defense,
+            // movement or Fate is not a free upgrade.
             float combatDelta =
-                Mathf.Max(0, After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
-                + Mathf.Max(0, After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
-                + Mathf.Max(0, After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
-                + Mathf.Max(0, After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
-                + Mathf.Max(0, After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
+                (After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
+                + (After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
+                + (After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
+                + (After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
+                + (After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
             if (isHero)
-                combatDelta += Mathf.Max(0, After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
+                combatDelta += (After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
                                * AiConfigV2.powerHeroFateWeight;
 
             float tactical = 0f;
-            tactical += Mathf.Max(0, After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
-            tactical += Mathf.Max(0, After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
-            tactical += Mathf.Max(0, before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
-            tactical += Mathf.Max(0, After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
-
-            int addedAbilities = 0;
-            if (predicted.Abilities != null)
-                foreach (string a in predicted.Abilities)
-                    if (hostAbilities == null || !hostAbilities.Contains(a))
-                        addedAbilities++;
-            tactical += addedAbilities * 0.15f;
+            tactical += (After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
+            tactical += (After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
+            tactical += (before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
+            tactical += (After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
+            tactical += EquipmentRoleDelta(hostAbilities, predicted.Abilities,
+                before[EquipmentStat.MoveMax], After(EquipmentStat.MoveMax), snap, inv);
+            int addedAbilities = predicted.Abilities?.Count(a =>
+                hostAbilities == null || !hostAbilities.Contains(a)) ?? 0;
+            int lostAbilities = hostAbilities?.Count(a =>
+                predicted.Abilities == null || !predicted.Abilities.Contains(a)) ?? 0;
+            tactical += (addedAbilities - lostAbilities) * 0.15f;
 
             return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate) + tactical,
-                0f, 1.5f);
+                -1.5f, 1.5f);
+        }
+
+        private static float EquipmentRoleDelta(IReadOnlyList<string> beforeAbilities,
+            IReadOnlyList<string> afterAbilities, int beforeMove, int afterMove,
+            WorldSnapshot snap, CapabilityInventory inv)
+        {
+            var before = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(beforeAbilities, beforeMove));
+            var after = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(afterAbilities, afterMove));
+            if (AbilityParams.AbilitiesHaveAnyRecce(beforeAbilities)) before.Add(IntendedRole.Scout);
+            if (AbilityParams.AbilitiesHaveAnyRecce(afterAbilities)) after.Add(IntendedRole.Scout);
+            if (beforeAbilities != null && (beforeAbilities.Contains(UnitAbilities.Researcher)
+                || beforeAbilities.Contains(UnitAbilities.Assembler))) before.Add(IntendedRole.Development);
+            if (afterAbilities != null && (afterAbilities.Contains(UnitAbilities.Researcher)
+                || afterAbilities.Contains(UnitAbilities.Assembler))) after.Add(IntendedRole.Development);
+
+            float delta = 0f;
+            foreach (IntendedRole role in before)
+            {
+                if (after.Contains(role))
+                    continue;
+                switch (role)
+                {
+                    case IntendedRole.AntiAir:
+                    case IntendedRole.AntiArmor:
+                        if (EnemyThreatModel.ThreatPresent(role, snap))
+                            delta -= AiConfigV2.capabilityGapValue;
+                        break;
+                    case IntendedRole.Scout:
+                        delta -= inv != null && inv.TotalScouts <= 1
+                            ? AiConfigV2.capabilityGapValue : AiConfigV2.holdScarcityValue;
+                        break;
+                    case IntendedRole.Development:
+                        if (snap?.Self?.HasDevFacility == true)
+                            delta -= AiConfigV2.holdUniqueRoleValue;
+                        break;
+                    case IntendedRole.Support:
+                    case IntendedRole.CapabilitySpecialist:
+                        delta -= AiConfigV2.holdNearTermDemandValue * 0.5f;
+                        break;
+                }
+            }
+            foreach (IntendedRole role in after)
+                if (!before.Contains(role))
+                    delta += AiConfigV2.stratTraitMatchBonus;
+            return delta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate);
         }
 
         internal static float SurplusScarcity(CapabilityInventory inv, bool recce, bool hero)
@@ -1261,7 +1338,47 @@ namespace Game.Ai.V2
         }
 
         internal static float StrategicResourceCostValue(ResourceCost c) =>
-            AiConfigV2.stratChainResCostWeight * ResourceCostSum(c);
+            StrategicResourceCostValue(c, null);
+
+        // Dynamic opportunity cost from all unplayed hand/deck costs versus current stock and
+        // income over the existing economy horizon. No other spend demand => cheap resources.
+        internal static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap)
+        {
+            if (c == null)
+                return 0f;
+            float total = 0f;
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                int amount = c.Get(type);
+                if (amount <= 0)
+                    continue;
+                float factor = 1f;
+                if (snap?.Self != null)
+                {
+                    float demand = PendingCardResourceDemand(snap, type);
+                    float supply = snap.Self.Stockpile.Get(type)
+                        + snap.Self.PerTurnIncome.Get(type)
+                            * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+                    float pressure = demand <= 0.0001f ? 0f
+                        : demand / Mathf.Max(0.0001f, demand + supply);
+                    factor = Mathf.Lerp(0.2f, 1.8f, Mathf.Clamp01(pressure));
+                }
+                total += amount * factor;
+            }
+            return AiConfigV2.stratChainResCostWeight * total;
+        }
+
+        private static float PendingCardResourceDemand(WorldSnapshot snap, ResourceType type)
+        {
+            float demand = 0f;
+            if (snap?.Self?.Hand != null)
+                foreach (CardData card in snap.Self.Hand)
+                    demand += card?.EffectivePlayResourceCost?.Get(type) ?? 0;
+            if (snap?.Self?.Deck != null)
+                foreach (CardDefinition card in snap.Self.Deck)
+                    demand += card?.resourceCost?.Get(type) ?? 0;
+            return demand;
+        }
 
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
@@ -1272,6 +1389,7 @@ namespace Game.Ai.V2
                 case MaterializationChainKind.AttachDeploy: return AiConfigV2.stratChainAttachStepPenalty;
                 case MaterializationChainKind.GenerateDeploy: return AiConfigV2.stratChainGenerationStepPenalty;
                 case MaterializationChainKind.GenerateAttachDeploy:
+                case MaterializationChainKind.GenerateAttachUpgrade:
                     return AiConfigV2.stratChainAttachStepPenalty + AiConfigV2.stratChainGenerationStepPenalty;
                 default: return 0f;
             }

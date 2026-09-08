@@ -21,14 +21,15 @@ namespace Game.Ai.V2
     //
     //  HOW A CARD IS PICKED
     //      For every Equipment offering: find its BEST legal recipient (the one with the largest
-    //      projected power gain G), score EV = p*G*persistence - A_total - resourceCost - apCost,
+    //      signed strategic gain G, including lost roles/abilities), then score
+    //      EV = p*G*persistence - A_total - dynamicResourceCost - apCost,
     //      keep it if EV > margin.
     //      Phase A then executes the surviving opportunities in descending BaseValue, re-scoring
     //      after each Challenge. "Which card gets created" == "highest EV that still passes the
     //      live gates".
     //
     //      p       = ResearchProductionSystem.EstimateSuccessChance  (deterministic)
-    //      G       = projected BasePower(recipient WITH the equipment) - BasePower(WITHOUT),
+    //      G       = signed stat + ability/role delta under the canonical card evaluator,
     //                * recipient importance (raid-bound field unit > field > garrison > hand card)
     //      A_total = MARGINAL value actually displaced by staking these resources this turn:
     //                strongest affordable hand Unit before the stake minus strongest still
@@ -51,6 +52,7 @@ namespace Game.Ai.V2
         public bool ProducesEquipment;       // always true (kept for symmetry with the offering)
         public ResourceBundle StakeCost;
         public float SuccessChance;
+        public GenerationStep Generation;    // exact operator/source selected by GenerationSource
 
         public DevRecipientKind RecipientKind;
         public CardData RecipientCard;       // HandCard
@@ -76,6 +78,7 @@ namespace Game.Ai.V2
             if (rd == null || rd.Offerings.Count == 0 || player == null || root == null)
                 return result;
 
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             var raidHexes = new HashSet<HexCoord>();
             if (aggObjectives != null)
                 foreach (AggressionObjective o in aggObjectives)
@@ -94,8 +97,8 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                DevelopmentOpportunity best = BestEquipmentOpportunity(off, player, root, hand, raidHexes,
-                    out string recipDiag);
+                DevelopmentOpportunity best = BestEquipmentOpportunity(
+                    off, snap, inv, player, root, hand, raidHexes, out string recipDiag);
                 if (best == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} p={off.SuccessChance:0.00} "
@@ -140,8 +143,15 @@ namespace Game.Ai.V2
         // vanished.
         public static void Rescore(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
         {
-            if (op != null)
-                Score(op, snap, root, hand);
+            if (op == null)
+                return;
+            if (op.Generation?.Hero != null)
+            {
+                op.SuccessChance = ResearchProductionSystem.EstimateSuccessChance(
+                    op.Generation.Hero, op.Card);
+                op.Generation.SuccessChance = op.SuccessChance;
+            }
+            Score(op, snap, root, hand);
         }
 
         private static void Score(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
@@ -161,7 +171,8 @@ namespace Game.Ai.V2
             op.ExpectedApCost = challengeAp + expectedAttachAp;
 
             op.AlternativeValue = aTotal;
-            op.ResourceCostValue = StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost);
+            op.ResourceCostValue =
+                StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost, snap);
             // Equipment is a persistent improvement, while its AP/resource payment is one-shot.
             // Keep the raw projected delta in ExpectedGain for diagnostics and convert it to
             // lifetime strategic value only at the EV boundary.
@@ -175,13 +186,14 @@ namespace Game.Ai.V2
         // Best legal recipient for an Equipment offering. Hand Unit/Hero cards + own on-map units,
         // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand, HashSet<HexCoord> raidHexes,
-            out string diag)
+            WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, HashSet<HexCoord> raidHexes, out string diag)
         {
             diag = "no equipment grant on the card";
             EquipmentGrant grant = off.Card.equipment;
             if (grant == null)
                 return null;
+            CardData generatedPreview = ResearchProductionSystem.MintCard(off.Card);
 
             int handChecked = 0, mapChecked = 0, gainZero = 0;
             string lastReject = null;
@@ -202,10 +214,10 @@ namespace Game.Ai.V2
                     if (c?.Definition == null) continue;
                     if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
                     handChecked++;
-                    if (!EquipmentSystem.CanAttach(off.Card, c, root, out string why)) { lastReject = why; continue; }
-                    float delta = Mathf.Max(0f,
-                        AiPower.EffectiveLine(c.Definition, c.Equipment != null ? c.Equipment.equipment : null, grant).BasePower
-                        - AiPower.EffectiveLine(c.Definition, c.Equipment != null ? c.Equipment.equipment : null).BasePower);
+                    if (!EquipmentSystem.CanAttach(generatedPreview, c, root, out string why))
+                    { lastReject = why; continue; }
+                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
+                        off.Card, c, snap, inv) * AiConfigV2.defencePerBodyPowerEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
                         $"hand:{c.Definition.displayName}", delta * AiConfigV2.devImportanceHandCard));
                 }
@@ -220,12 +232,14 @@ namespace Game.Ai.V2
                 {
                     if (u == null || u.IsPrisoner) continue;
                     mapChecked++;
-                    if (!EquipmentSystem.CanAttach(off.Card, u, root, out string whyU)) { lastReject = whyU; continue; }
+                    if (!EquipmentSystem.CanAttach(generatedPreview, u, root, out string whyU))
+                    { lastReject = whyU; continue; }
                     float importance = army.IsGarrison
                         ? AiConfigV2.devImportanceGarrison
                         : raidHexes.Contains(army.Hex) ? AiConfigV2.devImportanceRaidMatch
                         : AiConfigV2.devImportanceField;
-                    float gain = OnMapEquipmentGain(u, grant) * importance;
+                    float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
+                        off.Card, u, snap, inv) * AiConfigV2.defencePerBodyPowerEstimate * importance;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
                         null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain));
                 }
@@ -238,18 +252,6 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Real projected power delta for equipping an on-map unit. Uses OriginatingCard so it
-        // scores the same weighted stat line AiPower.EffectiveLine gives a hand card.
-        private static float OnMapEquipmentGain(UnitData u, EquipmentGrant grant)
-        {
-            if (u?.OriginatingCard == null)
-                return AiPower.UnitPower(u) * AiConfigV2.devEquipGainFraction;
-            EquipmentGrant existing = u.Equipment != null ? u.Equipment.equipment : null;
-            float with = AiPower.EffectiveLine(u.OriginatingCard, existing, grant).BasePower;
-            float without = AiPower.EffectiveLine(u.OriginatingCard, existing).BasePower;
-            return Mathf.Max(0f, with - without);
-        }
-
         private static DevelopmentOpportunity Make(DevelopmentOffering off, DevRecipientKind kind,
             CardData card, UnitData unit, string label, float gain) => new DevelopmentOpportunity
         {
@@ -259,6 +261,7 @@ namespace Game.Ai.V2
             ProducesEquipment = off.ProducesEquipment,
             StakeCost = off.StakeCost,
             SuccessChance = off.SuccessChance,
+            Generation = off.Generation,
             RecipientKind = kind,
             RecipientCard = card,
             RecipientUnit = unit,

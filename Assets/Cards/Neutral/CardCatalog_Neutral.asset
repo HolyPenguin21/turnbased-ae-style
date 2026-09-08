@@ -314,6 +314,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 7
+    authoredKey: neutral.equipment.bio.flamer
     displayName: it Flamer
     art: {fileID: 21300000, guid: 722a979b88144404f8ddf52f8f25d938, type: 3}
     detailArt: {fileID: 21300000, guid: 98dfb02c37bc8254da5551d4882fe668, type: 3}
@@ -367,6 +368,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 1
   - id: 8
+    authoredKey: neutral.equipment.bio.plasma-gun
     displayName: it Plasma Gun
     art: {fileID: 21300000, guid: de22b0baefe9b8843aa700aeb2bb47c5, type: 3}
     detailArt: {fileID: 21300000, guid: 6c3eee8aa3cb483458cb1cadc6c2b7d9, type: 3}
@@ -660,6 +662,7 @@ MonoBehaviour:
         amount: 8
         isOverride: 1
   - id: 14
+    authoredKey: neutral.equipment.bio.at-launcher
     displayName: it AT Launcher
     art: {fileID: 21300000, guid: 6ae9a075cf39d004f97bb73777208eff, type: 3}
     detailArt: {fileID: 21300000, guid: a1b15a27335a47d41a89eb4e79a18acb, type: 3}
@@ -710,6 +713,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 15
+    authoredKey: neutral.equipment.bio.claws
     displayName: it Claws
     art: {fileID: 21300000, guid: f200a00df07ad50489e13d79b95241d4, type: 3}
     detailArt: {fileID: 21300000, guid: 8191c7bdc214335499b0c93efa323474, type: 3}
@@ -761,6 +765,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 1
   - id: 16
+    authoredKey: neutral.equipment.bio.heavy-mg
     displayName: it Heavy MG
     art: {fileID: 21300000, guid: 241d483b351130549a4cf5634570cc5e, type: 3}
     detailArt: {fileID: 21300000, guid: 0c4b31a34f354a049a1ae91aaa511362, type: 3}
@@ -810,6 +815,7 @@ MonoBehaviour:
         amount: 5
         isOverride: 1
   - id: 17
+    authoredKey: neutral.equipment.mechanical.armor-plate
     displayName: it Armor Plate
     art: {fileID: 21300000, guid: 256d9285399b10f40b2d7111eeb46e30, type: 3}
     detailArt: {fileID: 21300000, guid: 8c4a1ef0f3a71d443831e2dd4280a659, type: 3}
@@ -855,6 +861,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 18
+    authoredKey: neutral.equipment.armored.artillery-cannon
     displayName: it Artillery Cannon
     art: {fileID: 21300000, guid: aaf34abea493b524f972e053d36fa487, type: 3}
     detailArt: {fileID: 21300000, guid: 8ff586c3c197b0949a2700913d80924c, type: 3}
@@ -954,6 +961,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 20
+    authoredKey: neutral.equipment.armored.double-barrel
     displayName: it Double Barrel
     art: {fileID: 21300000, guid: 426c2efbb82e49a4ca6a7ced0da88131, type: 3}
     detailArt: {fileID: 21300000, guid: c2593d7540db32b4ab668df266c18047, type: 3}
@@ -997,6 +1005,7 @@ MonoBehaviour:
       - CriticalDamage
       statChanges: []
   - id: 21
+    authoredKey: neutral.equipment.mechanical.nuclear-engine
     displayName: it Nuclear Engine
     art: {fileID: 21300000, guid: 8b5fad7103118a4499a4a14e1c933e14, type: 3}
     detailArt: {fileID: 21300000, guid: cb1a0d5ed30550f4483fc823949fc474, type: 3}
@@ -1042,6 +1051,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 22
+    authoredKey: neutral.equipment.armored.plasma-cannon
     displayName: it Plasma Cannon
     art: {fileID: 21300000, guid: 026d627248b59b648a474c5418508e54, type: 3}
     detailArt: {fileID: 21300000, guid: 61e003d6cedaae245b2c2fee5d35923d, type: 3}

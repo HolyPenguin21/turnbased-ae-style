@@ -35,13 +35,16 @@ namespace Game.Ai.V2
         // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.
         public readonly struct GenerationOutcome
         {
+            public readonly bool Attempted;
             public readonly bool Success;
             public readonly CardData Minted;
             public readonly bool StateChanged;
             public readonly string FailReason;
 
-            public GenerationOutcome(bool success, CardData minted, bool stateChanged, string failReason)
+            public GenerationOutcome(bool attempted, bool success, CardData minted,
+                bool stateChanged, string failReason)
             {
+                Attempted = attempted;
                 Success = success;
                 Minted = minted;
                 StateChanged = stateChanged;
@@ -50,17 +53,26 @@ namespace Game.Ai.V2
         }
 
         internal static GenerationOutcome TryGenerate(GenerationStep g, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            if (g == null)
-                return new GenerationOutcome(false, null, false, "no generation step");
+            if (g == null || g.CardDef == null || player == null || root == null || hand == null
+                || ctx?.ResearchProductionCatalog == null)
+                return new GenerationOutcome(false, false, null, false,
+                    "no generation step/catalog/args");
+            // Catalog membership is execution authority too: a stale plan must not mint a card
+            // removed from the authored Research/Production catalog after planning.
+            if (!ResearchProductionSystem.Offers(
+                    ctx.ResearchProductionCatalog, g.Mode, player.Faction, g.CardDef))
+                return new GenerationOutcome(false, false, null, false,
+                    "card no longer offered by Research/Production catalog");
 
             if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
                 || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
-                return new GenerationOutcome(false, null, false,
+                return new GenerationOutcome(false, false, null, false,
                     $"generation no longer valid ({why ?? "hero moved"})");
             if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                return new GenerationOutcome(false, null, false, "generation AP/resources unaffordable");
+                return new GenerationOutcome(false, false, null, false,
+                    "generation AP/resources unaffordable");
 
             bool wasHidden = g.Hero != null && g.Hero.IsHidden;
             int ap0 = root.ActionPoints;
@@ -82,13 +94,13 @@ namespace Game.Ai.V2
             ResearchProductionSystem.ChallengeOutcome outcome =
                 ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
             if (!outcome.Success)
-                return new GenerationOutcome(false, null,
+                return new GenerationOutcome(true, false, null,
                     costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
 
             CardData minted = ResearchProductionSystem.MintCard(g.CardDef);
             hand.AddCard(minted);
-            return new GenerationOutcome(true, minted, true, null);
+            return new GenerationOutcome(true, true, minted, true, null);
         }
 
         public static MaterializationResult Execute(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
@@ -118,8 +130,10 @@ namespace Game.Ai.V2
             CardData generated = null;
             if (plan.Generation != null)
             {
-                res.AttemptedGenerationUseKey = plan.Generation.UseKey;
-                GenerationOutcome go = TryGenerate(plan.Generation, player, root, hand);
+                GenerationOutcome go = TryGenerate(plan.Generation, player, root, hand, ctx);
+                res.GenerationAttempted = go.Attempted;
+                if (go.Attempted)
+                    res.AttemptedGenerationUseKey = plan.Generation.UseKey;
                 if (go.StateChanged) res.StateChanged = true;
                 if (!go.Success)
                 {

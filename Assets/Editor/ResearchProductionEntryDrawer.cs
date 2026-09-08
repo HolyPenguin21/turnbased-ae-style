@@ -65,9 +65,9 @@ namespace Game.EditorTools
                     continue;
                 foreach (CardDefinition card in fc.cards)
                 {
-                    if (card == null || string.IsNullOrEmpty(card.displayName))
+                    if (card == null || string.IsNullOrWhiteSpace(card.authoredKey))
                         continue;
-                    keys.Add($"{fc.displayName}/{card.displayName}");
+                    keys.Add(card.authoredKey);
                 }
             }
             return keys;

@@ -43,7 +43,7 @@ namespace Game.Ai.V2
             MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
             result.MaterializationAttempts++;
             if (play.Deployed) result.MaterializationsSucceeded++;
-            if (plan.Generation != null)
+            if (play.GenerationAttempted)
             {
                 result.GeneratedCardAttempts++;
                 if (play.Generated) result.GeneratedCardsSucceeded++;
@@ -53,7 +53,7 @@ namespace Game.Ai.V2
                 result.EquipmentAssignmentAttempts++;
                 if (play.Attached) result.EquipmentAssignmentsSucceeded++;
             }
-            if (plan.Generation != null)
+            if (play.GenerationAttempted)
             {
                 result.Reservation.RecordGenerationAttempt(plan.Generation, play);
                 StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);

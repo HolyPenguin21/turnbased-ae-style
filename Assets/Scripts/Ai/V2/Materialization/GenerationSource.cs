@@ -18,9 +18,9 @@ namespace Game.Ai.V2
     //  hex this turn. Step 8B adds NO hero positioning and NO multi-turn planning: "MoveArmy ->
     //  Facility -> Generate" is out of scope.
     //
-    //  This class owns SOURCE validity only: gameplay eligibility, exact-combination retry guard,
-    //  reservation-aware affordability, and the existing AiConfig.developmentMinSuccessChance
-    //  quality floor. It deliberately does NOT apply V1 AiDevelopmentPlanner's
+    //  This class owns SOURCE validity only: gameplay eligibility, exact-combination retry guard
+    //  and reservation-aware affordability. Success probability is a soft value input, never a
+    //  source-validity gate. It deliberately does NOT apply V1 AiDevelopmentPlanner's
     //  developmentMinResourceKeep investment policy. Phase A generation may be a necessary way to
     //  satisfy another axis's hard demand; Phase B applies its own surplus reserve policy when the
     //  complete MaterializationPlan is evaluated.
@@ -35,12 +35,13 @@ namespace Game.Ai.V2
             { ResearchProductionMode.Research, ResearchProductionMode.Production };
 
         // Every (hero-on-Facility, offered card) combination usable RIGHT NOW, in deterministic
-        // order. `triedCardKeys` is the actual retry guard: gameplay/V1 defines the spent attempt as
-        // (hero, mode, card), not "this hero may only Challenge once". `claimedUseKeys` remains in
-        // the signature for the Step-8B reservation contract but is intentionally NOT a feasibility
-        // gate; the shared maxGenerationActionsPerTurn bound is the AI-wide attempt limiter.
+        // order. `triedCardKeys` is the actual retry guard: gameplay defines the spent attempt as
+        // (hero, mode, authored card key), not "this hero may only Challenge once". includeContested
+        // is used only by Analysis to retain temporarily blocked opportunities in its snapshot;
+        // executable Materialization callers keep the default false.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys)
+            AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys,
+            bool includeContested = false)
         {
             var result = new List<GenerationStep>();
             if (player == null || root == null || ctx?.ResearchProductionCatalog == null || hand == null)
@@ -57,42 +58,40 @@ namespace Game.Ai.V2
                 {
                     if (!b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
                         continue;
-                    if (!ResearchProductionSystem.IsEligible(player, b.Hex, mode, out _))
-                        continue;
-                    UnitData hero = ResearchProductionSystem.FindActor(player, b.Hex, mode);
-                    if (hero == null)
+                    if (!includeContested
+                        && !ResearchProductionSystem.IsEligible(player, b.Hex, mode, out _))
                         continue;
 
-                    string useKey = $"{mode}:{b.Hex.Q},{b.Hex.R}:{StableHeroKey(hero)}";
-
-                    foreach (CardDefinition card in ResearchProductionSystem
-                        .OfferedCards(ctx.ResearchProductionCatalog, mode, player.Faction)
-                        .Where(c => c != null)
-                        .OrderBy(c => c.displayName, System.StringComparer.Ordinal))
+                    List<UnitData> actors = ResearchProductionSystem.FindActors(player, b.Hex, mode);
+                    foreach (UnitData hero in actors)
                     {
-                        string cardKey = useKey + "|"
-                            + $"{(int)card.faction}:{card.id}:{card.displayName}";
-                        if (triedCardKeys != null && triedCardKeys.Contains(cardKey))
-                            continue;
-                        if (!ResearchProductionSystem.CanAffordCard(root, card))
-                            continue;
-                        if (!FitsReservedAffordability(root, player, ctx, card))
-                            continue;
-                        float chance = ResearchProductionSystem.EstimateSuccessChance(hero, card);
-                        if (chance < AiConfig.developmentMinSuccessChance)
-                            continue;
+                        string useKey = $"{mode}:{b.Hex.Q},{b.Hex.R}:{StableHeroKey(hero)}";
 
-                        result.Add(new GenerationStep
+                        foreach (CardDefinition card in ResearchProductionSystem
+                            .OfferedCards(ctx.ResearchProductionCatalog, mode, player.Faction)
+                            .Where(card => card != null && !string.IsNullOrWhiteSpace(card.authoredKey))
+                            .OrderBy(card => card.authoredKey, System.StringComparer.Ordinal))
                         {
-                            Mode = mode,
-                            FacilityHex = b.Hex,
-                            Hero = hero,
-                            CardDef = card,
-                            SuccessChance = chance,
-                            ProducesEquipment = card.cardType == CardType.Equipment,
-                            UseKey = useKey,
-                            CardKey = cardKey,
-                        });
+                            string cardKey = useKey + "|" + card.authoredKey;
+                            if (triedCardKeys != null && triedCardKeys.Contains(cardKey))
+                                continue;
+                            if (!ResearchProductionSystem.CanAffordCard(root, card))
+                                continue;
+                            if (!FitsReservedAffordability(root, player, ctx, card))
+                                continue;
+
+                            result.Add(new GenerationStep
+                            {
+                                Mode = mode,
+                                FacilityHex = b.Hex,
+                                Hero = hero,
+                                CardDef = card,
+                                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(hero, card),
+                                ProducesEquipment = card.cardType == CardType.Equipment,
+                                UseKey = useKey,
+                                CardKey = cardKey,
+                            });
+                        }
                     }
                 }
             }
@@ -109,9 +108,9 @@ namespace Game.Ai.V2
             {
                 int memberIndex = army.Members.IndexOf(hero);
                 if (memberIndex >= 0)
-                    return $"{army.Id}:{memberIndex}:{hero.Name ?? "?"}";
+                    return $"{army.Id}:{memberIndex}";
             }
-            return $"unplaced:{hero.Name ?? "?"}";
+            return "unplaced";
         }
 
         // Source-level resource gate: do not offer a card whose cost would consume resources

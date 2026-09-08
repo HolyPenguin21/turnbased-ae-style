@@ -17,24 +17,24 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   researchCards:
-  - cardKey: Neutral/it Plasma Gun
+  - cardKey: neutral.equipment.bio.plasma-gun
     factionRestriction: 2
-  - cardKey: Neutral/it Plasma Cannon
+  - cardKey: neutral.equipment.armored.plasma-cannon
     factionRestriction: 2
-  - cardKey: Neutral/it Nuclear Engine
+  - cardKey: neutral.equipment.mechanical.nuclear-engine
     factionRestriction: 2
   productionCards:
-  - cardKey: Neutral/it Flamer
+  - cardKey: neutral.equipment.bio.flamer
     factionRestriction: 2
-  - cardKey: Neutral/it AT Launcher
+  - cardKey: neutral.equipment.bio.at-launcher
     factionRestriction: 2
-  - cardKey: Neutral/it Claws
+  - cardKey: neutral.equipment.bio.claws
     factionRestriction: 2
-  - cardKey: Neutral/it Heavy MG
+  - cardKey: neutral.equipment.bio.heavy-mg
     factionRestriction: 2
-  - cardKey: Neutral/it Armor Plate
+  - cardKey: neutral.equipment.mechanical.armor-plate
     factionRestriction: 2
-  - cardKey: Neutral/it Artillery Cannon
+  - cardKey: neutral.equipment.armored.artillery-cannon
     factionRestriction: 2
-  - cardKey: Neutral/it Double Barrel
+  - cardKey: neutral.equipment.armored.double-barrel
     factionRestriction: 2

@@ -76,25 +76,32 @@ namespace Game.Cards
 
         // ---- eligibility -----------------------------------------------------------------
 
-        // The exact Hero that would run the Challenge on `hex` for `player` — first own,
-        // non-prisoner Hero carrying the mode's role ability, in ArmyRegistry order then Members
-        // order (no picker when several qualify). A hidden Hero still qualifies (Research reveals
-        // it as its cost — see ApplyResearchReveal). Prison armies are skipped. This is the same
-        // rule HexSelectionController.FindOwnHeroWithAbilityAt used to hold privately.
-        public static UnitData FindActor(PlayerSetupData player, HexCoord hex, ResearchProductionMode mode)
+        // Every Hero that can run the Challenge. AI enumeration must compare all operators; the
+        // gameplay/UI compatibility helper FindActor below remains deterministic and returns the
+        // first. Future unit/equipment/ability chance modifiers belong in EstimateSuccessChance,
+        // so every caller automatically sees the same probability.
+        public static List<UnitData> FindActors(PlayerSetupData player, HexCoord hex,
+            ResearchProductionMode mode)
         {
+            var result = new List<UnitData>();
             if (player == null)
-                return null;
+                return result;
             string role = RoleAbility(mode);
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
                 if (army.Owner != player || army.IsPrison)
                     continue;
                 foreach (UnitData member in army.Members)
-                    if (member.IsHero && !member.IsPrisoner && member.HasAbility(role))
-                        return member;
+                    if (member != null && member.IsHero && !member.IsPrisoner && member.HasAbility(role))
+                        result.Add(member);
             }
-            return null;
+            return result;
+        }
+
+        public static UnitData FindActor(PlayerSetupData player, HexCoord hex, ResearchProductionMode mode)
+        {
+            List<UnitData> actors = FindActors(player, hex, mode);
+            return actors.Count > 0 ? actors[0] : null;
         }
 
         // Whole-hex eligibility (spec §4: eligibility + hero/Facility check): on `player`'s

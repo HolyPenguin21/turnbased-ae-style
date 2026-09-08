@@ -56,6 +56,9 @@ namespace Game.Ai.V2
             var list = new List<CardData>(2);
             if (p?.BaseCardInHand != null) list.Add(p.BaseCardInHand);
             if (p?.EquipmentInHand != null) list.Add(p.EquipmentInHand);
+            // An in-hand upgrade host is not consumed by attaching, but it is a physical object
+            // that cannot simultaneously be deployed or receive a second portfolio attachment.
+            if (p?.UpgradeTargetCard != null) list.Add(p.UpgradeTargetCard);
             return list;
         }
 

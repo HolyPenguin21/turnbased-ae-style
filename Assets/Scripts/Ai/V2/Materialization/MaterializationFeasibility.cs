@@ -83,16 +83,17 @@ namespace Game.Ai.V2
             float reservedFollowupAp, float axisBudget, float eps, PlayerRoot root, AiHandData hand,
             PlayerSetupData player, AiTurnContext ctx)
         {
-            // Operational shortages may not spend a card on a placement whose live capability delta
-            // is known in advance to be zero. Garrison placement is preparation, not Field/Hero
-            // delivery; a solo Hero shell/new army is likewise reserve-only until it has an escort.
-            if (!MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand))
+            bool upgrade = p != null && p.Kind == MaterializationChainKind.GenerateAttachUpgrade;
+            // Upgrade delivery is the attachment itself and has no post-deploy follow-up. Every
+            // deploy chain keeps the canonical operational-delivery gate.
+            if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand))
                 return;
 
-            float activationAp = p != null
+            float activationAp = p != null && !upgrade
                 ? CapabilityQualityEvaluator.ProjectedActivationApCost(p)
                 : (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp);
-            float followupAp = activationAp + stealthSurcharge + demand.MinimumFollowupAp;
+            float followupAp = upgrade ? 0f
+                : activationAp + stealthSurcharge + demand.MinimumFollowupAp;
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;
             if (root.ActionPoints - need - AiConfigV2.housekeepingApReserve < -eps) return;
