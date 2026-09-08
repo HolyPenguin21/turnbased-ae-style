@@ -146,7 +146,7 @@ namespace Game.Combat
                     continue; // expected dead on average — dropped from the post-strike roster entirely
                 WorthIt.DefenderProfile original = knownDefenders[i];
                 expectedDefenders.Add(new WorthIt.DefenderProfile(original.Defense, original.HasCeramicArmor, original.TypeTags,
-                    original.Attack, meanHp, original.Initiative));
+                    original.Attack, meanHp, original.Initiative, original.Abilities));
                 expectedDefense += original.Defense;
                 expectedAttack += original.Attack;
             }

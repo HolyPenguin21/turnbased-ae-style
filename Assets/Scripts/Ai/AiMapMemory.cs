@@ -555,7 +555,7 @@ namespace Game.Ai
                         // this game (only UnitRepair, base-side) for that assumption to have been
                         // protecting against.
                         Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
-                            m.TypeTags.ToList(), m.Attack, m.HitPointsCurrent, m.Initiative)).ToList(),
+                            m.TypeTags.ToList(), m.Attack, m.HitPointsCurrent, m.Initiative, m.Abilities.ToList())).ToList(),
                         // Scanned over the FULL roster (not just nonHero above) — nothing rules out
                         // a hero carrying an AA ability, and this flag only ever feeds a
                         // conservative "don't fly recon here" gate, never a combat estimate, so
@@ -618,7 +618,8 @@ namespace Game.Ai
                     // anywhere", repeats are harmless there).
                     var defenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                         g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
-                        g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative), g.count)).ToList();
+                        g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
+                        g.card.grantedAbilities), g.count)).ToList();
                     eventGuards[hex] = new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName);
                 }
                 else

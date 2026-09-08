@@ -186,7 +186,8 @@ namespace Game.Ai.V2
                 c.unitTypeTags,
                 c.attack,
                 c.hitPoints,
-                c.initiative);
+                c.initiative,
+                c.grantedAbilities);
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage

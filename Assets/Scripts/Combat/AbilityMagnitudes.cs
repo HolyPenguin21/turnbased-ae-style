@@ -13,18 +13,22 @@ namespace Game.Combat
         public readonly int HyperkineticBonusDamage;
         public readonly int CeramicArmorReduction;
         public readonly int PyrokineticBonusDamage;
+        public readonly int BerserkAttackGain;
+        public readonly int BerserkDefenseLoss;
 
         public AbilityMagnitudes(float criticalDamageMultiplier, int hyperkineticBonusDamage,
-            int ceramicArmorReduction, int pyrokineticBonusDamage)
+            int ceramicArmorReduction, int pyrokineticBonusDamage,
+            int berserkAttackGain, int berserkDefenseLoss)
         {
             CriticalDamageMultiplier = criticalDamageMultiplier;
             HyperkineticBonusDamage = hyperkineticBonusDamage;
             CeramicArmorReduction = ceramicArmorReduction;
             PyrokineticBonusDamage = pyrokineticBonusDamage;
+            BerserkAttackGain = berserkAttackGain;
+            BerserkDefenseLoss = berserkDefenseLoss;
         }
 
-        // Same manual-default fallback numbers every call site already used individually
-        // (2f/2/1/2) — for a caller with no BattleAttackPopupUI reference to read from.
-        public static readonly AbilityMagnitudes Default = new AbilityMagnitudes(2f, 2, 1, 2);
+        // Same manual-default fallback numbers every live call site uses when the catalog is absent.
+        public static readonly AbilityMagnitudes Default = new AbilityMagnitudes(2f, 2, 1, 2, 1, 1);
     }
 }

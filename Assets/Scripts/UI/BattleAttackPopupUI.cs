@@ -1251,11 +1251,11 @@ namespace Game.UI
         public int HyperkineticBonusDamage => abilityCatalog != null ? abilityCatalog.hyperkineticBonusDamage : 2;
         public int PyrokineticBonusDamage => abilityCatalog != null ? abilityCatalog.pyrokineticBonusDamage : 2;
 
-        // Bundles the four properties above — see AbilityMagnitudes' own comment for why this
-        // exists; every call site that used to read Critical/Hyperkinetic/Ceramic(/Pyrokinetic)
-        // individually now just reads this once.
+        // Bundles the combat magnitudes above so the live resolver and strategic estimator can
+        // consume the same authored values/fallback shape without parallel constants.
         public AbilityMagnitudes Magnitudes => new AbilityMagnitudes(
-            CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction, PyrokineticBonusDamage);
+            CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction, PyrokineticBonusDamage,
+            BerserkAttackGain, BerserkDefenseLoss);
 
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the

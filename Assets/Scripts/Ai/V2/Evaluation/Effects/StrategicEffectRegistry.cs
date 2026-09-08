@@ -454,7 +454,8 @@ namespace Game.Ai.V2
                 projected.EffectiveAbilities != null
                     && projected.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
                 baseDef.unitTypeTags,
-                projected.Attack, projected.HitPoints, projected.Initiative);
+                projected.Attack, projected.HitPoints, projected.Initiative,
+                projected.EffectiveAbilities);
 
             float perBody = 1f / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm);
 

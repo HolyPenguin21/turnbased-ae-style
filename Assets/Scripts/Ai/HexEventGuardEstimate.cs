@@ -28,7 +28,7 @@ namespace Game.Ai
             float guardAttack = guardMembers.Sum(g => g.card.attack * g.count);
             var guardDefenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                 g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor), g.card.unitTypeTags,
-                g.card.attack, g.card.hitPoints, g.card.initiative), g.count)).ToList();
+                g.card.attack, g.card.hitPoints, g.card.initiative, g.card.grantedAbilities), g.count)).ToList();
 
             // Same verdict the former WorthIt.IsWorthIt(attacker, def, atk, defenders, hexBonus)
             // gave: with a real per-unit roster, win chance over 50% AND able to scratch every

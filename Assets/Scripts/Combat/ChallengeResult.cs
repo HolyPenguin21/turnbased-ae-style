@@ -43,35 +43,68 @@ namespace Game.Combat
         public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes)
             => ApplyAbilityModifiers(rawDamage, attacker, defender, magnitudes, out _);
 
-        // Same modifier chain, plus which of the four actually fired — so a result screen can
-        // tell "hit for less than expected because of an ability" apart from "hit for the plain
-        // rolled amount" (see BattleAttackPopupUI.ShowResult's "Affected by Skill" line).
+        // Same canonical modifier chain for immutable combat profiles. WorthIt and live combat
+        // must never maintain separate skill math; the UnitData overload below delegates here.
+        public static int ApplyAbilityModifiers(int rawDamage, IEnumerable<string> attackerAbilities,
+            IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
+            AbilityMagnitudes magnitudes)
+            => ApplyAbilityModifiers(rawDamage, attackerAbilities, defenderTypeTags, defenderAbilities,
+                magnitudes, out _);
+
         public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender,
+            AbilityMagnitudes magnitudes, out List<string> appliedAbilities)
+            => ApplyAbilityModifiers(rawDamage, attacker?.Abilities, defender?.TypeTags,
+                defender?.Abilities, magnitudes, out appliedAbilities);
+
+        public static int ApplyAbilityModifiers(int rawDamage, IEnumerable<string> attackerAbilities,
+            IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
             AbilityMagnitudes magnitudes, out List<string> appliedAbilities)
         {
             appliedAbilities = new List<string>();
             int damage = rawDamage;
-            if (damage > 0 && attacker.HasAbility(UnitAbilities.CriticalDamage))
+            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.CriticalDamage))
             {
                 damage = Mathf.RoundToInt(damage * magnitudes.CriticalDamageMultiplier);
                 appliedAbilities.Add(UnitAbilities.CriticalDamage);
             }
-            if (damage > 0 && attacker.HasAbility(UnitAbilities.Hyperkinetic) && defender.TypeTags.Contains(UnitTypeTag.Armored))
+            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Hyperkinetic)
+                && HasTag(defenderTypeTags, UnitTypeTag.Armored))
             {
                 damage += magnitudes.HyperkineticBonusDamage;
                 appliedAbilities.Add(UnitAbilities.Hyperkinetic);
             }
-            if (damage > 0 && attacker.HasAbility(UnitAbilities.Pyrokinetic) && defender.TypeTags.Contains(UnitTypeTag.Bio))
+            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Pyrokinetic)
+                && HasTag(defenderTypeTags, UnitTypeTag.Bio))
             {
                 damage += magnitudes.PyrokineticBonusDamage;
                 appliedAbilities.Add(UnitAbilities.Pyrokinetic);
             }
-            if (damage > 0 && defender.HasAbility(UnitAbilities.CeramicArmor))
+            if (damage > 0 && HasAbility(defenderAbilities, UnitAbilities.CeramicArmor))
             {
                 damage = Mathf.Max(0, damage - magnitudes.CeramicArmorReduction);
                 appliedAbilities.Add(UnitAbilities.CeramicArmor);
             }
             return damage;
+        }
+
+        private static bool HasAbility(IEnumerable<string> abilities, string wanted)
+        {
+            if (abilities == null)
+                return false;
+            foreach (string ability in abilities)
+                if (ability == wanted)
+                    return true;
+            return false;
+        }
+
+        private static bool HasTag(IReadOnlyCollection<UnitTypeTag> tags, UnitTypeTag wanted)
+        {
+            if (tags == null)
+                return false;
+            foreach (UnitTypeTag tag in tags)
+                if (tag == wanted)
+                    return true;
+            return false;
         }
 
         private static int CountHits(bool[] dice)

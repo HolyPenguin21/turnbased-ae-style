@@ -138,7 +138,15 @@ namespace Game.Combat
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.Defense);
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.HitPoints);
                 hash = hash * 31 + p.Initiative;
-                hash = hash * 31 + (p.HasCeramicArmor ? 1 : 0);
+                foreach (UnitTypeTag tag in p.TypeTags.OrderBy(t => (int)t))
+                    hash = hash * 31 + (int)tag;
+                foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
+                {
+                    if (ability == null) continue;
+                    foreach (char ch in ability)
+                        hash = hash * 31 + ch;
+                    hash = hash * 31 + 7;
+                }
                 return hash;
             }
         }
@@ -249,9 +257,12 @@ namespace Game.Combat
         {
             public float Attack;
             public float Defense;
-            public bool HasCeramicArmor;
+            public IReadOnlyList<string> Abilities;
+            public IReadOnlyList<UnitTypeTag> TypeTags;
             public int Initiative;
             public float Hp;
+
+            public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
             // True max HP the unit entered this simulated battle with — separate from Hp (which
             // Estimate() below mutates round by round) because CriticalAfterBattleChance needs to
@@ -280,7 +291,8 @@ namespace Game.Combat
                 {
                     Attack = p.Attack,
                     Defense = p.Defense + extraDefense,
-                    HasCeramicArmor = p.HasCeramicArmor,
+                    Abilities = p.Abilities,
+                    TypeTags = p.TypeTags,
                     Initiative = p.Initiative,
                     Hp = hp,
                     MaxHp = hp,
@@ -304,7 +316,8 @@ namespace Game.Combat
                 {
                     Attack = m.Attack,
                     Defense = m.Defense,
-                    HasCeramicArmor = m.HasAbility(UnitAbilities.CeramicArmor),
+                    Abilities = m.Abilities.ToList(),
+                    TypeTags = m.TypeTags.ToList(),
                     Initiative = m.Initiative,
                     Hp = Mathf.Max(1f, m.HitPointsCurrent),
                     MaxHp = Mathf.Max(1f, m.HitPointsMax),
@@ -348,13 +361,23 @@ namespace Game.Combat
                     return bi.CompareTo(ai);
                 });
 
+                var acted = new HashSet<(bool isAttacker, int index)>();
+                var suppressed = new HashSet<(bool isAttacker, int index)>();
                 foreach ((bool isAttacker, int index) turn in order)
                 {
                     List<BattleUnit> ownList = turn.isAttacker ? attackers : defenders;
                     List<BattleUnit> enemyList = turn.isAttacker ? defenders : attackers;
                     BattleUnit actor = ownList[turn.index];
                     if (actor.Hp <= 0f)
+                    {
+                        acted.Add(turn);
                         continue; // killed earlier this same round — skips its turn, same as a real one would
+                    }
+                    if (suppressed.Contains(turn))
+                    {
+                        acted.Add(turn);
+                        continue; // ShockAttack removed this not-yet-taken action from the round
+                    }
 
                     var livingTargets = new List<int>();
                     for (int i = 0; i < enemyList.Count; i++)
@@ -366,11 +389,28 @@ namespace Game.Combat
                     int targetIndex = livingTargets[rng.Next(livingTargets.Count)];
                     BattleUnit target = enemyList[targetIndex];
 
-                    int damage = Mathf.Max(0, RollSuccesses(actor.Attack, rng) - RollSuccesses(target.Defense, rng));
-                    if (target.HasCeramicArmor)
-                        damage = Mathf.Max(0, damage - AbilityMagnitudes.Default.CeramicArmorReduction);
+                    int rawDamage = Mathf.Max(0,
+                        RollSuccesses(actor.Attack, rng) - RollSuccesses(target.Defense, rng));
+                    int damage = ChallengeResult.ApplyAbilityModifiers(rawDamage, actor.Abilities,
+                        target.TypeTags, target.Abilities, AbilityMagnitudes.Default);
                     target.Hp -= damage;
+
+                    if (damage > 0 && actor.HasAbility(UnitAbilities.ShockAttack))
+                    {
+                        var targetTurn = (!turn.isAttacker, targetIndex);
+                        if (!acted.Contains(targetTurn))
+                            suppressed.Add(targetTurn);
+                    }
+
+                    if (damage > 0 && target.HasAbility(UnitAbilities.Berserk))
+                    {
+                        target.Attack += AbilityMagnitudes.Default.BerserkAttackGain;
+                        target.Defense = Mathf.Max(1f,
+                            target.Defense - AbilityMagnitudes.Default.BerserkDefenseLoss);
+                    }
+
                     enemyList[targetIndex] = target;
+                    acted.Add(turn);
                 }
             }
 
@@ -416,7 +456,7 @@ namespace Game.Combat
         // second copy of it anywhere else.
         public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
-                unit.Attack, unit.HitPointsCurrent, unit.Initiative);
+                unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList());
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -558,9 +598,11 @@ namespace Game.Combat
             public readonly float Attack;
             public readonly float HitPoints;
             public readonly int Initiative;
+            public readonly IReadOnlyList<string> Abilities;
 
             public DefenderProfile(float defense, bool hasCeramicArmor, IReadOnlyList<UnitTypeTag> typeTags = null,
-                float attack = 0f, float hitPoints = 0f, int initiative = 0)
+                float attack = 0f, float hitPoints = 0f, int initiative = 0,
+                IReadOnlyList<string> abilities = null)
             {
                 Defense = defense;
                 HasCeramicArmor = hasCeramicArmor;
@@ -568,6 +610,9 @@ namespace Game.Combat
                 Attack = attack;
                 HitPoints = hitPoints;
                 Initiative = initiative;
+                Abilities = abilities ?? (hasCeramicArmor
+                    ? (IReadOnlyList<string>)new[] { UnitAbilities.CeramicArmor }
+                    : System.Array.Empty<string>());
             }
         }
 
@@ -598,6 +643,33 @@ namespace Game.Combat
             if (defender.HasCeramicArmor)
                 expected -= AbilityMagnitudes.Default.CeramicArmorReduction;
             return expected > 0f;
+        }
+
+        // Composition-aware penetration check for immutable rosters. The raw expected hit must
+        // cross the same per-unit threshold as BattleTargetSelector before canonical combat skill
+        // modifiers are allowed to change its size.
+        public static bool CanDamage(DefenderProfile attacker, DefenderProfile defender,
+            float extraDefense = 0f)
+        {
+            int rawExpected = Mathf.FloorToInt(
+                attacker.Attack * 0.5f - (defender.Defense + extraDefense) * 0.5f + 0.5f);
+            if (rawExpected <= 0)
+                return false;
+            return ChallengeResult.ApplyAbilityModifiers(rawExpected, attacker.Abilities,
+                defender.TypeTags, defender.Abilities, AbilityMagnitudes.Default) > 0;
+        }
+
+        public static bool CanDamageAll(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            IReadOnlyCollection<DefenderProfile> defenders, float extraDefense = 0f)
+        {
+            if (defenders == null || defenders.Count == 0)
+                return true;
+            if (attackerUnits == null || attackerUnits.Count == 0)
+                return false;
+            foreach (DefenderProfile defender in defenders)
+                if (!attackerUnits.Any(attacker => CanDamage(attacker, defender, extraDefense)))
+                    return false;
+            return true;
         }
 
         // Coverage gate on top of Score's overall power read: every known enemy unit needs at
