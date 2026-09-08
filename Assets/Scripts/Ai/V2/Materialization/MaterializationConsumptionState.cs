@@ -25,6 +25,7 @@ namespace Game.Ai.V2
     {
         private readonly HashSet<CardData> _cards = new HashSet<CardData>();
         private readonly HashSet<string> _genKeys = new HashSet<string>();
+        private readonly HashSet<string> _externalConflictKeys = new HashSet<string>();
 
         public int GenerationAttempts { get; private set; }
         public float ApUsed { get; private set; }
@@ -84,6 +85,73 @@ namespace Game.Ai.V2
                     return false;
             string gk = GenKey(p);
             return string.IsNullOrEmpty(gk) || !_genKeys.Contains(gk);
+        }
+
+        public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
+            string conflictKey)
+        {
+            if (physicalCard != null && _cards.Contains(physicalCard))
+                return false;
+            if (!string.IsNullOrEmpty(generationCardKey) && _genKeys.Contains(generationCardKey))
+                return false;
+            return string.IsNullOrEmpty(conflictKey) || !_externalConflictKeys.Contains(conflictKey);
+        }
+
+        public readonly struct ExternalToken
+        {
+            public readonly CardData PhysicalCard;
+            public readonly string GenerationCardKey;
+            public readonly string ConflictKey;
+            public readonly bool CountedGeneration;
+            public readonly float ApAdded;
+            public readonly ResourceCost Resources;
+
+            public ExternalToken(CardData physicalCard, string generationCardKey, string conflictKey,
+                bool countedGeneration, float apAdded, ResourceCost resources)
+            {
+                PhysicalCard = physicalCard;
+                GenerationCardKey = generationCardKey;
+                ConflictKey = conflictKey;
+                CountedGeneration = countedGeneration;
+                ApAdded = apAdded;
+                Resources = resources;
+            }
+        }
+
+        public ExternalToken PushExternal(CardData physicalCard, string generationCardKey,
+            string conflictKey, bool generation, float ap, ResourceCost resources)
+        {
+            if (physicalCard != null) _cards.Add(physicalCard);
+            if (!string.IsNullOrEmpty(generationCardKey)) _genKeys.Add(generationCardKey);
+            if (!string.IsNullOrEmpty(conflictKey)) _externalConflictKeys.Add(conflictKey);
+            if (generation) GenerationAttempts++;
+            float apAdded = Mathf.Max(0f, ap);
+            ApUsed += apAdded;
+            if (resources != null)
+            {
+                HumanUsed += resources.human;
+                EnergyUsed += resources.energy;
+                MaterialsUsed += resources.materials;
+                TechUsed += resources.tech;
+            }
+            return new ExternalToken(physicalCard, generationCardKey, conflictKey,
+                generation, apAdded, resources);
+        }
+
+        public void PopExternal(in ExternalToken token)
+        {
+            if (token.PhysicalCard != null) _cards.Remove(token.PhysicalCard);
+            if (!string.IsNullOrEmpty(token.GenerationCardKey)) _genKeys.Remove(token.GenerationCardKey);
+            if (!string.IsNullOrEmpty(token.ConflictKey)) _externalConflictKeys.Remove(token.ConflictKey);
+            if (token.CountedGeneration) GenerationAttempts--;
+            ApUsed -= token.ApAdded;
+            if (token.Resources != null)
+            {
+                HumanUsed -= token.Resources.human;
+                EnergyUsed -= token.Resources.energy;
+                MaterialsUsed -= token.Resources.materials;
+                TechUsed -= token.Resources.tech;
+            }
         }
 
         // Apply `p` (+ an optional caller-side follow-up AP, e.g. DemandCandidate.FollowupAp) to the
