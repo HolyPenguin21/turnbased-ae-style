@@ -212,7 +212,7 @@ MonoBehaviour:
     moveMax: 2
     activationApCost: 1
     commandRating: 3
-    fate: 2
+    fate: 4
     attack: 0
     defenseRating: 0
     resistanceRating: 0
@@ -383,7 +383,7 @@ MonoBehaviour:
     moveMax: 2
     activationApCost: 1
     commandRating: 3
-    fate: 2
+    fate: 3
     attack: 0
     defenseRating: 0
     resistanceRating: 0
