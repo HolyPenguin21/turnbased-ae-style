@@ -38,10 +38,12 @@ namespace Game.Ai.V2
     internal static class HousekeepingManager
     {
         public static IEnumerator RunHousekeeping(WorldSnapshot snapshot, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result)
+            PlayerRoot root, AiTurnContext ctx, ActorCommitments commitments, HousekeepingResult result,
+            MaterializationReservation carriedReservation = null)
         {
             if (result == null)
                 result = new HousekeepingResult();
+            carriedReservation = carriedReservation ?? new MaterializationReservation();
 
             // Phase B deliberately preserves AP while a discovery/hand interrupt is pending.
             // Consume it here before maintenance, then rebuild the FULL world snapshot because the
@@ -51,7 +53,8 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber, StrategicReservedResource.ActionPoints)
                 : 0f;
             var reaction = new StrategicReactionResult();
-            yield return StrategicReactionPass.ExecuteIfPending(snapshot, player, root, ctx, reaction);
+            yield return StrategicReactionPass.ExecuteIfPending(
+                snapshot, player, root, ctx, reaction, carriedReservation);
             result.Reaction = reaction;
             AiHandData hand = AiHandRegistry.Peek(player);
             if (reaction.Ran)
@@ -84,7 +87,8 @@ namespace Game.Ai.V2
                         ReconObjectiveEvaluator.Enumerate(snapshot));
                     var tempo = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(
-                        snapshot, player, root, hand, ctx, tempoCommitments, new MaterializationReservation(), tempo);
+                        snapshot, player, root, hand, ctx, tempoCommitments, carriedReservation, tempo);
+                    carriedReservation = tempo.Reservation;
                     if (tempo.StateChanged)
                     {
                         result.StateChanged = true;
