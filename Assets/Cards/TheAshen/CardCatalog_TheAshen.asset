@@ -438,7 +438,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - r1s4
     - RapidReaction
@@ -526,7 +526,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 000000000300000007000000
     grantedAbilities:
     - CollectTech
     resourceYield:
@@ -592,7 +592,7 @@ MonoBehaviour:
     cardType: 1
     apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 0
       materials: 0
       tech: 0
@@ -612,7 +612,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -654,7 +654,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -696,7 +696,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -780,7 +780,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities:
     - ShockAttack
     - Berserk
@@ -824,7 +824,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 00000000
+    unitTypeTags: 0000000003000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -866,7 +866,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000200000005000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -908,7 +908,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000200000004000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -950,7 +950,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000200000004000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -992,7 +992,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1034,7 +1034,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000005000000
     grantedAbilities:
     - Hyperkinetic
     resourceYield:
@@ -1077,7 +1077,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000004000000
     grantedAbilities:
     - ShockAttack
     resourceYield:
@@ -1120,7 +1120,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s0
     resourceYield:
@@ -1163,7 +1163,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 1
     antiAirRadius: 2
     airfieldCapacity: 0
-    unitTypeTags: 01000000
+    unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s4
     resourceYield:
@@ -1206,7 +1206,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000002000000
+    unitTypeTags: 010000000200000004000000
     grantedAbilities: []
     resourceYield:
       human: 0

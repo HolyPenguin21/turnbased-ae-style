@@ -570,7 +570,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0000000003000000
+    unitTypeTags: 000000000300000007000000
     grantedAbilities:
     - CollectMaterials
     resourceYield:

@@ -690,7 +690,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 
+    unitTypeTags: 00000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -911,7 +911,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 19
-    displayName: it AT Launcher
+    displayName: it AT VH Launcher
     art: {fileID: 21300000, guid: 8ef91b58941520d4eb693ce10497b537, type: 3}
     detailArt: {fileID: 21300000, guid: 1106f2a06fa57dc45b4267b74bcb9270, type: 3}
     faction: 3
@@ -1104,6 +1104,6 @@ MonoBehaviour:
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
-  airArmyIcon: {fileID: 0}
+  airArmyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
   armyNamePool:
   - Desert striders
