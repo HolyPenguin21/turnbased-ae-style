@@ -680,6 +680,10 @@ namespace Game.Ai.V2
         public const float tempoDrawApOpportunityWeight = 0.04f;   // per AP the draw costs
         public const float tempoDrawFutureBlockPenalty = 0.10f;    // drawing into the last free slot (softened — 9/10 is a legal draw)
         public const float tempoDrawHandActionableWeight = 0.12f;  // * best CURRENTLY-SELECTABLE play NetScore, subtracted (hand already actionable NOW)
+        // A draw that preserves the last hand card before its best play would strand too little AP
+        // for a follow-up draw gets this option-continuity value. This is utility, not a gate:
+        // genuinely strong/urgent plays can still win the common Phase-B arbitration.
+        public const float tempoDrawLastCardContinuityBonus = 0.85f;
         // Utility of a ready decisive structure-pressure advance (StrategicPressureAdvance), in the
         // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
         // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.
