@@ -549,19 +549,12 @@ namespace Game.Ai.V2
                 if (!bySig.TryGetValue(sig, out var cur) || p.ApCost < cur.plan.ApCost)
                     bySig[sig] = (p, 0f);
             }
-            float total = MaterializationPortfolioSolver.EstimateLegalApWorkload(
-                bySig.Values.ToList(), root, player, ctx, hand, genRemaining);
+            List<NonCombatCardPlayer.NonCombatPlay> nonCombat =
+                NonCombatCardPlayer.EnumeratePlays(
+                    snap, player, root, hand, ctx, new List<string>(), reservation).ToList();
 
-            // Non-combat lane — one feasible play per card; its AP is added straight (AP is the
-            // measured quantity, not a ceiling). A mild over-count on a rare double-generated hand is
-            // harmless; the failure mode this whole rework fixes is UNDER-counting.
-            var seenNc = new HashSet<CardData>();
-            foreach (NonCombatCardPlayer.NonCombatPlay ncp in NonCombatCardPlayer.EnumeratePlays(
-                         snap, player, root, hand, ctx, new List<string>(), reservation))
-                if (ncp?.Card != null && seenNc.Add(ncp.Card))
-                    total += Mathf.Max(0f, ncp.Card.EffectivePlayApCost);
-
-            return total;
+            return MaterializationPortfolioSolver.EstimatePhaseBWorkload(
+                bySig.Values.ToList(), nonCombat, root, player, ctx, hand, genRemaining);
         }
 
 
