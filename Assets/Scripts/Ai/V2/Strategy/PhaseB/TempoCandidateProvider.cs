@@ -20,7 +20,6 @@ namespace Game.Ai.V2
         public float ApCost;              // spec §6 — must fit SPENDABLE (not raw) AP
         public ResourceCost ResCost;      // spec §6 — full persistent-resource cost vector (null = none)
         public bool ConsumesGeneration;   // spec §P0 — shared maxGenerationActionsPerTurn budget
-        public bool CountsAsSurplusCardPlay; // spec §P0 — MGR-01 maxSurplusActionsPerTurn sub-cap
         public bool CountsAsTerminalDraw;    // spec §P0 — maxTerminalDrawsPerTurn sub-cap
         public string Label;
         public string DrawDiag;   // Draw only — preformatted valuation breakdown for the log
@@ -77,7 +76,6 @@ namespace Game.Ai.V2
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
                     ApCost = mat.Plan.ApCost, ResCost = mat.Plan.ResCost,
                     ConsumesGeneration = mat.Plan.Generation != null,
-                    CountsAsSurplusCardPlay = true,
                     ActionKey = "mat:" + mat.Plan.StableKey,
                     Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
                         + (mat.Residual != null ? $" (residual {mat.Residual.Capability})" : ""),
@@ -93,7 +91,6 @@ namespace Game.Ai.V2
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
                     ApCost = nc.ApCost, ResCost = nc.ResCost,
                     ConsumesGeneration = nc.Generation != null,
-                    CountsAsSurplusCardPlay = true,
                     ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
