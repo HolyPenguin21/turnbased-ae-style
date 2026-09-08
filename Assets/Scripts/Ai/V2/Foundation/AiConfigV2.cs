@@ -241,6 +241,10 @@ namespace Game.Ai.V2
         public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
         public const float devEvMargin = 0.05f;        // keep an opportunity only if EV exceeds this
         public const float devApValue = 1f;            // value of 1 AP, for the EV apCost term
+        // Equipment persists across turns/battles, while Challenge + attach costs are paid once.
+        // Applied only to the equipment power delta at Development's EV boundary; AiPower remains
+        // a canonical current-force scalar and is not inflated globally.
+        public const float devEquipmentPersistenceMultiplier = 3f;
         // The "I could play a fresh Unit with the same resources" alternative is a SOFT opportunity
         // cost, not a 1:1 trade (the unit is usually still played a later turn) — weight it down.
         public const float devAlternativeWeight = 0.5f;
