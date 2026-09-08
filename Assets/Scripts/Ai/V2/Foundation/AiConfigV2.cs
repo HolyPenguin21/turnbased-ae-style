@@ -1143,6 +1143,11 @@ namespace Game.Ai.V2
         public const float stratHoldUrgencyRampLo = 25f;   // demand Value at/under this -> urgency 0
         public const float stratHoldUrgencyRampHi = 60f;   // demand Value at/over this -> full urgency
         public const float stratHoldUrgencyMax = 2.0f;     // full urgency bonus added to net decision value
+        // residual-resource continuity — extra opportunity cost charged to a Phase-B card that would
+        // consume a resource whose CURRENT-turn, actor-aware AGG/RCN demand is proven blocked on that
+        // exact resource. Scaled by urgency (same ramp as above) * attainability * setback, all [0..1],
+        // so only a near-attainable, urgent gap is protected; remote gaps are not frozen.
+        public const float stratResidualResourcePreservationMax = 2.0f;
         // review-r3 — how many scored chains per demand TopForDemand hands the Phase A injective
         // assignment. >= 2 so a demand with a cheap fallback can yield its scarce card to another
         // demand; the assignment cost is (phaseATopK+1)^activeDemandCount, activeDemandCount <=
