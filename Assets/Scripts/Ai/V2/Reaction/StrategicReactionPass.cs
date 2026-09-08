@@ -217,7 +217,8 @@ namespace Game.Ai.V2
             => BuildReactionOpportunity(player, root, ctx, snap).IsActionable;
 
         public static IEnumerator ExecuteIfPending(WorldSnapshot priorSnapshot, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result)
+            PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result,
+            MaterializationReservation carriedReservation = null)
         {
             // A focus scope isolates the current deep-rework from the legacy strategic reaction loop.
             // The live Recon executor will own ordinary step->refresh->reaction; until that lands,
@@ -238,7 +239,8 @@ namespace Game.Ai.V2
             }
 
             yield return ReactionRoundExecutor.ExecuteRound(priorSnapshot, player, root, ctx,
-                result ?? new StrategicReactionResult(), 0);
+                result ?? new StrategicReactionResult(), 0,
+                carriedReservation ?? new MaterializationReservation());
 
             // AI-MGR-02 §4 — the pass has had its bounded round(s); any AP Phase B reserved for it
             // is now free (its own inner Phase B call already spent whatever it wanted).
