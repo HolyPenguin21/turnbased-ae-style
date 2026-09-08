@@ -958,9 +958,8 @@ namespace Game.Ai.V2
         public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
         public const float starvationEconomyTrigger = 0.5f;    // below this -> no extra Economy demand
         public const float starvationEconomyValueBonus = 35f;  // max added to the site's Value
-        // FutureUtility term weights / values.
-        public const float surplusApCostWeight = 0.20f;
-        public const float surplusResourceCostWeight = 0.05f;
+        // FutureUtility term values. AP/resource costs use the shared stratCard /
+        // stratChain dynamic cost model; Phase B has no parallel cost weights.
         public const float surplusHeroVersatility = 0.35f;
         public const float surplusUnitVersatility = 0.25f;
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
