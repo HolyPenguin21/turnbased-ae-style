@@ -102,8 +102,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2]   strat.B — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             AiDebugLog.Write($"[AI][V2]   strat.B/tempo — budget on entry: total {budget.TotalTempoActionsUsed}/"
-                + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn}, cards {budget.SurplusCardActionsUsed}/"
-                + $"{AiConfigV2.maxSurplusActionsPerTurn}, draws {budget.DrawActionsUsed}/"
+                + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn}, draws {budget.DrawActionsUsed}/"
                 + $"{AiConfigV2.maxTerminalDrawsPerTurn}, gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}");
 
             // §P1.8 — parking is keyed by (ActionKey, StateVersion). A parked candidate stays
@@ -227,7 +226,6 @@ namespace Game.Ai.V2
                 // GenerationAttemptsUsed directly from the execute paths.
                 if (exec.Progressed || exec.StateChanged)
                     budget.RecordAction(
-                        card: exec.Progressed && best.CountsAsSurplusCardPlay,
                         draw: exec.Progressed && best.CountsAsTerminalDraw,
                         generationAttempt: false);
 
@@ -269,8 +267,8 @@ namespace Game.Ai.V2
             // §13 — the mandatory final line: it must be impossible to read "AP left, reservation
             // none, reason unknown" off the log.
             AiDebugLog.Write($"[AI][V2] strat.B/tempo — END: iters {iter}, turn budget total {budget.TotalTempoActionsUsed}/"
-                + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn} cards {budget.SurplusCardActionsUsed}/{AiConfigV2.maxSurplusActionsPerTurn}"
-                + $" draws {budget.DrawActionsUsed}/{AiConfigV2.maxTerminalDrawsPerTurn} gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}; "
+                + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn} draws {budget.DrawActionsUsed}/{AiConfigV2.maxTerminalDrawsPerTurn}"
+                + $" gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}; "
                 + $"cardsPlayed {result.CardsPlayed}, drawn {result.CardsDrawn}; ap {root.ActionPoints} "
                 + $"(spendable {F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}), "
                 + $"H/E/M/T {root.GetResource(Game.Economy.ResourceType.Human)}/{root.GetResource(Game.Economy.ResourceType.Energy)}/"
@@ -281,7 +279,6 @@ namespace Game.Ai.V2
         // ---- tempo diagnostics / helpers ----------------------------------------------------
         private static string BudgetSummary(StrategicTempoBudget b) =>
             $"(budget total {b.TotalTempoActionsUsed}/{AiConfigV2.maxEndOfTurnTempoActionsPerTurn}, "
-            + $"cards {b.SurplusCardActionsUsed}/{AiConfigV2.maxSurplusActionsPerTurn}, "
             + $"draws {b.DrawActionsUsed}/{AiConfigV2.maxTerminalDrawsPerTurn}, "
             + $"gen {b.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn})";
 
@@ -325,7 +322,6 @@ namespace Game.Ai.V2
         {
             if (parkedAt.TryGetValue(c.ActionKey, out int v) && v == V2StateVersion.Current)
                 return $"parked@v{v}";
-            if (c.CountsAsSurplusCardPlay && budget.CardCapHit) return "surplus card-play budget";
             if (c.CountsAsTerminalDraw && budget.DrawCapHit) return "draw budget";
             if (c.ConsumesGeneration && budget.GenerationCapHit) return "generation budget";
             if (c.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon)
