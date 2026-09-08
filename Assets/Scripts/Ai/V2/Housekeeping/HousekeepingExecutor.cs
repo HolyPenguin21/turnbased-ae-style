@@ -98,8 +98,6 @@ namespace Game.Ai.V2
                     }
                     res.Applied += batchUnits.Count;
                     res.StateChanged = true;
-                    AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — whole-folded "
-                        + $"{batchUnits.Count} member(s) #{from.Id}->#{to.Id} atomically ({t.Reason})");
                     operationIndex += batchTransfers.Count - 1;
                     continue;
                 }
@@ -117,7 +115,6 @@ namespace Game.Ai.V2
                         Fail(res, plan, $"reorder rejected #{from.Id} — became mission-claimed");
                         break;
                     }
-                    int oldCap = from.Capacity;
                     if (!from.TryReorderCommander(unit, out string reorderFail))
                     {
                         Fail(res, plan, $"reorder failed #{from.Id} ({unit.Name}) ({reorderFail})");
@@ -125,8 +122,6 @@ namespace Game.Ai.V2
                     }
                     res.Applied++;
                     res.StateChanged = true;
-                    AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — commander reorder army #{from.Id} "
-                        + $"-> {unit.Name} capacity {oldCap}->{from.Capacity} ({t.Reason})");
                     continue;
                 }
 
@@ -154,11 +149,6 @@ namespace Game.Ai.V2
                     ctx.RecordArmyVisit(other, to, from);
                     res.Applied++;
                     res.StateChanged = true;
-                    // §16 — a hero-for-body/hero swap that leads a formation reads with the hero's role.
-                    string swapRole = unit.IsHero
-                        ? $" role={Game.Ai.V2.HeroRoleEvaluator.Classify(unit)}" : "";
-                    AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — swapped {unit.Name} #{from.Id} "
-                        + $"<-> {other.Name} #{to.Id}{swapRole} ({t.Reason})");
                     continue;
                 }
 
@@ -178,10 +168,6 @@ namespace Game.Ai.V2
                 ctx.RecordArmyVisit(unit, from, to);
                 res.Applied++;
                 res.StateChanged = true;
-                string moveRole = unit.IsHero
-                    ? $" role={Game.Ai.V2.HeroRoleEvaluator.Classify(unit)}" : "";
-                AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — moved {unit.Name} "
-                    + $"#{from.Id}->#{to.Id}{moveRole} ({t.Reason})");
             }
 
             return res;

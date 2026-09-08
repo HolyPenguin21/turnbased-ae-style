@@ -1,6 +1,10 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using Game.Combat;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -135,22 +139,26 @@ namespace Game.Ai.V2
                 return;
             }
 
+            AiDebugLog.Write("[AI][V2][HOUSEKEEPING] -- LOCAL FORCE PACKAGING ----------------");
             foreach (LocalForceGroup group in analysis.Groups)
             {
+                LogGroupInput(group, analysis);
                 ReorganizationPlan plan = ArmyReorganizationPlanner.Plan(group);
                 if (plan.IsEmpty)
                 {
-                    AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — {plan.DebugSummary()}, "
-                        + "current local formation profile already optimal.");
+                    AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} decision: "
+                        + $"{plan.DebugSummary()}; keep current composition.");
                     continue;
                 }
 
                 result.GroupsPlanned++;
-                AiDebugLog.Write($"[AI][V2] housekeeping plan — {plan.DebugSummary()}");
+                AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} decision: {plan.DebugSummary()}");
                 HousekeepingExecResult exec = HousekeepingExecutor.Execute(plan, analysis, player, ctx, commitments);
                 result.StateChanged |= exec.StateChanged;
                 result.TransfersApplied += exec.Applied;
                 result.TransfersFailed += exec.Failed;
+                AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   {plan.HexKey} after: "
+                    + FormatLiveGroup(group, analysis));
 
                 LogUnresolvedStructuralDefects(group, plan);
             }
@@ -168,7 +176,60 @@ namespace Game.Ai.V2
                 + $"apInvariant {(result.ApInvariantViolated ? "FAIL" : "ok")}");
         }
 
-        // §16 — final decisions are logged by the executor; this adds the important UNRESOLVED
+        private static void LogGroupInput(LocalForceGroup group, ArmyReorgAnalysis analysis)
+        {
+            AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) before: "
+                + FormatProjectedGroup(group, analysis));
+
+            if (group.ThreatBenchmarks.Count == 0)
+            {
+                AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) benchmark: "
+                    + "no deployed enemy field army; fallback=AiPower");
+                return;
+            }
+
+            string threats = string.Join(" | ", group.ThreatBenchmarks.Select(t =>
+                $"enemy#{t.ArmyId} {(t.HiddenFromUs ? "hidden-cheat" : "visible")} "
+                + $"eta(group/base/used)={t.EtaToGroup}/{t.EtaToNearestBase}/{t.EffectiveEta} "
+                + $"[{string.Join(",", t.Members.Select(FormatCombatProfile))}]"));
+            AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) benchmark: {threats}");
+        }
+
+        private static string FormatProjectedGroup(LocalForceGroup group, ArmyReorgAnalysis analysis)
+        {
+            return string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId).Select(c =>
+                $"#{c.ArmyId}/{c.Role}[{string.Join(",", c.Units.Select(u =>
+                {
+                    string name = analysis.UnitByKey.TryGetValue(u.Key, out UnitData live)
+                        ? live.Name : "u" + u.Key;
+                    if (!u.IsHero) return name;
+                    return name + "{H:" + u.HeroRole
+                        + (u.IsDevelopmentOperator ? ",operator" : "") + "}";
+                }))}]"));
+        }
+
+        private static string FormatLiveGroup(LocalForceGroup group, ArmyReorgAnalysis analysis)
+        {
+            var operators = new HashSet<UnitData>(group.Containers.SelectMany(c => c.Units)
+                .Where(u => u.IsDevelopmentOperator)
+                .Select(u => analysis.UnitByKey.TryGetValue(u.Key, out UnitData live) ? live : null)
+                .Where(u => u != null));
+            return string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId).Select(c =>
+            {
+                if (!analysis.ArmyById.TryGetValue(c.ArmyId, out ArmyData army) || army == null)
+                    return $"#{c.ArmyId}/missing";
+                return $"#{army.Id}/{c.Role}[{string.Join(",", army.Members.Select(u =>
+                    !u.IsHero ? u.Name : u.Name + "{H:" + HeroRoleEvaluator.Classify(u)
+                        + (operators.Contains(u) ? ",operator" : "") + "}"))}]";
+            }));
+        }
+
+        private static string FormatCombatProfile(WorthIt.DefenderProfile p) =>
+            $"A{p.Attack:0.#}/D{p.Defense:0.#}/HP{p.HitPoints:0.#}/I{p.Initiative}"
+            + (p.Abilities.Count > 0 ? "/skills:" + string.Join("+", p.Abilities) : "");
+
+        // §16 — the aggregate block above logs inputs, decision and final state; this adds only
+        // the important UNRESOLVED
         // structural defects a debug run needs, without flooding the log with every rejected
         // candidate. Only containers the plan did not touch are reported.
         private static void LogUnresolvedStructuralDefects(LocalForceGroup group, ReorganizationPlan plan)

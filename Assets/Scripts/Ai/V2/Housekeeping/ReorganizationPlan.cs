@@ -71,11 +71,15 @@ namespace Game.Ai.V2
             if (IsEmpty)
                 return $"({Q},{R}) no-op profile {before}";
             IEnumerable<string> ops = Transfers.Select(t => t.IsReorder
-                ? $"commander u{t.UnitKey}:#{t.FromArmyId}"
-                : t.IsSwap
-                    ? $"swap u{t.UnitKey}:#{t.FromArmyId}<->u{t.SwapUnitKey}:#{t.ToArmyId}"
-                    : $"u{t.UnitKey}:#{t.FromArmyId}->#{t.ToArmyId}");
-            return $"({Q},{R}) profile {before}->{after}; {Transfers.Count} reorg operation(s): {string.Join(", ", ops)}";
+                    ? $"commander u{t.UnitKey}:#{t.FromArmyId}"
+                    : t.IsWholeFold
+                        ? $"atomic-fold #{t.FromArmyId}->#{t.ToArmyId}"
+                        : t.IsSwap
+                            ? $"swap u{t.UnitKey}:#{t.FromArmyId}<->u{t.SwapUnitKey}:#{t.ToArmyId}"
+                            : $"move #{t.FromArmyId}->#{t.ToArmyId} ({t.Reason})")
+                .GroupBy(label => label)
+                .Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key);
+            return $"({Q},{R}) profile {before}->{after}; {Transfers.Count} member operation(s): {string.Join(", ", ops)}";
         }
 
         private static string FormatProfile(IEnumerable<float> values) =>

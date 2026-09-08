@@ -30,7 +30,7 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 | `Reaction/` | Interrupt lifecycle coordinator + probe/witness/reservation/solver/executor. |
 | `Execution/` | Plan → canonical gameplay calls → structured result. Never re-plans or re-scores. |
 | `Continuity/` | Mission intent lifecycle: `ResolveActive` (before planning) and `Reconcile` (after execution). |
-| `Housekeeping/` | End-of-turn invariant repair only. Not a strategic planner. |
+| `Housekeeping/` | Turn-final, task-neutral, zero-AP local force packaging and invariant repair. It may sort/fold same-hex rosters against world-snapshot combat benchmarks, but never selects objectives, creates missions, moves armies, plays cards or spends resources. |
 | `Recon/` | Recon-mission machinery (route/step planning, scout pricing, air/ground policy). |
 | `Diagnostics/` | Logging, telemetry, audit. No influence on ordering, score, eligibility or state. |
 
@@ -56,6 +56,7 @@ canonical game actions; it never selects objectives or invents alternative actio
 | Concern | Canonical owner |
 |---|---|
 | Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
+| Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; no Attack+Defense composition surrogate |
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
 | Materialization delivery ("can this satisfy demand X") | `Materialization/MaterializationDeliveryPolicy` (plan- and army-level) |
