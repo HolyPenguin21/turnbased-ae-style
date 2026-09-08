@@ -11,22 +11,13 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  HOUSEKEEPING MANAGER  (Strategy V2 build-order step 8C)
     // ===========================================================================================
-    //  Last ordinary mutating V2 layer. It has three deliberately separated pieces:
-    //    · decisive strategic pressure (may move/spend activation AP) toward an honestly-known
-    //      enemy Citadel after the army-targeted Raid lane runs out of contacts;
-    //    · bounded strategic maintenance (may spend AP/resources): internal Facility placement,
-    //      Base/Citadel slot-capacity upgrade, Equipment on live units, standalone generation;
-    //    · local same-hex army/garrison structural reorganisation (must remain zero-AP).
+    //  Last ordinary mutating V2 layer. After the pending strategic reaction/tempo handoff it owns
+    //  only task-neutral, same-hex army/garrison force packaging: Analyzer -> pure Planner ->
+    //  Executor. It never chooses an objective or mission, moves an army between hexes, plays a
+    //  card, or spends AP/resources. The invariant below protects that zero-cost boundary.
     //
-    //  ReconOnly Air Recon is NOT housekeeping. It runs once, terminally, inside TaskExecutor
-    //  after the provisioned Ground Recon batch. Keeping it there gives one owner for the whole
-    //  one-hex sortie lifecycle and prevents a second Housekeeping air pass from spending the same
-    //  leftover AP/Energy again.
-    //
-    //  A pending strategic interrupt is consumed first. Only after that bounded replan settles do
-    //  pressure/maintenance actions run, and only after those settle do we enter the zero-AP
-    //  Analyzer -> Planner -> Executor reorganisation pass. The AP invariant below therefore
-    //  starts AFTER all strategic actions and still protects structural cleanup from drift.
+    //  Strategic pressure and maintenance are Phase-B tempo candidates. ReconOnly Air Recon stays
+    //  terminally inside TaskExecutor. Neither is a second Housekeeping lane.
     // ===========================================================================================
     public sealed class HousekeepingResult
     {
@@ -195,17 +186,23 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) benchmark: {threats}");
         }
 
-        private static string FormatProjectedGroup(LocalForceGroup group, ArmyReorgAnalysis analysis)
+        private static string FormatProjectedGroup(LocalForceGroup group, ArmyReorgAnalysis analysis) =>
+            string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId)
+                .Select(c => FormatProjectedContainer(c, analysis)));
+
+        private static string FormatProjectedContainer(ReorgContainer container,
+            ArmyReorgAnalysis analysis) =>
+            $"#{container.ArmyId}/{container.Role}[{string.Join(",", container.Units
+                .Select(u => FormatProjectedUnit(u, analysis)))}]";
+
+        private static string FormatProjectedUnit(ReorgUnit unit, ArmyReorgAnalysis analysis)
         {
-            return string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId).Select(c =>
-                $"#{c.ArmyId}/{c.Role}[{string.Join(",", c.Units.Select(u =>
-                {
-                    string name = analysis.UnitByKey.TryGetValue(u.Key, out UnitData live)
-                        ? live.Name : "u" + u.Key;
-                    if (!u.IsHero) return name;
-                    return name + "{H:" + u.HeroRole
-                        + (u.IsDevelopmentOperator ? ",operator" : "") + "}";
-                }))}]"));
+            string name = analysis.UnitByKey.TryGetValue(unit.Key, out UnitData live)
+                ? live.Name : "u" + unit.Key;
+            if (!unit.IsHero)
+                return name;
+            return name + "{H:" + unit.HeroRole
+                + (unit.IsDevelopmentOperator ? ",operator" : "") + "}";
         }
 
         private static string FormatLiveGroup(LocalForceGroup group, ArmyReorgAnalysis analysis)
@@ -214,14 +211,25 @@ namespace Game.Ai.V2
                 .Where(u => u.IsDevelopmentOperator)
                 .Select(u => analysis.UnitByKey.TryGetValue(u.Key, out UnitData live) ? live : null)
                 .Where(u => u != null));
-            return string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId).Select(c =>
-            {
-                if (!analysis.ArmyById.TryGetValue(c.ArmyId, out ArmyData army) || army == null)
-                    return $"#{c.ArmyId}/missing";
-                return $"#{army.Id}/{c.Role}[{string.Join(",", army.Members.Select(u =>
-                    !u.IsHero ? u.Name : u.Name + "{H:" + HeroRoleEvaluator.Classify(u)
-                        + (operators.Contains(u) ? ",operator" : "") + "}"))}]";
-            }));
+            return string.Join(" | ", group.Containers.OrderBy(c => c.ArmyId)
+                .Select(c => FormatLiveContainer(c, analysis, operators)));
+        }
+
+        private static string FormatLiveContainer(ReorgContainer container,
+            ArmyReorgAnalysis analysis, HashSet<UnitData> operators)
+        {
+            if (!analysis.ArmyById.TryGetValue(container.ArmyId, out ArmyData army) || army == null)
+                return $"#{container.ArmyId}/missing";
+            return $"#{army.Id}/{container.Role}[{string.Join(",", army.Members
+                .Select(u => FormatLiveUnit(u, operators)))}]";
+        }
+
+        private static string FormatLiveUnit(UnitData unit, HashSet<UnitData> operators)
+        {
+            if (!unit.IsHero)
+                return unit.Name;
+            return unit.Name + "{H:" + HeroRoleEvaluator.Classify(unit)
+                + (operators.Contains(unit) ? ",operator" : "") + "}";
         }
 
         private static string FormatCombatProfile(WorthIt.DefenderProfile p) =>
