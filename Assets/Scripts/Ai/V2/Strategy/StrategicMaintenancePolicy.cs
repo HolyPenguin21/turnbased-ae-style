@@ -5,7 +5,6 @@ using Game.Core;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
-using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -63,35 +62,30 @@ namespace Game.Ai.V2
     {
         // AI-MGR-02 §1/§3 — every eligible non-card strategic spend as an independent candidate.
         public static List<StrategicSpendCandidate> EnumerateCandidates(PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, WorldSnapshot snap,
+            float? witnessedUsefulApDemand = null)
         {
             var list = new List<StrategicSpendCandidate>();
             if (player == null || root == null || hand == null || ctx == null)
                 return list;
 
-            foreach (CapacityUpgrade up in FindCapacityUpgrades(player, hand, ctx))
+            foreach (CapacityUpgrade up in FindCapacityUpgrades(
+                snap, player, root, hand, ctx, witnessedUsefulApDemand))
                 list.Add(new StrategicSpendCandidate(up.Building, up.Tier)
                 {
                     Label = $"capacity upgrade {up.Building.Name} -> level {up.Building.Level + 1} "
-                        + "(unlock internal-facility slot blocked by capacity)",
+                        + $"to unlock {up.Facility.Definition?.displayName} "
+                        + $"(facility net {up.FacilityUtility:0.00})",
                     StableKey = "capacity:" + up.Building.Hex,
-                    Utility = AiConfigV2.tempoMaintenanceCapacityUpgradeValue,
+                    // The upgrade's benefit is the best concrete Facility card it makes playable.
+                    // StrategicPhaseB separately subtracts HoldResourcesUtility for this tier's
+                    // own resource cost, so neither the card nor the upgrade cost is double-counted.
+                    Utility = up.FacilityUtility,
                     ApCost = up.Tier != null ? up.Tier.apCost : 0f,
                     ResCost = up.Tier != null ? up.Tier.cost : null,
                 });
             return list;
         }
-
-        // ---------------------------------------------------------------- internal Facilities ----
-
-        private static IEnumerable<CardData> InternalFacilityCards(AiHandData hand) =>
-            hand?.Hand == null
-                ? Enumerable.Empty<CardData>()
-                : hand.Hand.Where(c => c?.Definition != null
-                    && c.Definition.cardType == CardType.Facility
-                    && c.Definition.grantedAbilities != null
-                    && (c.Definition.grantedAbilities.Contains(UnitAbilities.Research)
-                        || c.Definition.grantedAbilities.Contains(UnitAbilities.Production)));
 
         // ---------------------------------------------------------------- capacity upgrade ----
 
@@ -99,14 +93,17 @@ namespace Game.Ai.V2
         {
             public BuildingData Building;
             public BaseUpgradeTier Tier;
+            public CardData Facility;
+            public float FacilityUtility;
         }
 
         // Enumerate every Base/Citadel where buying the next tier would unlock a Facility slot AND
         // an internal Facility in hand is currently blocked by nothing but that missing slot.
-        private static IEnumerable<CapacityUpgrade> FindCapacityUpgrades(PlayerSetupData player,
-            AiHandData hand, AiTurnContext ctx)
+        private static IEnumerable<CapacityUpgrade> FindCapacityUpgrades(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            float? witnessedUsefulApDemand)
         {
-            if (!InternalFacilityCards(hand).Any() || ctx.GameConfig?.baseUpgradeTiers == null)
+            if (hand?.Hand == null || ctx.GameConfig?.baseUpgradeTiers == null)
                 yield break;
 
             List<BuildingData> bases = BuildingRegistry.AllBuildings()
@@ -115,11 +112,29 @@ namespace Game.Ai.V2
             if (bases.Count == 0)
                 yield break;
 
-            // If ANY owned Base already has an unlocked empty slot, the Facility is blocked by
-            // something else (usually card affordability), not by capacity. Do not buy a fake
-            // dependency upgrade in that case.
-            if (bases.Any(b => b.FindFirstAvailableFacilitySlot() >= 0))
+            // Evaluate every Facility card, including economy / ApBonus Facilities. A card is an
+            // upgrade consequence only when the authoritative placement check rejects it for the
+            // capacity reason at every owned Base; an AP/resource/ownership failure must not be
+            // disguised as a capacity dependency.
+            var blockedFacilities = hand.Hand
+                .Select((card, ordinal) => new { Card = card, Ordinal = ordinal })
+                .Where(x => x.Card?.Definition != null
+                    && x.Card.Definition.cardType == CardType.Facility)
+                .Where(x => IsBlockedOnlyByCapacity(x.Card, bases, player, hand, ctx))
+                .Select(x => new
+                {
+                    x.Card,
+                    x.Ordinal,
+                    Utility = NonCombatCardPlayer.ScoreCapacityUnlock(
+                        snap, player, root, ctx, x.Card, hand, witnessedUsefulApDemand),
+                })
+                .OrderByDescending(x => x.Utility)
+                .ThenBy(x => x.Ordinal)
+                .ToList();
+            if (blockedFacilities.Count == 0)
                 yield break;
+
+            var bestFacility = blockedFacilities[0];
 
             foreach (BuildingData b in bases
                 .Where(x => x.UnlockedFacilitySlots < x.TotalFacilitySlots)
@@ -133,8 +148,30 @@ namespace Game.Ai.V2
                 BaseUpgradeTier tier = ctx.GameConfig.baseUpgradeTiers[tierIndex];
                 if (tier == null)
                     continue;
-                yield return new CapacityUpgrade { Building = b, Tier = tier };
+                yield return new CapacityUpgrade
+                {
+                    Building = b,
+                    Tier = tier,
+                    Facility = bestFacility.Card,
+                    FacilityUtility = bestFacility.Utility,
+                };
             }
+        }
+
+        private static bool IsBlockedOnlyByCapacity(CardData card, IReadOnlyList<BuildingData> bases,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx)
+        {
+            bool sawCapacityBlock = false;
+            foreach (BuildingData b in bases)
+            {
+                if (BuildingPlayExecutor.CanPlaceFacilityAt(
+                    player, hand, ctx, card, b.Hex, out string reason))
+                    return false; // already playable: no dependency to buy
+                if (reason != InfrastructureActions.NoFreeFacilitySlotReason)
+                    return false; // affordability or another rule is also blocking it
+                sawCapacityBlock = true;
+            }
+            return sawCapacityBlock;
         }
 
         internal static bool ExecuteCapacityUpgrade(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,

@@ -63,7 +63,7 @@ namespace Game.Ai.V2
         private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
             float apCost, ResourceCost resCost, GenerationStep generation = null,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
@@ -72,12 +72,24 @@ namespace Game.Ai.V2
                 type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
-            if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
+            if (logDynamicEffect && !string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
                 AiDebugLog.Write($"[AI][V2]   strat.nonCombat — {card?.Definition?.displayName} "
                     + $"role={cand.IntendedRole} net {cand.NetScore.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{cand.Breakdown.ToCompact()}]");
             return cand.NetScore;
         }
+
+        // Capacity-upgrade look-ahead must value the exact Facility it would unlock through the
+        // same scorer as an ordinary legal Facility play. Keeping this thin adapter here prevents
+        // StrategicMaintenancePolicy from assembling a second non-combat evaluation context.
+        internal static float ScoreCapacityUnlock(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, CardData card, AiHandData hand,
+            float? witnessedUsefulApDemand = null) =>
+            Score(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
+                card != null ? card.EffectivePlayApCost : 0f,
+                card?.EffectivePlayResourceCost, generation: null,
+                witnessedUsefulApDemand: witnessedUsefulApDemand,
+                logDynamicEffect: false);
 
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
         // materialization chain (MaterializationCandidateBuilder) owns it. Exhaustive over

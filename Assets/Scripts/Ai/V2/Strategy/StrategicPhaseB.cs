@@ -190,9 +190,14 @@ namespace Game.Ai.V2
                             exec.Succeeded = exec.StateChanged = exec.Progressed = exec.Drawn = true;
                             result.CardsDrawn++;
                             // A terminal-boundary draw may have registered a hand opportunity.
-                            // Stop this single-pass Phase B and hand it to the existing bounded
-                            // reaction pass; this is not the deferred per-task mid-turn loop.
-                            exec.Interrupt = StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber);
+                            // Full scope hands it to the existing bounded reaction pass; this is
+                            // not the deferred per-task mid-turn loop.
+                            // A focus scope deliberately suppresses StrategicReactionPass. Do not
+                            // stop this already-bounded live tempo loop for a consumer that cannot
+                            // run: the next iteration can still score a newly drawn Facility/Base/
+                            // Aviation/Equipment card. Full scope hands the interrupt to reaction.
+                            exec.Interrupt = StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber)
+                                && StrategicReactionPass.CanStrategicReactionPassRun(player, ctx);
                         }
                         else exec.FailReason = "TryCycle refused";
                         break;

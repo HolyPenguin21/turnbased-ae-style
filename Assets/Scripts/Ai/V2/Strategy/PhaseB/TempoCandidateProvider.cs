@@ -83,8 +83,9 @@ namespace Game.Ai.V2
 
             // Every legal non-combat play enters the same arbitration set. Selecting a lane winner
             // before reservation/cap/parking checks used to hide a cheaper legal fallback.
+            var nonCombatBlocked = new List<string>();
             foreach (NonCombatCardPlayer.NonCombatPlay nc in NonCombatCardPlayer.EnumeratePlays(
-                         snap, player, root, hand, ctx, new List<string>(), result.Reservation,
+                         snap, player, root, hand, ctx, nonCombatBlocked, result.Reservation,
                          phaseBWitnessedApDemand))
                 list.Add(new TempoCandidate
                 {
@@ -94,6 +95,11 @@ namespace Game.Ai.V2
                     ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
+            foreach (string reason in nonCombatBlocked
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Distinct(System.StringComparer.Ordinal)
+                .OrderBy(x => x, System.StringComparer.Ordinal))
+                AiDebugLog.Write($"[AI][V2]     cand PlayNonCombat BLOCKED: {reason}");
 
             // §P0.1 — only card alternatives actually selectable under the shared generation
             // budget and live spendable pools suppress Draw. Structurally blocked cards do not.
@@ -150,7 +156,8 @@ namespace Game.Ai.V2
             // slot-capacity upgrade). Facility / Equipment / generation are ordinary PlayCard
             // candidates above (one StrategicCardEvaluator, spec §5). Every eligible non-card spend
             // is its own candidate — no hidden category priority chain (spec §3).
-            foreach (StrategicSpendCandidate sp in StrategicMaintenancePolicy.EnumerateCandidates(player, root, hand, ctx))
+            foreach (StrategicSpendCandidate sp in StrategicMaintenancePolicy.EnumerateCandidates(
+                player, root, hand, ctx, snap, phaseBWitnessedApDemand))
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.MaintenanceSpend, Utility = sp.Utility, ApCost = sp.ApCost,

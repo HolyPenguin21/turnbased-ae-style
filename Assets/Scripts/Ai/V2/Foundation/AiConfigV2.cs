@@ -683,12 +683,11 @@ namespace Game.Ai.V2
         // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
         // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.
         public const float tempoPressureAdvanceValue = 1.20f;
-        // AI-MGR-02 — StrategicMaintenancePolicy now enumerates ONLY genuinely non-card strategic
-        // actions (Base/Citadel slot-capacity upgrade). Facility placement, Equipment attach and
-        // Research/Production generation are NOT scored here any more — they are ordinary PlayCard
-        // candidates through NonCombatCardPlayer -> StrategicCardEvaluator (spec §5, one card
-        // scorer). This is the only remaining maintenance utility band.
-        public const float tempoMaintenanceCapacityUpgradeValue = 0.70f;
+        // AI-MGR-02 — StrategicMaintenancePolicy enumerates only genuinely non-card strategic
+        // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
+        // band: it is the dynamic StrategicCardEvaluator NetScore of the concrete Facility card the
+        // upgrade unlocks. Facility placement, Equipment attach and Research/Production generation
+        // remain ordinary PlayCard candidates through the same evaluator (spec §5, one scorer).
         // spec §7 (round 4) — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
         // replan, not an exact action cost (the replan re-runs the whole Demand→Mission→Provision
         // pipeline and picks its own action, so there is no single pre-planned action to price).

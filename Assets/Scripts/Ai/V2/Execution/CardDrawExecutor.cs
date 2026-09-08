@@ -48,9 +48,8 @@ namespace Game.Ai.V2
             //
             // Do not duplicate StrategicManager's actionability logic here. Instead, only on this
             // exact terminal boundary, raise the already-existing bounded hand-opportunity
-            // interrupt. The reaction pass performs the authoritative fresh snapshot / demand /
-            // materialization evaluation. A useless boundary card costs one extra bounded replan,
-            // but can never cause an extra play; an actionable one can no longer be missed.
+            // interrupt. Whether a reaction pass may consume it is decided by the orchestration
+            // scope; this executor only records the hand mutation and makes no replan promise.
             bool terminalBoundary = !hand.HasFreeSlot
                 || !hand.HasCardsLeftToDraw
                 || !root.CanSpendActionPoints(ctx.DrawApCost);
@@ -60,7 +59,7 @@ namespace Game.Ai.V2
             {
                 StrategicInterruptRegistry.MarkHandOpportunity(owner, ctx.TurnNumber, hand);
                 AiDebugLog.Write("[AI][V2] strategic interrupt — terminal boundary draw changed the hand; "
-                    + "bounded replan will validate the newly drawn card before turn end");
+                    + "hand opportunity registered");
             }
             return true;
         }

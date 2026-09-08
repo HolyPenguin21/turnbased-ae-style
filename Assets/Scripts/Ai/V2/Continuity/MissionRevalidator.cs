@@ -87,7 +87,7 @@ namespace Game.Ai.V2
         public static bool WasAttempt(ExecutionResult r) => r != null;
 
         public static bool WasGenuineExecution(ExecutionResult r) =>
-            r != null && r.ReachedGoal && (r.StepsMoved > 0 || r.ApSpent > Mathf.Epsilon);
+            r != null && r.Outcome.Succeeded && r.Outcome.StateChanged;
 
         public static bool WasStaleOrSkipped(ExecutionResult r) =>
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;

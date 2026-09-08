@@ -57,6 +57,11 @@ namespace Game.Map
 
     public static class InfrastructureActions
     {
+        // Canonical structured-enough reason used by AI policy to distinguish a Facility that is
+        // blocked ONLY by Base capacity from affordability / ownership / card-type failures.
+        // Keep the text here with the authoritative legality check so callers never duplicate it.
+        internal const string NoFreeFacilitySlotReason = "Base has no free Facility slot";
+
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
@@ -201,12 +206,14 @@ namespace Game.Map
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             if (building == null || building.Owner != owner || !building.IsBase)
             { reason = "no owned Base at the hex"; return false; }
-            if (building.FindFirstAvailableFacilitySlot() < 0)
-            { reason = "Base has no free Facility slot"; return false; }
+            // Report affordability before capacity so a caller can truthfully distinguish a card
+            // blocked ONLY by capacity from one independently blocked by its current costs.
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
             { reason = $"not enough action points ({apCost})"; return false; }
             if (resourceCost != null && !resourceCost.CanAfford(root))
             { reason = "not enough resources"; return false; }
+            if (building.FindFirstAvailableFacilitySlot() < 0)
+            { reason = NoFreeFacilitySlotReason; return false; }
             return true;
         }
 
