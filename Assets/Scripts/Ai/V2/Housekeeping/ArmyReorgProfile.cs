@@ -44,6 +44,9 @@ namespace Game.Ai.V2
         public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
+        // Turn-local contextual duty: this exact hero is the minimum operator set needed by a
+        // Research/Production facility on the current hex. Not a persistent strategic role.
+        public bool IsDevelopmentOperator;
         // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
         // diagnostics but are excluded from Ground Combat roster estimates.
         public WorthIt.DefenderProfile CombatProfile;
@@ -95,6 +98,12 @@ namespace Game.Ai.V2
         {
             if (Containers.Count < AiConfigV2.housekeepingMinContainersForGroup)
                 return false;
+
+            ReorgContainer localGarrison = Garrison;
+            if (localGarrison != null && localGarrison.CanReceive
+                && Containers.Any(c => !c.IsGarrison && c.IsMutableGround
+                    && c.Units.Any(u => u != null && u.IsDevelopmentOperator)))
+                return true;
 
             // §7 — a container (field OR garrison) whose commander is not its highest-capacity
             // hero is worth a zero-AP planning pass on its own.

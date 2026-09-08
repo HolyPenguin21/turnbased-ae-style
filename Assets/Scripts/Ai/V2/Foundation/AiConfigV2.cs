@@ -741,7 +741,8 @@ namespace Game.Ai.V2
 
         // --- Hero operational-role model (spec §8). A combat-leadership score from canonical hero
         //     data only: CommandRating (how large a force it can lead) plus the hero's own
-        //     AiPower.ToPowerUnit contribution (HitPoints / Initiative / Resistance / Fate —
+        //     AiPower.ToPowerUnit contribution, scaled by movement fitness against the canonical
+        //     MobileCombat MoveMax line (HitPoints / Initiative / Resistance / Fate —
         //     heroes carry NO Attack/Defense). Never card or display names. A hero carrying a
         //     Researcher/Assembler support vocation whose score is below heroRoleFlexibleCombatFloor
         //     is a SupportOperator (preserve it for base/research/production duty); a non-support

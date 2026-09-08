@@ -9,6 +9,31 @@ namespace Game.Ai.V2
         {
             List<int> armyIds = state.Meta.Keys.OrderBy(id => id).ToList();
 
+            // 0. Required development operators belong under the strongest on-hex defence.
+            // This is a contextual relocation into the existing garrison, not a permanent role;
+            // the operator remains on the facility hex and all transfer/capacity/AP rules still apply.
+            int operatorGarrisonId = armyIds.FirstOrDefault(id => state.Meta[id].IsGarrison);
+            if (state.Meta.TryGetValue(operatorGarrisonId, out ReorgContainer operatorGarrison)
+                && operatorGarrison.IsGarrison && operatorGarrison.CanReceive)
+            {
+                foreach (int srcId in armyIds)
+                {
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!IsFieldContainer(src) || !src.CanDonate)
+                        continue;
+                    foreach (ReorgUnit u in state.Roster[srcId]
+                                 .Where(x => x != null && x.IsDevelopmentOperator)
+                                 .OrderBy(x => x.Key))
+                    {
+                        VState moved = TryMoveOne(state, srcId, operatorGarrisonId, u,
+                            "protect Research/Production operator in local garrison",
+                            allowDevelopmentOperator: true);
+                        if (moved != null)
+                            yield return moved;
+                    }
+                }
+            }
+
             // 0. Commander reorder — zero-AP, membership-preserving. For any reorderable container
             // (field OR garrison) holding >= 2 heroes whose first hero is not the highest
             // CommandRating, promote the strongest hero so ComputeCapacity reads its rating.
@@ -281,7 +306,7 @@ namespace Game.Ai.V2
         private static ReorgUnit BestBenchedHeroForField(List<ReorgUnit> roster)
         {
             return roster
-                .Where(u => u != null && u.IsHero && !u.IsCommitted
+                .Where(u => u != null && u.IsHero && !u.IsCommitted && !u.IsDevelopmentOperator
                     && u.HeroRole != HeroOperationalRole.SupportOperator)
                 .OrderByDescending(u => u.HeroRole == HeroOperationalRole.CombatLeader ? 1 : 0)
                 .ThenByDescending(u => u.HeroCombatLeadership)

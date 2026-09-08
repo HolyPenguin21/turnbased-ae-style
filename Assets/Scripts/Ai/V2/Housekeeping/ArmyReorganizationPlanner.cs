@@ -21,6 +21,8 @@ namespace Game.Ai.V2
         {
             public readonly int GarrisonDeficit;
             public readonly int Legality;
+            // Required Research/Production operators exposed outside the local garrison.
+            public readonly int OperatorExposure;
             public readonly int Singletons;
             public readonly int NonViable;
             // §7 — sum over mutable multi-hero containers of (best hero CommandRating − first hero
@@ -39,11 +41,13 @@ namespace Game.Ai.V2
             public readonly float NegComposition;
             public readonly int Operations;
 
-            public Outcome(int gd, int legal, int singles, int nonViable, int commandWaste,
-                int formationDefect, IReadOnlyList<float> formationStrengths, float negComp, int operations)
+            public Outcome(int gd, int legal, int operatorExposure, int singles, int nonViable,
+                int commandWaste, int formationDefect, IReadOnlyList<float> formationStrengths,
+                float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
+                OperatorExposure = operatorExposure;
                 Singletons = singles;
                 NonViable = nonViable;
                 CommandCapacityWaste = commandWaste;
@@ -57,6 +61,7 @@ namespace Game.Ai.V2
             {
                 int c = GarrisonDeficit.CompareTo(o.GarrisonDeficit); if (c != 0) return c;
                 c = Legality.CompareTo(o.Legality); if (c != 0) return c;
+                c = OperatorExposure.CompareTo(o.OperatorExposure); if (c != 0) return c;
                 c = Singletons.CompareTo(o.Singletons); if (c != 0) return c;
                 c = NonViable.CompareTo(o.NonViable); if (c != 0) return c;
                 c = CommandCapacityWaste.CompareTo(o.CommandCapacityWaste); if (c != 0) return c;

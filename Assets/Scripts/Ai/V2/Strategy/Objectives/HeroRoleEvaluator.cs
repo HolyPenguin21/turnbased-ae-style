@@ -1,6 +1,7 @@
 using System;
 using Game.Cards;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -32,8 +33,14 @@ namespace Game.Ai.V2
             if (hero == null || !hero.IsHero)
                 return 0f;
             float ownContribution = AiPower.ToPowerUnit(hero).BasePower;
-            return hero.CommandRating * AiConfigV2.heroRoleCommandWeight
+            float staticLeadership = hero.CommandRating * AiConfigV2.heroRoleCommandWeight
                  + ownContribution * AiConfigV2.heroRoleCombatContributionWeight;
+            // A commander only contributes this leadership to a field force it can keep pace with.
+            // Reuse the canonical MobileCombat movement line instead of inventing another cutoff:
+            // MoveMax 2 is materially worse than 5, while faster heroes receive no extra inflation.
+            float mobility = Mathf.Clamp01(
+                (float)Mathf.Max(0, hero.MoveMax) / Mathf.Max(1, AiConfigV2.mobileCombatMoveMax));
+            return staticLeadership * mobility;
         }
 
         // A canonical production/research vocation granted by the hero's own abilities.

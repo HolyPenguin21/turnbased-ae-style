@@ -11,6 +11,7 @@ namespace Game.Ai.V2
         {
             int garrisonDeficit = 0;
             int legality = 0;
+            int operatorExposure = 0;
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
@@ -31,6 +32,8 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.Capacity(units, meta.IsGarrison) < units.Count)
                     legality++;
+                if (!meta.IsGarrison)
+                    operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
                 // §7 — commander order is a formation-quality concern for every reorderable
                 // container, garrison included. Accumulate before the garrison early-out.
@@ -97,8 +100,8 @@ namespace Game.Ai.V2
             // the next layer from the remainder. Every measurable reduction in enemy success can
             // win; there is deliberately no artificial viability gate.
             formationStrengths.Sort((a, b) => b.CompareTo(a));
-            return new Outcome(garrisonDeficit, legality, singles, nonViable, commandWaste,
-                formationDefect, formationStrengths, -composition, s.Transfers.Count);
+            return new Outcome(garrisonDeficit, legality, operatorExposure, singles, nonViable,
+                commandWaste, formationDefect, formationStrengths, -composition, s.Transfers.Count);
         }
 
         private static float FormationReadiness(VState state, IReadOnlyList<ReorgUnit> units)

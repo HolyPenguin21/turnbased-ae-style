@@ -54,7 +54,8 @@ namespace Game.Ai.V2
             foreach (ReorgUnit original in order)
             {
                 ReorgUnit u = from.FirstOrDefault(x => x.Key == original.Key);
-                if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted || u.IsAviation)
+                if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
+                    || u.IsDevelopmentOperator || u.IsAviation)
                     return null;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                     return null;
@@ -71,13 +72,14 @@ namespace Game.Ai.V2
         }
 
         private static VState TryMoveOne(VState state, int srcId, int dstId, ReorgUnit unit,
-            string reason)
+            string reason, bool allowDevelopmentOperator = false)
         {
             VState c = state.Clone();
             List<ReorgUnit> from = c.Roster[srcId];
             List<ReorgUnit> to = c.Roster[dstId];
             ReorgUnit u = from.FirstOrDefault(x => x.Key == unit.Key);
-            if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted || u.IsAviation)
+            if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
+                || (u.IsDevelopmentOperator && !allowDevelopmentOperator) || u.IsAviation)
                 return null;
 
             ReorgContainer srcMeta = c.Meta[srcId];
@@ -150,6 +152,7 @@ namespace Game.Ai.V2
             ReorgUnit ub = b.FirstOrDefault(x => x.Key == unitB.Key);
 
             if (ua == null || ub == null || ua.IsCommitted || ub.IsCommitted
+                || ua.IsDevelopmentOperator || ub.IsDevelopmentOperator
                 || ua.IsAviation || ub.IsAviation
                 || c.MovedUnitKeys.Contains(ua.Key) || c.MovedUnitKeys.Contains(ub.Key))
                 return null;
@@ -202,6 +205,8 @@ namespace Game.Ai.V2
         private static bool GarrisonMayRelease(List<ReorgUnit> garrison, ReorgUnit u,
             ReorgContainer meta)
         {
+            if (u.IsDevelopmentOperator)
+                return false;
             if (u.IsHero)
             {
                 if (garrison.Count <= 1)

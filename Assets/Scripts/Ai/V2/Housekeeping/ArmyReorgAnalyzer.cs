@@ -102,6 +102,7 @@ namespace Game.Ai.V2
                 }
 
                 var groupHex = new HexCoord(hexGroup.Key.Q, hexGroup.Key.R);
+                MarkDevelopmentOperators(player, groupHex, containers, unitByKey);
                 var lfg = new LocalForceGroup
                 {
                     Q = hexGroup.Key.Q,
@@ -180,6 +181,54 @@ namespace Game.Ai.V2
             }
 
             return container;
+        }
+
+        // Select the minimum set of on-hex heroes that keeps every currently installed
+        // Research/Production facility operable. Ability/facility compatibility stays owned by
+        // ResearchProductionSystem; Housekeeping only marks the contextual cards it must protect.
+        private static void MarkDevelopmentOperators(PlayerSetupData player, HexCoord hex,
+            IReadOnlyList<ReorgContainer> containers, IReadOnlyDictionary<int, UnitData> unitByKey)
+        {
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                return;
+
+            var actorsByMode = new Dictionary<ResearchProductionMode, HashSet<UnitData>>();
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            {
+                if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
+                    continue;
+                actorsByMode[mode] = new HashSet<UnitData>(
+                    ResearchProductionSystem.FindActors(player, hex, mode));
+            }
+            if (actorsByMode.Count == 0)
+                return;
+
+            var remaining = new HashSet<ResearchProductionMode>(actorsByMode.Keys);
+            var candidates = containers.SelectMany(c => c.Units)
+                .Where(u => u != null && u.IsHero && unitByKey.ContainsKey(u.Key))
+                .ToList();
+
+            while (remaining.Count > 0)
+            {
+                ReorgUnit selected = candidates
+                    .Where(u => remaining.Any(mode => actorsByMode[mode].Contains(unitByKey[u.Key])))
+                    .OrderByDescending(u => remaining.Count(
+                        mode => actorsByMode[mode].Contains(unitByKey[u.Key])))
+                    .ThenBy(u => u.HeroRole == HeroOperationalRole.SupportOperator ? 0
+                        : u.HeroRole == HeroOperationalRole.Flexible ? 1 : 2)
+                    .ThenBy(u => u.HeroCombatLeadership)
+                    .ThenBy(u => u.Key)
+                    .FirstOrDefault();
+                if (selected == null)
+                    break;
+
+                selected.IsDevelopmentOperator = true;
+                UnitData live = unitByKey[selected.Key];
+                remaining.RemoveWhere(mode => actorsByMode[mode].Contains(live));
+                candidates.Remove(selected);
+            }
         }
 
         private static List<ReorgThreatBenchmark> BuildThreatBenchmarks(
