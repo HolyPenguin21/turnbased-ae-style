@@ -61,7 +61,7 @@ namespace Game.Ai.V2
 
             // AI-MGR — the ONE shared Phase-B owner-witnessed AP workload for this tempo iteration,
             // from the REAL feasible candidate universe across BOTH lanes. The same scalar goes to
-            // the materialization lane (BestSurplus/ScoreSurplus) and the non-combat lane
+            // the materialization lane (RankedSurplus/ScoreSurplus) and the non-combat lane
             // (NonCombatCardPlayer/ScoreNonCombat), so an ApBonus Unit/Hero and an ApBonus
             // Base/Facility are priced off one number. null unless a recurring-resource carrier is
             // reachable this turn (=> both lanes keep the discounted structural fallback).
@@ -248,23 +248,22 @@ namespace Game.Ai.V2
         // §P1 — multiplier on the surplus-admission threshold for a generic garrison deposit when
         // the garrison is already a strong defensive stack (>= a fraction of BestStackPotential)
         // and no asset is threatened. 1f otherwise.
-        private static float GarrisonSaturationThresholdMult(WorldSnapshot snap, MaterializationPlan plan,
+        private static bool GarrisonSaturated(WorldSnapshot snap, MaterializationPlan plan,
             AxisDemand residual)
         {
             if (residual != null || plan == null || plan.Deploy.Kind != DeploymentKind.Garrison
                 || snap?.Self == null)
-                return 1f;
+                return false;
             bool assetThreat = snap.Threat?.Threats != null && snap.Threat.Threats.Count > 0;
             if (assetThreat)
-                return 1f;
+                return false;
             float reserve = AiConfigV2.garrisonSaturatedReserveFractionOfBestStack
                 * Mathf.Max(0f, snap.Self.BestStackPotential);
-            return reserve > 0f && snap.Self.GarrisonPower >= reserve
-                ? AiConfigV2.garrisonSaturatedSurplusThresholdMult : 1f;
+            return reserve > 0f && snap.Self.GarrisonPower >= reserve;
         }
 
         // §P1 — generic surplus must not add a scout beyond the physical IsSoloRecce portfolio
-        // cap, across EVERY chain kind (BestSurplus treats a recce card as ScoutCapability and
+        // cap, across EVERY chain kind (RankedSurplus treats a recce card as ScoutCapability and
         // will build NewArmy / ReusableShell / Attach / Generate placements for it — the Recon
         // DemandLayer portfolio cap never sees those). Primary bound is the CURRENT desired
         // concurrency + a warm spare; ReconConcurrencyPolicy.HardCap is the absolute ceiling.
@@ -315,8 +314,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                float satMult = GarrisonSaturationThresholdMult(snap, plan, residual);
-                if (residual == null && satMult > 1f
+                if (GarrisonSaturated(snap, plan, residual)
                     && plan.Score < AiConfigV2.garrisonSaturatedMinUtility)
                 {
                     if (verbose)
