@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -20,7 +21,8 @@ namespace Game.Ai.V2
     //
     //  HOW A CARD IS PICKED
     //      For every Equipment offering: find its BEST legal recipient (the one with the largest
-    //      projected power gain G), score EV = p*G - A_total - apCost, keep it if EV > margin.
+    //      projected power gain G), score EV = p*G*persistence - A_total - resourceCost - apCost,
+    //      keep it if EV > margin.
     //      Phase A then executes the surviving opportunities in descending BaseValue, re-scoring
     //      after each Challenge. "Which card gets created" == "highest EV that still passes the
     //      live gates".
@@ -28,9 +30,10 @@ namespace Game.Ai.V2
     //      p       = ResearchProductionSystem.EstimateSuccessChance  (deterministic)
     //      G       = projected BasePower(recipient WITH the equipment) - BasePower(WITHOUT),
     //                * recipient importance (raid-bound field unit > field > garrison > hand card)
-    //      A_total = value of the best ALTERNATIVE use of the same resources this turn — first
-    //                pass: strongest affordable hand Unit card, discounted by surplus depth
-    //                (deep surplus -> ~0). This is the "upgrade vs. play a new unit" comparison.
+    //      A_total = MARGINAL value actually displaced by staking these resources this turn:
+    //                strongest affordable hand Unit before the stake minus strongest still
+    //                affordable after it, discounted by surplus depth (deep surplus -> ~0).
+    //                AP is deliberately excluded from this delta because it is priced separately.
     //
     //  NOT a scoring gate: the enemy-on-hex rule (facility contested) — that is a Phase-A
     //  execution precondition only.
@@ -145,8 +148,13 @@ namespace Game.Ai.V2
         {
             float surplusRetain = 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
-            float aTotal = AiConfigV2.devAlternativeWeight * surplusRetain
-                * BestAffordableHandUnitPower(hand, root);
+            // Resource opportunity cost is marginal: only charge power that this exact stake
+            // makes unavailable. Charging the strongest currently affordable Unit unconditionally
+            // rejected upgrades even when both actions could still be paid for.
+            float bestBeforeStake = BestAffordableHandUnitPower(hand, root, null);
+            float bestAfterStake = BestAffordableHandUnitPower(hand, root, op.Card?.resourceCost);
+            float displacedAlternative = Mathf.Max(0f, bestBeforeStake - bestAfterStake);
+            float aTotal = AiConfigV2.devAlternativeWeight * surplusRetain * displacedAlternative;
             // Challenge AP is certain; attach AP is paid only after a successful roll.
             float challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
             float expectedAttachAp = op.SuccessChance * Mathf.Max(0, op.Card.activationApCost);
@@ -154,7 +162,12 @@ namespace Game.Ai.V2
 
             op.AlternativeValue = aTotal;
             op.ResourceCostValue = StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost);
-            op.Ev = op.SuccessChance * op.ExpectedGain - aTotal - op.ResourceCostValue
+            // Equipment is a persistent improvement, while its AP/resource payment is one-shot.
+            // Keep the raw projected delta in ExpectedGain for diagnostics and convert it to
+            // lifetime strategic value only at the EV boundary.
+            float persistentExpectedGain = op.SuccessChance * op.ExpectedGain
+                * AiConfigV2.devEquipmentPersistenceMultiplier;
+            op.Ev = persistentExpectedGain - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }
@@ -253,20 +266,38 @@ namespace Game.Ai.V2
             ExpectedGain = Mathf.Max(0f, gain),
         };
 
-        private static float BestAffordableHandUnitPower(AiHandData hand, PlayerRoot root)
+        // Strongest hand Unit payable after a hypothetical resource commitment. AP is checked
+        // against the live pool in both passes: Development's own AP is already charged explicitly
+        // in Score, so subtracting it here would count AP scarcity twice.
+        private static float BestAffordableHandUnitPower(AiHandData hand, PlayerRoot root,
+            ResourceCost committedResources)
         {
-            if (hand?.Hand == null)
+            if (hand?.Hand == null || root == null)
                 return 0f;
             float best = 0f;
             foreach (CardData c in hand.Hand)
             {
                 if (c?.Definition == null || c.Definition.cardType != CardType.Unit) continue;
                 if (!root.CanSpendActionPoints(c.EffectivePlayApCost)) continue;
-                ResourceCost cost = c.EffectivePlayResourceCost;
-                if (cost != null && !cost.CanAfford(root)) continue;
+                if (!CanAffordAfterCommitment(c.EffectivePlayResourceCost, committedResources, root)) continue;
                 best = Mathf.Max(best, AiPower.ToPowerUnit(c.Definition).BasePower);
             }
             return best;
+        }
+
+        private static bool CanAffordAfterCommitment(ResourceCost candidate, ResourceCost committed,
+            PlayerRoot root)
+        {
+            if (root == null)
+                return false;
+            if (candidate == null)
+                return true;
+
+            int Committed(ResourceType type) => committed != null ? committed.Get(type) : 0;
+            return root.GetResource(ResourceType.Human) - Committed(ResourceType.Human) >= candidate.human
+                && root.GetResource(ResourceType.Energy) - Committed(ResourceType.Energy) >= candidate.energy
+                && root.GetResource(ResourceType.Materials) - Committed(ResourceType.Materials) >= candidate.materials
+                && root.GetResource(ResourceType.Tech) - Committed(ResourceType.Tech) >= candidate.tech;
         }
     }
 }
