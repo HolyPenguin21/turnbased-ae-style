@@ -218,13 +218,26 @@ namespace Game.Ai.V2
             if (def.cardType == CardType.Facility)
             {
                 HexCoord? at = null;
+                int bestReadiness = -1;
                 string why = "noOwnedBase";
                 foreach (HexCoord h in ownBaseHexes)
                 {
-                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r,
+                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string r,
                             requireCardInHand: generation == null))
-                    { at = h; break; }
-                    if (r != null) why = r;
+                    {
+                        if (r != null) why = r;
+                        continue;
+                    }
+
+                    // Prefer the base where this Facility's matching Research/Production actor
+                    // already stands: placement then unlocks utility immediately. Coordinates are
+                    // only the deterministic final tie-break through ownBaseHexes ordering.
+                    int readiness = FacilityImmediateReadiness(def, player, h);
+                    if (at == null || readiness > bestReadiness)
+                    {
+                        at = h;
+                        bestReadiness = readiness;
+                    }
                 }
                 if (at == null)
                 {
@@ -420,6 +433,24 @@ namespace Game.Ai.V2
         }
 
         // ------------------------------------------------------------------ helpers ----
+
+        private static int FacilityImmediateReadiness(
+            CardDefinition def, PlayerSetupData player, HexCoord hex)
+        {
+            if (def?.grantedAbilities == null || player == null)
+                return 0;
+
+            int actors = 0;
+            if (def.grantedAbilities.Contains(
+                    ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research)))
+                actors += ResearchProductionSystem.FindActors(
+                    player, hex, ResearchProductionMode.Research).Count;
+            if (def.grantedAbilities.Contains(
+                    ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)))
+                actors += ResearchProductionSystem.FindActors(
+                    player, hex, ResearchProductionMode.Production).Count;
+            return actors;
+        }
 
         private static List<HexCoord> OwnedBaseHexes(WorldSnapshot snap, PlayerSetupData player)
         {
