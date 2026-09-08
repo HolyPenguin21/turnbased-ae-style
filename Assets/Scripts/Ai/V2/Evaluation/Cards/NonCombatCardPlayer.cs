@@ -62,14 +62,16 @@ namespace Game.Ai.V2
             _ => NonCombatRole.Equipment,
         };
 
-        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayKind k, CardData card,
-            AiHandData hand, float bestEquipmentUpgrade, float apCost, ResourceCost resCost,
-            GenerationStep generation = null, float? witnessedUsefulApDemand = null)
+        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
+            float apCost, ResourceCost resCost, GenerationStep generation = null,
+            float? witnessedUsefulApDemand = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
                 RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation,
-                witnessedUsefulApDemand, apCost, resCost);
+                witnessedUsefulApDemand, apCost, resCost,
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type));
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
@@ -208,7 +210,7 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Aviation, TargetHex = hx, Generation = generation,
                     ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, PlayKind.Aviation, card, hand, 0f,
+                    Score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
                         totalAp, totalRes, generation, witnessedUsefulApDemand),
                     StableKey = $"{sourceKey}:aviation:{hx.Q},{hx.R}",
                     Explain = $"{def.displayName} -> airfield ({hx.Q},{hx.R})",
@@ -248,7 +250,7 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Facility, TargetHex = at.Value, Generation = generation,
                     ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, PlayKind.Facility, card, hand, 0f,
+                    Score = Score(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
                         totalAp, totalRes, generation, witnessedUsefulApDemand),
                     StableKey = $"{sourceKey}:facility:{at.Value.Q},{at.Value.R}",
                     Explain = $"{def.displayName} -> Base ({at.Value.Q},{at.Value.R})",
@@ -275,7 +277,7 @@ namespace Game.Ai.V2
                 {
                     Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
                     ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, PlayKind.Base, card, hand, 0f,
+                    Score = Score(snap, player, root, ctx, PlayKind.Base, card, hand, 0f,
                         totalAp, totalRes, generation, witnessedUsefulApDemand),
                     StableKey = $"{sourceKey}:base:{at.Value.Q},{at.Value.R}",
                     Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
@@ -299,7 +301,7 @@ namespace Game.Ai.V2
                     Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
                     TargetHex = host.Value.hex, Generation = generation,
                     ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, PlayKind.Equipment, card, hand, host.Value.upgrade,
+                    Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, host.Value.upgrade,
                         totalAp, totalRes, generation, witnessedUsefulApDemand),
                     StableKey = $"{sourceKey}:equipment:{host.Value.stableKey}",
                     Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
