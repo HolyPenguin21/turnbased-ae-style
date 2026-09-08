@@ -190,6 +190,10 @@ namespace Game.Ai.V2
                         {
                             exec.Succeeded = exec.StateChanged = exec.Progressed = exec.Drawn = true;
                             result.CardsDrawn++;
+                            // A terminal-boundary draw may have registered a hand opportunity.
+                            // Stop this single-pass Phase B and hand it to the existing bounded
+                            // reaction pass; this is not the deferred per-task mid-turn loop.
+                            exec.Interrupt = StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber);
                         }
                         else exec.FailReason = "TryCycle refused";
                         break;
