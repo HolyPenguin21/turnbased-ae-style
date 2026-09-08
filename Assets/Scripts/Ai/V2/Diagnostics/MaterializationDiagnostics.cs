@@ -29,7 +29,7 @@ namespace Game.Ai.V2
             int opDeliver = 0, resReject = 0;
             float minDirectNeed = float.PositiveInfinity;
             var failures = new Dictionary<string, int>();
-            var verifiedResourceBlocks = new HashSet<ResourceType>();
+            var verifiedResourceBlocks = new Dictionary<ResourceType, int>();
             bool solo = demand.Capability == CapabilityKind.ScoutCapability;
             foreach (CardData card in hand.Hand.Where(c => c?.Definition != null))
             {
@@ -91,8 +91,10 @@ namespace Game.Ai.V2
                                     continue;
                                 int available = UnityEngine.Mathf.FloorToInt(
                                     Game.Ai.AiResourceReservation.Available(root, player, type));
-                                if (available < need)
-                                    verifiedResourceBlocks.Add(type);
+                                if (available < need
+                                    && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
+                                        || need < priorNeed))
+                                    verifiedResourceBlocks[type] = need;
                             }
                             continue;
                         }
@@ -120,8 +122,10 @@ namespace Game.Ai.V2
                                 continue;
                             int available = UnityEngine.Mathf.FloorToInt(
                                 Game.Ai.AiResourceReservation.Available(root, player, type));
-                            if (available < need)
-                                verifiedResourceBlocks.Add(type);
+                            if (available < need
+                                && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
+                                    || need < priorNeed))
+                                verifiedResourceBlocks[type] = need;
                         }
                     }
                 }
@@ -132,10 +136,13 @@ namespace Game.Ai.V2
             // ignores unverified calls. Arm+consume only deficits this diagnostic actually proved.
             if (strategicStarvationAxis)
             {
-                foreach (ResourceType type in verifiedResourceBlocks)
+                foreach (KeyValuePair<ResourceType, int> block in verifiedResourceBlocks)
                 {
-                    ResourceStarvationRegistry.VerifyBlock(player, type);
-                    ResourceStarvationRegistry.RecordBlock(player, type);
+                    ResourceType type = block.Key;
+                    float available = Game.Ai.AiResourceReservation.Available(root, player, type);
+                    float income = snap?.Self != null ? snap.Self.PerTurnIncome.Get(type) : 0f;
+                    ResourceStarvationRegistry.RecordVerifiedBlock(player, type, block.Value,
+                        available, income, demand.Value, snap?.TurnNumber ?? 0);
                 }
             }
 

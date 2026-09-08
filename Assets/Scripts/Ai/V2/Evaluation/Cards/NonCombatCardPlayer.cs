@@ -69,7 +69,7 @@ namespace Game.Ai.V2
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
                 RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation,
                 witnessedUsefulApDemand, apCost, resCost,
-                type => StrategicSpendability.SpendableAmount(player, root, ctx, type));
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (!string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))

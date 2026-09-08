@@ -19,11 +19,32 @@ namespace Game.Ai.V2
     //    · no enemy / TrueWorld info  — only reads our own chain/resource diagnostics
     //    · never a global inflation   — one verified resource, one bounded Economy value bump
     // ===========================================================================================
+    internal readonly struct ResourceBlockEvidence
+    {
+        public readonly float Required;
+        public readonly float AvailableAtBlock;
+        public readonly float IncomePerTurn;
+        public readonly float DemandValue;
+        public readonly int Turn;
+
+        public ResourceBlockEvidence(float required, float availableAtBlock, float incomePerTurn,
+            float demandValue, int turn)
+        {
+            Required = Mathf.Max(0f, required);
+            AvailableAtBlock = Mathf.Max(0f, availableAtBlock);
+            IncomePerTurn = Mathf.Max(0f, incomePerTurn);
+            DemandValue = Mathf.Max(0f, demandValue);
+            Turn = turn;
+        }
+    }
+
     internal static class ResourceStarvationRegistry
     {
         private sealed class State
         {
             public readonly Dictionary<ResourceType, float> Pressure = new Dictionary<ResourceType, float>();
+            public readonly Dictionary<ResourceType, ResourceBlockEvidence> CurrentBlocks =
+                new Dictionary<ResourceType, ResourceBlockEvidence>();
             public readonly HashSet<ResourceType> VerifiedPending = new HashSet<ResourceType>();
             // Production diagnostics enable strict evidence mode. Standalone pure tests that call
             // RecordBlock directly keep the original simple semantics unless they explicitly enter
@@ -67,6 +88,44 @@ namespace Game.Ai.V2
             // verified mode (pure harnesses / isolated callers), retain the original API behaviour.
             if (s.RequireVerifiedEvidence && !s.VerifiedPending.Remove(type))
                 return;
+            AddPressure(s, type);
+        }
+
+        // Exact current-turn evidence used by StrategicCardEvaluator to price the marginal value of
+        // NOT consuming stock that an unresolved AGG/RCN capability is trying to accumulate.
+        // Diagnostics remains the only producer; this registry records facts and does not score cards.
+        public static void RecordVerifiedBlock(PlayerSetupData player, ResourceType type, float required,
+            float available, float incomePerTurn, float demandValue, int turn)
+        {
+            if (player == null || required <= available)
+                return;
+            State s = Get(player);
+            s.RequireVerifiedEvidence = true;
+            s.VerifiedPending.Remove(type);
+            AddPressure(s, type);
+
+            var next = new ResourceBlockEvidence(required, available, incomePerTurn, demandValue, turn);
+            if (s.CurrentBlocks.TryGetValue(type, out ResourceBlockEvidence current)
+                && current.Turn == turn
+                && (current.DemandValue > next.DemandValue
+                    || (Mathf.Approximately(current.DemandValue, next.DemandValue)
+                        && current.Required <= next.Required)))
+                return;
+            s.CurrentBlocks[type] = next;
+        }
+
+        public static bool TryGetCurrentBlock(PlayerSetupData player, ResourceType type, int turn,
+            out ResourceBlockEvidence evidence)
+        {
+            evidence = default;
+            return player != null
+                && ByPlayer.TryGetValue(player, out State s)
+                && s.CurrentBlocks.TryGetValue(type, out evidence)
+                && evidence.Turn == turn;
+        }
+
+        private static void AddPressure(State s, ResourceType type)
+        {
             s.Pressure.TryGetValue(type, out float cur);
             s.Pressure[type] = Mathf.Clamp01(cur + AiConfigV2.starvationHitGain);
         }
@@ -79,6 +138,7 @@ namespace Game.Ai.V2
             if (s.LastDecayTurn == turn)
                 return;
             s.LastDecayTurn = turn;
+            s.CurrentBlocks.Clear();
             // Strict mode is re-enabled by the first real diagnostic of the new turn. Clearing it
             // here keeps isolated direct RecordBlock tests/callers backward compatible.
             s.RequireVerifiedEvidence = false;

@@ -627,6 +627,7 @@ namespace Game.Ai.V2
             //    hidden cross-mission responsibility. Re-pack is bounded by maxReallocIterations +
             //    the AllocationSession's own rejected/cooldown/repriced/fingerprint state.
             var provisioned = new List<ProvisionedMission>();
+            var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
             int reallocPass = 0;
             while (true)
             {
@@ -663,6 +664,8 @@ namespace Game.Ai.V2
                     else
                     {
                         anyFailure = true;
+                        provisioningFailures.TryGetValue(result.Failure.Kind, out int failureCount);
+                        provisioningFailures[result.Failure.Kind] = failureCount + 1;
                         bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
                             snapshot, player, fe.Mission, result.Failure);
                         if (poolWide)
@@ -804,6 +807,9 @@ namespace Game.Ai.V2
             // count, not just the last pack's.
             main.MissionsFunded = fundedKeysThisTurn.Count;
             main.Provisioned = provisioned.Count;
+            foreach (KeyValuePair<ProvisionFailureKind, int> failure in provisioningFailures)
+                for (int i = 0; i < failure.Value; i++)
+                    main.RecordProvisionFailure(failure.Key);
             main.ExecutionAttempts = allExecuted.Count(MissionRevalidator.WasAttempt);
             main.ExecutionsSucceeded = allExecuted.Count(MissionRevalidator.WasGenuineExecution);
             main.ExecutionsStaleOrSkipped = allExecuted.Count(MissionRevalidator.WasStaleOrSkipped);
