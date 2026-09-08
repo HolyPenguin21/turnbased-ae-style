@@ -243,7 +243,7 @@ namespace Game.Ai.V2
 
             if (def.cardType == CardType.Equipment && def.equipment != null)
             {
-                (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card);
+                (UnitData unit, HexCoord hex, float upgrade)? host = BestEquipmentHost(player, root, card, snap);
                 if (host == null)
                 {
                     blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
@@ -413,8 +413,9 @@ namespace Game.Ai.V2
         // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor via EquipmentSystem.Predict),
         // name only as the final deterministic tie-break.
         private static (UnitData unit, HexCoord hex, float upgrade)? BestEquipmentHost(
-            PlayerSetupData player, PlayerRoot root, CardData equipCard)
+            PlayerSetupData player, PlayerRoot root, CardData equipCard, WorldSnapshot snap)
         {
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             (UnitData unit, HexCoord hex, float upgrade)? best = null;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
