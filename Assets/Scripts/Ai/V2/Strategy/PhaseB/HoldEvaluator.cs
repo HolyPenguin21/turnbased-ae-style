@@ -1,6 +1,7 @@
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
