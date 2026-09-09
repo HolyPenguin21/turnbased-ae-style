@@ -84,9 +84,8 @@ namespace Game.Ai.V2
                 ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
             };
             List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
-                .Where(a => a != null && a.HasHero && !a.IsPrison
-                    && !a.IsAir && !a.IsAirfield
-                    && (!a.IsGarrison || a.Hex.Equals(t.TargetHex))).ToList();
+                .Where(a => a != null && (a.IsMobileEconomyBuilder
+                    || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
             if (heroes != null && heroes.Count > 0)
             {
                 ArmySnapshot nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
