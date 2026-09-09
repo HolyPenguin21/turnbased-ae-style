@@ -213,9 +213,10 @@ namespace Game.Ai.V2
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation)
+            ProvisioningSession session, TentativeAllocation allocation,
+            ActorCommitments durableCommitments = null)
         {
-            PrepareScoutAssignments(player, root, ctx, session, allocation);
+            PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
             PrepareRaidAssignments(session, allocation);
         }
 
@@ -226,7 +227,8 @@ namespace Game.Ai.V2
         // is now threaded through so AssignFunded can size/probe the air-actor pool (Energy/AP gates)
         // the same way ReconAirReservationPrepass already does for capacity sizing.
         private static void PrepareScoutAssignments(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisioningSession session, TentativeAllocation allocation)
+            ProvisioningSession session, TentativeAllocation allocation,
+            ActorCommitments durableCommitments)
         {
             var open = new List<FundedEntry>();
             if (allocation?.Funded != null)
@@ -242,7 +244,7 @@ namespace Game.Ai.V2
 
             ReconAssignmentResult result = ReconAssignmentPlanner.AssignFunded(
                 session.Snapshot, ctx, player, open, session.ClaimedArmyIds, root,
-                session.Successful.Values.ToList());
+                session.Successful.Values.ToList(), durableCommitments?.ClaimedArmyIdSet);
             session.SetAssignment(result);
         }
 
