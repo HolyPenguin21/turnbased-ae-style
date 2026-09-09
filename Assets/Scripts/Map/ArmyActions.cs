@@ -18,11 +18,17 @@ namespace Game.Map
     {
         public const int CreateArmyApCost = 2;
 
-        // Same rule ArmyViewerModalUI.CreateArmy always enforced: an empty, non-garrison army
-        // at `hex`, costing CreateArmyApCost. A whole-fold may have left an ordinary registered
-        // field shell empty; reuse that physical container before allocating another ArmyData so
-        // repeated split/fold cycles do not grow the registry forever. Reuse preserves the action
-        // cost and stable army identity/name; only stale per-use state is cleared.
+        // Allocates a brand-new empty, non-garrison army at `hex`, costing CreateArmyApCost.
+        // One job, no reuse scan: every caller here genuinely wants a NEW container.
+        //  - Human "Create Army" button (ArmyViewerModalUI): the player must be able to stage as
+        //    many empty armies as they like; an earlier fold-the-empty-army-back-into-itself
+        //    scan made the button a silent no-op (and still charged AP) from the second click on.
+        //  - AI card play (CardPlayExecutor, DeploymentKind.NewArmy): the V2 planner already has
+        //    a first-class DeploymentKind.ReusableShell path (see ReusableArmySelector /
+        //    MaterializationCandidateBuilder) that redeploys into an existing PAID empty shell
+        //    for 0 AP and honours ActorCommitments. Reaching NewArmy means the planner
+        //    deliberately chose a fresh army over any reusable shell — grabbing one here anyway
+        //    would double-charge its AP and could hijack a shell another mission has claimed.
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
         {
             if (owner == null || catalog == null)
@@ -32,29 +38,6 @@ namespace Game.Map
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
                 return null;
             root.SpendActionPoints(CreateArmyApCost);
-
-            ArmyData reusable = ArmyRegistry.AllForOwner(owner)
-                .Where(a => a != null && a.Members.Count == 0
-                    && !a.IsGarrison && !a.IsPrison && !a.IsAirfield && !a.IsAirArmy)
-                .OrderByDescending(a => a.Hex.Equals(hex))
-                .ThenBy(a => a.Id)
-                .FirstOrDefault();
-            if (reusable != null)
-            {
-                HexCoord oldHex = reusable.Hex;
-                reusable.HasActivatedThisTurn = false;
-                reusable.LastAirStrikeHex = null;
-                reusable.LastAirStrikeAttacked = false;
-                reusable.SavedArrangement.Clear();
-                if (!oldHex.Equals(hex))
-                    ArmyRegistry.MoveArmy(reusable, hex);
-                if (reusable.Controller == null)
-                    hexSelectionController?.CreateArmyMarker(reusable);
-                hexSelectionController?.RestackArmiesOn(oldHex, null);
-                if (!oldHex.Equals(hex))
-                    hexSelectionController?.RestackArmiesOn(hex, null);
-                return reusable;
-            }
 
             var takenNames = ArmyRegistry.AllForOwner(owner).Select(a => a.Name);
             var army = new ArmyData
