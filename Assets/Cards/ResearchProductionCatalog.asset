@@ -23,6 +23,8 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.mechanical.nuclear-engine
     factionRestriction: 2
+  - cardKey: neutral.science.unit.ashdrifter
+    factionRestriction: 2
   productionCards:
   - cardKey: neutral.equipment.bio.flamer
     factionRestriction: 2

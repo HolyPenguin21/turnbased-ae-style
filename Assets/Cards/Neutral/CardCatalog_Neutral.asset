@@ -1129,6 +1129,60 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
+  - id: 23
+    authoredKey: neutral.science.unit.ashdrifter
+    displayName: s Ash Drifter
+    art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
+    detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
+    faction: 3
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 2
+    range: 1
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 04000000
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - CriticalDamage
+      - AA
+      addAbilities: []
+      statChanges:
+      - stat: 0
+        amount: 9
+        isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}

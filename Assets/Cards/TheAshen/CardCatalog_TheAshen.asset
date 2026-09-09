@@ -35,7 +35,7 @@ MonoBehaviour:
     commandRating: 2
     fate: 2
     attack: 0
-    defenseRating: 3
+    defenseRating: 2
     resistanceRating: 1
     range: 0
     hitPoints: 8
@@ -83,7 +83,7 @@ MonoBehaviour:
     commandRating: 2
     fate: 2
     attack: 0
-    defenseRating: 2
+    defenseRating: 1
     resistanceRating: 4
     range: 0
     hitPoints: 8
@@ -599,7 +599,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: 
-    displayName: LI Ash Drifter
+    displayName: Ash Drifter
     art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
     detailArt: {fileID: 21300000, guid: c5c003c09a32310409a57721971c69d7, type: 3}
     faction: 4
