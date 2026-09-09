@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -64,6 +65,9 @@ namespace Game.Ai.V2
         public float EconomyTravelCost;
         public float EconomyThreatExposure;
         public float EconomyHeroOpportunityCost;
+        // Analysis-owned structural routes for the selected site. Demand applies intent/commitment
+        // policy; no downstream stage has to query Provisioning or live registries to rediscover it.
+        public IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes;
 
         // DEV OPERATOR: preserves the exact Research/Production lane that raised the prerequisite.
         // Null for every unrelated demand and for legacy/test demands that intentionally do not
