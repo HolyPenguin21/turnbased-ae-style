@@ -27,6 +27,12 @@ MonoBehaviour:
     description: +2 DMG vs Armor
   - tag: Pyrokinetic
     description: +2 DMG vs Bio targets
+  - tag: Splash
+    description: 
+  - tag: Scorcher
+    description: 
+  - tag: RaiseTheRots
+    description: 
   - tag: r1s0
     description: Vision +1
   - tag: r1s4
@@ -59,9 +65,22 @@ MonoBehaviour:
     description: Collects Materials resource each turn
   - tag: CollectTech
     description: Collects Tech resource each turn
+  - tag: Regeneration
+    description: 
+  - tag: ProduceHuman
+    description: 
+  - tag: ProduceEnergy
+    description: 
+  - tag: ProduceMaterials
+    description: 
+  - tag: ProduceTech
+    description: 
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
   berserkDefenseLoss: 1
   hyperkineticBonusDamage: 2
   pyrokineticBonusDamage: 2
+  raiseTheRotsUnitCatalog: {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
+  raiseTheRotsUnitKey: ashen.unit.ashdrifter
+  raiseTheRotsUnitsPerSummoner: 2

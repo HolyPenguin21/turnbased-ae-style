@@ -143,7 +143,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities: []
+    grantedAbilities:
+    - ProduceHuman
     resourceYield:
       human: 0
       energy: 0
@@ -804,6 +805,7 @@ MonoBehaviour:
     unitTypeTags: 0000000003000000
     grantedAbilities:
     - Pyrokinetic
+    - Scorcher
     resourceYield:
       human: 0
       energy: 0
@@ -1195,7 +1197,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0100000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Splash
     resourceYield:
       human: 0
       energy: 0

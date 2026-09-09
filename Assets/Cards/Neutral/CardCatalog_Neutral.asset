@@ -364,9 +364,11 @@ MonoBehaviour:
       - ShockAttack
       - Hyperkinetic
       - Pyrokinetic
+      - Scorcher
       - AA
       addAbilities:
       - Pyrokinetic
+      - Scorcher
       statChanges:
       - stat: 0
         amount: 1
