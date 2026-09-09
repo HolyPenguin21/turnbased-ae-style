@@ -30,8 +30,8 @@ namespace Game.Ai.V2
     //      building-level ability, so a plain Base card would NOT satisfy it).
     //
     //  GAME-RULE PRECONDITION: founding a Base and building an extraction facility both need one
-    //  of the player's own HERO-LED armies on the target hex. V2 has no economy/development mover
-    //  mission yet, so this fires only when a hero is already in position.
+    //  of the player's own HERO-LED armies on the target hex. EconomyMissionPlanner delivers a
+    //  mobile hero when needed; this owner performs only the final, already-local transaction.
     // ===========================================================================================
     internal sealed class InfraFulfillResult : IV2ActionResult
     {
@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                 return null;
 
             if (!demand.TargetHex.HasValue
-                || !CandidateEconomyHexes(snap, player, type.Value, demand.TargetHex)
+                || !CandidateEconomyHexes(snap, type.Value, demand.TargetHex)
                     .Any(h => h.Equals(demand.TargetHex.Value))
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
                 return null;
@@ -200,22 +200,16 @@ namespace Game.Ai.V2
             };
         }
 
-        // Known unbuilt resource sites of `type`, hero-preferred, deterministic order. The demand's
-        // own TargetHex is tried first when it is a same-type site.
-        private static IEnumerable<HexCoord> CandidateEconomyHexes(WorldSnapshot snap, PlayerSetupData player,
+        // Canonical fog-honest extraction opportunities prepared by Analysis. No facility,
+        // ownership, slot-capacity or marginal-yield rule is reconstructed here.
+        private static IEnumerable<HexCoord> CandidateEconomyHexes(WorldSnapshot snap,
             ResourceType type, HexCoord? preferred)
         {
-            if (snap?.Known?.ResourceHexes == null)
-                yield break;
-            var built = new HashSet<HexCoord>();
-            if (snap.Known.Buildings != null)
-                foreach (AiMapMemory.KnownBuilding kb in snap.Known.Buildings)
-                    if (kb.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type)))
-                        built.Add(kb.Hex);
-
-            var sites = snap.Known.ResourceHexes
-                .Where(kv => kv.Value == type && !built.Contains(kv.Key))
-                .Select(kv => kv.Key)
+            var sites = (snap?.Economy?.ExtractionOpportunities
+                    ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                .Where(site => site.ResourceType == type
+                    && site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon)
+                .Select(site => site.Hex)
                 .OrderBy(h => preferred.HasValue && h.Equals(preferred.Value) ? 0 : 1)
                 .ThenBy(h => h.Q).ThenBy(h => h.R)
                 .ToList();

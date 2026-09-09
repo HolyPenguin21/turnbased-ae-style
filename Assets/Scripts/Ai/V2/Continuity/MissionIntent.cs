@@ -624,8 +624,11 @@ namespace Game.Ai.V2
                             ResourceType = ei.ResourceType });
                     bool targetValid = ei != null && (ei.Kind == EconomyTaskKind.FoundBase
                         ? snap?.Self?.Hand?.Contains(ei.BuildCard) == true
-                        : snap?.Known?.ResourceHexes?.Any(x => x.Key.Equals(ei.TargetHex)
-                            && (!ei.ResourceType.HasValue || x.Value == ei.ResourceType.Value)) == true);
+                            && snap?.Economy?.BaseOpportunities?.Any(
+                                site => site.Hex.Equals(ei.TargetHex)) == true
+                        : ei.ResourceType.HasValue
+                            && snap?.Economy?.IsExtractionActionable(
+                                ei.TargetHex, ei.ResourceType.Value) == true);
                     if (completed || actor == null || !targetValid)
                     {
                         if (ei?.Loaned == true && state.TryGet(ei.LoanSource, out MissionIntent lender)

@@ -106,6 +106,11 @@ namespace Game.EditorTests
                 new KeyValuePair<HexCoord, ResourceType>(new HexCoord(4, 4), ResourceType.Tech),
             };
             snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>();
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(new HexCoord(-5, -5), ResourceType.Human, 1),
+                ExtractionOpportunity(new HexCoord(4, 4), ResourceType.Tech, 1),
+            };
 
             AxisDemand selected = DemandLayer.EconomyDemands(snapshot, new DesireBreakdown(), null, null, null)
                 .First();
@@ -145,9 +150,140 @@ namespace Game.EditorTests
             {
                 new Game.Ai.AiMapMemory.KnownBuilding(site, null, false, null),
             };
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(site, ResourceType.Human, 1),
+            };
 
             Assert.That(DemandLayer.EconomyDemands(snapshot, new DesireBreakdown(), null, null, null),
                 Is.Not.Empty);
+        }
+
+        [Test]
+        public void MarginalCollection_SaturatedCitadelAddsNothing()
+        {
+            Assert.That(IncomeProjection.MarginalBuildingCollection(
+                effectiveHexYield: 1, currentCollectionCapacity: 1), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void MarginalCollection_OwnArmyAlreadyCollectingIsNotGrowth()
+        {
+            Assert.That(IncomeProjection.MarginalOwnerCollectionAtHex(
+                effectiveHexYield: 1, currentBuildingCollectionCapacity: 0,
+                additionalBuildingCollectionCapacity: 1, ownerArmyCollectorCount: 1,
+                ownerArmiesCanCollect: true), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void MarginalCollection_PartialYieldIsCappedByRemainingPool()
+        {
+            Assert.That(IncomeProjection.MarginalBuildingCollection(
+                effectiveHexYield: 3, currentCollectionCapacity: 2,
+                additionalCollectionCapacity: 4), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EconomyStanding_RejectsZeroMarginalOpportunity()
+        {
+            HexCoord site = new HexCoord(7, 5);
+            var standing = new EconomyStanding
+            {
+                ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+                {
+                    ExtractionOpportunity(site, ResourceType.Human, 0),
+                },
+            };
+
+            Assert.That(standing.IsExtractionActionable(site, ResourceType.Human), Is.False);
+        }
+
+        [Test]
+        public void EconomyDemand_NoMobileBuilderRequestsExistingHeroCapability()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            HexCoord site = new HexCoord(3, 1);
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(site, ResourceType.Human, 1),
+            };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.Capability, Is.EqualTo(CapabilityKind.Hero));
+            Assert.That(demand.RequestingAxis, Is.EqualTo(DesireAxis.Economy));
+            Assert.That(demand.TargetHex, Is.EqualTo(site));
+        }
+
+        [Test]
+        public void EconomyDemand_FieldHeroKeepsInfrastructureDemand()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            HexCoord site = new HexCoord(3, 1);
+            snapshot.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot
+                {
+                    ArmyId = 11, Hex = new HexCoord(1, 1), HasHero = true,
+                    IsGarrison = false, IsPrison = false, IsAir = false,
+                    IsAirfield = false, MemberCount = 2,
+                },
+            };
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(site, ResourceType.Human, 1),
+            };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.Capability,
+                Is.EqualTo(CapabilityKind.EconomicInfrastructure));
+        }
+
+        [Test]
+        public void EconomyDemand_GarrisonHeroBuildsOnlyAtItsOwnHex()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            HexCoord local = new HexCoord(3, 1);
+            snapshot.Self.Armies = new List<ArmySnapshot>
+            {
+                new ArmySnapshot
+                {
+                    ArmyId = 10, Hex = local, HasHero = true,
+                    IsGarrison = true, MemberCount = 1,
+                },
+            };
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(local, ResourceType.Human, 1),
+            };
+
+            AxisDemand localDemand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+            Assert.That(localDemand.Capability,
+                Is.EqualTo(CapabilityKind.EconomicInfrastructure));
+
+            HexCoord remote = new HexCoord(5, 1);
+            snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
+            {
+                ExtractionOpportunity(remote, ResourceType.Human, 1),
+            };
+            AxisDemand remoteDemand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+            Assert.That(remoteDemand.Capability, Is.EqualTo(CapabilityKind.Hero));
+        }
+
+        [Test]
+        public void KnownBuilding_PreservesObservedCollectionAndSlotCapacity()
+        {
+            var known = new Game.Ai.AiMapMemory.KnownBuilding(
+                new HexCoord(1, 2), null, true, null,
+                new[] { 1, 2, 3, 4 }, freeFacilitySlots: 0);
+
+            Assert.That(known.CollectedAmount(ResourceType.Materials), Is.EqualTo(3));
+            Assert.That(known.FreeFacilitySlots, Is.EqualTo(0));
         }
 
         [Test]
@@ -247,6 +383,18 @@ namespace Game.EditorTests
 
             Assert.That(ProvisioningManager.EconomyLoanAllowed(donor, 100f, 4, 3, out _), Is.False);
         }
+
+        private static EconomyExtractionOpportunity ExtractionOpportunity(
+            HexCoord hex, ResourceType type, int gain) => new EconomyExtractionOpportunity
+        {
+            Hex = hex,
+            ResourceType = type,
+            EffectiveYield = gain,
+            CurrentBuildingCollection = 0,
+            MarginalIncomeGain = gain,
+            BaseNetworkSynergy = 1f,
+            NearbyResourceClusterValue = 0f,
+        };
 
         private static MissionIntent ScoutDonor(CommitmentTier funding, ScoutTargetKind kind) =>
             new MissionIntent

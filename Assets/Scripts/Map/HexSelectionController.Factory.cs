@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
@@ -271,10 +272,34 @@ namespace Game.Map
                 return false; // not this player's building — no hint, same as any other irrelevant target
             }
 
-            string ability = definition.grantedAbilities.Find(a => System.Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
-            if (ability != null && building.HasFacilityWithAbility(ability))
+            string ability = definition.grantedAbilities?.Find(
+                a => System.Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
+            int resourceIndex = System.Array.IndexOf(UnitAbilities.CollectAbilities, ability);
+            if (resourceIndex < 0)
+                return false; // malformed extraction definition
+            if (building.HasFacilityWithAbility(ability))
             {
                 turnController.ShowSpawnHint($"{building.Name} already has a {definition.displayName}.");
+                return false;
+            }
+
+            ResourceType resourceType = (ResourceType)resourceIndex;
+            if (map == null || !map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain))
+                return false;
+            int effectiveYield = HexResourceCalculator.GetEffectiveYield(
+                terrain, HexResourceBonusRegistry.GetBonus(hex)).Get(resourceType);
+            int ownerArmyCollectors = ArmyRegistry.AllAt(hex)
+                .Where(army => army != null && army.Owner == owner && army.Members != null)
+                .Sum(army => army.Members.Count(member => member != null
+                    && member.HasAbility(ability)));
+            bool armiesCanCollect = BattleInitiator.FindEnemyAt(hex, owner) == null;
+            int marginalGain = IncomeProjection.MarginalOwnerCollectionAtHex(
+                effectiveYield, building.CollectedAmount(resourceType), 1,
+                ownerArmyCollectors, armiesCanCollect);
+            if (marginalGain <= 0)
+            {
+                turnController.ShowSpawnHint(
+                    $"{definition.displayName} would not increase {resourceType} income on this hex.");
                 return false;
             }
 

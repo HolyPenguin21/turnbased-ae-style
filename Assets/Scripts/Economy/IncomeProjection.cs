@@ -29,6 +29,48 @@ namespace Game.Economy
     // for computing any player's income.
     public static class IncomeProjection
     {
+        // Canonical per-building slice used by both the real income projection and every
+        // pre-build marginal-value check. Keeping the cap here prevents AI/UI legality from
+        // drifting away from the turn processor's finite per-hex resource pool.
+        public static int BuildingCollection(int effectiveHexYield, int collectionCapacity)
+            => Mathf.Min(Mathf.Max(0, effectiveHexYield), Mathf.Max(0, collectionCapacity));
+
+        public static int MarginalBuildingCollection(int effectiveHexYield,
+            int currentCollectionCapacity, int additionalCollectionCapacity = 1)
+        {
+            int before = BuildingCollection(effectiveHexYield, currentCollectionCapacity);
+            int after = BuildingCollection(effectiveHexYield,
+                currentCollectionCapacity + Mathf.Max(0, additionalCollectionCapacity));
+            return Mathf.Max(0, after - before);
+        }
+
+        public static int OwnerCollectionAtHex(int effectiveHexYield,
+            int buildingCollectionCapacity, int ownerArmyCollectorCount,
+            bool ownerArmiesCanCollect)
+        {
+            int building = BuildingCollection(effectiveHexYield, buildingCollectionCapacity);
+            int remaining = Mathf.Max(0, effectiveHexYield - building);
+            int army = ownerArmiesCanCollect
+                ? Mathf.Min(Mathf.Max(0, ownerArmyCollectorCount), remaining)
+                : 0;
+            return building + army;
+        }
+
+        // Net persistent income gained by adding building collection capacity. This intentionally
+        // accounts for own Collect units already consuming the remainder: moving the same unit of
+        // finite hex yield from an army to a Facility is not economic growth.
+        public static int MarginalOwnerCollectionAtHex(int effectiveHexYield,
+            int currentBuildingCollectionCapacity, int additionalBuildingCollectionCapacity,
+            int ownerArmyCollectorCount, bool ownerArmiesCanCollect)
+        {
+            int before = OwnerCollectionAtHex(effectiveHexYield,
+                currentBuildingCollectionCapacity, ownerArmyCollectorCount, ownerArmiesCanCollect);
+            int after = OwnerCollectionAtHex(effectiveHexYield,
+                currentBuildingCollectionCapacity + Mathf.Max(0, additionalBuildingCollectionCapacity),
+                ownerArmyCollectorCount, ownerArmiesCanCollect);
+            return Mathf.Max(0, after - before);
+        }
+
         public static int IncomeFor(PlayerSetupData player, ResourceType type, HexMap map)
         {
             if (player == null || map == null)
@@ -56,7 +98,8 @@ namespace Game.Economy
                 BuildingData onHex = BuildingRegistry.FindAt(hex);
                 if (onHex != null && onHex.Owner != null)
                 {
-                    int buildingCollected = Mathf.Min(onHex.CollectedAmount(type), remaining);
+                    int buildingCollected = BuildingCollection(
+                        hexAmount, onHex.CollectedAmount(type));
                     if (buildingCollected > 0)
                     {
                         if (onHex.Owner == player)

@@ -217,6 +217,124 @@ namespace Game.Ai.V2
     {
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
+        // Read-only capacity witness shared upward with Economy Demand and Missions. It answers
+        // whether an existing actor can own the objective; session-local contention is still
+        // revalidated by ProvisionEconomy immediately before binding.
+        internal static bool HasEconomyBuilder(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, HexCoord target, IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments, float buildValue)
+        {
+            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
+                snap, target, activeIntents, commitments).ToList();
+            if (candidates.Any(a => a.Hex.Equals(target)))
+                return true; // a garrison is valid only because no travel is required
+            if (candidates.Count == 0)
+                return false;
+            if (player == null || ctx?.Map == null)
+                return true; // snapshot-only simulations/tests: structural witness
+            foreach (ArmySnapshot candidate in candidates)
+            {
+                ArmyData live = ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => a != null && a.Id == candidate.ArmyId);
+                if (live == null)
+                    continue;
+                int routeCost = EconomyPathCost(ctx.Map, live, target);
+                if (routeCost == int.MaxValue)
+                    continue;
+                MissionIntent assignment = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active
+                    && i.PreferredMoverArmyId == candidate.ArmyId);
+                if (assignment != null && assignment.Kind != MissionKind.Economy
+                    && !EconomyLoanAllowed(assignment, buildValue, routeCost,
+                        live.CurrentMovement, out _))
+                    continue;
+                return true;
+            }
+            return false;
+        }
+
+        internal static float EconomyActorTravelCost(WorldSnapshot snap, HexCoord target,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            PlayerSetupData player = null, AiTurnContext ctx = null)
+        {
+            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
+                snap, target, activeIntents, commitments).ToList();
+            if (candidates.Count == 0)
+                return AiConfigV2.economyBaseFoundScanRadius + 4f;
+            if (candidates.Any(a => a.Hex.Equals(target)))
+                return 0f;
+            if (player == null || ctx?.Map == null)
+                return candidates.Min(a => (float)HexGridMath.Distance(a.Hex, target));
+
+            int best = int.MaxValue;
+            foreach (ArmySnapshot candidate in candidates)
+            {
+                ArmyData live = ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => a != null && a.Id == candidate.ArmyId);
+                if (live == null)
+                    continue;
+                int cost = EconomyPathCost(ctx.Map, live, target);
+                if (cost < best)
+                    best = cost;
+            }
+            return best != int.MaxValue
+                ? best
+                : AiConfigV2.economyBaseFoundScanRadius + 4f;
+        }
+
+        internal static float EconomyHeroOpportunityCost(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        {
+            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
+                snap, default(HexCoord), activeIntents, commitments, ignoreTarget: true).ToList();
+            return candidates.Count > 0 ? candidates.Min(a => a.EffectiveArmyPower) : 0f;
+        }
+
+        private static IEnumerable<ArmySnapshot> EconomyBuilderSnapshots(WorldSnapshot snap,
+            HexCoord target, IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments, bool ignoreTarget = false)
+        {
+            foreach (ArmySnapshot army in snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+            {
+                if (army == null || !army.HasHero || army.IsPrison
+                    || army.IsAir || army.IsAirfield)
+                    continue;
+                if (army.IsGarrison)
+                {
+                    if (!ignoreTarget && army.Hex.Equals(target))
+                        yield return army;
+                    continue;
+                }
+
+                MissionIntent assignment = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active && i.PreferredMoverArmyId == army.ArmyId);
+                bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);
+                if (assignment != null)
+                {
+                    if (assignment.Kind == MissionKind.Economy)
+                    {
+                        if (ignoreTarget || assignment.Economy == null
+                            || !assignment.Economy.TargetHex.Equals(target))
+                            continue;
+                    }
+                    else if (!EconomyDonorStructurallyEligible(assignment))
+                    {
+                        continue;
+                    }
+                }
+                if (claimed && assignment == null)
+                    continue;
+                if (UnderImmediateThreat(snap, army.Hex))
+                    continue;
+                yield return army;
+            }
+        }
+
+        private static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player) =>
+            army != null && army.Owner == player && !army.IsPrison && army.Members != null
+            && !army.IsGarrison && !army.IsAirfield && !army.IsAirArmy
+            && army.Members.Any(u => u != null && u.IsHero);
+
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation,
             ActorCommitments durableCommitments = null)
@@ -514,9 +632,7 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             List<ArmyData> heroes = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && a.Owner == player && !a.IsPrison && a.Members != null
-                    && !a.IsGarrison && !a.IsAirfield && !a.IsAirArmy
-                    && a.Members.Any(u => u != null && u.IsHero)
+                .Where(a => IsMobileEconomyHero(a, player)
                     && !UnderImmediateThreat(session.Snapshot, a.Hex)
                     && !session.ClaimedArmyIds.Contains(a.Id)
                     && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
