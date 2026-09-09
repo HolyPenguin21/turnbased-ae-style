@@ -553,44 +553,10 @@ namespace Game.Ai.V2
             if (phaseA.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
-            // 4. Planners -> mission proposals (+ requirements via the shared estimator). Reads the
-            //    DesireBreakdown + the FROZEN Recon objectives, never re-derives the analysis behind
-            //    them. Also materialises every active intent and applies the retarget margin.
-            List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
-                activeIntents, reconObjectives);
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                    activeIntents, aggressionObjectives));
-            missions = AiStrategyV2Scope.ApplyMissionScope(missions);
-            // Correlation: stamp one MissionAttemptId per proposal for THIS pass (deterministic
-            // list order, stable across the re-pack loop), then bind the conservative
-            // Demand→Mission causal link (spec §1.6).
-            foreach (MissionProposal m in missions)
-                if (m != null && string.IsNullOrEmpty(m.AttemptId))
-                    m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
-            // Radar model #1a — stamp EffectiveValue once here; the allocator ranks cross-lane on it.
-            foreach (MissionProposal m in missions)
-                if (m != null)
-                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
-            AiV2Trace.CorrelateDemandsToMissions(demands, missions);
-            foreach (MissionProposal m in missions)
-            {
-                MissionRequirements r = m.Requirements;
-                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
-                    + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
-                    + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} "
-                    + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
-                    + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
-                    + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
-                    + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
-                    + (r != null && (r.HumanDesired > 0f || r.MaterialsDesired > 0f || r.TechDesired > 0f)
-                        ? $"hmt {Fmt(r.HumanDesired)}/{Fmt(r.MaterialsDesired)}/{Fmt(r.TechDesired)} " : "")
-                    + (r != null && r.RequiresArmy
-                        ? $"army{(r.RequiresHero ? "+hero" : "")} cp {Fmt(r.CombatPowerMinimum)}/{Fmt(r.CombatPowerDesired)} " : "")
-                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)}"
-                    + $"{(m.PreferredMoverArmyId.HasValue ? " prefMv#" + m.PreferredMoverArmyId : "")} "
-                    + $"| {m.Explain}");
-            }
+            // 4. Planners -> mission proposals. Mission construction/stamping/logging has one
+            //    owner shared by the legacy batch and the optional mid-turn re-admission loop.
+            List<MissionProposal> missions = BuildMissionSet(snapshot, assessment.Breakdown,
+                activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace);
 
             // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
             //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
@@ -838,6 +804,48 @@ namespace Game.Ai.V2
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;
+        }
+
+        private static List<MissionProposal> BuildMissionSet(WorldSnapshot snapshot,
+            DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<ReconObjective> reconObjectives,
+            IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
+            IReadOnlyList<AxisDemand> demands, V2TraceScope trace)
+        {
+            List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
+                activeIntents, reconObjectives);
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
+                    activeIntents, aggressionObjectives));
+            missions = AiStrategyV2Scope.ApplyMissionScope(missions);
+
+            foreach (MissionProposal m in missions)
+                if (m != null && string.IsNullOrEmpty(m.AttemptId))
+                    m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
+            foreach (MissionProposal m in missions)
+                if (m != null)
+                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
+
+            AiV2Trace.CorrelateDemandsToMissions(demands, missions);
+            foreach (MissionProposal m in missions)
+            {
+                MissionRequirements r = m.Requirements;
+                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
+                    + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} "
+                    + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
+                    + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
+                    + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
+                    + (r != null && (r.HumanDesired > 0f || r.MaterialsDesired > 0f || r.TechDesired > 0f)
+                        ? $"hmt {Fmt(r.HumanDesired)}/{Fmt(r.MaterialsDesired)}/{Fmt(r.TechDesired)} " : "")
+                    + (r != null && r.RequiresArmy
+                        ? $"army{(r.RequiresHero ? "+hero" : "")} cp {Fmt(r.CombatPowerMinimum)}/{Fmt(r.CombatPowerDesired)} " : "")
+                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)}"
+                    + $"{(m.PreferredMoverArmyId.HasValue ? " prefMv#" + m.PreferredMoverArmyId : "")} "
+                    + $"| {m.Explain}");
+            }
+            return missions;
         }
 
         internal sealed class StepObservationStamp
