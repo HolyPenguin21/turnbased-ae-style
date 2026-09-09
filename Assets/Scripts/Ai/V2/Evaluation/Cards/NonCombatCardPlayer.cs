@@ -60,7 +60,7 @@ namespace Game.Ai.V2
             _ => NonCombatRole.Equipment,
         };
 
-        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+        private static StrategicCardUseCandidate Evaluate(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
             float apCost, ResourceCost resCost, GenerationStep generation = null,
             float? witnessedUsefulApDemand = null, bool logDynamicEffect = true)
@@ -76,16 +76,23 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.nonCombat — {card?.Definition?.displayName} "
                     + $"role={cand.IntendedRole} net {cand.NetScore.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} "
                     + $"[{cand.Breakdown.ToCompact()}]");
-            return cand.NetScore;
+            return cand;
         }
+
+        private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
+            float apCost, ResourceCost resCost, GenerationStep generation = null,
+            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true) =>
+            Evaluate(snap, player, root, ctx, k, card, hand, bestEquipmentUpgrade,
+                apCost, resCost, generation, witnessedUsefulApDemand, logDynamicEffect).NetScore;
 
         // Capacity-upgrade look-ahead must value the exact Facility it would unlock through the
         // same scorer as an ordinary legal Facility play. Keeping this thin adapter here prevents
         // StrategicMaintenancePolicy from assembling a second non-combat evaluation context.
-        internal static float ScoreCapacityUnlock(WorldSnapshot snap, PlayerSetupData player,
+        internal static StrategicCardUseCandidate ScoreCapacityUnlock(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, CardData card, AiHandData hand,
             float? witnessedUsefulApDemand = null) =>
-            Score(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
+            Evaluate(snap, player, root, ctx, PlayKind.Facility, card, hand, 0f,
                 card != null ? card.EffectivePlayApCost : 0f,
                 card?.EffectivePlayResourceCost, generation: null,
                 witnessedUsefulApDemand: witnessedUsefulApDemand,
