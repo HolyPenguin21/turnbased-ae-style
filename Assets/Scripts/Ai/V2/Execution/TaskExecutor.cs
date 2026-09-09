@@ -255,6 +255,116 @@ namespace Game.Ai.V2
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
+        // Mid-turn orchestration door for exactly one already-provisioned Ground/Raid task step.
+        // Selection, allocation and provisioning stay outside this execution owner; validation,
+        // command dispatch, AP invariants and version/resource stamping stay inside it.
+        internal static IEnumerator ExecuteStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisionedMission pm, List<ExecutionResult> results, WorldSnapshot snapshot = null,
+            bool enforceFreshPlan = true)
+        {
+            if (ctx?.Map == null || pm == null || results == null)
+                yield break;
+
+            var result = new ExecutionResult
+            {
+                Key = pm.Key,
+                Source = pm,
+                PlannedAtStateVersion = pm.PlannedAtStateVersion,
+                StateVersionBefore = V2StateVersion.Current,
+                ResourcesBefore = AiV2Trace.Stamp(root),
+            };
+
+            if (enforceFreshPlan && pm.PlannedAtStateVersion >= 0
+                && !V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
+            {
+                result.StartHex = pm.ExecutionHex;
+                result.FinalHex = pm.ExecutionHex;
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                result.ApSpent = 0f;
+                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                    StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            int apBefore = root != null ? root.ActionPoints : 0;
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            if (army == null)
+            {
+                result.StartHex = pm.ExecutionHex;
+                result.FinalHex = pm.ExecutionHex;
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.ApSpent = 0f;
+                result.NeedsReplan = true;
+                ApCheck(pm, apBefore, root, result);
+                CompleteResult(result, root);
+                results.Add(result);
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
+                    "mover gone before atomic execution");
+                yield break;
+            }
+
+            result.StartHex = army.Hex;
+            result.FinalHex = army.Hex;
+            MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
+            if (MissionRevalidator.IsStale(validity))
+            {
+                result.FinalHex = army.Hex;
+                result.ApSpent = 0f;
+                result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
+                result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
+                result.DurableRoleContinues = result.ReachedGoal
+                    && pm.Mission?.FromDurableIntent == true
+                    && pm.Kind == MissionKind.Scout
+                    && pm.ScoutKind != ScoutTargetKind.Surveil;
+                result.StopReason = validity == MissionValidity.StaleMoverLost
+                    ? ExecutionStopReason.MoverLost
+                    : validity == MissionValidity.StaleGoalMet
+                        ? ExecutionStopReason.ReachedGoal
+                        : ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
+                ApCheck(pm, apBefore, root, result);
+                CompleteResult(result, root);
+                results.Add(result);
+                if (validity == MissionValidity.StaleMoverLost)
+                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
+                        "atomic mission revalidation lost mover");
+                yield break;
+            }
+
+            if (pm.Kind == MissionKind.Scout)
+            {
+                var queue = new List<ProvisionedMission> { pm };
+                var control = new ReconGroundExecutor.StepControl();
+                yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
+                    queue, 0, snapshot, control);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            if (pm.Kind == MissionKind.Raid)
+            {
+                yield return RunRaidStep(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            result.StopReason = ExecutionStopReason.TargetInvalidated;
+            result.NeedsReplan = true;
+            result.ApSpent = 0f;
+            ApCheck(pm, apBefore, root, result);
+            CompleteResult(result, root);
+            results.Add(result);
+        }
+
         // Compatibility adapter for the current Full/Aggression batch path. The target is
         // revalidated before every adjacent move, but the adapter keeps executing steps until the
         // same terminal conditions as the previous loop.
