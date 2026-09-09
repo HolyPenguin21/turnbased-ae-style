@@ -176,9 +176,15 @@ namespace Game.Ai.V2
             HashSet<int> actorIds = ChangedActorIds(before.Snapshot, after.Snapshot);
             if (actorIds.Count > 0)
                 StrategicInterruptRegistry.Mark(player, turn,
-                    StrategicInvalidationReason.Actor
-                    | StrategicInvalidationReason.Capability,
+                    StrategicInvalidationReason.Actor,
                     actorIds: actorIds);
+
+            HashSet<int> capabilityActorIds =
+                ChangedCapabilityActorIds(before.Snapshot, after.Snapshot);
+            if (capabilityActorIds.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Capability,
+                    actorIds: capabilityActorIds);
 
             if (ThreatChanged(before.Snapshot, after.Snapshot))
                 StrategicInterruptRegistry.Mark(player, turn,
@@ -301,6 +307,31 @@ namespace Game.Ai.V2
             && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
             && a.IsSoloRecce == b.IsSoloRecce
             && a.IsStructuralRaidActor == b.IsStructuralRaidActor;
+
+        private static HashSet<int> ChangedCapabilityActorIds(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            var old = (before?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId);
+            var current = (after?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId);
+            var changed = new HashSet<int>();
+            foreach (KeyValuePair<int, ArmySnapshot> kv in current)
+            {
+                if (!old.TryGetValue(kv.Key, out ArmySnapshot prior)
+                    || prior.MemberCount != kv.Value.MemberCount
+                    || prior.IsAir != kv.Value.IsAir
+                    || prior.IsSoloRecce != kv.Value.IsSoloRecce
+                    || prior.IsStructuralRaidActor != kv.Value.IsStructuralRaidActor
+                    || prior.ActivationApCost != kv.Value.ActivationApCost
+                    || prior.ActivationEnergyCost != kv.Value.ActivationEnergyCost)
+                    changed.Add(kv.Key);
+            }
+            foreach (int id in old.Keys)
+                if (!current.ContainsKey(id))
+                    changed.Add(id);
+            return changed;
+        }
 
         private static bool ThreatChanged(WorldSnapshot before, WorldSnapshot after)
         {
