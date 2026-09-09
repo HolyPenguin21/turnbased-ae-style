@@ -51,6 +51,10 @@ namespace Game.UI
         // Same idea for a Facility card dropped onto the open Base Viewer — see
         // TryDeployIntoBaseModal.
         [SerializeField] private BaseViewerModalUI baseViewerModal;
+        // Non-blocking caption shown for the whole duration of equipment-attach mode (see
+        // BeginAttachMode) — replaces the old blocking SpawnHintPopupUI acknowledgement, which
+        // forced a click just to get out of the way. Optional scene ref.
+        [SerializeField] private ActionHintUI actionHint;
         // Only used for GameConfig.FormatAbilities — see CardUI.Setup, which reads this via the
         // Hand reference it already keeps rather than needing its own separate config field.
         [SerializeField] private GameConfig gameConfig;
@@ -293,6 +297,9 @@ namespace Game.UI
             {
                 turnController.CardDraggingBlockedChanged += OnCardDraggingBlockedChanged;
                 turnController.TurnStateChanged += RefreshDrawButtonInteractable;
+                // A pending attach must never survive into another player's turn — end-turn is
+                // gated while it's active, but the turn can also change by other means.
+                turnController.TurnChanging += CancelAttachMode;
             }
             RefreshDeckCountText();
             RefreshDrawButtonInteractable();
@@ -309,6 +316,7 @@ namespace Game.UI
             {
                 turnController.CardDraggingBlockedChanged -= OnCardDraggingBlockedChanged;
                 turnController.TurnStateChanged -= RefreshDrawButtonInteractable;
+                turnController.TurnChanging -= CancelAttachMode;
             }
         }
 
@@ -989,7 +997,9 @@ namespace Game.UI
 
         // Right-clicked a CardType.Equipment card in hand. From here the player left-clicks a
         // Unit/Hero card (in this hand or the open Army Viewer). Only during the human's own
-        // confirmed turn, same gate as playing a card.
+        // confirmed turn, same gate as playing a card. The ActionHintUI caption stays up for the
+        // whole mode — non-blocking, so map navigation and clicks on cards/panels underneath keep
+        // working — until a left-click resolves the attach or a right-click / Esc cancels it.
         public void BeginAttachMode(CardData equipmentCard)
         {
             if (equipmentCard?.Definition == null || equipmentCard.Definition.cardType != CardType.Equipment)
@@ -1000,36 +1010,50 @@ namespace Game.UI
                 return;
             }
             _pendingEquipment = equipmentCard;
-            turnController?.ShowSpawnHint(
+            actionHint?.Show(
                 $"Attaching {equipmentCard.Definition.displayName} — left-click a unit or hero. Right-click or Esc to cancel.");
+            turnController?.SetAttachModeActive(true);
         }
 
+        // Right-click / Esc cancel, and also the per-turn TurnChanging safety net — hence the
+        // early-out, this fires every turn regardless of whether an attach was pending.
         public void CancelAttachMode()
         {
             if (_pendingEquipment == null)
                 return;
+            EndAttachMode();
+        }
+
+        // The single teardown for every attach-mode exit — cancel, success, failure — so the
+        // caption and the end-turn gate (SetAttachModeActive) can never be left dangling.
+        private void EndAttachMode()
+        {
             _pendingEquipment = null;
-            turnController?.ShowSpawnHint("Attach cancelled.");
+            actionHint?.Hide();
+            turnController?.SetAttachModeActive(false);
         }
 
         // Left-clicked a Unit/Hero card still in this hand — attach to it before it's ever
         // deployed (the grant rides along on CardData.Equipment; see ArmyActions.DeployUnitFromCard).
+        // Success is silent (the card's own face updates); only a failure raises the blocking
+        // SpawnHintPopupUI, same as before — after the caption is already gone.
         public void TryAttachToHandCard(CardData targetCard)
         {
             if (_pendingEquipment == null || targetCard == null || targetCard == _pendingEquipment)
                 return;
             PlayerRoot root = PlayerRootRegistry.FindFor(FindHumanPlayer());
-            if (EquipmentSystem.TryAttach(_pendingEquipment, targetCard, root, out string reason))
+            CardData equipment = _pendingEquipment;
+            bool attached = EquipmentSystem.TryAttach(equipment, targetCard, root, out string reason);
+            EndAttachMode();
+            if (attached)
             {
-                turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {targetCard.Definition.displayName}.");
                 _cards.Find(c => c != null && c.Data == targetCard)?.RefreshEquipmentToggle();
-                RemoveCardData(_pendingEquipment);
+                RemoveCardData(equipment);
             }
             else
             {
                 turnController?.ShowSpawnHint(reason);
             }
-            _pendingEquipment = null;
         }
 
         // Left-clicked a live unit's card in the open Army Viewer (routed via
@@ -1040,20 +1064,23 @@ namespace Game.UI
             if (_pendingEquipment == null)
                 return false;
             PlayerSetupData human = FindHumanPlayer();
+            CardData equipment = _pendingEquipment;
+            bool attached = false;
+            string failHint;
             if (unit == null || unit.Owner != human)
+                failHint = "You can only attach equipment to your own units.";
+            else if (EquipmentSystem.TryAttach(equipment, unit, PlayerRootRegistry.FindFor(human), out string reason))
             {
-                turnController?.ShowSpawnHint("You can only attach equipment to your own units.");
-            }
-            else if (EquipmentSystem.TryAttach(_pendingEquipment, unit, PlayerRootRegistry.FindFor(human), out string reason))
-            {
-                turnController?.ShowSpawnHint($"{_pendingEquipment.Definition.displayName} attached to {unit.Name}.");
-                RemoveCardData(_pendingEquipment);
+                attached = true;
+                failHint = null;
             }
             else
-            {
-                turnController?.ShowSpawnHint(reason);
-            }
-            _pendingEquipment = null;
+                failHint = reason;
+            EndAttachMode();
+            if (attached)
+                RemoveCardData(equipment);
+            else
+                turnController?.ShowSpawnHint(failHint);
             return true;
         }
 

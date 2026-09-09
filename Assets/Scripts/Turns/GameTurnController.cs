@@ -387,13 +387,30 @@ namespace Game.Turns
             }
         }
 
+        // Set true by CardHandUI for the duration of the human's equipment-attach mode (see
+        // BeginAttachMode). That mode is deliberately non-blocking — the player keeps navigating
+        // the map and clicking cards — so it does NOT feed InputBlocked; the one thing it must
+        // gate is ending the turn with a half-finished attach still pending. Human-only: attach
+        // mode can't start on an AI turn (CardHandUI.CanDragCards) and CardHandUI clears it on
+        // TurnChanging, so this can never be stuck true when an AI player is acting.
+        private bool _attachModeActive;
+
+        public void SetAttachModeActive(bool active)
+        {
+            if (_attachModeActive == active)
+                return;
+            _attachModeActive = active;
+            RefreshEndTurnInteractable();
+        }
+
         // Kept in sync via TurnStateChanged/InputBlockedChanged instead of every frame — the
         // player must not be able to end the turn while either is up: a battle needs actually
-        // deciding (fight/delay) or acknowledging before the turn can move on.
+        // deciding (fight/delay) or acknowledging before the turn can move on. Same for a pending
+        // equipment attach (_attachModeActive) — it must be completed or cancelled first.
         private void RefreshEndTurnInteractable()
         {
             if (endTurnButton != null && endTurnButton.gameObject.activeInHierarchy)
-                endTurnButton.interactable = TurnConfirmed && !InputBlocked;
+                endTurnButton.interactable = TurnConfirmed && !InputBlocked && !_attachModeActive;
         }
 
         // The same physical Enter press that just dismissed TurnInfoPopupUI's "Your turn, X"
