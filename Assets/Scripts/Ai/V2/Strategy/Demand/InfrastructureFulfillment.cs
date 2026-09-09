@@ -228,8 +228,7 @@ namespace Game.Ai.V2
                 return null;
             CardData card = demand.EconomyBuildCard;
             HexCoord hex = demand.TargetHex.Value;
-            int? builderId = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.HasHero
-                && !a.IsPrison && !a.IsAir && a.Hex.Equals(hex))?.ArmyId;
+            int? builderId = EconomyBuilderAtTarget(snap, demand, hex);
             return new InfraCandidate
             {
                 ApCost = card.EffectivePlayApCost,
@@ -239,6 +238,20 @@ namespace Game.Ai.V2
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
                 Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex),
             };
+        }
+
+        private static int? EconomyBuilderAtTarget(
+            WorldSnapshot snap, AxisDemand demand, HexCoord target)
+        {
+            if (snap?.Self?.Armies == null)
+                return null;
+            var candidates = snap.Self.Armies.Where(a => a != null && a.HasHero
+                    && !a.IsPrison && !a.IsAir && a.Hex.Equals(target))
+                .OrderBy(a => demand?.EconomyBuilderRoutes?.Any(r => r != null
+                    && r.ArmyId == a.ArmyId && r.IsOnTarget) == true ? 0 : 1)
+                .ThenBy(a => a.ArmyId)
+                .ToList();
+            return candidates.Count > 0 ? candidates[0].ArmyId : (int?)null;
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt
@@ -259,8 +272,7 @@ namespace Game.Ai.V2
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
                 return null;
             HexCoord built = demand.TargetHex.Value;
-            int? builderId = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.HasHero
-                && !a.IsPrison && !a.IsAir && a.Hex.Equals(built))?.ArmyId;
+            int? builderId = EconomyBuilderAtTarget(snap, demand, built);
             return new InfraCandidate
             {
                 ApCost = facilityDef.apCost,

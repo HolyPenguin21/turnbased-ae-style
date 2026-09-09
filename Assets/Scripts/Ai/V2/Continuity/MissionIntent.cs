@@ -606,7 +606,11 @@ namespace Game.Ai.V2
                 .ThenBy(b => DemandLayer.EconomyRecoveryThreatExposure(snap, b.Hex))
                 .ThenByDescending(b => b.IsStartingCitadel)
                 .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R).ToList();
-            return ordered.Count > 0 ? ordered[0].Hex : (HexCoord?)null;
+            if (ordered.Count > 0)
+                return ordered[0].Hex;
+            return player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
+                ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value)
+                : (HexCoord?)null;
         }
 
         internal static bool RequiresEconomyBuilderRecovery(EconomyTaskKind completedKind,
