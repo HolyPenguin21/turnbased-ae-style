@@ -1107,7 +1107,7 @@ namespace Game.Ai.V2
         public const float effectScorcherFit = 0.20f;      // Scorcher — narrower Bio-gated AoE fit
         public const float effectRegenerationFit = 0.25f;  // Regeneration — CombatBody ExpectedSustain fit
         public const float effectRaiseTheRotsFit = 0.35f;  // RaiseTheRots — ForceGrowth FreeBattleSlots fit
-        public const float effectProduceResourceFit = 0.30f;// Produce{Human,Energy,Materials,Tech} — flat Economy role-fit per carrier
+        public const float effectProduceResourceFit = 0.30f;// Produce{Human,Energy,Materials,Tech} — maximum strategic value scale for one +1/turn source
         public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).
@@ -1141,6 +1141,7 @@ namespace Game.Ai.V2
         public const float effectRecurringOpportunityFloor     = 0.35f;// futureOpportunity never drops below this — an EARLY source is worth at least this share of the horizon
         public const float effectGlobalRecurringApPerTurnValue  = 0.06f;// strategic RoleFit units earned per +1 usable AP/turn, per horizon turn
         public const float effectGlobalRecurringValueCap        = 1.6f; // hard cap on ONE global recurring effect's contribution
+        public const float effectStockpileMarginalUtilFloor     = 0.15f;// a currently-secure H/E/M/T income source retains only option value
         public const float effectRecurringSourceDiminish        = 0.72f;// each ApBonus source ALREADY in play multiplies the next one's value by this (diminishing multi-source)
         public const float effectRecurringRealisationFloor      = 0.30f;// carrierPersistence = Lerp(floor, 1, carrierDurability) — generation risk lives in StrategicCardEvaluator.Deployability
         public const float effectRecurringCarrierDurabilityUnit = 0.80f;// a recurring source riding a Unit body is less certain to persist than one on a Base/Facility

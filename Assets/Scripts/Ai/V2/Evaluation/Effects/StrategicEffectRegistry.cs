@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Units;
@@ -64,12 +65,16 @@ namespace Game.Ai.V2
     }
 
     // AI-MGR — which global per-turn resource a PlayerGlobal recurring effect yields. `None` for
-    // every non-global row. A future "+Energy/turn" / "+draw every N turns" / "+movement budget"
-    // effect adds a member here and a branch in GlobalRecurringValue — NOT a card-specific evaluator.
+    // every non-global row. New recurring mechanics extend this descriptor and the single
+    // GlobalRecurringValue switch — never a card-specific evaluator.
     internal enum GlobalResourceKind
     {
         None,
         ActionPoints,
+        Human,
+        Energy,
+        Materials,
+        Tech,
     }
 
     internal enum EffectTiming
@@ -693,33 +698,41 @@ namespace Game.Ai.V2
                         capacityRequirement: 2,
                         stacking: EffectStacking.Unique, stackingKey: "RaiseTheRots"),
                 },
-                // Produce{X}: a flat per-carrier Economy role-fit — deliberately NOT the dynamic
-                // GlobalRecurringResource path ApBonus uses (that is AP-economy-snapshot-bound;
-                // a stockpile-resource version would need new economy plumbing, out of scope for
-                // an additive change). IncomeProjection carries the exact per-turn number.
+                // Produce{X}: persistent PlayerGlobal income. The same descriptor prices the
+                // ability on a Hero, Unit, Base or Facility against the matching frozen economy
+                // deficit. IncomeProjection remains the gameplay-income owner; this registry only
+                // evaluates the strategic marginal value of that already-defined +1/turn.
                 [UnitAbilities.ProduceHuman] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "ProduceHuman"),
+                    new StrategicEffect(IntendedRole.Economy, 0f,
+                        StrategicEffectContext.GlobalRecurringResource, EffectField.RoleFit, coverage: false,
+                        scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceHuman",
+                        globalResource: GlobalResourceKind.Human, globalYieldPerTurn: 1f),
                 },
                 [UnitAbilities.ProduceEnergy] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "ProduceEnergy"),
+                    new StrategicEffect(IntendedRole.Economy, 0f,
+                        StrategicEffectContext.GlobalRecurringResource, EffectField.RoleFit, coverage: false,
+                        scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceEnergy",
+                        globalResource: GlobalResourceKind.Energy, globalYieldPerTurn: 1f),
                 },
                 [UnitAbilities.ProduceMaterials] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "ProduceMaterials"),
+                    new StrategicEffect(IntendedRole.Economy, 0f,
+                        StrategicEffectContext.GlobalRecurringResource, EffectField.RoleFit, coverage: false,
+                        scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceMaterials",
+                        globalResource: GlobalResourceKind.Materials, globalYieldPerTurn: 1f),
                 },
                 [UnitAbilities.ProduceTech] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "ProduceTech"),
+                    new StrategicEffect(IntendedRole.Economy, 0f,
+                        StrategicEffectContext.GlobalRecurringResource, EffectField.RoleFit, coverage: false,
+                        scope: EffectScope.PlayerGlobal,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceTech",
+                        globalResource: GlobalResourceKind.Tech, globalYieldPerTurn: 1f),
                 },
                 // Further mechanics are ONE row each — no evaluator / StrategicManager / Phase-A/B
                 // edit (final closure §3.5 acceptance). The generic semantics ride on the descriptor:
@@ -915,19 +928,20 @@ namespace Game.Ai.V2
         private static float GlobalRecurringValue(in StrategicEffect e, in EffectEvaluationContext ctx,
             ref string detail)
         {
-            if (e.GlobalResource != GlobalResourceKind.ActionPoints || e.GlobalYieldPerTurn <= 0f)
+            if (e.GlobalYieldPerTurn <= 0f)
                 return 0f;
+
+            if (e.GlobalResource != GlobalResourceKind.ActionPoints)
+                return GlobalRecurringStockpileValue(e, ctx, ref detail);
 
             ApActionEconomySnapshot ape = ctx.ApEconomy;
             float yield = e.GlobalYieldPerTurn;
-            float future = ctx.RecurringFutureOpportunity;                          // [floor .. 1]
-            float horizonTurns = AiConfigV2.effectRecurringHorizonTurns * future;   // effective pay-back turns
+            float future = ctx.RecurringFutureOpportunity;
+            float horizonTurns = AiConfigV2.effectRecurringHorizonTurns * future;
 
             float marginal = Mathf.Lerp(AiConfigV2.apMarginalUtilFloor, 1f, ctx.EffectiveMarginalApUtility);
-
             float persistence = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
                 Mathf.Clamp01(CarrierDurabilityOf(ctx)));
-
             float saturation = SaturationFactor(ape, ctx.EffectiveUsefulApDemand, yield);
 
             float raw = AiConfigV2.effectGlobalRecurringApPerTurnValue * yield * horizonTurns;
@@ -941,6 +955,70 @@ namespace Game.Ai.V2
                 + $"saturation={saturation:0.00} persistence={persistence:0.00} effectValue={value:0.00}";
             detail = string.IsNullOrEmpty(detail) ? line : detail + " ; " + line;
             return value;
+        }
+
+        private static float GlobalRecurringStockpileValue(in StrategicEffect e,
+            in EffectEvaluationContext ctx, ref string detail)
+        {
+            if (!TryStockpileResource(e.GlobalResource, out ResourceType type)
+                || ctx.Snap?.Economy?.PerType == null)
+                return 0f;
+
+            EconomyResourceStanding? current = null;
+            foreach (EconomyResourceStanding standing in ctx.Snap.Economy.PerType)
+            {
+                if (standing.Type == type)
+                {
+                    current = standing;
+                    break;
+                }
+            }
+            if (!current.HasValue)
+                return 0f;
+
+            EconomyResourceStanding before = current.Value;
+            EconomyResourceStanding after = EconomyStanding.CalculateResource(
+                type,
+                before.OwnIncome + e.GlobalYieldPerTurn,
+                before.OpponentMedianIncome,
+                before.HandResourceNeed,
+                before.RemainingDeckResourceNeed,
+                before.ReservedOperationalNeed,
+                before.SpendableStockpile,
+                before.StarvationPressure);
+
+            float relativeRelief = before.DeficitScore <= AiConfigV2.allocatorSliceEpsilon
+                ? 0f
+                : Mathf.Clamp01((before.DeficitScore - after.DeficitScore)
+                    / before.DeficitScore);
+            float urgency = Mathf.Clamp01(Mathf.Max(before.DeficitScore, relativeRelief));
+            float marginal = Mathf.Lerp(AiConfigV2.effectStockpileMarginalUtilFloor, 1f, urgency);
+            float persistence = Mathf.Lerp(AiConfigV2.effectRecurringRealisationFloor, 1f,
+                Mathf.Clamp01(CarrierDurabilityOf(ctx)));
+            float future = ctx.RecurringFutureOpportunity;
+            float value = Mathf.Min(AiConfigV2.effectGlobalRecurringValueCap,
+                AiConfigV2.effectProduceResourceFit * e.GlobalYieldPerTurn
+                * future * marginal * persistence);
+
+            string line =
+                $"effect=Produce{type} scope=PlayerGlobal yield=+{e.GlobalYieldPerTurn:0.#}/turn "
+                + $"deficit={before.DeficitScore:0.00}->{after.DeficitScore:0.00} "
+                + $"marginalUtility={marginal:0.00} future={future:0.00} "
+                + $"persistence={persistence:0.00} effectValue={value:0.00}";
+            detail = string.IsNullOrEmpty(detail) ? line : detail + " ; " + line;
+            return value;
+        }
+
+        private static bool TryStockpileResource(GlobalResourceKind kind, out ResourceType type)
+        {
+            switch (kind)
+            {
+                case GlobalResourceKind.Human: type = ResourceType.Human; return true;
+                case GlobalResourceKind.Energy: type = ResourceType.Energy; return true;
+                case GlobalResourceKind.Materials: type = ResourceType.Materials; return true;
+                case GlobalResourceKind.Tech: type = ResourceType.Tech; return true;
+                default: type = default; return false;
+            }
         }
 
         // How durably a recurring source stays in play once fielded: infrastructure (Base /

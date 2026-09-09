@@ -443,6 +443,58 @@ namespace Game.EditorTests
                 new HashSet<int>(), after, plan, demand), Is.EqualTo(new[] { 17 }));
         }
 
+        [Test]
+        public void ProduceResource_GlobalValueTracksMatchingEconomyDeficit()
+        {
+            WorldSnapshot humanScarce = SnapshotForRecurringResource(ResourceType.Human);
+            WorldSnapshot materialsScarce = SnapshotForRecurringResource(ResourceType.Materials);
+
+            EffectContribution useful = StrategicEffectRegistry.Contributions(
+                IntendedRole.CombatBody,
+                new[] { Game.Cards.UnitAbilities.ProduceHuman },
+                0,
+                new EffectEvaluationContext(humanScarce));
+            EffectContribution mismatched = StrategicEffectRegistry.Contributions(
+                IntendedRole.CombatBody,
+                new[] { Game.Cards.UnitAbilities.ProduceHuman },
+                0,
+                new EffectEvaluationContext(materialsScarce));
+            EffectContribution matchingMaterials = StrategicEffectRegistry.Contributions(
+                IntendedRole.CombatBody,
+                new[] { Game.Cards.UnitAbilities.ProduceMaterials },
+                0,
+                new EffectEvaluationContext(materialsScarce));
+
+            Assert.That(useful.GlobalRoleFit, Is.GreaterThan(mismatched.GlobalRoleFit));
+            Assert.That(matchingMaterials.GlobalRoleFit, Is.GreaterThan(mismatched.GlobalRoleFit));
+            Assert.That(useful.RoleFit, Is.Zero,
+                "Player-global production must not become a placement/role-local contribution.");
+        }
+
+        private static WorldSnapshot SnapshotForRecurringResource(ResourceType scarce)
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.05f, actionable: true);
+            var perType = new List<EconomyResourceStanding>();
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                bool isScarce = type == scarce;
+                perType.Add(EconomyStanding.CalculateResource(
+                    type,
+                    ownIncome: isScarce ? 0f : 4f,
+                    opponentMedianIncome: 4f,
+                    handNeed: isScarce ? 8f : 0f,
+                    remainingDeckNeed: isScarce ? 8f : 0f,
+                    reservedOperationalNeed: isScarce ? 2f : 0f,
+                    spendableStockpile: isScarce ? 0f : 12f,
+                    starvationPressure: 0f));
+            }
+            snapshot.Economy.PerType = perType;
+            snapshot.Economy.MaxDeficitScore = perType.Max(x => x.DeficitScore);
+            snapshot.Economy.MeanDeficitScore = perType.Average(x => x.DeficitScore);
+            snapshot.Economy.EconomicSecurity = 1f - snapshot.Economy.MaxDeficitScore;
+            return snapshot;
+        }
+
         private static EconomyExtractionOpportunity ExtractionOpportunity(
             HexCoord hex, ResourceType type, int gain) => new EconomyExtractionOpportunity
         {
