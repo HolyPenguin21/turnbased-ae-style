@@ -146,7 +146,7 @@ namespace Game.Ai.V2
                     float marginalResCost = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
                         ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost, player, ctx) : 0f;
                     float eff = c.Utility - marginalResCost;
-                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} marginalResCost {F(marginalResCost)}"
+                    AiDebugLog.WriteVerbose($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} marginalResCost {F(marginalResCost)}"
                         + $" eff {F(eff)} apCost {F(c.ApCost)} resCost [{ResCostStr(c.ResCost)}] key={c.ActionKey}"
                         + (block != null ? $" BLOCKED: {block}" : "")
                         + (c.DrawDiag != null ? $" {{{c.DrawDiag}}}" : "")
@@ -158,7 +158,7 @@ namespace Game.Ai.V2
                     }
                 }
 
-                AiDebugLog.Write($"[AI][V2]     policy Hold(full pool) {F(holdPolicyFull)} (diag only)  |  EndTurn {F(endU)}");
+                AiDebugLog.WriteVerbose($"[AI][V2]     policy Hold(full pool) {F(holdPolicyFull)} (diag only)  |  EndTurn {F(endU)}");
 
                 float spendBar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, endU);
                 if (best == null)
@@ -322,7 +322,7 @@ namespace Game.Ai.V2
             }
             sb.Append($"| hand {hand.Hand.Count}/{ctx.HandCapacity} deck {hand.RemainingDeckCount} ");
             sb.Append(BudgetSummary(budget));
-            AiDebugLog.Write(sb.ToString());
+            AiDebugLog.WriteVerbose(sb.ToString());
         }
 
         // null => the candidate may be chosen; otherwise a short reason it is currently blocked.
