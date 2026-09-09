@@ -109,8 +109,11 @@ namespace Game.Ai.V2
             }
 
             StepChoice? best = ChooseBest(choices);
+            // Pick is a pure tactical probe used by capacity, assignment and live execution.
+            // Keep probe output verbose; accepted reservations and actual moves have their own
+            // non-verbose owner logs, so normal traces never present repeated scoring as missions.
             if (best.HasValue)
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Step] actor=#{airArmy.Id} mode={mode} "
+                AiDebugLog.WriteVerbose($"[AI][V2][Recon][Air][Step] actor=#{airArmy.Id} mode={mode} "
                     + $"phase={(sortieState != null ? sortieState.Phase.ToString() : "Outbound")} "
                     + $"from=({airArmy.Hex.Q},{airArmy.Hex.R}) to=({best.Value.Hex.Q},{best.Value.Hex.R}) "
                     + $"landing=({best.Value.LandingHex.Q},{best.Value.LandingHex.R}) "
@@ -166,8 +169,10 @@ namespace Game.Ai.V2
             }
 
             StepChoice? best = ChooseBest(choices);
+            // Storage scoring is intentionally called at several parity boundaries. It does not
+            // launch or reserve anything, therefore it belongs to candidate-level verbose output.
             if (best.HasValue)
-                AiDebugLog.Write($"[AI][V2][Recon][Air][StorageStep] airfield=({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}) "
+                AiDebugLog.WriteVerbose($"[AI][V2][Recon][Air][StorageStep] airfield=({candidate.AirfieldHex.Q},{candidate.AirfieldHex.R}) "
                     + $"aircraft={candidate.Aircraft.Count} mode={mode} to=({best.Value.Hex.Q},{best.Value.Hex.R}) "
                     + $"landing=({best.Value.LandingHex.Q},{best.Value.LandingHex.R}) "
                     + $"score={best.Value.Score:0.00} {best.Value.Reason}");
