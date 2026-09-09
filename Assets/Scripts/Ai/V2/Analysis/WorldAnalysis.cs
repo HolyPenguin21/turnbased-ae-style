@@ -359,15 +359,22 @@ namespace Game.Ai.V2
 
         private static bool InfrastructureChanged(WorldSnapshot before, WorldSnapshot after)
         {
-            string[] a = (before?.Development?.Facilities
-                    ?? System.Array.Empty<DevelopmentFacility>())
-                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}")
-                .OrderBy(x => x).ToArray();
-            string[] b = (after?.Development?.Facilities
-                    ?? System.Array.Empty<DevelopmentFacility>())
-                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}")
-                .OrderBy(x => x).ToArray();
+            string[] a = InfrastructureKeys(before);
+            string[] b = InfrastructureKeys(after);
             return !a.SequenceEqual(b);
+        }
+
+        private static string[] InfrastructureKeys(WorldSnapshot snapshot)
+        {
+            IEnumerable<string> known = (snapshot?.Known?.Buildings
+                    ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:"
+                    + string.Join(",", (x.FacilityAbilities ?? System.Array.Empty<string>())
+                        .OrderBy(v => v)));
+            IEnumerable<string> development = (snapshot?.Development?.Facilities
+                    ?? System.Array.Empty<DevelopmentFacility>())
+                .Select(x => $"dev:{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}");
+            return known.Concat(development).OrderBy(x => x).ToArray();
         }
 
         private static HashSet<HexCoord> NewHexes(
