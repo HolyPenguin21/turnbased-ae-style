@@ -120,6 +120,11 @@ namespace Game.UI
                     major ? AiThoughtCategory.DamageTakenMajor : AiThoughtCategory.DamageTakenMinor, attacker?.Name, sideHero != null));
             }
 
+            // UnitAbilities.Splash / Scorcher — read the primary target's neighbours off the grid
+            // NOW, before RemoveUnit below clears its cell. The hits themselves are already
+            // applied here; the result windows for them are shown after the primary result.
+            List<SecondarySkillHit> secondary = ResolveSplashSkills(attacker, defender, damage);
+
             if (defenderDied)
                 RemoveUnit(defender);
             // UnitAbilities.ShockAttack (pg. 40): "results in the target unit being committed
@@ -130,8 +135,253 @@ namespace Game.UI
             else if (damage > 0 && attacker.HasAbility(UnitAbilities.ShockAttack))
                 SkipRemainingTurnThisRound(defender);
             RefreshGrid();
+
+            // Splash/Scorcher each show one extra result window per unit they touched, in
+            // sequence, before the turn actually advances (per the user's own spec).
+            if (secondary.Count > 0)
+            {
+                ShowSecondaryResultsThen(attacker, secondary, () =>
+                {
+                    RefreshGrid();
+                    if (!CheckBattleEnd())
+                        EndTurn();
+                });
+                return;
+            }
+
             if (!CheckBattleEnd())
                 EndTurn();
+        }
+
+        // One resolved Splash/Scorcher side-hit — carried from ResolveSplashSkills (where the
+        // damage is actually applied) to ShowSecondaryResultsThen (which only renders it).
+        private readonly struct SecondarySkillHit
+        {
+            public readonly UnitData Victim;
+            public readonly int Damage;
+            public readonly bool Died;
+            public readonly string Skill;
+
+            public SecondarySkillHit(UnitData victim, int damage, bool died, string skill)
+            {
+                Victim = victim;
+                Damage = damage;
+                Died = died;
+                Skill = skill;
+            }
+        }
+
+        // UnitAbilities.Splash (up to two random orthogonal neighbours of the primary target) and
+        // UnitAbilities.Scorcher (one random orthogonal neighbour, and only if that RANDOMLY
+        // PICKED neighbour is Bio — not a search for a Bio neighbour). Each side-hit is half
+        // (rounded down) of the damage dealt to the primary target, run through the SAME
+        // ChallengeResult.ApplyAbilityModifiers chain as a normal hit (so the victim's own
+        // CeramicArmor, and the attacker's Critical/Hyper/Pyro, all still apply). A splash kill
+        // goes through the normal RemoveUnit path. Berserk on the victim DOES stack from a
+        // side-hit (per the user's own call); ShockAttack does NOT propagate. The attacker
+        // itself and the primary target are never victims.
+        private List<SecondarySkillHit> ResolveSplashSkills(UnitData attacker, UnitData defender, int primaryDamage)
+        {
+            var hits = new List<SecondarySkillHit>();
+            if (attacker == null || defender == null || primaryDamage <= 0 || _grid == null)
+                return hits;
+
+            bool splash = attacker.HasAbility(UnitAbilities.Splash);
+            bool scorcher = attacker.HasAbility(UnitAbilities.Scorcher);
+            if (!splash && !scorcher)
+                return hits;
+            if (!_grid.TryFindPosition(defender, out int targetRow, out int targetCol))
+                return hits;
+
+            int half = Mathf.FloorToInt(primaryDamage / 2f);
+            if (half <= 0)
+                return hits;
+
+            var neighbours = new List<UnitData>();
+            int[] dRow = { -1, 1, 0, 0 };
+            int[] dCol = { 0, 0, -1, 1 };
+            for (int i = 0; i < 4; i++)
+            {
+                UnitData occupant = _grid.Get(targetRow + dRow[i], targetCol + dCol[i]);
+                if (occupant != null && occupant != attacker && occupant != defender)
+                    neighbours.Add(occupant);
+            }
+            if (neighbours.Count == 0)
+                return hits;
+
+            AbilityMagnitudes magnitudes = attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default;
+
+            if (splash)
+            {
+                for (int i = neighbours.Count - 1; i > 0; i--)
+                {
+                    int j = UnityEngine.Random.Range(0, i + 1);
+                    (neighbours[i], neighbours[j]) = (neighbours[j], neighbours[i]);
+                }
+                int count = Mathf.Min(2, neighbours.Count);
+                for (int i = 0; i < count; i++)
+                    hits.Add(ApplySecondarySkillHit(attacker, neighbours[i], half, magnitudes, "Splash"));
+            }
+
+            if (scorcher)
+            {
+                // Don't let a unit already splashed above (only possible if the attacker somehow
+                // carries BOTH abilities) get picked again.
+                var scorcherPool = neighbours.FindAll(u => !hits.Exists(h => h.Victim == u));
+                if (scorcherPool.Count > 0)
+                {
+                    UnitData pick = scorcherPool[UnityEngine.Random.Range(0, scorcherPool.Count)];
+                    if (pick.TypeTags.Contains(UnitTypeTag.Bio))
+                        hits.Add(ApplySecondarySkillHit(attacker, pick, half, magnitudes, "Scorcher"));
+                }
+            }
+
+            return hits;
+        }
+
+        private SecondarySkillHit ApplySecondarySkillHit(UnitData attacker, UnitData victim, int half,
+            AbilityMagnitudes magnitudes, string skill)
+        {
+            int dmg = ChallengeResult.ApplyAbilityModifiers(half, attacker, victim, magnitudes);
+            bool died = false;
+            if (dmg > 0)
+            {
+                victim.HitPointsCurrent = Mathf.Max(0, victim.HitPointsCurrent - dmg);
+                died = victim.HitPointsCurrent <= 0;
+
+                // UnitAbilities.Berserk — a landed side-hit counts as "being hit" too (per the
+                // user's own call). Same +Attack / -Defense (floored at 1) mutation and
+                // BerserkStacks/BerserkDefenseLost bookkeeping ResolveDamage does for the primary
+                // defender, reverted identically by RevertBerserkStacks at battle end.
+                if (victim.HasAbility(UnitAbilities.Berserk))
+                {
+                    victim.Attack += magnitudes.BerserkAttackGain;
+                    int defenseLoss = Mathf.Min(magnitudes.BerserkDefenseLoss, victim.Defense - 1);
+                    if (defenseLoss > 0)
+                    {
+                        victim.Defense -= defenseLoss;
+                        victim.BerserkDefenseLost += defenseLoss;
+                    }
+                    victim.BerserkStacks++;
+                }
+
+                if (died)
+                    // Don't hand the OTHER side an "enemy killed" gloat line when the attacker's
+                    // own splash killed one of its own — RemoveUnit's killer-side reaction only
+                    // makes sense for a real enemy kill.
+                    RemoveUnit(victim, announceKillerThought: victim.Owner != attacker.Owner);
+            }
+            BattleDebugLog.Write($"[SplashDiag] {skill}: {attacker?.Name} -> {victim.Name} half={half} " +
+                $"dealt={dmg} hpAfter={victim.HitPointsCurrent}/{victim.HitPointsMax} died={died}");
+            return new SecondarySkillHit(victim, dmg, died, skill);
+        }
+
+        // Re-opens the attack popup's full Result screen once per Splash/Scorcher side-hit, in
+        // order, each advancing to the next on Ok (or auto-closing in an all-AI fight — see
+        // BattleAttackPopupUI.ShowSecondaryAttackResult). onDone runs after the last one.
+        private void ShowSecondaryResultsThen(UnitData attacker, List<SecondarySkillHit> hits, Action onDone)
+        {
+            int index = 0;
+            void ShowNext()
+            {
+                if (attackPopup == null || index >= hits.Count)
+                {
+                    onDone();
+                    return;
+                }
+                SecondarySkillHit hit = hits[index++];
+                string hitLine = hit.Damage > 0 ? "Hit!" : "Absorbed";
+                string outcomeLine = hit.Died ? "\nThe target was destroyed." : string.Empty;
+                string summary = $"Attacker ID: {attacker?.Name}\nTarget ID: {hit.Victim.Name}\n" +
+                    $"Skill: {hit.Skill}\nHit Assessment: {hitLine}\nDamage Assessment: {hit.Damage} Damage{outcomeLine}";
+                attackPopup.ShowSecondaryAttackResult(attacker, hit.Victim, summary, hit.Died, ShowNext);
+            }
+            ShowNext();
+        }
+
+        // ---- UnitAbilities.RaiseTheRots — battle-only summoned units ----
+
+        // Called from BattleScreenUI.Show for each side, before arrangement. Every non-summoned
+        // member carrying UnitAbilities.RaiseTheRots conjures UnitAbilityCatalog.
+        // raiseTheRotsUnitsPerSummoner copies of the configured card into that side's own free
+        // grid cells; it simply stops early once the side of the grid is full ("если на поле есть
+        // место"). The units are added to the real ArmyData for the battle and flagged
+        // UnitData.IsSummoned so StripSummonedUnits can pull them back out afterward.
+        private void SpawnRaiseTheRotsFor(ArmyData army, int frontRow, int backRow)
+        {
+            if (army == null || army.Owner == null || _grid == null
+                || hexSelectionController == null || attackPopup == null)
+                return;
+
+            var summoners = army.Members.FindAll(m => !m.IsSummoned && m.HasAbility(UnitAbilities.RaiseTheRots));
+            if (summoners.Count == 0)
+                return;
+
+            CardDefinition template = attackPopup.RaiseTheRotsCard;
+            if (template == null)
+            {
+                BattleDebugLog.Write("[RaiseTheRots] a carrier is present but UnitAbilityCatalog resolved no summon card — skipped");
+                return;
+            }
+
+            int perSummoner = Mathf.Max(0, attackPopup.RaiseTheRotsUnitsPerSummoner);
+            int requested = summoners.Count * perSummoner;
+            int spawned = 0;
+            for (int n = 0; n < requested; n++)
+            {
+                if (!TryFindFreeBattleCell(frontRow, backRow, out int row, out int col))
+                    break;
+                UnitData rot = hexSelectionController.SpawnUnit(template.displayName, army.Owner, template.moveMax,
+                    template.activationApCost, false, template.commandRating, template.art, template.grantedAbilities,
+                    template.attack, template.range, template.hitPoints, template.initiative, template.fate,
+                    template.defenseRating, template.resistanceRating, template.unitTypeTags, template.detailArt,
+                    template.apCost, template.resourceCost);
+                if (rot == null)
+                    break;
+                rot.IsSummoned = true;
+                army.AddMemberSorted(rot);
+                _grid.Set(row, col, rot);
+                spawned++;
+            }
+            BattleDebugLog.Write($"[RaiseTheRots] {army.Name}: {summoners.Count} summoner(s) x{perSummoner} " +
+                $"-> {spawned}/{requested} \"{template.displayName}\" conjured");
+        }
+
+        // First free cell on one side: front row left-to-right, then the back row (skipping the
+        // reserved hero column). row/col = -1 when that side of the grid is full.
+        private bool TryFindFreeBattleCell(int frontRow, int backRow, out int row, out int col)
+        {
+            for (int c = 0; c < BattleGrid.Columns; c++)
+                if (_grid.Get(frontRow, c) == null) { row = frontRow; col = c; return true; }
+            for (int c = 0; c < BattleGrid.Columns; c++)
+            {
+                if (c == BattleGrid.HeroColumn)
+                    continue;
+                if (_grid.Get(backRow, c) == null) { row = backRow; col = c; return true; }
+            }
+            row = col = -1;
+            return false;
+        }
+
+        // Removes every RaiseTheRots-summoned unit from `army` (and from the live grid/turn order
+        // if the battle UI is still up) — called as the battle tears down (ResetBattlePanel) and,
+        // for a retreating army, before it relocates (PerformRetreat). Nothing summoned ever
+        // reaches the strategic map.
+        private void StripSummonedUnits(ArmyData army)
+        {
+            if (army == null)
+                return;
+            for (int i = army.Members.Count - 1; i >= 0; i--)
+            {
+                UnitData member = army.Members[i];
+                if (!member.IsSummoned)
+                    continue;
+                if (_grid != null && _grid.TryFindPosition(member, out int row, out int col))
+                    _grid.Set(row, col, null);
+                _turnOrder?.Remove(member);
+                army.Members.RemoveAt(i);
+                Game.Map.StealthSystem.OnUnitRemoved(member);
+            }
         }
 
         // Only removes a still-pending (hasn't acted yet this round) entry — a unit whose turn
@@ -148,7 +398,10 @@ namespace Game.UI
                 _turnOrder.RemoveAt(index);
         }
 
-        private void RemoveUnit(UnitData unit)
+        // announceKillerThought (default true): whether the OTHER side gets its "enemy killed"
+        // reaction. Passed false by a Splash/Scorcher side-hit that killed one of the ATTACKER's
+        // own units — there is no enemy to gloat about a friendly-fire death.
+        private void RemoveUnit(UnitData unit, bool announceKillerThought = true)
         {
             // Captured before army membership is cleared below — needed for the hero-side lookup.
             ArmyData deadSideArmy = OwningArmy(unit);
@@ -170,7 +423,7 @@ namespace Game.UI
             UnitData killerSideHero = OwningHero(killerSideArmy);
             if (deadSideArmy?.Owner != null && !deadSideArmy.Owner.IsHuman)
                 aiThoughts?.Show(deadSideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.UnitDied, unit.Name, deadSideHero != null));
-            if (killerSideArmy?.Owner != null && !killerSideArmy.Owner.IsHuman)
+            if (announceKillerThought && killerSideArmy?.Owner != null && !killerSideArmy.Owner.IsHuman)
                 aiThoughts?.Show(killerSideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.EnemyKilled, unit.Name, killerSideHero != null));
 
             // Otherwise a unit killed mid-round could still come up "on turn" later this same

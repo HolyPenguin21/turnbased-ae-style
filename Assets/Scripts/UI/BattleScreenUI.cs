@@ -311,6 +311,14 @@ namespace Game.UI
             _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
 
+            // UnitAbilities.RaiseTheRots — conjure each side's summoner-granted extra units onto
+            // the grid now, BEFORE either the AI's own arrangement pass below or the human's
+            // Arrangement phase, so both see the full board. A chained fight on the same hex runs
+            // Show() again and re-conjures a fresh set; StripSummonedUnits removes them as the
+            // battle tears down (and before a retreat relocates the army).
+            SpawnRaiseTheRotsFor(_attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow);
+            SpawnRaiseTheRotsFor(_defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow);
+
             BattleDebugLog.BeginBattle(_attacker?.Name ?? "?", _defender?.Name ?? "?", hex.ToString());
 
             // Hero Fate is deliberately NOT touched here — it refills per-battle, but as soon as
@@ -414,7 +422,9 @@ namespace Game.UI
 
             _localArmy.SavedArrangement.Clear();
             foreach (UnitData member in _localArmy.Members)
-                if (_grid.TryFindPosition(member, out int row, out int col))
+                // RaiseTheRots-summoned units are gone the moment this battle ends and are fresh
+                // instances next time — never persist their placement into the saved layout.
+                if (!member.IsSummoned && _grid.TryFindPosition(member, out int row, out int col))
                     _localArmy.SavedArrangement[member] = (row, col);
 
             _arranging = false;
@@ -704,6 +714,13 @@ namespace Game.UI
         // Show() is about to run again immediately after.
         private void ResetBattlePanel()
         {
+            // RaiseTheRots-summoned units exist only for the battle that's now tearing down — pull
+            // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
+            // ever survives back onto the strategic map (the retreat path strips the retreating
+            // army earlier, in PerformRetreat, before it relocates).
+            StripSummonedUnits(_attacker);
+            StripSummonedUnits(_defender);
+
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             if (_aiAutoPassRoutine != null)

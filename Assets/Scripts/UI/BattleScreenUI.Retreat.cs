@@ -92,6 +92,12 @@ namespace Game.UI
         {
             HexCoord battleHex = army.Hex;
 
+            // RaiseTheRots-summoned units must never leave the battle — strip them from the
+            // retreating army HERE, before ArmyRegistry.MoveArmy below would otherwise carry them
+            // onto the strategic map. The surviving army's own summons are handled later by
+            // ResetBattlePanel (this retreat still ends via OnBattleOutcomeAcknowledged).
+            StripSummonedUnits(army);
+
             // 2026-08-24 fix (project owner's own root-cause report): captured BEFORE anything
             // below moves `army`, clears its IsGarrison flag, or hands the building over. A
             // retreating army defending its OWN base is the case a retreat must also hand the

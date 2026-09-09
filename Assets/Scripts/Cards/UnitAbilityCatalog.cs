@@ -83,6 +83,21 @@ namespace Game.Cards
         [Header("Pyrokinetic +2 vs Bio — UnitAbilities.Pyrokinetic")]
         public int pyrokineticBonusDamage = 2;
 
+        [Header("Raise The Rots — UnitAbilities.RaiseTheRots")]
+        // ANY faction's card catalog — the Neutral one, a faction's own, another faction's,
+        // whatever — and the card within it, matched by CardDefinition.authoredKey (falling back
+        // to displayName). See FactionCardCatalog.ResolveCard.
+        public FactionCardCatalog raiseTheRotsUnitCatalog;
+        public string raiseTheRotsUnitKey;
+        // How many copies EACH carrier of UnitAbilities.RaiseTheRots on a side summons at the
+        // start of a battle (capped by the free space actually left on that side of the grid).
+        public int raiseTheRotsUnitsPerSummoner = 2;
+
+        // Null if the catalog isn't wired or the key no longer resolves — BattleScreenUI just
+        // logs and skips the summon in that case.
+        public CardDefinition ResolveRaiseTheRotsCard() =>
+            raiseTheRotsUnitCatalog != null ? raiseTheRotsUnitCatalog.ResolveCard(raiseTheRotsUnitKey) : null;
+
         // Recce is parameterized now (r1s0/r1s4/r1s5/r1s6) — its radius/spot-strength live
         // in the tag string itself and are read via Game.Cards.AbilityParams, so there is no
         // shared magnitude field here any more. Stealth4's hide dice are likewise encoded in

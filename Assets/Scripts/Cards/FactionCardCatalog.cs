@@ -66,6 +66,20 @@ namespace Game.Cards
 
         public IEnumerable<CardDefinition> ForType(CardType type) => cards.Where(c => c != null && c.cardType == type);
 
+        // Resolve one card WITHIN this catalog by its stable CardDefinition.authoredKey
+        // (preferred) or, failing that, its displayName — null if neither matches. A light
+        // single-catalog lookup for a reference that already knows which faction catalog it
+        // points at (see UnitAbilityCatalog.raiseTheRotsUnitKey); the "<catalog>/<card>"
+        // cross-catalog keys StartingDeckCatalog/NeutralArmyCatalog use are a separate,
+        // multi-catalog scheme and don't belong here.
+        public CardDefinition ResolveCard(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key) || cards == null)
+                return null;
+            return cards.FirstOrDefault(c => c != null && c.authoredKey == key)
+                ?? cards.FirstOrDefault(c => c != null && c.displayName == key);
+        }
+
         // Used by ArmyViewerModalUI's Create Army button. takenNames is whichever names are
         // already in use (see ArmyRegistry.AllForOwner) — a fresh army must never collide with
         // one of those; ordering beyond that is still random. Falls back to a numbered suffix

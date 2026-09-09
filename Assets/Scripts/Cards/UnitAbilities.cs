@@ -57,6 +57,33 @@ namespace Game.Cards
         // UnitAbilityCatalog.pyrokineticBonusDamage, ChallengeResult.ApplyAbilityModifiers.
         public const string Pyrokinetic = "Pyrokinetic";
 
+        // "Half (rounded down) of the damage dealt to the primary target is also dealt to up to
+        // TWO random orthogonally-adjacent units — allies or enemies alike — each run through the
+        // same ChallengeResult.ApplyAbilityModifiers chain as the main hit (so the splashed
+        // unit's own CeramicArmor, and the attacker's Critical/Hyper/Pyro, all still apply).
+        // Neither the attacker nor the primary target is ever a splash victim. A splash kill goes
+        // through the normal RemoveUnit path; ShockAttack/Berserk are NOT triggered by a splash
+        // hit. The result screen then shows one extra window per unit actually splashed. See
+        // BattleScreenUI.Combat.cs's ResolveSplashSkills / OnAttackResolved.
+        public const string Splash = "Splash";
+
+        // Like Splash but a SINGLE random orthogonal neighbour of the primary target, and the
+        // half-damage only lands if that randomly-picked neighbour carries UnitTypeTag.Bio — the
+        // pick is rolled first and then type-checked, it does not scan for a Bio neighbour. Same
+        // modifier chain, same normal-kill handling, same one-extra-result-window treatment. See
+        // BattleScreenUI.Combat.cs.
+        public const string Scorcher = "Scorcher";
+
+        // A carrier of this ability summons UnitAbilityCatalog.raiseTheRotsUnitsPerSummoner extra
+        // unit cards onto its own side of the battle grid just before the Arrangement phase, as
+        // long as the grid still has room (several summoners on one side each add their own). The
+        // summoned units are ordinary combatants for the duration of that ONE battle only (see
+        // UnitData.IsSummoned) and are stripped from the army — never reaching the strategic map —
+        // the moment the battle tears down; a chained fight on the same hex re-creates them from
+        // scratch. Which card they spawn is chosen in UnitAbilityCatalog (raiseTheRotsUnitCatalog
+        // + raiseTheRotsUnitKey). See BattleScreenUI.Show / StripSummonedUnits.
+        public const string RaiseTheRots = "RaiseTheRots";
+
         // Parameterized reconnaissance tags (replaced the old bool "Recce" + shared
         // UnitAbilityCatalog.recceRadius/recceStrength — project owner's own call, see the
         // stealth design). Grammar is r<radius>s<spot>: army vision +<radius> hexes (see
@@ -145,6 +172,33 @@ namespace Game.Cards
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
         };
 
+        // --- Card-level (non-combat) skills, same "attach to any card type" pattern as ApBonus --
+
+        // At the END of the owning player's turn the carrier restores 1 Hit Point, never above
+        // its maximum (a unit's HitPointsCurrent -> HitPointsMax; a Base's StructurePointsCurrent
+        // -> StructurePointsMax — a Facility has no HP field so it is simply skipped). A carrier
+        // in a Prison army is skipped, same exclusion as ApBonus/Produce*. See
+        // GameTurnController.RegenerateForOwner.
+        public const string Regeneration = "Regeneration";
+
+        // +1 of the matching resource to the owning player's income at the START of every turn,
+        // per in-play carrier — an ordinary (non-Prison) army member, an owned Base, or a placed
+        // Facility — exactly the same "in play" rule GrantApBonusActionPoints already applies.
+        // See GameTurnController.GrantProduceResourceIncome.
+        public const string ProduceHuman = "ProduceHuman";
+        public const string ProduceEnergy = "ProduceEnergy";
+        public const string ProduceMaterials = "ProduceMaterials";
+        public const string ProduceTech = "ProduceTech";
+
+        // Index matches Game.Economy.ResourceType's declaration order (Human, Energy, Materials,
+        // Tech), same as CollectAbilities above.
+        public static readonly string[] ProduceAbilities =
+        {
+            ProduceHuman, ProduceEnergy, ProduceMaterials, ProduceTech,
+        };
+
+        public static string ProduceAbilityFor(Game.Economy.ResourceType type) => ProduceAbilities[(int)type];
+
         // Index matches Game.Economy.ResourceType's declaration order (Human, Energy, Materials,
         // Tech) — see GameConfig.extractionFacilityCards, which is indexed the same way.
         public static string CollectAbilityFor(Game.Economy.ResourceType type) => CollectAbilities[(int)type];
@@ -174,9 +228,11 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
+            Splash, Scorcher, RaiseTheRots,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,
+            Regeneration, ProduceHuman, ProduceEnergy, ProduceMaterials, ProduceTech,
         };
 
         // Human-readable form of a tag, derived purely from its own PascalCase spelling (a

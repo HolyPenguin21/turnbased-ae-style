@@ -666,6 +666,7 @@ namespace Game.Turns
                 return;
 
             CollectResourceIncome();
+            GrantProduceResourceIncome();
 
             foreach (PlayerSetupData player in GameSession.Players)
                 PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
@@ -907,6 +908,82 @@ namespace Game.Turns
             }
         }
 
+        // UnitAbilities.Produce{Human,Energy,Materials,Tech}: +1 of the matching resource per
+        // in-play carrier, every turn — an ordinary (non-Prison) army member, an owned Base, or a
+        // placed Facility, exactly the same "in play" population GrantApBonusActionPoints counts.
+        // Run at the start of the round alongside CollectResourceIncome (see ProceedWithNewTurn).
+        private void GrantProduceResourceIncome()
+        {
+            if (GameSession.Players == null)
+                return;
+            foreach (PlayerSetupData player in GameSession.Players)
+            {
+                PlayerRoot root = PlayerRootRegistry.FindFor(player);
+                if (root == null)
+                    continue;
+                foreach (ResourceType type in AllResourceTypes)
+                {
+                    int sources = CountInPlayAbilitySources(player, UnitAbilities.ProduceAbilityFor(type));
+                    if (sources > 0)
+                        root.AddResource(type, sources);
+                }
+            }
+        }
+
+        // UnitAbilities.Regeneration: at the end of `player`'s turn every carrier they own
+        // restores 1 Hit Point, capped at its maximum — a unit's HitPointsCurrent, or a Base's
+        // StructurePointsCurrent (a Facility has no HP field, so it is skipped). Prison armies are
+        // excluded, same as the Produce/ApBonus grants. Called from AdvanceToNextPlayer.
+        private static void RegenerateForOwner(PlayerSetupData player)
+        {
+            if (player == null)
+                return;
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            {
+                if (army.IsPrison)
+                    continue;
+                foreach (UnitData unit in army.Members)
+                    if (unit.HasAbility(UnitAbilities.Regeneration)
+                        && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
+                        unit.HitPointsCurrent++;
+            }
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner != player)
+                    continue;
+                if (building.HasAbility(UnitAbilities.Regeneration)
+                    && building.StructurePointsCurrent > 0 && building.StructurePointsCurrent < building.StructurePointsMax)
+                    building.StructurePointsCurrent++;
+            }
+        }
+
+        // Shared "carriers of `ability` this player has in play right now" count — non-Prison army
+        // members, owned Base buildings, and placed Facilities. Mirrors GrantApBonusActionPoints'
+        // own enumeration (kept separate there only because that one also builds a UI breakdown).
+        private static int CountInPlayAbilitySources(PlayerSetupData player, string ability)
+        {
+            int sources = 0;
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            {
+                if (army.IsPrison)
+                    continue;
+                foreach (UnitData unit in army.Members)
+                    if (unit.HasAbility(ability))
+                        sources++;
+            }
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner != player)
+                    continue;
+                if (building.HasAbility(ability))
+                    sources++;
+                foreach (FacilityData facility in building.FacilitySlots)
+                    if (facility != null && facility.HasAbility(ability))
+                        sources++;
+            }
+            return sources;
+        }
+
         private void BeginPlayerTurn(int index)
         {
             if (_gameOver)
@@ -1077,6 +1154,8 @@ namespace Game.Turns
             // of this player's next turn" (see _completedTurns / StealthSystem).
             if (CurrentPlayer != null)
             {
+                // UnitAbilities.Regeneration — end-of-turn heal for this player's carriers.
+                RegenerateForOwner(CurrentPlayer);
                 _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
                 Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);
             }

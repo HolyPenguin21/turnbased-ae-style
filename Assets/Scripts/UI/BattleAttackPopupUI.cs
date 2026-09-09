@@ -1257,6 +1257,12 @@ namespace Game.UI
             CriticalDamageMultiplier, HyperkineticBonusDamage, CeramicArmorReduction, PyrokineticBonusDamage,
             BerserkAttackGain, BerserkDefenseLoss);
 
+        // UnitAbilities.RaiseTheRots — the card each carrier summons at battle start, and how
+        // many per carrier. Same single-abilityCatalog-reference pattern as Magnitudes above;
+        // null card if the catalog isn't wired (BattleScreenUI.Show logs and skips the summon).
+        public CardDefinition RaiseTheRotsCard => abilityCatalog != null ? abilityCatalog.ResolveRaiseTheRotsCard() : null;
+        public int RaiseTheRotsUnitsPerSummoner => abilityCatalog != null ? abilityCatalog.raiseTheRotsUnitsPerSummoner : 2;
+
         // Purely the rolled successes decide this — per the user's own call, dropping the
         // manual's separate "capture threshold" (comparing the hunter's successes against the
         // target's full original dice-pool size) since that let a clean win still resolve as a
@@ -1335,6 +1341,29 @@ namespace Game.UI
 
         private void ShowResult(int damage, bool died, bool wasHit, List<string> appliedAbilities)
         {
+            string hitLine = wasHit ? "Hit!" : "Miss";
+            string outcomeLine = died ? "\nThe target was destroyed." : string.Empty;
+            // Only shown when an ability actually changed the outcome (e.g. CeramicArmor
+            // absorbing an otherwise-landed hit down to 0) — a plain unmodified hit/miss
+            // gets no extra line.
+            string skillsLine = appliedAbilities != null && appliedAbilities.Count > 0
+                ? $"\nAffected by Skill{(appliedAbilities.Count > 1 ? "s" : string.Empty)}: {string.Join(", ", appliedAbilities)}"
+                : string.Empty;
+            string summary = $"Attacker ID: {_attacker.Name}\nTarget ID: {_defender.Name}\n" +
+                $"Hit Assessment: {hitLine}\nDamage Assessment: {damage} Damage{outcomeLine}{skillsLine}";
+
+            RenderResultScreen(_attacker, _defender, summary, died);
+
+            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+                StartCoroutine(AutoCloseResultIfNoHuman());
+        }
+
+        // The shared visual population of the Result state — attacker art (its DetailArt, or
+        // Art), a free-form summary block, and the target's own art / name / "HP: x/y" /
+        // DESTROYED stamp. Used by ShowResult (the primary Ground Combat hit) and
+        // ShowSecondaryAttackResult (each Splash/Scorcher follow-up), so the two can't drift.
+        private void RenderResultScreen(UnitData attackerForArt, UnitData target, string summary, bool died)
+        {
             if (rollStateRoot != null)
                 rollStateRoot.SetActive(false);
             if (resultStateRoot != null)
@@ -1342,33 +1371,53 @@ namespace Game.UI
 
             if (resultArtImage != null)
             {
-                Sprite attackerArt = _attacker.DetailArt != null ? _attacker.DetailArt : _attacker.Art;
+                Sprite attackerArt = attackerForArt != null
+                    ? (attackerForArt.DetailArt != null ? attackerForArt.DetailArt : attackerForArt.Art)
+                    : null;
                 resultArtImage.sprite = attackerArt;
                 resultArtImage.gameObject.SetActive(attackerArt != null);
             }
             if (resultSummaryText != null)
-            {
-                string hitLine = wasHit ? "Hit!" : "Miss";
-                string outcomeLine = died ? "\nThe target was destroyed." : string.Empty;
-                // Only shown when an ability actually changed the outcome (e.g. CeramicArmor
-                // absorbing an otherwise-landed hit down to 0) — a plain unmodified hit/miss
-                // gets no extra line.
-                string skillsLine = appliedAbilities != null && appliedAbilities.Count > 0
-                    ? $"\nAffected by Skill{(appliedAbilities.Count > 1 ? "s" : string.Empty)}: {string.Join(", ", appliedAbilities)}"
-                    : string.Empty;
-                resultSummaryText.text = $"Attacker ID: {_attacker.Name}\nTarget ID: {_defender.Name}\nHit Assessment: {hitLine}\nDamage Assessment: {damage} Damage{outcomeLine}{skillsLine}";
-            }
+                resultSummaryText.text = summary;
             if (resultTargetArtImage != null)
             {
-                resultTargetArtImage.sprite = _defender.Art;
-                resultTargetArtImage.gameObject.SetActive(_defender.Art != null);
+                resultTargetArtImage.sprite = target != null ? target.Art : null;
+                resultTargetArtImage.gameObject.SetActive(target != null && target.Art != null);
             }
             if (resultTargetNameText != null)
-                resultTargetNameText.text = _defender.Name;
+                resultTargetNameText.text = target != null ? target.Name : string.Empty;
             if (resultTargetHpText != null)
-                resultTargetHpText.text = $"HP: {_defender.HitPointsCurrent}/{_defender.HitPointsMax}";
+                resultTargetHpText.text = target != null
+                    ? $"HP: {target.HitPointsCurrent}/{target.HitPointsMax}" : string.Empty;
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(died);
+        }
+
+        // A standalone follow-up Result screen for ONE Splash/Scorcher side-hit — same full
+        // layout as the primary Ground Combat result (attacker art + summary + target art / HP /
+        // DESTROYED stamp), re-openable on top of a just-closed result, its Ok advancing via
+        // onAcknowledged. Rides the Announcement _kind's own OnOkClicked plumbing (no roll/duel
+        // state involved); StopAllCoroutines clears any auto-close still pending from the screen
+        // before it. See BattleScreenUI.Combat.cs's ShowSecondaryResultsThen.
+        public void ShowSecondaryAttackResult(UnitData attacker, UnitData target, string summary, bool died,
+            Action onAcknowledged)
+        {
+            StopAllCoroutines();
+            CleanupResearchProduction();
+
+            _kind = ChallengeKind.Announcement;
+            _onAnnouncementAcknowledged = onAcknowledged;
+            _okAlreadyHandled = false;
+            _phase = Phase.Resolved;
+
+            if (panelRoot != null)
+            {
+                panelRoot.SetActive(true);
+                panelRoot.transform.SetAsLastSibling();
+            }
+            VisibilityChanged?.Invoke();
+
+            RenderResultScreen(attacker, target, summary, died);
 
             if (NoHumanInvolved || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());

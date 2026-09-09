@@ -166,6 +166,13 @@ namespace Game.Units
         public bool IsPrisoner;
         public PlayerSetupData CapturedFrom;
 
+        // True only for a unit conjured into a single battle by UnitAbilities.RaiseTheRots (see
+        // BattleScreenUI.Show). Such a unit is an ordinary combatant while that battle runs but
+        // must NEVER reach the strategic map — BattleScreenUI.StripSummonedUnits removes every
+        // IsSummoned member from its army as the battle tears down (and before a retreat
+        // relocates the army), and a chained fight on the same hex conjures a fresh set.
+        public bool IsSummoned;
+
         public void ReplenishMoveForNewTurn()
         {
             MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);
