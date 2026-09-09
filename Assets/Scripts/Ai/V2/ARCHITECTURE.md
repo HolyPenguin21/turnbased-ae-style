@@ -51,6 +51,41 @@ Forbidden edges: `Evaluator → StrategicManager`, `Domain → MissionPlanner`,
 cycle across the tiers above. `Execution/` receives concrete plans and calls
 canonical game actions; it never selects objectives or invents alternative actions.
 
+## Mid-turn loop boundary (rollout contract)
+
+The loop is a bounded repetition of the existing horizontal pipeline, not a new
+vertical manager. Ownership remains:
+
+| Level | Mid-turn responsibility |
+|---|---|
+| `Orchestration/` | Chooses the next admitted task family, enforces turn/cycle/step bounds and stops. No scoring. |
+| `Analysis/` | Refreshes `WorldSnapshot`, compares the previous observation with the new one and reports factual deltas. Domain event/reward code never depends on V2. |
+| `Strategy/` | Maps typed factual invalidations to dirty task families and re-runs only the existing affected policy. |
+| `State/` | Keeps turn-scoped reservations, commitments, state version and persistent no-op parking across cycles. |
+| Existing executors | Execute one admitted atomic task step through canonical gameplay calls and return one structured result. They never re-plan. |
+| `Reaction/` | End-of-turn safety net, bounded external-interrupt fallback and final reconciliation; not the ordinary post-step loop owner. |
+
+A **task step** contains at most one canonical state-changing gameplay operation,
+or one explicit no-op/blocked result. Its executor must wait until that operation
+and any battle/event consequence have settled before returning. Only then may
+Analysis refresh observations and produce typed invalidations. This preserves
+method atomicity: the loop surrounds existing operations; it does not yield from
+inside their mutation boundary.
+
+| Lifetime | Starts | Ends | May survive |
+|---|---|---|---|
+| Turn | V2 turn entry | final reconciliation / end turn | reservations, commitments, mission intent, parking |
+| Cycle | refreshed observation + dirty-family admission | one bounded task selection/replan pass | turn-owned state only |
+| Step | admitted task result is selected | execution settles and result is observed | no executor-local planning state |
+
+Phase A and Phase B are not deleted. Their existing policies remain the owners of
+capability fulfilment and surplus/tempo arbitration. During rollout they are
+re-entered only through bounded adapters and retain turn-scoped parking/reservation
+state; the terminal Phase-B/reaction path remains the final safety net. The initial
+rollout scope excludes Aggression through the existing `AiStrategyV2Scope` gate,
+so the current Full/Aggression batch path remains available while Recon/Development
+is validated.
+
 ## Canonical seams (one owner each)
 
 | Concern | Canonical owner |

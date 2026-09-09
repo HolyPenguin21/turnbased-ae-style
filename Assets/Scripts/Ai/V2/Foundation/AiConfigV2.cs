@@ -18,6 +18,20 @@ namespace Game.Ai.V2
         public static bool frameLogEnabled = true;
 
         // =======================================================================================
+        //  MID-TURN LOOP ROLLOUT
+        // =======================================================================================
+        // Temporary kill switch. While false, the shipping batch pipeline and the existing
+        // StrategicReactionPass/Phase-B ordering remain byte-for-byte in control. The loop
+        // orchestrator may read this flag; lower layers must not branch on it.
+        public static bool midTurnLoopEnabled = false;
+
+        // Safety bounds, not policy knobs. One task step is at most one canonical state-mutating
+        // gameplay operation (or one explicit no-op result) followed by settlement and observation.
+        public const int maxMidTurnStepsPerTurn = 96;
+        public const int maxMidTurnNoProgressCycles = 2;
+        public const int maxMidTurnFallbackReturns = 1;
+
+        // =======================================================================================
         //  STRENGTH MODEL  (AiPower) — replaces V1's flat WorthIt.AttackSum + DefenseSum.
         //  UnitPower = weighted sum of the raw combat stats, times an ability multiplier. This is
         //  a cheap RANKING scalar for the radar and the potential estimates, deliberately NOT a
