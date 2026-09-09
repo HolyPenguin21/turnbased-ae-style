@@ -858,16 +858,22 @@ namespace Game.Ai.V2
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
 
-                    StrategicInvalidation developmentTriggers =
-                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Development));
-                    StrategicInvalidation reconTriggers =
-                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
-                    bool reconDirty = reconTriggers.Any;
+                    // Inspect once before consuming: ResourceSite/Capability can dirty more
+                    // than one family, while the registry stores each factual reason only once.
+                    StrategicInvalidation pendingTriggers =
+                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
+                    StrategicInvalidationReason developmentReasons = pendingTriggers.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Development);
+                    StrategicInvalidationReason reconReasons = pendingTriggers.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
+                    StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                        developmentReasons | reconReasons);
+                    bool reconDirty = reconReasons != StrategicInvalidationReason.None;
+                    bool developmentDirty =
+                        developmentReasons != StrategicInvalidationReason.None;
                     bool developmentChanged = false;
 
-                    if (developmentTriggers.Any)
+                    if (developmentDirty)
                     {
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         activeIntents = MissionContinuityLayer.ResolveActive(
@@ -905,8 +911,8 @@ namespace Game.Ai.V2
                     }
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
-                        + $"developmentTriggers={developmentTriggers.Reasons} "
-                        + $"reconTriggers={reconTriggers.Reasons} "
+                        + $"developmentTriggers={developmentReasons} "
+                        + $"reconTriggers={reconReasons} "
                         + $"reconReadmit={(reconDirty ? 1 : 0)}");
 
                     if (reconDirty)
@@ -917,7 +923,7 @@ namespace Game.Ai.V2
 
                     if (!phaseBRound.StateChanged && !developmentChanged)
                         break;
-                    if (!reconDirty && !developmentTriggers.Any)
+                    if (!reconDirty && !developmentDirty)
                         break;
                 }
                 phaseBHandled = true;
