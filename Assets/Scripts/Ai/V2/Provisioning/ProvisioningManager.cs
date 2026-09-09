@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
