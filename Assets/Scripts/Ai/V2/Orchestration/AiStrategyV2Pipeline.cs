@@ -597,10 +597,11 @@ namespace Game.Ai.V2
             ActorCommitments postCommitments = null;
             bool phaseBHandled = false;
 
-            // The mid-turn architecture is canonical for the current focus scope: Phase A has
-            // already run exactly once; only Mission -> Allocation -> Provisioning -> Task Execution
-            // -> local Continuity repeats. Full/Aggression remains a compatibility branch until that
-            // task family is explicitly migrated into this loop.
+            // The typed mid-turn architecture is canonical for the current focus scope. The
+            // initial Phase A settles before operational admission; a later factual Development
+            // invalidation may re-enter that same manager through the shared ledger. Each Recon
+            // admission still settles exactly one task command. Full/Aggression remains a
+            // compatibility branch until that family is explicitly migrated.
             if (AiStrategyV2Scope.IsFocusScoped)
             {
                 missions = new List<MissionProposal>();
@@ -614,7 +615,8 @@ namespace Game.Ai.V2
                     && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
                 {
                     // Every admission reads a settled world. Strategic observations are refreshed
-                    // here; Phase A and the radar/desire frame are intentionally not re-entered.
+                    // here. The radar frame stays stable for this turn; Development re-entry is
+                    // owned by the typed management boundary outside this local Recon iterator.
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
