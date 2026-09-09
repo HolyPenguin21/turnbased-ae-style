@@ -748,7 +748,7 @@ namespace Game.Ai.V2
                 EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments).ToList();
             if (candidates.Any(x => x.route.IsOnTarget))
                 return true;
-            foreach ((EconomyBuilderRouteSnapshot route, ArmySnapshot army) candidate in candidates)
+            foreach (var candidate in candidates)
             {
                 MissionIntent assignment = ActiveAssignment(activeIntents, candidate.army.ArmyId);
                 if (assignment != null && assignment.Kind != MissionKind.Economy
