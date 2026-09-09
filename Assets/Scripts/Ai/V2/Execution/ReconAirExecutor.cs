@@ -124,17 +124,8 @@ namespace Game.Ai.V2
             var fundedThisPass = new HashSet<int>(plan.ReadyActorIds.Where(id =>
                 !plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission mission)
                 || !ObjectiveSatisfied(player, mission)));
-            foreach (ArmyData air in ArmyRegistry.AllForOwner(player)
-                         .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                             && a.Controller != null && a.CurrentMovement > 0
-                             && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                             && !fundedThisPass.Contains(a.Id)
-                             && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
-                         .OrderBy(a => a.Id))
+            foreach (ArmyData air in FindMandatoryRecoveryActors(player, ctx, fundedThisPass))
             {
-                ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, air);
-                if (projected == null || projected.Phase != ReconAirPhase.Return)
-                    continue; // not a mandatory recovery — unfunded continuing progress, skip this pass
                 HexCoord? focus = ReconPatrolStateRegistry.TryGet(player, air.Id, out ReconPatrolState st)
                     ? st.StrategicAnchor : (HexCoord?)null;
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Recovery] actor=#{air.Id} has no strategic "
@@ -192,6 +183,30 @@ namespace Game.Ai.V2
                 ? new Game.Cards.ResourceCost { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
                 : null;
             result.StateVersionAfter = V2StateVersion.Current;
+        }
+
+        // Single owner of the safety exception to normal Mission -> Allocation -> Provisioning:
+        // an airborne Recon actor already in Return phase must be allowed to recover even without
+        // a fresh strategic-progress entitlement. Callers decide only which actors are entitled;
+        // the lifecycle projection below remains the unique must-recover rule.
+        internal static List<ArmyData> FindMandatoryRecoveryActors(PlayerSetupData player,
+            AiTurnContext ctx, IEnumerable<int> entitledActorIds = null)
+        {
+            var entitled = new HashSet<int>(entitledActorIds ?? Enumerable.Empty<int>());
+            return ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
+                    && a.Controller != null && a.CurrentMovement > 0
+                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+                    && !entitled.Contains(a.Id)
+                    && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
+                .Where(a =>
+                {
+                    ReconAirSortieState projected =
+                        ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, a);
+                    return projected != null && projected.Phase == ReconAirPhase.Return;
+                })
+                .OrderBy(a => a.Id)
+                .ToList();
         }
 
         // Fly one planned launch. The stale-plan guard (CanAffordLaunch re-check) mirrors §35: if
