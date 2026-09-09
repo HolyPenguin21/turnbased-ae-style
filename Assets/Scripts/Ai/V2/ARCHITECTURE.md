@@ -105,6 +105,7 @@ is validated.
 | Projected army capacity rule (planner == executor) | `Materialization/ArmyCapacityRules` |
 | Air-recon actor/target selection (round 4 — same owner as ground) | `Recon/ReconAssignmentPlanner` (`AppendAirCandidates`) |
 | Air-recon execution-input assembly (mode / launch-subset re-derivation / first-step gate / energy) | `Recon/AirReconPlanner` |
+| Typed strategic invalidations | `State/StrategicInterruptRegistry` — factual reason mask plus per-reason payload; no second event bus |
 | Execution state-version counter | `State/V2StateVersion` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |
