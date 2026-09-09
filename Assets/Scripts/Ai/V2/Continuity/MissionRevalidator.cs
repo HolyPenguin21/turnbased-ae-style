@@ -53,6 +53,10 @@ namespace Game.Ai.V2
             {
                 if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, pm.EconomyTarget))
                     return MissionValidity.StaleGoalMet;
+                if (pm.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder)
+                    return pm.EconomyTarget.BuilderArmyId == mover.Id
+                        ? MissionValidity.Valid
+                        : MissionValidity.StaleMoverLost;
                 if (pm.EconomyTarget.Kind == EconomyTaskKind.FoundBase
                     && pm.EconomyTarget.BuildCard == null)
                     return MissionValidity.StaleTargetInvalidated;

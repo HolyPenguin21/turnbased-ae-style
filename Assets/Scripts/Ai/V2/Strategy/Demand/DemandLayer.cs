@@ -719,16 +719,16 @@ namespace Game.Ai.V2
                     + "reason=no_legal_valuable_site_or_base");
         }
 
-        private static AxisDemand EconomyHeroPrerequisite(AxisDemand source) => new AxisDemand
+        internal static AxisDemand EconomyHeroPrerequisite(AxisDemand source) => new AxisDemand
         {
             RequestingAxis = DesireAxis.Economy,
             Capability = CapabilityKind.Hero,
             DesiredAmount = 1f,
             TargetHex = source.TargetHex,
-            // TargetHex is strategic context for TargetFit, not a deployment coordinate.
-            // Build card/cost/route payload deliberately stays on the infrastructure demand; the
-            // Hero materialization path consumes only its own capability and follow-up AP.
+            // Preserve only the exact card instance as a staged commitment. H/E/M/T stay free
+            // until the builder enters the one-turn completion horizon.
             EconomyResourceType = source.EconomyResourceType,
+            EconomyBuildCard = source.EconomyBuildCard,
             MinimumFollowupAp = source.MinimumFollowupAp,
             EconomyExpectedIncomeGain = source.EconomyExpectedIncomeGain,
             EconomySiteValue = source.EconomySiteValue,
@@ -887,6 +887,9 @@ namespace Game.Ai.V2
             snap?.Threat?.Threats != null && snap.Threat.Threats.Any(t => t?.Asset != null
                 && t.Asset.Hex.Equals(hex) && t.Severity >= AiConfigV2.defenceSeverityTrigger
                 && (!t.EnemyEta.HasValue || t.EnemyEta.Value <= 1));
+
+        internal static float EconomyRecoveryThreatExposure(WorldSnapshot snap, HexCoord hex) =>
+            ThreatExposure(snap, hex);
 
         internal static float ScoreEconomySite(float deficit, float expectedIncomeGain,
             float baseNetworkSynergy, float nearbyResourceClusterValue, float travelCost,

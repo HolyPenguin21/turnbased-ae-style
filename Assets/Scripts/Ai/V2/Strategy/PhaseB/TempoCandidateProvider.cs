@@ -71,6 +71,10 @@ namespace Game.Ai.V2
             // PlayCard — materialization lane. Utility = StrategicCardEvaluator decision score, verbatim.
             foreach (MatSurplusDecision mat in ComputeMatDecisions(snap, player, root, hand, ctx,
                          commitments, result, reconObjectives, phaseBWitnessedApDemand, verbose))
+            {
+                if (result.Reservation.ClaimsEconomyBuildCard(mat.Plan?.BaseCardInHand)
+                    || result.Reservation.ClaimsEconomyBuildCard(mat.Plan?.EquipmentInHand))
+                    continue;
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayMat, Mat = mat, Utility = mat.Utility,
@@ -80,6 +84,7 @@ namespace Game.Ai.V2
                     Label = $"{mat.Plan.Kind} {AiCardLog.Plan(mat.Plan)}"
                         + (mat.Residual != null ? $" (residual {mat.Residual.Capability})" : ""),
                 });
+            }
 
             // Every legal non-combat play enters the same arbitration set. Selecting a lane winner
             // before reservation/cap/parking checks used to hide a cheaper legal fallback.
@@ -87,6 +92,9 @@ namespace Game.Ai.V2
             foreach (NonCombatCardPlayer.NonCombatPlay nc in NonCombatCardPlayer.EnumeratePlays(
                          snap, player, root, hand, ctx, nonCombatBlocked, result.Reservation,
                          phaseBWitnessedApDemand))
+            {
+                if (result.Reservation.ClaimsEconomyBuildCard(nc.Card))
+                    continue;
                 list.Add(new TempoCandidate
                 {
                     Kind = TempoKind.PlayNonCombat, Nc = nc, Utility = nc.Score,
@@ -95,6 +103,7 @@ namespace Game.Ai.V2
                     ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
+            }
             if (verbose)
                 foreach (string reason in nonCombatBlocked
                     .Where(x => !string.IsNullOrEmpty(x))

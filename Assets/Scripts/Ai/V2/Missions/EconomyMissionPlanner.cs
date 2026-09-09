@@ -15,6 +15,36 @@ namespace Game.Ai.V2
             IReadOnlyList<AxisDemand> demands)
         {
             var result = new List<MissionProposal>();
+            foreach (MissionIntent recovery in activeIntents ?? System.Array.Empty<MissionIntent>())
+            {
+                if (recovery?.Kind != MissionKind.Economy
+                    || recovery.Status != IntentStatus.Active
+                    || recovery.Economy?.Kind != EconomyTaskKind.ReturnBuilder
+                    || !recovery.PreferredMoverArmyId.HasValue)
+                    continue;
+                EconomyIntent e = recovery.Economy;
+                var target = new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.ReturnBuilder,
+                    TargetHex = e.TargetHex,
+                    ObjectiveId = $"ReturnBuilder:{recovery.PreferredMoverArmyId.Value}",
+                    BuilderArmyId = recovery.PreferredMoverArmyId,
+                    BuildValue = e.BuildValue,
+                };
+                var mission = new MissionProposal
+                {
+                    Kind = MissionKind.Economy, Target = target,
+                    BaseValue = e.BuildValue, LocalAdmissionScore = e.BuildValue,
+                    Requirements = Requirements(target, recovery, snapshot, -1f),
+                    PreferredMoverArmyId = recovery.PreferredMoverArmyId,
+                    FromDurableIntent = true, DurableFundingTier = recovery.Funding,
+                    Explain = $"economy ReturnBuilder #{recovery.PreferredMoverArmyId.Value} "
+                        + $"@({target.TargetHex.Q},{target.TargetHex.R})",
+                };
+                mission.Axes.Value[DesireAxis.Economy] = 1f;
+                result.Add(mission);
+            }
+
             if (demands == null)
                 return result;
 
@@ -70,6 +100,25 @@ namespace Game.Ai.V2
         private static MissionRequirements Requirements(EconomyMissionTarget t,
             MissionIntent incumbent, WorldSnapshot snapshot, float witnessedTravelCost)
         {
+            if (t.Kind == EconomyTaskKind.ReturnBuilder)
+            {
+                ArmySnapshot recoveryActor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && t.BuilderArmyId.HasValue && a.ArmyId == t.BuilderArmyId.Value);
+                float recoveryActivation = recoveryActor != null
+                    && !recoveryActor.HasActivatedThisTurn ? recoveryActor.ActivationApCost : 0f;
+                int recoveryDistance = recoveryActor == null ? 0
+                    : HexGridMath.Distance(recoveryActor.Hex, t.TargetHex);
+                return new MissionRequirements
+                {
+                    RequiresArmy = true, RequiresHero = true, MoverKnown = true,
+                    ApMinimum = recoveryActivation, ApDesired = recoveryActivation,
+                    ApMaximum = recoveryActivation, EstimatedDistance = recoveryDistance,
+                    EtaTurns = recoveryActor == null ? 0
+                        : UnityEngine.Mathf.CeilToInt(recoveryDistance
+                            / (float)UnityEngine.Mathf.Max(1, recoveryActor.MaxMovement)),
+                };
+            }
+
             float activation = 0f;
             if (incumbent?.PreferredMoverArmyId is int id)
             {

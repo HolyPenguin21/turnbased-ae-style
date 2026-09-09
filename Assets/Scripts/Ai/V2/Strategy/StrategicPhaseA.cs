@@ -98,6 +98,11 @@ namespace Game.Ai.V2
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
                 return result;
 
+            foreach (AxisDemand economyDemand in demands.Where(d => d != null
+                         && d.RequestingAxis == DesireAxis.Economy
+                         && d.EconomyBuildCard != null))
+                result.Reservation.ClaimedEconomyBuildCards.Add(economyDemand.EconomyBuildCard);
+
             // AI-MGR — the NON-card half of the owner-witnessed AP workload the recurring-AP effect
             // (ApBonus) is priced against: AP that COMMITTED work will consume this turn — a durable
             // mission's claimed mover that has not activated yet, plus WITNESSED recon-air sorties
@@ -192,6 +197,11 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
                         + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                     snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                    if (istate.Demand.RequestingAxis == DesireAxis.Economy
+                        && infra.BuilderArmyId.HasValue)
+                        MissionContinuityLayer.BeginEconomyBuilderRecovery(
+                            player, snap, istate.Demand, infra.BuilderArmyId.Value,
+                            ctx.TurnNumber);
                 }
                 else
                 {
@@ -202,7 +212,7 @@ namespace Game.Ai.V2
                     if (istate.Demand.Capability == CapabilityKind.EconomicInfrastructure
                         || istate.Demand.Capability == CapabilityKind.EconomicExpansionBase)
                         InfrastructureFulfillment.ReserveDeferredEconomyResources(
-                            player, ctx.TurnNumber, istate.Demand);
+                            snap, player, ctx.TurnNumber, istate.Demand);
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
                 }
             }
@@ -539,6 +549,15 @@ namespace Game.Ai.V2
                 DevOpportunity = d.DevOpportunity,
                 DevelopmentOperatorMode = d.DevelopmentOperatorMode,
                 EconomyResourceType = d.EconomyResourceType,
+                EconomyBuildCard = d.EconomyBuildCard,
+                EconomyBuildResourceCost = d.EconomyBuildResourceCost,
+                EconomyBuildApCost = d.EconomyBuildApCost,
+                EconomyExpectedIncomeGain = d.EconomyExpectedIncomeGain,
+                EconomySiteValue = d.EconomySiteValue,
+                EconomyTravelCost = d.EconomyTravelCost,
+                EconomyThreatExposure = d.EconomyThreatExposure,
+                EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
+                EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
                 IsPersistenceDeferred = d.IsPersistenceDeferred,

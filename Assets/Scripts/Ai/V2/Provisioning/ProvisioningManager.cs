@@ -503,12 +503,28 @@ namespace Game.Ai.V2
             });
         }
 
+        internal static bool IsEligibleEconomyRecoveryActor(
+            MissionProposal mission, ArmySnapshot actor)
+        {
+            if (mission == null || actor == null || mission.Kind != MissionKind.Economy
+                || !(mission.Target is EconomyMissionTarget target)
+                || target.Kind != EconomyTaskKind.ReturnBuilder
+                || !mission.PreferredMoverArmyId.HasValue)
+                return false;
+            return actor.ArmyId == mission.PreferredMoverArmyId.Value
+                && (!target.BuilderArmyId.HasValue
+                    || actor.ArmyId == target.BuilderArmyId.Value)
+                && actor.HasHero && !actor.IsPrison && !actor.IsAir && !actor.IsAirfield;
+        }
+
         private static ProvisioningResult ProvisionEconomy(PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             EconomyMissionTarget target)
         {
             MissionProposal m = funded.Mission;
             StableMissionKey key = StableMissionKey.For(m);
+            if (target.Kind == EconomyTaskKind.ReturnBuilder)
+                return ProvisionEconomyRecovery(player, root, ctx, session, funded, target, key);
             if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, target))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("economy target already built"));
             if (target.Kind == EconomyTaskKind.FoundBase
@@ -584,6 +600,65 @@ namespace Game.Ai.V2
                 ClaimedAp = realAp, ClaimedPhysical = CostVector(target.BuildResourceCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
+            });
+        }
+
+        private static ProvisioningResult ProvisionEconomyRecovery(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, FundedEntry funded,
+            EconomyMissionTarget target, StableMissionKey key)
+        {
+            MissionProposal mission = funded.Mission;
+            int? preferredId = mission.PreferredMoverArmyId ?? target.BuilderArmyId;
+            if (!preferredId.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "return-builder mission has no preferred actor"));
+
+            ArmySnapshot actorSnapshot = session.Snapshot?.Self?.Armies?
+                .FirstOrDefault(a => a != null && a.ArmyId == preferredId.Value);
+            if (!IsEligibleEconomyRecoveryActor(mission, actorSnapshot))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"preferred return builder #{preferredId.Value} is no longer eligible"));
+
+            ArmyData actor = ResolveArmy(player, preferredId.Value);
+            if (actor == null || actor.Owner != player
+                || !actor.Members.Any(u => u != null && u.IsHero))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"preferred return builder #{preferredId.Value} no longer exists"));
+            BuildingData shelter = BuildingRegistry.FindAt(target.TargetHex);
+            bool isOwnCitadel = player.CitadelHexQ == target.TargetHex.Q
+                && player.CitadelHexR == target.TargetHex.R;
+            if (shelter == null || shelter.Owner != player
+                || (!shelter.IsBase && !isOwnCitadel))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"recovery shelter ({target.TargetHex.Q},{target.TargetHex.R}) is no longer protected"));
+            if (actor.Hex.Equals(target.TargetHex))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    $"return builder #{actor.Id} already protected"));
+            if (actor.CurrentMovement <= 0)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"return builder #{actor.Id} has no movement"));
+            if (!SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.TargetHex).HasValue
+                || SafeStepPathing.FindSafePathCost(ctx.Map, actor, target.TargetHex) == int.MaxValue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"no safe recovery route for builder #{actor.Id}"));
+
+            float activation = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+            if (activation > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activation,
+                    $"return builder #{actor.Id} needs {activation:0.##} AP"));
+            if (activation > root.ActionPoints - session.ApClaimed
+                + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "recovery activation AP no longer available"));
+
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = mission, Key = key, Kind = MissionKind.Economy,
+                MoverArmyId = actor.Id, FocusHex = target.TargetHex,
+                ExecutionHex = target.TargetHex, EconomyTarget = target,
+                ClaimedAp = activation, ClaimedPhysical = ResourceVector.Zero,
+                ReservationOwner = null,
             });
         }
 

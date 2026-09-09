@@ -96,10 +96,17 @@ namespace Game.Ai.V2
     {
         public readonly HashSet<string> ClaimedGeneratorUses = new HashSet<string>();
         public readonly HashSet<string> TriedGeneratorCards = new HashSet<string>();
+        public readonly HashSet<CardData> ClaimedEconomyBuildCards = new HashSet<CardData>();
         public readonly List<AxisDemand> UnresolvedDemands = new List<AxisDemand>();
         public int GenerationAttemptsUsed;
 
         public bool CanGenerateMore => GenerationAttemptsUsed < AiConfigV2.maxGenerationActionsPerTurn;
+
+        public bool ClaimsEconomyBuildCard(CardData card) => card != null
+            && (ClaimedEconomyBuildCards.Contains(card)
+                || UnresolvedDemands.Any(d => d != null
+                    && d.RequestingAxis == DesireAxis.Economy
+                    && object.ReferenceEquals(d.EconomyBuildCard, card)));
 
         public void RecordGenerationAttempt(GenerationStep g, MaterializationResult r)
         {

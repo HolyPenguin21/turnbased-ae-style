@@ -570,15 +570,18 @@ namespace Game.Ai.V2
             EconomyMissionTarget target = pm.EconomyTarget;
             if (army.Hex.Equals(target.TargetHex))
             {
-                // Delivery is complete, but construction remains StrategicPhaseA ->
-                // InfrastructureFulfillment -> BuildingPlayExecutor. The local Economy re-entry
-                // immediately following this settled step owns that action.
-                result.ReachedGoal = false;
-                result.StopReason = ExecutionStopReason.StepCompleted;
+                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder;
+                result.StopReason = result.ReachedGoal
+                    ? ExecutionStopReason.ReachedGoal
+                    : ExecutionStopReason.StepCompleted;
                 result.NeedsReplan = false;
                 result.FinalHex = army.Hex;
                 result.ApSpent = 0f;
-                AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                if (result.ReachedGoal)
+                    AiDebugLog.Write($"[AI][V2][Economy][Recovery] builder #{army.Id} protected at "
+                        + $"({army.Hex.Q},{army.Hex.R})");
+                else
+                    AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
                 yield break;
             }
             if (army.CurrentMovement <= 0)
@@ -603,9 +606,13 @@ namespace Game.Ai.V2
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
-            result.StopReason = result.StepsMoved > 0 ? ExecutionStopReason.StepCompleted
+            bool recoveryArrived = target.Kind == EconomyTaskKind.ReturnBuilder
+                && after.Equals(target.TargetHex);
+            result.ReachedGoal = recoveryArrived;
+            result.StopReason = recoveryArrived ? ExecutionStopReason.ReachedGoal
+                : result.StepsMoved > 0 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.MoveRejected;
-            result.NeedsReplan = result.StepsMoved == 0;
+            result.NeedsReplan = result.StepsMoved == 0 && !recoveryArrived;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][Economy] move {pm.Key} ({before.Q},{before.R})->({after.Q},{after.R})");
         }

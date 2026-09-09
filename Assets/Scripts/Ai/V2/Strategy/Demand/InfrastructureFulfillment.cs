@@ -42,6 +42,7 @@ namespace Game.Ai.V2
         // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
         // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
         public bool CardPlayed;
+        public int? BuilderArmyId;
         public int StateVersionAfter = -1;
         public string Detail;
 
@@ -69,6 +70,7 @@ namespace Game.Ai.V2
             public float DecisionScore;
             public int HandOrdinal;
             public HexCoord TargetHex;
+            public int? BuilderArmyId;
             public string Explain;
             public System.Func<BuildingPlayResult> Execute;
         }
@@ -83,7 +85,7 @@ namespace Game.Ai.V2
                 demand.Capability == CapabilityKind.EconomicInfrastructure
                     ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.EconomicExpansionBase
-                        ? BuildEconomyBaseCandidate(player, root, hand, ctx, demand)
+                        ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
                         ? BuildDevelopmentCandidate(snap, player, root, hand, ctx)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
@@ -136,6 +138,7 @@ namespace Game.Ai.V2
             }
             return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
                 ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                BuilderArmyId = cand.BuilderArmyId,
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
 
@@ -156,11 +159,27 @@ namespace Game.Ai.V2
         // A selected infrastructure demand already has a valuable legal site and a snapshot-witnessed
         // builder route. Protect its persistent build vector before Phase B; a Hero prerequisite
         // never reaches this method, so saving cannot block creation of the missing builder.
+        internal static bool ShouldReserveDeferredEconomyResources(
+            WorldSnapshot snap, AxisDemand demand)
+        {
+            if (demand?.EconomyBuilderRoutes == null || snap?.Self?.Armies == null)
+                return false;
+            foreach (EconomyBuilderRouteSnapshot route in demand.EconomyBuilderRoutes)
+            {
+                ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
+                    && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir);
+                if (actor != null && (route.IsOnTarget
+                    || route.TravelCost <= UnityEngine.Mathf.Max(0, actor.MaxMovement)))
+                    return true;
+            }
+            return false;
+        }
+
         internal static void ReserveDeferredEconomyResources(
-            PlayerSetupData player, int turn, AxisDemand demand)
+            WorldSnapshot snap, PlayerSetupData player, int turn, AxisDemand demand)
         {
             string owner = EconomyReservationOwner(demand);
-            if (owner == null)
+            if (owner == null || !ShouldReserveDeferredEconomyResources(snap, demand))
                 return;
             ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f);
         }
@@ -198,8 +217,9 @@ namespace Game.Ai.V2
             }
         }
 
-        private static InfraCandidate BuildEconomyBaseCandidate(PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
+        private static InfraCandidate BuildEconomyBaseCandidate(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            AxisDemand demand)
         {
             if (!demand.TargetHex.HasValue || demand.EconomyBuildCard == null
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
@@ -208,9 +228,12 @@ namespace Game.Ai.V2
                 return null;
             CardData card = demand.EconomyBuildCard;
             HexCoord hex = demand.TargetHex.Value;
+            int? builderId = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.HasHero
+                && !a.IsPrison && !a.IsAir && a.Hex.Equals(hex))?.ArmyId;
             return new InfraCandidate
             {
                 ApCost = card.EffectivePlayApCost,
+                BuilderArmyId = builderId,
                 ResCost = card.EffectivePlayResourceCost,
                 TargetHex = hex,
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
@@ -236,9 +259,12 @@ namespace Game.Ai.V2
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
                 return null;
             HexCoord built = demand.TargetHex.Value;
+            int? builderId = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.HasHero
+                && !a.IsPrison && !a.IsAir && a.Hex.Equals(built))?.ArmyId;
             return new InfraCandidate
             {
                 ApCost = facilityDef.apCost,
+                BuilderArmyId = builderId,
                 ResCost = facilityDef.resourceCost,
                 Explain = $"extraction {facilityDef.displayName} @({built.Q},{built.R}) for {type.Value}",
                 Execute = () => BuildingPlayExecutor.BuildExtractionFacility(player, root, ctx, facilityDef, built),

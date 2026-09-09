@@ -209,7 +209,9 @@ namespace Game.Ai.V2
                 return new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
-                    et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
+                    et.Kind == EconomyTaskKind.ReturnBuilder
+                        ? et.BuilderArmyId ?? 0
+                        : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
             return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }

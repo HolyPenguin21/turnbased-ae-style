@@ -316,7 +316,7 @@ namespace Game.Ai.V2
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
     public enum MissionKind { Scout, Raid, Economy }
 
-    public enum EconomyTaskKind { BuildExtraction, FoundBase }
+    public enum EconomyTaskKind { BuildExtraction, FoundBase, ReturnBuilder }
 
     public struct EconomyMissionTarget
     {
@@ -324,6 +324,7 @@ namespace Game.Ai.V2
         public HexCoord TargetHex;
         public ResourceType? ResourceType;
         public string ObjectiveId;
+        public int? BuilderArmyId;
         public CardData BuildCard;
         public ResourceCost BuildResourceCost;
         public float BuildApCost;
@@ -593,7 +594,17 @@ namespace Game.Ai.V2
             //     keeps the frozen strategic observations (Known / TrueWorld / MapKnowledge / Threat
             //     / radar / breakdown / reconObjectives).
             if (phaseA.StateChanged)
+            {
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                // Direct Economy construction can atomically turn the builder's existing intent
+                // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
+                // before mission construction so stale pre-build actor claims cannot execute.
+                activeIntents = MissionContinuityLayer.ResolveActive(
+                    player, snapshot, reconObjectives);
+                activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                actorCommitments = ActorCommitments.FromIntents(
+                    activeIntents, snapshot, reconObjectives);
+            }
 
             List<MissionProposal> missions;
             TentativeAllocation allocation = new TentativeAllocation();
