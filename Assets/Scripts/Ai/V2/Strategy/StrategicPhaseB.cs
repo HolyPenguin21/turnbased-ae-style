@@ -131,8 +131,9 @@ namespace Game.Ai.V2
                 //     (the evaluator already owns HoldValue / ScarcityValue / ResourcePressureBenefit).
                 //   · AP-only actions (Draw, AP-only Pressure): utility verbatim — keeping H/E/M/T is
                 //     COMPATIBLE with spending AP, so the persistent-hold policy never blocks them.
-                //   · Non-card spend (capacity upgrade): effective = utility − holdOfConsumed, i.e.
-                //     the retention value of ONLY the persistent resources IT consumes.
+                //   · Non-card spend (capacity upgrade): effective = utility − marginalResCost,
+                //     the exact-vector opportunity cost of ONLY the persistent resources it burns,
+                //     on StrategicCardEvaluator's resource scale.
                 // A candidate is eligible when effective > max(EndTurn, tempoMinSpendUtility).
                 TempoCandidate best = null;
                 float bestEff = float.NegativeInfinity;
@@ -142,10 +143,10 @@ namespace Game.Ai.V2
                     .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
                 {
                     string block = TempoBlockReason(c, spendableAp, budget, parkedAt, player, root, ctx);
-                    float holdOfConsumed = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
-                        ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost) : 0f;
-                    float eff = c.Utility - holdOfConsumed;
-                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} holdOfConsumed {F(holdOfConsumed)}"
+                    float marginalResCost = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
+                        ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost, player, ctx) : 0f;
+                    float eff = c.Utility - marginalResCost;
+                    AiDebugLog.Write($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} marginalResCost {F(marginalResCost)}"
                         + $" eff {F(eff)} apCost {F(c.ApCost)} resCost [{ResCostStr(c.ResCost)}] key={c.ActionKey}"
                         + (block != null ? $" BLOCKED: {block}" : "")
                         + (c.DrawDiag != null ? $" {{{c.DrawDiag}}}" : "")

@@ -71,19 +71,27 @@ namespace Game.Ai.V2
 
             foreach (CapacityUpgrade up in FindCapacityUpgrades(
                 snap, player, root, hand, ctx, witnessedUsefulApDemand))
+            {
+                float upgradeApOpportunityCost = AiConfigV2.stratCardApCostWeight
+                    * (up.Tier != null ? up.Tier.apCost : 0f);
+                float utility = up.FacilityUtility - upgradeApOpportunityCost;
                 list.Add(new StrategicSpendCandidate(up.Building, up.Tier)
                 {
                     Label = $"capacity upgrade {up.Building.Name} -> level {up.Building.Level + 1} "
                         + $"to unlock {up.Facility.Definition?.displayName} "
-                        + $"(facility net {up.FacilityUtility:0.00})",
+                        + $"(unlock {up.FacilityUtility:0.00} - upgradeAP {upgradeApOpportunityCost:0.00}; "
+                        + $"{up.FacilityBreakdown})",
                     StableKey = "capacity:" + up.Building.Hex,
-                    // The upgrade's benefit is the best concrete Facility card it makes playable.
-                    // StrategicPhaseB separately subtracts HoldResourcesUtility for this tier's
-                    // own resource cost, so neither the card nor the upgrade cost is double-counted.
-                    Utility = up.FacilityUtility,
+                    // The upgrade unlocks the OPTION to play this Facility; it does not consume the
+                    // card now. Use TotalUseScore (which already prices the Facility's eventual AP
+                    // and H/E/M/T cost), not NetScore (which additionally subtracts the value of
+                    // keeping the still-owned card). Price the upgrade's own AP here exactly once;
+                    // Phase B separately prices its exact persistent-resource vector.
+                    Utility = utility,
                     ApCost = up.Tier != null ? up.Tier.apCost : 0f,
                     ResCost = up.Tier != null ? up.Tier.cost : null,
                 });
+            }
             return list;
         }
 
@@ -95,6 +103,7 @@ namespace Game.Ai.V2
             public BaseUpgradeTier Tier;
             public CardData Facility;
             public float FacilityUtility;
+            public string FacilityBreakdown;
         }
 
         // Enumerate every Base/Citadel where buying the next tier would unlock a Facility slot AND
@@ -125,10 +134,11 @@ namespace Game.Ai.V2
                 {
                     x.Card,
                     x.Ordinal,
-                    Utility = NonCombatCardPlayer.ScoreCapacityUnlock(
+                    Evaluation = NonCombatCardPlayer.ScoreCapacityUnlock(
                         snap, player, root, ctx, x.Card, hand, witnessedUsefulApDemand),
                 })
-                .OrderByDescending(x => x.Utility)
+                .Where(x => x.Evaluation != null)
+                .OrderByDescending(x => x.Evaluation.TotalUseScore)
                 .ThenBy(x => x.Ordinal)
                 .ToList();
             if (blockedFacilities.Count == 0)
@@ -153,7 +163,8 @@ namespace Game.Ai.V2
                     Building = b,
                     Tier = tier,
                     Facility = bestFacility.Card,
-                    FacilityUtility = bestFacility.Utility,
+                    FacilityUtility = bestFacility.Evaluation.TotalUseScore,
+                    FacilityBreakdown = bestFacility.Evaluation.Breakdown?.ToCompact() ?? "no breakdown",
                 };
             }
         }
