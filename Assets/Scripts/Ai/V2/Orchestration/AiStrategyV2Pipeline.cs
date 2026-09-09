@@ -593,6 +593,9 @@ namespace Game.Ai.V2
             var provisioned = new List<ProvisionedMission>();
             var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
             var allExecuted = new List<ExecutionResult>();
+            var phaseB = new StrategicPhaseResult();
+            ActorCommitments postCommitments = null;
+            bool phaseBHandled = false;
 
             // The mid-turn architecture is canonical for the current focus scope: Phase A has
             // already run exactly once; only Mission -> Allocation -> Provisioning -> Task Execution
@@ -603,7 +606,9 @@ namespace Game.Ai.V2
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
                 int noProgressCycles = 0;
-                AiDebugLog.Write("[AI][V2][Loop] begin — focus scope, Phase A settled once");
+                IEnumerator RunFocusAdmissions()
+                {
+                    AiDebugLog.Write("[AI][V2][Loop] begin — typed Recon local admission");
 
                 while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
                     && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
@@ -820,6 +825,103 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                         + $"{noProgressCycles}");
 
+                }
+
+                yield return RunFocusAdmissions();
+
+                // Management/Development is another bounded task family, not the owner of the
+                // operational loop. Phase B settles until it either exhausts its candidates or
+                // publishes a capability-changing residual. Typed Analysis deltas then re-admit
+                // only the affected Development and/or Recon family, after which the same shared
+                // per-turn tempo budget may resume.
+                for (int managementRound = 0;
+                     managementRound <= AiConfigV2.maxEndOfTurnTempoReruns;
+                     managementRound++)
+                {
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    postCommitments = ActorCommitments.FromIntents(
+                        MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+
+                    WorldAnalysis.StepObservationStamp beforeManagement =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    var phaseBRound = new StrategicPhaseResult();
+                    yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                        postCommitments, phaseB.Reservation ?? phaseA.Reservation,
+                        phaseBRound, reconObjectives);
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    WorldAnalysis.StepObservationStamp afterManagement =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeManagement, afterManagement, null);
+                    phaseB.Accumulate(phaseBRound);
+
+                    StrategicInvalidation developmentTriggers =
+                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Development));
+                    StrategicInvalidation reconTriggers =
+                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                    bool reconDirty = reconTriggers.Any;
+                    bool developmentChanged = false;
+
+                    if (developmentTriggers.Any)
+                    {
+                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        activeIntents = MissionContinuityLayer.ResolveActive(
+                            player, snapshot, reconObjectives);
+                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                        actorCommitments = ActorCommitments.FromIntents(
+                            activeIntents, snapshot, reconObjectives);
+                        devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                            ? DevelopmentOpportunityEvaluator.Enumerate(
+                                snapshot, player, root, hand, ctx)
+                            : new List<DevelopmentOpportunity>();
+                        demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                            reconObjectives, aggressionObjectives, activeIntents,
+                            actorCommitments, player, ctx, root, devOpportunities, radar);
+                        demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+
+                        WorldAnalysis.StepObservationStamp beforeDevelopment =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        StrategicPhaseResult phaseAFollowup = StrategicManager.FulfillDemands(
+                            snapshot, player, root, hand, ctx, apLedger, demands,
+                            actorCommitments, activeIntents, reconObjectives,
+                            phaseB.Reservation ?? phaseA.Reservation);
+                        phaseA.Accumulate(phaseAFollowup);
+                        developmentChanged = phaseAFollowup.StateChanged;
+                        if (developmentChanged)
+                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                                snapshot, player, root, hand, ctx);
+                        WorldAnalysis.StepObservationStamp afterDevelopment =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                            beforeDevelopment, afterDevelopment, null);
+                        reconDirty |= StrategicInterruptRegistry.Consume(
+                            player, ctx.TurnNumber,
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
+                    }
+
+                    AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
+                        + $"developmentTriggers={developmentTriggers.Reasons} "
+                        + $"reconTriggers={reconTriggers.Reasons} "
+                        + $"reconReadmit={(reconDirty ? 1 : 0)}");
+
+                    if (reconDirty)
+                    {
+                        noProgressCycles = 0;
+                        yield return RunFocusAdmissions();
+                    }
+
+                    if (!phaseBRound.StateChanged && !developmentChanged)
+                        break;
+                    if (!reconDirty && !developmentTriggers.Any)
+                        break;
+                }
+                phaseBHandled = true;
+
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
                 MissionContinuityLayer.ReconcileAfterTurn(player,
@@ -998,16 +1100,18 @@ namespace Game.Ai.V2
             // Execution can reveal contacts and alter map knowledge (especially aviation). Phase B
             // must consume a coherent strategic snapshot, not operational resources paired with
             // the pre-execution Known/MapKnowledge layers.
-            snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-            ActorCommitments postCommitments =
-                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-            // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
-            var phaseB = new StrategicPhaseResult();
-            yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation, phaseB, reconObjectives);
-            if (phaseB.StateChanged)
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            if (!phaseBHandled)
+            {
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                postCommitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+                // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
+                yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                    postCommitments, phaseA.Reservation, phaseB, reconObjectives);
+                if (phaseB.StateChanged)
+                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
             // hand card was or was not played this turn. Per-card blocking reasons are on the
