@@ -17,6 +17,7 @@ MonoBehaviour:
   logo: {fileID: 21300000, guid: 8e8736f0ec55faf4e84ce5f22d84e4cf, type: 3}
   cards:
   - id: 0
+    authoredKey: 
     displayName: Scav
     art: {fileID: 21300000, guid: 0ae0bff57d8366f4190bf7e004ceca0e, type: 3}
     detailArt: {fileID: 21300000, guid: a0fbb54c578639a4cb4fd0b9f8824c7e, type: 3}
@@ -59,6 +60,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 1
+    authoredKey: 
     displayName: Slasher
     art: {fileID: 21300000, guid: 9d45e641dbae83f47a88167d96a5b3f3, type: 3}
     detailArt: {fileID: 21300000, guid: 0edb57d1f4c326e498bc7f9c4b0de95b, type: 3}
@@ -101,6 +103,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 2
+    authoredKey: 
     displayName: Gunner
     art: {fileID: 21300000, guid: b663fbb85ceb18e4293e94862966cc68, type: 3}
     detailArt: {fileID: 21300000, guid: 06930fa60b885a34a8b7bb73bf89613c, type: 3}
@@ -143,6 +146,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 3
+    authoredKey: 
     displayName: Trapper
     art: {fileID: 21300000, guid: 8daf08096ddbf70478e4389d50f0fe18, type: 3}
     detailArt: {fileID: 21300000, guid: dfb92db8c7f5d1149a2a75cd6896d20d, type: 3}
@@ -186,6 +190,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 4
+    authoredKey: 
     displayName: Brute
     art: {fileID: 21300000, guid: 4e671a9bfb9ffce41acd974b2c4c752e, type: 3}
     detailArt: {fileID: 21300000, guid: 05699d9cd87e8584cb03a86845ae8966, type: 3}
@@ -228,6 +233,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 5
+    authoredKey: 
     displayName: Wrecker
     art: {fileID: 21300000, guid: 41b146a0401e7d74f889a059ffd0985a, type: 3}
     detailArt: {fileID: 21300000, guid: 7082ae6e696763540ba818f2df696f2f, type: 3}
@@ -271,6 +277,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 6
+    authoredKey: 
     displayName: AA Relic Crawler
     art: {fileID: 21300000, guid: 7437df6f5d6cdc147835a6674fda940f, type: 3}
     detailArt: {fileID: 21300000, guid: b71b215a5e304d442b419b8b2f413c02, type: 3}
@@ -417,7 +424,11 @@ MonoBehaviour:
       - stat: 0
         amount: 8
         isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 9
+    authoredKey: 
     displayName: b_Tactical Center
     art: {fileID: 21300000, guid: a846d3acfe1babe41af3d28b5db5cd41, type: 3}
     detailArt: {fileID: 21300000, guid: 0a114f99bb64e304ea3a1b40f64c80e9, type: 3}
@@ -466,6 +477,7 @@ MonoBehaviour:
         amount: 8
         isOverride: 1
   - id: 10
+    authoredKey: 
     displayName: b_Lab
     art: {fileID: 21300000, guid: 811f5ad6698994149a6a0eb0bf1e2dd5, type: 3}
     detailArt: {fileID: 21300000, guid: df5d9133e8198ad4cae4bb693c6ccae4, type: 3}
@@ -515,6 +527,7 @@ MonoBehaviour:
         amount: 8
         isOverride: 1
   - id: 11
+    authoredKey: 
     displayName: b_Factory
     art: {fileID: 21300000, guid: a8b7b846b5129fb43b590a25bea3ae05, type: 3}
     detailArt: {fileID: 21300000, guid: d58d3f29ab617aa4ab0f3a6e7185bf50, type: 3}
@@ -564,6 +577,7 @@ MonoBehaviour:
         amount: 8
         isOverride: 1
   - id: 12
+    authoredKey: 
     displayName: b_Intel
     art: {fileID: 21300000, guid: 48553a56418e1834c82e7f39678eb97d, type: 3}
     detailArt: {fileID: 21300000, guid: 68cf31d4e83a522489971ea254388db4, type: 3}
@@ -613,6 +627,7 @@ MonoBehaviour:
         amount: 8
         isOverride: 1
   - id: 13
+    authoredKey: 
     displayName: b_AA Defence
     art: {fileID: 21300000, guid: 3fcdd73d2e75a924a887f36c8ebb1f59, type: 3}
     detailArt: {fileID: 21300000, guid: e1283bbd7bd96d441af157b0fbcb9822, type: 3}
@@ -712,6 +727,9 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 15
     authoredKey: neutral.equipment.bio.claws
     displayName: it Claws
@@ -814,6 +832,9 @@ MonoBehaviour:
       - stat: 0
         amount: 5
         isOverride: 1
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 17
     authoredKey: neutral.equipment.mechanical.armor-plate
     displayName: it Armor Plate
@@ -911,6 +932,7 @@ MonoBehaviour:
         amount: 1
         isOverride: 0
   - id: 19
+    authoredKey: 
     displayName: it AT VH Launcher
     art: {fileID: 21300000, guid: 8ef91b58941520d4eb693ce10497b537, type: 3}
     detailArt: {fileID: 21300000, guid: 1106f2a06fa57dc45b4267b74bcb9270, type: 3}
@@ -960,6 +982,9 @@ MonoBehaviour:
       - stat: 0
         amount: 1
         isOverride: 0
+      - stat: 3
+        amount: 2
+        isOverride: 1
   - id: 20
     authoredKey: neutral.equipment.armored.double-barrel
     displayName: it Double Barrel
@@ -1100,6 +1125,9 @@ MonoBehaviour:
       statChanges:
       - stat: 0
         amount: 9
+        isOverride: 1
+      - stat: 3
+        amount: 2
         isOverride: 1
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
