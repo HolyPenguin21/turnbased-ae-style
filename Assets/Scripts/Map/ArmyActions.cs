@@ -18,9 +18,11 @@ namespace Game.Map
     {
         public const int CreateArmyApCost = 2;
 
-        // Same rule ArmyViewerModalUI.CreateArmy always enforced: a fresh, empty, non-garrison
-        // army at `hex`, named from the catalog's own pool, costing CreateArmyApCost. Null if
-        // `owner` can't afford it (or an argument is missing) — callers show their own hint.
+        // Same rule ArmyViewerModalUI.CreateArmy always enforced: an empty, non-garrison army
+        // at `hex`, costing CreateArmyApCost. A whole-fold may have left an ordinary registered
+        // field shell empty; reuse that physical container before allocating another ArmyData so
+        // repeated split/fold cycles do not grow the registry forever. Reuse preserves the action
+        // cost and stable army identity/name; only stale per-use state is cleared.
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
         {
             if (owner == null || catalog == null)
@@ -30,6 +32,29 @@ namespace Game.Map
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
                 return null;
             root.SpendActionPoints(CreateArmyApCost);
+
+            ArmyData reusable = ArmyRegistry.AllForOwner(owner)
+                .Where(a => a != null && a.Members.Count == 0
+                    && !a.IsGarrison && !a.IsPrison && !a.IsAirfield && !a.IsAirArmy)
+                .OrderByDescending(a => a.Hex.Equals(hex))
+                .ThenBy(a => a.Id)
+                .FirstOrDefault();
+            if (reusable != null)
+            {
+                HexCoord oldHex = reusable.Hex;
+                reusable.HasActivatedThisTurn = false;
+                reusable.LastAirStrikeHex = null;
+                reusable.LastAirStrikeAttacked = false;
+                reusable.SavedArrangement.Clear();
+                if (!oldHex.Equals(hex))
+                    ArmyRegistry.MoveArmy(reusable, hex);
+                if (reusable.Controller == null)
+                    hexSelectionController?.CreateArmyMarker(reusable);
+                hexSelectionController?.RestackArmiesOn(oldHex, null);
+                if (!oldHex.Equals(hex))
+                    hexSelectionController?.RestackArmiesOn(hex, null);
+                return reusable;
+            }
 
             var takenNames = ArmyRegistry.AllForOwner(owner).Select(a => a.Name);
             var army = new ArmyData

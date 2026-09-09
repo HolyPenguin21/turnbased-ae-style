@@ -182,6 +182,33 @@ namespace Game.Ai.V2
                 default: return "DEV";
             }
         }
+
+        // Strategy-level mapping from factual state invalidations to the task families whose
+        // prior conclusions are now dirty. State owns the flags; Orchestration only asks this
+        // policy which local family to re-admit.
+        internal static StrategicInvalidationReason InvalidationMaskFor(DesireAxis axis)
+        {
+            switch (axis)
+            {
+                case DesireAxis.Recon:
+                    return StrategicInvalidationReason.ReconKnowledge
+                        | StrategicInvalidationReason.Actor;
+                case DesireAxis.Aggression:
+                    return StrategicInvalidationReason.Contact
+                        | StrategicInvalidationReason.EventState;
+                case DesireAxis.Defence:
+                    return StrategicInvalidationReason.Threat;
+                case DesireAxis.Economy:
+                case DesireAxis.Development:
+                    return StrategicInvalidationReason.Resources
+                        | StrategicInvalidationReason.Infrastructure
+                        | StrategicInvalidationReason.Hand
+                        | StrategicInvalidationReason.Capability
+                        | StrategicInvalidationReason.ResourceSite;
+                default:
+                    return StrategicInvalidationReason.None;
+            }
+        }
     }
 
     // --- Stage 2 output: the single shared world scan (WorldSnapshot). Every later stage reads
@@ -559,23 +586,91 @@ namespace Game.Ai.V2
             var provisioned = new List<ProvisionedMission>();
             var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
             var allExecuted = new List<ExecutionResult>();
+            var phaseB = new StrategicPhaseResult();
+            ActorCommitments postCommitments = null;
+            bool phaseBHandled = false;
 
-            // The mid-turn architecture is canonical for the current focus scope: Phase A has
-            // already run exactly once; only Mission -> Allocation -> Provisioning -> Task Execution
-            // -> local Continuity repeats. Full/Aggression remains a compatibility branch until that
-            // task family is explicitly migrated into this loop.
+            // The typed mid-turn architecture is canonical for the current focus scope. The
+            // initial Phase A settles before operational admission; a later factual Development
+            // invalidation may re-enter that same manager through the shared ledger. Each Recon
+            // admission still settles exactly one task command. Full/Aggression remains a
+            // compatibility branch until that family is explicitly migrated.
             if (AiStrategyV2Scope.IsFocusScoped)
             {
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
                 int noProgressCycles = 0;
-                AiDebugLog.Write("[AI][V2][Loop] begin — focus scope, Phase A settled once");
 
-                while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
-                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                // One factual flag may invalidate more than one family (for example, discovering
+                // a deficient ResourceSite changes both Recon knowledge and Development
+                // opportunity). Snapshot the aggregate once, derive every in-scope family, and
+                // only then consume the shared reasons so family order cannot erase a sibling's
+                // trigger.
+                void TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                    out StrategicInvalidationReason developmentReasons)
                 {
+                    StrategicInvalidation pending =
+                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
+                    reconReasons = pending.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
+                    developmentReasons = pending.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Development);
+                    StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                        reconReasons | developmentReasons);
+                }
+
+                // Development re-admission uses the existing Phase-A owner, shared AP ledger and
+                // carried reservation. This is deliberately local orchestration, not a second
+                // manager or a new vertical layer.
+                bool ReenterDevelopment(StrategicInvalidationReason reasons)
+                {
+                    if (reasons == StrategicInvalidationReason.None)
+                        return false;
+
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    activeIntents = MissionContinuityLayer.ResolveActive(
+                        player, snapshot, reconObjectives);
+                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                    actorCommitments = ActorCommitments.FromIntents(
+                        activeIntents, snapshot, reconObjectives);
+                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                        ? DevelopmentOpportunityEvaluator.Enumerate(
+                            snapshot, player, root, hand, ctx)
+                        : new List<DevelopmentOpportunity>();
+                    demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                        reconObjectives, aggressionObjectives, activeIntents,
+                        actorCommitments, player, ctx, root, devOpportunities, radar);
+                    demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+
+                    WorldAnalysis.StepObservationStamp beforeDevelopment =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    StrategicPhaseResult followup = StrategicManager.FulfillDemands(
+                        snapshot, player, root, hand, ctx, apLedger, demands,
+                        actorCommitments, activeIntents, reconObjectives,
+                        phaseB.Reservation ?? phaseA.Reservation);
+                    phaseA.Accumulate(followup);
+                    if (followup.StateChanged)
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
+                    WorldAnalysis.StepObservationStamp afterDevelopment =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeDevelopment, afterDevelopment, null);
+                    AiDebugLog.Write($"[AI][V2][Loop] Development re-admission "
+                        + $"triggers={reasons} changed={(followup.StateChanged ? 1 : 0)}");
+                    return followup.StateChanged;
+                }
+
+                IEnumerator RunFocusAdmissions()
+                {
+                    AiDebugLog.Write("[AI][V2][Loop] begin — typed Recon local admission");
+
+                    while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
+                        && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                    {
                     // Every admission reads a settled world. Strategic observations are refreshed
-                    // here; Phase A and the radar/desire frame are intentionally not re-entered.
+                    // here. The radar frame stays stable for this turn; typed Development facts
+                    // re-enter the existing manager immediately after the settled task boundary.
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
@@ -610,8 +705,8 @@ namespace Game.Ai.V2
                         HexCoord? recoveryFocus =
                             ReconPatrolStateRegistry.TryGet(player, recovery.Id, out ReconPatrolState recoveryState)
                                 ? recoveryState.StrategicAnchor : (HexCoord?)null;
-                        StepObservationStamp beforeRecovery =
-                            CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.StepObservationStamp beforeRecovery =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                         var recoveryResult = new AirReconExecutionResult();
                         var recoveryControl = new ReconAirExecutor.ActorStepControl();
                         int recoveryApBefore = root.ActionPoints;
@@ -620,23 +715,29 @@ namespace Game.Ai.V2
                             perMissionResult: null, control: recoveryControl);
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
-                        StepObservationStamp afterRecovery =
-                            CaptureStepObservation(root, hand, snapshot);
-                        PublishStepObservationDelta(player, ctx.TurnNumber,
+                        WorldAnalysis.StepObservationStamp afterRecovery =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                             beforeRecovery, afterRecovery, null);
                         settledSteps++;
                         bool recoveryProgress = recoveryResult.Mutated;
                         noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
-                        StrategicInvalidation recoveryTriggers = StrategicInterruptRegistry.Consume(
-                            player, ctx.TurnNumber,
-                            StrategicInvalidationReason.ReconKnowledge
-                            | StrategicInvalidationReason.Contact
-                            | StrategicInvalidationReason.Actor
-                            | StrategicInvalidationReason.EventState
-                            | StrategicInvalidationReason.ResourceSite
-                            | StrategicInvalidationReason.External);
+                        TakeFocusTriggers(out StrategicInvalidationReason recoveryReconReasons,
+                            out StrategicInvalidationReason recoveryDevelopmentReasons);
+                        ReenterDevelopment(recoveryDevelopmentReasons);
+                        StrategicInvalidation recoveryDevelopmentReconTriggers =
+                            StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                        recoveryReconReasons |= recoveryDevelopmentReconTriggers.Reasons;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
-                            + $"progress={(recoveryProgress ? 1 : 0)} triggers={recoveryTriggers.Reasons}");
+                            + $"progress={(recoveryProgress ? 1 : 0)} "
+                            + $"reconTriggers={recoveryReconReasons} "
+                            + $"developmentTriggers={recoveryDevelopmentReasons}");
+                        if (recoveryReconReasons == StrategicInvalidationReason.None)
+                        {
+                            AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no Recon invalidation");
+                            break;
+                        }
                         continue;
                     }
 
@@ -654,7 +755,7 @@ namespace Game.Ai.V2
                     while (!provisioningSettled)
                     {
                         ProvisioningManager.PreparePass(player, root, ctx,
-                            cycleProvisioning, allocation);
+                            cycleProvisioning, allocation, actorCommitments);
                         FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
                             fe?.Mission != null
                             && CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(
@@ -716,14 +817,16 @@ namespace Game.Ai.V2
                             MissionContinuityLayer.ReconcileStep(
                                 player, snapshot.TurnNumber, outcome);
                         noProgressCycles++;
-                        settledSteps++;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} no provisioned task; "
+                        AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
                             + $"noProgress={noProgressCycles}");
-                        continue;
+                        // No task command ran and no observation can differ. Repeating the same
+                        // admission under a fresh session only reproduces the same rejection; stop
+                        // this family without consuming the real bounded task-step budget.
+                        break;
                     }
 
-                    StepObservationStamp beforeStep =
-                        CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.StepObservationStamp beforeStep =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     var stepResults = new List<ExecutionResult>();
                     if (selected.Kind == MissionKind.Scout
                         && selected.ExecutorKind != ScoutExecutorKind.Ground)
@@ -743,9 +846,9 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     ExecutionResult settled = stepResults.FirstOrDefault();
-                    StepObservationStamp afterStep =
-                        CaptureStepObservation(root, hand, snapshot);
-                    PublishStepObservationDelta(player, ctx.TurnNumber,
+                    WorldAnalysis.StepObservationStamp afterStep =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeStep, afterStep, settled);
 
                     foreach (ExecutionResult er in stepResults)
@@ -764,18 +867,23 @@ namespace Game.Ai.V2
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
-                    StrategicInvalidation triggers = StrategicInterruptRegistry.Consume(
-                        player, ctx.TurnNumber,
-                        StrategicInvalidationReason.ReconKnowledge
-                        | StrategicInvalidationReason.Contact
-                        | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.EventState
-                        | StrategicInvalidationReason.ResourceSite
-                        | StrategicInvalidationReason.External);
+                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                        out StrategicInvalidationReason developmentReasons);
+                    ReenterDevelopment(developmentReasons);
+                    StrategicInvalidation developmentReconTriggers =
+                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                    reconReasons |= developmentReconTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
-                        + $"triggers={triggers.Reasons} noProgress={noProgressCycles}");
-                }
+                        + $"reconTriggers={reconReasons} developmentTriggers={developmentReasons} "
+                        + $"noProgress={noProgressCycles}");
+                    if (reconReasons == StrategicInvalidationReason.None)
+                    {
+                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no Recon invalidation");
+                        break;
+                    }
+                    }
 
                 if (settledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
@@ -783,6 +891,67 @@ namespace Game.Ai.V2
                 if (noProgressCycles >= AiConfigV2.maxMidTurnNoProgressCycles)
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                         + $"{noProgressCycles}");
+
+                }
+
+                yield return RunFocusAdmissions();
+
+                // Management/Development is another bounded task family, not the owner of the
+                // operational loop. Phase B settles until it either exhausts its candidates or
+                // publishes a capability-changing residual. Typed Analysis deltas then re-admit
+                // only the affected Development and/or Recon family, after which the same shared
+                // per-turn tempo budget may resume.
+                for (int managementRound = 0;
+                     managementRound <= AiConfigV2.maxEndOfTurnTempoReruns;
+                     managementRound++)
+                {
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    postCommitments = ActorCommitments.FromIntents(
+                        MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+
+                    WorldAnalysis.StepObservationStamp beforeManagement =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    var phaseBRound = new StrategicPhaseResult();
+                    yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                        postCommitments, phaseB.Reservation ?? phaseA.Reservation,
+                        phaseBRound, reconObjectives);
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    WorldAnalysis.StepObservationStamp afterManagement =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeManagement, afterManagement, null);
+                    phaseB.Accumulate(phaseBRound);
+
+                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                        out StrategicInvalidationReason developmentReasons);
+                    bool reconDirty = reconReasons != StrategicInvalidationReason.None;
+                    bool developmentDirty =
+                        developmentReasons != StrategicInvalidationReason.None;
+                    bool developmentChanged = ReenterDevelopment(developmentReasons);
+                    reconDirty |= StrategicInterruptRegistry.Consume(
+                        player, ctx.TurnNumber,
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
+
+                    AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
+                        + $"developmentTriggers={developmentReasons} "
+                        + $"reconTriggers={reconReasons} "
+                        + $"reconReadmit={(reconDirty ? 1 : 0)}");
+
+                    if (reconDirty)
+                    {
+                        noProgressCycles = 0;
+                        yield return RunFocusAdmissions();
+                    }
+
+                    if (!phaseBRound.StateChanged && !developmentChanged)
+                        break;
+                    if (!reconDirty && !developmentDirty)
+                        break;
+                }
+                phaseBHandled = true;
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
@@ -837,7 +1006,8 @@ namespace Game.Ai.V2
                 int reallocPass = 0;
                 while (true)
                 {
-                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
+                        actorCommitments);
                     bool anyFailure = false;
                     bool allFailuresArePoolWide = true;
                     foreach (FundedEntry fe in allocation.Funded)
@@ -961,16 +1131,18 @@ namespace Game.Ai.V2
             // Execution can reveal contacts and alter map knowledge (especially aviation). Phase B
             // must consume a coherent strategic snapshot, not operational resources paired with
             // the pre-execution Known/MapKnowledge layers.
-            snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-            ActorCommitments postCommitments =
-                ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-            // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
-            var phaseB = new StrategicPhaseResult();
-            yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                postCommitments, phaseA.Reservation, phaseB, reconObjectives);
-            if (phaseB.StateChanged)
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            if (!phaseBHandled)
+            {
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                postCommitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+                // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
+                yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
+                    postCommitments, phaseA.Reservation, phaseB, reconObjectives);
+                if (phaseB.StateChanged)
+                    snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
             // hand card was or was not played this turn. Per-card blocking reasons are on the
@@ -1089,144 +1261,6 @@ namespace Game.Ai.V2
             }
             return missions;
         }
-
-        internal sealed class StepObservationStamp
-        {
-            internal readonly WorldSnapshot Snapshot;
-            internal readonly V2ResourceStamp Resources;
-            internal readonly AiHandData Hand;
-            internal readonly int HandVersion;
-
-            internal StepObservationStamp(WorldSnapshot snapshot, V2ResourceStamp resources,
-                AiHandData hand)
-            {
-                Snapshot = snapshot;
-                Resources = resources;
-                Hand = hand;
-                HandVersion = hand?.MutationVersion ?? -1;
-            }
-        }
-
-        internal static StepObservationStamp CaptureStepObservation(
-            PlayerRoot root, AiHandData hand, WorldSnapshot snapshot) =>
-            new StepObservationStamp(snapshot,
-                root != null ? AiV2Trace.Stamp(root) : default, hand);
-
-        // Orchestration-level observation boundary: compare the settled world around exactly one
-        // task command, then publish factual typed invalidations to the existing registry.
-        internal static void PublishStepObservationDelta(PlayerSetupData player, int turn,
-            StepObservationStamp before, StepObservationStamp after,
-            ExecutionResult execution)
-        {
-            if (player == null || before == null || after == null)
-                return;
-
-            HashSet<int> contacts = NewContactIds(before.Snapshot, after.Snapshot);
-            if (contacts.Count > 0)
-                StrategicInterruptRegistry.MarkDiscovery(player, turn, contacts);
-
-            HashSet<HexCoord> eventHexes = NewHexes(
-                before.Snapshot?.Known?.EventGuardHexes,
-                after.Snapshot?.Known?.EventGuardHexes);
-            if (execution != null
-                && execution.StopReason == ExecutionStopReason.HexEventStarted)
-                eventHexes.Add(execution.FinalHex);
-            if (eventHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
-                    StrategicInvalidationReason.ReconKnowledge
-                    | StrategicInvalidationReason.EventState,
-                    hexes: eventHexes);
-
-            HashSet<HexCoord> resourceHexes =
-                NewDeficientResourceSites(before.Snapshot, after.Snapshot);
-            if (resourceHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
-                    StrategicInvalidationReason.ReconKnowledge
-                    | StrategicInvalidationReason.ResourceSite,
-                    hexes: resourceHexes);
-
-            if (ResourceStockChanged(before.Resources, after.Resources))
-                StrategicInterruptRegistry.Mark(
-                    player, turn, StrategicInvalidationReason.Resources);
-
-            if (before.Hand != after.Hand
-                || before.HandVersion != after.HandVersion)
-                StrategicInterruptRegistry.Mark(player, turn,
-                    StrategicInvalidationReason.Hand
-                    | StrategicInvalidationReason.Capability,
-                    hand: after.Hand);
-        }
-
-        private static HashSet<int> NewContactIds(
-            WorldSnapshot before, WorldSnapshot after)
-        {
-            var known = new HashSet<int>();
-            AddSightingIds(known, before?.Known?.EnemySightings);
-            AddSightingIds(known, before?.Known?.NeutralSightings);
-            var result = new HashSet<int>();
-            AddNewSightingIds(result, known, after?.Known?.EnemySightings);
-            AddNewSightingIds(result, known, after?.Known?.NeutralSightings);
-            return result;
-        }
-
-        private static void AddSightingIds(HashSet<int> target,
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
-        {
-            if (sightings == null) return;
-            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
-                if (sighting.ArmyId > 0) target.Add(sighting.ArmyId);
-        }
-
-        private static void AddNewSightingIds(HashSet<int> target,
-            HashSet<int> before,
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
-        {
-            if (sightings == null) return;
-            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
-                if (sighting.ArmyId > 0 && !before.Contains(sighting.ArmyId))
-                    target.Add(sighting.ArmyId);
-        }
-
-        private static HashSet<HexCoord> NewHexes(
-            IEnumerable<HexCoord> before, IEnumerable<HexCoord> after)
-        {
-            var old = new HashSet<HexCoord>();
-            if (before != null)
-                foreach (HexCoord hex in before) old.Add(hex);
-            var result = new HashSet<HexCoord>();
-            if (after != null)
-                foreach (HexCoord hex in after)
-                    if (!old.Contains(hex)) result.Add(hex);
-            return result;
-        }
-
-        private static HashSet<HexCoord> NewDeficientResourceSites(
-            WorldSnapshot before, WorldSnapshot after)
-        {
-            var old = new HashSet<HexCoord>();
-            if (before?.Known?.ResourceHexes != null)
-                foreach (KeyValuePair<HexCoord, ResourceType> site in
-                    before.Known.ResourceHexes)
-                    old.Add(site.Key);
-
-            var result = new HashSet<HexCoord>();
-            if (after?.Known?.ResourceHexes == null
-                || after.Economy == null || after.Self == null)
-                return result;
-            foreach (KeyValuePair<HexCoord, ResourceType> site in
-                after.Known.ResourceHexes)
-                if (!old.Contains(site.Key)
-                    && after.Economy.IsIncomeDeficient(after.Self, site.Value))
-                    result.Add(site.Key);
-            return result;
-        }
-
-        private static bool ResourceStockChanged(
-            V2ResourceStamp before, V2ResourceStamp after) =>
-            before.Valid && after.Valid
-            && (before.Human != after.Human || before.Energy != after.Energy
-                || before.Materials != after.Materials
-                || before.Tech != after.Tech);
 
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
         // turn that ended at 0 AP only counts as "needed more AP" if real AP work still remained

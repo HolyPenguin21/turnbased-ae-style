@@ -36,6 +36,30 @@ namespace Game.Ai.V2
             ApDebited.TryGetValue(a, out float cur);
             ApDebited[a] = cur + ap;
         }
+
+        // Multiple bounded local admissions in one turn report through one phase aggregate.
+        // The shared ledgers/budgets remain the authorities; this only combines telemetry and
+        // carries the newest reservation forward.
+        public void Accumulate(StrategicPhaseResult other)
+        {
+            if (other == null) return;
+            StateChanged |= other.StateChanged;
+            CardsPlayed += other.CardsPlayed;
+            CardsDrawn += other.CardsDrawn;
+            MaterializationAttempts += other.MaterializationAttempts;
+            MaterializationsSucceeded += other.MaterializationsSucceeded;
+            GeneratedCardAttempts += other.GeneratedCardAttempts;
+            GeneratedCardsSucceeded += other.GeneratedCardsSucceeded;
+            EquipmentAssignmentAttempts += other.EquipmentAssignmentAttempts;
+            EquipmentAssignmentsSucceeded += other.EquipmentAssignmentsSucceeded;
+            InfrastructureAttempts += other.InfrastructureAttempts;
+            InfrastructureBuilt += other.InfrastructureBuilt;
+            CapabilityDeliveries += other.CapabilityDeliveries;
+            foreach (KeyValuePair<DesireAxis, float> debit in other.ApDebited)
+                AddDebit(debit.Key, debit.Value);
+            if (other.Reservation != null)
+                Reservation = other.Reservation;
+        }
     }
 
     // Phase-A working state for one capability demand.

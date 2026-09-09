@@ -208,6 +208,10 @@ namespace Game.Ai.V2
                             out bool msChanged, out bool msProgressed);
                         exec.StateChanged = msChanged;
                         exec.Progressed = msProgressed;
+                        if (msChanged)
+                            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                                StrategicInvalidationReason.Infrastructure
+                                | StrategicInvalidationReason.Capability);
                         if (!exec.Succeeded) exec.FailReason = "capacity upgrade refused";
                         break;
                     case TempoKind.PressureSpend:
