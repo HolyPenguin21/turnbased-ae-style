@@ -691,7 +691,7 @@ namespace Game.Ai.V2
                 });
             }
 
-            AddBaseCandidates(s, candidates, activeIntents, commitments);
+            AddBaseCandidates(s, candidates, player, ctx, activeIntents, commitments);
             List<AxisDemand> selected = candidates
                 .OrderByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
@@ -750,6 +750,7 @@ namespace Game.Ai.V2
             - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
 
         private static void AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
+            PlayerSetupData player, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
             List<CardData> baseCards = (s.Self.Hand ?? System.Array.Empty<CardData>())
