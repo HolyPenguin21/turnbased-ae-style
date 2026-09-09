@@ -38,6 +38,10 @@ namespace Game.Ai
 
         public bool HasFreeSlot => Hand.Count < Capacity;
 
+        // Monotonic owner-side stamp for post-step observation. It changes for every hand or
+        // capacity mutation, including non-draw event rewards routed through AddCard.
+        public int MutationVersion { get; private set; }
+
         // Consumed (RemoveAt), not cycled — mirrors CardHandUI's _remainingDeck: every card in
         // the deck is one-time-use for the whole game.
         private readonly List<CardDefinition> _remainingDeck = new List<CardDefinition>();
@@ -67,7 +71,14 @@ namespace Game.Ai
                     break;
         }
 
-        public void SetCapacity(int capacity) => Capacity = Mathf.Max(0, capacity);
+        public void SetCapacity(int capacity)
+        {
+            int next = Mathf.Max(0, capacity);
+            if (next == Capacity) return;
+            Capacity = next;
+            MutationVersion++;
+            HandChanged?.Invoke();
+        }
 
         // The only two places Hand is ever added to/removed from outside DrawOne — every V2
         // card-execution path (deploy, base/facility build, aviation, equipment attach,
@@ -76,6 +87,7 @@ namespace Game.Ai
         public void AddCard(CardData card)
         {
             Hand.Add(card);
+            MutationVersion++;
             HandChanged?.Invoke();
         }
 
@@ -83,7 +95,10 @@ namespace Game.Ai
         {
             bool removed = Hand.Remove(card);
             if (removed)
+            {
+                MutationVersion++;
                 HandChanged?.Invoke();
+            }
             return removed;
         }
 

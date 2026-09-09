@@ -651,8 +651,7 @@ namespace Game.Ai.V2
                 if (knownBuilt.Contains(rh.Key) || seenTypes.Contains(rh.Value))
                     continue;
 
-                bool hasIncome = HasIncomeFor(s, rh.Value);
-                if (hasIncome)
+                if (s.Economy != null && !s.Economy.IsIncomeDeficient(s.Self, rh.Value))
                     continue;
                 seenTypes.Add(rh.Value);
                 emitted++;
@@ -710,7 +709,8 @@ namespace Game.Ai.V2
 
             if (emitted == 0)
             {
-                bool hasIncomeGap = ResourceBundle.All.Any(t => !HasIncomeFor(s, t));
+                bool hasIncomeGap = s.Economy == null
+                    || ResourceBundle.All.Any(t => s.Economy.IsIncomeDeficient(s.Self, t));
                 AiDebugLog.Write(hasIncomeGap
                     ? "[AI][V2][Demand][Economy] decision=NONE reason=income_gap_but_no_actionable_known_site"
                     : "[AI][V2][Demand][Economy] decision=SATISFIED reason=known_income_targets_covered_or_sites_built");
@@ -832,14 +832,5 @@ namespace Game.Ai.V2
                 : "[AI][V2][Demand][Development] decision=SATISFIED reason=facility_ready_no_worthwhile_upgrade");
         }
 
-        private static bool HasIncomeFor(WorldSnapshot s, ResourceType type)
-        {
-            if (s?.Self == null || s.Economy == null)
-                return false;
-            float target = Mathf.Max(0f, s.Economy.IncomeTarget.Get(type));
-            if (target <= AiConfigV2.allocatorSliceEpsilon)
-                return true;
-            return s.Self.PerTurnIncome.Get(type) + AiConfigV2.allocatorSliceEpsilon >= target;
-        }
     }
 }

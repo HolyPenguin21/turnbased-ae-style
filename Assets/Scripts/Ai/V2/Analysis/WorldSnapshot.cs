@@ -453,6 +453,19 @@ namespace Game.Ai.V2
         public float BottleneckPressure;  // [0..1]   how bad the single worst resource is
         public float AbsFloor;            // [0..1]   income vs DeckResourceNeed/horizon, smoothstepped
         public float EconomicSecurity;    // [0..1]   blend(AbsFloor, RelativePressure, BottleneckPressure)
+
+        // Single owner of the project's "income below target" predicate. Demand emission and the
+        // post-step resource-site trigger both call this, so discovery cannot use a second,
+        // drifting definition of a deficient resource.
+        public bool IsIncomeDeficient(SelfSnapshot self, ResourceType type)
+        {
+            if (self == null)
+                return true;
+            float target = System.Math.Max(0f, IncomeTarget.Get(type));
+            if (target <= AiConfigV2.allocatorSliceEpsilon)
+                return false;
+            return self.PerTurnIncome.Get(type) + AiConfigV2.allocatorSliceEpsilon < target;
+        }
     }
 
     public struct EconomyResourceStanding

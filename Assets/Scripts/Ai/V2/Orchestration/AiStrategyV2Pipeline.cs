@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -838,6 +839,144 @@ namespace Game.Ai.V2
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;
         }
+
+        internal sealed class StepObservationStamp
+        {
+            internal readonly WorldSnapshot Snapshot;
+            internal readonly V2ResourceStamp Resources;
+            internal readonly AiHandData Hand;
+            internal readonly int HandVersion;
+
+            internal StepObservationStamp(WorldSnapshot snapshot, V2ResourceStamp resources,
+                AiHandData hand)
+            {
+                Snapshot = snapshot;
+                Resources = resources;
+                Hand = hand;
+                HandVersion = hand?.MutationVersion ?? -1;
+            }
+        }
+
+        internal static StepObservationStamp CaptureStepObservation(
+            PlayerRoot root, AiHandData hand, WorldSnapshot snapshot) =>
+            new StepObservationStamp(snapshot,
+                root != null ? AiV2Trace.Stamp(root) : default, hand);
+
+        // Orchestration-level observation boundary: compare the settled world around exactly one
+        // task command, then publish factual typed invalidations to the existing registry.
+        internal static void PublishStepObservationDelta(PlayerSetupData player, int turn,
+            StepObservationStamp before, StepObservationStamp after,
+            ExecutionResult execution)
+        {
+            if (player == null || before == null || after == null)
+                return;
+
+            HashSet<int> contacts = NewContactIds(before.Snapshot, after.Snapshot);
+            if (contacts.Count > 0)
+                StrategicInterruptRegistry.MarkDiscovery(player, turn, contacts);
+
+            HashSet<HexCoord> eventHexes = NewHexes(
+                before.Snapshot?.Known?.EventGuardHexes,
+                after.Snapshot?.Known?.EventGuardHexes);
+            if (execution != null
+                && execution.StopReason == ExecutionStopReason.HexEventStarted)
+                eventHexes.Add(execution.FinalHex);
+            if (eventHexes.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge
+                    | StrategicInvalidationReason.EventState,
+                    hexes: eventHexes);
+
+            HashSet<HexCoord> resourceHexes =
+                NewDeficientResourceSites(before.Snapshot, after.Snapshot);
+            if (resourceHexes.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge
+                    | StrategicInvalidationReason.ResourceSite,
+                    hexes: resourceHexes);
+
+            if (ResourceStockChanged(before.Resources, after.Resources))
+                StrategicInterruptRegistry.Mark(
+                    player, turn, StrategicInvalidationReason.Resources);
+
+            if (before.Hand != after.Hand
+                || before.HandVersion != after.HandVersion)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Hand
+                    | StrategicInvalidationReason.Capability,
+                    hand: after.Hand);
+        }
+
+        private static HashSet<int> NewContactIds(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            var known = new HashSet<int>();
+            AddSightingIds(known, before?.Known?.EnemySightings);
+            AddSightingIds(known, before?.Known?.NeutralSightings);
+            var result = new HashSet<int>();
+            AddNewSightingIds(result, known, after?.Known?.EnemySightings);
+            AddNewSightingIds(result, known, after?.Known?.NeutralSightings);
+            return result;
+        }
+
+        private static void AddSightingIds(HashSet<int> target,
+            IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            if (sightings == null) return;
+            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
+                if (sighting.ArmyId > 0) target.Add(sighting.ArmyId);
+        }
+
+        private static void AddNewSightingIds(HashSet<int> target,
+            HashSet<int> before,
+            IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            if (sightings == null) return;
+            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
+                if (sighting.ArmyId > 0 && !before.Contains(sighting.ArmyId))
+                    target.Add(sighting.ArmyId);
+        }
+
+        private static HashSet<HexCoord> NewHexes(
+            IEnumerable<HexCoord> before, IEnumerable<HexCoord> after)
+        {
+            var old = new HashSet<HexCoord>();
+            if (before != null)
+                foreach (HexCoord hex in before) old.Add(hex);
+            var result = new HashSet<HexCoord>();
+            if (after != null)
+                foreach (HexCoord hex in after)
+                    if (!old.Contains(hex)) result.Add(hex);
+            return result;
+        }
+
+        private static HashSet<HexCoord> NewDeficientResourceSites(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            var old = new HashSet<HexCoord>();
+            if (before?.Known?.ResourceHexes != null)
+                foreach (KeyValuePair<HexCoord, ResourceType> site in
+                    before.Known.ResourceHexes)
+                    old.Add(site.Key);
+
+            var result = new HashSet<HexCoord>();
+            if (after?.Known?.ResourceHexes == null
+                || after.Economy == null || after.Self == null)
+                return result;
+            foreach (KeyValuePair<HexCoord, ResourceType> site in
+                after.Known.ResourceHexes)
+                if (!old.Contains(site.Key)
+                    && after.Economy.IsIncomeDeficient(after.Self, site.Value))
+                    result.Add(site.Key);
+            return result;
+        }
+
+        private static bool ResourceStockChanged(
+            V2ResourceStamp before, V2ResourceStamp after) =>
+            before.Valid && after.Valid
+            && (before.Human != after.Human || before.Energy != after.Energy
+                || before.Materials != after.Materials
+                || before.Tech != after.Tech);
 
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
         // turn that ended at 0 AP only counts as "needed more AP" if real AP work still remained
