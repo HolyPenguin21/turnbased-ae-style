@@ -553,163 +553,402 @@ namespace Game.Ai.V2
             if (phaseA.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
-            // 4. Planners -> mission proposals. Mission construction/stamping/logging has one
-            //    owner shared by the legacy batch and the optional mid-turn re-admission loop.
-            List<MissionProposal> missions = BuildMissionSet(snapshot, assessment.Breakdown,
-                activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace);
-
-            // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
-            //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
-            List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
-
-            var ledger = new MissionOutcomeLedger();
-            ledger.RegisterProposals(missions);
-            ledger.RegisterCommitments(commitments);
-
-            // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
-            //    many packing -> ordered tentative allocation. No second radar split.
-            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
-                apLedger);
-            var provSession = new ProvisioningSession(snapshot);
-            TentativeAllocation allocation = session.Pack();
-
-            // Spec §8 — distinguish "funded on the FINAL allocation pack" from "distinct missions
-            // funded at any point this turn". After a pack -> provision -> re-pack loop these differ
-            // legitimately (a mission funded on pass 1, provisioned, then dropped from the last
-            // pack), and reporting only the last pack next to cumulative provisioned/executed
-            // counters reads as an inconsistency during debugging.
+            List<MissionProposal> missions;
+            TentativeAllocation allocation = new TentativeAllocation();
             var fundedKeysThisTurn = new HashSet<StableMissionKey>();
-            void AccrueFundedKeys(TentativeAllocation a)
-            {
-                if (a?.Funded == null) return;
-                foreach (FundedEntry fe in a.Funded)
-                    if (fe?.Mission != null)
-                        fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
-            }
-            AccrueFundedKeys(allocation);
-
-            // 6. Provision the funded missions through the ONE atomic door, with the bounded
-            //    pack -> provision -> re-pack loop (risk 2). Mover assignment across the funded set
-            //    is a per-pass batch step (PreparePass) so a single Provision() call carries no
-            //    hidden cross-mission responsibility. Re-pack is bounded by maxReallocIterations +
-            //    the AllocationSession's own rejected/cooldown/repriced/fingerprint state.
             var provisioned = new List<ProvisionedMission>();
             var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
-            int reallocPass = 0;
-            while (true)
-            {
-                ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
-                bool anyFailure = false;
-                bool allFailuresArePoolWide = true;
-                foreach (FundedEntry fe in allocation.Funded)
-                {
-                    if (fe?.Mission == null)
-                        continue;
-                    StableMissionKey key = StableMissionKey.For(fe.Mission);
-                    if (provSession.AlreadyProvisioned(key))
-                        continue; // locked by an earlier pass this turn
-                    // A capability pool proven pool-wide unable is not asked again UNLESS a cheap
-                    // revalidation now finds an eligible actor (spec §7).
-                    if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
-                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
-                        continue;
+            var allExecuted = new List<ExecutionResult>();
 
-                    ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
-                    if (result.Success)
+            // Rollout is deliberately horizontal: Phase A has already run exactly once; only the
+            // existing Mission -> Allocation -> Provisioning -> Task Execution -> local Continuity
+            // segment repeats. Full mode (and therefore Aggression) remains on the proven batch path.
+            if (AiConfigV2.midTurnLoopEnabled && AiStrategyV2Scope.IsFocusScoped)
+            {
+                missions = new List<MissionProposal>();
+                int settledSteps = 0;
+                int noProgressCycles = 0;
+                AiDebugLog.Write("[AI][V2][Loop] begin — focus scope, Phase A settled once");
+
+                while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
+                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                {
+                    // Every admission reads a settled world. Strategic observations are refreshed
+                    // here; Phase A and the radar/desire frame are intentionally not re-entered.
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
+                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                    actorCommitments = ActorCommitments.FromIntents(
+                        activeIntents, snapshot, reconObjectives);
+
+                    missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
+                        reconObjectives, aggressionObjectives, radar, demands, trace);
+                    List<Commitment> cycleCommitments =
+                        MissionContinuityLayer.BindFunding(activeIntents, missions);
+                    var cycleLedger = new MissionOutcomeLedger();
+                    cycleLedger.RegisterProposals(missions);
+                    cycleLedger.RegisterCommitments(cycleCommitments);
+
+                    AllocationSession cycleSession = ResourceAllocator.BeginTurn(snapshot, radar,
+                        missions, cycleCommitments, player, apLedger);
+                    var cycleProvisioning = new ProvisioningSession(snapshot);
+                    allocation = cycleSession.Pack();
+                    foreach (FundedEntry fe in allocation.Funded)
+                        if (fe?.Mission != null)
+                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+
+                    // Lifecycle safety is admitted before strategic progress, but its must-return
+                    // predicate remains owned by ReconAirExecutor. Exactly one airborne action is
+                    // settled, observed and then re-admitted like every other step.
+                    List<Game.Units.ArmyData> recoveries =
+                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
+                    if (recoveries.Count > 0)
                     {
-                        provSession.RegisterSuccess(key, result.Provisioned);
-                        session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp, result.Provisioned.ClaimedPhysical);
-                        ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
-                        provisioned.Add(result.Provisioned);
-                        AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
-                            result.Provisioned.ClaimedAp, fe.Tentative.Ap);
-                        AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
-                            + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
-                            + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
-                            + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
+                        Game.Units.ArmyData recovery = recoveries[0];
+                        HexCoord? recoveryFocus =
+                            ReconPatrolStateRegistry.TryGet(player, recovery.Id, out ReconPatrolState recoveryState)
+                                ? recoveryState.StrategicAnchor : (HexCoord?)null;
+                        StepObservationStamp beforeRecovery =
+                            CaptureStepObservation(root, hand, snapshot);
+                        var recoveryResult = new AirReconExecutionResult();
+                        var recoveryControl = new ReconAirExecutor.ActorStepControl();
+                        int recoveryApBefore = root.ActionPoints;
+                        yield return ReconAirExecutor.RunActorStep(player, root, ctx, snapshot,
+                            recovery, recoveryResult, recoveryApBefore, recoveryFocus,
+                            perMissionResult: null, control: recoveryControl);
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
+                        StepObservationStamp afterRecovery =
+                            CaptureStepObservation(root, hand, snapshot);
+                        PublishStepObservationDelta(player, ctx.TurnNumber,
+                            beforeRecovery, afterRecovery, null);
+                        settledSteps++;
+                        bool recoveryProgress = recoveryResult.Mutated;
+                        noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
+                        StrategicInvalidation recoveryTriggers = StrategicInterruptRegistry.Consume(
+                            player, ctx.TurnNumber,
+                            StrategicInvalidationReason.ReconKnowledge
+                            | StrategicInvalidationReason.Contact
+                            | StrategicInvalidationReason.Actor
+                            | StrategicInvalidationReason.EventState
+                            | StrategicInvalidationReason.ResourceSite
+                            | StrategicInvalidationReason.External);
+                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
+                            + $"progress={(recoveryProgress ? 1 : 0)} triggers={recoveryTriggers.Reasons}");
+                        continue;
+                    }
+
+                    if (allocation.Funded.Count == 0)
+                    {
+                        AiDebugLog.Write("[AI][V2][Loop] stop — no funded focus-scope mission");
+                        break;
+                    }
+
+                    ProvisionedMission selected = null;
+                    StableMissionKey selectedKey = default;
+                    int reallocPass = 0;
+                    bool provisioningSettled = false;
+                    while (!provisioningSettled)
+                    {
+                        ProvisioningManager.PreparePass(player, root, ctx,
+                            cycleProvisioning, allocation);
+                        FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
+                            fe?.Mission != null
+                            && CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(
+                                player, CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot));
+                        if (selectedFunding == null)
+                            break;
+
+                        selectedKey = StableMissionKey.For(selectedFunding.Mission);
+                        ProvisioningResult provisionResult = ProvisioningManager.Provision(
+                            player, root, hand, ctx, cycleProvisioning, selectedFunding);
+                        if (provisionResult.Success)
+                        {
+                            selected = provisionResult.Provisioned;
+                            cycleProvisioning.RegisterSuccess(selectedKey, selected);
+                            cycleSession.RegisterProvisionSuccess(selectedFunding,
+                                selected.ClaimedAp, selected.ClaimedPhysical);
+                            cycleLedger.RecordProvisionSuccess(selectedFunding.Mission, selected);
+                            provisioned.Add(selected);
+                            AiV2Trace.CheckProvisionEnvelope(selectedFunding.Mission.AttemptId,
+                                selected.ClaimedAp, selectedFunding.Tentative.Ap);
+                            provisioningSettled = true;
+                            break;
+                        }
+
+                        provisioningFailures.TryGetValue(provisionResult.Failure.Kind,
+                            out int failureCount);
+                        provisioningFailures[provisionResult.Failure.Kind] = failureCount + 1;
+                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
+                            snapshot, player, selectedFunding.Mission, provisionResult.Failure);
+                        if (poolWide)
+                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
+                                CapabilityPoolExhaustionRegistry.PoolFor(selectedFunding.Mission),
+                                $"{provisionResult.Failure.Kind}: no eligible actor in snapshot");
+                        cycleSession.RegisterProvisionFailure(selectedFunding, provisionResult.Failure);
+                        cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
+                            provisionResult.Failure);
+                        AiDebugLog.Write($"[AI][V2][Loop] provision [{selectedFunding.Mission.AttemptId}] "
+                            + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
+                            + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
+
+                        if (poolWide || !cycleSession.HasNewFailures || cycleSession.Converged
+                            || ++reallocPass >= AiConfigV2.maxReallocIterations)
+                        {
+                            provisioningSettled = true;
+                            break;
+                        }
+                        allocation = cycleSession.Pack();
+                        foreach (FundedEntry fe in allocation.Funded)
+                            if (fe?.Mission != null)
+                                fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                    }
+
+                    if (selected == null)
+                    {
+                        cycleLedger.RecordDeferrals(allocation.Deferred);
+                        foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                                     .Where(o => o != null && o.AttemptKey.Equals(selectedKey)))
+                            MissionContinuityLayer.ReconcileStep(
+                                player, snapshot.TurnNumber, outcome);
+                        noProgressCycles++;
+                        settledSteps++;
+                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} no provisioned task; "
+                            + $"noProgress={noProgressCycles}");
+                        continue;
+                    }
+
+                    StepObservationStamp beforeStep =
+                        CaptureStepObservation(root, hand, snapshot);
+                    var stepResults = new List<ExecutionResult>();
+                    if (selected.Kind == MissionKind.Scout
+                        && selected.ExecutorKind != ScoutExecutorKind.Ground)
+                    {
+                        AirReconPlan plan = AirReconPlanner.Plan(player, root, ctx,
+                            snapshot, new[] { selected });
+                        var airStepResult = new AirReconExecutionResult();
+                        yield return ReconAirExecutor.ExecutePlanStep(plan, player, root, ctx,
+                            snapshot, airStepResult, stepResults);
                     }
                     else
                     {
-                        anyFailure = true;
-                        provisioningFailures.TryGetValue(result.Failure.Kind, out int failureCount);
-                        provisioningFailures[result.Failure.Kind] = failureCount + 1;
-                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                            snapshot, player, fe.Mission, result.Failure);
-                        if (poolWide)
-                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
-                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
-                                $"{result.Failure.Kind}: no eligible actor in snapshot");
-                        allFailuresArePoolWide &= poolWide;
-                        session.RegisterProvisionFailure(fe, result.Failure);
-                        ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                        AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
-                            + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
+                        yield return TaskExecutor.ExecuteStep(player, root, ctx,
+                            selected, stepResults, snapshot, enforceFreshPlan: true);
                     }
+
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    ExecutionResult settled = stepResults.FirstOrDefault();
+                    StepObservationStamp afterStep =
+                        CaptureStepObservation(root, hand, snapshot);
+                    PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeStep, afterStep, settled);
+
+                    foreach (ExecutionResult er in stepResults)
+                    {
+                        cycleLedger.RecordExecution(er);
+                        allExecuted.Add(er);
+                    }
+                    cycleLedger.RecordDeferrals(allocation.Deferred);
+                    cycleLedger.RefreshObjectiveStatesLive(player);
+                    foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                                 .Where(o => o != null && o.AttemptKey.Equals(selectedKey)))
+                        MissionContinuityLayer.ReconcileStep(
+                            player, snapshot.TurnNumber, outcome);
+
+                    settledSteps++;
+                    bool progressed = stepResults.Any(er =>
+                        er != null && er.Outcome.StateChanged);
+                    noProgressCycles = progressed ? 0 : noProgressCycles + 1;
+                    StrategicInvalidation triggers = StrategicInterruptRegistry.Consume(
+                        player, ctx.TurnNumber,
+                        StrategicInvalidationReason.ReconKnowledge
+                        | StrategicInvalidationReason.Contact
+                        | StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.EventState
+                        | StrategicInvalidationReason.ResourceSite
+                        | StrategicInvalidationReason.External);
+                    AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
+                        + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
+                        + $"triggers={triggers.Reasons} noProgress={noProgressCycles}");
                 }
 
-                if (anyFailure && allFailuresArePoolWide)
-                {
-                    AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
-                    break;
-                }
-                if (!session.HasNewFailures || session.Converged)
-                    break;
-                if (++reallocPass >= AiConfigV2.maxReallocIterations)
-                    break;
-                allocation = session.Pack();
-                AccrueFundedKeys(allocation);
+                if (settledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
+                    AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
+                        + $"{AiConfigV2.maxMidTurnStepsPerTurn}");
+                if (noProgressCycles >= AiConfigV2.maxMidTurnNoProgressCycles)
+                    AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
+                        + $"{noProgressCycles}");
+
+                // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
+                // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
+                MissionContinuityLayer.ReconcileAfterTurn(player,
+                    snapshot.TurnNumber, new List<MissionTurnOutcome>());
+                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
             }
-
-            // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
-            // Round 4 — a Scout ProvisionedMission bound to an air actor by ReconAssignmentPlanner/
-            // ProvisioningManager.ProvisionAir must NOT go through TaskExecutor/ReconGroundExecutor
-            // (which expects a live ground solo-Recce mover); it is execution-input for the terminal
-            // air-recon stage instead. Ground + Raid missions are unaffected.
-            var groundProvisioned = provisioned
-                .Where(pm => pm.Kind != MissionKind.Scout || pm.ExecutorKind == ScoutExecutorKind.Ground)
-                .ToList();
-            var airProvisioned = provisioned
-                .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
-                .ToList();
-
-            var executed = new List<ExecutionResult>();
-            yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot);
-
-            if (executed.Any(e => e != null && e.Outcome.StateChanged))
-                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-
-            // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
-            // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
-            // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
-            // Round 4 — AirReconPlanner no longer SELECTS; it turns this pass's air-bound
-            // ProvisionedMissions (WHO/WHICH-TARGET already decided by Assignment) into the
-            // executor's input shape.
-            AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
-            var airReconResult = new AirReconExecutionResult();
-            // RECON-AIR-06 — `airPerMissionResults` collects one ExecutionResult PER air-executed
-            // ProvisionedMission this pass (the SAME shape Ground's `executed` list carries), so each
-            // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like
-            // Ground's do — a provisioned air mission no longer silently falls through to
-            // Finalize()'s Blocked default for lack of any recorded Execution.
-            var airPerMissionResults = new List<ExecutionResult>();
-            yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult, airPerMissionResults);
-            AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
-                + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
-                + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter} "
-                + $"perMission={airPerMissionResults.Count}");
-            var allExecuted = executed.Concat(airPerMissionResults).ToList();
-            foreach (ExecutionResult er in allExecuted)
-                ledger.RecordExecution(er);
-            ledger.RecordDeferrals(allocation.Deferred);
-            // Post-execution LIVE pass — a mission run later this turn may have met an earlier
-            // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the
-            // ledger via ScoutObjectiveEvaluator; ReconcileAfterTurn below stays pure.
-            ledger.RefreshObjectiveStatesLive(player);
-
-            // 7c. Update durable intent state for next turn — a PURE transition over the ledger's
-            //     facts (no world reads). Creates intents for started-but-unfinished recon,
-            //     advances/retires the rest, keeps a preferred mover.
-            MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
+            else
+            {
+                // 4. Planners -> mission proposals. Mission construction/stamping/logging has one
+                //    owner shared by the legacy batch and the optional mid-turn re-admission loop.
+                missions = BuildMissionSet(snapshot, assessment.Breakdown,
+                    activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace);
+    
+                // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
+                //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
+                List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
+    
+                var ledger = new MissionOutcomeLedger();
+                ledger.RegisterProposals(missions);
+                ledger.RegisterCommitments(commitments);
+    
+                // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
+                //    many packing -> ordered tentative allocation. No second radar split.
+                AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
+                    apLedger);
+                var provSession = new ProvisioningSession(snapshot);
+                allocation = session.Pack();
+    
+                // Spec §8 — distinguish "funded on the FINAL allocation pack" from "distinct missions
+                // funded at any point this turn". After a pack -> provision -> re-pack loop these differ
+                // legitimately (a mission funded on pass 1, provisioned, then dropped from the last
+                // pack), and reporting only the last pack next to cumulative provisioned/executed
+                // counters reads as an inconsistency during debugging.
+                fundedKeysThisTurn = new HashSet<StableMissionKey>();
+                void AccrueFundedKeys(TentativeAllocation a)
+                {
+                    if (a?.Funded == null) return;
+                    foreach (FundedEntry fe in a.Funded)
+                        if (fe?.Mission != null)
+                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                }
+                AccrueFundedKeys(allocation);
+    
+                // 6. Provision the funded missions through the ONE atomic door, with the bounded
+                //    pack -> provision -> re-pack loop (risk 2). Mover assignment across the funded set
+                //    is a per-pass batch step (PreparePass) so a single Provision() call carries no
+                //    hidden cross-mission responsibility. Re-pack is bounded by maxReallocIterations +
+                //    the AllocationSession's own rejected/cooldown/repriced/fingerprint state.
+                provisioned = new List<ProvisionedMission>();
+                provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
+                int reallocPass = 0;
+                while (true)
+                {
+                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                    bool anyFailure = false;
+                    bool allFailuresArePoolWide = true;
+                    foreach (FundedEntry fe in allocation.Funded)
+                    {
+                        if (fe?.Mission == null)
+                            continue;
+                        StableMissionKey key = StableMissionKey.For(fe.Mission);
+                        if (provSession.AlreadyProvisioned(key))
+                            continue; // locked by an earlier pass this turn
+                        // A capability pool proven pool-wide unable is not asked again UNLESS a cheap
+                        // revalidation now finds an eligible actor (spec §7).
+                        if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
+                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
+                            continue;
+    
+                        ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
+                        if (result.Success)
+                        {
+                            provSession.RegisterSuccess(key, result.Provisioned);
+                            session.RegisterProvisionSuccess(fe, result.Provisioned.ClaimedAp, result.Provisioned.ClaimedPhysical);
+                            ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
+                            provisioned.Add(result.Provisioned);
+                            AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
+                                result.Provisioned.ClaimedAp, fe.Tentative.Ap);
+                            AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
+                                + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
+                                + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
+                                + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
+                        }
+                        else
+                        {
+                            anyFailure = true;
+                            provisioningFailures.TryGetValue(result.Failure.Kind, out int failureCount);
+                            provisioningFailures[result.Failure.Kind] = failureCount + 1;
+                            bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
+                                snapshot, player, fe.Mission, result.Failure);
+                            if (poolWide)
+                                CapabilityPoolExhaustionRegistry.MarkExhausted(player,
+                                    CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
+                                    $"{result.Failure.Kind}: no eligible actor in snapshot");
+                            allFailuresArePoolWide &= poolWide;
+                            session.RegisterProvisionFailure(fe, result.Failure);
+                            ledger.RecordProvisionFailure(fe.Mission, result.Failure);
+                            AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
+                                + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
+                        }
+                    }
+    
+                    if (anyFailure && allFailuresArePoolWide)
+                    {
+                        AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
+                        break;
+                    }
+                    if (!session.HasNewFailures || session.Converged)
+                        break;
+                    if (++reallocPass >= AiConfigV2.maxReallocIterations)
+                        break;
+                    allocation = session.Pack();
+                    AccrueFundedKeys(allocation);
+                }
+    
+                // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
+                // Round 4 — a Scout ProvisionedMission bound to an air actor by ReconAssignmentPlanner/
+                // ProvisioningManager.ProvisionAir must NOT go through TaskExecutor/ReconGroundExecutor
+                // (which expects a live ground solo-Recce mover); it is execution-input for the terminal
+                // air-recon stage instead. Ground + Raid missions are unaffected.
+                var groundProvisioned = provisioned
+                    .Where(pm => pm.Kind != MissionKind.Scout || pm.ExecutorKind == ScoutExecutorKind.Ground)
+                    .ToList();
+                var airProvisioned = provisioned
+                    .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
+                    .ToList();
+    
+                var executed = new List<ExecutionResult>();
+                yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot);
+    
+                if (executed.Any(e => e != null && e.Outcome.StateChanged))
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+    
+                // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
+                // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
+                // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
+                // Round 4 — AirReconPlanner no longer SELECTS; it turns this pass's air-bound
+                // ProvisionedMissions (WHO/WHICH-TARGET already decided by Assignment) into the
+                // executor's input shape.
+                AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
+                var airReconResult = new AirReconExecutionResult();
+                // RECON-AIR-06 — `airPerMissionResults` collects one ExecutionResult PER air-executed
+                // ProvisionedMission this pass (the SAME shape Ground's `executed` list carries), so each
+                // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like
+                // Ground's do — a provisioned air mission no longer silently falls through to
+                // Finalize()'s Blocked default for lack of any recorded Execution.
+                var airPerMissionResults = new List<ExecutionResult>();
+                yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult, airPerMissionResults);
+                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
+                    + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
+                    + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter} "
+                    + $"perMission={airPerMissionResults.Count}");
+                allExecuted = executed.Concat(airPerMissionResults).ToList();
+                foreach (ExecutionResult er in allExecuted)
+                    ledger.RecordExecution(er);
+                ledger.RecordDeferrals(allocation.Deferred);
+                // Post-execution LIVE pass — a mission run later this turn may have met an earlier
+                // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the
+                // ledger via ScoutObjectiveEvaluator; ReconcileAfterTurn below stays pure.
+                ledger.RefreshObjectiveStatesLive(player);
+    
+                // 7c. Update durable intent state for next turn — a PURE transition over the ledger's
+                //     facts (no world reads). Creates intents for started-but-unfinished recon,
+                //     advances/retires the rest, keeps a preferred mover.
+                MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
+    
+    
+            }
 
             // S5. Strategic Manager Phase B — Surplus Preparation. Spec §5/§13 — this runs in EVERY
             //     mode, ReconOnly included: it is hand/card lifecycle management, not an operational
