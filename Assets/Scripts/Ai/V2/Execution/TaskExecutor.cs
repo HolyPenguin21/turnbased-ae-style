@@ -71,7 +71,12 @@ namespace Game.Ai.V2
         // objective is met, but it changed NOTHING — the common contract must not report
         // StateChanged for it.
         public bool StaleNoOp;
+        public bool NeedsReplan;
+        public int PlannedAtStateVersion = -1;
+        public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
+        public V2ResourceStamp ResourcesBefore;
+        public V2ResourceStamp ResourcesAfter;
 
         // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor: only a
         // real movement step or a stealth entry moved the world. Reaching a goal that was already
@@ -86,7 +91,7 @@ namespace Game.Ai.V2
                 return new V2ActionOutcome(
                     succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
                     resourcesSpent: null, played: false, generated: false, attached: false,
-                    moved: moved, created: false, needsReplan: false,
+                    moved: moved, created: false, needsReplan: NeedsReplan,
                     stateVersionAfter: StateVersionAfter,
                     failReason: succeeded ? (StaleNoOp && !moved ? "goal already satisfied (no-op)" : null)
                                           : StopReason.ToString());
@@ -101,7 +106,7 @@ namespace Game.Ai.V2
         // runs it (ReconAirExecutor.Execute) as its own stage after this returns.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
-            WorldSnapshot snapshot = null)
+            WorldSnapshot snapshot = null, bool enforceFreshPlan = false)
         {
             if (ctx?.Map == null)
                 yield break;
@@ -132,7 +137,27 @@ namespace Game.Ai.V2
                 {
                     Key = pm.Key,
                     Source = pm,
+                    PlannedAtStateVersion = pm.PlannedAtStateVersion,
+                    StateVersionBefore = V2StateVersion.Current,
+                    ResourcesBefore = AiV2Trace.Stamp(root),
                 };
+
+                if (enforceFreshPlan && pm.PlannedAtStateVersion >= 0
+                    && !V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
+                {
+                    result.StartHex = pm.ExecutionHex;
+                    result.FinalHex = pm.ExecutionHex;
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    result.ApSpent = 0f;
+                    StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                        StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
+                    CompleteResult(result, root);
+                    results.Add(result);
+                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — stale plan "
+                        + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
+                    continue;
+                }
 
                 int apBefore = root != null ? root.ActionPoints : 0;
                 ArmyData army = Resolve(player, pm.MoverArmyId);
@@ -143,6 +168,7 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.MoverLost;
                     result.ApSpent = 0f;
                     ApCheck(pm, apBefore, root, result);
+                    CompleteResult(result, root);
                     results.Add(result);
                     ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
@@ -174,6 +200,7 @@ namespace Game.Ai.V2
                             ? ExecutionStopReason.ReachedGoal
                             : ExecutionStopReason.TargetInvalidated;
                     ApCheck(pm, apBefore, root, result);
+                    CompleteResult(result, root);
                     results.Add(result);
                     if (validity == MissionValidity.StaleMoverLost)
                         ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
@@ -188,6 +215,7 @@ namespace Game.Ai.V2
                         queue, missionIndex, snapshot);
                     ApCheck(pm, apBefore, root, result);
                     StampVersion(result);
+                    CompleteResult(result, root);
                     results.Add(result);
                     continue;
                 }
@@ -197,6 +225,7 @@ namespace Game.Ai.V2
                     yield return RunRaid(player, root, ctx, pm, result, apBefore);
                     ApCheck(pm, apBefore, root, result);
                     StampVersion(result);
+                    CompleteResult(result, root);
                     results.Add(result);
                     continue;
                 }
@@ -206,6 +235,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 result.ApSpent = 0f;
                 ApCheck(pm, apBefore, root, result);
+                CompleteResult(result, root);
                 results.Add(result);
                 AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — unsupported mission kind {pm.Kind}");
             }
@@ -334,6 +364,14 @@ namespace Game.Ai.V2
             if (result.StepsMoved > 0 || result.EnteredStealth)
                 V2StateVersion.Bump();
             result.StateVersionAfter = V2StateVersion.Current;
+        }
+
+        private static void CompleteResult(ExecutionResult result, PlayerRoot root)
+        {
+            if (result == null) return;
+            if (result.StateVersionAfter < 0)
+                result.StateVersionAfter = V2StateVersion.Current;
+            result.ResourcesAfter = AiV2Trace.Stamp(root);
         }
     }
 }

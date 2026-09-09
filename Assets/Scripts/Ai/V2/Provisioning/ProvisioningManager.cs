@@ -34,6 +34,10 @@ namespace Game.Ai.V2
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
         public float ClaimedEnergy;
         public bool StealthApReserved;
+        // State version after provisioning completed. In the current batch adapter several
+        // provisioned missions may coexist; the future selected-only loop executes immediately
+        // and can require this version to still be current before issuing a gameplay command.
+        public int PlannedAtStateVersion = -1;
         // AI-RECON-02 — this Scout mission's requirement is a stealthy one (StealthRequirement.
         // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
         // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
@@ -102,11 +106,41 @@ namespace Game.Ai.V2
         public bool Success;
         public ProvisionedMission Provisioned;
         public ProvisionFailure Failure;
+        // Provisioning is normally pure binding. Raid assembly is the one transactional exception:
+        // successful member transfers are one authoritative mutation and are versioned once only
+        // after the whole transaction commits. A complete rollback reports no mutation.
+        public bool StateChanged;
+        public int StateVersionAfter = -1;
+        public int TransferredMemberCount;
 
-        public static ProvisioningResult Ok(ProvisionedMission m) =>
-            new ProvisioningResult { Success = true, Provisioned = m };
-        public static ProvisioningResult Fail(ProvisionFailure f) =>
-            new ProvisioningResult { Success = false, Failure = f };
+        public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0)
+        {
+            bool changed = transferredMemberCount > 0;
+            int version = changed ? V2StateVersion.Bump() : V2StateVersion.Current;
+            if (m != null) m.PlannedAtStateVersion = version;
+            return new ProvisioningResult
+            {
+                Success = true,
+                Provisioned = m,
+                StateChanged = changed,
+                StateVersionAfter = version,
+                TransferredMemberCount = transferredMemberCount,
+            };
+        }
+
+        public static ProvisioningResult Fail(ProvisionFailure f,
+            bool stateChanged = false, int transferredMemberCount = 0)
+        {
+            int version = stateChanged ? V2StateVersion.Bump() : V2StateVersion.Current;
+            return new ProvisioningResult
+            {
+                Success = false,
+                Failure = f,
+                StateChanged = stateChanged,
+                StateVersionAfter = version,
+                TransferredMemberCount = transferredMemberCount,
+            };
+        }
     }
 
     public sealed class ProvisioningSession
@@ -856,10 +890,14 @@ namespace Game.Ai.V2
                 if (donor == null || !ArmyActions.TransferMember(t.Unit, donor, host, ctx.HexSelection, out why))
                 {
                     bool rollbackOk = RollbackAssembly(player, host, applied, ctx);
+                    int transfersStillApplied = applied.Count(x => x?.Unit != null && host.Members.Contains(x.Unit));
+                    bool rollbackChangedWorld = transfersStillApplied > 0;
                     AiDebugLog.Write($"[AI][V2]   raid provision [{m.AttemptId}] {key} — assembly transaction failed on "
-                        + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}");
+                        + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}; "
+                        + $"remainingTransfers={transfersStillApplied}");
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                        rollbackOk ? $"atomic raid assembly rejected: {why}" : $"raid assembly failed and rollback was incomplete: {why}"));
+                            rollbackOk ? $"atomic raid assembly rejected: {why}" : $"raid assembly failed and rollback was incomplete: {why}"),
+                        rollbackChangedWorld, transfersStillApplied);
                 }
                 applied.Add(t);
             }
@@ -886,7 +924,7 @@ namespace Game.Ai.V2
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = activationAp,
                 StealthApReserved = false,
-            });
+            }, applied.Count);
         }
 
         private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
