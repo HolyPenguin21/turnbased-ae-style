@@ -19,12 +19,30 @@ namespace Game.Ai
     {
         public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex)
         {
-            System.Func<HexCoord, bool> blockHex = hex => !hex.Equals(targetHex)
-                && (AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue || AiMapMemory.IsScoutDangerous(army.Owner, hex));
+            if (map == null || army == null)
+                return null;
             // Routed through the shared AiTurnController.FindAffordableStep — this path (blocked
             // around known sightings) can differ from an unblocked one, so THIS is the path whose
             // first step must be checked against army.CurrentMovement.
-            return AiTurnController.FindAffordableStep(map, army, targetHex, blockHex);
+            return AiTurnController.FindAffordableStep(map, army, targetHex,
+                SafeRouteBlocker(army, targetHex));
         }
+
+        // Canonical cost of the same fog-honest route FindNextSafeStep executes. Analysis freezes
+        // this witness into Economy opportunities; Provisioning re-runs it live immediately before
+        // binding. Keeping the blocker here prevents planning/execution from drifting.
+        public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
+        {
+            if (map == null || army == null)
+                return int.MaxValue;
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex,
+                blockHex: SafeRouteBlocker(army, targetHex));
+            return path?.TotalCost ?? int.MaxValue;
+        }
+
+        private static System.Func<HexCoord, bool> SafeRouteBlocker(
+            ArmyData army, HexCoord targetHex) => hex => !hex.Equals(targetHex)
+                && (AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue
+                    || AiMapMemory.IsScoutDangerous(army.Owner, hex));
     }
 }
