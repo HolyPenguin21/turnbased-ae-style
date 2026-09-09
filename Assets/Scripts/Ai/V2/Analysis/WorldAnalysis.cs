@@ -104,6 +104,277 @@ namespace Game.Ai.V2
             return snap;
         }
 
+
+        // Settled observation boundary for one bounded task. Analysis owns factual comparison;
+        // Orchestration only decides which typed task family consumes the published invalidation.
+        internal sealed class StepObservationStamp
+        {
+            internal readonly WorldSnapshot Snapshot;
+            internal readonly V2ResourceStamp Resources;
+            internal readonly AiHandData Hand;
+            internal readonly int HandVersion;
+
+            internal StepObservationStamp(WorldSnapshot snapshot, V2ResourceStamp resources,
+                AiHandData hand)
+            {
+                Snapshot = snapshot;
+                Resources = resources;
+                Hand = hand;
+                HandVersion = hand?.MutationVersion ?? -1;
+            }
+        }
+
+        internal static StepObservationStamp CaptureStepObservation(
+            PlayerRoot root, AiHandData hand, WorldSnapshot snapshot) =>
+            new StepObservationStamp(snapshot,
+                root != null ? AiV2Trace.Stamp(root) : default, hand);
+
+        internal static void PublishStepObservationDelta(PlayerSetupData player, int turn,
+            StepObservationStamp before, StepObservationStamp after,
+            ExecutionResult execution)
+        {
+            if (player == null || before == null || after == null)
+                return;
+
+            HashSet<int> contacts = ChangedContactIds(before.Snapshot, after.Snapshot);
+            if (contacts.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge
+                    | StrategicInvalidationReason.Contact,
+                    contactIds: contacts);
+
+            var reconHexes = new HashSet<HexCoord>();
+            if (ReconKnowledgeChanged(before.Snapshot, after.Snapshot))
+            {
+                if (after.Snapshot?.MapKnowledge?.Frontier != null)
+                    foreach (FrontierHexSnapshot frontier in after.Snapshot.MapKnowledge.Frontier)
+                        reconHexes.Add(frontier.Hex);
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge, hexes: reconHexes);
+            }
+
+            HashSet<HexCoord> eventHexes = NewHexes(
+                before.Snapshot?.Known?.EventGuardHexes,
+                after.Snapshot?.Known?.EventGuardHexes);
+            if (execution != null
+                && execution.StopReason == ExecutionStopReason.HexEventStarted)
+                eventHexes.Add(execution.FinalHex);
+            if (eventHexes.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge
+                    | StrategicInvalidationReason.EventState,
+                    hexes: eventHexes);
+
+            HashSet<HexCoord> resourceHexes =
+                NewDeficientResourceSites(before.Snapshot, after.Snapshot);
+            if (resourceHexes.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ReconKnowledge
+                    | StrategicInvalidationReason.ResourceSite,
+                    hexes: resourceHexes);
+
+            HashSet<int> actorIds = ChangedActorIds(before.Snapshot, after.Snapshot);
+            if (actorIds.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Actor
+                    | StrategicInvalidationReason.Capability,
+                    actorIds: actorIds);
+
+            if (ThreatChanged(before.Snapshot, after.Snapshot))
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Threat);
+
+            if (InfrastructureChanged(before.Snapshot, after.Snapshot))
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Infrastructure
+                    | StrategicInvalidationReason.Capability);
+
+            if (ResourceStockChanged(before.Resources, after.Resources))
+                StrategicInterruptRegistry.Mark(
+                    player, turn, StrategicInvalidationReason.Resources);
+
+            if (before.Hand != after.Hand
+                || before.HandVersion != after.HandVersion)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Hand
+                    | StrategicInvalidationReason.Capability,
+                    hand: after.Hand);
+        }
+
+        private static bool ReconKnowledgeChanged(WorldSnapshot before, WorldSnapshot after)
+        {
+            MapKnowledgeSnapshot a = before?.MapKnowledge;
+            MapKnowledgeSnapshot b = after?.MapKnowledge;
+            if (a == null || b == null)
+                return a != b;
+            if (a.VisitedHexes != b.VisitedHexes || a.VisibleHexes != b.VisibleHexes)
+                return true;
+
+            var af = new HashSet<HexCoord>((a.Frontier ?? System.Array.Empty<FrontierHexSnapshot>())
+                .Select(x => x.Hex));
+            var bf = new HashSet<HexCoord>((b.Frontier ?? System.Array.Empty<FrontierHexSnapshot>())
+                .Select(x => x.Hex));
+            if (!af.SetEquals(bf))
+                return true;
+
+            var av = a.VisitedHexSet ?? new HashSet<HexCoord>();
+            var bv = b.VisitedHexSet ?? new HashSet<HexCoord>();
+            return !av.SetEquals(bv);
+        }
+
+        private static HashSet<int> ChangedContactIds(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            Dictionary<int, AiMapMemory.KnownEnemySighting> old =
+                KnownSightingsById(before);
+            Dictionary<int, AiMapMemory.KnownEnemySighting> current =
+                KnownSightingsById(after);
+            var changed = new HashSet<int>();
+
+            foreach (KeyValuePair<int, AiMapMemory.KnownEnemySighting> kv in current)
+            {
+                if (!old.TryGetValue(kv.Key, out AiMapMemory.KnownEnemySighting prior)
+                    || !SameSighting(prior, kv.Value))
+                    changed.Add(kv.Key);
+            }
+            foreach (int id in old.Keys)
+                if (!current.ContainsKey(id))
+                    changed.Add(id);
+            return changed;
+        }
+
+        private static Dictionary<int, AiMapMemory.KnownEnemySighting> KnownSightingsById(
+            WorldSnapshot snapshot)
+        {
+            var result = new Dictionary<int, AiMapMemory.KnownEnemySighting>();
+            AddSightings(result, snapshot?.Known?.EnemySightings);
+            AddSightings(result, snapshot?.Known?.NeutralSightings);
+            return result;
+        }
+
+        private static void AddSightings(
+            Dictionary<int, AiMapMemory.KnownEnemySighting> result,
+            IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            if (sightings == null) return;
+            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
+                if (sighting.ArmyId > 0)
+                    result[sighting.ArmyId] = sighting;
+        }
+
+        private static bool SameSighting(AiMapMemory.KnownEnemySighting a,
+            AiMapMemory.KnownEnemySighting b) =>
+            a.Hex.Equals(b.Hex) && a.Owner == b.Owner
+            && a.MemberCount == b.MemberCount
+            && a.AttackSum == b.AttackSum && a.DefenseSum == b.DefenseSum
+            && a.HasAntiAir == b.HasAntiAir
+            && a.RecceRadius == b.RecceRadius
+            && a.RecceSpotStrength == b.RecceSpotStrength
+            && a.SeenTurn == b.SeenTurn;
+
+        private static HashSet<int> ChangedActorIds(WorldSnapshot before, WorldSnapshot after)
+        {
+            var old = (before?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId);
+            var current = (after?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).ToDictionary(a => a.ArmyId);
+            var changed = new HashSet<int>();
+
+            foreach (KeyValuePair<int, ArmySnapshot> kv in current)
+            {
+                if (!old.TryGetValue(kv.Key, out ArmySnapshot prior)
+                    || !SameActor(prior, kv.Value))
+                    changed.Add(kv.Key);
+            }
+            foreach (int id in old.Keys)
+                if (!current.ContainsKey(id))
+                    changed.Add(id);
+            return changed;
+        }
+
+        private static bool SameActor(ArmySnapshot a, ArmySnapshot b) =>
+            a.Hex.Equals(b.Hex) && a.MemberCount == b.MemberCount
+            && a.HasActivatedThisTurn == b.HasActivatedThisTurn
+            && a.CurrentMovement == b.CurrentMovement
+            && a.ActivationApCost == b.ActivationApCost
+            && a.ActivationEnergyCost == b.ActivationEnergyCost
+            && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
+            && a.IsSoloRecce == b.IsSoloRecce
+            && a.IsStructuralRaidActor == b.IsStructuralRaidActor;
+
+        private static bool ThreatChanged(WorldSnapshot before, WorldSnapshot after)
+        {
+            ThreatModel a = before?.Threat;
+            ThreatModel b = after?.Threat;
+            if (a == null || b == null)
+                return a != b;
+            if (a.UnderSiege != b.UnderSiege)
+                return true;
+            string[] ak = (a.Threats ?? System.Array.Empty<AssetThreatSnapshot>())
+                .Select(ThreatKey).OrderBy(x => x).ToArray();
+            string[] bk = (b.Threats ?? System.Array.Empty<AssetThreatSnapshot>())
+                .Select(ThreatKey).OrderBy(x => x).ToArray();
+            return !ak.SequenceEqual(bk);
+        }
+
+        private static string ThreatKey(AssetThreatSnapshot t)
+        {
+            if (t == null) return "-";
+            int contactId = t.Contact?.Army?.ArmyId ?? 0;
+            HexCoord assetHex = t.Asset != null ? t.Asset.Hex : default;
+            return $"{contactId}:{t.Asset?.Kind}:{assetHex.Q},{assetHex.R}:"
+                + $"{t.EnemyEta}:{t.ResponseEta}:{t.CanDamage}:{t.Severity:0.000}";
+        }
+
+        private static bool InfrastructureChanged(WorldSnapshot before, WorldSnapshot after)
+        {
+            string[] a = (before?.Development?.Facilities
+                    ?? System.Array.Empty<DevelopmentFacility>())
+                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}")
+                .OrderBy(x => x).ToArray();
+            string[] b = (after?.Development?.Facilities
+                    ?? System.Array.Empty<DevelopmentFacility>())
+                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}")
+                .OrderBy(x => x).ToArray();
+            return !a.SequenceEqual(b);
+        }
+
+        private static HashSet<HexCoord> NewHexes(
+            IEnumerable<HexCoord> before, IEnumerable<HexCoord> after)
+        {
+            var old = new HashSet<HexCoord>(before ?? System.Array.Empty<HexCoord>());
+            var result = new HashSet<HexCoord>();
+            if (after != null)
+                foreach (HexCoord hex in after)
+                    if (!old.Contains(hex)) result.Add(hex);
+            return result;
+        }
+
+        private static HashSet<HexCoord> NewDeficientResourceSites(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            var old = new HashSet<HexCoord>();
+            if (before?.Known?.ResourceHexes != null)
+                foreach (KeyValuePair<HexCoord, ResourceType> site in before.Known.ResourceHexes)
+                    old.Add(site.Key);
+
+            var result = new HashSet<HexCoord>();
+            if (after?.Known?.ResourceHexes == null
+                || after.Economy == null || after.Self == null)
+                return result;
+            foreach (KeyValuePair<HexCoord, ResourceType> site in after.Known.ResourceHexes)
+                if (!old.Contains(site.Key)
+                    && after.Economy.IsIncomeDeficient(after.Self, site.Value))
+                    result.Add(site.Key);
+            return result;
+        }
+
+        private static bool ResourceStockChanged(
+            V2ResourceStamp before, V2ResourceStamp after) =>
+            before.Valid && after.Valid
+            && (before.Human != after.Human || before.Energy != after.Energy
+                || before.Materials != after.Materials || before.Tech != after.Tech);
+
         private static void LogSnapshot(PlayerSetupData player, WorldSnapshot s)
         {
             string nick = player?.Nickname ?? "?";
