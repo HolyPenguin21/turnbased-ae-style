@@ -192,19 +192,12 @@ namespace Game.Ai.V2
             {
                 case DesireAxis.Recon:
                     return StrategicInvalidationReason.ReconKnowledge
-                        | StrategicInvalidationReason.Contact
-                        | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.EventState
-                        | StrategicInvalidationReason.ResourceSite;
+                        | StrategicInvalidationReason.Actor;
                 case DesireAxis.Aggression:
                     return StrategicInvalidationReason.Contact
-                        | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.Capability
                         | StrategicInvalidationReason.EventState;
                 case DesireAxis.Defence:
-                    return StrategicInvalidationReason.Threat
-                        | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.Capability;
+                    return StrategicInvalidationReason.Threat;
                 case DesireAxis.Economy:
                 case DesireAxis.Development:
                     return StrategicInvalidationReason.Resources
@@ -607,16 +600,77 @@ namespace Game.Ai.V2
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
                 int noProgressCycles = 0;
+
+                // One factual flag may invalidate more than one family (for example, discovering
+                // a deficient ResourceSite changes both Recon knowledge and Development
+                // opportunity). Snapshot the aggregate once, derive every in-scope family, and
+                // only then consume the shared reasons so family order cannot erase a sibling's
+                // trigger.
+                void TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                    out StrategicInvalidationReason developmentReasons)
+                {
+                    StrategicInvalidation pending =
+                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
+                    reconReasons = pending.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
+                    developmentReasons = pending.Reasons
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Development);
+                    StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                        reconReasons | developmentReasons);
+                }
+
+                // Development re-admission uses the existing Phase-A owner, shared AP ledger and
+                // carried reservation. This is deliberately local orchestration, not a second
+                // manager or a new vertical layer.
+                bool ReenterDevelopment(StrategicInvalidationReason reasons)
+                {
+                    if (reasons == StrategicInvalidationReason.None)
+                        return false;
+
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    activeIntents = MissionContinuityLayer.ResolveActive(
+                        player, snapshot, reconObjectives);
+                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                    actorCommitments = ActorCommitments.FromIntents(
+                        activeIntents, snapshot, reconObjectives);
+                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                        ? DevelopmentOpportunityEvaluator.Enumerate(
+                            snapshot, player, root, hand, ctx)
+                        : new List<DevelopmentOpportunity>();
+                    demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                        reconObjectives, aggressionObjectives, activeIntents,
+                        actorCommitments, player, ctx, root, devOpportunities, radar);
+                    demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+
+                    WorldAnalysis.StepObservationStamp beforeDevelopment =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    StrategicPhaseResult followup = StrategicManager.FulfillDemands(
+                        snapshot, player, root, hand, ctx, apLedger, demands,
+                        actorCommitments, activeIntents, reconObjectives,
+                        phaseB.Reservation ?? phaseA.Reservation);
+                    phaseA.Accumulate(followup);
+                    if (followup.StateChanged)
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
+                    WorldAnalysis.StepObservationStamp afterDevelopment =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeDevelopment, afterDevelopment, null);
+                    AiDebugLog.Write($"[AI][V2][Loop] Development re-admission "
+                        + $"triggers={reasons} changed={(followup.StateChanged ? 1 : 0)}");
+                    return followup.StateChanged;
+                }
+
                 IEnumerator RunFocusAdmissions()
                 {
                     AiDebugLog.Write("[AI][V2][Loop] begin — typed Recon local admission");
 
-                while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
-                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
-                {
+                    while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
+                        && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                    {
                     // Every admission reads a settled world. Strategic observations are refreshed
-                    // here. The radar frame stays stable for this turn; Development re-entry is
-                    // owned by the typed management boundary outside this local Recon iterator.
+                    // here. The radar frame stays stable for this turn; typed Development facts
+                    // re-enter the existing manager immediately after the settled task boundary.
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
@@ -668,12 +722,18 @@ namespace Game.Ai.V2
                         settledSteps++;
                         bool recoveryProgress = recoveryResult.Mutated;
                         noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
-                        StrategicInvalidation recoveryTriggers = StrategicInterruptRegistry.Consume(
-                            player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                        TakeFocusTriggers(out StrategicInvalidationReason recoveryReconReasons,
+                            out StrategicInvalidationReason recoveryDevelopmentReasons);
+                        ReenterDevelopment(recoveryDevelopmentReasons);
+                        StrategicInvalidation recoveryDevelopmentReconTriggers =
+                            StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                        recoveryReconReasons |= recoveryDevelopmentReconTriggers.Reasons;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
-                            + $"progress={(recoveryProgress ? 1 : 0)} triggers={recoveryTriggers.Reasons}");
-                        if (!recoveryTriggers.Any)
+                            + $"progress={(recoveryProgress ? 1 : 0)} "
+                            + $"reconTriggers={recoveryReconReasons} "
+                            + $"developmentTriggers={recoveryDevelopmentReasons}");
+                        if (recoveryReconReasons == StrategicInvalidationReason.None)
                         {
                             AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no Recon invalidation");
                             break;
@@ -807,18 +867,23 @@ namespace Game.Ai.V2
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
-                    StrategicInvalidation triggers = StrategicInterruptRegistry.Consume(
-                        player, ctx.TurnNumber,
-                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                        out StrategicInvalidationReason developmentReasons);
+                    ReenterDevelopment(developmentReasons);
+                    StrategicInvalidation developmentReconTriggers =
+                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                    reconReasons |= developmentReconTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
-                        + $"triggers={triggers.Reasons} noProgress={noProgressCycles}");
-                    if (!triggers.Any)
+                        + $"reconTriggers={reconReasons} developmentTriggers={developmentReasons} "
+                        + $"noProgress={noProgressCycles}");
+                    if (reconReasons == StrategicInvalidationReason.None)
                     {
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no Recon invalidation");
                         break;
                     }
-                }
+                    }
 
                 if (settledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
@@ -860,57 +925,15 @@ namespace Game.Ai.V2
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
 
-                    // Inspect once before consuming: ResourceSite/Capability can dirty more
-                    // than one family, while the registry stores each factual reason only once.
-                    StrategicInvalidation pendingTriggers =
-                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    StrategicInvalidationReason developmentReasons = pendingTriggers.Reasons
-                        & DesireAxes.InvalidationMaskFor(DesireAxis.Development);
-                    StrategicInvalidationReason reconReasons = pendingTriggers.Reasons
-                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
-                    StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                        developmentReasons | reconReasons);
+                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
+                        out StrategicInvalidationReason developmentReasons);
                     bool reconDirty = reconReasons != StrategicInvalidationReason.None;
                     bool developmentDirty =
                         developmentReasons != StrategicInvalidationReason.None;
-                    bool developmentChanged = false;
-
-                    if (developmentDirty)
-                    {
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        activeIntents = MissionContinuityLayer.ResolveActive(
-                            player, snapshot, reconObjectives);
-                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
-                        actorCommitments = ActorCommitments.FromIntents(
-                            activeIntents, snapshot, reconObjectives);
-                        devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                            ? DevelopmentOpportunityEvaluator.Enumerate(
-                                snapshot, player, root, hand, ctx)
-                            : new List<DevelopmentOpportunity>();
-                        demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                            reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, devOpportunities, radar);
-                        demands = AiStrategyV2Scope.ApplyDemandScope(demands);
-
-                        WorldAnalysis.StepObservationStamp beforeDevelopment =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        StrategicPhaseResult phaseAFollowup = StrategicManager.FulfillDemands(
-                            snapshot, player, root, hand, ctx, apLedger, demands,
-                            actorCommitments, activeIntents, reconObjectives,
-                            phaseB.Reservation ?? phaseA.Reservation);
-                        phaseA.Accumulate(phaseAFollowup);
-                        developmentChanged = phaseAFollowup.StateChanged;
-                        if (developmentChanged)
-                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                                snapshot, player, root, hand, ctx);
-                        WorldAnalysis.StepObservationStamp afterDevelopment =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                            beforeDevelopment, afterDevelopment, null);
-                        reconDirty |= StrategicInterruptRegistry.Consume(
-                            player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
-                    }
+                    bool developmentChanged = ReenterDevelopment(developmentReasons);
+                    reconDirty |= StrategicInterruptRegistry.Consume(
+                        player, ctx.TurnNumber,
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
                         + $"developmentTriggers={developmentReasons} "
