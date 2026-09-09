@@ -25,7 +25,7 @@ namespace Game.Ai.V2
             demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx, root));
             demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             demands.AddRange(DefenceDemands(snap, breakdown));
-            demands.AddRange(EconomyDemands(snap, breakdown, player));
+            demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root));
             demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar));
             // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
             // an Aggression / Defence combat demand already covers the same ground this pass.
@@ -627,95 +627,231 @@ namespace Game.Ai.V2
         //  with opponent income; this layer only emits work when a concrete site is actionable.
         //  One demand at a time.
         // ---------------------------------------------------------------------------------------
-        private static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b, PlayerSetupData player)
+        internal static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b,
+            PlayerSetupData player, AiTurnContext ctx, PlayerRoot root)
         {
             IReadOnlyList<KeyValuePair<HexCoord, ResourceType>> resourceHexes = s?.Known?.ResourceHexes;
-            if (resourceHexes == null || resourceHexes.Count == 0 || s.Self == null)
+            if (s?.Self == null || s.Economy?.PerType == null)
             {
-                AiDebugLog.Write("[AI][V2][Demand][Economy] decision=NONE reason=no_known_resource_hexes");
+                AiDebugLog.Write("[AI][V2][Economy][Demand] selected=none reason=no_economy_snapshot");
                 yield break;
             }
 
-            var knownBuilt = new HashSet<HexCoord>();
-            if (s.Known.Buildings != null)
-                foreach (AiMapMemory.KnownBuilding kb in s.Known.Buildings)
-                    knownBuilt.Add(kb.Hex);
-
-            int emitted = 0;
-            var seenTypes = new HashSet<ResourceType>();
-            foreach (KeyValuePair<HexCoord, ResourceType> rh in resourceHexes
-                .OrderBy(x => x.Key.Q).ThenBy(x => x.Key.R))
-            {
-                if (emitted >= AiConfigV2.economyMaxDemandsPerTurn)
-                    break;
-                if (knownBuilt.Contains(rh.Key) || seenTypes.Contains(rh.Value))
-                    continue;
-
-                if (s.Economy != null && !s.Economy.IsIncomeDeficient(s.Self, rh.Value))
-                    continue;
-                seenTypes.Add(rh.Value);
-                emitted++;
-
-                AiDebugLog.Write($"[AI][V2][Demand][Economy] decision=CREATE hex=({rh.Key.Q},{rh.Key.R}) "
-                    + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 reason=income_below_target");
-                yield return new AxisDemand
+            var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
+            var candidates = new List<AxisDemand>();
+            if (resourceHexes != null)
+                foreach (KeyValuePair<HexCoord, ResourceType> rh in resourceHexes)
                 {
-                    RequestingAxis = DesireAxis.Economy,
-                    Capability = CapabilityKind.EconomicInfrastructure,
-                    DesiredAmount = 1,
-                    RequiredTraits = TraitPreference.None,
-                    MinimumFollowupAp = 0f,
-                    TargetHex = rh.Key,
-                    EconomyResourceType = rh.Value,
-                    Value = 55f,
-                    Explain = $"{rh.Value} income {s.Self.PerTurnIncome.Get(rh.Value):0.##} below target "
-                        + $"{s.Economy.IncomeTarget.Get(rh.Value):0.##}; known unbuilt site @({rh.Key.Q},{rh.Key.R})",
-                };
-            }
-
-            if (emitted == 0)
-            {
-                // §17 — even with income targets covered, if AGG/RCN chains keep stalling for an
-                // empty resource stock, value ONE known unbuilt extraction site for that resource.
-                foreach (KeyValuePair<HexCoord, ResourceType> rh in resourceHexes
-                    .OrderBy(x => x.Key.Q).ThenBy(x => x.Key.R))
-                {
-                    if (knownBuilt.Contains(rh.Key))
+                    bool satisfied = s.Known?.Buildings != null && s.Known.Buildings.Any(kb =>
+                        kb.Hex.Equals(rh.Key) && kb.HasFacilityWithAbility(
+                            UnitAbilities.CollectAbilityFor(rh.Value)));
+                    if (satisfied || !standings.TryGetValue(rh.Value, out EconomyResourceStanding rs))
                         continue;
-                    float pressure = ResourceStarvationRegistry.Pressure(player, rh.Value);
-                    if (pressure < AiConfigV2.starvationEconomyTrigger)
+                    CardDefinition def = ExtractionDefinition(ctx, rh.Value);
+                    if (ctx?.GameConfig != null && def == null)
                         continue;
-                    float value = 40f + AiConfigV2.starvationEconomyValueBonus * Mathf.Clamp01(pressure);
-                    AiDebugLog.Write($"[AI][V2][Demand][Economy] decision=CREATE hex=({rh.Key.Q},{rh.Key.R}) "
-                        + $"resource={rh.Value} capability=EconomicInfrastructure desired=1 "
-                        + $"reason=repeated_strategic_starvation pressure={pressure:0.##} value={value:0.#}");
-                    yield return new AxisDemand
+                    float starvation = Mathf.Max(rs.StarvationPressure,
+                        ResourceStarvationRegistry.Pressure(player, rh.Value));
+                    if (rs.DeficitScore <= AiConfigV2.allocatorSliceEpsilon
+                        && starvation < AiConfigV2.starvationEconomyTrigger)
+                        continue;
+                    float gain = def?.resourceYield?.Get(rh.Value) ?? 1;
+                    if (gain <= 0f) gain = 1f;
+                    float travel = NearestHeroDistance(s, rh.Key);
+                    float exposure = ThreatExposure(s, rh.Key);
+                    float opportunity = CheapestHeroOpportunityCost(s);
+                    float baseSynergy = BaseNetworkSynergy(s, rh.Key);
+                    float cluster = NearbyResourceClusterValue(s, rh.Key, standings);
+                    float value = ScoreEconomySite(Mathf.Max(rs.DeficitScore, starvation), gain,
+                        baseSynergy, cluster, travel, exposure, opportunity);
+                    if (value <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    candidates.Add(new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Economy,
                         Capability = CapabilityKind.EconomicInfrastructure,
-                        DesiredAmount = 1,
-                        RequiredTraits = TraitPreference.None,
-                        MinimumFollowupAp = 0f,
+                        DesiredAmount = 1f,
                         TargetHex = rh.Key,
                         EconomyResourceType = rh.Value,
+                        EconomyBuildResourceCost = def?.resourceCost,
+                        EconomyBuildApCost = def?.apCost ?? 0,
+                        MinimumFollowupAp = def?.apCost ?? 0,
+                        EconomyExpectedIncomeGain = gain,
+                        EconomySiteValue = value,
+                        EconomyTravelCost = travel,
+                        EconomyThreatExposure = exposure,
+                        EconomyHeroOpportunityCost = opportunity,
                         Value = value,
-                        Explain = $"{rh.Value} stock repeatedly starved strategic chains "
-                            + $"(pressure {pressure:0.##}); known unbuilt site @({rh.Key.Q},{rh.Key.R})",
-                    };
-                    emitted++;
-                    break;
+                        Explain = $"{rh.Value} deficit={rs.DeficitScore:0.##} gain={gain:0.#} "
+                            + $"network={baseSynergy:0.##} cluster={cluster:0.##} travel={travel:0.#} "
+                            + $"exposure={exposure:0.##} heroCost={opportunity:0.##}",
+                    });
                 }
-            }
 
-            if (emitted == 0)
+            AddBaseCandidates(s, standings, candidates);
+            List<AxisDemand> selected = candidates
+                .OrderByDescending(x => x.EconomySiteValue)
+                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
+                .ThenBy(x => x.EconomyTravelCost)
+                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue)
+                .Take(Mathf.Max(0, AiConfigV2.economyMaxDemandsPerTurn))
+                .ToList();
+            foreach (AxisDemand demand in selected)
             {
-                bool hasIncomeGap = s.Economy == null
-                    || ResourceBundle.All.Any(t => s.Economy.IsIncomeDeficient(s.Self, t));
-                AiDebugLog.Write(hasIncomeGap
-                    ? "[AI][V2][Demand][Economy] decision=NONE reason=income_gap_but_no_actionable_known_site"
-                    : "[AI][V2][Demand][Economy] decision=SATISFIED reason=known_income_targets_covered_or_sites_built");
+                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected={demand.Capability} "
+                    + $"resource={demand.EconomyResourceType?.ToString() ?? "none"} "
+                    + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) value={demand.Value:0.##} "
+                    + $"rejected={Mathf.Max(0, candidates.Count - selected.Count)}");
+                yield return demand;
             }
+            if (selected.Count == 0)
+                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={candidates.Count} "
+                    + "reason=no_legal_valuable_site_or_base");
         }
+
+        internal static float ScoreEconomySite(float deficit, float expectedIncomeGain,
+            float baseNetworkSynergy, float nearbyResourceClusterValue, float travelCost,
+            float threatExposure, float heroOpportunityCost) =>
+            AiConfigV2.economySiteDeficitValue * Mathf.Clamp01(deficit)
+            + AiConfigV2.economySiteIncomeGainValue * Mathf.Max(0f, expectedIncomeGain)
+            + AiConfigV2.economySiteBaseSynergyValue * Mathf.Clamp01(baseNetworkSynergy)
+            + AiConfigV2.economySiteClusterValue * Mathf.Max(0f, nearbyResourceClusterValue)
+            - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travelCost)
+            - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
+            - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
+
+        private static void AddBaseCandidates(WorldSnapshot s,
+            IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings,
+            List<AxisDemand> output)
+        {
+            List<CardData> baseCards = (s.Self.Hand ?? System.Array.Empty<CardData>())
+                .Where(c => c?.Definition?.cardType == CardType.Base)
+                .OrderBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
+                .ToList();
+            if (baseCards.Count == 0 || s.Self.BaseHexes == null)
+                return;
+            var occupied = new HashSet<HexCoord>((s.Known?.Buildings
+                ?? System.Array.Empty<AiMapMemory.KnownBuilding>()).Select(x => x.Hex));
+            var knownSites = new HashSet<HexCoord>((s.Known?.ResourceHexes
+                ?? System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>()).Select(x => x.Key));
+            var mapHexes = new HashSet<HexCoord>(s.MapKnowledge?.AllHexes
+                ?? System.Array.Empty<HexCoord>());
+            var seen = new HashSet<HexCoord>();
+            foreach (HexCoord anchor in s.Self.BaseHexes.OrderBy(x => x.Q).ThenBy(x => x.R))
+                foreach (HexCoord hex in HexGridMath.HexesInRange(anchor, AiConfigV2.economyBaseFoundScanRadius))
+                {
+                    if (!seen.Add(hex) || s.Self.BaseHexes.Contains(hex)
+                        || (mapHexes.Count > 0 && !mapHexes.Contains(hex))
+                        || (occupied.Contains(hex) && !knownSites.Contains(hex)))
+                        continue;
+                    float cluster = NearbyResourceClusterValue(s, hex, standings);
+                    float logistics = Mathf.Clamp01(HexGridMath.Distance(anchor, hex)
+                        / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+                    bool convertsExtraction = knownSites.Contains(hex) && occupied.Contains(hex);
+                    float capacity = convertsExtraction ? 1f : 0.5f;
+                    foreach (CardData card in baseCards)
+                    {
+                        float global = card.Definition.grantedAbilities != null
+                            && card.Definition.grantedAbilities.Count > 0 ? 1f : 0f;
+                        float reasonValue = AiConfigV2.economyBaseCapacityValue * capacity
+                            + AiConfigV2.economyBaseClusterValue * cluster
+                            + AiConfigV2.economyBaseLogisticsValue * logistics
+                            + AiConfigV2.economyBaseGlobalEffectValue * global;
+                        if (cluster <= 0f && !convertsExtraction && global <= 0f)
+                            continue; // never emit a Base solely to clear the hand
+                        float travel = NearestHeroDistance(s, hex);
+                        float exposure = ThreatExposure(s, hex);
+                        float heroCost = CheapestHeroOpportunityCost(s);
+                        float buildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
+                            + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;
+                        float value = reasonValue - buildCost
+                            - AiConfigV2.economySiteTravelPenalty * travel
+                            - AiConfigV2.economySiteThreatPenalty * exposure
+                            - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
+                        if (value < AiConfigV2.economyBaseDemandMinValue)
+                            continue;
+                        output.Add(new AxisDemand
+                        {
+                            RequestingAxis = DesireAxis.Economy,
+                            Capability = CapabilityKind.EconomicExpansionBase,
+                            DesiredAmount = 1f,
+                            TargetHex = hex,
+                            EconomyBuildCard = card,
+                            EconomyBuildResourceCost = card.EffectivePlayResourceCost,
+                            EconomyBuildApCost = card.EffectivePlayApCost,
+                            MinimumFollowupAp = card.EffectivePlayApCost,
+                            EconomyExpectedIncomeGain = cluster,
+                            EconomySiteValue = value,
+                            EconomyTravelCost = travel,
+                            EconomyThreatExposure = exposure,
+                            EconomyHeroOpportunityCost = heroCost,
+                            Value = value,
+                            Explain = $"Base capacity={capacity:0.##} cluster={cluster:0.##} "
+                                + $"logistics={logistics:0.##} global={global:0.##} cost={buildCost:0.##}",
+                        });
+                    }
+                }
+        }
+
+        private static CardDefinition ExtractionDefinition(AiTurnContext ctx, ResourceType type)
+        {
+            CardDefinition[] cards = ctx?.GameConfig?.extractionFacilityCards;
+            int index = (int)type;
+            return cards != null && index >= 0 && index < cards.Length ? cards[index] : null;
+        }
+
+        private static float NearestHeroDistance(WorldSnapshot s, HexCoord target)
+        {
+            List<ArmySnapshot> heroes = s?.Self?.Armies?.Where(a => a != null && a.HasHero).ToList();
+            return heroes != null && heroes.Count > 0
+                ? heroes.Min(a => (float)HexGridMath.Distance(a.Hex, target))
+                : AiConfigV2.economyBaseFoundScanRadius + 4f;
+        }
+
+        private static float CheapestHeroOpportunityCost(WorldSnapshot s)
+        {
+            List<ArmySnapshot> heroes = s?.Self?.Armies?.Where(a => a != null && a.HasHero).ToList();
+            return heroes != null && heroes.Count > 0 ? heroes.Min(a => a.EffectiveArmyPower) : 0f;
+        }
+
+        private static float BaseNetworkSynergy(WorldSnapshot s, HexCoord target)
+        {
+            if (s?.Self?.BaseHexes == null || s.Self.BaseHexes.Count == 0)
+                return 0f;
+            int distance = s.Self.BaseHexes.Min(h => HexGridMath.Distance(h, target));
+            return 1f / Mathf.Max(1f, distance);
+        }
+
+        private static float NearbyResourceClusterValue(WorldSnapshot s, HexCoord target,
+            IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
+        {
+            if (s?.Known?.ResourceHexes == null)
+                return 0f;
+            float value = 0f;
+            foreach (KeyValuePair<HexCoord, ResourceType> site in s.Known.ResourceHexes)
+                if (HexGridMath.Distance(target, site.Key) <= AiConfigV2.economyResourceClusterRadius
+                    && standings.TryGetValue(site.Value, out EconomyResourceStanding rs))
+                    value += Mathf.Max(0.1f, rs.DeficitScore);
+            return value;
+        }
+
+        private static float ThreatExposure(WorldSnapshot s, HexCoord target)
+        {
+            if (s?.Known?.EnemySightings == null)
+                return 0f;
+            float exposure = 0f;
+            foreach (AiMapMemory.KnownEnemySighting enemy in s.Known.EnemySightings)
+            {
+                int distance = HexGridMath.Distance(target, enemy.Hex);
+                if (distance <= 3)
+                    exposure = Mathf.Max(exposure, 1f - distance / 4f);
+            }
+            return exposure;
+        }
+
+        private static float ResourceCostSum(ResourceCost cost) => cost == null ? 0f
+            : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
 
         // ---------------------------------------------------------------------------------------
         //  DEV — three staged shapes (the radar no longer gates on facility+hero; the demand layer

@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -15,7 +18,7 @@ namespace Game.Ai.V2
 
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }
-    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable }
+    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan }
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {
@@ -35,6 +38,10 @@ namespace Game.Ai.V2
                 return ForScoutTarget(t);
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
                 return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
+            if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
+                return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
+                    et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
+                    et.TargetHex.Q, et.TargetHex.R);
             return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -51,6 +58,11 @@ namespace Game.Ai.V2
             RaidIntent ri = intent?.Raid;
             if (ri != null)
                 return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, ri.TargetArmyId, 0, 0);
+            EconomyIntent ei = intent?.Economy;
+            if (ei != null)
+                return new MissionIntentKey(MissionKind.Economy, (int)ei.Kind,
+                    ei.ResourceType.HasValue ? (int)ei.ResourceType.Value + 1 : 0,
+                    ei.TargetHex.Q, ei.TargetHex.R);
             ScoutIntent s = intent?.Scout;
             if (s == null)
                 return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
@@ -86,6 +98,8 @@ namespace Game.Ai.V2
             }
             if (Kind == MissionKind.Raid)
                 return $"Intent(Raid #{ObjectiveId})";
+            if (Kind == MissionKind.Economy)
+                return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             return $"Intent({Kind})";
         }
     }
@@ -110,6 +124,20 @@ namespace Game.Ai.V2
         public bool OperationStarted;
     }
 
+    public sealed class EconomyIntent
+    {
+        public EconomyTaskKind Kind;
+        public HexCoord TargetHex;
+        public ResourceType? ResourceType;
+        public CardData BuildCard;
+        public ResourceCost BuildResourceCost;
+        public float BuildApCost;
+        public float BuildValue;
+        public float MinimumFollowupAp;
+        public bool Loaned;
+        public MissionIntentKey LoanSource;
+    }
+
     public sealed class MissionIntent
     {
         public MissionIntentKey IntentKey;
@@ -131,6 +159,7 @@ namespace Game.Ai.V2
         public int? PreferredMoverArmyId;
         public ScoutIntent Scout => Objective as ScoutIntent;
         public RaidIntent Raid => Objective as RaidIntent;
+        public EconomyIntent Economy => Objective as EconomyIntent;
     }
 
     public sealed class MissionIntentState
@@ -198,6 +227,10 @@ namespace Game.Ai.V2
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
         public bool RaidOperationStarted;
+        public bool HasEconomyPayload;
+        public EconomyMissionTarget EconomyTarget;
+        public bool EconomyBuildCompleted;
+        public MissionIntentKey? EconomyLoanSource;
     }
 
     public sealed class MissionOutcomeLedger
@@ -293,6 +326,10 @@ namespace Game.Ai.V2
                 {
                     satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
                 }
+                else if (pm.Kind == MissionKind.Economy)
+                {
+                    satisfied = EconomyObjectiveSatisfied(player, pm.EconomyTarget);
+                }
                 else if (pm.ScoutKind == ScoutTargetKind.Surveil)
                 {
                     satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
@@ -344,6 +381,12 @@ namespace Game.Ai.V2
                         o.RaidLastKnownHex = r.Provisioned.RaidLastKnownHex;
                         o.RaidTargetIsNeutral = r.Provisioned.RaidTargetIsNeutral;
                     }
+                    else if (r.Provisioned.Kind == MissionKind.Economy)
+                    {
+                        o.HasEconomyPayload = true;
+                        o.EconomyTarget = r.Provisioned.EconomyTarget;
+                        o.EconomyLoanSource = r.Provisioned.EconomyLoanSource;
+                    }
                     else
                     {
                         o.HasScoutPayload = true;
@@ -375,6 +418,8 @@ namespace Game.Ai.V2
                     if (o.MissionKind == MissionKind.Raid)
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
+                    if (o.MissionKind == MissionKind.Economy)
+                        o.EconomyBuildCompleted = e.InfrastructureChanged;
                     Classify(e, o);
                 }
                 else if (r.PendingFailure.HasValue)
@@ -442,6 +487,25 @@ namespace Game.Ai.V2
                 return;
             }
 
+            if (o.MissionKind == MissionKind.Economy)
+            {
+                switch (e.StopReason)
+                {
+                    case ExecutionStopReason.StepCompleted:
+                    case ExecutionStopReason.OutOfMovement:
+                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        break;
+                    case ExecutionStopReason.NoSafeStep:
+                    case ExecutionStopReason.MoveRejected:
+                        o.Outcome = ExecutionOutcome.Blocked;
+                        break;
+                    default:
+                        o.Outcome = ExecutionOutcome.Failed;
+                        break;
+                }
+                return;
+            }
+
             switch (e.StopReason)
             {
                 case ExecutionStopReason.OutOfMovement:
@@ -472,6 +536,16 @@ namespace Game.Ai.V2
                     o.Outcome = ExecutionOutcome.Failed;
                     break;
             }
+        }
+
+        internal static bool EconomyObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
+        {
+            BuildingData b = BuildingRegistry.AllBuildings().FirstOrDefault(x => x != null
+                && x.Owner == player && x.Hex.Equals(t.TargetHex));
+            if (t.Kind == EconomyTaskKind.FoundBase)
+                return b != null && b.IsBase;
+            return b != null && t.ResourceType.HasValue
+                && b.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(t.ResourceType.Value));
         }
 
         private static void ClassifyProvisionFailure(ProvisionFailure f, MissionTurnOutcome o)
@@ -519,6 +593,17 @@ namespace Game.Ai.V2
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
+            var liveLoanSources = new HashSet<MissionIntentKey>(state.All
+                .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
+                .Select(i => i.Economy.LoanSource));
+            foreach (MissionIntent orphanedDonor in state.All.Where(i => i != null
+                && i.Status == IntentStatus.Suspended && i.Suspended == SuspendReason.EconomyLoan
+                && !liveLoanSources.Contains(i.IntentKey)))
+            {
+                orphanedDonor.Status = IntentStatus.Active;
+                orphanedDonor.Suspended = SuspendReason.None;
+                AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
+            }
 
             // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
             // durable intents on the same waypoint. Mutated as intents are re-pointed below.
@@ -529,6 +614,44 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent intent in state.All)
             {
+                if (intent.Kind == MissionKind.Economy)
+                {
+                    EconomyIntent ei = intent.Economy;
+                    ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                        && a.ArmyId == intent.PreferredMoverArmyId && a.HasHero && !a.IsPrison && !a.IsAir);
+                    bool completed = ei == null || MissionOutcomeLedger.EconomyObjectiveSatisfied(player,
+                        new EconomyMissionTarget { Kind = ei.Kind, TargetHex = ei.TargetHex,
+                            ResourceType = ei.ResourceType });
+                    bool targetValid = ei != null && (ei.Kind == EconomyTaskKind.FoundBase
+                        ? snap?.Self?.Hand?.Contains(ei.BuildCard) == true
+                        : snap?.Known?.ResourceHexes?.Any(x => x.Key.Equals(ei.TargetHex)
+                            && (!ei.ResourceType.HasValue || x.Value == ei.ResourceType.Value)) == true);
+                    if (completed || actor == null || !targetValid)
+                    {
+                        if (ei?.Loaned == true && state.TryGet(ei.LoanSource, out MissionIntent lender)
+                            && lender.Status == IntentStatus.Suspended
+                            && lender.Suspended == SuspendReason.EconomyLoan)
+                        {
+                            lender.Status = IntentStatus.Active;
+                            lender.Suspended = SuspendReason.None;
+                        }
+                        StrategicResourceReservationLedger.ReleaseByOwner(player,
+                            snap?.TurnNumber ?? 0, EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                        dead.Add(intent.IntentKey);
+                        AiDebugLog.Write($"[AI][V2][Economy] retire {intent.IntentKey} "
+                            + $"completed={(completed ? 1 : 0)} actor={(actor != null ? 1 : 0)} target={(targetValid ? 1 : 0)}");
+                        continue;
+                    }
+                    if (intent.Status == IntentStatus.Suspended
+                        && (intent.Suspended == SuspendReason.PoolExhausted
+                            || intent.Suspended == SuspendReason.CapabilityUnavailable))
+                    {
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                    }
+                    if (intent.Status == IntentStatus.Active) active.Add(intent);
+                    continue;
+                }
                 if (intent.Kind == MissionKind.Raid)
                 {
                     RaidIntent ri = intent.Raid;
@@ -831,7 +954,8 @@ namespace Game.Ai.V2
                     continue;
                 if (intent.Status == IntentStatus.Suspended
                     && (intent.Suspended == SuspendReason.Siege
-                        || intent.Suspended == SuspendReason.CapabilityUnavailable))
+                        || intent.Suspended == SuspendReason.CapabilityUnavailable
+                        || intent.Suspended == SuspendReason.EconomyLoan))
                     continue;
 
                 if (intent.LastReconciledTurn == turn)
@@ -866,6 +990,7 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
+                RepayEconomyLoan(state, intent, o);
                 // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
                 // OTHER than this actor's own execution reaching goal (another scout opened it
                 // mid-turn, or provisioning found it already live-satisfied) is a satisfied
@@ -917,6 +1042,7 @@ namespace Game.Ai.V2
 
             if (o.StructuralFailure)
             {
+                RepayEconomyLoan(state, intent, o);
                 if (intent != null) state.Remove(o.IntentKey);
                 string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
                 StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
@@ -926,11 +1052,19 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Failed)
             {
+                RepayEconomyLoan(state, intent, o);
                 if (intent != null)
                 {
                     state.Remove(o.IntentKey);
                     AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
                 }
+                return;
+            }
+
+            if (o.MissionKind == MissionKind.Economy && !o.MadeProgress)
+            {
+                RepayEconomyLoan(state, intent, o);
+                if (intent != null) state.Remove(intent.IntentKey);
                 return;
             }
 
@@ -946,6 +1080,10 @@ namespace Game.Ai.V2
             else if (o.HasRaidPayload && o.RaidOperationStarted)
             {
                 CreateRaidIntent(state, o, turn);
+            }
+            else if (o.HasEconomyPayload && o.MadeProgress)
+            {
+                CreateEconomyIntent(state, o, turn);
             }
 
         }
@@ -989,6 +1127,12 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} promoted to Hard commitment (operation started)");
                     }
                 }
+            }
+
+            if (o.HasEconomyPayload && intent.Economy != null)
+            {
+                intent.Economy.TargetHex = o.EconomyTarget.TargetHex;
+                if (o.EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
             }
 
             bool poolExhausted = o.AllocationDeferReason == DeferReason.CommitmentPoolExhausted;
@@ -1164,6 +1308,47 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
 
+        private static void CreateEconomyIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        {
+            EconomyMissionTarget t = o.EconomyTarget;
+            var intent = new MissionIntent
+            {
+                IntentKey = o.IntentKey, LastAttemptKey = o.AttemptKey, Kind = MissionKind.Economy,
+                Funding = o.EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft,
+                Status = IntentStatus.Active, Suspended = SuspendReason.None,
+                Objective = new EconomyIntent
+                {
+                    Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
+                    BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
+                    BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
+                    MinimumFollowupAp = t.MinimumFollowupAp,
+                    Loaned = o.EconomyLoanSource.HasValue,
+                    LoanSource = o.EconomyLoanSource ?? default,
+                },
+                CreatedTurn = turn, TurnsActive = 1, LastReconciledTurn = turn,
+                LastProgressTurn = turn, CumulativeApSpent = o.ApSpent,
+                StepsMovedTotal = o.StepsMoved, PreferredMoverArmyId = o.MoverArmyId,
+            };
+            state.Put(intent);
+            AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
+        }
+
+        private static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,
+            MissionTurnOutcome outcome)
+        {
+            MissionIntentKey? source = outcome.EconomyLoanSource;
+            if (!source.HasValue && economy?.Economy?.Loaned == true)
+                source = economy.Economy.LoanSource;
+            if (!source.HasValue || !state.TryGet(source.Value, out MissionIntent lender))
+                return;
+            if (lender.Status == IntentStatus.Suspended && lender.Suspended == SuspendReason.EconomyLoan)
+            {
+                lender.Status = IntentStatus.Active;
+                lender.Suspended = SuspendReason.None;
+                AiDebugLog.Write($"[AI][V2][Economy][Loan] repay actor=#{lender.PreferredMoverArmyId} to={lender.IntentKey}");
+            }
+        }
+
         private static bool ShouldReap(MissionIntent i)
         {
             if (i.Kind == MissionKind.Raid)
@@ -1187,6 +1372,8 @@ namespace Game.Ai.V2
         private static string Describe(MissionTurnOutcome o) =>
             o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t
                 ? ReconScoutKinds.Name(t.Kind)
-                : "?";
+                : o.Proposal != null && o.Proposal.Target is EconomyMissionTarget e
+                    ? $"{e.Kind}@{e.TargetHex.Q},{e.TargetHex.R}"
+                    : "?";
     }
 }

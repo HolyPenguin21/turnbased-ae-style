@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
@@ -89,6 +90,16 @@ namespace Game.Ai.V2
         public CombatOpportunityReport OpportunityReport = new CombatOpportunityReport();
         public float RequiredDefensiveReserve;
         public float OffensiveFreePower;
+
+        public ResourceType EconomyPrimaryResource;
+        public float EconomyMaxDeficit;
+        public float EconomyMeanDeficit;
+        public float EconomyIncomeGap;
+        public float EconomyRelativeGap;
+        public float EconomyRunwayGap;
+        public float EconomyOperationalPressure;
+        public float EconomyActionableGate;
+        public float EconomyRaw;
 
         // Development — the desire factors, kept for the "why" log.
         public float DevFacilityReady;      // 0/1 — a facility with a qualifying hero exists (hint only, NOT a gate)
@@ -231,15 +242,14 @@ namespace Game.Ai.V2
             float recon = Smooth(state, DesireAxis.Recon, rawRecon);
             float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);
 
+            float rawEconomy = EconomyDesire(snapshot, breakdown);
             float rawDev = DevelopmentDesire(snapshot, breakdown);
 
             desires.Raw[DesireAxis.Recon] = recon;
             desires.Raw[DesireAxis.Aggression] = aggression;
-            // Defence / Economy have no evaluator yet — raw desire is honestly 0 until one lands
-            // (was a 0.30 placeholder). Radar model #1a scales objective value by radar weight, so
-            // a placeholder weight would silently mis-scale any objective those axes produce.
+            // Defence has no evaluator yet. Economy and Development are real snapshot-pure axes.
             desires.Raw[DesireAxis.Defence] = 0f;
-            desires.Raw[DesireAxis.Economy] = 0f;
+            desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy);
             desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
 
             desires.MilitaryThreat = MilitaryThreat(snapshot, underSiege);
@@ -250,7 +260,8 @@ namespace Game.Ai.V2
             state.LastTurn = snapshot.TurnNumber;
 
             Radar radar = Radar.Normalize(desires);
-            LogDesires(desires, breakdown, radar, rawRecon, rawAggression, rawDev, enemyDropFrac, ownDropFrac,
+            LogDesires(desires, breakdown, radar, rawRecon, rawAggression, rawEconomy, rawDev,
+                enemyDropFrac, ownDropFrac,
                 state, opp);
 
             return new RadarAssessment { Desires = desires, Breakdown = breakdown, Radar = radar };
@@ -260,6 +271,35 @@ namespace Game.Ai.V2
         {
             float explorable = snap.MapKnowledge != null ? snap.MapKnowledge.ExplorableUnknownFrac : 0f;
             return Curves.Ramp(explorable, AiConfigV2.reconExploreRampLo, AiConfigV2.reconExploreRampHi);
+        }
+
+        private static float EconomyDesire(WorldSnapshot snap, DesireBreakdown b)
+        {
+            IReadOnlyList<EconomyResourceStanding> resources = snap?.Economy?.PerType;
+            if (resources == null || resources.Count == 0)
+                return 0f;
+
+            EconomyResourceStanding primary = resources
+                .OrderByDescending(x => x.DeficitScore)
+                .ThenBy(x => x.Type)
+                .First();
+            float max = Mathf.Clamp01(primary.DeficitScore);
+            float mean = Mathf.Clamp01(resources.Average(x => x.DeficitScore));
+            float raw = Mathf.Clamp01(AiConfigV2.economyDesireMaxWeight * max
+                + AiConfigV2.economyDesireMeanWeight * mean);
+            float gate = snap.Economy.HasActionableOpportunity
+                ? 1f : AiConfigV2.economyLatentMultiplier;
+
+            b.EconomyPrimaryResource = primary.Type;
+            b.EconomyMaxDeficit = max;
+            b.EconomyMeanDeficit = mean;
+            b.EconomyIncomeGap = primary.IncomeGap;
+            b.EconomyRelativeGap = primary.RelativeIncomeGap;
+            b.EconomyRunwayGap = 1f - primary.RunwayCoverage;
+            b.EconomyOperationalPressure = primary.OperationalPressure;
+            b.EconomyActionableGate = gate;
+            b.EconomyRaw = raw * gate;
+            return b.EconomyRaw;
         }
 
         // Development desire over snapshot.Development (built once in the scan, shared with
@@ -518,7 +558,8 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
         private static void LogDesires(DesireVector d, DesireBreakdown b, Radar radar,
-            float rawRecon, float rawAggression, float rawDev, float enemyDropFrac, float ownDropFrac,
+            float rawRecon, float rawAggression, float rawEconomy, float rawDev,
+            float enemyDropFrac, float ownDropFrac,
             AiRadarState state, CombatOpportunityReport opp)
         {
             AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
@@ -532,6 +573,12 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)} "
                 + $"| lossPulse enemy {F(state.EnemyLossPulse)} (drop {F(enemyDropFrac)}) "
                 + $"own {F(state.OwnLossPulse)} (drop {F(ownDropFrac)})");
+            AiDebugLog.Write($"[AI][V2][Economy][Desire] resource={b.EconomyPrimaryResource} "
+                + $"max={F(b.EconomyMaxDeficit)} mean={F(b.EconomyMeanDeficit)} "
+                + $"incomeGap={F(b.EconomyIncomeGap)} relativeGap={F(b.EconomyRelativeGap)} "
+                + $"runwayGap={F(b.EconomyRunwayGap)} operational={F(b.EconomyOperationalPressure)} "
+                + $"actionableGate={F(b.EconomyActionableGate)} raw={F(rawEconomy)} "
+                + $"smoothed={F(d.Raw[DesireAxis.Economy])}");
             AiDebugLog.Write($"[AI][V2]   desires — DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
                 + $"= surplus {F(b.DevSurplusFraction)} x quality {F(b.DevOfferingQuality)} "
                 + $"(facReady {F(b.DevFacilityReady)} pathViable {(b.DevPathViable ? 1 : 0)} bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");

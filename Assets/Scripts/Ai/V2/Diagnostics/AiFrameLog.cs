@@ -93,7 +93,9 @@ namespace Game.Ai.V2
             if (eco != null)
                 AiDebugLog.Write($"{P}   economy: security {N2(eco.EconomicSecurity)} "
                     + $"(abs-floor {N2(eco.AbsFloor)}, vs-field {eco.RelativePressure:+0.00;-0.00;0.00}, "
-                    + $"bottleneck {N2(eco.BottleneckPressure)})");
+                    + $"bottleneck {N2(eco.BottleneckPressure)}) deficit max/mean "
+                    + $"{N2(eco.MaxDeficitScore)}/{N2(eco.MeanDeficitScore)} "
+                    + $"actionable={(eco.HasActionableOpportunity ? 1 : 0)}");
 
             DevelopmentReadiness rd = snap.Development;
             if (rd != null)
@@ -133,10 +135,13 @@ namespace Game.Ai.V2
                 // surplus/free-power driver. home-guard = power kept back to defend bases (floored at
                 // AiConfigV2.aggHomeGuardFloor); free = TotalPower - home-guard, available to attack.
                 AiDebugLog.Write($"{P}   force balance:  home-guard {N2(b.RequiredDefensiveReserve)}  offensive-free {N2(b.OffensiveFreePower)}");
+                AiDebugLog.Write($"{P}   eco drivers:    resource {b.EconomyPrimaryResource} "
+                    + $"max {N2(b.EconomyMaxDeficit)} mean {N2(b.EconomyMeanDeficit)} "
+                    + $"income-gap {N2(b.EconomyIncomeGap)} runway-gap {N2(b.EconomyRunwayGap)} "
+                    + $"operational {N2(b.EconomyOperationalPressure)} gate {N2(b.EconomyActionableGate)}");
                 AiDebugLog.Write($"{P}   dev drivers:    facility-ready {N2(b.DevFacilityReady)} (hint)  path-viable {(b.DevPathViable ? "yes" : "no")}  "
                     + $"surplus {N2(b.DevSurplusFraction)}  quality {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}");
-                AiDebugLog.Write($"{P}   NOTE: Defence / Economy have no evaluator yet (raw desire = 0); "
-                    + $"no driver breakdown exists for them.");
+                AiDebugLog.Write($"{P}   NOTE: Defence has no evaluator yet (raw desire = 0).");
             }
         }
 

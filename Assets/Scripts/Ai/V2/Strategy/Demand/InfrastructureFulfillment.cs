@@ -57,6 +57,7 @@ namespace Game.Ai.V2
     {
         public static bool Handles(CapabilityKind k) =>
             k == CapabilityKind.EconomicInfrastructure
+            || k == CapabilityKind.EconomicExpansionBase
             || k == CapabilityKind.DevelopmentInfrastructure
             || k == CapabilityKind.DevelopmentOperator;
 
@@ -81,6 +82,8 @@ namespace Game.Ai.V2
             InfraCandidate cand =
                 demand.Capability == CapabilityKind.EconomicInfrastructure
                     ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
+                    : demand.Capability == CapabilityKind.EconomicExpansionBase
+                        ? BuildEconomyBaseCandidate(player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
                         ? BuildDevelopmentCandidate(snap, player, root, hand, ctx)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
@@ -88,6 +91,7 @@ namespace Game.Ai.V2
                             : null;
             if (cand == null)
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
+            string economyOwner = EconomyReservationOwner(demand);
 
             // --- budget admission BEFORE any gameplay mutation (spec §1). A building is a large
             //     discrete commitment: require the requesting axis's OWN unreserved entitlement to
@@ -103,17 +107,26 @@ namespace Game.Ai.V2
             }
             // Respect the same strategic + legacy persistent-resource reservations as every
             // materialization path. Raw gameplay affordability is still rechecked below.
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost))
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost,
+                    economyOwner))
                 return InfraFulfillResult.No($"{demand.Capability}: reserved resources cannot cover {cand.Explain}");
 
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open
             //     cleanly rather than letting a doomed transaction run) ---
-            if (!root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
+            float spendableAp = economyOwner == null
+                ? StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints)
+                : StrategicResourceReservationLedger.SpendableExcludingOwner(player, ctx.TurnNumber,
+                    StrategicReservedResource.ActionPoints, root.ActionPoints, economyOwner);
+            if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
+                || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
                 || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
                 return InfraFulfillResult.No($"{demand.Capability}: live AP/resources cannot cover {cand.Explain}");
 
             // --- authoritative transaction ---
             BuildingPlayResult r = cand.Execute();
+            if (r.Built && economyOwner != null)
+                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                    economyOwner);
             if (!r.Built)
             {
                 AiDebugLog.Write($"[AI][V2]   infra — {demand.Capability} action rejected: {r.FailReason} ({cand.Explain})");
@@ -124,6 +137,40 @@ namespace Game.Ai.V2
             return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
                 ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
+        }
+
+        private static string EconomyReservationOwner(AxisDemand demand)
+        {
+            if (demand?.TargetHex == null || (demand.Capability != CapabilityKind.EconomicInfrastructure
+                && demand.Capability != CapabilityKind.EconomicExpansionBase))
+                return null;
+            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
+                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            int targetId = demand.EconomyResourceType.HasValue
+                ? (int)demand.EconomyResourceType.Value + 1 : 0;
+            HexCoord h = demand.TargetHex.Value;
+            return EconomyMissionPlanner.OwnerKey(new StableMissionKey(MissionKind.Economy,
+                (int)kind, targetId, h.Q, h.R));
+        }
+
+        private static InfraCandidate BuildEconomyBaseCandidate(PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
+        {
+            if (!demand.TargetHex.HasValue || demand.EconomyBuildCard == null
+                || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
+                || !BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx,
+                    demand.EconomyBuildCard, demand.TargetHex.Value, out _))
+                return null;
+            CardData card = demand.EconomyBuildCard;
+            HexCoord hex = demand.TargetHex.Value;
+            return new InfraCandidate
+            {
+                ApCost = card.EffectivePlayApCost,
+                ResCost = card.EffectivePlayResourceCost,
+                TargetHex = hex,
+                Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
+                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex),
+            };
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt
@@ -138,20 +185,19 @@ namespace Game.Ai.V2
             if (facilityDef == null)
                 return null;
 
-            foreach (HexCoord hex in CandidateEconomyHexes(snap, player, type.Value, demand.TargetHex))
+            if (!demand.TargetHex.HasValue
+                || !CandidateEconomyHexes(snap, player, type.Value, demand.TargetHex)
+                    .Any(h => h.Equals(demand.TargetHex.Value))
+                || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
+                return null;
+            HexCoord built = demand.TargetHex.Value;
+            return new InfraCandidate
             {
-                if (!HexSelectionController.HasOwnHeroArmyAt(hex, player))
-                    continue;
-                HexCoord built = hex;
-                return new InfraCandidate
-                {
-                    ApCost = facilityDef.apCost,
-                    ResCost = facilityDef.resourceCost,
-                    Explain = $"extraction {facilityDef.displayName} @({built.Q},{built.R}) for {type.Value}",
-                    Execute = () => BuildingPlayExecutor.BuildExtractionFacility(player, root, ctx, facilityDef, built),
-                };
-            }
-            return null;
+                ApCost = facilityDef.apCost,
+                ResCost = facilityDef.resourceCost,
+                Explain = $"extraction {facilityDef.displayName} @({built.Q},{built.R}) for {type.Value}",
+                Execute = () => BuildingPlayExecutor.BuildExtractionFacility(player, root, ctx, facilityDef, built),
+            };
         }
 
         // Known unbuilt resource sites of `type`, hero-preferred, deterministic order. The demand's
@@ -164,7 +210,8 @@ namespace Game.Ai.V2
             var built = new HashSet<HexCoord>();
             if (snap.Known.Buildings != null)
                 foreach (AiMapMemory.KnownBuilding kb in snap.Known.Buildings)
-                    built.Add(kb.Hex);
+                    if (kb.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type)))
+                        built.Add(kb.Hex);
 
             var sites = snap.Known.ResourceHexes
                 .Where(kv => kv.Value == type && !built.Contains(kv.Key))

@@ -49,6 +49,16 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
+            if (pm.Kind == MissionKind.Economy)
+            {
+                if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, pm.EconomyTarget))
+                    return MissionValidity.StaleGoalMet;
+                if (pm.EconomyTarget.Kind == EconomyTaskKind.FoundBase
+                    && pm.EconomyTarget.BuildCard == null)
+                    return MissionValidity.StaleTargetInvalidated;
+                return MissionValidity.Valid;
+            }
+
             if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
                 if (ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId,

@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -12,6 +14,7 @@ namespace Game.Ai.V2
         None,
         Recon,
         Aggression,
+        Economy,
     }
 
     internal static class MissionAdmissionPolicy
@@ -23,6 +26,7 @@ namespace Game.Ai.V2
             {
                 case MissionKind.Scout: return ExecutionLane.Recon;
                 case MissionKind.Raid: return ExecutionLane.Aggression;
+                case MissionKind.Economy: return ExecutionLane.Economy;
                 default: return ExecutionLane.None;
             }
         }
@@ -40,6 +44,8 @@ namespace Game.Ai.V2
                 case ExecutionLane.Aggression:
                     // No arbitrary Raid K. Real ready actors, AP/physical resources, target
                     // conflicts and commitments bound Aggression throughput.
+                    return int.MaxValue;
+                case ExecutionLane.Economy:
                     return int.MaxValue;
                 default:
                     return int.MaxValue;
@@ -71,6 +77,10 @@ namespace Game.Ai.V2
                 return !RaidAdmissionRegistry.PairHasDistinctAssignment(a, b);
             }
 
+            if (a.Kind == MissionKind.Economy && b.Kind == MissionKind.Economy
+                && a.Target is EconomyMissionTarget ea && b.Target is EconomyMissionTarget eb)
+                return ea.TargetHex.Equals(eb.TargetHex);
+
             if (!(a.Target is ScoutMissionTarget ta) || !(b.Target is ScoutMissionTarget tb))
                 return false;
 
@@ -82,8 +92,21 @@ namespace Game.Ai.V2
             return false;
         }
 
-        public static float AdmissionRank(MissionProposal m) =>
-            m == null ? 0f : AdmissionRank(m.LocalAdmissionScore, m.FromDurableIntent, m.DurableFundingTier);
+        public static float AdmissionRank(MissionProposal m)
+        {
+            if (m == null) return 0f;
+            float score = m.LocalAdmissionScore;
+            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget target)
+            {
+                float completionCost = Mathf.Max(1f, m.Requirements?.ApDesired ?? 0f)
+                    + Mathf.Max(0f, m.Requirements?.EstimatedDistance ?? 0f);
+                float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
+                    ? AiConfigV2.economySameTurnCompletionBonus : 0f;
+                score = m.EffectiveValue + target.BuildValue + sameTurn
+                    - AiConfigV2.economyAdmissionCompletionCostWeight * completionCost;
+            }
+            return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
+        }
 
         public static float AdmissionRank(float localScore, bool fromDurableIntent, CommitmentTier tier)
         {

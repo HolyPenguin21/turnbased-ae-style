@@ -49,7 +49,7 @@ namespace Game.Ai.V2
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
-            snap.Economy = BuildEconomy(player, ctx, snap);
+            snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
             return snap;
@@ -70,7 +70,7 @@ namespace Game.Ai.V2
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
-            snap.Economy = BuildEconomy(player, ctx, snap);
+            snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             SelfSnapshot s = snap.Self;
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
-            snap.Economy = BuildEconomy(player, ctx, snap);
+            snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} knowledge-refresh — "
@@ -1086,7 +1086,8 @@ namespace Game.Ai.V2
             };
         }
 
-        private static EconomyStanding BuildEconomy(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
+        private static EconomyStanding BuildEconomy(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snap)
         {
             var eco = new EconomyStanding();
             var perType = new List<EconomyResourceStanding>();
@@ -1095,80 +1096,58 @@ namespace Game.Ai.V2
                 .Where(p => p != null && p != player && !p.IsNeutral && !p.IsEliminated)
                 .ToList();
 
-            float worstRatio = float.MaxValue;
-            float relAccum = 0f;
+            var handNeed = new ResourceBundle();
+            var deckNeed = new ResourceBundle();
+            AccumulateCardCosts(snap.Self.Hand, ref handNeed);
+            AccumulateCardCosts(snap.Self.Deck, ref deckNeed);
+            eco.HandResourceNeed = handNeed;
+            eco.RemainingDeckResourceNeed = deckNeed;
+            var allNeed = new ResourceBundle();
+            foreach (ResourceType t in ResourceBundle.All)
+                allNeed.Add(t, handNeed.Get(t) + deckNeed.Get(t));
+            eco.DeckResourceNeed = allNeed;
+
+            var reservedNeed = new ResourceBundle();
+            var spendableStock = new ResourceBundle();
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float own = snap.Self.PerTurnIncome.Get(t);
                 var otherIncomes = others.Select(p => (float)IncomeProjection.IncomeFor(p, t, ctx.Map)).ToList();
                 float median = Median(otherIncomes);
-                float ratio = own / Mathf.Max(1f, median);
-                perType.Add(new EconomyResourceStanding
-                {
-                    Type = t, OwnIncome = own, FieldMedianIncome = median, Ratio = ratio,
-                });
-                worstRatio = Mathf.Min(worstRatio, ratio);
-                float d = ratio - 1f;
-                relAccum += d / (1f + Mathf.Abs(d));
+                float reserved = StrategicResourceReservationLedger.Active(
+                    player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t));
+                float spendable = StrategicSpendability.SpendableAmount(player, root, ctx, t);
+                reservedNeed.Add(t, reserved);
+                spendableStock.Add(t, spendable);
+                perType.Add(EconomyStanding.CalculateResource(t, own, median,
+                    handNeed.Get(t), deckNeed.Get(t), reserved, spendable,
+                    ResourceStarvationRegistry.Pressure(player, t)));
             }
             eco.PerType = perType;
-            eco.RelativePressure = Mathf.Clamp(relAccum / ResourceBundle.All.Length, -1f, 1f);
-            eco.BottleneckPressure = Mathf.Clamp01(1f - (worstRatio == float.MaxValue ? 1f : worstRatio));
-
-            // ResourceBundle is a struct. These helpers MUST receive it by ref; passing by value
-            // silently accumulated into a copy and left DeckResourceNeed at 0/0/0/0 every turn.
-            var need = new ResourceBundle();
-            AccumulateCardCosts(snap.Self.Hand, ref need);
-            AccumulateCardCosts(snap.Self.Deck, ref need);
-            eco.DeckResourceNeed = need;
-
-            // Do NOT treat the whole remaining deck as something income must repay inside a fixed
-            // three-turn window. That made a normal opening deck (e.g. 67 total resource points)
-            // report a nonsensical ~22 income/turn target. The sustainable target is per resource:
-            //   1) what one typical remaining playable card asks for, and
-            //   2) what the opponent field currently earns.
-            // We need to keep pace with the larger of those two signals. Existing stockpile is a
-            // runway buffer for SECURITY, but never inflates/deflates the target itself.
-            int remainingPlayableCards = snap.Self.Hand.Count(card =>
-                    card?.Definition != null
-                    && (card.Definition.cardType == CardType.Unit || card.Definition.cardType == CardType.Hero
-                        || card.Definition.cardType == CardType.Facility || card.Definition.cardType == CardType.Base))
-                + snap.Self.Deck.Count(d => d != null
-                    && (d.cardType == CardType.Unit || d.cardType == CardType.Hero
-                        || d.cardType == CardType.Facility || d.cardType == CardType.Base));
-            float cadenceDenom = Mathf.Max(1f, remainingPlayableCards);
-            float runwayTurns = Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
+            eco.ReservedOperationalNeed = reservedNeed;
+            eco.SpendableStockpile = spendableStock;
             var incomeTarget = new ResourceBundle();
-            float coverageAccum = 0f;
-            float worstCoverage = 1f;
             foreach (EconomyResourceStanding rs in perType)
-            {
-                float cardCadence = need.Get(rs.Type) / cadenceDenom;
-                float target = Mathf.Max(cardCadence, rs.FieldMedianIncome);
-                incomeTarget.Add(rs.Type, target);
-
-                float smoothCoverage = 1f;
-                if (target > 0.0001f)
-                {
-                    float stockRunwayPerTurn = snap.Self.Stockpile.Get(rs.Type) / runwayTurns;
-                    float effectiveSupply = rs.OwnIncome + Mathf.Min(target, stockRunwayPerTurn);
-                    float coverage = Mathf.Clamp01(effectiveSupply / target);
-                    smoothCoverage = Mathf.SmoothStep(0f, 1f, coverage);
-                }
-                coverageAccum += smoothCoverage;
-                worstCoverage = Mathf.Min(worstCoverage, smoothCoverage);
-            }
+                incomeTarget.Add(rs.Type, rs.IncomeTarget);
             eco.IncomeTarget = incomeTarget;
-            float meanCoverage = coverageAccum / Mathf.Max(1, ResourceBundle.All.Length);
-            eco.AbsFloor = Mathf.Clamp01(0.65f * meanCoverage + 0.35f * worstCoverage);
+            EconomyResourceStanding worst = perType
+                .OrderByDescending(x => x.DeficitScore).ThenBy(x => x.Type).First();
+            eco.MostDeficientResource = worst.Type;
+            eco.MaxDeficitScore = worst.DeficitScore;
+            eco.MeanDeficitScore = perType.Average(x => x.DeficitScore);
+            eco.BottleneckPressure = eco.MaxDeficitScore;
+            eco.AbsFloor = perType.Average(x => x.RunwayCoverage);
+            eco.RelativePressure = 1f - 2f * perType.Average(x => x.RelativeIncomeGap);
+            eco.EconomicSecurity = Mathf.Clamp01(1f - (
+                AiConfigV2.economyDesireMaxWeight * eco.MaxDeficitScore
+                + AiConfigV2.economyDesireMeanWeight * eco.MeanDeficitScore));
 
-            float relTerm = (eco.RelativePressure + 1f) * 0.5f;
-            float wSum = AiConfigV2.economySecurityAbsWeight + AiConfigV2.economySecurityRelWeight
-                       + AiConfigV2.economySecurityBottleneckWeight;
-            eco.EconomicSecurity = Mathf.Clamp01((
-                AiConfigV2.economySecurityAbsWeight * eco.AbsFloor
-                + AiConfigV2.economySecurityRelWeight * relTerm
-                + AiConfigV2.economySecurityBottleneckWeight * (1f - eco.BottleneckPressure)) / Mathf.Max(0.0001f, wSum));
+            bool extractionActionable = snap.Known?.ResourceHexes != null
+                && snap.Known.ResourceHexes.Any(x => !(snap.Known?.Buildings
+                    ?? System.Array.Empty<AiMapMemory.KnownBuilding>()).Any(b => b.Hex.Equals(x.Key)
+                        && b.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(x.Value))));
+            bool baseCardAvailable = snap.Self.Hand?.Any(c => c?.Definition?.cardType == CardType.Base) == true;
+            eco.HasActionableOpportunity = extractionActionable || baseCardAvailable;
 
             return eco;
         }

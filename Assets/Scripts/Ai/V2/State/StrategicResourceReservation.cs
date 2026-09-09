@@ -34,7 +34,7 @@ namespace Game.Ai.V2
     // Why a resource is being held back. Extension point — StrategicReactionPass is the only
     // current owner. A future late AP/Energy-costing V2 stage adds its reason here instead of
     // reviving a hidden fixed floor (see the retired surplus*Reserve note in AiConfigV2).
-    public enum StrategicReservationReason { StrategicReactionPass }
+    public enum StrategicReservationReason { StrategicReactionPass, EconomyBuildFollowup }
 
     // The stage by which the reservation is guaranteed gone in the normal (non-aborted) flow.
     public enum StrategicReservationExpiry { EndOfPhaseB, EndOfReaction, EndOfTurn }
@@ -153,6 +153,18 @@ namespace Game.Ai.V2
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason);
             if (removed > 0)
                 AiDebugLog.Write($"[AI][V2] reservation - released {removed} ({reason}); "
+                    + $"active [{DebugLine(player, turn)}]");
+            return removed > 0;
+        }
+
+        public static bool ReleaseByOwner(PlayerSetupData player, int turn, string owner)
+        {
+            if (player == null || string.IsNullOrEmpty(owner)
+                || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return false;
+            int removed = e.Reservations.RemoveAll(r => r.Owner == owner);
+            if (removed > 0)
+                AiDebugLog.Write($"[AI][V2] reservation - released {removed} owner={owner}; "
                     + $"active [{DebugLine(player, turn)}]");
             return removed > 0;
         }

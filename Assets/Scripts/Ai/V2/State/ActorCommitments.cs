@@ -59,6 +59,15 @@ namespace Game.Ai.V2
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
+                if (i.Kind == MissionKind.Economy)
+                {
+                    int actorId = i.PreferredMoverArmyId.Value;
+                    ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
+                        && a.ArmyId == actorId && a.HasHero && !a.IsPrison && !a.IsAir);
+                    if (actor != null) c.Claim(actorId);
+                    continue;
+                }
+
                 if (i.Kind == MissionKind.Raid)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;

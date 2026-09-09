@@ -21,6 +21,7 @@ namespace Game.Ai.V2
         Full,
         ReconOnly,
         ReconDevelopment,
+        ReconEconomyDevelopment,
     }
 
     public static class AiStrategyV2Scope
@@ -31,7 +32,7 @@ namespace Game.Ai.V2
         // be validated without the full competing set. Change this one value to widen scope again;
         // do not add local "disable aggression" booleans elsewhere. Test/runtime selection, not a
         // production default.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconDevelopment;
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconEconomyDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 
@@ -52,6 +53,11 @@ namespace Game.Ai.V2
             DesireAxis.Recon, DesireAxis.Development,
         };
 
+        private static readonly DesireAxis[] ReconEconomyDevelopmentAxes =
+        {
+            DesireAxis.Recon, DesireAxis.Economy, DesireAxis.Development,
+        };
+
         // The desire axes the current mode keeps live. Full keeps all five.
         public static IReadOnlyList<DesireAxis> AxesInScope
         {
@@ -61,6 +67,7 @@ namespace Game.Ai.V2
                 {
                     case AiStrategyV2Mode.ReconOnly: return ReconOnlyAxes;
                     case AiStrategyV2Mode.ReconDevelopment: return ReconDevelopmentAxes;
+                    case AiStrategyV2Mode.ReconEconomyDevelopment: return ReconEconomyDevelopmentAxes;
                     default: return AllAxes;
                 }
             }
@@ -96,17 +103,18 @@ namespace Game.Ai.V2
             if (!IsFocusScoped)
                 return activeIntents?.Where(i => i != null).ToList() ?? new List<MissionIntent>();
 
-            // Development produces no operational missions or durable intents, so every focus scope
-            // keeps the intent set Scout-only.
+            bool economy = Mode == AiStrategyV2Mode.ReconEconomyDevelopment;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            foreach (MissionIntent stale in state.All.Where(i => i != null && i.Kind != MissionKind.Scout).ToList())
+            foreach (MissionIntent stale in state.All.Where(i => i != null
+                && i.Kind != MissionKind.Scout && !(economy && i.Kind == MissionKind.Economy)).ToList())
             {
                 state.Remove(stale.IntentKey);
                 AiDebugLog.Write($"[AI][V2][Scope] retire {stale.IntentKey} reason={Mode}");
             }
 
             return (activeIntents ?? new List<MissionIntent>())
-                .Where(i => i != null && i.Kind == MissionKind.Scout)
+                .Where(i => i != null && (i.Kind == MissionKind.Scout
+                    || (economy && i.Kind == MissionKind.Economy)))
                 .ToList();
         }
 
@@ -128,10 +136,13 @@ namespace Game.Ai.V2
             if (!IsFocusScoped)
                 return all;
 
-            int suppressed = all.Count(m => m.Kind != MissionKind.Scout);
+            bool economy = Mode == AiStrategyV2Mode.ReconEconomyDevelopment;
+            int suppressed = all.Count(m => m.Kind != MissionKind.Scout
+                && !(economy && m.Kind == MissionKind.Economy));
             if (suppressed > 0)
                 AiDebugLog.Write($"[AI][V2][Scope] suppressedMissions={suppressed} reason={Mode}");
-            return all.Where(m => m.Kind == MissionKind.Scout).ToList();
+            return all.Where(m => m.Kind == MissionKind.Scout
+                || (economy && m.Kind == MissionKind.Economy)).ToList();
         }
 
         // Spec §5/§13 — a focus scope isolates which operational MISSIONS execute (Recon only). It is

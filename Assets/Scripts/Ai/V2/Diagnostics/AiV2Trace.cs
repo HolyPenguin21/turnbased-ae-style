@@ -180,6 +180,7 @@ namespace Game.Ai.V2
             if (m == null) return false;
             if (m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget st) { focus = st.FocusHex; return true; }
             if (m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt) { focus = rt.LastKnownHex; return true; }
+            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et) { focus = et.TargetHex; return true; }
             return false;
         }
 
@@ -191,6 +192,9 @@ namespace Game.Ai.V2
                 case MissionKind.Raid:
                     return d.Capability == CapabilityKind.FieldCombatPower
                         || d.Capability == CapabilityKind.Hero;
+                case MissionKind.Economy:
+                    return d.Capability == CapabilityKind.EconomicInfrastructure
+                        || d.Capability == CapabilityKind.EconomicExpansionBase;
                 default: return false;
             }
         }

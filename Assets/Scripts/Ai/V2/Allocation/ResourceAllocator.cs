@@ -207,6 +207,10 @@ namespace Game.Ai.V2
             // tie-break only, so it stays out of the key: a moving target is the same mission.
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
                 return new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
+            if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
+                return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
+                    et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
+                    et.TargetHex.Q, et.TargetHex.R);
             return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -221,6 +225,8 @@ namespace Game.Ai.V2
                     : $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})")
                 : Kind == MissionKind.Raid
                     ? $"Raid(#{TargetId})"
+                    : Kind == MissionKind.Economy
+                        ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
                     : $"{Kind}";
 
         public int CompareTo(StableMissionKey o)

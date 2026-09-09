@@ -25,6 +25,7 @@ namespace Game.Ai.V2
         FieldCombatPower,
         Hero,
         EconomicInfrastructure,
+        EconomicExpansionBase,
         DevelopmentInfrastructure,
         DevelopmentOperator,
         CardUpgrade,
@@ -55,6 +56,14 @@ namespace Game.Ai.V2
         public ScoutCapabilityContext ScoutContext;
         public DevelopmentOpportunity DevOpportunity;
         public ResourceType? EconomyResourceType;
+        public CardData EconomyBuildCard;
+        public ResourceCost EconomyBuildResourceCost;
+        public float EconomyBuildApCost;
+        public float EconomyExpectedIncomeGain;
+        public float EconomySiteValue;
+        public float EconomyTravelCost;
+        public float EconomyThreatExposure;
+        public float EconomyHeroOpportunityCost;
 
         // DEV OPERATOR: preserves the exact Research/Production lane that raised the prerequisite.
         // Null for every unrelated demand and for legacy/test demands that intentionally do not

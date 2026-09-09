@@ -442,6 +442,10 @@ namespace Game.Ai.V2
         // variant (a): the absolute floor is derived from what the deck actually costs, not a
         // fixed threshold.
         public ResourceBundle DeckResourceNeed;
+        public ResourceBundle HandResourceNeed;
+        public ResourceBundle RemainingDeckResourceNeed;
+        public ResourceBundle ReservedOperationalNeed;
+        public ResourceBundle SpendableStockpile;
 
         // Sustainable per-turn income target by resource. Unlike DeckResourceNeed this is NOT
         // "pay the remaining deck within N turns": it is the larger of the field-median income
@@ -453,6 +457,10 @@ namespace Game.Ai.V2
         public float BottleneckPressure;  // [0..1]   how bad the single worst resource is
         public float AbsFloor;            // [0..1]   income vs DeckResourceNeed/horizon, smoothstepped
         public float EconomicSecurity;    // [0..1]   blend(AbsFloor, RelativePressure, BottleneckPressure)
+        public ResourceType MostDeficientResource;
+        public float MaxDeficitScore;
+        public float MeanDeficitScore;
+        public bool HasActionableOpportunity;
 
         // Single owner of the project's "income below target" predicate. Demand emission and the
         // post-step resource-site trigger both call this, so discovery cannot use a second,
@@ -466,13 +474,75 @@ namespace Game.Ai.V2
                 return false;
             return self.PerTurnIncome.Get(type) + AiConfigV2.allocatorSliceEpsilon < target;
         }
+
+        // Pure per-resource model. WorldAnalysis owns input collection; keeping the formula here
+        // makes the frozen snapshot directly testable and prevents demand/desire from re-scoring it.
+        public static EconomyResourceStanding CalculateResource(ResourceType type, float ownIncome,
+            float opponentMedianIncome, float handNeed, float remainingDeckNeed,
+            float reservedOperationalNeed, float spendableStockpile, float starvationPressure)
+        {
+            float cardCadence = Mathf.Max(
+                remainingDeckNeed / Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns),
+                handNeed / Mathf.Max(1f, AiConfigV2.economyHandPaydownHorizonTurns),
+                reservedOperationalNeed / Mathf.Max(1f, AiConfigV2.economyOperationalPaydownHorizonTurns));
+            float target = Mathf.Max(opponentMedianIncome, cardCadence);
+            float incomeGap = Mathf.Clamp01((target - ownIncome) / Mathf.Max(target, 0.0001f));
+            float relativeGap = Mathf.Clamp01((opponentMedianIncome - ownIncome)
+                / Mathf.Max(opponentMedianIncome, 1f));
+            float wanted = handNeed
+                + remainingDeckNeed * AiConfigV2.economyDeckNeedDiscount
+                + reservedOperationalNeed;
+            float runway = Mathf.Clamp01((spendableStockpile
+                    + ownIncome * AiConfigV2.economyRunwayHorizonTurns)
+                / Mathf.Max(wanted, 1f));
+            float operational = Mathf.Clamp01(reservedOperationalNeed
+                / Mathf.Max(1f, spendableStockpile + ownIncome));
+            float starvation = Mathf.Clamp01(starvationPressure);
+            float deficit = Mathf.Clamp01(
+                AiConfigV2.economyIncomeGapWeight * incomeGap
+                + AiConfigV2.economyRelativeGapWeight * relativeGap
+                + AiConfigV2.economyRunwayGapWeight * (1f - runway)
+                + AiConfigV2.economyOperationalPressureWeight * operational
+                + AiConfigV2.economyStarvationWeight * starvation);
+            return new EconomyResourceStanding
+            {
+                Type = type,
+                OwnIncome = ownIncome,
+                OpponentMedianIncome = opponentMedianIncome,
+                FieldMedianIncome = opponentMedianIncome,
+                HandResourceNeed = handNeed,
+                RemainingDeckResourceNeed = remainingDeckNeed,
+                ReservedOperationalNeed = reservedOperationalNeed,
+                SpendableStockpile = spendableStockpile,
+                IncomeTarget = target,
+                IncomeGap = incomeGap,
+                RelativeIncomeGap = relativeGap,
+                RunwayCoverage = runway,
+                OperationalPressure = operational,
+                StarvationPressure = starvation,
+                DeficitScore = deficit,
+                Ratio = ownIncome / Mathf.Max(1f, opponentMedianIncome),
+            };
+        }
     }
 
     public struct EconomyResourceStanding
     {
         public ResourceType Type;
         public float OwnIncome;
+        public float OpponentMedianIncome;
         public float FieldMedianIncome;
+        public float HandResourceNeed;
+        public float RemainingDeckResourceNeed;
+        public float ReservedOperationalNeed;
+        public float SpendableStockpile;
+        public float IncomeTarget;
+        public float IncomeGap;
+        public float RelativeIncomeGap;
+        public float RunwayCoverage;
+        public float OperationalPressure;
+        public float StarvationPressure;
+        public float DeficitScore;
         public float Ratio;               // OwnIncome / max(1, FieldMedianIncome)
     }
 

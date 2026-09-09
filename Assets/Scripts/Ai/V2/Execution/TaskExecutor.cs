@@ -161,6 +161,7 @@ namespace Game.Ai.V2
                         StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
                     CompleteResult(result, root);
                     results.Add(result);
+                    ReleaseEconomyReservation(player, ctx, pm);
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — stale plan "
                         + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
                     continue;
@@ -177,6 +178,7 @@ namespace Game.Ai.V2
                     ApCheck(pm, apBefore, root, result);
                     CompleteResult(result, root);
                     results.Add(result);
+                    ReleaseEconomyReservation(player, ctx, pm);
                     ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
                     continue;
@@ -209,6 +211,7 @@ namespace Game.Ai.V2
                     ApCheck(pm, apBefore, root, result);
                     CompleteResult(result, root);
                     results.Add(result);
+                    ReleaseEconomyReservation(player, ctx, pm);
                     if (validity == MissionValidity.StaleMoverLost)
                         ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
                     AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — revalidation: {validity}; "
@@ -237,6 +240,18 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (pm.Kind == MissionKind.Economy)
+                {
+                    yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
+                    ApCheck(pm, apBefore, root, result);
+                    StampVersion(result);
+                    CompleteResult(result, root);
+                    results.Add(result);
+                    if (result.StopReason != ExecutionStopReason.StepCompleted)
+                        ReleaseEconomyReservation(player, ctx, pm);
+                    continue;
+                }
+
                 // Future mission kinds must opt into an executor explicitly. Never silently treat
                 // an unknown mission as Scout or let it mutate the world through a fallback path.
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
@@ -244,6 +259,7 @@ namespace Game.Ai.V2
                 ApCheck(pm, apBefore, root, result);
                 CompleteResult(result, root);
                 results.Add(result);
+                ReleaseEconomyReservation(player, ctx, pm);
                 AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — unsupported mission kind {pm.Kind}");
             }
 
@@ -286,6 +302,8 @@ namespace Game.Ai.V2
                     StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
                 CompleteResult(result, root);
                 results.Add(result);
+                if (result.StopReason != ExecutionStopReason.StepCompleted)
+                    ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
             }
 
@@ -301,6 +319,7 @@ namespace Game.Ai.V2
                 ApCheck(pm, apBefore, root, result);
                 CompleteResult(result, root);
                 results.Add(result);
+                ReleaseEconomyReservation(player, ctx, pm);
                 ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
                     "mover gone before atomic execution");
                 yield break;
@@ -328,6 +347,7 @@ namespace Game.Ai.V2
                 ApCheck(pm, apBefore, root, result);
                 CompleteResult(result, root);
                 results.Add(result);
+                ReleaseEconomyReservation(player, ctx, pm);
                 if (validity == MissionValidity.StaleMoverLost)
                     ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
                         "atomic mission revalidation lost mover");
@@ -357,12 +377,25 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (pm.Kind == MissionKind.Economy)
+            {
+                yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                if (result.StopReason != ExecutionStopReason.StepCompleted)
+                    ReleaseEconomyReservation(player, ctx, pm);
+                yield break;
+            }
+
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
             result.ApSpent = 0f;
             ApCheck(pm, apBefore, root, result);
             CompleteResult(result, root);
             results.Add(result);
+            ReleaseEconomyReservation(player, ctx, pm);
         }
 
         // Compatibility adapter for the current Full/Aggression batch path. The target is
@@ -522,6 +555,67 @@ namespace Game.Ai.V2
                 if (sighting.ArmyId == targetArmyId)
                     return sighting;
             return null;
+        }
+
+        private static IEnumerator RunEconomyStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            if (army == null || army.Owner != player)
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            EconomyMissionTarget target = pm.EconomyTarget;
+            if (army.Hex.Equals(target.TargetHex))
+            {
+                // Delivery is complete, but construction remains StrategicPhaseA ->
+                // InfrastructureFulfillment -> BuildingPlayExecutor. The local Economy re-entry
+                // immediately following this settled step owns that action.
+                result.ReachedGoal = false;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                result.NeedsReplan = false;
+                result.FinalHex = army.Hex;
+                result.ApSpent = 0f;
+                AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                yield break;
+            }
+            if (army.CurrentMovement <= 0)
+            {
+                result.StopReason = ExecutionStopReason.OutOfMovement;
+                yield break;
+            }
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, target.TargetHex);
+            if (!next.HasValue)
+            {
+                result.StopReason = ExecutionStopReason.NoSafeStep;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            HexCoord before = army.Hex;
+            var trace = new AiMoveExecutionTrace();
+            yield return AiTurnController.MoveArmyRoutine(player,
+                AiDecision.Move(army, next.Value,
+                    $"V2 economy — {target.Kind} at ({target.TargetHex.Q},{target.TargetHex.R})", 0f),
+                ctx, trace);
+            army = Resolve(player, pm.MoverArmyId);
+            HexCoord after = army != null ? army.Hex : trace.EndHex;
+            result.FinalHex = after;
+            if (!after.Equals(before)) result.StepsMoved = 1;
+            result.StopReason = result.StepsMoved > 0 ? ExecutionStopReason.StepCompleted
+                : ExecutionStopReason.MoveRejected;
+            result.NeedsReplan = result.StepsMoved == 0;
+            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            AiDebugLog.Write($"[AI][V2][Economy] move {pm.Key} ({before.Q},{before.R})->({after.Q},{after.R})");
+        }
+
+        private static void ReleaseEconomyReservation(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm)
+        {
+            if (pm?.Kind == MissionKind.Economy && ctx != null)
+                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                    pm.ReservationOwner);
         }
 
         private static void FinishRaid(PlayerSetupData player, PlayerRoot root,

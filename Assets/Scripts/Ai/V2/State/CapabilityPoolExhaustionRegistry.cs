@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -31,6 +32,7 @@ namespace Game.Ai.V2
         StealthScout,   // the stealth-capable subset
         FieldCombat,    // ready ground field power able to execute a Raid this cycle
         Hero,           // a free deployed hero able to lead
+        EconomyHeroBuilder,
     }
 
     internal static class CapabilityPoolExhaustionRegistry
@@ -121,6 +123,9 @@ namespace Game.Ai.V2
                 }
                 case CapabilityPoolKind.Hero:
                     return CapabilityInventory.Build(snap, player, null).AvailableHeroes > 0;
+                case CapabilityPoolKind.EconomyHeroBuilder:
+                    return snap?.Self?.Armies != null
+                        && snap.Self.Armies.Any(a => a != null && a.HasHero && !a.IsPrison && !a.IsAir);
                 default:
                     return true;
             }
@@ -149,6 +154,8 @@ namespace Game.Ai.V2
                     ? CapabilityPoolKind.StealthScout : CapabilityPoolKind.Scout;
             if (mission.Kind == MissionKind.Raid)
                 return CapabilityPoolKind.FieldCombat;
+            if (mission.Kind == MissionKind.Economy)
+                return CapabilityPoolKind.EconomyHeroBuilder;
             return CapabilityPoolKind.None;
         }
 
@@ -183,6 +190,8 @@ namespace Game.Ai.V2
                     return inv.RaidAvailableFieldPower <= AiConfigV2.allocatorSliceEpsilon
                         && inv.AvailableHeroes <= 0;
                 }
+                case MissionKind.Economy:
+                    return !PoolHasEligibleActor(snap, player, CapabilityPoolKind.EconomyHeroBuilder);
                 default:
                     return false;
             }
