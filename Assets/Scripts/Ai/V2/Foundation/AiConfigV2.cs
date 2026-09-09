@@ -638,13 +638,11 @@ namespace Game.Ai.V2
         // AI-MGR-02 §P0 (round 4) — HoldResources is NOT a global "stop everything" gate. AP is
         // never held, so an AP-only action (Draw, AP-only Pressure) is COMPATIBLE with keeping the
         // persistent pool and competes only against EndTurn / tempoMinSpendUtility. The H/E/M/T
-        // retention policy below is applied ONLY to a candidate that actually CONSUMES a persistent
-        // resource, and only for the resources it consumes — a scarce Tech never blocks a
-        // Materials-only spend. PlayCard is exempt entirely: StrategicCardEvaluator already owns its
-        // own HoldValue / ScarcityValue / ResourcePressureBenefit and its NetScore is used verbatim.
-        //   holdOfConsumed(cost) = Σ over r with cost[r]>0 of
-        //        (fragility*fragilityWeight + scarcity*scarcityWeight)*scale
-        //        - strategic-overstock relief (below), clamped.
+        // A concrete non-card spend is priced from its exact cost vector by the same canonical
+        // StrategicCardEvaluator resource-opportunity model as card plays. PlayCard remains exempt
+        // from any Phase-B adjustment: its NetScore already owns HoldValue / ScarcityValue /
+        // ResourcePressureBenefit. The constants below retain only the whole-pool scarcity signal
+        // shown on the diagnostic `policy Hold(full pool)` line; it is not an execution stop gate.
         public const int   tempoHoldResourceComfortableStock = 8;    // a resource at/above this is not "scarce"
         public const float tempoHoldFragilityWeight = 0.5f;
         public const float tempoHoldScarcityWeight = 1.0f;
@@ -658,7 +656,7 @@ namespace Game.Ai.V2
         // overstock = max(0, (stock + PerTurnIncome[r]) - runwayTarget); summed per resource, floored
         // at 0 each so a scarce resource cannot re-inflate another resource's relief.
         public const float tempoHoldOverstockRunwayHorizon = 6f;     // turns of IncomeTarget that define the runway target
-        public const float tempoHoldOverstockReliefWeight = 0.20f;   // per overstock unit, subtracted from holdOfConsumed
+        public const float tempoHoldOverstockReliefWeight = 0.20f;   // per overstock unit, subtracted from diagnostic Hold
         public const float tempoHoldOverstockReliefCap = 3.0f;       // max total overstock relief
         // DrawCard candidate utility, same [~0..5] NetScore band as PlayCard (spec §1 — Draw is a
         // full peer, not a terminal fallback, and is NOT penalised for holding H/E/M/T it does not
@@ -685,9 +683,11 @@ namespace Game.Ai.V2
         public const float tempoPressureAdvanceValue = 1.20f;
         // AI-MGR-02 — StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
-        // band: it is the dynamic StrategicCardEvaluator NetScore of the concrete Facility card the
-        // upgrade unlocks. Facility placement, Equipment attach and Research/Production generation
-        // remain ordinary PlayCard candidates through the same evaluator (spec §5, one scorer).
+        // band: it is the concrete Facility's dynamic StrategicCardEvaluator TotalUseScore minus
+        // the upgrade AP opportunity cost; Phase B then subtracts the tier's exact marginal H/E/M/T
+        // opportunity cost on the same evaluator scale. Facility placement, Equipment attach and
+        // Research/Production generation remain ordinary PlayCard candidates through that single
+        // evaluator (spec §5, one scorer).
         // spec §7 (round 4) — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
         // replan, not an exact action cost (the replan re-runs the whole Demand→Mission→Provision
         // pipeline and picks its own action, so there is no single pre-planned action to price).
