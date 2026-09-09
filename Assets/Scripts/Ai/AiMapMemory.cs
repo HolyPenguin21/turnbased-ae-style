@@ -212,6 +212,7 @@ namespace Game.Ai
             public HexCoord Hex;
             public PlayerSetupData Owner;
             public bool IsStartingCitadel;
+            public bool IsBase;
             // Union of every placed Facility's own Abilities, as of this sighting (e.g.
             // UnitAbilities.CollectHuman/Energy/Materials/Tech) — ResourcesScrapTask.
             // HasExtractionFacility's own memory-based read (2026-08-24 fix). A facility's own
@@ -220,6 +221,12 @@ namespace Game.Ai
             // this snapshot doesn't need), so this stays honestly "as last observed" the same way
             // Owner/IsStartingCitadel already do.
             public HashSet<string> FacilityAbilities;
+            // Last-observed physical collection capacity, including the building's own baked-in
+            // Collect ability and every Facility upgrade. Four entries, indexed by ResourceType.
+            public int[] CollectedAmounts;
+            // Last-observed unlocked empty slot count. Unlike TotalFacilitySlots this is the
+            // authoritative answer to whether another Facility could actually be placed now.
+            public int FreeFacilitySlots;
         }
 
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, BuildingSighting>> KnownBuildings =
@@ -230,17 +237,35 @@ namespace Game.Ai
             public readonly HexCoord Hex;
             public readonly PlayerSetupData Owner;
             public readonly bool IsStartingCitadel;
+            public readonly bool IsBase;
             public readonly IReadOnlyCollection<string> FacilityAbilities;
+            public readonly IReadOnlyList<int> CollectedAmounts;
+            public readonly int FreeFacilitySlots;
 
-            public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel, IReadOnlyCollection<string> facilityAbilities)
+            public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel,
+                IReadOnlyCollection<string> facilityAbilities,
+                IReadOnlyList<int> collectedAmounts = null, int freeFacilitySlots = int.MaxValue,
+                bool isBase = false)
             {
                 Hex = hex;
                 Owner = owner;
                 IsStartingCitadel = isStartingCitadel;
+                IsBase = isBase;
                 FacilityAbilities = facilityAbilities;
+                CollectedAmounts = collectedAmounts;
+                FreeFacilitySlots = freeFacilitySlots;
             }
 
-            public bool HasFacilityWithAbility(string ability) => FacilityAbilities != null && FacilityAbilities.Contains(ability);
+            public bool HasFacilityWithAbility(string ability) =>
+                FacilityAbilities != null && FacilityAbilities.Contains(ability);
+
+            public int CollectedAmount(ResourceType type)
+            {
+                int index = (int)type;
+                return CollectedAmounts != null && index >= 0 && index < CollectedAmounts.Count
+                    ? System.Math.Max(0, CollectedAmounts[index])
+                    : 0;
+            }
         }
 
         // A recorded scout retreat (VisitHexTask.TryFlee) — deliberately OUTLIVES the
@@ -647,9 +672,19 @@ namespace Game.Ai
                     foreach (FacilityData facility in building.FacilitySlots)
                         if (facility != null)
                             facilityAbilities.UnionWith(facility.Abilities);
+                    var collectedAmounts = new int[UnitAbilities.CollectAbilities.Length];
+                    for (int i = 0; i < collectedAmounts.Length; i++)
+                        collectedAmounts[i] = building.CollectedAmount((ResourceType)i);
                     buildings[hex] = new BuildingSighting
                     {
-                        Hex = hex, Owner = building.Owner, IsStartingCitadel = building.IsStartingCitadel, FacilityAbilities = facilityAbilities,
+                        Hex = hex,
+                        Owner = building.Owner,
+                        IsStartingCitadel = building.IsStartingCitadel,
+                        IsBase = building.IsBase,
+                        FacilityAbilities = facilityAbilities,
+                        CollectedAmounts = collectedAmounts,
+                        FreeFacilitySlots = Enumerable.Range(0, building.UnlockedFacilitySlots)
+                            .Count(i => building.FacilitySlots[i] == null),
                     };
                 }
                 else
@@ -830,7 +865,9 @@ namespace Game.Ai
             if (!KnownBuildings.TryGetValue(actor, out Dictionary<HexCoord, BuildingSighting> buildings)
                 || !buildings.TryGetValue(hex, out BuildingSighting sighting))
                 return null;
-            return new KnownBuilding(sighting.Hex, sighting.Owner, sighting.IsStartingCitadel, sighting.FacilityAbilities);
+            return new KnownBuilding(sighting.Hex, sighting.Owner,
+                sighting.IsStartingCitadel, sighting.FacilityAbilities,
+                sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase);
         }
 
         // Every building this player has ever observed anywhere on the map, as last seen —
@@ -843,7 +880,9 @@ namespace Game.Ai
             if (!KnownBuildings.TryGetValue(actor, out Dictionary<HexCoord, BuildingSighting> buildings))
                 yield break;
             foreach (BuildingSighting sighting in buildings.Values)
-                yield return new KnownBuilding(sighting.Hex, sighting.Owner, sighting.IsStartingCitadel, sighting.FacilityAbilities);
+                yield return new KnownBuilding(sighting.Hex, sighting.Owner,
+                    sighting.IsStartingCitadel, sighting.FacilityAbilities,
+                    sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase);
         }
 
         // How many individual non-hero members, across every currently-known ARMY sighting for

@@ -402,7 +402,8 @@ namespace Game.Ai.V2
                 return result;
             foreach (KeyValuePair<HexCoord, ResourceType> site in after.Known.ResourceHexes)
                 if (!old.Contains(site.Key)
-                    && after.Economy.IsIncomeDeficient(after.Self, site.Value))
+                    && after.Economy.IsIncomeDeficient(after.Self, site.Value)
+                    && after.Economy.IsExtractionActionable(site.Key, site.Value))
                     result.Add(site.Key);
             return result;
         }
@@ -784,6 +785,7 @@ namespace Game.Ai.V2
                 IsGarrison = a.IsGarrison,
                 IsPrison = a.IsPrison,
                 IsAir = a.IsAirArmy,
+                IsAirfield = a.IsAirfield,
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
                 HeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
@@ -820,7 +822,19 @@ namespace Game.Ai.V2
                     ? a.Members.Select(AbilityParams.GetStealthLevel).DefaultIfEmpty(0).Max()
                     : 0,
                 EffectiveVisionRadius = armyVisionRadius + AbilityParams.GetBestRecceRadius(a),
+                CollectionCapacity = isOwn ? CollectionCapacityOf(a) : default(ResourceBundle),
             };
+        }
+
+        private static ResourceBundle CollectionCapacityOf(ArmyData army)
+        {
+            var result = new ResourceBundle();
+            if (army?.Members == null)
+                return result;
+            foreach (ResourceType type in ResourceBundle.All)
+                result.Add(type, army.Members.Count(member => member != null
+                    && member.HasAbility(UnitAbilities.CollectAbilityFor(type))));
+            return result;
         }
 
         // review-r4 P1 ARCH — union of every member's registry-resolved coverage roles (abilities +
@@ -1142,14 +1156,130 @@ namespace Game.Ai.V2
                 AiConfigV2.economyDesireMaxWeight * eco.MaxDeficitScore
                 + AiConfigV2.economyDesireMeanWeight * eco.MeanDeficitScore));
 
-            bool extractionActionable = snap.Known?.ResourceHexes != null
-                && snap.Known.ResourceHexes.Any(x => !(snap.Known?.Buildings
-                    ?? System.Array.Empty<AiMapMemory.KnownBuilding>()).Any(b => b.Hex.Equals(x.Key)
-                        && b.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(x.Value))));
-            bool baseCardAvailable = snap.Self.Hand?.Any(c => c?.Definition?.cardType == CardType.Base) == true;
-            eco.HasActionableOpportunity = extractionActionable || baseCardAvailable;
+            var standings = perType.ToDictionary(x => x.Type, x => x);
+            var knownBuildings = (snap.Known?.Buildings
+                ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .GroupBy(x => x.Hex).ToDictionary(g => g.Key, g => g.First());
+            var extraction = new List<EconomyExtractionOpportunity>();
+            foreach (KeyValuePair<HexCoord, ResourceType> site in snap.Known?.ResourceHexes
+                ?? System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>())
+            {
+                if (ctx?.Map == null || !ctx.Map.TryGetTerrainAt(site.Key, out var terrain))
+                    continue;
+                int effectiveYield = HexResourceCalculator.GetEffectiveYield(
+                    terrain, HexResourceBonusRegistry.GetBonus(site.Key)).Get(site.Value);
+                if (effectiveYield <= 0)
+                    continue;
+
+                int currentCollection = 0;
+                if (knownBuildings.TryGetValue(site.Key, out AiMapMemory.KnownBuilding building))
+                {
+                    // BuildingPlayExecutor can only add a Facility to our own building, and only
+                    // while an unlocked slot was last observed free.
+                    if (building.Owner != player || building.FreeFacilitySlots <= 0)
+                        continue;
+                    currentCollection = building.CollectedAmount(site.Value);
+                }
+
+                int ownArmyCollectors = Mathf.RoundToInt((snap.Self.Armies
+                    ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null && a.Hex.Equals(site.Key))
+                    .Sum(a => a.CollectionCapacity.Get(site.Value)));
+                bool armiesCanCollect = !(snap.Known?.EnemySightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    .Any(enemy => enemy.Hex.Equals(site.Key));
+                int marginal = IncomeProjection.MarginalOwnerCollectionAtHex(
+                    effectiveYield, currentCollection, 1,
+                    ownArmyCollectors, armiesCanCollect);
+                if (marginal <= 0)
+                    continue;
+                extraction.Add(new EconomyExtractionOpportunity
+                {
+                    Hex = site.Key,
+                    ResourceType = site.Value,
+                    EffectiveYield = effectiveYield,
+                    CurrentBuildingCollection = currentCollection,
+                    MarginalIncomeGain = marginal,
+                    BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Key),
+                    NearbyResourceClusterValue = EconomyResourceClusterValue(
+                        snap, site.Key, standings),
+                });
+            }
+            eco.ExtractionOpportunities = extraction;
+
+            // Base opportunities are structural site facts only. Card-specific value/cost remains
+            // Strategy/Demand's responsibility, but Analysis owns the one legal candidate set so
+            // the desire gate and demand emission cannot disagree.
+            var baseOpportunities = new List<EconomyBaseOpportunity>();
+            List<CardData> baseCards = (snap.Self.Hand ?? System.Array.Empty<CardData>())
+                .Where(c => c?.Definition?.cardType == CardType.Base).ToList();
+            if (baseCards.Count > 0 && snap.Self.BaseHexes != null)
+            {
+                var occupied = knownBuildings;
+                var knownSites = new HashSet<HexCoord>((snap.Known?.ResourceHexes
+                    ?? System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>()).Select(x => x.Key));
+                var mapHexes = new HashSet<HexCoord>(snap.MapKnowledge?.AllHexes
+                    ?? System.Array.Empty<HexCoord>());
+                var seen = new HashSet<HexCoord>();
+                foreach (HexCoord anchor in snap.Self.BaseHexes.OrderBy(x => x.Q).ThenBy(x => x.R))
+                    foreach (HexCoord hex in HexGridMath.HexesInRange(
+                        anchor, AiConfigV2.economyBaseFoundScanRadius))
+                    {
+                        if (!seen.Add(hex) || snap.Self.BaseHexes.Contains(hex)
+                            || (mapHexes.Count > 0 && !mapHexes.Contains(hex)))
+                            continue;
+                        bool hasBuilding = occupied.TryGetValue(hex,
+                            out AiMapMemory.KnownBuilding knownBuilding);
+                        bool convertsOwnedExtraction = hasBuilding && knownSites.Contains(hex)
+                            && knownBuilding.Owner == player && !knownBuilding.IsBase;
+                        if (hasBuilding && !convertsOwnedExtraction)
+                            continue;
+                        baseOpportunities.Add(new EconomyBaseOpportunity
+                        {
+                            Hex = hex,
+                            CapacityValue = convertsOwnedExtraction ? 1f : 0.5f,
+                            NearbyResourceClusterValue = EconomyResourceClusterValue(
+                                snap, hex, standings),
+                            LogisticsValue = Mathf.Clamp01(HexGridMath.Distance(anchor, hex)
+                                / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius)),
+                            ConvertsOwnedExtractionSite = convertsOwnedExtraction,
+                        });
+                    }
+            }
+            eco.BaseOpportunities = baseOpportunities;
+            bool globalBaseCard = baseCards.Any(c => c.Definition.grantedAbilities != null
+                && c.Definition.grantedAbilities.Count > 0);
+            bool baseActionable = baseOpportunities.Any(x =>
+                x.NearbyResourceClusterValue > 0f
+                || x.ConvertsOwnedExtractionSite || globalBaseCard);
+            bool extractionActionable = extraction.Any(site =>
+                standings.TryGetValue(site.ResourceType, out EconomyResourceStanding standing)
+                && (standing.DeficitScore > AiConfigV2.allocatorSliceEpsilon
+                    || standing.StarvationPressure >= AiConfigV2.starvationEconomyTrigger));
+            eco.HasActionableOpportunity = extractionActionable || baseActionable;
 
             return eco;
+        }
+
+        private static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
+        {
+            if (snap?.Self?.BaseHexes == null || snap.Self.BaseHexes.Count == 0)
+                return 0f;
+            int distance = snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, target));
+            return 1f / Mathf.Max(1f, distance);
+        }
+
+        private static float EconomyResourceClusterValue(WorldSnapshot snap, HexCoord target,
+            IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
+        {
+            if (snap?.Known?.ResourceHexes == null)
+                return 0f;
+            float value = 0f;
+            foreach (KeyValuePair<HexCoord, ResourceType> site in snap.Known.ResourceHexes)
+                if (HexGridMath.Distance(target, site.Key) <= AiConfigV2.economyResourceClusterRadius
+                    && standings.TryGetValue(site.Value, out EconomyResourceStanding standing))
+                    value += Mathf.Max(0.1f, standing.DeficitScore);
+            return value;
         }
 
         private static void AccumulateCardCosts(IEnumerable<CardData> cards, ref ResourceBundle need)

@@ -27,7 +27,8 @@ namespace Game.Ai.V2
                      .ThenBy(x => x.TargetHex.Value.R))
             {
                 if (snapshot?.Self?.Armies != null && snapshot.Self.Armies.Any(a => a != null
-                    && a.HasHero && a.Hex.Equals(d.TargetHex.Value)))
+                    && a.HasHero && !a.IsPrison && !a.IsAir && !a.IsAirfield
+                    && a.Hex.Equals(d.TargetHex.Value)))
                     continue; // direct Phase-A fulfillment owns an already-delivered build
                 EconomyTaskKind kind = d.Capability == CapabilityKind.EconomicExpansionBase
                     ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
@@ -52,7 +53,8 @@ namespace Game.Ai.V2
                     Target = target,
                     BaseValue = d.Value,
                     LocalAdmissionScore = d.Value,
-                    Requirements = Requirements(target, incumbent, snapshot),
+                    Requirements = Requirements(target, incumbent, snapshot,
+                        d.EconomyTravelCost),
                     PreferredMoverArmyId = incumbent?.PreferredMoverArmyId,
                     FromDurableIntent = incumbent != null,
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
@@ -66,7 +68,7 @@ namespace Game.Ai.V2
         }
 
         private static MissionRequirements Requirements(EconomyMissionTarget t,
-            MissionIntent incumbent, WorldSnapshot snapshot)
+            MissionIntent incumbent, WorldSnapshot snapshot, float witnessedTravelCost)
         {
             float activation = 0f;
             if (incumbent?.PreferredMoverArmyId is int id)
@@ -81,12 +83,17 @@ namespace Game.Ai.V2
                 RequiresArmy = true, RequiresHero = true, MoverKnown = incumbent != null,
                 ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
             };
-            List<ArmySnapshot> heroes = snapshot?.Self?.Armies?.Where(a => a != null && a.HasHero).ToList();
+            List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
+                .Where(a => a != null && a.HasHero && !a.IsPrison
+                    && !a.IsAir && !a.IsAirfield
+                    && (!a.IsGarrison || a.Hex.Equals(t.TargetHex))).ToList();
             if (heroes != null && heroes.Count > 0)
             {
                 ArmySnapshot nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
                     .ThenBy(a => a.ArmyId).First();
-                int distance = HexGridMath.Distance(nearest.Hex, t.TargetHex);
+                int distance = witnessedTravelCost >= 0f
+                    ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
+                    : HexGridMath.Distance(nearest.Hex, t.TargetHex);
                 r.EstimatedDistance = distance;
                 r.EtaTurns = distance <= nearest.CurrentMovement ? 0
                     : UnityEngine.Mathf.CeilToInt(distance / (float)UnityEngine.Mathf.Max(1, nearest.MaxMovement));

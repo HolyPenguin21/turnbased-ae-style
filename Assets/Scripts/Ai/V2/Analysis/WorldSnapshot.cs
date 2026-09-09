@@ -144,6 +144,7 @@ namespace Game.Ai.V2
         public bool IsGarrison;
         public bool IsPrison;
         public bool IsAir;
+        public bool IsAirfield;
         public int MemberCount;
         public bool HasHero;
         // Best CommandRating among this army's hero members (0 = no hero). Sets a real forming
@@ -215,6 +216,9 @@ namespace Game.Ai.V2
         // practice — lets a Surveil vantage be chosen without a live VisionSystem read. Seeing a
         // hex from this range is NOT visiting it (only standing on a hex marks it visited).
         public int EffectiveVisionRadius;
+        // Own-army Collect capability frozen with the rest of the actor. Analysis uses it only
+        // to avoid pricing a Facility that would merely displace this army's existing collection.
+        public ResourceBundle CollectionCapacity;
 
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
@@ -434,8 +438,35 @@ namespace Game.Ai.V2
     // =======================================================================================
     //  ECONOMY STANDING  (replaces V1's binary EcoMature + standalone IncomeBehindBonus)
     // =======================================================================================
+    public struct EconomyExtractionOpportunity
+    {
+        public HexCoord Hex;
+        public ResourceType ResourceType;
+        public int EffectiveYield;
+        public int CurrentBuildingCollection;
+        public int MarginalIncomeGain;
+        public float BaseNetworkSynergy;
+        public float NearbyResourceClusterValue;
+    }
+
+    public struct EconomyBaseOpportunity
+    {
+        public HexCoord Hex;
+        public float CapacityValue;
+        public float NearbyResourceClusterValue;
+        public float LogisticsValue;
+        public bool ConvertsOwnedExtractionSite;
+    }
+
     public sealed class EconomyStanding
     {
+        // Frozen, fog-honest opportunity facts. Strategy scores these records; it never
+        // reconstructs site legality or resource physics independently.
+        public IReadOnlyList<EconomyExtractionOpportunity> ExtractionOpportunities =
+            System.Array.Empty<EconomyExtractionOpportunity>();
+        public IReadOnlyList<EconomyBaseOpportunity> BaseOpportunities =
+            System.Array.Empty<EconomyBaseOpportunity>();
+
         // One entry per ResourceType, in ResourceBundle.All order.
         public IReadOnlyList<EconomyResourceStanding> PerType;
 
@@ -462,6 +493,16 @@ namespace Game.Ai.V2
         public float MaxDeficitScore;
         public float MeanDeficitScore;
         public bool HasActionableOpportunity;
+
+        public bool IsExtractionActionable(HexCoord hex, ResourceType type) =>
+            ExtractionOpportunities != null && ExtractionOpportunities.Any(x =>
+                x.Hex.Equals(hex) && x.ResourceType == type
+                && x.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
+
+        public float MarginalExtractionGainAt(HexCoord hex, ResourceType type) =>
+            ExtractionOpportunities == null ? 0f : ExtractionOpportunities
+                .Where(x => x.Hex.Equals(hex) && x.ResourceType == type)
+                .Select(x => (float)x.MarginalIncomeGain).DefaultIfEmpty(0f).Max();
 
         // Single owner of the project's "income below target" predicate. Demand emission and the
         // post-step resource-site trigger both call this, so discovery cannot use a second,
