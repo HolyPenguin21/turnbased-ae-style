@@ -139,7 +139,7 @@ namespace Game.Ai.V2
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
 
-        private static string EconomyReservationOwner(AxisDemand demand)
+        internal static string EconomyReservationOwner(AxisDemand demand)
         {
             if (demand?.TargetHex == null || (demand.Capability != CapabilityKind.EconomicInfrastructure
                 && demand.Capability != CapabilityKind.EconomicExpansionBase))
@@ -151,6 +151,51 @@ namespace Game.Ai.V2
             HexCoord h = demand.TargetHex.Value;
             return EconomyMissionPlanner.OwnerKey(new StableMissionKey(MissionKind.Economy,
                 (int)kind, targetId, h.Q, h.R));
+        }
+
+        // A selected infrastructure demand already has a valuable legal site and a snapshot-witnessed
+        // builder route. Protect its persistent build vector before Phase B; a Hero prerequisite
+        // never reaches this method, so saving cannot block creation of the missing builder.
+        internal static void ReserveDeferredEconomyResources(
+            PlayerSetupData player, int turn, AxisDemand demand)
+        {
+            string owner = EconomyReservationOwner(demand);
+            if (owner == null)
+                return;
+            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f);
+        }
+
+        // One canonical writer for direct, deferred and provisioned Economy build reservations.
+        // Provisioning adds AP only when completion is reachable this turn; Phase A protects only
+        // persistent H/E/M/T while a confirmed route is still being delivered.
+        internal static void ReserveEconomyCost(PlayerSetupData player, int turn, string owner,
+            ResourceCost cost, float buildAp)
+        {
+            if (player == null || string.IsNullOrEmpty(owner))
+                return;
+            if (buildAp > 0f)
+                StrategicResourceReservationLedger.Upsert(player, turn,
+                    new StrategicResourceReservation
+                    {
+                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
+                        Resource = StrategicReservedResource.ActionPoints, Amount = buildAp,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+            if (cost == null)
+                return;
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                int amount = cost.Get(type);
+                if (amount <= 0)
+                    continue;
+                StrategicResourceReservationLedger.Upsert(player, turn,
+                    new StrategicResourceReservation
+                    {
+                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
+                        Resource = StrategicResourceReservationLedger.Map(type), Amount = amount,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+            }
         }
 
         private static InfraCandidate BuildEconomyBaseCandidate(PlayerSetupData player,

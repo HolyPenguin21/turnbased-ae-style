@@ -195,6 +195,14 @@ namespace Game.Ai.V2
                 }
                 else
                 {
+                    // Only a real EconomicInfrastructure/Expansion demand reaches this hold:
+                    // Demand has already proved a valuable site and an eligible builder route.
+                    // A missing-builder Hero prerequisite is a different capability and therefore
+                    // cannot lock the Human needed to create that hero.
+                    if (istate.Demand.Capability == CapabilityKind.EconomicInfrastructure
+                        || istate.Demand.Capability == CapabilityKind.EconomicExpansionBase)
+                        InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                            player, ctx.TurnNumber, istate.Demand);
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
                 }
             }
