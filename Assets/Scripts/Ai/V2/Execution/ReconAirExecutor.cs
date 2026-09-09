@@ -209,6 +209,70 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
+        // Execute at most one action from an already assembled air-recon plan. Planning stays
+        // in AirReconPlanner; launch/actor validation and result construction stay in this executor.
+        internal static IEnumerator ExecutePlanStep(AirReconPlan plan, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            AirReconExecutionResult result, List<ExecutionResult> perMissionResults)
+        {
+            result ??= new AirReconExecutionResult();
+            if (plan == null || player == null || root == null || ctx?.Map == null
+                || snapshot?.Self == null || perMissionResults == null)
+            {
+                result.StateVersionAfter = V2StateVersion.Current;
+                yield break;
+            }
+
+            AirReconSkippedMission skipped = plan.SkippedMissions.FirstOrDefault();
+            if (skipped?.Mission != null)
+            {
+                ProvisionedMission pm = skipped.Mission;
+                ExecutionResult er = NewPerMissionResult(pm, pm.AirfieldHex, -1);
+                if (skipped.Reason != ExecutionStopReason.MoverLost && ObjectiveSatisfied(player, pm))
+                    MarkSatisfiedNoOp(pm, er);
+                else
+                    er.StopReason = skipped.Reason;
+                er.StateVersionAfter = V2StateVersion.Current;
+                er.ResourcesBefore = AiV2Trace.Stamp(root);
+                er.ResourcesAfter = AiV2Trace.Stamp(root);
+                perMissionResults.Add(er);
+                yield break;
+            }
+
+            if (plan.ReadyActorIds.Count > 0)
+            {
+                int id = plan.ReadyActorIds[0];
+                ArmyData air = Resolve(player, id);
+                plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
+                if (pm == null)
+                    yield break;
+
+                if (air != null && ObjectiveSatisfied(player, pm))
+                {
+                    ExecutionResult stale = NewPerMissionResult(pm, air.Hex, air.Id);
+                    stale.ResourcesBefore = AiV2Trace.Stamp(root);
+                    MarkSatisfiedNoOp(pm, stale);
+                    stale.StateVersionAfter = V2StateVersion.Current;
+                    stale.ResourcesAfter = AiV2Trace.Stamp(root);
+                    perMissionResults.Add(stale);
+                    yield break;
+                }
+
+                ExecutionResult perMission = NewPerMissionResult(pm,
+                    air?.Hex ?? pm.ExecutionHex, air?.Id ?? -1);
+                int apBefore = root.ActionPoints;
+                yield return RunActorStep(player, root, ctx, snapshot, air, result, apBefore,
+                    pm.FocusHex, perMission);
+                perMissionResults.Add(perMission);
+                yield break;
+            }
+
+            AirLaunchPlan launch = plan.Launches.FirstOrDefault();
+            if (launch != null)
+                yield return LaunchOneStep(launch, player, root, ctx, snapshot, result,
+                    perMissionResults);
+        }
+
         // Fly one planned launch. The stale-plan guard (CanAffordLaunch re-check) mirrors §35: if
         // an earlier sortie this pass consumed the AP/Energy, this launch is skipped and reported —
         // the executor does NOT re-plan a different subset or airfield.
