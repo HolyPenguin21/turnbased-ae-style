@@ -639,11 +639,15 @@ namespace Game.Ai.V2
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
-            // 2. ONE AP pool (radar model #1a — no per-axis slices). WITH a shared AxisBudgetLedger
-            //    (the normal V2 path) the pool size IS ledger.Balance() — already net of Phase-A
-            //    demand-fulfilment spend. Without a ledger (bare test / sim) fall back to the raw
-            //    Pack pool. Strict AP that a locked mission already drew is taken off the top.
-            float budget = Mathf.Max(0f, (_ledger != null ? _ledger.Balance() : pool.Ap) - lockedStrict);
+            // 2. ONE AP pool (radar model #1a — no per-axis slices). The shared ledger is the
+            //    Phase-A entitlement ceiling; the fresh snapshot pool is the physical AP ceiling.
+            //    Taking the minimum is inert for the legacy one-session pack/re-pack path, but it
+            //    is essential for mid-turn re-admission: mission execution intentionally does not
+            //    debit AxisBudgetLedger, while a fresh snapshot already contains that real spend.
+            //    Without a ledger (bare test / sim) fall back to the raw Pack pool. Strict AP that
+            //    a locked mission already drew is taken off the top.
+            float entitlement = _ledger != null ? Mathf.Min(_ledger.Balance(), pool.Ap) : pool.Ap;
+            float budget = Mathf.Max(0f, entitlement - lockedStrict);
 
             // 2b. Step 9 — the ONE global physical pool (Human/Energy/Materials/Tech). NOT
             //     axis-sliced (spec §18): it is the real post-Initiative + post-Phase-A stockpile,
