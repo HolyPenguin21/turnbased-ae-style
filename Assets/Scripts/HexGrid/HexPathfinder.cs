@@ -10,6 +10,15 @@ namespace Game.HexGrid
     // its terrain sets (e.g. Mountains are simply expensive, not blocked). Plain Dijkstra
     // rather than A*: maps here are small enough (~100 hexes) that the extra heuristic
     // bookkeeping isn't worth it, and the frontier is just a linear-scanned list.
+    //
+    // Equal-cost routes (the common case on open, uniform terrain) are broken by a secondary
+    // key: the route whose hexes stay closest to the straight line from start to destination
+    // wins. Without it the raw expansion order makes the search commit fully to one diagonal
+    // and only turn toward the target at the end — an L-shaped route that reads as "wrong
+    // direction then a corner" even though its hex count is identical to the staircase route
+    // that heads straight at the target (project owner's own report — the *choice* of hexes,
+    // not how the arrow is drawn through them). The tie-breaker never overrides a genuinely
+    // cheaper route: it only orders routes of exactly equal routing cost.
     public static class HexPathfinder
     {
         // Added to a hex's routing cost when `avoidHex` flags it (see FindPath) — steers the
@@ -57,12 +66,34 @@ namespace Game.HexGrid
             var cameFrom = new Dictionary<HexCoord, HexCoord>();
             var frontier = new List<HexCoord> { start };
 
+            // Straight-line reference for the equal-cost tie-breaker (see the class comment).
+            // Planar coords from the shared axial->world helper at unit radius — no map
+            // transform needed, only relative distances matter. straightnessCost[h] is the sum
+            // of every hex's perpendicular offset from this line along the route that reached
+            // h, so among two routes of identical routing cost the one hugging the line has the
+            // smaller total and wins.
+            Vector3 startPlane = HexGridMath.AxialToWorld(start.Q, start.R, 1f);
+            Vector3 lineDir = HexGridMath.AxialToWorld(destination.Q, destination.R, 1f) - startPlane;
+            float lineLen = lineDir.magnitude;
+            float OffsetFromLine(HexCoord h)
+            {
+                if (lineLen < 1e-4f)
+                    return 0f;
+                Vector3 p = HexGridMath.AxialToWorld(h.Q, h.R, 1f) - startPlane;
+                return Mathf.Abs(p.x * lineDir.z - p.z * lineDir.x) / lineLen;
+            }
+            var straightnessCost = new Dictionary<HexCoord, float> { [start] = 0f };
+
             while (frontier.Count > 0)
             {
                 int bestIndex = 0;
                 for (int i = 1; i < frontier.Count; i++)
-                    if (costSoFar[frontier[i]] < costSoFar[frontier[bestIndex]])
+                {
+                    int c = costSoFar[frontier[i]];
+                    int cBest = costSoFar[frontier[bestIndex]];
+                    if (c < cBest || (c == cBest && straightnessCost[frontier[i]] < straightnessCost[frontier[bestIndex]]))
                         bestIndex = i;
+                }
 
                 HexCoord current = frontier[bestIndex];
                 frontier.RemoveAt(bestIndex);
@@ -81,12 +112,20 @@ namespace Game.HexGrid
                     if (avoidHex != null && avoidHex(next))
                         stepCost += AvoidPenalty;
                     int newCost = costSoFar[current] + stepCost;
-                    if (costSoFar.TryGetValue(next, out int existing) && existing <= newCost)
+                    bool seen = costSoFar.TryGetValue(next, out int existing);
+                    if (seen && existing < newCost)
+                        continue;
+
+                    // Equal routing cost: keep whichever route so far hugged the line more.
+                    float newStraightness = straightnessCost[current] + OffsetFromLine(next);
+                    if (seen && existing == newCost && straightnessCost[next] <= newStraightness)
                         continue;
 
                     costSoFar[next] = newCost;
+                    straightnessCost[next] = newStraightness;
                     cameFrom[next] = current;
-                    frontier.Add(next);
+                    if (!frontier.Contains(next))
+                        frontier.Add(next);
                 }
             }
 
