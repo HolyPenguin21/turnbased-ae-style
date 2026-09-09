@@ -57,21 +57,21 @@ namespace Game.Cards
         // UnitAbilityCatalog.pyrokineticBonusDamage, ChallengeResult.ApplyAbilityModifiers.
         public const string Pyrokinetic = "Pyrokinetic";
 
-        // "Half (rounded down) of the damage dealt to the primary target is also dealt to up to
-        // TWO random orthogonally-adjacent units — allies or enemies alike — each run through the
-        // same ChallengeResult.ApplyAbilityModifiers chain as the main hit (so the splashed
-        // unit's own CeramicArmor, and the attacker's Critical/Hyper/Pyro, all still apply).
-        // Neither the attacker nor the primary target is ever a splash victim. A splash kill goes
-        // through the normal RemoveUnit path; ShockAttack/Berserk are NOT triggered by a splash
-        // hit. The result screen then shows one extra window per unit actually splashed. See
-        // BattleScreenUI.Combat.cs's ResolveSplashSkills / OnAttackResolved.
+        // "Half (rounded down) of the FINAL damage dealt to the primary target is also dealt to
+        // up to TWO random orthogonally-adjacent units — allies or enemies alike. The attacker's
+        // Critical/Hyper/Pyro are already baked into that primary number, so they are NOT
+        // re-applied here (that would double-count); only the splashed unit's OWN CeramicArmor is
+        // subtracted. Neither the attacker nor the primary target is ever a splash victim. A
+        // splash kill goes through the normal RemoveUnit path; Berserk on the victim DOES stack,
+        // ShockAttack does NOT propagate. The result screen then shows one extra window per unit
+        // actually splashed. See BattleScreenUI.Combat.cs's ResolveSplashSkills / OnAttackResolved.
         public const string Splash = "Splash";
 
         // Like Splash but a SINGLE random orthogonal neighbour of the primary target, and the
         // half-damage only lands if that randomly-picked neighbour carries UnitTypeTag.Bio — the
         // pick is rolled first and then type-checked, it does not scan for a Bio neighbour. Same
-        // modifier chain, same normal-kill handling, same one-extra-result-window treatment. See
-        // BattleScreenUI.Combat.cs.
+        // half-of-final-damage minus the victim's own CeramicArmor rule, same normal-kill
+        // handling, same one-extra-result-window treatment. See BattleScreenUI.Combat.cs.
         public const string Scorcher = "Scorcher";
 
         // A carrier of this ability summons UnitAbilityCatalog.raiseTheRotsUnitsPerSummoner extra

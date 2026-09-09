@@ -174,12 +174,12 @@ namespace Game.UI
         // UnitAbilities.Splash (up to two random orthogonal neighbours of the primary target) and
         // UnitAbilities.Scorcher (one random orthogonal neighbour, and only if that RANDOMLY
         // PICKED neighbour is Bio — not a search for a Bio neighbour). Each side-hit is half
-        // (rounded down) of the damage dealt to the primary target, run through the SAME
-        // ChallengeResult.ApplyAbilityModifiers chain as a normal hit (so the victim's own
-        // CeramicArmor, and the attacker's Critical/Hyper/Pyro, all still apply). A splash kill
-        // goes through the normal RemoveUnit path. Berserk on the victim DOES stack from a
-        // side-hit (per the user's own call); ShockAttack does NOT propagate. The attacker
-        // itself and the primary target are never victims.
+        // (rounded down) of the FINAL damage dealt to the primary target, then ONLY the victim's
+        // own CeramicArmor is subtracted — the attacker's Critical/Hyper/Pyro are already baked
+        // into that primary number, so re-applying them here would double-count (per the user's
+        // own call). A splash kill goes through the normal RemoveUnit path. Berserk on the victim
+        // DOES stack from a side-hit; ShockAttack does NOT propagate. The attacker itself and the
+        // primary target are never victims.
         private List<SecondarySkillHit> ResolveSplashSkills(UnitData attacker, UnitData defender, int primaryDamage)
         {
             var hits = new List<SecondarySkillHit>();
@@ -242,7 +242,14 @@ namespace Game.UI
         private SecondarySkillHit ApplySecondarySkillHit(UnitData attacker, UnitData victim, int half,
             AbilityMagnitudes magnitudes, string skill)
         {
-            int dmg = ChallengeResult.ApplyAbilityModifiers(half, attacker, victim, magnitudes);
+            // `half` is already taken from the primary target's FINAL damage, i.e. with the
+            // attacker's Critical/Hyper/Pyro already baked in — re-running the full
+            // ApplyAbilityModifiers chain here would double-count those flat bonuses. Only the
+            // victim's OWN defensive CeramicArmor applies (the victim is a different unit than the
+            // primary target, so its armour was never in that number).
+            int dmg = half;
+            if (dmg > 0 && victim.HasAbility(UnitAbilities.CeramicArmor))
+                dmg = Mathf.Max(0, dmg - magnitudes.CeramicArmorReduction);
             bool died = false;
             if (dmg > 0)
             {
