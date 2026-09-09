@@ -444,6 +444,143 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyHeroPrerequisite_PreservesExactBuildCardWithoutEarlyResourceReserve()
+        {
+            var committedCard = new Game.Cards.CardData(null);
+            var source = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicExpansionBase,
+                EconomyBuildCard = committedCard,
+                EconomyBuildResourceCost = new ResourceCost(),
+            };
+
+            AxisDemand prerequisite = DemandLayer.EconomyHeroPrerequisite(source);
+
+            Assert.That(prerequisite.Capability, Is.EqualTo(CapabilityKind.Hero));
+            Assert.That(prerequisite.EconomyBuildCard, Is.SameAs(committedCard));
+            Assert.That(prerequisite.EconomyBuildResourceCost, Is.Null,
+                "Missing-builder stage must claim the card instance without reserving H/E/M/T.");
+        }
+
+        [Test]
+        public void EconomyBuildCardClaim_BlocksOnlyTheExactHandInstance()
+        {
+            var claimed = new Game.Cards.CardData(null);
+            var duplicate = new Game.Cards.CardData(null);
+            var reservation = new MaterializationReservation();
+            reservation.UnresolvedDemands.Add(new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.Hero,
+                EconomyBuildCard = claimed,
+            });
+
+            Assert.That(reservation.ClaimsEconomyBuildCard(claimed), Is.True);
+            Assert.That(reservation.ClaimsEconomyBuildCard(duplicate), Is.False);
+        }
+
+        [Test]
+        public void EconomyResourceReserve_OpensOnlyInsideOneTurnBuilderHorizon()
+        {
+            var builder = new ArmySnapshot { ArmyId = 7, MaxMovement = 3 };
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Armies = new List<ArmySnapshot> { builder } },
+            };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                EconomyBuilderRoutes = new[]
+                {
+                    new EconomyBuilderRouteSnapshot
+                    {
+                        ArmyId = 7, TravelCost = 4, IsOnTarget = false,
+                    },
+                },
+            };
+
+            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+                snap, demand), Is.False);
+
+            demand.EconomyBuilderRoutes = new[]
+            {
+                new EconomyBuilderRouteSnapshot
+                {
+                    ArmyId = 7, TravelCost = 3, IsOnTarget = false,
+                },
+            };
+            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+                snap, demand), Is.True);
+        }
+
+        [Test]
+        public void EconomyRecoveryTarget_ExcludesFacilityOnlyHex()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var actor = new ArmySnapshot { ArmyId = 4, Hex = new HexCoord(0, 0) };
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Armies = new List<ArmySnapshot> { actor } },
+                Known = new KnownSnapshot
+                {
+                    Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>
+                    {
+                        new Game.Ai.AiMapMemory.KnownBuilding(
+                            new HexCoord(1, 0), player, false, null),
+                        new Game.Ai.AiMapMemory.KnownBuilding(
+                            new HexCoord(2, 0), player, false, null, isBase: true),
+                    },
+                },
+                Threat = new ThreatModel
+                {
+                    Contacts = new List<EnemyContactSnapshot>(),
+                    Threats = new List<AssetThreatSnapshot>(),
+                },
+            };
+
+            HexCoord? target = MissionContinuityLayer.SelectEconomyRecoveryTarget(
+                snap, player, actor);
+
+            Assert.That(target, Is.EqualTo(new HexCoord(2, 0)));
+        }
+
+        [Test]
+        public void EconomyRecoveryPolicy_ScoutResumesOnlyWhenBuildHexIsSafe()
+        {
+            MissionIntent scout = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
+
+            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+                EconomyTaskKind.BuildExtraction, scout, underImmediateThreat: false,
+                alreadyProtected: false, hasRecoveryTarget: true), Is.False);
+            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+                EconomyTaskKind.BuildExtraction, scout, underImmediateThreat: true,
+                alreadyProtected: false, hasRecoveryTarget: true), Is.True);
+            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+                EconomyTaskKind.BuildExtraction, lender: null, underImmediateThreat: false,
+                alreadyProtected: false, hasRecoveryTarget: true), Is.True);
+            Assert.That(MissionContinuityLayer.RequiresEconomyBuilderRecovery(
+                EconomyTaskKind.FoundBase, lender: null, underImmediateThreat: false,
+                alreadyProtected: true, hasRecoveryTarget: true), Is.False);
+        }
+
+        [Test]
+        public void EconomyRecoveryMission_UsesOnlyItsPreferredBuilder()
+        {
+            MissionProposal recovery = EconomyMission(
+                EconomyTaskKind.ReturnBuilder, new HexCoord(0, 0), null);
+            recovery.PreferredMoverArmyId = 19;
+            ArmySnapshot preferred = new ArmySnapshot { ArmyId = 19, HasHero = true };
+            ArmySnapshot substitute = new ArmySnapshot { ArmyId = 20, HasHero = true };
+
+            Assert.That(ProvisioningManager.IsEligibleEconomyRecoveryActor(
+                recovery, preferred), Is.True);
+            Assert.That(ProvisioningManager.IsEligibleEconomyRecoveryActor(
+                recovery, substitute), Is.False);
+        }
+
+        [Test]
         public void ProduceResource_GlobalValueTracksMatchingEconomyDeficit()
         {
             WorldSnapshot humanScarce = SnapshotForRecurringResource(ResourceType.Human);
