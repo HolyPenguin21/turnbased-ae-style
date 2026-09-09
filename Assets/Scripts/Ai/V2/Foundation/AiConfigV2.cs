@@ -18,12 +18,8 @@ namespace Game.Ai.V2
         public static bool frameLogEnabled = true;
 
         // =======================================================================================
-        //  MID-TURN LOOP ROLLOUT
+        //  MID-TURN LOOP BOUNDS
         // =======================================================================================
-        // Temporary kill switch. While false, the shipping batch pipeline and the existing
-        // StrategicReactionPass/Phase-B ordering remain byte-for-byte in control. The loop
-        // orchestrator may read this flag; lower layers must not branch on it.
-        public static bool midTurnLoopEnabled = false;
 
         // Safety bounds, not policy knobs. One task step is at most one canonical state-mutating
         // gameplay operation (or one explicit no-op result) followed by settlement and observation.

@@ -560,10 +560,11 @@ namespace Game.Ai.V2
             var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
             var allExecuted = new List<ExecutionResult>();
 
-            // Rollout is deliberately horizontal: Phase A has already run exactly once; only the
-            // existing Mission -> Allocation -> Provisioning -> Task Execution -> local Continuity
-            // segment repeats. Full mode (and therefore Aggression) remains on the proven batch path.
-            if (AiConfigV2.midTurnLoopEnabled && AiStrategyV2Scope.IsFocusScoped)
+            // The mid-turn architecture is canonical for the current focus scope: Phase A has
+            // already run exactly once; only Mission -> Allocation -> Provisioning -> Task Execution
+            // -> local Continuity repeats. Full/Aggression remains a compatibility branch until that
+            // task family is explicitly migrated into this loop.
+            if (AiStrategyV2Scope.IsFocusScoped)
             {
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
