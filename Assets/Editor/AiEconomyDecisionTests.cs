@@ -452,7 +452,7 @@ namespace Game.EditorTests
                 RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.EconomicExpansionBase,
                 EconomyBuildCard = committedCard,
-                EconomyBuildResourceCost = new ResourceCost(),
+                EconomyBuildResourceCost = new Game.Cards.ResourceCost(),
             };
 
             AxisDemand prerequisite = DemandLayer.EconomyHeroPrerequisite(source);
