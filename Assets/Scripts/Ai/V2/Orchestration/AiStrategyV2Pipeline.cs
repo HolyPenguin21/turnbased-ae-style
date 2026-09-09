@@ -635,7 +635,7 @@ namespace Game.Ai.V2
                         activeIntents, snapshot, reconObjectives);
                     devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
                         ? DevelopmentOpportunityEvaluator.Enumerate(
-                            snapshot, player, root, hand, ctx)
+                            snapshot, player, root, hand, aggressionObjectives)
                         : new List<DevelopmentOpportunity>();
                     demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
