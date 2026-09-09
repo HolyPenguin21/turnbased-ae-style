@@ -182,6 +182,40 @@ namespace Game.Ai.V2
                 default: return "DEV";
             }
         }
+
+        // Strategy-level mapping from factual state invalidations to the task families whose
+        // prior conclusions are now dirty. State owns the flags; Orchestration only asks this
+        // policy which local family to re-admit.
+        internal static StrategicInvalidationReason InvalidationMaskFor(DesireAxis axis)
+        {
+            switch (axis)
+            {
+                case DesireAxis.Recon:
+                    return StrategicInvalidationReason.ReconKnowledge
+                        | StrategicInvalidationReason.Contact
+                        | StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.EventState
+                        | StrategicInvalidationReason.ResourceSite;
+                case DesireAxis.Aggression:
+                    return StrategicInvalidationReason.Contact
+                        | StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.Capability
+                        | StrategicInvalidationReason.EventState;
+                case DesireAxis.Defence:
+                    return StrategicInvalidationReason.Threat
+                        | StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.Capability;
+                case DesireAxis.Economy:
+                case DesireAxis.Development:
+                    return StrategicInvalidationReason.Resources
+                        | StrategicInvalidationReason.Infrastructure
+                        | StrategicInvalidationReason.Hand
+                        | StrategicInvalidationReason.Capability
+                        | StrategicInvalidationReason.ResourceSite;
+                default:
+                    return StrategicInvalidationReason.None;
+            }
+        }
     }
 
     // --- Stage 2 output: the single shared world scan (WorldSnapshot). Every later stage reads
@@ -629,14 +663,14 @@ namespace Game.Ai.V2
                         noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
                         StrategicInvalidation recoveryTriggers = StrategicInterruptRegistry.Consume(
                             player, ctx.TurnNumber,
-                            StrategicInvalidationReason.ReconKnowledge
-                            | StrategicInvalidationReason.Contact
-                            | StrategicInvalidationReason.Actor
-                            | StrategicInvalidationReason.EventState
-                            | StrategicInvalidationReason.ResourceSite
-                            | StrategicInvalidationReason.External);
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
                             + $"progress={(recoveryProgress ? 1 : 0)} triggers={recoveryTriggers.Reasons}");
+                        if (!recoveryTriggers.Any)
+                        {
+                            AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no Recon invalidation");
+                            break;
+                        }
                         continue;
                     }
 
@@ -716,10 +750,12 @@ namespace Game.Ai.V2
                             MissionContinuityLayer.ReconcileStep(
                                 player, snapshot.TurnNumber, outcome);
                         noProgressCycles++;
-                        settledSteps++;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} no provisioned task; "
+                        AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
                             + $"noProgress={noProgressCycles}");
-                        continue;
+                        // No task command ran and no observation can differ. Repeating the same
+                        // admission under a fresh session only reproduces the same rejection; stop
+                        // this family without consuming the real bounded task-step budget.
+                        break;
                     }
 
                     WorldAnalysis.StepObservationStamp beforeStep =
@@ -766,15 +802,15 @@ namespace Game.Ai.V2
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
                     StrategicInvalidation triggers = StrategicInterruptRegistry.Consume(
                         player, ctx.TurnNumber,
-                        StrategicInvalidationReason.ReconKnowledge
-                        | StrategicInvalidationReason.Contact
-                        | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.EventState
-                        | StrategicInvalidationReason.ResourceSite
-                        | StrategicInvalidationReason.External);
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
                         + $"triggers={triggers.Reasons} noProgress={noProgressCycles}");
+                    if (!triggers.Any)
+                    {
+                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no Recon invalidation");
+                        break;
+                    }
                 }
 
                 if (settledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
