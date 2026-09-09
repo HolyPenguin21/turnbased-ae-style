@@ -370,7 +370,8 @@ namespace Game.Ai.V2
                         && (e.StopReason == ExecutionStopReason.BattleStarted
                             || e.StopReason == ExecutionStopReason.HexEventStarted);
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
-                        || e.InfrastructureChanged || e.RaidOperationStarted || raidEngaged;
+                        || e.InfrastructureChanged || e.CombatChanged
+                        || e.RaidOperationStarted || raidEngaged;
                     if (o.MissionKind == MissionKind.Raid)
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;

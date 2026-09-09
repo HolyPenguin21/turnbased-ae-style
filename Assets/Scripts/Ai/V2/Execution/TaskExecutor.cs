@@ -42,6 +42,7 @@ namespace Game.Ai.V2
         public bool EnteredStealth;
         public bool StealthChanged;
         public bool InfrastructureChanged;
+        public bool CombatChanged;
         public bool RaidOperationStarted;
 
         // Provisioned mission that produced this execution ledger row.
@@ -90,8 +91,9 @@ namespace Game.Ai.V2
             get
             {
                 bool moved = StepsMoved > 0;
-                bool succeeded = ReachedGoal || moved || InfrastructureChanged;
-                bool changed = moved || EnteredStealth || StealthChanged || InfrastructureChanged;
+                bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged;
+                bool changed = moved || EnteredStealth || StealthChanged
+                    || InfrastructureChanged || CombatChanged;
                 // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
                 return new V2ActionOutcome(
                     succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
@@ -443,7 +445,7 @@ namespace Game.Ai.V2
         {
             if (result == null) return;
             if (result.StepsMoved > 0 || result.EnteredStealth
-                || result.StealthChanged || result.InfrastructureChanged)
+                || result.StealthChanged || result.InfrastructureChanged || result.CombatChanged)
                 V2StateVersion.Bump();
             result.StateVersionAfter = V2StateVersion.Current;
         }

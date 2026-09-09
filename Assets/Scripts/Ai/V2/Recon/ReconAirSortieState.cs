@@ -66,6 +66,11 @@ namespace Game.Ai.V2
         public bool MustRecoverThisTurn;                            // real endurance deadline reached — Return is a hard priority this turn
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
 
+        // Set only after a confirmed launch/move and consumed by the next admitted actor step.
+        // This makes the post-arrival opportunistic-strike check survive an orchestration boundary
+        // without asking the strategic layer to remember tactical coroutine-local state.
+        public bool ArrivalStrikeCheckPending;
+
         // Turns elapsed since the wing actually left its airfield: 0 on the launch turn itself,
         // 1 on its first full airborne turn, and so on. Derived from turn arithmetic — NOT an
         // incrementing counter — so it can never drift from the real airborne lifetime when a
