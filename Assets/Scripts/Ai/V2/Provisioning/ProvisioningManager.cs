@@ -217,123 +217,10 @@ namespace Game.Ai.V2
     {
         private static int StealthTransitionApCost => AiConfigV2.scoutOptionalStealthAp;
 
-        // Read-only capacity witness shared upward with Economy Demand and Missions. It answers
-        // whether an existing actor can own the objective; session-local contention is still
-        // revalidated by ProvisionEconomy immediately before binding.
-        internal static bool HasEconomyBuilder(WorldSnapshot snap, PlayerSetupData player,
-            AiTurnContext ctx, HexCoord target, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, float buildValue)
-        {
-            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
-                snap, target, activeIntents, commitments).ToList();
-            if (candidates.Any(a => a.Hex.Equals(target)))
-                return true; // a garrison is valid only because no travel is required
-            if (candidates.Count == 0)
-                return false;
-            if (player == null || ctx?.Map == null)
-                return true; // snapshot-only simulations/tests: structural witness
-            foreach (ArmySnapshot candidate in candidates)
-            {
-                ArmyData live = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => a != null && a.Id == candidate.ArmyId);
-                if (live == null)
-                    continue;
-                int routeCost = EconomyPathCost(ctx.Map, live, target);
-                if (routeCost == int.MaxValue)
-                    continue;
-                MissionIntent assignment = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Status == IntentStatus.Active
-                    && i.PreferredMoverArmyId == candidate.ArmyId);
-                if (assignment != null && assignment.Kind != MissionKind.Economy
-                    && !EconomyLoanAllowed(assignment, buildValue, routeCost,
-                        live.CurrentMovement, out _))
-                    continue;
-                return true;
-            }
-            return false;
-        }
-
-        internal static float EconomyActorTravelCost(WorldSnapshot snap, HexCoord target,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            PlayerSetupData player = null, AiTurnContext ctx = null)
-        {
-            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
-                snap, target, activeIntents, commitments).ToList();
-            if (candidates.Count == 0)
-                return AiConfigV2.economyBaseFoundScanRadius + 4f;
-            if (candidates.Any(a => a.Hex.Equals(target)))
-                return 0f;
-            if (player == null || ctx?.Map == null)
-                return candidates.Min(a => (float)HexGridMath.Distance(a.Hex, target));
-
-            int best = int.MaxValue;
-            foreach (ArmySnapshot candidate in candidates)
-            {
-                ArmyData live = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => a != null && a.Id == candidate.ArmyId);
-                if (live == null)
-                    continue;
-                int cost = EconomyPathCost(ctx.Map, live, target);
-                if (cost < best)
-                    best = cost;
-            }
-            return best != int.MaxValue
-                ? best
-                : AiConfigV2.economyBaseFoundScanRadius + 4f;
-        }
-
-        internal static float EconomyHeroOpportunityCost(WorldSnapshot snap,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
-        {
-            List<ArmySnapshot> candidates = EconomyBuilderSnapshots(
-                snap, default(HexCoord), activeIntents, commitments, ignoreTarget: true).ToList();
-            return candidates.Count > 0 ? candidates.Min(a => a.EffectiveArmyPower) : 0f;
-        }
-
-        private static IEnumerable<ArmySnapshot> EconomyBuilderSnapshots(WorldSnapshot snap,
-            HexCoord target, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments, bool ignoreTarget = false)
-        {
-            foreach (ArmySnapshot army in snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
-            {
-                if (army == null || !army.HasHero || army.IsPrison
-                    || army.IsAir || army.IsAirfield)
-                    continue;
-                if (army.IsGarrison)
-                {
-                    if (!ignoreTarget && army.Hex.Equals(target))
-                        yield return army;
-                    continue;
-                }
-
-                MissionIntent assignment = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Status == IntentStatus.Active && i.PreferredMoverArmyId == army.ArmyId);
-                bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);
-                if (assignment != null)
-                {
-                    if (assignment.Kind == MissionKind.Economy)
-                    {
-                        if (ignoreTarget || assignment.Economy == null
-                            || !assignment.Economy.TargetHex.Equals(target))
-                            continue;
-                    }
-                    else if (!EconomyDonorStructurallyEligible(assignment))
-                    {
-                        continue;
-                    }
-                }
-                if (claimed && assignment == null)
-                    continue;
-                if (UnderImmediateThreat(snap, army.Hex))
-                    continue;
-                yield return army;
-            }
-        }
-
+        // Live structural revalidation uses the same canonical army-role predicate Analysis
+        // froze into ArmySnapshot.IsMobileEconomyBuilder.
         private static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player) =>
-            army != null && army.Owner == player && !army.IsPrison && army.Members != null
-            && !army.IsGarrison && !army.IsAirfield && !army.IsAirArmy
-            && army.Members.Any(u => u != null && u.IsHero);
+            army != null && army.Owner == player && AiArmyRoles.IsHeroLed(army);
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation,
@@ -633,11 +520,11 @@ namespace Game.Ai.V2
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             List<ArmyData> heroes = ArmyRegistry.AllForOwner(player)
                 .Where(a => IsMobileEconomyHero(a, player)
-                    && !UnderImmediateThreat(session.Snapshot, a.Hex)
+                    && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
                     && !session.ClaimedArmyIds.Contains(a.Id)
                     && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
                         && !i.IntentKey.Equals(currentIntentKey)
-                        && !EconomyDonorStructurallyEligible(i)))
+                        && !DemandLayer.EconomyDonorStructurallyEligible(i)))
                 .OrderBy(a => m.PreferredMoverArmyId == a.Id ? 0
                     : standingIntents.Any(i => i.PreferredMoverArmyId == a.Id) ? 2 : 1)
                 .ThenBy(a => a.HasActivatedThisTurn ? 1 : 0)
@@ -651,13 +538,13 @@ namespace Game.Ai.V2
 
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
                 && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == hero.Id
-                && EconomyDonorStructurallyEligible(i));
-            int distance = EconomyPathCost(ctx.Map, hero, target.TargetHex);
+                && DemandLayer.EconomyDonorStructurallyEligible(i));
+            int distance = SafeStepPathing.FindSafePathCost(ctx.Map, hero, target.TargetHex);
             if (distance == int.MaxValue)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("no safe economy route"));
             if (donor != null)
             {
-                if (!EconomyLoanAllowed(donor, target.BuildValue, distance,
+                if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue, distance,
                         hero.CurrentMovement, out float loanNet))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
@@ -678,7 +565,7 @@ namespace Game.Ai.V2
                     new ProvisionRequirement(realAp, CostVector(target.BuildResourceCost)),
                     "economy completion resources no longer spendable"));
             if (distance <= hero.CurrentMovement)
-                ReserveEconomyCost(player, ctx.TurnNumber, owner,
+                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, owner,
                     target.BuildResourceCost, target.BuildApCost);
 
             MissionIntent loan = donor;
@@ -700,73 +587,10 @@ namespace Game.Ai.V2
             });
         }
 
-        private static void ReserveEconomyCost(PlayerSetupData player, int turn, string owner,
-            ResourceCost cost, float buildAp)
-        {
-            if (buildAp > 0f)
-                StrategicResourceReservationLedger.Upsert(player, turn,
-                    new StrategicResourceReservation
-                    {
-                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
-                        Resource = StrategicReservedResource.ActionPoints, Amount = buildAp,
-                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
-                    });
-            if (cost == null) return;
-            foreach (ResourceType type in ResourceBundle.All)
-            {
-                int amount = cost.Get(type);
-                if (amount <= 0) continue;
-                StrategicResourceReservationLedger.Upsert(player, turn,
-                    new StrategicResourceReservation
-                    {
-                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
-                        Resource = StrategicResourceReservationLedger.Map(type), Amount = amount,
-                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
-                    });
-            }
-        }
-
         private static ResourceVector CostVector(ResourceCost cost) => cost == null
             ? ResourceVector.Zero
             : new ResourceVector(0f, cost.Get(ResourceType.Human), cost.Get(ResourceType.Energy),
                 cost.Get(ResourceType.Materials), cost.Get(ResourceType.Tech));
-
-        private static int EconomyPathCost(HexMap map, ArmyData army, HexCoord target)
-        {
-            if (army == null || map == null) return int.MaxValue;
-            System.Func<HexCoord, bool> block = h => !h.Equals(target)
-                && (AiMapMemory.KnownEnemySightingAt(army.Owner, h).HasValue
-                    || AiMapMemory.IsScoutDangerous(army.Owner, h));
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, target, blockHex: block);
-            return path?.TotalCost ?? int.MaxValue;
-        }
-
-        private static bool UnderImmediateThreat(WorldSnapshot snap, HexCoord hex) =>
-            snap?.Threat?.Threats != null && snap.Threat.Threats.Any(t => t?.Asset != null
-                && t.Asset.Hex.Equals(hex) && t.Severity >= AiConfigV2.defenceSeverityTrigger
-                && (!t.EnemyEta.HasValue || t.EnemyEta.Value <= 1));
-
-        internal static bool EconomyDonorStructurallyEligible(MissionIntent donor)
-        {
-            if (donor == null || (donor.Funding != CommitmentTier.None
-                && donor.Funding != CommitmentTier.Soft))
-                return false;
-            if (donor.Kind == MissionKind.Scout)
-                return donor.Scout != null && donor.Scout.Kind != ScoutTargetKind.Surveil;
-            if (donor.Kind == MissionKind.Raid)
-                return donor.Raid != null && !donor.Raid.OperationStarted;
-            return false;
-        }
-
-        internal static bool EconomyLoanAllowed(MissionIntent donor, float buildValue,
-            int routeCost, int movementAvailable, out float netValue)
-        {
-            netValue = buildValue - AiConfigV2.economyLoanContinuationLoss
-                - Mathf.Max(0, routeCost) * AiConfigV2.economySiteTravelPenalty;
-            return EconomyDonorStructurallyEligible(donor)
-                && routeCost <= movementAvailable
-                && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
-        }
 
         // RECON-AIR-01 (round 5) — claim the air actor/subset Assignment already picked, THROUGH
         // THE SAME generic funding/provisioning accounting Ground uses: the real AP/Energy Assignment
