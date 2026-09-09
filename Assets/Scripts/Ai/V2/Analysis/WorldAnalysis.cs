@@ -74,7 +74,7 @@ namespace Game.Ai.V2
             snap.Threat = BuildThreat(player, ctx, snap);
 
             SelfSnapshot s = snap.Self;
-            AiDebugLog.Write($"[AI][V2] {player?.Nickname} op-refresh — AP {s.ActionPoints} "
+            AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} op-refresh — AP {s.ActionPoints} "
                 + $"hand {s.Hand.Count}/{s.HandCapacity} armies {s.Armies.Count} "
                 + $"field {F(s.FieldPower)} garrison {F(s.GarrisonPower)} "
                 + $"bestStack {F(s.BestStackPotential)} threats {snap.Threat?.Threats?.Count ?? 0}");
@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             snap.Economy = BuildEconomy(player, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
-            AiDebugLog.Write($"[AI][V2] {player?.Nickname} knowledge-refresh — "
+            AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} knowledge-refresh — "
                 + $"enemyKnown {snap.Known.EnemySightings.Count} neutralKnown {snap.Known.NeutralSightings.Count} "
                 + $"visited {snap.MapKnowledge.VisitedHexes}/{snap.MapKnowledge.TotalHexes} "
                 + $"frontier {snap.MapKnowledge.Frontier.Count} threats {snap.Threat.Threats.Count}");
@@ -442,7 +442,7 @@ namespace Game.Ai.V2
                 + $"| income={F(self.PerTurnIncome.Human)}/{F(self.PerTurnIncome.Energy)}/"
                 + $"{F(self.PerTurnIncome.Materials)}/{F(self.PerTurnIncome.Tech)}");
             foreach (ArmySnapshot a in self.Armies)
-                AiDebugLog.Write($"[AI][V2]     army \"{ArmyLabel(a)}\" @{a.Hex.Q},{a.Hex.R} eff={F(a.EffectiveArmyPower)} "
+                AiDebugLog.WriteVerbose($"[AI][V2]     army \"{ArmyLabel(a)}\" @{a.Hex.Q},{a.Hex.R} eff={F(a.EffectiveArmyPower)} "
                     + $"(compo={P(a.CompositionQuality)}, rawAtk/Def={F(a.AttackSum)}/{F(a.DefenseSum)}, n={a.MemberCount}"
                     + $"{(a.HasHero ? ", hero" : "")}){(a.IsGarrison ? " [garrison]" : "")}");
 
@@ -454,7 +454,7 @@ namespace Game.Ai.V2
                 + $"{F(eco.IncomeTarget.Materials)}/{F(eco.IncomeTarget.Tech)} total={F(eco.IncomeTarget.Sum)} "
                 + $"actualIncome={F(self.PerTurnIncome.Sum)}");
             foreach (EconomyResourceStanding rs in eco.PerType)
-                AiDebugLog.Write($"[AI][V2]     eco.{rs.Type} own={F(rs.OwnIncome)} fieldMedian={F(rs.FieldMedianIncome)} "
+                AiDebugLog.WriteVerbose($"[AI][V2]     eco.{rs.Type} own={F(rs.OwnIncome)} fieldMedian={F(rs.FieldMedianIncome)} "
                     + $"ratio={F(rs.Ratio)}");
 
             int honest = th.Contacts.Count(c => c.Source == ContactSource.Honest);
@@ -462,7 +462,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2]   threat: contacts {th.Contacts.Count} (honest={honest} cheat={cheat}) "
                 + $"assets {th.Assets.Count} listedThreats {th.Threats.Count} siege={(th.UnderSiege ? 1 : 0)}");
             foreach (AssetThreatSnapshot t in th.Threats.OrderByDescending(x => x.Severity).Take(6))
-                AiDebugLog.Write($"[AI][V2]     THREAT sev={F(t.Severity)} asset={t.Asset.Kind}@{t.Asset.Hex.Q},{t.Asset.Hex.R} "
+                AiDebugLog.WriteVerbose($"[AI][V2]     THREAT sev={F(t.Severity)} asset={t.Asset.Kind}@{t.Asset.Hex.Q},{t.Asset.Hex.R} "
                     + $"val={F(t.Asset.Value)} def={F(t.Asset.Defense)} vs {ContactLabel(t.Contact)} "
                     + $"canDmg={(t.CanDamage ? 1 : 0)} win={P(t.AttackWinChance)} "
                     + $"etaE={(t.EnemyEta?.ToString() ?? "-")} etaR={(t.ResponseEta?.ToString() ?? "-")} "

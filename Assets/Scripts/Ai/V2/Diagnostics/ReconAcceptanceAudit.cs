@@ -276,14 +276,20 @@ namespace Game.Ai.V2
             if (state == null || state.SummaryWritten)
                 return;
             state.SummaryWritten = true;
+            int passed = 0;
+            int failed = 0;
+            int notObserved = 0;
             foreach (string scenario in Scenarios)
             {
                 Status status = state.StatusByScenario.TryGetValue(scenario, out Status s)
                     ? s
                     : Status.NotObserved;
-                AiDebugLog.Write($"[AI][V2][Recon][Acceptance][Summary] turn={turn} scenario={scenario} "
-                    + $"status={Name(status)}");
+                if (status == Status.Pass) passed++;
+                else if (status == Status.Fail) failed++;
+                else notObserved++;
             }
+            AiDebugLog.Write($"[AI][V2][Recon][Acceptance][Summary] turn={turn} "
+                + $"pass={passed} fail={failed} notObserved={notObserved}");
         }
 
         private static TurnAudit StateFor(PlayerSetupData player, int turn)
@@ -319,8 +325,12 @@ namespace Game.Ai.V2
             if (previous == final && previous != Status.NotObserved)
                 return;
             state.SummaryWritten = false;
-            AiDebugLog.Write($"[AI][V2][Recon][Acceptance] turn={turn} scenario={scenario} "
-                + $"status={Name(final)} {details}");
+            string line = $"[AI][V2][Recon][Acceptance] turn={turn} scenario={scenario} "
+                + $"status={Name(final)} {details}";
+            if (final == Status.Fail)
+                AiDebugLog.Write(line);
+            else
+                AiDebugLog.WriteVerbose(line);
         }
 
         private static string Name(Status status)

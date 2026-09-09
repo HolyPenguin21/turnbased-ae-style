@@ -217,7 +217,7 @@ namespace Game.Ai.V2
             AirReconRouteCandidate c = AirReconRouteScorer.Score(inputs);
             if (c.Rejected)
             {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Route] actor=#{moverArmyId} "
+                AiDebugLog.WriteVerbose($"[AI][V2][Recon][Air][Route] actor=#{moverArmyId} "
                     + $"to=({h.Q},{h.R}) DROP — {c.Breakdown}");
                 return null;
             }

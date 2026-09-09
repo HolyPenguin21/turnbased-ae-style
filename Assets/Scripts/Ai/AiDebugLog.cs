@@ -16,6 +16,12 @@ namespace Game.Ai
         private const string RelativePath = "Logs/AiDebug.log";
         private static string _path;
 
+        // Full candidate/allocation/snapshot diagnostics are useful while tuning one subsystem,
+        // but make the normal whole-game trace hard to read. This is the single verbosity owner
+        // for both V1 and V2 logging; decision, action, warning and error lines still use Write.
+        // Mutable so a debug console/inspector can enable it for a focused run.
+        public static bool VerboseEnabled = false;
+
         // BeforeSceneLoad fires exactly once per game run (Editor Play Mode entry, or a
         // standalone build's own launch), before anything else in the very first scene has had a
         // chance to log — guarantees the file exists and is fresh no matter which scene/object
@@ -54,6 +60,22 @@ namespace Game.Ai
             [CallerFilePath] string callerFile = "",
             [CallerMemberName] string callerMember = "",
             [CallerLineNumber] int callerLine = 0)
+            => WriteCore(message, callerFile, callerMember, callerLine);
+
+        // Verbose calls retain the ORIGINAL call-site metadata. Calling Write(message) from here
+        // would incorrectly tag every line as AiDebugLog.WriteVerbose.
+        public static void WriteVerbose(string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (!VerboseEnabled)
+                return;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        private static void WriteCore(string message, string callerFile,
+            string callerMember, int callerLine)
         {
             string source = string.IsNullOrEmpty(callerFile) ? "?" : Path.GetFileNameWithoutExtension(callerFile);
             string tagged = $"[{source}.{callerMember}:{callerLine}] {message}";

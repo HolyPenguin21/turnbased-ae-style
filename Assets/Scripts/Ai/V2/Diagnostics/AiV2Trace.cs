@@ -350,7 +350,11 @@ namespace Game.Ai.V2
         {
             string id = string.IsNullOrEmpty(corrId) ? "" : $"[{corrId}]";
             string body = string.IsNullOrEmpty(detail) ? tag : tag + " " + detail;
-            Write($"[AI][V2]{id}[CHECK][{level}] {body}", cf, cm, cl);
+            string line = $"[AI][V2]{id}[CHECK][{level}] {body}";
+            if (level == "OK")
+                WriteVerbose(line, cf, cm, cl);
+            else
+                Write(line, cf, cm, cl);
         }
 
         private static string Num(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
@@ -358,6 +362,12 @@ namespace Game.Ai.V2
         private static void Write(string line, string cf, string cm, int cl)
         {
             try { AiDebugLog.Write(line, cf, cm, cl); }
+            catch { /* a logging failure must never break the AI turn */ }
+        }
+
+        private static void WriteVerbose(string line, string cf, string cm, int cl)
+        {
+            try { AiDebugLog.WriteVerbose(line, cf, cm, cl); }
             catch { /* a logging failure must never break the AI turn */ }
         }
     }

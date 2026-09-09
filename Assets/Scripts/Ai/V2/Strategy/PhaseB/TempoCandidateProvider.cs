@@ -95,11 +95,12 @@ namespace Game.Ai.V2
                     ActionKey = "nc:" + nc.StableKey,
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
-            foreach (string reason in nonCombatBlocked
-                .Where(x => !string.IsNullOrEmpty(x))
-                .Distinct(System.StringComparer.Ordinal)
-                .OrderBy(x => x, System.StringComparer.Ordinal))
-                AiDebugLog.Write($"[AI][V2]     cand PlayNonCombat BLOCKED: {reason}");
+            if (verbose)
+                foreach (string reason in nonCombatBlocked
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .Distinct(System.StringComparer.Ordinal)
+                    .OrderBy(x => x, System.StringComparer.Ordinal))
+                    AiDebugLog.WriteVerbose($"[AI][V2]     cand PlayNonCombat BLOCKED: {reason}");
 
             // §P0.1 — only card alternatives actually selectable under the shared generation
             // budget and live spendable pools suppress Draw. Structurally blocked cards do not.

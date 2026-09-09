@@ -623,7 +623,7 @@ namespace Game.Ai.V2
             });
 
             if (state.Count > 0)
-                AiDebugLog.Write($"[AI][V2] continuity — {state.Count} intent(s): "
+                AiDebugLog.WriteVerbose($"[AI][V2] continuity — {state.Count} intent(s): "
                     + string.Join(" ", state.All.Select(i =>
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));

@@ -1244,7 +1244,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
             {
                 MissionRequirements r = m.Requirements;
-                AiDebugLog.Write($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
+                AiDebugLog.WriteVerbose($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
                     + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
