@@ -788,6 +788,17 @@ namespace Game.Ai.V2
             return commitments;
         }
 
+        // Mid-turn variant: apply exactly one settled outcome without aging, stalling or
+        // reaping unrelated intents. ReconcileAfterTurn remains the sole end-of-turn sweep owner.
+        public static void ReconcileStep(PlayerSetupData player, int turn,
+            MissionTurnOutcome outcome)
+        {
+            if (player == null || outcome == null)
+                return;
+            ReconcileOutcome(MissionIntentRegistry.GetOrCreate(player),
+                AiAllocatorStateRegistry.GetOrCreate(player), outcome, turn);
+        }
+
         public static void ReconcileAfterTurn(PlayerSetupData player, int turn,
             IReadOnlyList<MissionTurnOutcome> outcomes)
         {
@@ -798,97 +809,7 @@ namespace Game.Ai.V2
             foreach (MissionTurnOutcome o in outcomes ?? new List<MissionTurnOutcome>())
             {
                 seen.Add(o.IntentKey);
-                state.TryGet(o.IntentKey, out MissionIntent intent);
-
-                string aid = o.Proposal?.AttemptId;
-                AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
-                    + (o.ObjectiveSatisfied ? " satisfied" : "")
-                    + (o.StructuralFailure ? " structural" : "")
-                    + $" {o.IntentKey}");
-
-                if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
-                {
-                    // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
-                    // OTHER than this actor's own execution reaching goal (another scout opened it
-                    // mid-turn, or provisioning found it already live-satisfied) is a satisfied
-                    // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
-                    // began executing this turn, CREATE — the durable ground-scout intent so
-                    // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
-                    // (its hex now fails IsIntentStillValid). Mirrors the own-execution
-                    // ExecutionResult.DurableRoleContinues ProductiveStop path. Surveil and genuine
-                    // own-execution completions still retire.
-                    if (o.ObjectiveSatisfiedExternally)
-                    {
-                        bool existingScoutRole = intent != null
-                            && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
-                        // Fresh role: the mission was provisioned AND executed at least one step
-                        // this turn (so ReconPatrolState already exists). A provisioning-only
-                        // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
-                        // false / MadeProgress == false and is correctly NOT made durable.
-                        bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress
-                            && o.ScoutKind != ScoutTargetKind.Surveil;
-
-                        if (existingScoutRole)
-                        {
-                            // Count the AP / steps the scout actually spent before the waypoint
-                            // was taken (accumulated-state preservation), same as any other
-                            // productive turn — AdvanceIntent owns that accounting.
-                            o.MadeProgress = true;
-                            AdvanceIntent(intent, o, turn, state, allocState);
-                            AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
-                                + "externally; durable scout role kept for next-turn re-focus");
-                            continue;
-                        }
-                        if (freshScoutRole)
-                        {
-                            if (TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
-                                continue;
-                            CreateIntent(state, o, turn);
-                            AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
-                                + "this turn; waypoint satisfied externally, durable intent created for re-focus");
-                            continue;
-                        }
-                    }
-                    if (intent != null)
-                    {
-                        state.Remove(o.IntentKey);
-                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
-                    }
-                    continue;
-                }
-
-                if (o.StructuralFailure)
-                {
-                    if (intent != null) state.Remove(o.IntentKey);
-                    string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
-                    StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
-                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
-                    continue;
-                }
-
-                if (o.Outcome == ExecutionOutcome.Failed)
-                {
-                    if (intent != null)
-                    {
-                        state.Remove(o.IntentKey);
-                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
-                    }
-                    continue;
-                }
-
-                if (intent != null)
-                {
-                    AdvanceIntent(intent, o, turn, state, allocState);
-                }
-                else if (o.MadeProgress && o.HasScoutPayload)
-                {
-                    if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
-                        CreateIntent(state, o, turn);
-                }
-                else if (o.HasRaidPayload && o.RaidOperationStarted)
-                {
-                    CreateRaidIntent(state, o, turn);
-                }
+                ReconcileOutcome(state, allocState, o, turn);
             }
 
             foreach (MissionIntent intent in state.All.ToList())
@@ -917,6 +838,103 @@ namespace Game.Ai.V2
                         + $"age {intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
                 }
             }
+        }
+
+        private static void ReconcileOutcome(MissionIntentState state,
+            AiAllocatorState allocState, MissionTurnOutcome o, int turn)
+        {
+            state.TryGet(o.IntentKey, out MissionIntent intent);
+
+            string aid = o.Proposal?.AttemptId;
+            AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
+                + (o.ObjectiveSatisfied ? " satisfied" : "")
+                + (o.StructuralFailure ? " structural" : "")
+                + $" {o.IntentKey}");
+
+            if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
+            {
+                // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
+                // OTHER than this actor's own execution reaching goal (another scout opened it
+                // mid-turn, or provisioning found it already live-satisfied) is a satisfied
+                // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
+                // began executing this turn, CREATE — the durable ground-scout intent so
+                // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
+                // (its hex now fails IsIntentStillValid). Mirrors the own-execution
+                // ExecutionResult.DurableRoleContinues ProductiveStop path. Surveil and genuine
+                // own-execution completions still retire.
+                if (o.ObjectiveSatisfiedExternally)
+                {
+                    bool existingScoutRole = intent != null
+                        && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
+                    // Fresh role: the mission was provisioned AND executed at least one step
+                    // this turn (so ReconPatrolState already exists). A provisioning-only
+                    // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
+                    // false / MadeProgress == false and is correctly NOT made durable.
+                    bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress
+                        && o.ScoutKind != ScoutTargetKind.Surveil;
+
+                    if (existingScoutRole)
+                    {
+                        // Count the AP / steps the scout actually spent before the waypoint
+                        // was taken (accumulated-state preservation), same as any other
+                        // productive turn — AdvanceIntent owns that accounting.
+                        o.MadeProgress = true;
+                        AdvanceIntent(intent, o, turn, state, allocState);
+                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
+                            + "externally; durable scout role kept for next-turn re-focus");
+                        return;
+                    }
+                    if (freshScoutRole)
+                    {
+                        if (TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
+                            return;
+                        CreateIntent(state, o, turn);
+                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
+                            + "this turn; waypoint satisfied externally, durable intent created for re-focus");
+                        return;
+                    }
+                }
+                if (intent != null)
+                {
+                    state.Remove(o.IntentKey);
+                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
+                }
+                return;
+            }
+
+            if (o.StructuralFailure)
+            {
+                if (intent != null) state.Remove(o.IntentKey);
+                string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
+                StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
+                AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
+                return;
+            }
+
+            if (o.Outcome == ExecutionOutcome.Failed)
+            {
+                if (intent != null)
+                {
+                    state.Remove(o.IntentKey);
+                    AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
+                }
+                return;
+            }
+
+            if (intent != null)
+            {
+                AdvanceIntent(intent, o, turn, state, allocState);
+            }
+            else if (o.MadeProgress && o.HasScoutPayload)
+            {
+                if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
+                    CreateIntent(state, o, turn);
+            }
+            else if (o.HasRaidPayload && o.RaidOperationStarted)
+            {
+                CreateRaidIntent(state, o, turn);
+            }
+
         }
 
         private static void AdvanceIntent(MissionIntent intent, MissionTurnOutcome o, int turn,
