@@ -202,16 +202,65 @@ namespace Game.Ai.V2
         // per-mission ExecutionResult when lp.Mission is set, so a ProvisionedMission that never
         // actually launched still gets a real ledger row (StepsMoved=0, an honest StopReason)
         // instead of silently vanishing from MissionOutcomeLedger/MissionContinuity.
-        private static IEnumerator LaunchOne(AirLaunchPlan lp, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result,
-            List<ExecutionResult> perMissionResults = null)
+        // Compatibility adapter for the current terminal pass: launch atomically, then let the
+        // same actor consume its remaining movement through the bounded airborne adapter.
+        private static IEnumerator LaunchOne(AirLaunchPlan lp, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            AirReconExecutionResult result, List<ExecutionResult> perMissionResults = null)
+        {
+            yield return LaunchOneCore(lp, player, root, ctx, snapshot, result,
+                perMissionResults, continueAfterLaunch: true);
+        }
+
+        // One admitted launch task step. LaunchRoutine itself is intentionally indivisible:
+        // formation, activation-Energy reservation and the first move either all settle or the
+        // aircraft are returned to storage. No later airborne action is executed here.
+        internal static IEnumerator LaunchOneStep(AirLaunchPlan lp, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            AirReconExecutionResult result, List<ExecutionResult> perMissionResults = null)
+        {
+            result ??= new AirReconExecutionResult();
+            if (lp == null || player == null || root == null || ctx?.Map == null)
+            {
+                result.StateVersionAfter = V2StateVersion.Current;
+                yield break;
+            }
+            int apBefore = root.ActionPoints;
+            int h0 = root != null ? root.GetResource(Game.Economy.ResourceType.Human) : 0;
+            int e0 = root != null ? root.GetResource(Game.Economy.ResourceType.Energy) : 0;
+            int m0 = root != null ? root.GetResource(Game.Economy.ResourceType.Materials) : 0;
+            int t0 = root != null ? root.GetResource(Game.Economy.ResourceType.Tech) : 0;
+
+            yield return LaunchOneCore(lp, player, root, ctx, snapshot, result,
+                perMissionResults, continueAfterLaunch: false);
+
+            result.ApSpent = Math.Max(0f,
+                apBefore - (root != null ? root.ActionPoints : apBefore));
+            int hSpent = root != null ? Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human)) : 0;
+            int eSpent = root != null ? Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy)) : 0;
+            int mSpent = root != null ? Math.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials)) : 0;
+            int tSpent = root != null ? Math.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech)) : 0;
+            result.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
+                ? new Game.Cards.ResourceCost
+                    { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
+                : null;
+            result.StateVersionAfter = V2StateVersion.Current;
+        }
+
+        private static IEnumerator LaunchOneCore(AirLaunchPlan lp, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            AirReconExecutionResult result, List<ExecutionResult> perMissionResults,
+            bool continueAfterLaunch)
         {
             ProvisionedMission pm = lp?.Mission;
+            V2ResourceStamp resourcesBefore = root != null ? AiV2Trace.Stamp(root) : default;
             void ReportNoLaunch(ExecutionStopReason why)
             {
                 if (pm == null || perMissionResults == null) return;
                 ExecutionResult er = NewPerMissionResult(pm, lp.AirfieldHex, -1);
                 er.StopReason = why;
+                er.ResourcesBefore = resourcesBefore;
+                if (root != null) er.ResourcesAfter = AiV2Trace.Stamp(root);
                 er.StateVersionAfter = V2StateVersion.Current;
                 perMissionResults.Add(er);
             }
@@ -265,7 +314,9 @@ namespace Game.Ai.V2
             };
 
             int apBeforeLaunch = root.ActionPoints;
-            yield return AiAirSortiePlanner.LaunchRoutine(player, launchDecision, ctx, AirSortieKind.Recon);
+            var launchTrace = new AiMoveExecutionTrace();
+            yield return AiAirSortiePlanner.LaunchRoutine(
+                player, launchDecision, ctx, AirSortieKind.Recon, launchTrace);
 
             ArmyData launched = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
@@ -334,9 +385,10 @@ namespace Game.Ai.V2
             {
                 perMission.StepsMoved = 1; // the launch's own first step, off the airfield
                 perMission.StartHex = lp.AirfieldHex;
+                perMission.ResourcesBefore = resourcesBefore;
             }
 
-            if (launched.Controller != null && launched.CurrentMovement > 0
+            if (continueAfterLaunch && launched.Controller != null && launched.CurrentMovement > 0
                 && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
                 // RECON-AIR-05 — anchor further live replanning at the SAME Refresh target this
                 // launch was bound to (lp.Mission.FocusHex), not a fresh pick.
@@ -346,6 +398,15 @@ namespace Game.Ai.V2
             if (perMission != null)
             {
                 perMission.ApSpent = Math.Max(0f, apBeforeLaunch - root.ActionPoints);
+                if (!continueAfterLaunch)
+                    perMission.StopReason = launchTrace.BattleOccurred
+                        ? ExecutionStopReason.BattleStarted
+                        : launchTrace.HexEventOccurred
+                            ? ExecutionStopReason.HexEventStarted
+                            : launched.CurrentMovement > 0
+                                ? ExecutionStopReason.StepCompleted
+                                : ExecutionStopReason.OutOfMovement;
+                perMission.ResourcesAfter = AiV2Trace.Stamp(root);
                 FinalizePerMissionResult(player, pm, perMission);
                 perMissionResults?.Add(perMission);
             }

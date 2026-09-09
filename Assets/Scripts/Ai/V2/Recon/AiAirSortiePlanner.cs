@@ -878,7 +878,8 @@ namespace Game.Ai.V2
         // AiTask itself once the army actually exists — Commit never does this for a Launch*
         // decision (decision.Task is deliberately left null by the factories; there is no task, and
         // nothing to claim, until the launch actually succeeds).
-        public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision, AiTurnContext ctx, AirSortieKind taskKind)
+        public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision,
+            AiTurnContext ctx, AirSortieKind taskKind, AiMoveExecutionTrace executionTrace = null)
         {
             ArmyData airArmy = decision.ExistingArmy;
             if (airArmy == null)
@@ -958,7 +959,7 @@ namespace Game.Ai.V2
                 yield return AiTurnController.WaitStep(ctx);
                 yield break;
             }
-            yield return AiTurnController.MoveArmyRoutine(player, firstMove, ctx);
+            yield return AiTurnController.MoveArmyRoutine(player, firstMove, ctx, executionTrace);
         }
     }
 }
