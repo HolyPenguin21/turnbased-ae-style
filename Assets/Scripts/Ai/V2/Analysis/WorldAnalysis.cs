@@ -812,6 +812,7 @@ namespace Game.Ai.V2
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
+                IsMobileEconomyBuilder = isOwn && AiArmyRoles.IsHeroLed(a),
                 IsStructuralRaidActor = isOwn
                     && !a.IsPrison && !a.IsGarrison && !a.IsAirArmy && !a.IsAirfield
                     && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
@@ -1203,6 +1204,7 @@ namespace Game.Ai.V2
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Key),
                     NearbyResourceClusterValue = EconomyResourceClusterValue(
                         snap, site.Key, standings),
+                    BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, site.Key),
                 });
             }
             eco.ExtractionOpportunities = extraction;
@@ -1243,6 +1245,7 @@ namespace Game.Ai.V2
                             LogisticsValue = Mathf.Clamp01(HexGridMath.Distance(anchor, hex)
                                 / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius)),
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
+                            BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
                         });
                     }
             }
@@ -1259,6 +1262,43 @@ namespace Game.Ai.V2
             eco.HasActionableOpportunity = extractionActionable || baseActionable;
 
             return eco;
+        }
+
+        private static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
+            WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target)
+        {
+            var result = new List<EconomyBuilderRouteSnapshot>();
+            if (snap?.Self?.Armies == null || player == null || ctx?.Map == null)
+                return result;
+
+            Dictionary<int, ArmyData> liveById = ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null).ToDictionary(a => a.Id);
+            foreach (ArmySnapshot army in snap.Self.Armies
+                         .Where(a => a != null).OrderBy(a => a.ArmyId))
+            {
+                if (army.IsGarrison)
+                {
+                    if (army.HasHero && army.Hex.Equals(target))
+                        result.Add(new EconomyBuilderRouteSnapshot
+                        {
+                            ArmyId = army.ArmyId, TravelCost = 0, IsOnTarget = true,
+                        });
+                    continue;
+                }
+                if (!army.IsMobileEconomyBuilder
+                    || !liveById.TryGetValue(army.ArmyId, out ArmyData live))
+                    continue;
+                int cost = SafeStepPathing.FindSafePathCost(ctx.Map, live, target);
+                if (cost == int.MaxValue)
+                    continue;
+                result.Add(new EconomyBuilderRouteSnapshot
+                {
+                    ArmyId = army.ArmyId,
+                    TravelCost = cost,
+                    IsOnTarget = army.Hex.Equals(target),
+                });
+            }
+            return result;
         }
 
         private static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
