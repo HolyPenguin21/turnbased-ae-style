@@ -54,6 +54,10 @@ namespace Game.Ai.V2
         public const float powerBumpShockAttack = 0.15f;
         public const float powerBumpCriticalDamage = 0.15f;
         public const float powerBumpSituationalCounter = 0.08f; // Hyperkinetic / Pyrokinetic
+        public const float powerBumpSplash = 0.12f;             // Splash — half-damage to 2 extra neighbours
+        public const float powerBumpScorcher = 0.06f;           // Scorcher — half-damage to 1 neighbour, Bio-gated
+        public const float powerBumpRaiseTheRots = 0.30f;       // RaiseTheRots — conjures extra bodies each battle
+        public const float powerBumpRegeneration = 0.10f;       // Regeneration — end-of-turn self heal
 
         // Composition quality maps [0..1] onto a multiplier of (compoFloor .. 1). A single unit or
         // an all-one-type stack still counts for compoFloor of its raw power; a balanced,
@@ -1099,6 +1103,11 @@ namespace Game.Ai.V2
         // heroSupportFitValue (parity with the old inline SupportRoleFit); only these two are new.
         public const float effectMobileBaseFit = 0.20f;    // a fast non-recce body's MobileCombat role-fit floor
         public const float effectCriticalDamageFit = 0.35f;// §3.5 acceptance row — a CriticalDamage (x2-on-hit) body's CombatBody role-fit bonus
+        public const float effectSplashFit = 0.30f;        // Splash — CombatBody AoE fit (scaled by TargetDensity x magP)
+        public const float effectScorcherFit = 0.20f;      // Scorcher — narrower Bio-gated AoE fit
+        public const float effectRegenerationFit = 0.25f;  // Regeneration — CombatBody ExpectedSustain fit
+        public const float effectRaiseTheRotsFit = 0.35f;  // RaiseTheRots — ForceGrowth FreeBattleSlots fit
+        public const float effectProduceResourceFit = 0.30f;// Produce{Human,Energy,Materials,Tech} — flat Economy role-fit per carrier
         public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).

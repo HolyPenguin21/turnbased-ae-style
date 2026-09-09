@@ -659,6 +659,68 @@ namespace Game.Ai.V2
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
                         stacking: EffectStacking.Stack, stackingKey: "CriticalDamage"),
                 },
+                // ---- New skills (2026-09), each ONE row on the existing machinery — the AoE /
+                // regen / summon contexts below were already scored by ContextualValue, just never
+                // referenced by a real ability row. Additive: an existing card carries none of
+                // these tags, so its score is unchanged.
+                [UnitAbilities.Splash] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectSplashFit,
+                        StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
+                        scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.9f,
+                        stacking: EffectStacking.Unique, stackingKey: "Splash"),
+                },
+                [UnitAbilities.Scorcher] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectScorcherFit,
+                        StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
+                        eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Bio),
+                        scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.6f,
+                        stacking: EffectStacking.Unique, stackingKey: "Scorcher"),
+                },
+                [UnitAbilities.Regeneration] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectRegenerationFit,
+                        StrategicEffectContext.ExpectedSustain, EffectField.RoleFit, coverage: false,
+                        timing: EffectTiming.DuringCombat, durationRounds: 0,
+                        stacking: EffectStacking.Stack, stackingKey: "Regeneration"),
+                },
+                [UnitAbilities.RaiseTheRots] = new[]
+                {
+                    new StrategicEffect(IntendedRole.ForceGrowth, AiConfigV2.effectRaiseTheRotsFit,
+                        StrategicEffectContext.FreeBattleSlots, EffectField.ForceGrowth, coverage: false,
+                        magnitude: 0.6f, timing: EffectTiming.OneShot, durationRounds: 0,
+                        capacityRequirement: 2,
+                        stacking: EffectStacking.Unique, stackingKey: "RaiseTheRots"),
+                },
+                // Produce{X}: a flat per-carrier Economy role-fit — deliberately NOT the dynamic
+                // GlobalRecurringResource path ApBonus uses (that is AP-economy-snapshot-bound;
+                // a stockpile-resource version would need new economy plumbing, out of scope for
+                // an additive change). IncomeProjection carries the exact per-turn number.
+                [UnitAbilities.ProduceHuman] = new[]
+                {
+                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceHuman"),
+                },
+                [UnitAbilities.ProduceEnergy] = new[]
+                {
+                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceEnergy"),
+                },
+                [UnitAbilities.ProduceMaterials] = new[]
+                {
+                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceMaterials"),
+                },
+                [UnitAbilities.ProduceTech] = new[]
+                {
+                    new StrategicEffect(IntendedRole.Economy, AiConfigV2.effectProduceResourceFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Stack, stackingKey: "ProduceTech"),
+                },
                 // Further mechanics are ONE row each — no evaluator / StrategicManager / Phase-A/B
                 // edit (final closure §3.5 acceptance). The generic semantics ride on the descriptor:
                 //   [UnitAbilities.Splash]     = { new StrategicEffect(IntendedRole.CombatBody, w,

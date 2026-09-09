@@ -85,6 +85,28 @@ namespace Game.Economy
                     remaining -= granted;
                 }
             }
+
+            // UnitAbilities.Produce* — flat +1 per in-play carrier (non-Prison army member, owned
+            // Base, or Facility), a mirror of GameTurnController.GrantProduceResourceIncome. Kept
+            // separate from the hex-yield collection above, exactly as that grant is separate from
+            // CollectResourceIncome, so this projection still matches the real per-turn number.
+            string produceAbility = UnitAbilities.ProduceAbilityFor(type);
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            {
+                if (army.IsPrison)
+                    continue;
+                total += army.Members.Count(u => u.HasAbility(produceAbility));
+            }
+            foreach (BuildingData building in BuildingRegistry.AllBuildings())
+            {
+                if (building.Owner != player)
+                    continue;
+                if (building.HasAbility(produceAbility))
+                    total++;
+                foreach (FacilityData facility in building.FacilitySlots)
+                    if (facility != null && facility.HasAbility(produceAbility))
+                        total++;
+            }
             return total;
         }
     }

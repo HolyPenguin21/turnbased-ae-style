@@ -225,6 +225,10 @@ namespace Game.Ai.V2
                     case UnitAbilities.CriticalDamage: bump += AiConfigV2.powerBumpCriticalDamage; break;
                     case UnitAbilities.Hyperkinetic:
                     case UnitAbilities.Pyrokinetic: bump += AiConfigV2.powerBumpSituationalCounter; break;
+                    case UnitAbilities.Splash: bump += AiConfigV2.powerBumpSplash; break;
+                    case UnitAbilities.Scorcher: bump += AiConfigV2.powerBumpScorcher; break;
+                    case UnitAbilities.RaiseTheRots: bump += AiConfigV2.powerBumpRaiseTheRots; break;
+                    case UnitAbilities.Regeneration: bump += AiConfigV2.powerBumpRegeneration; break;
                 }
             }
             return 1f + bump;

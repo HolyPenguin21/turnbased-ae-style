@@ -553,6 +553,10 @@ namespace Game.Combat
                     hp[target] -= damage;
                     if (damageDealtByUnit != null)
                         damageDealtByUnit[actor] = damageDealtByUnit.TryGetValue(actor, out float dealt) ? dealt + damage : damage;
+                    // UnitAbilities.Splash / Scorcher — collateral onto the target's neighbours,
+                    // so AssessRetreat / ArrangeArmy / advance-lookahead projections account for
+                    // it. No-op for an actor with neither ability.
+                    ApplySimSplash(grid, hp, actor, target, damage, magnitudes);
                     if (hp[target] <= 0f && grid.TryFindPosition(target, out int tRow, out int tCol))
                         grid.Set(tRow, tCol, null);
                     continue;
@@ -567,6 +571,62 @@ namespace Game.Combat
                     grid.Set(step.Value.row, step.Value.col, actor);
                 }
             }
+        }
+
+        // Shadow-grid mirror of BattleScreenUI.Combat.cs's ResolveSplashSkills, for the round
+        // projections above. Half (floored) of the primary damage minus the neighbour's own
+        // CeramicArmor (Option A — the attacker's offensive bonuses are already in `primaryDamage`),
+        // to up to two orthogonal neighbours of `target` for Splash and/or one Bio neighbour for
+        // Scorcher. Deterministic neighbour order (no RNG in a projection). Only runs for a
+        // Splash/Scorcher actor — every existing projection is byte-for-byte unchanged.
+        private static void ApplySimSplash(BattleGrid grid, Dictionary<UnitData, float> hp, UnitData actor,
+            UnitData target, float primaryDamage, AbilityMagnitudes magnitudes)
+        {
+            bool splash = actor.HasAbility(UnitAbilities.Splash);
+            bool scorcher = actor.HasAbility(UnitAbilities.Scorcher);
+            if ((!splash && !scorcher) || primaryDamage <= 0f
+                || !grid.TryFindPosition(target, out int tr, out int tc))
+                return;
+
+            int half = Mathf.FloorToInt(primaryDamage / 2f);
+            if (half <= 0)
+                return;
+
+            var neighbours = new List<UnitData>();
+            int[] dRow = { -1, 1, 0, 0 };
+            int[] dCol = { 0, 0, -1, 1 };
+            for (int i = 0; i < 4; i++)
+            {
+                UnitData n = grid.Get(tr + dRow[i], tc + dCol[i]);
+                if (n != null && n != actor && n != target && hp.TryGetValue(n, out float nhp) && nhp > 0f)
+                    neighbours.Add(n);
+            }
+            if (neighbours.Count == 0)
+                return;
+
+            int splashHits = splash ? Mathf.Min(2, neighbours.Count) : 0;
+            for (int k = 0; k < splashHits; k++)
+                SimSideHit(grid, hp, neighbours[k], half, magnitudes);
+            if (scorcher)
+                foreach (UnitData n in neighbours)
+                    if (n.TypeTags.Contains(UnitTypeTag.Bio))
+                    {
+                        SimSideHit(grid, hp, n, half, magnitudes);
+                        break;
+                    }
+        }
+
+        private static void SimSideHit(BattleGrid grid, Dictionary<UnitData, float> hp, UnitData victim,
+            int half, AbilityMagnitudes magnitudes)
+        {
+            int dmg = half;
+            if (victim.HasAbility(UnitAbilities.CeramicArmor))
+                dmg = Mathf.Max(0, dmg - magnitudes.CeramicArmorReduction);
+            if (dmg <= 0)
+                return;
+            hp[victim] -= dmg;
+            if (hp[victim] <= 0f && grid.TryFindPosition(victim, out int vr, out int vc))
+                grid.Set(vr, vc, null);
         }
 
         private static void CollectLivingMembers(BattleGrid liveGrid, ArmyData army, BattleGrid shadowGrid,

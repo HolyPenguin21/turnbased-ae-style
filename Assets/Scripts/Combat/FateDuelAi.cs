@@ -126,6 +126,8 @@ namespace Game.Combat
         private static int AttackerCap(UnitData attacker, UnitData defender)
         {
             bool boosted = attacker.HasAbility(UnitAbilities.ShockAttack)
+                || attacker.HasAbility(UnitAbilities.Splash)   // a landed hit also spreads to neighbours
+                || attacker.HasAbility(UnitAbilities.Scorcher)
                 || (attacker.HasAbility(UnitAbilities.Hyperkinetic) && defender.TypeTags.Contains(UnitTypeTag.Armored))
                 || (attacker.HasAbility(UnitAbilities.Pyrokinetic) && defender.TypeTags.Contains(UnitTypeTag.Bio));
             return boosted ? 2 : 1;

@@ -325,6 +325,61 @@ namespace Game.Combat
             return list;
         }
 
+        // Aggregate-roster mirror of BattleScreenUI.Combat.cs's ResolveSplashSkills for
+        // SimulateOneBattle. Half (floored) of the primary damage minus the victim's own
+        // CeramicArmor (Option A — the attacker's offensive bonuses are already in `primaryDamage`),
+        // to up to two random OTHER living enemies (Splash) and/or one random living Bio enemy
+        // (Scorcher). Positions don't exist in this model, so "adjacent" is approximated as
+        // "random other body". Only runs for a Splash/Scorcher actor.
+        private static void ApplyRosterSplash(List<BattleUnit> enemyList, int primaryTargetIndex,
+            BattleUnit actor, int primaryDamage, System.Random rng)
+        {
+            bool splash = actor.HasAbility(UnitAbilities.Splash);
+            bool scorcher = actor.HasAbility(UnitAbilities.Scorcher);
+            if ((!splash && !scorcher) || primaryDamage <= 0)
+                return;
+            int half = primaryDamage / 2; // floor
+            if (half <= 0)
+                return;
+
+            var others = new List<int>();
+            for (int i = 0; i < enemyList.Count; i++)
+                if (i != primaryTargetIndex && enemyList[i].Hp > 0f)
+                    others.Add(i);
+            if (others.Count == 0)
+                return;
+
+            if (splash)
+            {
+                int hits = Mathf.Min(2, others.Count);
+                for (int k = 0; k < hits && others.Count > 0; k++)
+                {
+                    int pick = others[rng.Next(others.Count)];
+                    RosterSideHit(enemyList, pick, half);
+                    others.Remove(pick);
+                }
+            }
+            if (scorcher)
+            {
+                var bio = others.FindAll(i => enemyList[i].TypeTags != null
+                    && enemyList[i].TypeTags.Contains(UnitTypeTag.Bio));
+                if (bio.Count > 0)
+                    RosterSideHit(enemyList, bio[rng.Next(bio.Count)], half);
+            }
+        }
+
+        private static void RosterSideHit(List<BattleUnit> list, int idx, int half)
+        {
+            BattleUnit u = list[idx];
+            int dmg = half;
+            if (u.HasAbility(UnitAbilities.CeramicArmor))
+                dmg = Mathf.Max(0, dmg - AbilityMagnitudes.Default.CeramicArmorReduction);
+            if (dmg <= 0)
+                return;
+            u.Hp -= dmg;
+            list[idx] = u;
+        }
+
         private static bool AnyAlive(List<BattleUnit> units)
         {
             foreach (BattleUnit u in units)
@@ -410,6 +465,13 @@ namespace Game.Combat
                     }
 
                     enemyList[targetIndex] = target;
+
+                    // UnitAbilities.Splash / Scorcher — this roster model has no positions, so
+                    // "neighbours" is approximated as random OTHER living enemies. No-op for an
+                    // actor with neither ability, so every existing trial is unchanged.
+                    if (damage > 0)
+                        ApplyRosterSplash(enemyList, targetIndex, actor, damage, rng);
+
                     acted.Add(turn);
                 }
             }

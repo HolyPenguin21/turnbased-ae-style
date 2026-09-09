@@ -17,6 +17,41 @@ namespace Game.Combat
         // better kill/damage pick.
         private const float ShockAttackTargetBonus = 5f;
 
+        // Same tier as ShockAttackTargetBonus — only a tie-breaker, never overrides a kill/damage
+        // pick. Per net-enemy orthogonal neighbour of the candidate for a Splash actor (the
+        // half-damage spread lands on them, or on the actor's own side if they're friendly), and
+        // per enemy Bio neighbour for a Scorcher actor. Zero for an actor with neither.
+        private const float SplashNeighbourBonus = 3f;
+
+        private static float SplashSpreadBonus(BattleGrid grid, UnitData actor, int targetRow, int targetCol)
+        {
+            bool splash = actor.HasAbility(UnitAbilities.Splash);
+            bool scorcher = actor.HasAbility(UnitAbilities.Scorcher);
+            if (!splash && !scorcher)
+                return 0f;
+
+            int splashNet = 0, scorcherBio = 0;
+            int[] dRow = { -1, 1, 0, 0 };
+            int[] dCol = { 0, 0, -1, 1 };
+            for (int i = 0; i < 4; i++)
+            {
+                UnitData n = grid.Get(targetRow + dRow[i], targetCol + dCol[i]);
+                if (n == null || n == actor)
+                    continue;
+                bool enemy = n.Owner != actor.Owner;
+                splashNet += enemy ? 1 : -1;
+                if (enemy && n.TypeTags.Contains(UnitTypeTag.Bio))
+                    scorcherBio++;
+            }
+
+            float bonus = 0f;
+            if (splash)
+                bonus += splashNet * SplashNeighbourBonus;
+            if (scorcher)
+                bonus += scorcherBio * SplashNeighbourBonus;
+            return bonus;
+        }
+
         // Target priority, highest to lowest: finishing blow (cheapest kill first) > damage
         // efficiency (how much of our attack actually gets through the target's own Defense, with
         // the target's own Attack only as a minor tiebreak between similarly-easy targets) >
@@ -116,6 +151,8 @@ namespace Game.Combat
                     out float score, out int damage, out _))
                     continue;
 
+                score += SplashSpreadBonus(grid, actor, candRow, candCol);
+
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -160,6 +197,7 @@ namespace Game.Combat
                 bool notYetActed = turnOrder != null && turnOrder.IndexOf(candidate) > turnIndex;
                 TryScoreTarget(actor, candidate, candidate.HitPointsCurrent, magnitudes, notYetActed,
                     out float score, out int damage, out AiThoughtCategory reason);
+                score += SplashSpreadBonus(grid, actor, candRow, candCol);
 
                 BattleDebugLog.Write($"[TargetDiag] candidate {candidate.Name}: hp={candidate.HitPointsCurrent} " +
                     $"defense={candidate.Defense} ceramicArmor={candidate.HasAbility(UnitAbilities.CeramicArmor)} " +
