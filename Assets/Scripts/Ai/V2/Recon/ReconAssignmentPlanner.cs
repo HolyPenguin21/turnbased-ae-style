@@ -381,7 +381,8 @@ namespace Game.Ai.V2
         public static ReconAssignmentResult AssignFunded(
             WorldSnapshot snap, AiTurnContext ctx, PlayerSetupData player,
             List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds, PlayerRoot root = null,
-            IReadOnlyCollection<ProvisionedMission> alreadyProvisioned = null)
+            IReadOnlyCollection<ProvisionedMission> alreadyProvisioned = null,
+            ISet<int> durableClaimedArmyIds = null)
         {
             var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
@@ -448,10 +449,24 @@ namespace Game.Ai.V2
             }
 
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
+            var exclusions = new List<HashSet<int>>(open.Count);
             foreach (FundedEntry fe in open)
             {
+                // A ProvisioningSession only owns claims made during this one admission. Durable
+                // actor occupancy belongs to ActorCommitments and must survive the next mid-turn
+                // session. Let a mission keep its own incumbent, but never borrow another intent's
+                // physical scout merely because a fresh session started.
+                var excluded = alreadyClaimedArmyIds != null
+                    ? new HashSet<int>(alreadyClaimedArmyIds)
+                    : new HashSet<int>();
+                if (durableClaimedArmyIds != null)
+                    excluded.UnionWith(durableClaimedArmyIds);
+                if (fe.Mission.PreferredMoverArmyId.HasValue)
+                    excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                exclusions.Add(excluded);
+
                 var target = (ScoutMissionTarget)fe.Mission.Target;
-                cands.Add(BuildCandidates(snap, ctx, player, target, alreadyClaimedArmyIds, root, airPool));
+                cands.Add(BuildCandidates(snap, ctx, player, target, excluded, root, airPool));
             }
 
             int groundActorCap = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - claimedGroundActors);
@@ -477,7 +492,7 @@ namespace Game.Ai.V2
                 var target = (ScoutMissionTarget)open[i].Mission.Target;
                 result.Rejected[key] = cands[i].Count > 0
                     ? ScoutAssignmentFailureReason.MoverContended
-                    : DiagnoseEmpty(snap, ctx, player, target, alreadyClaimedArmyIds);
+                    : DiagnoseEmpty(snap, ctx, player, target, exclusions[i]);
             }
 
             if (open.Count > 0)
