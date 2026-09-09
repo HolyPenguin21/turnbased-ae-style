@@ -647,6 +647,7 @@ namespace Game.Ai.V2
 
                     ProvisionedMission selected = null;
                     StableMissionKey selectedKey = default;
+                    var attemptedKeys = new HashSet<StableMissionKey>();
                     int reallocPass = 0;
                     bool provisioningSettled = false;
                     while (!provisioningSettled)
@@ -661,6 +662,7 @@ namespace Game.Ai.V2
                             break;
 
                         selectedKey = StableMissionKey.For(selectedFunding.Mission);
+                        attemptedKeys.Add(selectedKey);
                         ProvisioningResult provisionResult = ProvisioningManager.Provision(
                             player, root, hand, ctx, cycleProvisioning, selectedFunding);
                         if (provisionResult.Success)
@@ -709,7 +711,7 @@ namespace Game.Ai.V2
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
                         foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
-                                     .Where(o => o != null && o.AttemptKey.Equals(selectedKey)))
+                                     .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
                             MissionContinuityLayer.ReconcileStep(
                                 player, snapshot.TurnNumber, outcome);
                         noProgressCycles++;
@@ -753,7 +755,7 @@ namespace Game.Ai.V2
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
                     foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
-                                 .Where(o => o != null && o.AttemptKey.Equals(selectedKey)))
+                                 .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
                         MissionContinuityLayer.ReconcileStep(
                             player, snapshot.TurnNumber, outcome);
 
