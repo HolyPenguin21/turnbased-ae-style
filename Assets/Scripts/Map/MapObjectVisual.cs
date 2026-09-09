@@ -11,6 +11,12 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer innerCircle;
         [SerializeField] private SpriteRenderer objectImage;
 
+        // Fraction of the marker's own art half-width that actually counts as a click on it
+        // (see ContainsScreenPoint). Below 1 so the transparent margin baked into the circle
+        // sprite — and a bit of the opaque rim — doesn't register, which is what kept the old
+        // hit area filling most of a hex and swallowing plain hex clicks into the army modal.
+        [SerializeField, Range(0.2f, 1f)] private float clickRadiusFactor = 0.7f;
+
         public void SetColor(Color color)
         {
             if (innerCircle != null)
@@ -80,50 +86,51 @@ namespace Game.Map
         // but hidden rather than destroyed.
         public bool IsVisible => innerCircle != null && innerCircle.enabled;
 
-        // Hit-tests the marker against what is ACTUALLY drawn on screen. Unlike the old fixed
-        // pixel radius in HexSelectionController, these projected renderer bounds naturally
-        // shrink as an orthographic camera zooms out and grow as it zooms in. Called only on a
-        // click and only for markers on the clicked hex, so projecting the eight Bounds corners
-        // is negligible compared with keeping Physics colliders/raycasters on every map object.
+        // Hit-tests the marker as a circle around its projected centre, sized from the art's
+        // own half-width. This replaced a projected-AABB rectangle: that box circumscribed a
+        // round marker (over-claiming its diagonals by ~41%) and, because Inner_Circle is laid
+        // almost flat on the ground, its world AABB carried a big Z (depth) extent that
+        // projected into a tall on-screen rectangle — so a click well outside the visible disc
+        // still counted, and zooming out never freed up hex border to click (2026-09-09
+        // collider investigation). Measuring the radius along the screen horizontal drops the
+        // ground-tilt inflation, and it still shrinks/grows with orthographic zoom because it's
+        // a projected distance. Called only on a click and only for markers on the clicked hex.
         public bool ContainsScreenPoint(Camera camera, Vector2 screenPoint, float paddingPixels = 3f)
         {
             if (camera == null || !IsVisible)
                 return false;
 
-            Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
-            Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
-            bool hasBounds = AccumulateScreenBounds(innerCircle, camera, ref min, ref max);
-            hasBounds |= AccumulateScreenBounds(objectImage, camera, ref min, ref max);
-            if (!hasBounds)
+            SpriteRenderer shape = ResolveHitRenderer();
+            if (shape == null)
                 return false;
 
+            Vector3 worldCentre = shape.bounds.center;
+            Vector3 centreScreen = camera.WorldToScreenPoint(worldCentre);
+            if (centreScreen.z <= 0f)
+                return false;
+
+            // Sprite.bounds is already in units (PPU-divided) and pivot-centred; take the
+            // horizontal extent only, scaled by the renderer's world scale, so Inner_Circle's
+            // ~80deg ground tilt doesn't stretch it.
+            float worldRadius = shape.sprite.bounds.extents.x
+                * Mathf.Abs(shape.transform.lossyScale.x) * Mathf.Clamp01(clickRadiusFactor);
+            Vector3 edgeScreen = camera.WorldToScreenPoint(worldCentre + camera.transform.right * worldRadius);
+
+            Vector2 centre2D = new Vector2(centreScreen.x, centreScreen.y);
+            float radiusPixels = Vector2.Distance(centre2D, new Vector2(edgeScreen.x, edgeScreen.y));
             float padding = Mathf.Max(0f, paddingPixels);
-            return screenPoint.x >= min.x - padding && screenPoint.x <= max.x + padding
-                && screenPoint.y >= min.y - padding && screenPoint.y <= max.y + padding;
+            return Vector2.Distance(screenPoint, centre2D) <= radiusPixels + padding;
         }
 
-        private static bool AccumulateScreenBounds(SpriteRenderer renderer, Camera camera,
-            ref Vector2 min, ref Vector2 max)
+        // The round circle is the marker's clickable shape; fall back to the icon renderer for
+        // a marker with no circle (or whose circle is momentarily spriteless).
+        private SpriteRenderer ResolveHitRenderer()
         {
-            if (renderer == null || !renderer.enabled || renderer.sprite == null)
-                return false;
-
-            Bounds bounds = renderer.bounds;
-            for (int corner = 0; corner < 8; corner++)
-            {
-                Vector3 world = new Vector3(
-                    (corner & 1) == 0 ? bounds.min.x : bounds.max.x,
-                    (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
-                    (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
-                Vector3 screen = camera.WorldToScreenPoint(world);
-                if (screen.z <= 0f)
-                    continue;
-                min.x = Mathf.Min(min.x, screen.x);
-                min.y = Mathf.Min(min.y, screen.y);
-                max.x = Mathf.Max(max.x, screen.x);
-                max.y = Mathf.Max(max.y, screen.y);
-            }
-            return !float.IsPositiveInfinity(min.x);
+            if (innerCircle != null && innerCircle.enabled && innerCircle.sprite != null)
+                return innerCircle;
+            if (objectImage != null && objectImage.enabled && objectImage.sprite != null)
+                return objectImage;
+            return null;
         }
     }
 }

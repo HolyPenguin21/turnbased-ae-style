@@ -70,9 +70,10 @@ namespace Game.Map
         // multi-turn AirStrike loitering over its target, not a move step), the one case an AI
         // routine needs this presenter without an actual move happening first.
         public AviationCombatPresenter AviationCombatPresenter => aviationCombatPresenter;
-        // Small usability margin around the marker's real projected SpriteRenderer bounds.
-        // The bounds themselves scale with orthographic zoom (MapObjectVisual.ContainsScreenPoint),
-        // so this never turns into the old fixed 30px invisible collider at long zoom.
+        // Small usability margin in screen pixels around the marker's projected click circle
+        // (MapObjectVisual.ContainsScreenPoint). That circle's radius scales with orthographic
+        // zoom, so this never turns into the old fixed 30px invisible collider at long zoom;
+        // keep it a few px so it doesn't undo the tightened hit area.
         [SerializeField] private float mapMarkerClickPadding = 3f;
 
         // AiTurnController.MoveArmyRoutine's own wait signal — a contact-triggered fight now
