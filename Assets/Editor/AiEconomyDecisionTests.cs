@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Ai.V2;
 using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -382,6 +383,64 @@ namespace Game.EditorTests
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
 
             Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f, 4, 3, out _), Is.False);
+        }
+
+        [Test]
+        public void EconomyHeroMaterialization_NewArmyIsOperationalDeliveryOnlyForEconomy()
+        {
+            var plan = new MaterializationPlan
+            {
+                Deploy = new PlacementOption(
+                    new HexCoord(0, 0), DeploymentKind.NewArmy, null),
+            };
+            var economy = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.Hero,
+            };
+            var aggression = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.Hero,
+            };
+
+            Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, economy),
+                Is.True);
+            Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, aggression),
+                Is.False);
+        }
+
+        [Test]
+        public void EconomyHeroMaterialization_MobileBuilderIsOperationalLeaseCandidate()
+        {
+            var builder = new ArmySnapshot
+            {
+                ArmyId = 17,
+                HasHero = true,
+                IsMobileEconomyBuilder = true,
+                IsStructuralRaidActor = false,
+            };
+            var after = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot> { builder },
+                },
+            };
+            var plan = new MaterializationPlan
+            {
+                Deploy = new PlacementOption(
+                    new HexCoord(0, 0), DeploymentKind.NewArmy, null),
+            };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.Hero,
+            };
+
+            Assert.That(CapabilityDeliveryEvaluator.IsOperationalForDemand(builder, demand), Is.True);
+            Assert.That(CapabilityDeliveryEvaluator.OperationalLeaseArmyIds(
+                new HashSet<int>(), after, plan, demand), Is.EqualTo(new[] { 17 }));
         }
 
         private static EconomyExtractionOpportunity ExtractionOpportunity(

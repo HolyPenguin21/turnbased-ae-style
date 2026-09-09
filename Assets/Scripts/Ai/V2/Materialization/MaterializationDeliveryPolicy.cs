@@ -30,6 +30,13 @@ namespace Game.Ai.V2
                 case CapabilityKind.GarrisonCombatPower:
                     return p.Deploy.Kind == DeploymentKind.Garrison;
                 case CapabilityKind.Hero:
+                    // Economy does not need a combat-ready hero stack: its canonical builder shape
+                    // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
+                    // Keep the escort rule unchanged for every non-Economy Hero demand.
+                    if (IsEconomyHeroDemand(demand))
+                        return p.Deploy.Kind == DeploymentKind.NewArmy
+                            || p.Deploy.Kind == DeploymentKind.ReusableShell
+                            || p.Deploy.Kind == DeploymentKind.ExistingArmy;
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
                         && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
@@ -51,8 +58,18 @@ namespace Game.Ai.V2
         // Army-level: is this already-existing army an operational instance of `demand`'s capability
         // (used to lease armies that satisfied a live strategic demand to Housekeeping).
         internal static bool IsArmyOperationalForDemand(ArmySnapshot army, AxisDemand demand)
-            => demand != null && IsArmyOperationalForCapability(
-                army, demand.Capability, demand.RequiredTraits);
+        {
+            if (army == null || demand == null)
+                return false;
+            return IsEconomyHeroDemand(demand)
+                ? army.IsMobileEconomyBuilder
+                : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
+        }
+
+        internal static bool IsEconomyHeroDemand(AxisDemand demand)
+            => demand != null
+                && demand.RequestingAxis == DesireAxis.Economy
+                && demand.Capability == CapabilityKind.Hero;
 
         // Capability-level form used when Phase B deliberately creates useful surplus without an
         // AxisDemand object. Keeping it here prevents lease bookkeeping from growing a second

@@ -17,21 +17,26 @@ namespace Game.Ai.V2
             => demand == null
                 ? new List<int>()
                 : OperationalLeaseArmyIds(armyIdsBefore, after, plan,
-                    demand.Capability, demand.RequiredTraits);
+                    army => MaterializationDeliveryPolicy.IsArmyOperationalForDemand(army, demand));
 
         private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
             WorldSnapshot after, MaterializationPlan plan, CapabilityKind capability,
             TraitPreference requiredTraits)
+            => OperationalLeaseArmyIds(armyIdsBefore, after, plan,
+                army => MaterializationDeliveryPolicy.IsArmyOperationalForCapability(
+                    army, capability, requiredTraits));
+
+        private static IReadOnlyList<int> OperationalLeaseArmyIds(HashSet<int> armyIdsBefore,
+            WorldSnapshot after, MaterializationPlan plan, System.Func<ArmySnapshot, bool> operational)
         {
             var ids = new HashSet<int>();
-            if (after?.Self?.Armies == null || armyIdsBefore == null)
+            if (after?.Self?.Armies == null || armyIdsBefore == null || operational == null)
                 return ids.ToList();
 
             int existingRecipient = plan?.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
             foreach (ArmySnapshot army in after.Self.Armies)
             {
-                if (army == null || !MaterializationDeliveryPolicy.IsArmyOperationalForCapability(
-                        army, capability, requiredTraits))
+                if (army == null || !operational(army))
                     continue;
                 if (army.ArmyId == existingRecipient || !armyIdsBefore.Contains(army.ArmyId))
                     ids.Add(army.ArmyId);
@@ -83,10 +88,14 @@ namespace Game.Ai.V2
             CapabilityInventory before, CapabilityInventory after, HashSet<int> armyIdsBefore,
             out float delivered)
         {
-            delivered = DeliveredCapabilityAmount(demand, before, after);
+            IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
+            // CapabilityInventory.AvailableHeroes intentionally counts combat-ready heroes only.
+            // An Economy Hero is delivered by the demand-aware mobile-builder predicate instead.
+            delivered = MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand)
+                ? leased.Count
+                : DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
-            IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
             StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, demand.Capability, leased);
             return true;
         }
