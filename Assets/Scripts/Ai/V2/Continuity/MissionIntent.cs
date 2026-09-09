@@ -369,9 +369,11 @@ namespace Game.Ai.V2
                     bool raidEngaged = o.MissionKind == MissionKind.Raid
                         && (e.StopReason == ExecutionStopReason.BattleStarted
                             || e.StopReason == ExecutionStopReason.HexEventStarted);
-                    o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth || raidEngaged;
-                    if (o.MissionKind == MissionKind.Raid && (e.StepsMoved > 0 || raidEngaged))
-                        o.RaidOperationStarted = true;
+                    o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
+                        || e.InfrastructureChanged || e.RaidOperationStarted || raidEngaged;
+                    if (o.MissionKind == MissionKind.Raid)
+                        o.RaidOperationStarted = e.RaidOperationStarted
+                            || e.StepsMoved > 0 || raidEngaged;
                     Classify(e, o);
                 }
                 else if (r.PendingFailure.HasValue)
@@ -425,6 +427,7 @@ namespace Game.Ai.V2
                     case ExecutionStopReason.OutOfMovement:
                     case ExecutionStopReason.EnemyDiscovered:
                     case ExecutionStopReason.NeutralDiscovered:
+                    case ExecutionStopReason.StepCompleted:
                         o.Outcome = ExecutionOutcome.ProductiveStop;
                         break;
                     case ExecutionStopReason.NoSafeStep:
@@ -443,6 +446,7 @@ namespace Game.Ai.V2
                 case ExecutionStopReason.OutOfMovement:
                 case ExecutionStopReason.EnemyDiscovered:
                 case ExecutionStopReason.NeutralDiscovered:
+                case ExecutionStopReason.StepCompleted:
                     o.Outcome = ExecutionOutcome.ProductiveStop;
                     break;
                 case ExecutionStopReason.HexEventStarted:
