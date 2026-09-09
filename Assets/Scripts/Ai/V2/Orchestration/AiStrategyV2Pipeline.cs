@@ -602,11 +602,11 @@ namespace Game.Ai.V2
                     // Lifecycle safety is admitted before strategic progress, but its must-return
                     // predicate remains owned by ReconAirExecutor. Exactly one airborne action is
                     // settled, observed and then re-admitted like every other step.
-                    List<Game.Units.ArmyData> recoveries =
+                    List<ArmyData> recoveries =
                         ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
                     if (recoveries.Count > 0)
                     {
-                        Game.Units.ArmyData recovery = recoveries[0];
+                        ArmyData recovery = recoveries[0];
                         HexCoord? recoveryFocus =
                             ReconPatrolStateRegistry.TryGet(player, recovery.Id, out ReconPatrolState recoveryState)
                                 ? recoveryState.StrategicAnchor : (HexCoord?)null;
