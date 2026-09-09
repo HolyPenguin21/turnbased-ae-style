@@ -220,17 +220,20 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result,
             MaterializationReservation carriedReservation = null)
         {
-            // A focus scope isolates the current deep-rework from the legacy strategic reaction loop.
-            // The live Recon executor will own ordinary step->refresh->reaction; until that lands,
-            // do not let a contact discovery reopen Aggression/Defence/Economy/Development through
-            // this second orchestration path. Consume the turn-scoped invalidation so it cannot
-            // leak into the next turn.
+            // A focus scope isolates the current task-family loop from the legacy reaction round.
+            // Ordinary step invalidations are consumed by their typed local family before this
+            // terminal safety-net boundary. Never Clear() the remaining aggregate here: Hand /
+            // Capability / Resources / Infrastructure / Threat may belong to a family intentionally
+            // disabled by the current scope, and clearing them would make suppression an accidental
+            // universal consumer.
             if (AiStrategyV2Scope.IsFocusScoped)
             {
                 if (player != null && ctx != null && StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 {
-                    StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
-                    AiDebugLog.Write($"[AI][V2][Scope] strategic reaction pass suppressed reason={AiStrategyV2Scope.Mode}");
+                    StrategicInvalidation pending =
+                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
+                    AiDebugLog.Write($"[AI][V2][Scope] strategic reaction pass suppressed "
+                        + $"reason={AiStrategyV2Scope.Mode}; deferred={pending.Reasons}");
                 }
                 // AI-MGR-02 §4 — a scope-suppressed pass deliberately leaves any AP reservation in
                 // place: HousekeepingManager releases it and re-runs end-of-turn tempo spending with
