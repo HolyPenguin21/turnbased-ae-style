@@ -351,16 +351,16 @@ namespace Game.EditorTests
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
 
-            Assert.That(ProvisioningManager.EconomyLoanAllowed(donor, 80f, 2, 3, out float net), Is.True);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 80f, 2, 3, out float net), Is.True);
             Assert.That(net, Is.GreaterThanOrEqualTo(AiConfigV2.economyLoanHysteresisThreshold));
         }
 
         [Test]
         public void EconomyLoan_HardOrCriticalSurveilCannotBeBorrowed()
         {
-            Assert.That(ProvisioningManager.EconomyLoanAllowed(
+            Assert.That(DemandLayer.EconomyLoanAllowed(
                 ScoutDonor(CommitmentTier.Hard, ScoutTargetKind.Explore), 100f, 1, 3, out _), Is.False);
-            Assert.That(ProvisioningManager.EconomyLoanAllowed(
+            Assert.That(DemandLayer.EconomyLoanAllowed(
                 ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Surveil), 100f, 1, 3, out _), Is.False);
         }
 
@@ -373,7 +373,7 @@ namespace Game.EditorTests
                 Objective = new RaidIntent { OperationStarted = true },
             };
 
-            Assert.That(ProvisioningManager.EconomyLoanAllowed(donor, 100f, 1, 3, out _), Is.False);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f, 1, 3, out _), Is.False);
         }
 
         [Test]
@@ -381,7 +381,7 @@ namespace Game.EditorTests
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
 
-            Assert.That(ProvisioningManager.EconomyLoanAllowed(donor, 100f, 4, 3, out _), Is.False);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f, 4, 3, out _), Is.False);
         }
 
         private static EconomyExtractionOpportunity ExtractionOpportunity(
