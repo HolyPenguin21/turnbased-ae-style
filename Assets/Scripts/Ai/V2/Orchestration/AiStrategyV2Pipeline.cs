@@ -654,7 +654,7 @@ namespace Game.Ai.V2
                     while (!provisioningSettled)
                     {
                         ProvisioningManager.PreparePass(player, root, ctx,
-                            cycleProvisioning, allocation);
+                            cycleProvisioning, allocation, actorCommitments);
                         FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
                             fe?.Mission != null
                             && CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(
@@ -837,7 +837,8 @@ namespace Game.Ai.V2
                 int reallocPass = 0;
                 while (true)
                 {
-                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation);
+                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
+                        actorCommitments);
                     bool anyFailure = false;
                     bool allFailuresArePoolWide = true;
                     foreach (FundedEntry fe in allocation.Funded)
