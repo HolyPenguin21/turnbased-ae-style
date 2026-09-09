@@ -247,8 +247,9 @@ namespace Game.Ai.V2
                 return null;
             var candidates = snap.Self.Armies.Where(a => a != null && a.HasHero
                     && !a.IsPrison && !a.IsAir && a.Hex.Equals(target))
-                .OrderBy(a => demand?.EconomyBuilderRoutes?.Any(r => r != null
-                    && r.ArmyId == a.ArmyId && r.IsOnTarget) == true ? 0 : 1)
+                .OrderBy(a => demand?.EconomyBuilderRoutes != null
+                    && demand.EconomyBuilderRoutes.Any(r => r.ArmyId == a.ArmyId && r.IsOnTarget)
+                        ? 0 : 1)
                 .ThenBy(a => a.ArmyId)
                 .ToList();
             return candidates.Count > 0 ? candidates[0].ArmyId : (int?)null;
